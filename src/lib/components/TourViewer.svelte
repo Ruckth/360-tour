@@ -2,17 +2,26 @@
 	import { Canvas } from '@threlte/core';
 	import Scene from './Scene.svelte';
 	import { tourState } from '$lib/stores/tour.svelte';
+	import { socialProofState } from '$lib/stores/social-proof.svelte';
+	import { getSocialProofByPropertyId } from '$lib/data/social-proof';
+	import PostTourOverlay from './social/PostTourOverlay.svelte';
 	import { onMount } from 'svelte';
 
 	let {
 		roomIds,
 		propertyName,
+		propertyId = '',
 		onclose
 	}: {
 		roomIds: string[];
 		propertyName: string;
+		propertyId?: string;
 		onclose: () => void;
 	} = $props();
+
+	const socialProof = $derived(getSocialProofByPropertyId(propertyId));
+	const tourSnippets = $derived(socialProof?.tourSnippets ?? []);
+	let showPostTourOverlay = $state(false);
 
 	// Init tour state SYNCHRONOUSLY before Canvas/Scene mount
 	tourState.init(roomIds);
@@ -31,6 +40,16 @@
 			setTimeout(() => {
 				phase = 'tour';
 			}, 400);
+		}
+	});
+
+	// Start tour timer when entering tour phase
+	$effect(() => {
+		if (phase === 'tour') {
+			socialProofState.startTourTimer();
+			return () => {
+				socialProofState.stopTourTimer();
+			};
 		}
 	});
 
@@ -56,8 +75,26 @@
 		};
 	});
 
+	function handleClose() {
+		if (socialProofState.tourDuration > 15 && socialProof) {
+			showPostTourOverlay = true;
+		} else {
+			onclose();
+		}
+	}
+
+	function handlePostTourBook() {
+		showPostTourOverlay = false;
+		onclose();
+	}
+
+	function handlePostTourDismiss() {
+		showPostTourOverlay = false;
+		onclose();
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') onclose();
+		if (e.key === 'Escape') handleClose();
 	}
 </script>
 
@@ -67,7 +104,7 @@
 	<!-- Canvas always mounted (loads textures in background) -->
 	<div class="absolute inset-0" class:opacity-0={phase === 'intro'} class:pointer-events-none={phase === 'intro'}>
 		<Canvas renderMode="always">
-			<Scene />
+			<Scene {tourSnippets} />
 		</Canvas>
 	</div>
 
@@ -76,7 +113,7 @@
 		<div class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-black px-6">
 			<!-- Close button -->
 			<button
-				onclick={onclose}
+				onclick={handleClose}
 				class="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/60 transition hover:bg-white/20 hover:text-white"
 				aria-label="Close"
 			>
@@ -145,7 +182,7 @@
 				<p class="text-xs text-white/60 md:text-sm">{tourState.currentRoom.name}</p>
 			</div>
 			<button
-				onclick={onclose}
+				onclick={handleClose}
 				class="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20"
 				aria-label="Close tour"
 			>
@@ -172,6 +209,16 @@
 		{/if}
 	{/if}
 </div>
+
+<!-- Post-tour overlay -->
+{#if showPostTourOverlay && socialProof}
+	<PostTourOverlay
+		{propertyName}
+		{socialProof}
+		onbook={handlePostTourBook}
+		ondismiss={handlePostTourDismiss}
+	/>
+{/if}
 
 <style>
 	@keyframes phone-rotate {

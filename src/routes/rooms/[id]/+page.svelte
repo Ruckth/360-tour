@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { getPropertyById } from '$lib/data/properties';
+	import { getSocialProofByPropertyId } from '$lib/data/social-proof';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
+	import StarRating from '$lib/components/social/StarRating.svelte';
+	import TrustBadgeRow from '$lib/components/social/TrustBadgeRow.svelte';
+	import FeaturedInBar from '$lib/components/social/FeaturedInBar.svelte';
+	import RatingBreakdown from '$lib/components/social/RatingBreakdown.svelte';
+	import ReviewCarousel from '$lib/components/social/ReviewCarousel.svelte';
+	import GuestPhotoGrid from '$lib/components/social/GuestPhotoGrid.svelte';
+	import RecentBookingsFeed from '$lib/components/social/RecentBookingsFeed.svelte';
 
 	const property = $derived(getPropertyById($page.params.id));
+	const socialProof = $derived(getSocialProofByPropertyId(property?.id ?? ''));
 	let showTour = $state(false);
 
 	function openTour() {
@@ -16,11 +25,11 @@
 </script>
 
 <svelte:head>
-	<title>{property?.name ?? 'Property'} - VISTA360</title>
+	<title>{property?.name ?? 'Property'} - Spin & Stay</title>
 </svelte:head>
 
 {#if property}
-	<div class="pt-0">
+	<div class="pt-0 pb-20 md:pb-0">
 		<div class="mx-auto max-w-6xl px-4 pt-4 md:px-6 md:pt-6">
 			<a
 				href="/"
@@ -44,7 +53,18 @@
 
 					<div class="mt-5 md:mt-8">
 						<h1 class="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{property.name}</h1>
-						<p class="mt-0.5 text-sm text-muted-foreground md:mt-1 md:text-lg">{property.tagline}</p>
+
+						<!-- Star rating + trust badges below property name -->
+						{#if socialProof}
+							<div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+								<StarRating rating={socialProof.overallRating} size="md" showValue reviewCount={socialProof.totalReviews} />
+							</div>
+							<div class="mt-2">
+								<TrustBadgeRow isSuperhost={socialProof.isSuperhost} totalReviews={socialProof.totalReviews} overallRating={socialProof.overallRating} />
+							</div>
+						{/if}
+
+						<p class="mt-2 text-sm text-muted-foreground md:mt-1 md:text-lg">{property.tagline}</p>
 
 						<div class="mt-4 flex flex-wrap gap-2 md:mt-6 md:gap-3">
 							<span class="flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-xs text-muted-foreground md:gap-1.5 md:px-3 md:py-1.5 md:text-sm">
@@ -65,6 +85,11 @@
 						</div>
 
 						<p class="mt-4 text-sm leading-relaxed text-muted-foreground md:mt-6 md:text-base">{property.description}</p>
+
+						<!-- Featured in bar -->
+						<div class="mt-4">
+							<FeaturedInBar />
+						</div>
 					</div>
 
 					<div class="mt-8">
@@ -80,17 +105,59 @@
 							{/each}
 						</div>
 					</div>
+
+					<!-- Rating breakdown -->
+					{#if socialProof}
+						<div class="mt-10">
+							<h2 class="text-lg font-semibold text-foreground">Guest Ratings</h2>
+							<div class="mt-4">
+								<RatingBreakdown overallRating={socialProof.overallRating} totalReviews={socialProof.totalReviews} breakdown={socialProof.breakdown} />
+							</div>
+						</div>
+
+						<!-- Review carousel -->
+						<div class="mt-10">
+							<h2 class="text-lg font-semibold text-foreground">What Guests Say</h2>
+							<div class="mt-4">
+								<ReviewCarousel reviews={socialProof.reviews} />
+							</div>
+						</div>
+
+						<!-- Guest photos -->
+						{#if socialProof.reviews.some((r) => r.photos && r.photos.length > 0)}
+							<div class="mt-10">
+								<h2 class="text-lg font-semibold text-foreground">Guest Photos</h2>
+								<div class="mt-4">
+									<GuestPhotoGrid reviews={socialProof.reviews} />
+								</div>
+							</div>
+						{/if}
+					{/if}
 				</div>
 
 				<!-- Booking card -->
-				<div class="lg:sticky lg:top-24 lg:self-start">
+				<div class="hidden lg:block lg:sticky lg:top-24 lg:self-start">
 					<div class="rounded-xl border border-border bg-card p-4 shadow-lg md:rounded-2xl md:p-6">
+						<!-- Star rating in booking card -->
+						{#if socialProof}
+							<div class="mb-3">
+								<StarRating rating={socialProof.overallRating} size="sm" showValue reviewCount={socialProof.totalReviews} />
+							</div>
+						{/if}
+
 						<div class="flex items-baseline gap-1">
 							<span class="text-2xl font-bold text-card-foreground md:text-3xl">&#3647;{property.pricePerNight.toLocaleString()}</span>
 							<span class="text-muted-foreground">/night</span>
 						</div>
 
-						<div class="mt-6 space-y-3">
+						<!-- Trust badges in booking card -->
+						{#if socialProof}
+							<div class="mt-3">
+								<TrustBadgeRow isSuperhost={socialProof.isSuperhost} totalReviews={socialProof.totalReviews} overallRating={socialProof.overallRating} />
+							</div>
+						{/if}
+
+						<div class="mt-5 space-y-3">
 							<div class="grid grid-cols-2 gap-3">
 								<div class="rounded-lg border border-border p-3">
 									<p class="text-xs font-medium uppercase text-muted-foreground">Check-in</p>
@@ -106,6 +173,12 @@
 								<p class="mt-1 text-sm text-card-foreground">1 guest</p>
 							</div>
 						</div>
+
+						<button
+							class="mt-5 w-full rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-sky-400 hover:to-blue-500 md:py-3.5"
+						>
+							Join {socialProof?.totalReviews ?? ''}+ happy guests &mdash; Book Now
+						</button>
 
 						<button
 							onclick={openTour}
@@ -131,10 +204,14 @@
 			<TourViewer
 				roomIds={property.tourRoomIds}
 				propertyName={property.name}
+				propertyId={property.id}
 				onclose={closeTour}
 			/>
 		{/await}
 	{/if}
+
+	<!-- Recent bookings feed -->
+	<RecentBookingsFeed />
 {:else}
 	<div class="flex h-screen items-center justify-center pt-16">
 		<div class="text-center">

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { properties } from '$lib/data/properties';
+	import { getSocialProofByPropertyId } from '$lib/data/social-proof';
+	import StarRating from '$lib/components/social/StarRating.svelte';
 </script>
 
 <svelte:head>
@@ -48,6 +50,7 @@
 
 	<div class="grid gap-4 md:gap-8 md:grid-cols-2 lg:grid-cols-3">
 		{#each properties as property (property.id)}
+			{@const sp = getSocialProofByPropertyId(property.id)}
 			<a
 				href="/rooms/{property.id}"
 				class="group overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl md:rounded-2xl"
@@ -72,6 +75,11 @@
 
 				<div class="p-3 md:p-5">
 					<h3 class="text-base font-bold text-card-foreground md:text-lg">{property.name}</h3>
+					{#if sp}
+						<div class="mt-1">
+							<StarRating rating={sp.overallRating} size="sm" showValue reviewCount={sp.totalReviews} />
+						</div>
+					{/if}
 					<p class="mt-0.5 text-xs text-muted-foreground md:mt-1 md:text-sm">{property.tagline}</p>
 
 					<div class="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground md:mt-4 md:gap-4 md:text-xs">

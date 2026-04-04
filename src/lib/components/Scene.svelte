@@ -5,8 +5,20 @@
 	import { tourState } from '$lib/stores/tour.svelte';
 	import RoomSphere from './RoomSphere.svelte';
 	import Hotspot from './Hotspot.svelte';
+	import TourReviewSnippet from './social/TourReviewSnippet.svelte';
+	import type { TourReviewSnippet as TourReviewSnippetType } from '$lib/data/reviews';
+
+	let {
+		tourSnippets = []
+	}: {
+		tourSnippets?: TourReviewSnippetType[];
+	} = $props();
 
 	interactivity();
+
+	const currentRoomSnippets = $derived(
+		tourSnippets.filter((s) => s.roomId === tourState.currentRoomId)
+	);
 
 	let textureMap = $state<Record<string, Texture>>({});
 	let loadedCount = $state(0);
@@ -80,6 +92,9 @@
 				label={hotspot.label}
 				onclick={() => tourState.navigateTo(hotspot.targetRoomId)}
 			/>
+		{/each}
+		{#each currentRoomSnippets as snippet (snippet.id)}
+			<TourReviewSnippet {snippet} />
 		{/each}
 	{/if}
 {/if}
