@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { properties } from '$lib/data/properties';
-	import { getPropertyTagline } from '$lib/data/stories';
+	import { getMaxSavingsForProperty } from '$lib/data/pricing';
+	import SavingsBadge from '$lib/components/pricing/SavingsBadge.svelte';
 </script>
 
 <svelte:head>
-	<title>Spin & Stay - 360° Virtual Property Tours</title>
+	<title>Spin & Stay - 360 Virtual Property Tours</title>
 </svelte:head>
 
-<!-- Hero Section -->
 <section class="relative flex h-screen items-center justify-center overflow-hidden">
 	<div
 		class="absolute inset-0 bg-cover bg-center"
@@ -37,7 +37,6 @@
 	</a>
 </section>
 
-<!-- Properties Section -->
 <section id="properties" class="mx-auto max-w-7xl px-4 py-16 md:px-6 md:py-24">
 	<div class="mb-10 text-center md:mb-16">
 		<p class="text-xs font-semibold uppercase tracking-[0.2em] text-primary md:text-sm">Our Properties</p>
@@ -49,6 +48,7 @@
 
 	<div class="grid gap-4 md:gap-8 md:grid-cols-2 lg:grid-cols-3">
 		{#each properties as property (property.id)}
+			{@const savings = getMaxSavingsForProperty(property.id)}
 			<a
 				href="/rooms/{property.id}"
 				class="group overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl md:rounded-2xl"
@@ -74,9 +74,6 @@
 				<div class="p-3 md:p-5">
 					<h3 class="text-base font-bold text-card-foreground md:text-lg">{property.name}</h3>
 					<p class="mt-0.5 text-xs text-muted-foreground md:mt-1 md:text-sm">{property.tagline}</p>
-					{#if getPropertyTagline(property.id)}
-						<p class="mt-1.5 font-serif text-xs italic text-muted-foreground/70 md:mt-2 md:text-sm">{getPropertyTagline(property.id)}</p>
-					{/if}
 
 					<div class="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground md:mt-4 md:gap-4 md:text-xs">
 						<span class="flex items-center gap-1">
@@ -98,25 +95,30 @@
 							{property.area} m&sup2;
 						</span>
 					</div>
+
+					{#if savings > 0}
+						<div class="mt-3 md:mt-4">
+							<SavingsBadge amount={savings} compact />
+						</div>
+					{/if}
 				</div>
 			</a>
 		{/each}
 	</div>
 </section>
 
-<!-- CTA Section -->
 <section id="contact" class="bg-slate-900 py-16 dark:bg-slate-950 md:py-24">
 	<div class="mx-auto max-w-3xl px-5 text-center md:px-6">
 		<h2 class="text-2xl font-bold text-white md:text-3xl lg:text-4xl">Ready to Spin &amp; Stay?</h2>
 		<p class="mt-3 text-sm text-slate-400 md:mt-4 md:text-lg">
-			Book a property or schedule a private virtual tour with our team.
+			Best Price &mdash; Book Direct. Save up to 25% vs OTA platforms.
 		</p>
 		<div class="mt-6 flex items-center justify-center gap-3 md:mt-8 md:gap-4">
 			<a
 				href="#properties"
-				class="rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground shadow-lg transition hover:bg-primary/90 md:px-8 md:py-3.5 md:text-sm"
+				class="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg transition hover:from-emerald-600 hover:to-emerald-700 md:px-8 md:py-3.5 md:text-sm"
 			>
-				Explore Properties
+				Book Direct &mdash; Best Price
 			</a>
 			<a
 				href="mailto:info@spinandstay.com"

@@ -1,31 +1,24 @@
 <script lang="ts">
 	import { Canvas } from '@threlte/core';
 	import Scene from './Scene.svelte';
+	import TourPriceBadge from './pricing/TourPriceBadge.svelte';
 	import { tourState } from '$lib/stores/tour.svelte';
-	import { conciergeState } from '$lib/stores/concierge.svelte';
 	import { onMount } from 'svelte';
 
 	let {
 		roomIds,
 		propertyName,
+		propertyId = '',
 		onclose
 	}: {
 		roomIds: string[];
 		propertyName: string;
+		propertyId?: string;
 		onclose: () => void;
 	} = $props();
 
 	// Init tour state SYNCHRONOUSLY before Canvas/Scene mount
 	tourState.init(roomIds);
-
-	// Track room visits for concierge
-	$effect(() => {
-		const roomId = tourState.currentRoomId;
-		if (roomId) {
-			conciergeState.onRoomVisit(roomId);
-			conciergeState.resetIdleTimer();
-		}
-	});
 
 	let phase = $state<'intro' | 'tour'>('intro');
 	let introProgress = $state(0);
@@ -48,7 +41,6 @@
 		document.body.style.overflow = 'hidden';
 		isMobile = window.matchMedia('(max-width: 768px)').matches || 'ontouchstart' in window;
 
-		// Desktop: shorter intro (1.5s), Mobile: full 3s with rotate animation
 		const duration = isMobile ? 3000 : 1500;
 		const start = Date.now();
 		introTimer = setInterval(() => {
@@ -74,17 +66,14 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="fixed inset-0 z-50 bg-black" style="touch-action: none;">
-	<!-- Canvas always mounted (loads textures in background) -->
 	<div class="absolute inset-0" class:opacity-0={phase === 'intro'} class:pointer-events-none={phase === 'intro'}>
 		<Canvas renderMode="always">
 			<Scene />
 		</Canvas>
 	</div>
 
-	<!-- Phase 1: Intro / Rotate Phone Screen -->
 	{#if phase === 'intro'}
 		<div class="absolute inset-0 z-20 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-black px-6">
-			<!-- Close button -->
 			<button
 				onclick={onclose}
 				class="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/60 transition hover:bg-white/20 hover:text-white"
@@ -96,7 +85,6 @@
 			</button>
 
 			{#if isMobile}
-				<!-- Mobile: Phone rotation animation -->
 				<div class="relative mb-8">
 					<div class="animate-phone-rotate">
 						<svg width="80" height="120" viewBox="0 0 80 120" fill="none" class="text-white">
@@ -112,26 +100,21 @@
 						</svg>
 					</div>
 				</div>
-
 				<p class="text-center text-lg font-semibold text-white">
 					Rotate your phone for<br />the best experience
 				</p>
 			{:else}
-				<!-- Desktop: Simple loading with 360 icon -->
 				<div class="mb-6 flex h-16 w-16 items-center justify-center rounded-full border-2 border-sky-400/40 bg-sky-500/10 animate-pulse">
 					<svg class="h-8 w-8 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
 					</svg>
 				</div>
-
 				<p class="text-center text-lg font-semibold text-white">
 					Preparing your tour
 				</p>
 			{/if}
 
-			<p class="mt-2 text-center text-sm text-slate-400">
-				{propertyName}
-			</p>
+			<p class="mt-2 text-center text-sm text-slate-400">{propertyName}</p>
 
 			<div class="mt-8 h-1 w-48 overflow-hidden rounded-full bg-white/10">
 				<div
@@ -146,9 +129,7 @@
 		</div>
 	{/if}
 
-	<!-- Phase 2: Tour UI overlays (canvas is already visible) -->
 	{#if phase === 'tour'}
-		<!-- Top bar -->
 		<div class="pointer-events-none absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent px-4 pb-8 pt-3 animate-fade-in md:px-6 md:pb-12 md:pt-4">
 			<div class="pointer-events-auto">
 				<p class="text-sm font-semibold text-white md:text-lg">{propertyName}</p>
@@ -165,7 +146,10 @@
 			</button>
 		</div>
 
-		<!-- Bottom room navigation -->
+		{#if propertyId}
+			<TourPriceBadge {propertyId} />
+		{/if}
+
 		{#if tourState.activeRooms.length > 1}
 			<div class="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-1.5 animate-fade-in md:bottom-6 md:gap-2">
 				{#each tourState.activeRooms as room (room.id)}
@@ -190,25 +174,20 @@
 		50% { transform: rotate(90deg); }
 		75% { transform: rotate(0deg); }
 	}
-
 	@keyframes spin-slow {
 		from { transform: rotate(0deg); }
 		to { transform: rotate(360deg); }
 	}
-
 	@keyframes fade-in {
 		from { opacity: 0; }
 		to { opacity: 1; }
 	}
-
 	:global(.animate-phone-rotate) {
 		animation: phone-rotate 3s ease-in-out infinite;
 	}
-
 	:global(.animate-spin-slow) {
 		animation: spin-slow 6s linear infinite;
 	}
-
 	:global(.animate-fade-in) {
 		animation: fade-in 0.6s ease-out;
 	}
