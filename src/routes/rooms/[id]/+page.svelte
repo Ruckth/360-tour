@@ -2,16 +2,27 @@
 	import { page } from '$app/stores';
 	import { getPropertyById } from '$lib/data/properties';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
+	import { conciergeState } from '$lib/stores/concierge.svelte';
+	import { onMount } from 'svelte';
 
 	const property = $derived(getPropertyById($page.params.id));
 	let showTour = $state(false);
 
+	onMount(() => {
+		if (property) {
+			conciergeState.setProperty(property.id);
+			conciergeState.fireTrigger('page_visit');
+		}
+	});
+
 	function openTour() {
 		showTour = true;
+		conciergeState.onTourOpen();
 	}
 
 	function closeTour() {
 		showTour = false;
+		conciergeState.onTourClose();
 	}
 </script>
 

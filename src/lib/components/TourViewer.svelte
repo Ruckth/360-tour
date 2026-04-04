@@ -2,6 +2,7 @@
 	import { Canvas } from '@threlte/core';
 	import Scene from './Scene.svelte';
 	import { tourState } from '$lib/stores/tour.svelte';
+	import { conciergeState } from '$lib/stores/concierge.svelte';
 	import { onMount } from 'svelte';
 
 	let {
@@ -16,6 +17,15 @@
 
 	// Init tour state SYNCHRONOUSLY before Canvas/Scene mount
 	tourState.init(roomIds);
+
+	// Track room visits for concierge
+	$effect(() => {
+		const roomId = tourState.currentRoomId;
+		if (roomId) {
+			conciergeState.onRoomVisit(roomId);
+			conciergeState.resetIdleTimer();
+		}
+	});
 
 	let phase = $state<'intro' | 'tour'>('intro');
 	let introProgress = $state(0);

@@ -3,6 +3,8 @@
 	import { Sun, Moon, Monitor } from '@lucide/svelte';
 	import { themeState } from '$lib/stores/theme.svelte';
 	import { onMount } from 'svelte';
+	import ChatBubble from '$lib/components/concierge/ChatBubble.svelte';
+	import ChatPanel from '$lib/components/concierge/ChatPanel.svelte';
 
 	let { children } = $props();
 
@@ -31,6 +33,10 @@
 	<main class="flex-1">
 		{@render children()}
 	</main>
+
+	<!-- AI Concierge chat widget -->
+	<ChatBubble />
+	<ChatPanel />
 
 	<!-- Footer -->
 	<footer class="border-t border-border bg-muted/50">
