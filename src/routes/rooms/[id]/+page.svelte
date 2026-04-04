@@ -1,10 +1,23 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { getPropertyById } from '$lib/data/properties';
+	import { getMaxSavingsForProperty } from '$lib/data/pricing';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
+	import PriceComparison from '$lib/components/pricing/PriceComparison.svelte';
+	import SavingsBadge from '$lib/components/pricing/SavingsBadge.svelte';
+	import DirectBookingBenefits from '$lib/components/pricing/DirectBookingBenefits.svelte';
+	import PriceTickerAnimation from '$lib/components/pricing/PriceTickerAnimation.svelte';
+	import { pricingState } from '$lib/stores/pricing.svelte';
 
 	const property = $derived(getPropertyById($page.params.id));
+	const maxSavings = $derived(property ? getMaxSavingsForProperty(property.id) : 0);
 	let showTour = $state(false);
+
+	$effect(() => {
+		if (property) {
+			pricingState.init(property.id);
+		}
+	});
 
 	function openTour() {
 		showTour = true;
@@ -16,7 +29,7 @@
 </script>
 
 <svelte:head>
-	<title>{property?.name ?? 'Property'} - VISTA360</title>
+	<title>{property?.name ?? 'Property'} - Spin & Stay</title>
 </svelte:head>
 
 {#if property}
@@ -43,7 +56,12 @@
 					/>
 
 					<div class="mt-5 md:mt-8">
-						<h1 class="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{property.name}</h1>
+						<div class="flex flex-wrap items-center gap-3">
+							<h1 class="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{property.name}</h1>
+							{#if maxSavings > 0}
+								<SavingsBadge amount={maxSavings} />
+							{/if}
+						</div>
 						<p class="mt-0.5 text-sm text-muted-foreground md:mt-1 md:text-lg">{property.tagline}</p>
 
 						<div class="mt-4 flex flex-wrap gap-2 md:mt-6 md:gap-3">
@@ -67,6 +85,11 @@
 						<p class="mt-4 text-sm leading-relaxed text-muted-foreground md:mt-6 md:text-base">{property.description}</p>
 					</div>
 
+					<!-- Price Ticker Animation -->
+					<div class="mt-8">
+						<PriceTickerAnimation />
+					</div>
+
 					<div class="mt-8">
 						<h2 class="text-lg font-semibold text-foreground">Amenities</h2>
 						<div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -80,47 +103,14 @@
 							{/each}
 						</div>
 					</div>
+
+					<!-- Direct Booking Benefits -->
+					<DirectBookingBenefits propertyId={property.id} />
 				</div>
 
-				<!-- Booking card -->
+				<!-- Price Comparison sidebar -->
 				<div class="lg:sticky lg:top-24 lg:self-start">
-					<div class="rounded-xl border border-border bg-card p-4 shadow-lg md:rounded-2xl md:p-6">
-						<div class="flex items-baseline gap-1">
-							<span class="text-2xl font-bold text-card-foreground md:text-3xl">&#3647;{property.pricePerNight.toLocaleString()}</span>
-							<span class="text-muted-foreground">/night</span>
-						</div>
-
-						<div class="mt-6 space-y-3">
-							<div class="grid grid-cols-2 gap-3">
-								<div class="rounded-lg border border-border p-3">
-									<p class="text-xs font-medium uppercase text-muted-foreground">Check-in</p>
-									<p class="mt-1 text-sm text-card-foreground">Select date</p>
-								</div>
-								<div class="rounded-lg border border-border p-3">
-									<p class="text-xs font-medium uppercase text-muted-foreground">Check-out</p>
-									<p class="mt-1 text-sm text-card-foreground">Select date</p>
-								</div>
-							</div>
-							<div class="rounded-lg border border-border p-3">
-								<p class="text-xs font-medium uppercase text-muted-foreground">Guests</p>
-								<p class="mt-1 text-sm text-card-foreground">1 guest</p>
-							</div>
-						</div>
-
-						<button
-							onclick={openTour}
-							class="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-xs font-semibold text-card-foreground transition hover:bg-muted md:mt-3 md:py-3.5 md:text-sm"
-						>
-							<svg class="h-4 w-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-							</svg>
-							Take 360&deg; Tour
-						</button>
-
-						<p class="mt-4 text-center text-xs text-muted-foreground">
-							You won't be charged yet
-						</p>
-					</div>
+					<PriceComparison propertyId={property.id} onopen360={openTour} />
 				</div>
 			</div>
 		</div>
@@ -131,6 +121,7 @@
 			<TourViewer
 				roomIds={property.tourRoomIds}
 				propertyName={property.name}
+				propertyId={property.id}
 				onclose={closeTour}
 			/>
 		{/await}

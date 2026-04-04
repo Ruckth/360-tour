@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { properties } from '$lib/data/properties';
+	import { getPropertyTagline } from '$lib/data/stories';
 </script>
 
 <svelte:head>
@@ -73,6 +74,9 @@
 				<div class="p-3 md:p-5">
 					<h3 class="text-base font-bold text-card-foreground md:text-lg">{property.name}</h3>
 					<p class="mt-0.5 text-xs text-muted-foreground md:mt-1 md:text-sm">{property.tagline}</p>
+					{#if getPropertyTagline(property.id)}
+						<p class="mt-1.5 font-serif text-xs italic text-muted-foreground/70 md:mt-2 md:text-sm">{getPropertyTagline(property.id)}</p>
+					{/if}
 
 					<div class="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground md:mt-4 md:gap-4 md:text-xs">
 						<span class="flex items-center gap-1">
