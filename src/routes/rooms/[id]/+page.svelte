@@ -9,7 +9,7 @@
 	import PriceTickerAnimation from '$lib/components/pricing/PriceTickerAnimation.svelte';
 	import { pricingState } from '$lib/stores/pricing.svelte';
 
-	const property = $derived(getPropertyById($page.params.id));
+	const property = $derived(getPropertyById($page.params.id ?? ''));
 	const maxSavings = $derived(property ? getMaxSavingsForProperty(property.id) : 0);
 	let showTour = $state(false);
 

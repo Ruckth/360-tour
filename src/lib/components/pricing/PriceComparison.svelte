@@ -94,9 +94,9 @@
 	<div class="border-b border-border p-4 md:p-6">
 		<div class="flex gap-4">
 			<div class="flex-1">
-				<label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+				<p class="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Nights
-				</label>
+				</p>
 				<div class="flex items-center gap-2">
 					<button
 						onclick={() => pricingState.setNights(pricingState.nights - 1)}
@@ -119,9 +119,9 @@
 			</div>
 
 			<div class="flex-1">
-				<label class="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+				<p class="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
 					Guests
-				</label>
+				</p>
 				<div class="flex items-center gap-2">
 					<button
 						onclick={() => pricingState.setGuests(pricingState.guests - 1)}
