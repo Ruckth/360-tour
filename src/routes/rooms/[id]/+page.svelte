@@ -1,10 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { getPropertyById } from '$lib/data/properties';
+	import { getDiscountedPrice, DISCOUNT_PERCENT } from '$lib/data/urgency';
+	import { bookingState } from '$lib/stores/booking.svelte';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
+	import ScarcityBadge from '$lib/components/urgency/ScarcityBadge.svelte';
+	import ViewerCounter from '$lib/components/urgency/ViewerCounter.svelte';
+	import CountdownTimer from '$lib/components/urgency/CountdownTimer.svelte';
+	import BookingFunnel from '$lib/components/urgency/BookingFunnel.svelte';
+	import MobileStickyBar from '$lib/components/urgency/MobileStickyBar.svelte';
 
-	const property = $derived(getPropertyById($page.params.id));
+	const property = $derived(getPropertyById($page.params.id ?? ''));
 	let showTour = $state(false);
+
+	const discountedPrice = $derived(property ? getDiscountedPrice(property.pricePerNight) : 0);
 
 	function openTour() {
 		showTour = true;
@@ -13,14 +22,20 @@
 	function closeTour() {
 		showTour = false;
 	}
+
+	function handleReserve() {
+		if (property) {
+			bookingState.startBooking(property.id);
+		}
+	}
 </script>
 
 <svelte:head>
-	<title>{property?.name ?? 'Property'} - VISTA360</title>
+	<title>{property?.name ?? 'Property'} - Spin & Stay</title>
 </svelte:head>
 
 {#if property}
-	<div class="pt-0">
+	<div class="pt-0 pb-20 md:pb-0">
 		<div class="mx-auto max-w-6xl px-4 pt-4 md:px-6 md:pt-6">
 			<a
 				href="/"
@@ -43,6 +58,11 @@
 					/>
 
 					<div class="mt-5 md:mt-8">
+						<!-- Scarcity badge above title -->
+						<div class="mb-3">
+							<ScarcityBadge propertyId={property.id} />
+						</div>
+
 						<h1 class="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{property.name}</h1>
 						<p class="mt-0.5 text-sm text-muted-foreground md:mt-1 md:text-lg">{property.tagline}</p>
 
@@ -82,30 +102,37 @@
 					</div>
 				</div>
 
-				<!-- Booking card -->
-				<div class="lg:sticky lg:top-24 lg:self-start">
+				<!-- Enhanced booking card -->
+				<div class="hidden lg:block lg:sticky lg:top-24 lg:self-start">
 					<div class="rounded-xl border border-border bg-card p-4 shadow-lg md:rounded-2xl md:p-6">
-						<div class="flex items-baseline gap-1">
-							<span class="text-2xl font-bold text-card-foreground md:text-3xl">&#3647;{property.pricePerNight.toLocaleString()}</span>
+						<!-- Viewer counter -->
+						<ViewerCounter propertyId={property.id} />
+
+						<!-- Price with discount -->
+						<div class="mt-4 flex items-baseline gap-2">
+							<span class="text-lg text-muted-foreground line-through">&#3647;{property.pricePerNight.toLocaleString()}</span>
+							<span class="text-2xl font-bold text-card-foreground md:text-3xl">&#3647;{discountedPrice.toLocaleString()}</span>
 							<span class="text-muted-foreground">/night</span>
 						</div>
+						<p class="mt-1 text-xs font-medium text-green-600 dark:text-green-400">Save {DISCOUNT_PERCENT}% — direct booking</p>
 
-						<div class="mt-6 space-y-3">
-							<div class="grid grid-cols-2 gap-3">
-								<div class="rounded-lg border border-border p-3">
-									<p class="text-xs font-medium uppercase text-muted-foreground">Check-in</p>
-									<p class="mt-1 text-sm text-card-foreground">Select date</p>
-								</div>
-								<div class="rounded-lg border border-border p-3">
-									<p class="text-xs font-medium uppercase text-muted-foreground">Check-out</p>
-									<p class="mt-1 text-sm text-card-foreground">Select date</p>
-								</div>
-							</div>
-							<div class="rounded-lg border border-border p-3">
-								<p class="text-xs font-medium uppercase text-muted-foreground">Guests</p>
-								<p class="mt-1 text-sm text-card-foreground">1 guest</p>
-							</div>
+						<!-- Countdown timer -->
+						<div class="mt-4">
+							<CountdownTimer />
 						</div>
+
+						<!-- Booking funnel progress -->
+						<div class="mt-5">
+							<BookingFunnel />
+						</div>
+
+						<!-- Reserve button -->
+						<button
+							onclick={handleReserve}
+							class="mt-5 w-full rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-sky-400 hover:to-blue-500 md:py-3.5"
+						>
+							Reserve Now &mdash; Save {DISCOUNT_PERCENT}%
+						</button>
 
 						<button
 							onclick={openTour}
@@ -131,10 +158,15 @@
 			<TourViewer
 				roomIds={property.tourRoomIds}
 				propertyName={property.name}
+				pricePerNight={property.pricePerNight}
+				propertyId={property.id}
 				onclose={closeTour}
 			/>
 		{/await}
 	{/if}
+
+	<!-- Mobile sticky bar -->
+	<MobileStickyBar pricePerNight={property.pricePerNight} propertyId={property.id} />
 {:else}
 	<div class="flex h-screen items-center justify-center pt-16">
 		<div class="text-center">

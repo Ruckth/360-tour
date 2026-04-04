@@ -3,6 +3,8 @@
 	import { Sun, Moon, Monitor } from '@lucide/svelte';
 	import { themeState } from '$lib/stores/theme.svelte';
 	import { onMount } from 'svelte';
+	import BookingToast from '$lib/components/urgency/BookingToast.svelte';
+	import BookingModal from '$lib/components/urgency/BookingModal.svelte';
 
 	let { children } = $props();
 
@@ -67,4 +69,8 @@
 			</div>
 		</div>
 	</footer>
+
+	<!-- Global: Booking toast notifications & modal -->
+	<BookingToast />
+	<BookingModal />
 </div>

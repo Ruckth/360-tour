@@ -3,14 +3,19 @@
 	import Scene from './Scene.svelte';
 	import { tourState } from '$lib/stores/tour.svelte';
 	import { onMount } from 'svelte';
+	import TourBookingCTA from './urgency/TourBookingCTA.svelte';
 
 	let {
 		roomIds,
 		propertyName,
+		pricePerNight = 0,
+		propertyId = '',
 		onclose
 	}: {
 		roomIds: string[];
 		propertyName: string;
+		pricePerNight?: number;
+		propertyId?: string;
 		onclose: () => void;
 	} = $props();
 
@@ -170,7 +175,13 @@
 				{/each}
 			</div>
 		{/if}
+
+		<!-- Tour booking CTA (appears after 10s) -->
+		{#if pricePerNight > 0 && propertyId}
+			<TourBookingCTA {pricePerNight} {propertyId} {propertyName} />
+		{/if}
 	{/if}
+
 </div>
 
 <style>

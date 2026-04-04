@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { properties } from '$lib/data/properties';
+	import ScarcityBadge from '$lib/components/urgency/ScarcityBadge.svelte';
+	import { DISCOUNT_PERCENT } from '$lib/data/urgency';
 </script>
 
 <svelte:head>
@@ -46,6 +48,11 @@
 		</p>
 	</div>
 
+	<!-- Discount banner -->
+	<div class="mb-6 rounded-xl border border-amber-500/20 bg-amber-50 px-4 py-2.5 text-center text-sm font-medium text-amber-700 dark:border-amber-500/10 dark:bg-amber-950/30 dark:text-amber-400 md:mb-8">
+		{DISCOUNT_PERCENT}% off direct bookings — limited time offer
+	</div>
+
 	<div class="grid gap-4 md:gap-8 md:grid-cols-2 lg:grid-cols-3">
 		{#each properties as property (property.id)}
 			<a
@@ -59,6 +66,10 @@
 						class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
 					/>
 					<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+					<!-- Scarcity badge overlay -->
+					<div class="absolute left-2 top-2 z-10 md:left-3 md:top-3">
+						<ScarcityBadge propertyId={property.id} />
+					</div>
 					<div class="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-900 backdrop-blur-sm md:bottom-3 md:left-3 md:gap-1.5 md:px-3 md:py-1 md:text-xs">
 						<svg class="h-3 w-3 text-sky-500 md:h-3.5 md:w-3.5" fill="currentColor" viewBox="0 0 20 20">
 							<path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
