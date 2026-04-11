@@ -19,15 +19,7 @@
 					: isVisited
 						? 'h-2 w-2 bg-white md:h-2.5 md:w-2.5'
 						: 'h-2 w-2 border border-white/40 bg-transparent md:h-2.5 md:w-2.5'}
-				{allVisited ? 'shimmer-dot' : ''}"
+				"
 		></div>
 	{/each}
 </div>
-
-<style>
-	@keyframes shimmer {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
-	}
-	:global(.shimmer-dot) { animation: shimmer 2s ease-in-out infinite; }
-</style>

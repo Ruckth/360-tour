@@ -5,7 +5,7 @@
 	let { texture, opacity = 1 }: { texture: Texture; opacity?: number } = $props();
 </script>
 
-<T.Mesh>
+<T.Mesh rotation.y={Math.PI}>
 	<T.SphereGeometry args={[500, 60, 40]} />
 	<T.MeshBasicMaterial
 		map={texture}

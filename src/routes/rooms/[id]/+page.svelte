@@ -1,10 +1,31 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { getPropertyById } from '$lib/data/properties';
+	import { getSocialProofByPropertyId } from '$lib/data/social-proof';
+	import { resort } from '$lib/data/resort-config';
 	import ImageGallery from '$lib/components/ImageGallery.svelte';
+	import StarRating from '$lib/components/social/StarRating.svelte';
+	import ReviewCarousel from '$lib/components/social/ReviewCarousel.svelte';
+	import PriceComparison from '$lib/components/pricing/PriceComparison.svelte';
+	import DirectBookingBenefits from '$lib/components/pricing/DirectBookingBenefits.svelte';
+	import MobileStickyBar from '$lib/components/booking/MobileStickyBar.svelte';
+	import TrustBadges from '$lib/components/trust/TrustBadges.svelte';
+	import RecentBookingTicker from '$lib/components/social/RecentBookingTicker.svelte';
+	import FadeIn from '$lib/components/FadeIn.svelte';
+	import { pageContext } from '$lib/stores/page-context.svelte';
+	import { onDestroy } from 'svelte';
 
-	const property = $derived(getPropertyById($page.params.id ?? ''));
+	const property = $derived(getPropertyById(page.params.id ?? ''));
+	const socialProof = $derived(getSocialProofByPropertyId(property?.id ?? ''));
 	let showTour = $state(false);
+
+	// Set page context for chat widget
+	$effect(() => {
+		if (property) {
+			pageContext.setProperty(property.id, property.name);
+		}
+	});
+	onDestroy(() => pageContext.clear());
 
 	function openTour() {
 		showTour = true;
@@ -16,34 +37,38 @@
 </script>
 
 <svelte:head>
-	<title>{property?.name ?? 'Property'} - VISTA360</title>
+	<title>{property?.name ?? 'Villa'} — {resort.name}</title>
 </svelte:head>
 
 {#if property}
-	<div class="pt-0">
-		<div class="mx-auto max-w-6xl px-4 pt-4 md:px-6 md:pt-6">
-			<a
-				href="/"
-				class="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-foreground md:gap-2 md:text-sm"
-			>
-				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-				</svg>
-				Back to Properties
-			</a>
+	<div class="pt-0 pb-24 md:pb-0">
+		<div class="mx-auto max-w-6xl px-4 pt-20 md:px-6 md:pt-24">
+			<nav class="flex items-center gap-2 text-xs text-muted-foreground md:text-sm">
+				<a href="/" class="transition hover:text-foreground">{resort.name}</a>
+				<span class="text-border">/</span>
+				<a href="/#villas" class="transition hover:text-foreground">Our Villas</a>
+				<span class="text-border">/</span>
+				<span class="text-foreground">{property.name}</span>
+			</nav>
 		</div>
 
 		<div class="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8">
 			<div class="grid gap-6 md:gap-10 lg:grid-cols-[1fr_380px]">
-				<div>
+				<div class="min-w-0">
 					<ImageGallery
 						images={property.images}
 						propertyName={property.name}
 						onopen360={openTour}
 					/>
 
+					<FadeIn>
 					<div class="mt-5 md:mt-8">
-						<h1 class="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{property.name}</h1>
+						<h1 class="font-serif text-3xl font-semibold text-foreground md:text-4xl">{property.name}</h1>
+						{#if socialProof}
+							<div class="mt-2">
+								<StarRating rating={socialProof.overallRating} size="md" showValue reviewCount={socialProof.totalReviews} />
+							</div>
+						{/if}
 						<p class="mt-0.5 text-sm text-muted-foreground md:mt-1 md:text-lg">{property.tagline}</p>
 
 						<div class="mt-4 flex flex-wrap gap-2 md:mt-6 md:gap-3">
@@ -66,13 +91,15 @@
 
 						<p class="mt-4 text-sm leading-relaxed text-muted-foreground md:mt-6 md:text-base">{property.description}</p>
 					</div>
+					</FadeIn>
 
+					<FadeIn>
 					<div class="mt-8">
 						<h2 class="text-lg font-semibold text-foreground">Amenities</h2>
 						<div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
 							{#each property.amenities as amenity}
 								<div class="flex items-center gap-2 text-sm text-muted-foreground">
-									<svg class="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
+									<svg class="h-4 w-4 text-gold" fill="currentColor" viewBox="0 0 20 20">
 										<path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" />
 									</svg>
 									{amenity}
@@ -80,51 +107,42 @@
 							{/each}
 						</div>
 					</div>
+
+					</FadeIn>
+
+					<FadeIn>
+					<DirectBookingBenefits propertyId={property.id} />
+					</FadeIn>
+
+					<!-- Trust badges -->
+					<FadeIn>
+					<div class="mt-8">
+						<TrustBadges />
+					</div>
+					</FadeIn>
+
+					{#if socialProof && socialProof.reviews.length > 0}
+						<div class="mt-10">
+							<h2 class="text-lg font-semibold text-foreground">What Guests Say</h2>
+							<div class="mt-4">
+								<ReviewCarousel reviews={socialProof.reviews} />
+							</div>
+						</div>
+					{/if}
 				</div>
 
-				<!-- Booking card -->
-				<div class="lg:sticky lg:top-24 lg:self-start">
-					<div class="rounded-xl border border-border bg-card p-4 shadow-lg md:rounded-2xl md:p-6">
-						<div class="flex items-baseline gap-1">
-							<span class="text-2xl font-bold text-card-foreground md:text-3xl">&#3647;{property.pricePerNight.toLocaleString()}</span>
-							<span class="text-muted-foreground">/night</span>
-						</div>
-
-						<div class="mt-6 space-y-3">
-							<div class="grid grid-cols-2 gap-3">
-								<div class="rounded-lg border border-border p-3">
-									<p class="text-xs font-medium uppercase text-muted-foreground">Check-in</p>
-									<p class="mt-1 text-sm text-card-foreground">Select date</p>
-								</div>
-								<div class="rounded-lg border border-border p-3">
-									<p class="text-xs font-medium uppercase text-muted-foreground">Check-out</p>
-									<p class="mt-1 text-sm text-card-foreground">Select date</p>
-								</div>
-							</div>
-							<div class="rounded-lg border border-border p-3">
-								<p class="text-xs font-medium uppercase text-muted-foreground">Guests</p>
-								<p class="mt-1 text-sm text-card-foreground">1 guest</p>
-							</div>
-						</div>
-
-						<button
-							onclick={openTour}
-							class="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-xs font-semibold text-card-foreground transition hover:bg-muted md:mt-3 md:py-3.5 md:text-sm"
-						>
-							<svg class="h-4 w-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-							</svg>
-							Take 360&deg; Tour
-						</button>
-
-						<p class="mt-4 text-center text-xs text-muted-foreground">
-							You won't be charged yet
-						</p>
-					</div>
+				<!-- Pricing sidebar -->
+				<div class="min-w-0 lg:sticky lg:top-24 lg:self-start space-y-3">
+					<FadeIn delay={200}>
+					<PriceComparison propertyId={property.id} onopen360={openTour} />
+					<RecentBookingTicker propertyId={property.id} />
+				</FadeIn>
 				</div>
 			</div>
 		</div>
 	</div>
+
+	<MobileStickyBar pricePerNight={property.pricePerNight} propertyId={property.id} />
 
 	{#if showTour}
 		{#await import('$lib/components/TourViewer.svelte') then { default: TourViewer }}

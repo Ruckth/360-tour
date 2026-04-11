@@ -38,37 +38,19 @@ class NarrativeState {
 	enterRoom(roomId: string) {
 		this.clearTimers();
 		this.resetOverlayState();
+
+		const next = new Set(this.visitedRoomIds);
+		next.add(roomId);
+		this.visitedRoomIds = next;
+
 		const story = getStoryForRoom(roomId);
 		this.currentStory = story;
 		if (!story) return;
 
-		const next = new Set(this.visitedRoomIds);
-		next.add(roomId);
-		this.visitedRoomIds = next;
-
-		this.timers.push(setTimeout(() => { this.showHeadline = true; }, 500));
-		this.timers.push(setTimeout(() => { this.showHeadline = false; }, 4500));
-		this.timers.push(setTimeout(() => { this.showSubtext = true; }, 1200));
-		this.timers.push(setTimeout(() => { this.showSubtext = false; }, 4500));
-		this.timers.push(setTimeout(() => { this.showImagineText = true; }, 6500));
-		this.timers.push(setTimeout(() => { this.showImagineText = false; }, 10500));
-
-		story.vignettes.forEach((vignette, index) => {
-			this.timers.push(setTimeout(() => { this.currentVignetteIndex = index; }, vignette.delaySeconds * 1000));
-			this.timers.push(setTimeout(() => {
-				if (this.currentVignetteIndex === index) this.currentVignetteIndex = -1;
-			}, (vignette.delaySeconds + vignette.durationSeconds) * 1000));
-		});
-
+		// Small CTA tag after 10 seconds once all rooms visited
 		if (this.allRoomIds.every((id) => next.has(id))) {
-			this.timers.push(setTimeout(() => { this.showAllVisitedPrompt = true; }, 8000));
+			this.timers.push(setTimeout(() => { this.showAllVisitedPrompt = true; }, 10000));
 		}
-	}
-
-	markRoomVisited(roomId: string) {
-		const next = new Set(this.visitedRoomIds);
-		next.add(roomId);
-		this.visitedRoomIds = next;
 	}
 
 	completeTour() {
@@ -79,7 +61,11 @@ class NarrativeState {
 		this.showAllVisitedPrompt = false;
 	}
 
-	showLeadCapture() { this.leadCaptureShown = true; }
+	showLeadCapture() {
+		this.leadCaptureShown = true;
+		this.leadSubmitted = false;
+		this.leadEmail = '';
+	}
 	hideLeadCapture() { this.leadCaptureShown = false; }
 
 	submitEmail() {

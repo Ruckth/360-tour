@@ -5,3 +5,36 @@ build
 .env.*
 !.env.example
 .DS_Store
+.worktrees/
+
+# opensrc - source code for packages
+opensrc/
+
+# Architecture & test documentation
+ARCHITECTURE_AND_TESTS.md
+MOBILE_UX_PLAN.md
+
+# Other AI agent configs
+.codebuddy/
+.commandcode/
+.continue/
+.crush/
+.factory/
+.goose/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.windsurf/
+.zencoder/
+AGENTS.md

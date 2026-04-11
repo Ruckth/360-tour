@@ -1,76 +1,88 @@
 @import 'tailwindcss';
 
 /*
- * shadcn/svelte theme — Tailwind CSS v4
- * Light: slate-based with sky accent
- * Dark: deep slate with sky accent
+ * Seaview Residence — Luxury Resort Theme
+ * Light: warm cream with deep navy + gold accents
+ * Dark: deep charcoal with warm gold accents
  */
 
 :root {
-	--background: oklch(1 0 0);
-	--foreground: oklch(0.145 0.017 285.823);
+	--background: oklch(0.985 0.003 80);
+	--foreground: oklch(0.18 0.02 260);
 	--card: oklch(1 0 0);
-	--card-foreground: oklch(0.145 0.017 285.823);
+	--card-foreground: oklch(0.18 0.02 260);
 	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.145 0.017 285.823);
-	--primary: oklch(0.577 0.168 243.066);
-	--primary-foreground: oklch(0.985 0.001 106.423);
-	--secondary: oklch(0.96 0.005 285.823);
-	--secondary-foreground: oklch(0.205 0.017 285.823);
-	--muted: oklch(0.96 0.005 285.823);
-	--muted-foreground: oklch(0.556 0.017 285.823);
-	--accent: oklch(0.96 0.005 285.823);
-	--accent-foreground: oklch(0.205 0.017 285.823);
+	--popover-foreground: oklch(0.18 0.02 260);
+	--primary: oklch(0.28 0.04 260);
+	--primary-foreground: oklch(0.985 0.003 80);
+	--secondary: oklch(0.955 0.008 80);
+	--secondary-foreground: oklch(0.25 0.02 260);
+	--muted: oklch(0.955 0.008 80);
+	--muted-foreground: oklch(0.50 0.015 260);
+	--accent: oklch(0.75 0.12 75);
+	--accent-foreground: oklch(0.18 0.02 260);
 	--destructive: oklch(0.577 0.245 27.325);
 	--destructive-foreground: oklch(0.985 0.001 106.423);
-	--border: oklch(0.902 0.005 285.823);
-	--input: oklch(0.902 0.005 285.823);
-	--ring: oklch(0.577 0.168 243.066);
+	--border: oklch(0.90 0.008 80);
+	--input: oklch(0.90 0.008 80);
+	--ring: oklch(0.75 0.12 75);
 	--radius: 0.625rem;
+	--gold: oklch(0.75 0.12 75);
+	--gold-light: oklch(0.85 0.08 75);
+	--navy: oklch(0.28 0.04 260);
+	--navy-light: oklch(0.40 0.04 260);
 
-	--sidebar-background: oklch(0.985 0 0);
-	--sidebar-foreground: oklch(0.145 0.017 285.823);
-	--sidebar-primary: oklch(0.577 0.168 243.066);
-	--sidebar-primary-foreground: oklch(0.985 0.001 106.423);
-	--sidebar-accent: oklch(0.96 0.005 285.823);
-	--sidebar-accent-foreground: oklch(0.205 0.017 285.823);
-	--sidebar-border: oklch(0.902 0.005 285.823);
-	--sidebar-ring: oklch(0.577 0.168 243.066);
+	--sidebar-background: oklch(0.98 0.003 80);
+	--sidebar-foreground: oklch(0.18 0.02 260);
+	--sidebar-primary: oklch(0.28 0.04 260);
+	--sidebar-primary-foreground: oklch(0.985 0.003 80);
+	--sidebar-accent: oklch(0.955 0.008 80);
+	--sidebar-accent-foreground: oklch(0.25 0.02 260);
+	--sidebar-border: oklch(0.90 0.008 80);
+	--sidebar-ring: oklch(0.75 0.12 75);
 }
 
 .dark {
-	--background: oklch(0.145 0.017 285.823);
-	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.205 0.017 285.823);
-	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.205 0.017 285.823);
-	--popover-foreground: oklch(0.985 0 0);
-	--primary: oklch(0.631 0.168 243.066);
-	--primary-foreground: oklch(0.145 0.017 285.823);
-	--secondary: oklch(0.264 0.017 285.823);
-	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.264 0.017 285.823);
-	--muted-foreground: oklch(0.651 0.017 285.823);
-	--accent: oklch(0.264 0.017 285.823);
-	--accent-foreground: oklch(0.985 0 0);
+	--background: oklch(0.16 0.015 260);
+	--foreground: oklch(0.94 0.005 80);
+	--card: oklch(0.22 0.015 260);
+	--card-foreground: oklch(0.94 0.005 80);
+	--popover: oklch(0.22 0.015 260);
+	--popover-foreground: oklch(0.94 0.005 80);
+	--primary: oklch(0.80 0.10 75);
+	--primary-foreground: oklch(0.16 0.015 260);
+	--secondary: oklch(0.26 0.015 260);
+	--secondary-foreground: oklch(0.94 0.005 80);
+	--muted: oklch(0.26 0.015 260);
+	--muted-foreground: oklch(0.62 0.015 260);
+	--accent: oklch(0.75 0.12 75);
+	--accent-foreground: oklch(0.16 0.015 260);
 	--destructive: oklch(0.577 0.245 27.325);
 	--destructive-foreground: oklch(0.985 0.001 106.423);
-	--border: oklch(0.324 0.017 285.823);
-	--input: oklch(0.324 0.017 285.823);
-	--ring: oklch(0.631 0.168 243.066);
+	--border: oklch(0.32 0.015 260);
+	--input: oklch(0.32 0.015 260);
+	--ring: oklch(0.75 0.12 75);
+	--gold: oklch(0.80 0.10 75);
+	--gold-light: oklch(0.85 0.08 75);
+	--navy: oklch(0.28 0.04 260);
+	--navy-light: oklch(0.40 0.04 260);
 
-	--sidebar-background: oklch(0.175 0.017 285.823);
-	--sidebar-foreground: oklch(0.985 0 0);
-	--sidebar-primary: oklch(0.631 0.168 243.066);
-	--sidebar-primary-foreground: oklch(0.145 0.017 285.823);
-	--sidebar-accent: oklch(0.264 0.017 285.823);
-	--sidebar-accent-foreground: oklch(0.985 0 0);
-	--sidebar-border: oklch(0.324 0.017 285.823);
-	--sidebar-ring: oklch(0.631 0.168 243.066);
+	--sidebar-background: oklch(0.19 0.015 260);
+	--sidebar-foreground: oklch(0.94 0.005 80);
+	--sidebar-primary: oklch(0.80 0.10 75);
+	--sidebar-primary-foreground: oklch(0.16 0.015 260);
+	--sidebar-accent: oklch(0.26 0.015 260);
+	--sidebar-accent-foreground: oklch(0.94 0.005 80);
+	--sidebar-border: oklch(0.32 0.015 260);
+	--sidebar-ring: oklch(0.75 0.12 75);
 }
 
 @theme inline {
 	--font-serif: 'Cormorant Garamond', serif;
+	--color-gold: var(--gold);
+	--color-gold-light: var(--gold-light);
+	--color-navy: var(--navy);
+	--color-navy-light: var(--navy-light);
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-card: var(--card);
@@ -105,8 +117,43 @@
 }
 
 @layer base {
+	html {
+		scroll-behavior: smooth;
+	}
 	body {
 		background-color: var(--background);
 		color: var(--foreground);
 	}
+}
+
+/* Hero center card — slow reveal via clip-path */
+.hero-card-reveal {
+	animation: hero-reveal 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.6s both;
+}
+
+@keyframes hero-reveal {
+	from { clip-path: inset(0 50% 0 50%); opacity: 0; }
+	to { clip-path: inset(0 0% 0 0%); opacity: 1; }
+}
+
+/* Page loading line animation */
+@keyframes page-load-line {
+	0% { transform: translateX(-100%); }
+	100% { transform: translateX(200%); }
+}
+
+/* Ken Burns — gentle zoom on hero images while displayed */
+.hero-ken-burns {
+	animation: ken-burns 8s ease-out forwards;
+}
+
+@keyframes ken-burns {
+	from { transform: scale(1); }
+	to { transform: scale(1.06); }
+}
+
+/* Film grain texture */
+.hero-grain {
+	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+	background-size: 128px 128px;
 }

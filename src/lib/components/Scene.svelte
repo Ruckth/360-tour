@@ -9,7 +9,7 @@
 	interactivity();
 
 	let textureMap = $state<Record<string, Texture>>({});
-	let loadedCount = $state(0);
+	let loadGeneration = 0;
 
 	// Load textures reactively based on activeRooms
 	$effect(() => {
@@ -17,24 +17,38 @@
 		const total = roomsToLoad.length;
 		if (total === 0) return;
 
+		const gen = ++loadGeneration;
 		textureMap = {};
-		loadedCount = 0;
+		let loaded = 0;
+
+		function onLoaded() {
+			if (gen !== loadGeneration) return;
+			loaded++;
+			if (loaded >= total) {
+				tourState.allTexturesLoaded = true;
+			}
+		}
 
 		const loader = new TextureLoader();
 		for (const room of roomsToLoad) {
-			loader.load(room.imagePath, (texture) => {
-				texture.colorSpace = SRGBColorSpace;
-				textureMap[room.id] = texture;
-				loadedCount++;
-				if (loadedCount >= total) {
-					tourState.allTexturesLoaded = true;
+			loader.load(
+				room.imagePath,
+				(texture) => {
+					if (gen !== loadGeneration) return;
+					texture.colorSpace = SRGBColorSpace;
+					textureMap[room.id] = texture;
+					onLoaded();
+				},
+				undefined,
+				() => {
+					onLoaded();
 				}
-			});
+			);
 		}
 	});
 
 	// Crossfade animation
-	const FADE_DURATION = 0.6;
+	const FADE_DURATION = 0.4;
 	useTask((delta) => {
 		if (!tourState.isTransitioning) return;
 		tourState.transitionProgress = Math.min(1, tourState.transitionProgress + delta / FADE_DURATION);
@@ -56,8 +70,8 @@
 		enableZoom={false}
 		enablePan={false}
 		enableDamping
-		dampingFactor={0.15}
-		rotateSpeed={-0.3}
+		dampingFactor={0.12}
+		rotateSpeed={-0.45}
 	/>
 </T.PerspectiveCamera>
 

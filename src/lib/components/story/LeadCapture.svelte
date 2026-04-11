@@ -10,8 +10,8 @@
 
 		{#if narrativeState.leadSubmitted}
 			<div class="text-center">
-				<div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-sky-500/20">
-					<svg class="h-8 w-8 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+				<div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gold/20">
+					<svg class="h-8 w-8 text-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
 				</div>
 				<h3 class="font-serif text-2xl font-semibold text-white">Dream saved</h3>
 				<p class="mt-2 text-sm text-white/60">We'll send the details to your inbox. When you're ready, your stay will be waiting.</p>
@@ -23,8 +23,8 @@
 				<p class="mt-2 text-sm text-white/60 md:text-base">We'll save this dream for you.</p>
 			</div>
 			<div class="mt-6">
-				<input type="email" placeholder="your@email.com" bind:value={narrativeState.leadEmail} class="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 backdrop-blur-sm transition focus:border-sky-400/50 focus:outline-none focus:ring-1 focus:ring-sky-400/30" onkeydown={(e) => { if (e.key === 'Enter') narrativeState.submitEmail(); }} />
-				<button onclick={() => narrativeState.submitEmail()} disabled={!narrativeState.leadEmail.trim()} class="mt-3 w-full rounded-xl bg-sky-500 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition-all duration-300 hover:bg-sky-400 disabled:opacity-40 disabled:hover:bg-sky-500">Send me details</button>
+				<input type="email" placeholder="your@email.com" bind:value={narrativeState.leadEmail} class="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 backdrop-blur-sm transition focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30" onkeydown={(e) => { if (e.key === 'Enter') narrativeState.submitEmail(); }} />
+				<button onclick={() => narrativeState.submitEmail()} disabled={!narrativeState.leadEmail.trim()} class="mt-3 w-full rounded-xl bg-gold py-3 text-sm font-semibold text-navy shadow-lg shadow-gold/25 transition-all duration-300 hover:bg-gold-light disabled:opacity-40 disabled:hover:bg-gold">Send me details</button>
 			</div>
 			<p class="mt-4 text-center text-xs text-white/30">No spam. Just the details of your dream stay.</p>
 		{/if}

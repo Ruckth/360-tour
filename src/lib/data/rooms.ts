@@ -35,7 +35,7 @@ export const rooms: Room[] = [
 	{
 		id: 'gs-lounge',
 		name: 'Lounge',
-		imagePath: '/penthouse-lounge.jpg',
+		imagePath: '/garden-suite-interior.jpg',
 		hotspots: [
 			{ id: 'gs-lounge-to-dining', position: [250, -30, 300], targetRoomId: 'gs-dining', label: 'Dining Area' }
 		]

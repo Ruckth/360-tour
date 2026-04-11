@@ -26,8 +26,8 @@ export const properties: Property[] = [
 		bathrooms: 2,
 		area: 145,
 		images: [
-			'https://images.unsplash.com/photo-1602002418816-5c0aeef426aa?w=1200&h=800&fit=crop',
-			'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=1200&h=800&fit=crop'
+			'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=1200&h=800&fit=crop',
+			'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=1200&h=800&fit=crop'
 		],
 		amenities: ['Private Pool', 'WiFi', 'Air Conditioning', 'Kitchen', 'Garden View', 'King Bed'],
 		tourRoomIds: ['pv-living', 'pv-pool']
@@ -45,7 +45,7 @@ export const properties: Property[] = [
 		area: 65,
 		images: [
 			'/garden-image.jpg',
-			'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=1200&h=800&fit=crop'
+			'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&h=800&fit=crop'
 		],
 		amenities: ['WiFi', 'Air Conditioning', 'Garden Terrace', 'Rain Shower', 'Queen Bed'],
 		tourRoomIds: ['gs-lounge', 'gs-dining']
@@ -62,8 +62,8 @@ export const properties: Property[] = [
 		bathrooms: 2,
 		area: 200,
 		images: [
-			'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&h=800&fit=crop',
-			'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&h=800&fit=crop'
+			'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1200&h=800&fit=crop',
+			'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&h=800&fit=crop'
 		],
 		amenities: [
 			'Rooftop Terrace',

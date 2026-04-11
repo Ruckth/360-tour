@@ -1,17 +1,35 @@
 <script lang="ts">
 	import { narrativeState } from '$lib/stores/narrative.svelte';
+	import { goto } from '$app/navigation';
 	import { getConclusionForProperty } from '$lib/data/tourflow';
+	import { DatePickerField } from '$lib/components/ui/date-picker';
+	import { today, getLocalTimeZone, type DateValue } from '@internationalized/date';
 	import type { Property } from '$lib/data/properties';
 
 	let { property, onclose }: { property: Property; onclose: () => void } = $props();
 	let conclusion = $derived(getConclusionForProperty(property.id));
-	let checkIn = $state('');
-	let checkOut = $state('');
 	let guests = $state(2);
+
+	const todayDate = today(getLocalTimeZone());
+	let checkInValue = $state<DateValue | undefined>(undefined);
+	let checkOutValue = $state<DateValue | undefined>(undefined);
+	const checkOutMin = $derived(checkInValue ?? todayDate);
 
 	function incrementGuests() { if (guests < property.maxGuests) guests++; }
 	function decrementGuests() { if (guests > 1) guests--; }
-	const today = new Date().toISOString().split('T')[0];
+
+	function handleBook() {
+		let url = '/booking?unit=' + property.id;
+		if (checkInValue && checkOutValue) {
+			const ciStr = `${checkInValue.year}-${String(checkInValue.month).padStart(2, '0')}-${String(checkInValue.day).padStart(2, '0')}`;
+			const coStr = `${checkOutValue.year}-${String(checkOutValue.month).padStart(2, '0')}-${String(checkOutValue.day).padStart(2, '0')}`;
+			url += `&checkin=${ciStr}&checkout=${coStr}`;
+		}
+		if (guests > 1) {
+			url += `&guests=${guests}`;
+		}
+		goto(url);
+	}
 </script>
 
 {#if conclusion}
@@ -35,7 +53,7 @@
 			<ul class="mt-5 space-y-2.5">
 				{#each conclusion.highlights as highlight}
 					<li class="flex items-start gap-3 text-sm text-white/90 md:text-base">
-						<svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-sky-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
+						<svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-gold" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
 						{highlight}
 					</li>
 				{/each}
@@ -48,14 +66,8 @@
 
 			<div class="mt-5 space-y-3">
 				<div class="grid grid-cols-2 gap-3">
-					<div>
-						<label for="checkin" class="mb-1 block text-xs font-medium uppercase tracking-wider text-white/50">Check-in</label>
-						<input id="checkin" type="date" bind:value={checkIn} min={today} class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-sm transition focus:border-sky-400/50 focus:outline-none focus:ring-1 focus:ring-sky-400/30" />
-					</div>
-					<div>
-						<label for="checkout" class="mb-1 block text-xs font-medium uppercase tracking-wider text-white/50">Check-out</label>
-						<input id="checkout" type="date" bind:value={checkOut} min={checkIn || today} class="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 text-sm text-white backdrop-blur-sm transition focus:border-sky-400/50 focus:outline-none focus:ring-1 focus:ring-sky-400/30" />
-					</div>
+					<DatePickerField label="Check-in" bind:value={checkInValue} minValue={todayDate} variant="dark" />
+					<DatePickerField label="Check-out" bind:value={checkOutValue} minValue={checkOutMin} variant="dark" />
 				</div>
 				<div>
 					<label for="guests-display" class="mb-1 block text-xs font-medium uppercase tracking-wider text-white/50">Guests</label>
@@ -71,7 +83,7 @@
 				</div>
 			</div>
 
-			<button class="mt-6 w-full rounded-2xl bg-sky-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition-all duration-300 hover:bg-sky-400 hover:shadow-sky-500/40 md:text-base">Book Your Stay</button>
+			<button onclick={handleBook} class="mt-6 w-full rounded-2xl bg-gold py-3.5 text-sm font-semibold text-navy shadow-lg shadow-gold/25 transition-all duration-300 hover:bg-gold-light hover:shadow-gold/40 md:text-base">Book</button>
 
 			<div class="mt-3 text-center">
 				<button class="text-sm text-white/50 transition hover:text-white/80" onclick={() => narrativeState.showLeadCapture()}>Save This Dream</button>
@@ -85,5 +97,4 @@
 <style>
 	@keyframes conclusion-enter { from { opacity: 0; } to { opacity: 1; } }
 	:global(.conclusion-enter) { animation: conclusion-enter 0.8s ease-out forwards; }
-	input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1) brightness(0.7); }
 </style>

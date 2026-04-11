@@ -7,6 +7,7 @@
 	import TourProgressIndicator from './story/TourProgressIndicator.svelte';
 	import TourConclusion from './story/TourConclusion.svelte';
 	import LeadCapture from './story/LeadCapture.svelte';
+	import TourPriceBadge from './pricing/TourPriceBadge.svelte';
 	import { onMount } from 'svelte';
 	import type { Property } from '$lib/data/properties';
 
@@ -65,7 +66,7 @@
 	onMount(() => {
 		document.body.style.overflow = 'hidden';
 		isMobile = window.matchMedia('(max-width: 768px)').matches || 'ontouchstart' in window;
-		const duration = isMobile ? 3000 : 1500;
+		const duration = isMobile ? 1200 : 1000;
 		const start = Date.now();
 		introTimer = setInterval(() => {
 			const elapsed = Date.now() - start;
@@ -114,56 +115,34 @@
 			</button>
 
 			{#if isMobile}
-				<div class="relative mb-8">
-					<div class="animate-phone-rotate">
-						<svg width="80" height="120" viewBox="0 0 80 120" fill="none" class="text-white">
-							<rect x="4" y="4" width="72" height="112" rx="12" stroke="currentColor" stroke-width="2.5" fill="none" />
-							<rect x="30" y="100" width="20" height="3" rx="1.5" fill="currentColor" opacity="0.4" />
-							<circle cx="40" cy="14" r="2" fill="currentColor" opacity="0.4" />
-						</svg>
-					</div>
-					<div class="absolute -inset-6 animate-spin-slow">
-						<svg width="128" height="168" viewBox="-24 -24 128 168" fill="none" class="text-sky-400">
-							<path d="M100 60a60 60 0 01-30 52" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="4 6" opacity="0.5" />
-							<path d="M-20 60a60 60 0 0130-52" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="4 6" opacity="0.5" />
-						</svg>
-					</div>
+				<!-- Mobile: simple rotate hint -->
+				<div class="mb-6 animate-phone-rotate">
+					<svg width="60" height="90" viewBox="0 0 80 120" fill="none" class="text-white/70">
+						<rect x="4" y="4" width="72" height="112" rx="12" stroke="currentColor" stroke-width="2.5" fill="none" />
+						<rect x="30" y="100" width="20" height="3" rx="1.5" fill="currentColor" opacity="0.4" />
+					</svg>
 				</div>
-				<p class="text-center text-lg font-semibold text-white">Rotate your phone for<br />the best experience</p>
+				<p class="text-center text-sm text-white/60">Rotate for best experience</p>
 			{:else}
-				<div class="mb-6 flex h-16 w-16 items-center justify-center rounded-full border-2 border-sky-400/40 bg-sky-500/10 animate-pulse">
-					<svg class="h-8 w-8 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
-				</div>
-				<p class="text-center text-lg font-semibold text-white">Preparing your tour</p>
+				<!-- Desktop: clean serif text -->
+				<p class="font-serif text-3xl font-semibold text-white md:text-4xl">{propertyName}</p>
 			{/if}
 
-			<p class="mt-2 text-center text-sm text-slate-400">{propertyName}</p>
-
-			<div class="mt-8 h-1 w-48 overflow-hidden rounded-full bg-white/10">
-				<div class="h-full rounded-full bg-sky-400 transition-all duration-200" style="width: {introProgress}%"></div>
+			<div class="mt-6 h-px w-32 overflow-hidden bg-white/10">
+				<div class="h-full bg-gold transition-all duration-200" style="width: {introProgress}%"></div>
 			</div>
 
 			{#if introProgress >= 100 && !tourState.allTexturesLoaded}
-				<p class="mt-3 text-xs text-slate-500">Loading panoramas...</p>
+				<p class="mt-3 text-xs text-white/30">Loading...</p>
 			{/if}
 		</div>
 	{/if}
 
 	{#if phase === 'tour'}
-		<div class="pointer-events-none absolute left-0 right-0 top-0 z-10 flex flex-col bg-gradient-to-b from-black/60 to-transparent px-4 pb-8 pt-3 animate-fade-in md:px-6 md:pb-12 md:pt-4">
-			<div class="flex items-center justify-between">
-				<div class="pointer-events-auto">
-					<p class="text-sm font-semibold text-white md:text-lg">{propertyName}</p>
-					<p class="text-xs text-white/60 md:text-sm">{tourState.currentRoom.name}</p>
-				</div>
-				<button onclick={onclose} class="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20" aria-label="Close tour">
-					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-				</button>
-			</div>
-			{#if roomIds.length > 1}
-				<div class="mt-2.5 flex justify-center"><TourProgressIndicator /></div>
-			{/if}
-		</div>
+		<!-- Close button -->
+		<button onclick={onclose} class="pointer-events-auto absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50 md:right-6 md:top-5" aria-label="Close tour">
+			<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+		</button>
 
 		<StoryOverlay />
 
@@ -189,10 +168,8 @@
 </div>
 
 <style>
-	@keyframes phone-rotate { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(90deg); } 50% { transform: rotate(90deg); } 75% { transform: rotate(0deg); } }
-	@keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+	@keyframes phone-rotate { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(90deg); } 70% { transform: rotate(90deg); } }
 	@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-	:global(.animate-phone-rotate) { animation: phone-rotate 3s ease-in-out infinite; }
-	:global(.animate-spin-slow) { animation: spin-slow 6s linear infinite; }
+	:global(.animate-phone-rotate) { animation: phone-rotate 2.5s ease-in-out 1; }
 	:global(.animate-fade-in) { animation: fade-in 0.6s ease-out; }
 </style>

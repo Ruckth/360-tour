@@ -50,10 +50,10 @@
 	}
 </script>
 
-<div class="relative overflow-hidden rounded-2xl bg-muted">
+<div class="relative overflow-clip rounded-2xl bg-muted">
 	<!-- Slides container -->
 	<div
-		class="flex transition-transform duration-500 ease-out"
+		class="relative z-0 flex transition-transform duration-500 ease-out"
 		style="transform: translateX(calc(-{currentIndex * 100}% + {isDragging ? touchDeltaX : 0}px));"
 		ontouchstart={handleTouchStart}
 		ontouchmove={handleTouchMove}
@@ -63,7 +63,7 @@
 	>
 		<!-- Property images -->
 		{#each images as src, i}
-			<div class="aspect-[16/9] w-full flex-shrink-0">
+			<div class="aspect-[4/3] w-full flex-shrink-0 md:aspect-[16/9]">
 				<img
 					{src}
 					alt="{propertyName} - Photo {i + 1}"
@@ -73,36 +73,37 @@
 		{/each}
 
 		<!-- 360 Tour card (last slide) -->
-		<div class="aspect-[16/9] w-full flex-shrink-0">
+		<div class="aspect-[4/3] w-full flex-shrink-0 md:aspect-[16/9]">
 			<button
 				onclick={onopen360}
-				class="group relative flex h-full w-full cursor-pointer items-center justify-center bg-gradient-to-br from-slate-800 via-slate-900 to-black"
+				class="group relative flex h-full w-full cursor-pointer items-center justify-center overflow-hidden"
 			>
-				<!-- Background pattern -->
-				<div class="absolute inset-0 opacity-10">
-					<div
-						class="h-full w-full"
-						style="background-image: radial-gradient(circle at 25% 25%, white 1px, transparent 1px), radial-gradient(circle at 75% 75%, white 1px, transparent 1px); background-size: 40px 40px;"
-					></div>
-				</div>
+				<!-- Blurred property image as background -->
+				<img
+					src={images[0]}
+					alt=""
+					class="absolute inset-0 h-full w-full object-cover blur-sm scale-110"
+				/>
+				<div class="absolute inset-0 bg-black/50"></div>
 
 				<!-- Content -->
-				<div class="relative z-10 flex flex-col items-center gap-4">
+				<div class="relative z-10 flex flex-col items-center gap-3">
 					<!-- 360 icon -->
-					<div class="flex h-16 w-16 items-center justify-center rounded-full border-2 border-sky-400/50 bg-sky-500/20 transition-all duration-300 group-hover:scale-110 group-hover:border-sky-400 group-hover:bg-sky-500/30">
-						<svg class="h-8 w-8 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<div class="flex h-14 w-14 items-center justify-center rounded-full border-2 border-white/40 bg-white/15 backdrop-blur-sm transition-all duration-300 group-hover:scale-110 group-hover:border-gold group-hover:bg-gold/30 md:h-16 md:w-16">
+						<svg class="h-7 w-7 text-white md:h-8 md:w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
 						</svg>
 					</div>
 
-					<p class="text-base font-semibold text-white md:text-lg">Click to explore in 360&deg;</p>
+					<p class="text-base font-semibold text-white drop-shadow-lg md:text-lg">Explore in 360&deg;</p>
+					<p class="text-xs text-white/60">Tap to start virtual tour</p>
 				</div>
 
 				<!-- Corner accents -->
-				<div class="absolute left-6 top-6 h-8 w-8 border-l-2 border-t-2 border-sky-500/30"></div>
-				<div class="absolute right-6 top-6 h-8 w-8 border-r-2 border-t-2 border-sky-500/30"></div>
-				<div class="absolute bottom-6 left-6 h-8 w-8 border-b-2 border-l-2 border-sky-500/30"></div>
-				<div class="absolute bottom-6 right-6 h-8 w-8 border-b-2 border-r-2 border-sky-500/30"></div>
+				<div class="absolute left-4 top-4 h-6 w-6 border-l-2 border-t-2 border-white/30 md:left-6 md:top-6 md:h-8 md:w-8"></div>
+				<div class="absolute right-4 top-4 h-6 w-6 border-r-2 border-t-2 border-white/30 md:right-6 md:top-6 md:h-8 md:w-8"></div>
+				<div class="absolute bottom-4 left-4 h-6 w-6 border-b-2 border-l-2 border-white/30 md:bottom-6 md:left-6 md:h-8 md:w-8"></div>
+				<div class="absolute bottom-4 right-4 h-6 w-6 border-b-2 border-r-2 border-white/30 md:bottom-6 md:right-6 md:h-8 md:w-8"></div>
 			</button>
 		</div>
 	</div>
@@ -138,7 +139,7 @@
 				onclick={() => goTo(i)}
 				class="h-2 rounded-full transition-all {currentIndex === i
 					? i === tourSlideIndex
-						? 'w-6 bg-sky-400'
+						? 'w-6 bg-gold'
 						: 'w-6 bg-white'
 					: 'w-2 bg-white/50 hover:bg-white/70'}"
 				aria-label={i === tourSlideIndex ? '360 Tour' : `Photo ${i + 1}`}

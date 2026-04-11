@@ -1,1 +1,1 @@
-// No SSR or prerender needed - static home page
+// Static home page — SSR disabled globally in +layout.ts
