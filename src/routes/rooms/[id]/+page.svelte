@@ -61,6 +61,16 @@
 						onopen360={openTour}
 					/>
 
+					<button
+						onclick={openTour}
+						class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-muted md:mt-4"
+					>
+						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+						</svg>
+						Explore in 360&deg;
+					</button>
+
 					<FadeIn>
 					<div class="mt-5 md:mt-8">
 						<h1 class="font-serif text-3xl font-semibold text-foreground md:text-4xl">{property.name}</h1>

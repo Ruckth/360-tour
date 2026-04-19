@@ -36,14 +36,38 @@
 	const quickReplies = $derived(
 		propertySlug
 			? [
-					{ label: 'Check availability', text: `Is the ${propertyName || 'villa'} available next week?` },
-					{ label: 'See pricing', text: `What's the nightly rate for the ${propertyName || 'villa'} for 3 nights?` },
-					{ label: 'Villa details', text: `Tell me about the ${propertyName || 'villa'}` }
+					{
+						label: 'Check availability',
+						text: `Is the ${propertyName || 'villa'} available next week?`,
+						answer: `Please use the **booking calendar** on this page to check live availability for the ${propertyName || 'villa'}. For same-day requests, tap **WhatsApp** or **LINE** below for instant confirmation.`
+					},
+					{
+						label: 'See pricing',
+						text: `What's the nightly rate for the ${propertyName || 'villa'} for 3 nights?`,
+						answer: `Our **direct rate** saves you ~15% vs Agoda/Booking. You'll see the exact nightly price, total, and any current offers in the pricing card. Longer stays unlock automatic discounts.`
+					},
+					{
+						label: 'Villa details',
+						text: `Tell me about the ${propertyName || 'villa'}`,
+						answer: `Full details — amenities, bedrooms, guest capacity, and photos — are on this page. Scroll down for the complete list, guest reviews, and direct booking benefits.`
+					}
 				]
 			: [
-					{ label: 'Browse villas', text: 'What villa types do you have available?' },
-					{ label: 'Best for couples', text: 'Which villa is best for a couple?' },
-					{ label: 'Airport transfer', text: 'Do you offer airport transfers?' }
+					{
+						label: 'Browse villas',
+						text: 'What villa types do you have available?',
+						answer: `We offer **3 villa types**: Pool Villa (2BR, private infinity pool), Sunset Suite (1BR, ocean view), and Garden Retreat (3BR, family). Scroll up to "Our Villas" to compare.`
+					},
+					{
+						label: 'Best for couples',
+						text: 'Which villa is best for a couple?',
+						answer: `The **Sunset Suite** is our couples' favorite — a 1-bedroom ocean-view retreat with a private terrace. The Pool Villa also works beautifully if you want your own infinity pool.`
+					},
+					{
+						label: 'Airport transfer',
+						text: 'Do you offer airport transfers?',
+						answer: `Yes. Private airport pickup from **Samui Airport (USM)** is complimentary for stays of 3+ nights, otherwise ~฿1,200 each way. Just message us your flight details on WhatsApp.`
+					}
 				]
 	);
 
@@ -74,6 +98,20 @@
 
 	function closeChat() {
 		isOpen = false;
+	}
+
+	async function sendPreset(qr: { text: string; answer: string }) {
+		if (!sessionId || isTyping) return;
+		await client.mutation(api.chat.addMessage, {
+			sessionId: sessionId as any,
+			role: 'user',
+			content: qr.text
+		});
+		await client.mutation(api.chat.addMessage, {
+			sessionId: sessionId as any,
+			role: 'assistant',
+			content: qr.answer
+		});
 	}
 
 	async function sendMessage(text?: string) {
@@ -186,7 +224,7 @@
 				<div class="flex flex-wrap gap-2 pl-9">
 					{#each quickReplies as qr}
 						<button
-							onclick={() => sendMessage(qr.text)}
+							onclick={() => sendPreset(qr)}
 							class="flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted"
 						>
 							{qr.label}

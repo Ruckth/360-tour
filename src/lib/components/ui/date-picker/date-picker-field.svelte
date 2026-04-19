@@ -32,7 +32,7 @@
 						: 'border-border bg-background text-foreground focus-within:border-primary focus-within:ring-primary/20'}"
 			>
 				{#snippet children({ segments })}
-					{#each segments as seg (seg.part)}
+					{#each segments as seg, i (i)}
 						{#if seg.part === 'literal'}
 							<span class="{isDark ? 'text-white/40' : 'text-muted-foreground'}">{seg.value}</span>
 						{:else}

@@ -219,15 +219,12 @@
 							<img
 								src={slide.top}
 								alt=""
-								class="h-full w-full object-cover {mobileSlide === i ? 'hero-ken-burns' : ''}"
+								class="h-full w-full object-cover"
 							/>
 						</div>
 					{/each}
 					<div class="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/30"></div>
 				</div>
-
-				<!-- Divider -->
-				<div class="relative z-[4] h-px w-full bg-white/15"></div>
 
 				<!-- Bottom half -->
 				<div class="relative h-1/2 w-full overflow-hidden">
@@ -236,7 +233,7 @@
 							<img
 								src={slide.bottom}
 								alt=""
-								class="h-full w-full object-cover {mobileSlide === i ? 'hero-ken-burns' : ''}"
+								class="h-full w-full object-cover"
 							/>
 						</div>
 					{/each}

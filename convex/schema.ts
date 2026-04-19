@@ -2,6 +2,16 @@ import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 export default defineSchema({
+	users: defineTable({
+		clerkId: v.string(),
+		tokenIdentifier: v.string(),
+		email: v.string(),
+		name: v.optional(v.string()),
+		imageUrl: v.optional(v.string()),
+	})
+		.index('by_token', ['tokenIdentifier'])
+		.index('by_clerk_id', ['clerkId']),
+
 	tenants: defineTable({
 		name: v.string(),
 		email: v.string(),
@@ -194,7 +204,7 @@ export default defineSchema({
 
 	// Phase 3: AI Chat
 	chatSessions: defineTable({
-		propertyId: v.id('properties'),
+		propertyId: v.optional(v.id('properties')),
 		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('line')),
 		messages: v.array(
 			v.object({

@@ -16,6 +16,7 @@ import type * as leads from "../leads.js";
 import type * as properties from "../properties.js";
 import type * as seed from "../seed.js";
 import type * as stripe from "../stripe.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   properties: typeof properties;
   seed: typeof seed;
   stripe: typeof stripe;
+  users: typeof users;
 }>;
 
 /**

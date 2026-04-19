@@ -1,7 +1,10 @@
 <script lang="ts">
 	import '../app.css';
-	import { PUBLIC_CONVEX_URL } from '$env/static/public';
+	import { PUBLIC_CONVEX_URL, PUBLIC_CLERK_PUBLISHABLE_KEY } from '$env/static/public';
 	import { setupConvex } from 'convex-svelte';
+	import { ClerkProvider } from 'svelte-clerk';
+	import ConvexClerkAuth from '$lib/components/auth/ConvexClerkAuth.svelte';
+	import AuthNav from '$lib/components/auth/AuthNav.svelte';
 	import { Sun, Moon, Monitor, Menu, X } from '@lucide/svelte';
 	import { themeState } from '$lib/stores/theme.svelte';
 	import { pageContext } from '$lib/stores/page-context.svelte';
@@ -19,6 +22,7 @@
 	let scrolled = $state(false);
 	let pageLoaded = $state(false);
 	const isHome = $derived(page.url.pathname === '/');
+	const solid = $derived(scrolled || !isHome || mobileMenuOpen);
 
 	onMount(() => {
 		themeState.init();
@@ -49,12 +53,12 @@
 <div class="flex min-h-screen flex-col bg-background text-foreground transition-opacity duration-500 {pageLoaded ? 'opacity-100' : 'opacity-0'}">
 	<!-- Navigation -->
 	<header
-		class="fixed inset-x-0 top-0 z-40 transition-all duration-300 {scrolled || !isHome ? 'bg-background/95 shadow-sm backdrop-blur-md border-b border-border' : 'bg-transparent'}"
+		class="fixed inset-x-0 top-0 z-40 transition-all duration-300 {solid ? 'bg-background/95 shadow-sm backdrop-blur-md border-b border-border' : 'bg-transparent'}"
 	>
 		<nav class="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 md:px-8 md:py-4">
 			<!-- Logo -->
 			<a href="/" class="flex items-center gap-2">
-				<span class="font-serif text-xl font-semibold tracking-tight md:text-2xl {scrolled || !isHome ? 'text-foreground' : 'text-white'}">{resort.name}</span>
+				<span class="font-serif text-xl font-semibold tracking-tight md:text-2xl {solid ? 'text-foreground' : 'text-white'}">{resort.name}</span>
 			</a>
 
 			<!-- Desktop nav -->
@@ -62,16 +66,16 @@
 				{#each navLinks as link}
 					<a
 						href={link.href}
-						class="text-sm font-medium transition-colors {scrolled || !isHome ? 'text-muted-foreground hover:text-foreground' : 'text-white/70 hover:text-white'}"
+						class="text-sm font-medium transition-colors {solid ? 'text-muted-foreground hover:text-foreground' : 'text-white/70 hover:text-white'}"
 					>{link.label}</a>
 				{/each}
 				<a
 					href="/booking"
-					class="rounded-lg px-5 py-2 text-sm font-semibold transition-all {scrolled || !isHome ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-white/15 text-white backdrop-blur-sm hover:bg-white/25'}"
+					class="rounded-lg px-5 py-2 text-sm font-semibold transition-all {solid ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-white/15 text-white backdrop-blur-sm hover:bg-white/25'}"
 				>Book</a>
 				<button
 					onclick={() => themeState.cycle()}
-					class="flex h-9 w-9 items-center justify-center rounded-full transition-colors {scrolled || !isHome ? 'text-muted-foreground hover:bg-muted hover:text-foreground' : 'text-white/60 hover:text-white'}"
+					class="flex h-9 w-9 items-center justify-center rounded-full transition-colors {solid ? 'text-muted-foreground hover:bg-muted hover:text-foreground' : 'text-white/60 hover:text-white'}"
 					aria-label="Toggle theme: {themeState.mode}"
 				>
 					{#if themeState.mode === 'light'}
@@ -88,7 +92,7 @@
 			<div class="flex items-center gap-2 md:hidden">
 				<button
 					onclick={() => themeState.cycle()}
-					class="flex h-9 w-9 items-center justify-center rounded-full {scrolled || !isHome ? 'text-muted-foreground' : 'text-white/70'}"
+					class="flex h-9 w-9 items-center justify-center rounded-full {solid ? 'text-muted-foreground' : 'text-white/70'}"
 					aria-label="Toggle theme"
 				>
 					{#if themeState.mode === 'light'}
@@ -101,7 +105,7 @@
 				</button>
 				<button
 					onclick={() => mobileMenuOpen = !mobileMenuOpen}
-					class="flex h-9 w-9 items-center justify-center rounded-full {scrolled || !isHome ? 'text-foreground' : 'text-white'}"
+					class="flex h-9 w-9 items-center justify-center rounded-full {solid ? 'text-foreground' : 'text-white'}"
 					aria-label="Toggle menu"
 				>
 					{#if mobileMenuOpen}
