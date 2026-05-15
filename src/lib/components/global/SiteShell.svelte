@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from "$app/state";
   import { onMount } from "svelte";
   import AIChatWidget from "$lib/components/chat/AIChatWidget.svelte";
   import { resort } from "$lib/data/resort-config";
@@ -11,6 +12,8 @@
   let { children } = $props();
 
   let pageLoaded = $state(false);
+  const canonicalUrl = $derived(page.url.href);
+  const socialImageUrl = $derived(new URL("/garden-image.webp", page.url).href);
 
   onMount(() => {
     themeState.init();
@@ -19,6 +22,20 @@
     });
   });
 </script>
+
+<svelte:head>
+  <meta name="description" content={resort.description} />
+  <link rel="canonical" href={canonicalUrl} />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content={resort.name} />
+  <meta property="og:title" content={`${resort.name} — ${resort.location}`} />
+  <meta property="og:description" content={resort.description} />
+  <meta property="og:image" content={socialImageUrl} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={`${resort.name} — ${resort.location}`} />
+  <meta name="twitter:description" content={resort.description} />
+  <meta name="twitter:image" content={socialImageUrl} />
+</svelte:head>
 
 {#if !pageLoaded}
   <PageLoadingOverlay />

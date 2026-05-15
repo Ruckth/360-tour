@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-vercel';
 import { relative, sep } from 'node:path';
 
 /** @type {import('@sveltejs/kit').Config} */
@@ -12,7 +12,9 @@ const config = {
 		}
 	},
 	kit: {
-		adapter: adapter()
+		adapter: adapter({
+			runtime: 'nodejs22.x'
+		})
 	}
 };
 

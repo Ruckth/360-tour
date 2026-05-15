@@ -34,9 +34,9 @@ export const properties: Property[] = [
 		images: [
 			'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=1200&h=800&fit=crop',
 			'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=1200&h=800&fit=crop',
-			'/pool-villa-bedroom-view.png',
-			'/pool-villa-spa-bathroom.png',
-			'/pool-villa-veranda-view.png'
+			'/pool-villa-bedroom-view.webp',
+			'/pool-villa-spa-bathroom.webp',
+			'/pool-villa-veranda-view.webp'
 		],
 		amenities: ['Private Pool', 'WiFi', 'Air Conditioning', 'Kitchen', 'Garden View', 'King Bed'],
 		tourRoomIds: ['pv-living', 'pv-pool']
@@ -53,7 +53,7 @@ export const properties: Property[] = [
 		bathrooms: 1,
 		area: 65,
 		images: [
-			'/garden-image.jpg',
+			'/garden-image.webp',
 			'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&h=800&fit=crop'
 		],
 		amenities: ['WiFi', 'Air Conditioning', 'Garden Terrace', 'Rain Shower', 'Queen Bed'],
