@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "paths": {
+      "$lib": ["./lib"],
+      "$lib/*": ["./lib/*"],
+      "$app/types": ["../.svelte-kit/types/index.d.ts"],
+      "convex/_generated": ["../convex/_generated"]
+    },
+    "rootDirs": [".", "../.svelte-kit/types"],
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "lib": ["esnext", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "noEmit": true,
+    "target": "esnext"
+  },
+  "include": [
+    "../.svelte-kit/ambient.d.ts",
+    "../.svelte-kit/non-ambient.d.ts",
+    "../.svelte-kit/types/**/*.d.ts",
+    "**/*.js",
+    "**/*.ts",
+    "**/*.svelte"
+  ],
+  "exclude": ["../node_modules/**"]
+}

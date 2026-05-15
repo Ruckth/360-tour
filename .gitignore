@@ -1,6 +1,10 @@
 node_modules
 .svelte-kit
+.next
+.vercel
 build
+out
+tsconfig.tsbuildinfo
 .env
 .env.*
 !.env.example
@@ -16,6 +20,7 @@ MOBILE_UX_PLAN.md
 
 # Other AI agent configs
 .codebuddy/
+.claude/
 .commandcode/
 .continue/
 .crush/

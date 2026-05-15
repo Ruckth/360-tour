@@ -6,7 +6,7 @@ const ROOMS = [
 		propertyKey: 'pool-villa' as const,
 		slug: 'pv-living',
 		name: 'Living Area',
-		imagePath: '/pool-villa-living.jpg',
+		imagePath: '/pool-villa-living.webp',
 		hotspots: [
 			{
 				id: 'pv-living-to-pool',
@@ -20,7 +20,7 @@ const ROOMS = [
 		propertyKey: 'pool-villa' as const,
 		slug: 'pv-pool',
 		name: 'Pool Area',
-		imagePath: '/pool-villa-pool.jpg',
+		imagePath: '/pool-villa-pool.webp',
 		hotspots: [
 			{
 				id: 'pv-pool-to-living',
@@ -34,7 +34,7 @@ const ROOMS = [
 		propertyKey: 'garden-suite' as const,
 		slug: 'gs-lounge',
 		name: 'Lounge',
-		imagePath: '/garden-suite-interior.jpg',
+		imagePath: '/garden-suite-interior.webp',
 		hotspots: [
 			{
 				id: 'gs-lounge-to-dining',
@@ -48,7 +48,7 @@ const ROOMS = [
 		propertyKey: 'garden-suite' as const,
 		slug: 'gs-dining',
 		name: 'Dining Area',
-		imagePath: '/garden-dining360.jpg',
+		imagePath: '/garden-dining360.webp',
 		hotspots: [
 			{
 				id: 'gs-dining-to-lounge',
@@ -62,7 +62,7 @@ const ROOMS = [
 		propertyKey: 'penthouse' as const,
 		slug: 'ph-bedroom',
 		name: 'Master Bedroom',
-		imagePath: '/penthouse-bedroom.jpg',
+		imagePath: '/penthouse-bedroom.webp',
 		hotspots: []
 	}
 ];

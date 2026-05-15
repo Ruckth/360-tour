@@ -17,7 +17,7 @@ export const rooms: Room[] = [
 	{
 		id: 'pv-living',
 		name: 'Living Area',
-		imagePath: '/pool-villa-living.jpg',
+		imagePath: '/pool-villa-living.webp',
 		hotspots: [
 			{ id: 'pv-living-to-pool', position: [300, -30, -200], targetRoomId: 'pv-pool', label: 'Pool Area' }
 		]
@@ -25,7 +25,7 @@ export const rooms: Room[] = [
 	{
 		id: 'pv-pool',
 		name: 'Pool Area',
-		imagePath: '/pool-villa-pool.jpg',
+		imagePath: '/pool-villa-pool.webp',
 		hotspots: [
 			{ id: 'pv-pool-to-living', position: [-300, 0, 200], targetRoomId: 'pv-living', label: 'Living Area' }
 		]
@@ -35,7 +35,7 @@ export const rooms: Room[] = [
 	{
 		id: 'gs-lounge',
 		name: 'Lounge',
-		imagePath: '/garden-suite-interior.jpg',
+		imagePath: '/garden-suite-interior.webp',
 		hotspots: [
 			{ id: 'gs-lounge-to-dining', position: [250, -30, 300], targetRoomId: 'gs-dining', label: 'Dining Area' }
 		]
@@ -43,7 +43,7 @@ export const rooms: Room[] = [
 	{
 		id: 'gs-dining',
 		name: 'Dining Area',
-		imagePath: '/garden-dining360.jpg',
+		imagePath: '/garden-dining360.webp',
 		hotspots: [
 			{ id: 'gs-dining-to-garden', position: [320, -20, 120], targetRoomId: 'gs-garden', label: 'Garden View' }
 		]
@@ -51,7 +51,7 @@ export const rooms: Room[] = [
 	{
 		id: 'gs-garden',
 		name: 'Garden View',
-		imagePath: '/garden-villa-360-new.webp',
+		imagePath: '/garden-villa-360.webp',
 		hotspots: [
 			{ id: 'gs-garden-to-dining', position: [-300, -10, -160], targetRoomId: 'gs-dining', label: 'Dining Area' }
 		]
@@ -61,7 +61,7 @@ export const rooms: Room[] = [
 	{
 		id: 'ph-bedroom',
 		name: 'Master Bedroom',
-		imagePath: '/penthouse-bedroom.jpg',
+		imagePath: '/penthouse-bedroom.webp',
 		hotspots: []
 	}
 ];

@@ -5,12 +5,7 @@
 	import { api } from 'convex/_generated/api';
 	import { CheckCircle, Download, FileText, Home } from '@lucide/svelte';
 	import { resort } from '$lib/data/resort-config';
-	import {
-		buildInvoicePdf,
-		buildReceiptPdf,
-		downloadPdf,
-		type BookingDocumentData
-	} from '$lib/utils/booking-documents';
+	import type { BookingDocumentData } from '$lib/utils/booking-documents';
 
 	const client = useConvexClient();
 
@@ -82,6 +77,7 @@
 		if (!documentData || downloading) return;
 		downloading = 'invoice';
 		try {
+			const { buildInvoicePdf, downloadPdf } = await import('$lib/utils/booking-documents');
 			const bytes = await buildInvoicePdf(documentData);
 			downloadPdf(bytes, `${documentData.invoiceNumber ?? 'invoice'}.pdf`);
 		} finally {
@@ -93,6 +89,7 @@
 		if (!documentData || downloading) return;
 		downloading = 'receipt';
 		try {
+			const { buildReceiptPdf, downloadPdf } = await import('$lib/utils/booking-documents');
 			const bytes = await buildReceiptPdf(documentData);
 			downloadPdf(bytes, `${documentData.receiptNumber ?? 'receipt'}.pdf`);
 		} finally {
