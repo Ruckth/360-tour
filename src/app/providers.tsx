@@ -17,7 +17,7 @@ export function Providers({
     Boolean(clerkPublishableKey) && !clerkPublishableKey?.includes("placeholder");
 
   const app = (
-    <OptionalConvexProvider convexUrl={convexUrl}>
+    <OptionalConvexProvider convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
       {children}
     </OptionalConvexProvider>
   );

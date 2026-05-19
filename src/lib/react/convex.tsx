@@ -8,15 +8,19 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ConvexReactClient } from "convex/react";
+import { useAuth } from "@clerk/nextjs";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
 
 const ConvexClientContext = createContext<ConvexReactClient | null>(null);
 
 export function OptionalConvexProvider({
   convexUrl,
+  clerkEnabled = false,
   children,
 }: {
   convexUrl?: string;
+  clerkEnabled?: boolean;
   children: ReactNode;
 }) {
   const client = useMemo(() => {
@@ -24,10 +28,26 @@ export function OptionalConvexProvider({
     return new ConvexReactClient(convexUrl);
   }, [convexUrl]);
 
+  if (!client) {
+    return <ConvexClientContext.Provider value={null}>{children}</ConvexClientContext.Provider>;
+  }
+
+  if (clerkEnabled) {
+    return (
+      <ConvexProviderWithClerk client={client} useAuth={useAuth}>
+        <ConvexClientContext.Provider value={client}>
+          {children}
+        </ConvexClientContext.Provider>
+      </ConvexProviderWithClerk>
+    );
+  }
+
   return (
-    <ConvexClientContext.Provider value={client}>
-      {children}
-    </ConvexClientContext.Provider>
+    <ConvexProvider client={client}>
+      <ConvexClientContext.Provider value={client}>
+        {children}
+      </ConvexClientContext.Provider>
+    </ConvexProvider>
   );
 }
 
@@ -41,6 +61,7 @@ export function useConvexQuery<T>(
   fallback: T,
 ) {
   const client = useOptionalConvex();
+  const argsKey = JSON.stringify(args);
   const [data, setData] = useState<T>(fallback);
   const [loading, setLoading] = useState(Boolean(client));
   const [error, setError] = useState<unknown>(null);
@@ -55,8 +76,9 @@ export function useConvexQuery<T>(
     }
 
     setLoading(true);
+    const queryArgs = JSON.parse(argsKey) as Record<string, unknown>;
     client
-      .query(queryFn as never, args as never)
+      .query(queryFn as never, queryArgs as never)
       .then((result) => {
         if (!active) return;
         setData((result ?? fallback) as T);
@@ -74,7 +96,7 @@ export function useConvexQuery<T>(
     return () => {
       active = false;
     };
-  }, [client, queryFn, JSON.stringify(args), fallback]);
+  }, [argsKey, client, fallback, queryFn]);
 
   return { data, loading, error };
 }

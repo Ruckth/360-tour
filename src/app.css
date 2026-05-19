@@ -80,6 +80,7 @@
 
 @theme inline {
 	--font-serif: 'Cormorant Garamond', serif;
+	--font-sans: 'Manrope', sans-serif;
 	--color-gold: var(--gold);
 	--color-gold-light: var(--gold-light);
 	--color-navy: var(--navy);
@@ -124,6 +125,7 @@
 	body {
 		background-color: var(--background);
 		color: var(--foreground);
+		font-family: var(--font-sans);
 	}
 }
 

@@ -1,0 +1,206 @@
+import { api } from "convex/_generated/api";
+import type { ConvexReactClient } from "convex/react";
+import type { BookingProperty } from "@/lib/booking/booking";
+
+const CONVEX_TIMEOUT_MS = 8_000;
+
+async function withConvexTimeout<T>(promise: Promise<T>, label: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out. Please try again.`));
+    }, CONVEX_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+export type LivePropertyRow = Omit<BookingProperty, "id" | "source"> & {
+  _id: string;
+  slug: string;
+};
+
+export type CreateBookingResult = {
+  bookingId: string;
+  accessToken: string;
+};
+
+export type PublicBooking = {
+  _id?: string;
+  checkIn?: string;
+  checkOut?: string;
+  guests?: number;
+  nights?: number;
+  subtotal?: number;
+  discountAmount?: number;
+  total: number;
+  currency: string;
+  paymentStatus: "pending" | "paid" | "failed" | "refunded";
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  confirmationCode?: string;
+  invoiceNumber?: string;
+  receiptNumber?: string;
+};
+
+export type LiveBookingQuote = {
+  pricePerNight: number;
+  nights: number;
+  subtotal: number;
+  discountPercent: number;
+  discountAmount: number;
+  directTotal: number;
+  currency: string;
+};
+
+export async function listLiveProperties(client: ConvexReactClient) {
+  return (await withConvexTimeout(
+    client.query(api.properties.list, {} as never),
+    "Loading live villas",
+  )) as LivePropertyRow[];
+}
+
+export async function getBlockedDatesByProperty(
+  client: ConvexReactClient,
+  args: { startDate: string; endDate: string },
+) {
+  return (await withConvexTimeout(
+    client.query(api.availability.getBlockedDatesByProperty, args as never),
+    "Loading blocked dates",
+  )) as Record<string, string[]>;
+}
+
+export async function isPropertyAvailable(
+  client: ConvexReactClient,
+  args: { propertyId: string; checkIn: string; checkOut: string },
+) {
+  return (await withConvexTimeout(
+    client.query(api.availability.isAvailable, args as never),
+    "Checking availability",
+  )) as boolean;
+}
+
+export async function createBooking(
+  client: ConvexReactClient,
+  args: {
+    propertySlug: string;
+    guestName: string;
+    guestEmail: string;
+    guestPhone: string;
+    checkIn: string;
+    checkOut: string;
+    guests: number;
+  },
+) {
+  return (await withConvexTimeout(
+    client.mutation(api.bookings.create, args as never),
+    "Creating booking",
+  )) as CreateBookingResult;
+}
+
+export async function quoteStay(
+  client: ConvexReactClient,
+  args: { propertySlug: string; checkIn: string; checkOut: string; guests?: number },
+) {
+  return (await withConvexTimeout(
+    client.query(api.bookings.quoteStay, args as never),
+    "Quoting stay",
+  )) as LiveBookingQuote;
+}
+
+export async function getPublicBooking(
+  client: ConvexReactClient,
+  args: { id: string; accessToken: string },
+) {
+  return (await withConvexTimeout(
+    client.query(api.bookings.getById, args as never),
+    "Loading booking",
+  )) as PublicBooking | null;
+}
+
+export async function saveLead(
+  client: ConvexReactClient,
+  args: { propertySlug: string; email: string; source: "tour_completion" | "chat" | "booking_abandonment" },
+) {
+  return (await withConvexTimeout(
+    client.mutation(api.leads.save, args as never),
+    "Saving lead",
+  )) as string;
+}
+
+export async function createChatSession(
+  client: ConvexReactClient,
+  args: {
+    propertySlug?: string;
+    channel: "web";
+    visitorId?: string;
+    currentPath?: string;
+    referrer?: string;
+    userAgent?: string;
+  },
+) {
+  return (await withConvexTimeout(
+    client.mutation(api.chat.createSession, args as never),
+    "Creating chat session",
+  )) as string;
+}
+
+export async function touchChatSession(
+  client: ConvexReactClient,
+  args: {
+    sessionId: string;
+    propertySlug?: string;
+    currentPath?: string;
+    referrer?: string;
+    userAgent?: string;
+    isOpen?: boolean;
+  },
+) {
+  return await withConvexTimeout(
+    client.mutation(api.chat.touchSession, args as never),
+    "Updating chat session",
+  );
+}
+
+export async function closeChatSession(
+  client: ConvexReactClient,
+  args: { sessionId: string },
+) {
+  return await withConvexTimeout(
+    client.mutation(api.chat.closeSession, args as never),
+    "Closing chat session",
+  );
+}
+
+export async function addChatMessage(
+  client: ConvexReactClient,
+  args: { sessionId: string; role: "user" | "assistant"; content: string },
+) {
+  return await withConvexTimeout(
+    client.mutation(api.chat.addMessage, args as never),
+    "Saving chat message",
+  );
+}
+
+export async function identifyChatVisitor(
+  client: ConvexReactClient,
+  args: { sessionId: string; name?: string; email?: string; phone?: string },
+) {
+  return await withConvexTimeout(
+    client.mutation(api.chat.identifyVisitor, args as never),
+    "Saving chat contact",
+  );
+}
+
+export async function askConcierge(
+  client: ConvexReactClient,
+  args: { sessionId: string; userMessage: string; propertySlug?: string },
+) {
+  return (await withConvexTimeout(
+    client.action(api.chatAi.respond, args as never),
+    "Asking concierge",
+  )) as { response?: string };
+}
