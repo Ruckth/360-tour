@@ -1,20 +1,7 @@
 import { query } from './_generated/server';
 import { v } from 'convex/values';
 import { requireAdmin } from './lib/adminAuth';
-
-const ACTIVE_WINDOW_MS = 90_000;
-
-function isSessionActive(session: {
-	lastSeenAt?: number;
-	lastOpenedAt?: number;
-	lastClosedAt?: number;
-}) {
-	const lastSeenAt = session.lastSeenAt ?? 0;
-	const lastOpenedAt = session.lastOpenedAt ?? 0;
-	const lastClosedAt = session.lastClosedAt ?? 0;
-
-	return lastOpenedAt > lastClosedAt && Date.now() - lastSeenAt <= ACTIVE_WINDOW_MS;
-}
+import { isChatSessionActive } from './lib/chatPresence';
 
 export const listSessions = query({
 	args: {
@@ -38,7 +25,7 @@ export const listSessions = query({
 
 		const filtered = rows.filter((session) => {
 			if (args.propertySlug && session.propertySlug !== args.propertySlug) return false;
-			const active = isSessionActive(session);
+			const active = isChatSessionActive(session);
 			if (args.status === 'active') return active;
 			if (args.status === 'inactive') return !active;
 			return true;
@@ -60,7 +47,7 @@ export const listSessions = query({
 					...session,
 					propertyName: property?.name,
 					latestMessage,
-					isActive: isSessionActive(session)
+					isActive: isChatSessionActive(session)
 				};
 			})
 		);
@@ -94,7 +81,7 @@ export const getTranscript = query({
 			session: {
 				...session,
 				propertyName: property?.name,
-				isActive: isSessionActive(session)
+				isActive: isChatSessionActive(session)
 			},
 			messages
 		};

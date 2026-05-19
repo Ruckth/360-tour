@@ -5,6 +5,9 @@ node_modules
 build
 out
 tsconfig.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
 .env
 .env.*
 !.env.example

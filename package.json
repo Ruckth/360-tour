@@ -12,12 +12,16 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "check": "pnpm typecheck",
     "lint": "eslint .",
-    "verify": "pnpm check && pnpm lint && pnpm build",
+    "test": "pnpm test:unit && pnpm test:e2e",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "verify": "pnpm check && pnpm lint && pnpm test:unit && pnpm build",
     "vercel-build": "npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build'",
     "seed": "npx convex run seed:seedAll"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^24.9.1",
     "@types/react": "^19.2.0",
@@ -30,7 +34,8 @@
     "globals": "^17.5.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.7.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.0",
