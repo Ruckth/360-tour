@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "npx convex dev --once && next dev",
     "dev:convex": "npx convex dev",
