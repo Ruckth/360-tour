@@ -1,16 +1,10 @@
 "use client";
 
-import { Globe2 } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useLocale } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useEffect, useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   defaultLocale,
   isLocale,
@@ -48,52 +42,94 @@ export function LanguageSwitcher({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentLocale = isLocale(locale) ? locale : defaultLocale;
+  const [hash, setHash] = useState("");
 
-  function changeLocale(nextLocale: Locale) {
+  useEffect(() => {
+    setHash(window.location.hash);
+  }, [pathname, searchParams]);
+
+  useEffect(() => {
+    function onLocaleInteraction(event: PointerEvent | MouseEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      const link = target?.closest<HTMLAnchorElement>("[data-locale-href]");
+      if (!link) return;
+      event.preventDefault();
+      const nextLocale = link.dataset.locale;
+      if (nextLocale) {
+        document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`;
+      }
+      window.location.assign(link.href);
+    }
+
+    document.addEventListener("pointerdown", onLocaleInteraction, true);
+    document.addEventListener("click", onLocaleInteraction, true);
+    return () => {
+      document.removeEventListener("pointerdown", onLocaleInteraction, true);
+      document.removeEventListener("click", onLocaleInteraction, true);
+    };
+  }, []);
+
+  function getLocaleHref(nextLocale: Locale) {
     const basePath = stripLocalePrefix(pathname);
     const nextPath =
       nextLocale === defaultLocale
         ? basePath
         : `/${nextLocale}${basePath === "/" ? "" : basePath}`;
     const query = searchParams.toString();
-    const hash = window.location.hash;
-    window.location.assign(`${nextPath}${query ? `?${query}` : ""}${hash}`);
+
+    return `${nextPath}${query ? `?${query}` : ""}${hash}`;
   }
 
   return (
-    <Select value={currentLocale} onValueChange={(value) => changeLocale(value as Locale)}>
-      <SelectTrigger
+    <Popover>
+      <PopoverTrigger
         aria-label="Language"
         className={cn(
-          "h-9 rounded-full text-xs",
-          compact ? "w-[4.5rem] px-2.5" : "w-[9rem] px-3",
+          "inline-flex h-9 items-center justify-between gap-2 rounded-full border text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-3 focus:ring-ring/40",
+          compact ? "w-[4.25rem] px-3" : "w-[8rem] px-3",
           solid
-            ? "border-border bg-background/90 text-foreground"
+            ? "border-border bg-background/90 text-foreground hover:bg-muted"
             : "border-white/20 bg-white/10 text-white shadow-white/5 backdrop-blur-md hover:bg-white/15",
           className,
         )}
       >
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <Globe2 className="h-3.5 w-3.5 shrink-0" />
-          <SelectValue>
-            {compact ? compactLocaleLabels[currentLocale] : localeLabels[currentLocale]}
-          </SelectValue>
-        </span>
-      </SelectTrigger>
-      <SelectContent align="end" className="min-w-[11rem]">
-        <SelectGroup>
+        <span>{compact ? compactLocaleLabels[currentLocale] : localeLabels[currentLocale]}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 opacity-75" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        data-testid="language-menu"
+        className={cn(
+          "pointer-events-auto overflow-y-auto p-1",
+          compact ? "max-h-[13.5rem] w-[9.5rem]" : "max-h-96 w-[11rem]",
+        )}
+      >
+        <div className="grid gap-0.5">
           {locales.map((item) => (
-            <SelectItem key={item} value={item}>
-              <span className="flex w-full items-center justify-between gap-4">
-                <span>{localeLabels[item]}</span>
+            <a
+              key={item}
+              href={getLocaleHref(item)}
+              data-locale-href=""
+              data-locale={item}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg text-left outline-none transition hover:bg-muted focus:bg-muted",
+                compact ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm",
+                currentLocale === item && "bg-muted",
+              )}
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                {currentLocale === item ? <Check className="h-4 w-4" /> : null}
+              </span>
+              <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                <span className="truncate">{localeLabels[item]}</span>
                 <span className="text-xs font-semibold text-muted-foreground">
                   {compactLocaleLabels[item]}
                 </span>
               </span>
-            </SelectItem>
+            </a>
           ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

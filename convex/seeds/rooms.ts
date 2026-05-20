@@ -60,10 +60,103 @@ const ROOMS = [
 	},
 	{
 		propertyKey: 'penthouse' as const,
-		slug: 'ph-bedroom',
-		name: 'Master Bedroom',
-		imagePath: '/penthouse-bedroom.webp',
-		hotspots: []
+		slug: 'ph-window-bedroom',
+		name: 'Window Bedroom',
+		imagePath: '/canopy-loft-window-bedroom-360.jpg',
+		hotspots: [
+			{
+				id: 'ph-window-bedroom-to-lounge',
+				position: [240, -20, -260],
+				targetRoomSlug: 'ph-lounge',
+				label: 'Lounge Corner'
+			},
+			{
+				id: 'ph-window-bedroom-to-sleeping-nook',
+				position: [-260, -20, 240],
+				targetRoomSlug: 'ph-sleeping-nook',
+				label: 'Sleeping Nook'
+			}
+		]
+	},
+	{
+		propertyKey: 'penthouse' as const,
+		slug: 'ph-lounge',
+		name: 'Lounge Corner',
+		imagePath: '/canopy-loft-lounge-360.jpg',
+		hotspots: [
+			{
+				id: 'ph-lounge-to-kitchenette',
+				position: [280, -15, -210],
+				targetRoomSlug: 'ph-kitchenette',
+				label: 'Kitchenette'
+			},
+			{
+				id: 'ph-lounge-to-window-bedroom',
+				position: [-260, -20, 230],
+				targetRoomSlug: 'ph-window-bedroom',
+				label: 'Window Bedroom'
+			}
+		]
+	},
+	{
+		propertyKey: 'penthouse' as const,
+		slug: 'ph-kitchenette',
+		name: 'Kitchenette',
+		imagePath: '/canopy-loft-kitchenette-360.jpg',
+		hotspots: [
+			{
+				id: 'ph-kitchenette-to-entry',
+				position: [260, -10, -240],
+				targetRoomSlug: 'ph-entry-wardrobe',
+				label: 'Entry & Wardrobe'
+			},
+			{
+				id: 'ph-kitchenette-to-lounge',
+				position: [-280, -15, 210],
+				targetRoomSlug: 'ph-lounge',
+				label: 'Lounge Corner'
+			}
+		]
+	},
+	{
+		propertyKey: 'penthouse' as const,
+		slug: 'ph-sleeping-nook',
+		name: 'Sleeping Nook',
+		imagePath: '/canopy-loft-sleeping-nook-360.jpg',
+		hotspots: [
+			{
+				id: 'ph-sleeping-nook-to-window-bedroom',
+				position: [260, -20, -240],
+				targetRoomSlug: 'ph-window-bedroom',
+				label: 'Window Bedroom'
+			},
+			{
+				id: 'ph-sleeping-nook-to-lounge',
+				position: [-240, -20, 260],
+				targetRoomSlug: 'ph-lounge',
+				label: 'Lounge Corner'
+			}
+		]
+	},
+	{
+		propertyKey: 'penthouse' as const,
+		slug: 'ph-entry-wardrobe',
+		name: 'Entry & Wardrobe',
+		imagePath: '/canopy-loft-entry-wardrobe-360.jpg',
+		hotspots: [
+			{
+				id: 'ph-entry-to-kitchenette',
+				position: [260, -15, -240],
+				targetRoomSlug: 'ph-kitchenette',
+				label: 'Kitchenette'
+			},
+			{
+				id: 'ph-entry-to-lounge',
+				position: [-260, -20, 240],
+				targetRoomSlug: 'ph-lounge',
+				label: 'Lounge Corner'
+			}
+		]
 	}
 ];
 

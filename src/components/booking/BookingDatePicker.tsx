@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
@@ -25,25 +24,37 @@ export function BookingDatePicker({
   helperText?: string;
 }) {
   const t = useTranslations("Booking");
-  const selected: DateRange | undefined =
-    checkIn || checkOut
-      ? {
-          from: isoToDate(checkIn),
-          to: isoToDate(checkOut),
-        }
-      : undefined;
-  const [open, setOpen] = useState(false);
+  const [openField, setOpenField] = useState<"checkIn" | "checkOut" | null>(null);
   const checkInLabel = checkIn ? formatDisplayDate(checkIn) : t("checkIn");
   const checkOutLabel = checkOut ? formatDisplayDate(checkOut) : t("checkOut");
+  const checkInDate = isoToDate(checkIn);
+  const checkOutDate = isoToDate(checkOut);
+
+  function selectCheckIn(date: Date | undefined) {
+    const nextCheckIn = dateToIso(date);
+    const nextCheckOut =
+      nextCheckIn && checkOut && checkOut <= nextCheckIn ? "" : checkOut;
+    onChange({ checkIn: nextCheckIn, checkOut: nextCheckOut });
+    setOpenField(null);
+  }
+
+  function selectCheckOut(date: Date | undefined) {
+    onChange({ checkIn, checkOut: dateToIso(date) });
+    setOpenField(null);
+  }
 
   return (
     <div className="space-y-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Popover
+          open={openField === "checkIn"}
+          onOpenChange={(nextOpen) => setOpenField(nextOpen ? "checkIn" : null)}
+        >
           <div className="space-y-2">
-            <Label>{t("checkIn")}</Label>
+            <Label htmlFor="booking-check-in">{t("checkIn")}</Label>
             <PopoverTrigger asChild>
               <Button
+                id="booking-check-in"
                 type="button"
                 variant="outline"
                 className={cn(
@@ -56,10 +67,26 @@ export function BookingDatePicker({
               </Button>
             </PopoverTrigger>
           </div>
+          <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[24rem] p-4 sm:w-auto">
+            <Calendar
+              mode="single"
+              selected={checkInDate}
+              onSelect={selectCheckIn}
+              disabled={isDateDisabled}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+
+        <Popover
+          open={openField === "checkOut"}
+          onOpenChange={(nextOpen) => setOpenField(nextOpen ? "checkOut" : null)}
+        >
           <div className="space-y-2">
-            <Label>{t("checkOut")}</Label>
+            <Label htmlFor="booking-check-out">{t("checkOut")}</Label>
             <PopoverTrigger asChild>
               <Button
+                id="booking-check-out"
                 type="button"
                 variant="outline"
                 className={cn(
@@ -72,25 +99,20 @@ export function BookingDatePicker({
               </Button>
             </PopoverTrigger>
           </div>
-        </div>
-        <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[24rem] p-4 sm:w-auto">
-          <Calendar
-            mode="range"
-            selected={selected}
-            onSelect={(range) => {
-              const nextCheckIn = dateToIso(range?.from);
-              const nextCheckOut = dateToIso(range?.to);
-              onChange({ checkIn: nextCheckIn, checkOut: nextCheckOut });
-              if (nextCheckIn && nextCheckOut) setOpen(false);
-            }}
-            disabled={isDateDisabled}
-            excludeDisabled
-            initialFocus
-            max={60}
-            min={1}
-          />
-        </PopoverContent>
-      </Popover>
+          <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[24rem] p-4 sm:w-auto">
+            <Calendar
+              mode="single"
+              selected={checkOutDate}
+              onSelect={selectCheckOut}
+              disabled={(date) => {
+                if (isDateDisabled(date)) return true;
+                return Boolean(checkIn && dateToIso(date) <= checkIn);
+              }}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
       {helperText ? (
         <p className="text-xs leading-relaxed text-muted-foreground">{helperText}</p>
       ) : null}

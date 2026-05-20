@@ -6,6 +6,7 @@ import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
 import { resort } from "@/lib/data/resort-config";
+import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
 
 const serif = Cormorant_Garamond({
@@ -61,6 +62,9 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning className={`${serif.variable} ${sans.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>
           {clerkEnabled ? (

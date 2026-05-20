@@ -59,10 +59,49 @@ export const rooms: Room[] = [
 
 	// Penthouse rooms
 	{
-		id: 'ph-bedroom',
-		name: 'Master Bedroom',
-		imagePath: '/penthouse-bedroom.webp',
-		hotspots: []
+		id: 'ph-window-bedroom',
+		name: 'Window Bedroom',
+		imagePath: '/canopy-loft-window-bedroom-360.jpg',
+		hotspots: [
+			{ id: 'ph-window-bedroom-to-lounge', position: [240, -20, -260], targetRoomId: 'ph-lounge', label: 'Lounge Corner' },
+			{ id: 'ph-window-bedroom-to-sleeping-nook', position: [-260, -20, 240], targetRoomId: 'ph-sleeping-nook', label: 'Sleeping Nook' }
+		]
+	},
+	{
+		id: 'ph-lounge',
+		name: 'Lounge Corner',
+		imagePath: '/canopy-loft-lounge-360.jpg',
+		hotspots: [
+			{ id: 'ph-lounge-to-kitchenette', position: [280, -15, -210], targetRoomId: 'ph-kitchenette', label: 'Kitchenette' },
+			{ id: 'ph-lounge-to-window-bedroom', position: [-260, -20, 230], targetRoomId: 'ph-window-bedroom', label: 'Window Bedroom' }
+		]
+	},
+	{
+		id: 'ph-kitchenette',
+		name: 'Kitchenette',
+		imagePath: '/canopy-loft-kitchenette-360.jpg',
+		hotspots: [
+			{ id: 'ph-kitchenette-to-entry', position: [260, -10, -240], targetRoomId: 'ph-entry-wardrobe', label: 'Entry & Wardrobe' },
+			{ id: 'ph-kitchenette-to-lounge', position: [-280, -15, 210], targetRoomId: 'ph-lounge', label: 'Lounge Corner' }
+		]
+	},
+	{
+		id: 'ph-sleeping-nook',
+		name: 'Sleeping Nook',
+		imagePath: '/canopy-loft-sleeping-nook-360.jpg',
+		hotspots: [
+			{ id: 'ph-sleeping-nook-to-window-bedroom', position: [260, -20, -240], targetRoomId: 'ph-window-bedroom', label: 'Window Bedroom' },
+			{ id: 'ph-sleeping-nook-to-lounge', position: [-240, -20, 260], targetRoomId: 'ph-lounge', label: 'Lounge Corner' }
+		]
+	},
+	{
+		id: 'ph-entry-wardrobe',
+		name: 'Entry & Wardrobe',
+		imagePath: '/canopy-loft-entry-wardrobe-360.jpg',
+		hotspots: [
+			{ id: 'ph-entry-to-kitchenette', position: [260, -15, -240], targetRoomId: 'ph-kitchenette', label: 'Kitchenette' },
+			{ id: 'ph-entry-to-lounge', position: [-260, -20, 240], targetRoomId: 'ph-lounge', label: 'Lounge Corner' }
+		]
 	}
 ];
 

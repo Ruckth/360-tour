@@ -17,11 +17,22 @@ import {
   identifyChatVisitor,
   touchChatSession,
 } from "@/lib/react/convex-api";
+import {
+  selectChatSuggestions,
+  type ChatSuggestionCandidate,
+  type ChatSuggestionId,
+} from "@/lib/chat/suggestions";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
 type Message = { role: "user" | "assistant"; content: string };
 type ContactForm = { name: string; email: string; phone: string };
+type ChatSuggestion = ChatSuggestionCandidate & { answer: string };
+type LatestExchange = {
+  userMessage: string;
+  assistantMessage: string;
+  clickedSuggestionId?: ChatSuggestionId | null;
+};
 
 const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
 const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
@@ -71,6 +82,32 @@ function getBrowserChatMetadata() {
   };
 }
 
+function SuggestionChips({
+  suggestions,
+  onSelect,
+}: {
+  suggestions: ChatSuggestion[];
+  onSelect: (text: string) => void;
+}) {
+  if (!suggestions.length) return null;
+
+  return (
+    <div data-testid="chat-suggestions" className="mt-2 flex flex-wrap gap-2">
+      {suggestions.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          data-suggestion-id={item.id}
+          onClick={() => onSelect(item.text)}
+          className="rounded-full border border-border bg-background/85 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-slate-700 shadow-sm shadow-black/5 transition hover:border-gold/60 hover:bg-gold/10 hover:text-foreground dark:border-white/15 dark:bg-background/60 dark:text-slate-300 dark:hover:text-white"
+        >
+          {item.text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function AIChatWidget({
   propertySlug,
   propertyName,
@@ -94,6 +131,7 @@ export function AIChatWidget({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [latestExchange, setLatestExchange] = useState<LatestExchange | null>(null);
   const [contactForm, setContactForm] = useState<ContactForm>({
     name: "",
     email: "",
@@ -101,32 +139,58 @@ export function AIChatWidget({
   });
   const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const inputRef = useRef<HTMLInputElement>(null);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
   const title = activePropertyName
     ? t("propertyTitle", { propertyName: activePropertyName })
     : t("defaultTitle");
   const suggestions = useMemo(
-    () => [
+    (): ChatSuggestion[] => [
       {
+        id: "couple",
         text: t("suggestionCouple"),
         answer: t("answerCouple"),
       },
       {
+        id: "direct",
         text: t("suggestionDirect"),
         answer: t("answerDirect"),
       },
       {
+        id: "tour",
         text: t("suggestion360"),
         answer: t("answer360"),
       },
     ],
     [t],
   );
-  const visibleSuggestions = useMemo(() => suggestions.slice(0, 2), [suggestions]);
+  const visibleSuggestions = useMemo(
+    () =>
+      selectChatSuggestions({
+        candidates: suggestions,
+        activePropertySlug: activePropertySlug || undefined,
+        latestUserMessage: latestExchange?.userMessage,
+        latestAssistantMessage: latestExchange?.assistantMessage,
+        clickedSuggestionId: latestExchange?.clickedSuggestionId,
+      }) as ChatSuggestion[],
+    [activePropertySlug, latestExchange, suggestions],
+  );
+  const latestAssistantIndex = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "assistant") return index;
+    }
+    return -1;
+  }, [messages]);
+  const canShowMessageSuggestions =
+    !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1;
   const hideFloatingTriggerOnMobileRoom = pathname.startsWith("/rooms/");
   const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
   useBodyScrollLock(shouldLockScroll);
+
+  useEffect(() => {
+    setLatestExchange(null);
+  }, [activePropertySlug]);
 
   function openChat() {
     setMounted(true);
@@ -161,6 +225,11 @@ export function AIChatWidget({
     const timeout = window.setTimeout(() => inputRef.current?.focus(), 260);
     return () => window.clearTimeout(timeout);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    transcriptEndRef.current?.scrollIntoView({ block: "end" });
+  }, [open, messages, isTyping, visibleSuggestions]);
 
   useEffect(() => {
     if (!open) return;
@@ -260,11 +329,18 @@ export function AIChatWidget({
     const clean = text.trim();
     if (!clean || isTyping) return;
     setInput("");
+    setLatestExchange(null);
     setMessages((items) => [...items, { role: "user", content: clean }]);
 
     const preset = suggestions.find((item) => item.text === clean);
     if (preset) {
-      setMessages((items) => [...items, { role: "assistant", content: preset.answer }]);
+      const assistantMessage = preset.answer;
+      setMessages((items) => [...items, { role: "assistant", content: assistantMessage }]);
+      setLatestExchange({
+        userMessage: clean,
+        assistantMessage,
+        clickedSuggestionId: preset.id,
+      });
       if (convex) {
         try {
           const id = await ensureSession(true);
@@ -284,14 +360,18 @@ export function AIChatWidget({
     }
 
     if (!convex) {
+      const assistantMessage = t("noConvex");
       setMessages((items) => [
         ...items,
         {
           role: "assistant",
-            content:
-            t("noConvex"),
+          content: assistantMessage,
         },
       ]);
+      setLatestExchange({
+        userMessage: clean,
+        assistantMessage,
+      });
       return;
     }
 
@@ -310,15 +390,23 @@ export function AIChatWidget({
           ? String(result.response)
           : t("sent");
       setMessages((items) => [...items, { role: "assistant", content: response }]);
+      setLatestExchange({
+        userMessage: clean,
+        assistantMessage: response,
+      });
     } catch {
+      const assistantMessage = t("fallback");
       setMessages((items) => [
         ...items,
         {
           role: "assistant",
-            content:
-            t("fallback"),
+          content: assistantMessage,
         },
       ]);
+      setLatestExchange({
+        userMessage: clean,
+        assistantMessage,
+      });
     } finally {
       setIsTyping(false);
     }
@@ -371,23 +459,41 @@ export function AIChatWidget({
             </Button>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 md:px-4 md:py-4">
+          <div
+            data-testid="chat-messages"
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 md:px-4 md:py-4"
+          >
             {messages.length === 0 ? (
-              <div className="rounded-2xl bg-muted p-4 text-base leading-relaxed text-slate-700 dark:text-slate-200 md:p-3 md:text-sm">
-                {t("intro")}
+              <div className="max-w-[92%]">
+                <div className="rounded-2xl bg-muted p-4 text-base leading-relaxed text-slate-700 dark:text-slate-200 md:p-3 md:text-sm">
+                  {t("intro")}
+                </div>
+                {!isTyping ? (
+                  <SuggestionChips suggestions={visibleSuggestions} onSelect={sendMessage} />
+                ) : null}
               </div>
             ) : null}
             {messages.map((message, index) => (
               <div
                 key={`${message.role}-${index}`}
                 className={cn(
-                  "max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed",
-                  message.role === "user"
-                    ? "ml-auto bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground",
+                  "max-w-[85%]",
+                  message.role === "user" ? "ml-auto" : "mr-auto",
                 )}
               >
-                {renderMessage(message.content)}
+                <div
+                  className={cn(
+                    "rounded-2xl px-3 py-2 text-sm leading-relaxed",
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-foreground",
+                  )}
+                >
+                  {renderMessage(message.content)}
+                </div>
+                {message.role === "assistant" && index === latestAssistantIndex && canShowMessageSuggestions ? (
+                  <SuggestionChips suggestions={visibleSuggestions} onSelect={sendMessage} />
+                ) : null}
               </div>
             ))}
             {isTyping ? (
@@ -395,21 +501,13 @@ export function AIChatWidget({
                 {t("thinking")}
               </div>
             ) : null}
+            <div ref={transcriptEndRef} />
           </div>
 
-          <div className="shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-4 backdrop-blur md:px-3 md:py-3">
-            <div className="flex flex-wrap gap-2">
-              {visibleSuggestions.map((item) => (
-                <button
-                  key={item.text}
-                  type="button"
-                  onClick={() => sendMessage(item.text)}
-                  className="rounded-full border border-border bg-background/80 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-slate-700 shadow-sm transition hover:border-gold/50 hover:bg-gold/10 hover:text-foreground dark:text-slate-300 dark:hover:text-white"
-                >
-                  {item.text}
-                </button>
-              ))}
-            </div>
+          <div
+            data-testid="chat-footer"
+            className="shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-4 backdrop-blur md:px-3 md:py-3"
+          >
             <MessagingButtons whatsappNumber={whatsappNumber} lineId={lineId} />
             <details className="rounded-xl border border-border bg-background/70 px-3 py-2 text-sm">
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-300">

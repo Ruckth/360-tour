@@ -34,6 +34,20 @@ test("booking flow validates steps and reaches demo payment", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Confirm demo payment" })).toBeVisible();
 });
 
+test("booking dates open as separate single-date pickers", async ({ page }) => {
+  const checkIn = isoDaysFromNow(45);
+  await page.goto(`/booking?checkin=${checkIn}&nights=2&adults=2&children=0&unit=garden-suite`);
+
+  await page.getByLabel("Check in").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.locator(".rdp-range_start, .rdp-range_middle, .rdp-range_end")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.getByLabel("Check out").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.locator(".rdp-range_start, .rdp-range_middle, .rdp-range_end")).toHaveCount(0);
+});
+
 test("payment and success pages guard live links and allow demo confirmation", async ({ page }) => {
   await page.goto("/booking/pay?bookingId=live-without-token");
   await expect(page.getByText(/Live booking verification is unavailable/i)).toBeVisible();

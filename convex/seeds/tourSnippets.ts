@@ -31,9 +31,9 @@ const TOUR_SNIPPETS = [
 	},
 	{
 		propertyKey: 'penthouse' as const,
-		roomSlug: 'ph-bedroom',
+		roomSlug: 'ph-window-bedroom',
 		position: [220, 80, -180],
-		quote: 'The views from the bedroom are absolutely breathtaking.',
+		quote: 'The morning light through the tall windows is beautiful.',
 		authorName: 'Charlotte W.',
 		authorCity: 'London',
 		rating: 5

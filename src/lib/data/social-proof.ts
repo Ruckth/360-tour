@@ -292,8 +292,8 @@ export const socialProofData: PropertySocialProof[] = [
 						'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=80&h=80&fit=crop&crop=face'
 				},
 				rating: 5,
-				title: 'Panoramic views that take your breath away',
-				body: 'The rooftop terrace alone is worth the price. We watched the sunset over Koh Nang Yuan every evening with a cocktail in hand. The penthouse interiors are beautifully designed with high-end finishes throughout. The full kitchen meant we could cook when we wanted. An extraordinary property.',
+				title: 'A loft hideaway full of soft light',
+				body: 'The tall windows alone are worth the stay. We had slow mornings on the window ledge, coffee in hand, with the trees just outside. The Canopy Loft Penthouse is beautifully styled with warm wood, woven details, and a kitchenette that made it easy to settle in.',
 				date: '2026-03-22',
 				verified: true,
 				photos: [
@@ -313,7 +313,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Worth every penny',
-				body: 'We celebrated our anniversary at the Penthouse and it was perfect. Two spacious bedrooms, a living area that feels like a luxury hotel, and those views! The bathtub overlooking the island is a dream. The host arranged flowers and champagne for our arrival. Truly special.',
+				body: 'We celebrated our anniversary at the Canopy Loft Penthouse and it was perfect. The sleeping nook is cozy, the lounge feels intimate, and the whole space has this calm studio atmosphere. The host arranged flowers and champagne for our arrival. Truly special.',
 				date: '2026-03-10',
 				verified: true
 			},
@@ -329,7 +329,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'The best accommodation in Koh Tao',
-				body: 'We have stayed at many places on the island but nothing compares to the Penthouse. The 200 sqm space is massive, the designer furniture is gorgeous, and the panoramic views from every room are incredible. The rooftop terrace is perfect for stargazing at night.',
+				body: 'We have stayed at many places on the island but nothing compares to the Canopy Loft Penthouse. The loft feels airy without losing warmth, the designer details are gorgeous, and the treetop windows make every morning feel cinematic.',
 				date: '2026-02-20',
 				verified: true,
 				photos: [
@@ -348,7 +348,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Elevated luxury on a tropical island',
-				body: 'The attention to detail in the Penthouse is remarkable. From the quality of the mattresses to the kitchen appliances, everything is premium. We hosted a small dinner party on the rooftop terrace and our friends were blown away by the setting. Cannot recommend enough.',
+				body: 'The attention to detail in the Canopy Loft Penthouse is remarkable. From the quality of the mattress to the kitchenette styling, everything feels intentional. We spent our evenings in the lounge with the string lights on and did not want to leave.',
 				date: '2026-02-05',
 				verified: true
 			},
@@ -364,7 +364,7 @@ export const socialProofData: PropertySocialProof[] = [
 				},
 				rating: 5,
 				title: 'Unforgettable stay',
-				body: 'Traveling with friends, the Penthouse gave us the space and comfort we needed. Two great bedrooms, a fantastic kitchen for group cooking, and the rooftop became our evening hangout. The panoramic view is genuinely stunning — photos do not do it justice.',
+				body: 'Traveling with friends, the Canopy Loft Penthouse gave us the space and comfort we needed. The lounge, kitchenette, and sleeping area flow together beautifully, and the treetop light is genuinely stunning. Photos do not do it justice.',
 				date: '2026-01-18',
 				verified: true
 			}
@@ -372,9 +372,9 @@ export const socialProofData: PropertySocialProof[] = [
 		tourSnippets: [
 			{
 				id: 'ph-ts1',
-				roomId: 'ph-bedroom',
+				roomId: 'ph-window-bedroom',
 				position: [220, 80, -180],
-				quote: 'The views from the bedroom are absolutely breathtaking.',
+				quote: 'The morning light through the tall windows is beautiful.',
 				authorName: 'Charlotte W.',
 				authorCity: 'London',
 				rating: 5

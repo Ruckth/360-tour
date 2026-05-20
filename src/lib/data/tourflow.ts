@@ -33,13 +33,13 @@ export const tourConclusions: TourConclusion[] = [
 	},
 	{
 		propertyId: 'penthouse',
-		headline: 'Your View Awaits',
-		summary: 'The highest point on the property, the Penthouse commands views that stretch to the horizon. Designer interiors, a rooftop terrace, and an atmosphere of effortless sophistication.',
+		headline: 'Your Loft Awaits',
+		summary: 'The Canopy Loft Penthouse feels like a private studio above the trees: bright grid windows, black beams, warm wood, and soft woven textures pulled together into one calm hideaway.',
 		highlights: [
-			'Panoramic Gulf of Thailand views',
-			'Private rooftop terrace',
-			'Designer interiors with premium furnishings',
-			'Full kitchen for intimate dining'
+			'Tall treetop windows with a built-in ledge',
+			'Cozy loft sleeping platform',
+			'Relaxed lounge corner with boho styling',
+			'Compact kitchenette for slow mornings'
 		],
 		closingLine: 'Make this more than a daydream'
 	}

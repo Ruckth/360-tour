@@ -104,26 +104,54 @@ export const roomStories: RoomStory[] = [
 		]
 	},
 	{
-		roomId: 'ph-bedroom',
-		headline: 'Sleep above the clouds',
-		subtext: 'Panoramic views from your pillow, the Gulf of Thailand shimmering below',
-		imagineText: 'Imagine waking here, the horizon stretching endlessly...',
+		roomId: 'ph-window-bedroom',
+		headline: 'Wake In The Canopy',
+		subtext: 'Soft morning light, treetop windows, and a calm loft wrapped in warm textures',
+		imagineText: 'Imagine waking here, coffee close by and the trees just beyond the glass...',
 		vignettes: [
 			{
-				id: 'ph-bedroom-v1',
-				text: 'First light painting the sea in shades of rose and amber',
+				id: 'ph-window-bedroom-v1',
+				text: 'First light moving across the window ledge and linen bedding',
 				imageUrl: 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=400&h=300&fit=crop',
 				delaySeconds: 10,
 				durationSeconds: 6
 			},
 			{
-				id: 'ph-bedroom-v2',
-				text: 'Sinking into Egyptian cotton as the day gently fades',
+				id: 'ph-window-bedroom-v2',
+				text: 'String lights glowing over woven details as the room slows down',
 				imageUrl: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400&h=300&fit=crop',
 				delaySeconds: 20,
 				durationSeconds: 6
 			}
 		]
+	},
+	{
+		roomId: 'ph-lounge',
+		headline: 'Settle Into The Loft',
+		subtext: 'A quiet lounge corner with woven textures, plants, and string lights overhead',
+		imagineText: 'Imagine ending the day here, the room warm and softly lit...',
+		vignettes: []
+	},
+	{
+		roomId: 'ph-kitchenette',
+		headline: 'Slow Mornings Start Here',
+		subtext: 'Open shelves, pendant bulbs, and a compact kitchenette for coffee and breakfast',
+		imagineText: 'Imagine making coffee while the loft slowly brightens...',
+		vignettes: []
+	},
+	{
+		roomId: 'ph-sleeping-nook',
+		headline: 'A Softer Corner',
+		subtext: 'Layered bedding, dreamcatcher details, and the hush of a private studio',
+		imagineText: 'Imagine slipping back into the quiet after a day outside...',
+		vignettes: []
+	},
+	{
+		roomId: 'ph-entry-wardrobe',
+		headline: 'Arrive And Unpack',
+		subtext: 'Louvered wardrobe screens, warm slatted wood, and a glimpse into the loft',
+		imagineText: 'Imagine dropping your bags and feeling the stay begin...',
+		vignettes: []
 	}
 ];
 
@@ -135,7 +163,7 @@ export function getPropertyTagline(propertyId: string): string {
 	const taglines: Record<string, string> = {
 		'pool-villa': 'Where mornings begin with a private dip under open skies',
 		'garden-suite': 'A quiet corner of the island, wrapped in green',
-		penthouse: 'Sleep above the clouds, wake to endless horizons'
+		penthouse: 'Wake among soft light, warm wood, and treetop windows'
 	};
 	return taglines[propertyId] ?? '';
 }

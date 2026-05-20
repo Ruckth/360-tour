@@ -85,8 +85,8 @@ const REVIEWS_DATA = [
 		authorAvatarUrl:
 			'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=80&h=80&fit=crop&crop=face',
 		rating: 5,
-		title: 'Panoramic views that take your breath away',
-		body: 'The rooftop terrace alone is worth the price. We watched the sunset over Koh Nang Yuan every evening with a cocktail in hand.',
+		title: 'A loft hideaway full of soft light',
+		body: 'The tall windows alone are worth the stay. We had slow mornings on the window ledge, coffee in hand, with the trees just outside.',
 		date: '2026-03-22',
 		verified: true,
 		photos: [
@@ -103,7 +103,7 @@ const REVIEWS_DATA = [
 			'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=80&h=80&fit=crop&crop=face',
 		rating: 5,
 		title: 'Worth every penny',
-		body: 'We celebrated our anniversary at the Penthouse and it was perfect. Two spacious bedrooms, a living area that feels like a luxury hotel.',
+		body: 'We celebrated our anniversary at the Canopy Loft Penthouse and it was perfect. The sleeping nook is cozy, the lounge feels intimate, and the whole space has this calm studio atmosphere.',
 		date: '2026-03-10',
 		verified: true
 	}

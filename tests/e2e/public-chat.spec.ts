@@ -14,8 +14,16 @@ const localizedSmoke = [
 ];
 
 async function chooseLanguage(page: Page, optionName: string) {
-  await page.getByLabel("Language").first().click();
-  await page.getByRole("option", { name: optionName }).click();
+  const languageButtons = page.getByLabel("Language");
+  const buttonCount = await languageButtons.count();
+  for (let index = 0; index < buttonCount; index += 1) {
+    const button = languageButtons.nth(index);
+    if (await button.isVisible()) {
+      await button.click();
+      break;
+    }
+  }
+  await page.getByRole("link", { name: optionName }).click();
 }
 
 test("home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
@@ -26,9 +34,33 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
 
   await expect(page.getByText("Seaview concierge")).toBeVisible();
   await expect(page.getByText("Share contact details")).toBeVisible();
+  const chatMessages = page.getByTestId("chat-messages");
+  const chatFooter = page.getByTestId("chat-footer");
+
+  await expect(
+    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+  ).toBeVisible();
+  await expect(
+    chatFooter.getByRole("button", { name: /Which villa is best for a couple/i }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: /Which villa is best for a couple/i }).click();
   await expect(page.getByText(/The Garden Suite is the quietest couples/i)).toBeVisible();
+  await expect(
+    chatMessages.getByRole("button", { name: /What's included when booking direct/i }),
+  ).toBeVisible();
+  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toBeVisible();
+  await expect(
+    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+  ).toHaveCount(0);
+
+  await page.getByPlaceholder("Ask a question").fill("What's included when booking direct?");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.getByText(/Direct booking saves around 15%/i)).toBeVisible();
+  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toBeVisible();
+  await expect(
+    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+  ).toBeVisible();
 
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -57,6 +89,30 @@ test("thai locale renders translated public UI and chat labels", async ({ page }
   await expect(page.getByPlaceholder("พิมพ์คำถาม")).toBeVisible();
 });
 
+test("german chat suggestions float under assistant messages and update", async ({ page }) => {
+  await page.goto("/de");
+
+  await page.getByRole("button", { name: "Concierge-Chat öffnen" }).click({ force: true });
+  const chatMessages = page.getByTestId("chat-messages");
+  const chatFooter = page.getByTestId("chat-footer");
+
+  await expect(
+    chatMessages.getByRole("button", { name: "Welche Villa ist am besten für ein Paar?" }),
+  ).toBeVisible();
+  await expect(
+    chatFooter.getByRole("button", { name: "Welche Villa ist am besten für ein Paar?" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Welche Villa ist am besten für ein Paar?" }).click();
+  await expect(page.getByText(/Garden Suite ist der ruhigste Rückzugsort/i)).toBeVisible();
+  await expect(
+    chatMessages.getByRole("button", { name: "Was ist bei Direktbuchung enthalten?" }),
+  ).toBeVisible();
+  await expect(
+    chatMessages.getByRole("button", { name: "Kann ich die Villa in 360° sehen?" }),
+  ).toBeVisible();
+});
+
 test("all visible translated locales render localized nav and chat UI", async ({ page }) => {
   for (const locale of localizedSmoke) {
     await page.goto(locale.path);
@@ -80,20 +136,49 @@ test("language switcher preserves query strings and hash anchors", async ({ page
   await page.goto("/th/booking?unit=garden-suite&nights=2#villas");
 
   await chooseLanguage(page, "English EN");
-  await expect(page).toHaveURL(/\/booking\?unit=garden-suite&nights=2#villas$/);
+  await expect(page).toHaveURL((url) => {
+    expect(url.pathname).toBe("/booking");
+    expect(url.searchParams.get("unit")).toBe("garden-suite");
+    expect(url.searchParams.get("nights")).toBe("2");
+    expect(url.hash).toBe("#villas");
+    return true;
+  });
+});
+
+test("language switcher preserves dark theme preference", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("theme", "dark");
+  });
+  await page.goto("/ko");
+
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+    .toBe(true);
+  const beforeBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  await chooseLanguage(page, "English EN");
+  await expect(page).toHaveURL(/\/$/);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+    .toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
+    .toBe(beforeBackground);
 });
 
 test("mobile language switcher stays compact while opening full options", async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 360 });
   await page.goto("/th");
 
-  const language = page.getByRole("combobox", { name: "Language" });
+  const language = page.getByRole("button", { name: "Language" });
   await expect(language).toHaveText("TH");
   const box = await language.boundingBox();
   expect(box?.width).toBeLessThan(90);
 
   await language.click();
-  await expect(page.getByRole("option", { name: "ไทย TH" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "ไทย TH" })).toBeVisible();
+  const menuBox = await page.getByTestId("language-menu").boundingBox();
+  expect(menuBox?.height).toBeLessThan(240);
 });
 
 test("locale routing handles canonical English, removed Arabic, and sampled deep links", async ({ page }) => {
@@ -103,7 +188,7 @@ test("locale routing handles canonical English, removed Arabic, and sampled deep
   await page.goto("/ar");
   await expect(page.getByText("This page could not be found")).toBeVisible();
   await page.getByLabel("Language").first().click();
-  await expect(page.getByRole("option", { name: "العربية AR" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "العربية AR" })).toHaveCount(0);
 
   await page.goto("/zh-CN/booking");
   await expect(page.getByRole("heading", { name: "预订您的别墅" })).toBeVisible();

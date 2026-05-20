@@ -55,10 +55,10 @@ const PROPERTIES = [
 	},
 	{
 		slug: 'penthouse',
-		name: 'Penthouse',
-		tagline: 'Elevated living with panoramic views',
+		name: 'Canopy Loft Penthouse',
+		tagline: 'Boho loft living framed by treetop windows',
 		description:
-			'Our signature Penthouse crowns the property with sweeping panoramic views, a rooftop terrace, and designer interiors. Two bedrooms, a full kitchen, and a living space designed for those who appreciate the finer things.',
+			'Our Canopy Loft Penthouse is a bright, loft-style villa wrapped in tall grid windows, warm wood ledges, soft neutral textiles, and relaxed boho details. A cozy sleeping platform, lounge corner, and kitchenette create an intimate hideaway above the trees.',
 		pricePerNight: 12000,
 		currency: 'THB',
 		maxGuests: 6,
@@ -66,19 +66,22 @@ const PROPERTIES = [
 		bathrooms: 2,
 		area: 200,
 		images: [
-			'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1200&h=800&fit=crop',
-			'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&h=800&fit=crop'
+			'/canopy-loft-window-bedroom-360.jpg',
+			'/canopy-loft-lounge-360.jpg',
+			'/canopy-loft-kitchenette-360.jpg',
+			'/canopy-loft-sleeping-nook-360.jpg',
+			'/canopy-loft-entry-wardrobe-360.jpg'
 		],
 		amenities: [
-			'Rooftop Terrace',
 			'WiFi',
 			'Air Conditioning',
-			'Full Kitchen',
-			'Panoramic View',
+			'Kitchenette',
+			'Treetop Windows',
+			'Loft Lounge',
 			'King Bed',
-			'Bathtub'
+			'Designer Lighting'
 		],
-		tourRoomIds: ['ph-bedroom'],
+		tourRoomIds: ['ph-window-bedroom', 'ph-lounge', 'ph-kitchenette', 'ph-sleeping-nook', 'ph-entry-wardrobe'],
 		directDiscountPercent: 15,
 		status: 'active' as const
 	}
