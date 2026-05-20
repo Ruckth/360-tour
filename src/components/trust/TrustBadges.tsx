@@ -1,10 +1,14 @@
+"use client";
+
 import { BadgeCheck, CreditCard, ShieldCheck } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export function TrustBadges() {
+  const t = useTranslations("Villa");
   const badges = [
-    { label: "Verified villas", icon: BadgeCheck },
-    { label: "Secure demo checkout", icon: CreditCard },
-    { label: "Host direct support", icon: ShieldCheck },
+    { label: t("verifiedVillas"), icon: BadgeCheck },
+    { label: t("secureCheckout"), icon: CreditCard },
+    { label: t("hostSupport"), icon: ShieldCheck },
   ];
 
   return (

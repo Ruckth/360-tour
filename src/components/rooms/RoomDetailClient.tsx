@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { MobileStickyBar } from "@/components/booking/MobileStickyBar";
 import { useChatPageContext } from "@/components/chat/ChatContext";
@@ -14,6 +15,7 @@ import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { StarRating } from "@/components/social/StarRating";
 import { TrustBadges } from "@/components/trust/TrustBadges";
 import { Button } from "@/components/ui/button";
+import { localizeHref } from "@/i18n/routing";
 import { getSocialProofByPropertyId } from "@/lib/data/social-proof";
 import { resort } from "@/lib/data/resort-config";
 import type { Property } from "@/lib/data/properties";
@@ -25,6 +27,9 @@ const TourViewer = dynamic(
 
 export function RoomDetailClient({ property }: { property: Property }) {
   const router = useRouter();
+  const locale = useLocale();
+  const navT = useTranslations("Nav");
+  const t = useTranslations("Villa");
   const searchParams = useSearchParams();
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showTour, setShowTour] = useState(false);
@@ -48,12 +53,12 @@ export function RoomDetailClient({ property }: { property: Property }) {
 
   function openTour() {
     setShowTour(true);
-    router.replace(`/rooms/${property.id}?tour=1`, { scroll: false });
+    router.replace(localizeHref(`/rooms/${property.id}?tour=1`, locale), { scroll: false });
   }
 
   function closeTour() {
     setShowTour(false);
-    router.replace(`/rooms/${property.id}`, { scroll: false });
+    router.replace(localizeHref(`/rooms/${property.id}`, locale), { scroll: false });
   }
 
   function goTo(next: number) {
@@ -64,12 +69,12 @@ export function RoomDetailClient({ property }: { property: Property }) {
     <div className="pb-32 md:pb-0">
       <div className="mx-auto max-w-6xl px-4 pt-20 md:px-6 md:pt-24">
         <nav className="flex items-center gap-2 text-xs text-muted-foreground md:text-sm">
-          <Link href="/" className="transition hover:text-foreground">
+          <Link href={localizeHref("/", locale)} className="transition hover:text-foreground">
             {resort.name}
           </Link>
           <span className="text-border">/</span>
-          <Link href="/#villas" className="transition hover:text-foreground">
-            Our Villas
+          <Link href={localizeHref("/#villas", locale)} className="transition hover:text-foreground">
+            {t("ourVillas")}
           </Link>
           <span className="text-border">/</span>
           <span className="text-foreground">{property.name}</span>
@@ -94,7 +99,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
                 className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-lg bg-white/90 px-4 py-2 text-sm font-semibold text-navy shadow-lg backdrop-blur-sm"
               >
                 <Globe2 className="h-4 w-4" />
-                Explore 360
+                {t("explore360")}
               </button>
               {images.length > 1 ? (
                 <>
@@ -102,7 +107,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
                     type="button"
                     onClick={() => goTo(galleryIndex - 1)}
                     className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-lg"
-                    aria-label="Previous photo"
+                    aria-label={t("previousPhoto")}
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </button>
@@ -110,7 +115,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
                     type="button"
                     onClick={() => goTo(galleryIndex + 1)}
                     className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-lg"
-                    aria-label="Next photo"
+                    aria-label={t("nextPhoto")}
                   >
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -120,7 +125,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
 
             <Button variant="outline" className="mt-3 w-full bg-card py-3 md:mt-4" onClick={openTour}>
               <Globe2 className="h-4 w-4" />
-              Explore in 360
+              {t("exploreIn360")}
             </Button>
 
             <div className="mt-5 md:mt-8">
@@ -143,13 +148,13 @@ export function RoomDetailClient({ property }: { property: Property }) {
               <div className="mt-4 flex flex-wrap gap-2 md:mt-6 md:gap-3">
                 <span className="flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-xs text-muted-foreground md:px-3 md:py-1.5 md:text-sm">
                   <Users className="h-4 w-4" />
-                  {property.maxGuests} guests
+                  {t("guests", { count: property.maxGuests })}
                 </span>
                 <span className="rounded-lg bg-muted px-2 py-1 text-xs text-muted-foreground md:px-3 md:py-1.5 md:text-sm">
-                  {property.bedrooms} bedroom{property.bedrooms > 1 ? "s" : ""}
+                  {t("bedrooms", { count: property.bedrooms })}
                 </span>
                 <span className="rounded-lg bg-muted px-2 py-1 text-xs text-muted-foreground md:px-3 md:py-1.5 md:text-sm">
-                  {property.bathrooms} bathroom{property.bathrooms > 1 ? "s" : ""}
+                  {t("bathrooms", { count: property.bathrooms })}
                 </span>
                 <span className="rounded-lg bg-muted px-2 py-1 text-xs text-muted-foreground md:px-3 md:py-1.5 md:text-sm">
                   {property.area} m²
@@ -161,7 +166,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
             </div>
 
             <section className="mt-8">
-              <h2 className="text-lg font-semibold text-foreground">Amenities</h2>
+              <h2 className="text-lg font-semibold text-foreground">{navT("amenities")}</h2>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {property.amenities.map((amenity) => (
                   <div key={amenity} className="text-sm text-muted-foreground">
@@ -179,7 +184,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
 
             {socialProof && socialProof.reviews.length > 0 ? (
               <section className="mt-10">
-                <h2 className="text-lg font-semibold text-foreground">What Guests Say</h2>
+                <h2 className="text-lg font-semibold text-foreground">{t("whatGuestsSay")}</h2>
                 <div className="mt-4">
                   <ReviewCarousel reviews={socialProof.reviews} />
                 </div>

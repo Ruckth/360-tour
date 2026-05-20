@@ -2,15 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { Check, Minus, Plus, X } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { BookingDatePicker } from "@/components/booking/BookingDatePicker";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { getConclusionForProperty } from "@/lib/data/tourflow";
-import { dateToIso, todayIsoLocal } from "@/lib/booking/dates";
+import { dateToIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
 import type { Property } from "@/lib/data/properties";
+import { localizeHref } from "@/i18n/routing";
 
 export function TourConclusion({
   property,
@@ -22,31 +22,34 @@ export function TourConclusion({
   onLead: () => void;
 }) {
   const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations("Booking");
+  const navT = useTranslations("Nav");
   const conclusion = getConclusionForProperty(property.id);
   const [checkIn, setCheckIn] = useState("");
-  const [nights, setNights] = useState(1);
+  const [checkOut, setCheckOut] = useState("");
   const [adults, setAdults] = useState(Math.min(2, property.maxGuests));
   const [children, setChildren] = useState(0);
   const totalGuests = adults + children;
+  const nights = nightsBetweenIso(checkIn, checkOut);
   if (!conclusion) return null;
 
   function book() {
     const params = new URLSearchParams({ unit: property.id });
-    if (checkIn) params.set("checkin", checkIn);
-    params.set("nights", String(nights));
+    if (checkIn && checkOut && nights > 0) {
+      params.set("checkin", checkIn);
+      params.set("checkout", checkOut);
+      params.set("nights", String(nights));
+    }
     params.set("adults", String(adults));
     if (children > 0) params.set("children", String(children));
     params.set("guests", String(totalGuests));
-    router.push(`/booking?${params.toString()}`);
+    router.push(localizeHref(`/booking?${params.toString()}`, locale));
   }
 
   function isArrivalDisabled(date: Date) {
     const iso = dateToIso(date);
     return iso < todayIsoLocal();
-  }
-
-  function updateNights(value: number) {
-    setNights(Math.max(1, Math.min(60, Math.floor(value) || 1)));
   }
 
   function updateAdults(value: number) {
@@ -68,7 +71,7 @@ export function TourConclusion({
         size="icon"
         onClick={onClose}
         className="fixed right-4 top-4 z-40 h-11 w-11 rounded-full bg-white/15 text-white shadow-lg shadow-black/30 backdrop-blur-md hover:bg-white/25 hover:text-white md:right-6 md:top-6"
-        aria-label="Back to tour"
+        aria-label={t("backToTour")}
       >
         <X className="h-5 w-5" />
       </Button>
@@ -102,34 +105,34 @@ export function TourConclusion({
           ))}
         </ul>
         <div className="mt-5 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div>
             <div className="[&_button]:border-white/15 [&_button]:bg-white/10 [&_button]:text-white [&_label]:text-xs [&_label]:font-medium [&_label]:uppercase [&_label]:tracking-wider [&_label]:text-white/50">
               <BookingDatePicker
-                label="Select date"
-                value={checkIn}
-                onChange={setCheckIn}
+                checkIn={checkIn}
+                checkOut={checkOut}
+                onChange={(range) => {
+                  setCheckIn(range.checkIn);
+                  setCheckOut(range.checkOut);
+                }}
                 isDateDisabled={isArrivalDisabled}
-                placeholder="Arrival"
+                helperText={
+                  checkIn && !checkOut
+                    ? t("selectCheckout")
+                    : nights > 0
+                      ? t("nightsSelected", { count: nights })
+                      : undefined
+                }
               />
             </div>
-            <Label className="text-xs font-medium uppercase tracking-wider text-white/50">
-              Nights
-              <Input
-                type="number"
-                min={1}
-                max={60}
-                value={nights}
-                onChange={(event) => updateNights(Number(event.target.value))}
-                className="mt-1 border-white/15 bg-white/10 text-sm text-white [color-scheme:dark]"
-              />
-            </Label>
           </div>
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/50">Guests</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-white/50">
+              {t("guests")}
+            </p>
             <div className="space-y-2">
               {[
-                { label: "Adults", value: adults, min: 1, update: updateAdults },
-                { label: "Children", value: children, min: 0, update: updateChildren },
+                { label: t("adults"), value: adults, min: 1, update: updateAdults },
+                { label: t("children"), value: children, min: 0, update: updateChildren },
               ].map((item) => (
                 <div key={item.label} className="flex items-center justify-between rounded-xl border border-white/15 bg-white/10 px-3 py-2">
                   <span className="text-sm font-medium text-white">{item.label}</span>
@@ -161,8 +164,13 @@ export function TourConclusion({
             </div>
           </div>
         </div>
-        <Button variant="gold" className="mt-6 w-full rounded-2xl py-3.5" onClick={book}>
-          Book
+        <Button
+          variant="gold"
+          className="mt-6 w-full rounded-2xl py-3.5"
+          onClick={book}
+          disabled={Boolean(checkIn && !checkOut)}
+        >
+          {navT("book")}
         </Button>
         <div className="mt-3 text-center">
           <button
@@ -170,7 +178,7 @@ export function TourConclusion({
             className="text-sm text-white/50 transition hover:text-white/80"
             onClick={onLead}
           >
-            Save This Dream
+            {t("saveThisDream")}
           </button>
         </div>
         <p className="mt-6 text-center font-serif text-sm italic text-white/40">

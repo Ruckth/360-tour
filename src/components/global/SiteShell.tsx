@@ -8,13 +8,7 @@ import { resort } from "@/lib/data/resort-config";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-export function SiteShell({
-  children,
-  clerkEnabled = false,
-}: {
-  children: ReactNode;
-  clerkEnabled?: boolean;
-}) {
+export function SiteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   if (pathname.startsWith("/admin")) {
@@ -23,7 +17,7 @@ export function SiteShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader clerkEnabled={clerkEnabled} />
+      <SiteHeader />
       <ChatContextProvider>
         <main className="flex-1">{children}</main>
         <SiteFooter />

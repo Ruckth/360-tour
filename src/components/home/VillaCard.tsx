@@ -1,12 +1,14 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { StarRating } from "@/components/social/StarRating";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { resort } from "@/lib/data/resort-config";
+import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { Property } from "@/lib/data/properties";
 import type { PropertySocialProof } from "@/lib/data/reviews";
 import { clampIndex, isHorizontalSwipe, swipeDirection, type SwipePoint } from "@/lib/interaction/swipe";
@@ -21,6 +23,9 @@ export function VillaCard({
   socialProof?: PropertySocialProof;
   storyTagline?: string;
 }) {
+  const t = useTranslations("Villa");
+  const activeLocale = useLocale();
+  const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const [index, setIndex] = useState(0);
   const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
   const images = property.images.length ? property.images : [resort.heroImage];
@@ -66,7 +71,7 @@ export function VillaCard({
           {resort.currencySymbol}
           {property.pricePerNight.toLocaleString()}
           <span className="text-[10px] font-normal text-white/60 md:text-xs">
-            /night
+            {t("perNight")}
           </span>
         </div>
 
@@ -131,13 +136,13 @@ export function VillaCard({
         <div className="mt-4 flex flex-wrap gap-2">
           <Badge variant="gold">
             <Users className="h-4 w-4" />
-            {property.maxGuests} guests
+            {t("guests", { count: property.maxGuests })}
           </Badge>
           <Badge variant="gold">
-            {property.bedrooms} bed{property.bedrooms > 1 ? "s" : ""}
+            {t("bedroomsShort", { count: property.bedrooms })}
           </Badge>
           <Badge variant="gold">
-            {property.bathrooms} bath{property.bathrooms > 1 ? "s" : ""}
+            {t("bathroomsShort", { count: property.bathrooms })}
           </Badge>
           <Badge variant="gold">
             {property.area} m²
@@ -145,16 +150,16 @@ export function VillaCard({
         </div>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-          <ButtonLink href={`/rooms/${property.id}?tour=1`} className="w-full sm:flex-1">
+          <ButtonLink href={localizeHref(`/rooms/${property.id}?tour=1`, locale)} className="w-full sm:flex-1">
             <Globe2 className="h-4 w-4" />
-            Explore 360
+            {t("explore360")}
           </ButtonLink>
           <ButtonLink
-            href={`/rooms/${property.id}`}
+            href={localizeHref(`/rooms/${property.id}`, locale)}
             variant="outline"
             className="w-full sm:flex-1"
           >
-            View Details
+            {t("viewDetails")}
           </ButtonLink>
         </div>
       </div>

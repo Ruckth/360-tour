@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import { BookingDatePicker } from "@/components/booking/BookingDatePicker";
 import { BookingPriceSummary } from "@/components/booking/BookingPriceSummary";
@@ -16,8 +17,6 @@ import { VillaSelector } from "@/components/booking/VillaSelector";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   bookingSteps,
   getHighestAllowedStepIndex,
@@ -44,6 +43,7 @@ import {
   listLiveProperties,
 } from "@/lib/react/convex-api";
 import { useOptionalConvex } from "@/lib/react/convex";
+import { localizeHref } from "@/i18n/routing";
 
 const demoInventory: BookingProperty[] = demoProperties.map((property) => ({
   ...property,
@@ -72,13 +72,19 @@ export function BookingFunnel({
   initialProperty?: string;
 }) {
   const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations("Booking");
   const convex = useOptionalConvex();
   const todayIso = todayIsoLocal();
   const parsedInitialGuests = Number(initialGuests);
   const parsedInitialNights = Number(initialNights);
   const parsedInitialAdults = Number(initialAdults);
   const parsedInitialChildren = Number(initialChildren);
-  const derivedInitialNights = nightsBetweenIso(initialCheckIn, initialCheckOut);
+  const derivedInitialCheckOut =
+    initialCheckOut ||
+    (initialCheckIn && Number.isFinite(parsedInitialNights) && parsedInitialNights > 0
+      ? addDaysIso(initialCheckIn, Math.floor(parsedInitialNights))
+      : "");
   const startingTotalGuests =
     Number.isFinite(parsedInitialGuests) ? Math.max(1, Math.floor(parsedInitialGuests)) : 1;
   const startingChildren =
@@ -93,20 +99,14 @@ export function BookingFunnel({
   const [propertyList, setPropertyList] = useState<BookingProperty[]>(demoInventory);
   const [selectedId, setSelectedId] = useState(initialProperty);
   const [checkIn, setCheckIn] = useState(initialCheckIn);
-  const [nights, setNights] = useState(
-    Number.isFinite(parsedInitialNights) && parsedInitialNights > 0
-      ? Math.floor(parsedInitialNights)
-      : Math.max(derivedInitialNights, 1),
-  );
+  const [checkOut, setCheckOut] = useState(derivedInitialCheckOut);
   const [adults, setAdults] = useState(startingAdults);
   const [children, setChildren] = useState(startingChildren);
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [notice, setNotice] = useState(
-    convex
-      ? "Checking live inventory and availability..."
-      : "Demo booking mode is ready. Connect Convex to check live availability.",
+    convex ? t("liveInventoryNotice") : t("demoReadyNotice"),
   );
   const [blockedByProperty, setBlockedByProperty] = useState<Record<string, string[]>>({});
   const [loadingInventory, setLoadingInventory] = useState(Boolean(convex));
@@ -163,7 +163,7 @@ export function BookingFunnel({
         } else {
           setPropertyList(demoInventory);
           setBookingMode("demo");
-          setNotice("Live inventory is not seeded yet, so demo booking mode is active.");
+          setNotice(t("demoSeedNotice"));
         }
         setBlockedByProperty((blocked ?? {}) as Record<string, string[]>);
       } catch {
@@ -171,7 +171,7 @@ export function BookingFunnel({
         setPropertyList(demoInventory);
         setBlockedByProperty({});
         setBookingMode("demo");
-        setNotice("Live availability is temporarily unavailable, so demo booking mode is active.");
+        setNotice(t("demoUnavailableNotice"));
       } finally {
         if (active) setLoadingInventory(false);
       }
@@ -181,7 +181,7 @@ export function BookingFunnel({
     return () => {
       active = false;
     };
-  }, [convex, todayIso]);
+  }, [convex, t, todayIso]);
 
   const property = propertyList.find((item) => item.slug === selectedId) ?? propertyList[0];
   const propertyId = property._id;
@@ -190,7 +190,7 @@ export function BookingFunnel({
     [blockedByProperty, propertyId],
   );
   const blockedDateSet = useMemo(() => new Set(propertyBlockedDates), [propertyBlockedDates]);
-  const checkOut = checkIn && nights > 0 ? addDaysIso(checkIn, nights) : "";
+  const nights = nightsBetweenIso(checkIn, checkOut);
   const guests = adults + children;
   const quote = calculateBookingQuote({
     pricePerNight: property.pricePerNight,
@@ -200,7 +200,7 @@ export function BookingFunnel({
   });
   const conflicts = rangeIntersectsDates(propertyBlockedDates, checkIn, checkOut);
   const infoValid = isValidGuestInfo(guestName, guestEmail, guestPhone);
-  const invalidRange = Boolean(checkIn && nights <= 0);
+  const invalidRange = Boolean(checkIn && checkOut && nights <= 0);
   const selectedStepIndex = bookingSteps.findIndex((item) => item.key === step);
   const selectValid = Boolean(property && checkIn && checkOut && nights > 0 && !invalidRange && !conflicts && !loadingInventory);
   const guestsValid = adults >= 1 && children >= 0 && guests >= 1 && guests <= property.maxGuests;
@@ -210,9 +210,13 @@ export function BookingFunnel({
     infoValid,
   });
   const nightHelperText =
-    nights > 0
-      ? `${nights} night${nights > 1 ? "s" : ""} selected.`
-      : "Select an arrival date and number of nights.";
+    !checkIn
+      ? t("chooseDates")
+      : !checkOut
+        ? t("selectCheckout")
+        : nights > 0
+          ? t("nightsSelected", { count: nights })
+          : t("checkoutAfterCheckin");
 
   useEffect(() => {
     if (selectedStepIndex > highestAllowedStepIndex) {
@@ -231,7 +235,7 @@ export function BookingFunnel({
     return ids;
   }, [blockedByProperty, checkIn, checkOut, propertyList]);
 
-  function isCheckInDisabled(date: Date) {
+  function isStayDateDisabled(date: Date) {
     const iso = dateToIso(date);
     return iso < todayIso || isDateInIsoList(date, blockedDateSet);
   }
@@ -239,7 +243,7 @@ export function BookingFunnel({
   function selectProperty(item: BookingProperty) {
     setError("");
     if (!availablePropertyIds.has(item.slug)) {
-      setDateWarning(`${item.name} is not available for those dates. Pick another villa or change dates.`);
+      setDateWarning(t("notAvailableShort", { propertyName: item.name }));
       return;
     }
     setSelectedId(item.slug);
@@ -250,15 +254,10 @@ export function BookingFunnel({
     setDateWarning("");
   }
 
-  function updateCheckIn(value: string) {
+  function updateDateRange(range: { checkIn: string; checkOut: string }) {
     setError("");
-    setCheckIn(value);
-    setDateWarning("");
-  }
-
-  function updateNights(value: number) {
-    setError("");
-    setNights(Math.max(1, Math.min(60, Math.floor(value) || 1)));
+    setCheckIn(range.checkIn);
+    setCheckOut(range.checkOut);
     setDateWarning("");
   }
 
@@ -283,19 +282,19 @@ export function BookingFunnel({
   async function submitBooking() {
     setError("");
     if (!selectValid || !guestsValid || !infoValid) {
-      setError("Please complete valid dates and guest details before payment.");
+      setError(t("completeBeforePayment"));
       return;
     }
 
     setSubmitting(true);
     try {
       if (bookingMode !== "live" || !convex) {
-        router.push("/booking/pay?bookingId=demo");
+        router.push(localizeHref("/booking/pay?bookingId=demo", locale));
         return;
       }
 
       if (!property._id || property.source !== "live") {
-        throw new Error("Live booking is not available for this villa. Please refresh and try again.");
+        throw new Error(t("liveBookingUnavailable"));
       }
 
       const available = await isPropertyAvailable(convex, {
@@ -304,7 +303,7 @@ export function BookingFunnel({
         checkOut,
       });
       if (!available) {
-        throw new Error("These dates are no longer available. Please choose different dates.");
+        throw new Error(t("datesNoLongerAvailable"));
       }
 
       const result = await createBooking(convex, {
@@ -318,10 +317,13 @@ export function BookingFunnel({
       });
 
       router.push(
-        `/booking/pay?bookingId=${encodeURIComponent(result.bookingId)}&token=${encodeURIComponent(result.accessToken)}`,
+        localizeHref(
+          `/booking/pay?bookingId=${encodeURIComponent(result.bookingId)}&token=${encodeURIComponent(result.accessToken)}`,
+          locale,
+        ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create booking. Please try again.");
+      setError(err instanceof Error ? err.message : t("unableToCreate"));
     } finally {
       setSubmitting(false);
     }
@@ -331,10 +333,10 @@ export function BookingFunnel({
     <div className="mx-auto max-w-6xl px-4 py-24 md:px-6">
       <div className="mb-8">
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold">
-          Direct Booking
+          {t("directBooking")}
         </p>
         <h1 className="mt-3 font-serif text-4xl font-semibold text-foreground">
-          Reserve your villa
+          {t("reserveTitle")}
         </h1>
         {notice ? (
           <p className="mt-3 max-w-2xl text-sm text-muted-foreground">{notice}</p>
@@ -342,7 +344,7 @@ export function BookingFunnel({
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-        <Card className="p-5 md:p-7">
+        <Card className="min-w-0 p-5 md:p-7">
           <BookingStepNav
             currentStep={step}
             highestAllowedStepIndex={highestAllowedStepIndex}
@@ -353,34 +355,19 @@ export function BookingFunnel({
             <div className="space-y-5">
               {loadingInventory ? (
                 <Alert>
-                  <AlertTitle>Checking availability</AlertTitle>
-                  <AlertDescription>Loading villas and blocked dates...</AlertDescription>
+                  <AlertTitle>{t("checkingAvailability")}</AlertTitle>
+                  <AlertDescription>{t("loadingInventory")}</AlertDescription>
                 </Alert>
               ) : null}
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4">
                 <BookingDatePicker
-                  label="Select date"
-                  value={checkIn}
-                  onChange={updateCheckIn}
-                  isDateDisabled={isCheckInDisabled}
-                  placeholder="Choose arrival date"
+                  checkIn={checkIn}
+                  checkOut={checkOut}
+                  onChange={updateDateRange}
+                  isDateDisabled={isStayDateDisabled}
+                  helperText={invalidRange ? t("checkoutAfterCheckin") : nightHelperText}
                 />
-                <div className="space-y-2">
-                  <Label htmlFor="booking-nights">Nights</Label>
-                  <Input
-                    id="booking-nights"
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={nights}
-                    onChange={(event) => updateNights(Number(event.target.value))}
-                    className="h-12 font-medium"
-                  />
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    {invalidRange ? "Enter at least 1 night." : nightHelperText}
-                  </p>
-                </div>
               </div>
 
               <VillaSelector
@@ -441,16 +428,16 @@ export function BookingFunnel({
           <div className="mt-8 flex justify-between gap-3">
             <Button variant="outline" onClick={previous} disabled={step === "select"}>
               <ArrowLeft className="h-4 w-4" />
-              Back
+              {t("back")}
             </Button>
             {step === "review" ? (
               <Button onClick={submitBooking} disabled={submitting || highestAllowedStepIndex < 3}>
                 <CreditCard className="h-4 w-4" />
-                {submitting ? "Checking..." : "Continue to Pay"}
+                {submitting ? t("checking") : t("continueToPay")}
               </Button>
             ) : (
               <Button onClick={next} disabled={!currentStepValid()}>
-                Continue
+                {t("continue")}
               </Button>
             )}
           </div>

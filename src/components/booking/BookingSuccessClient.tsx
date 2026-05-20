@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { localizeHref } from "@/i18n/routing";
 import { getPublicBooking, type PublicBooking } from "@/lib/react/convex-api";
 import { useOptionalConvex } from "@/lib/react/convex";
 
@@ -15,6 +17,8 @@ export function BookingSuccessClient({
   bookingId: string;
   accessToken: string;
 }) {
+  const locale = useLocale();
+  const t = useTranslations("Booking");
   const convex = useOptionalConvex();
   const isDemo = bookingId === "demo";
   const [booking, setBooking] = useState<PublicBooking | null>(null);
@@ -29,12 +33,12 @@ export function BookingSuccessClient({
         return;
       }
       if (!convex) {
-        setError("Live booking verification is unavailable. Please keep your payment reference and contact the host.");
+        setError(t("successVerificationUnavailable"));
         setLoading(false);
         return;
       }
       if (!accessToken) {
-        setError("This confirmation link is missing its secure access token.");
+        setError(t("missingConfirmationToken"));
         setLoading(false);
         return;
       }
@@ -47,14 +51,14 @@ export function BookingSuccessClient({
         });
         if (!active) return;
         if (!result) {
-          setError("Booking not found.");
+          setError(t("bookingNotFound"));
         } else {
           setBooking(result);
           setError("");
         }
       } catch (err) {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Unable to verify this booking.");
+        setError(err instanceof Error ? err.message : t("unableToVerify"));
       } finally {
         if (active) setLoading(false);
       }
@@ -63,7 +67,7 @@ export function BookingSuccessClient({
     return () => {
       active = false;
     };
-  }, [accessToken, bookingId, convex, isDemo]);
+  }, [accessToken, bookingId, convex, isDemo, t]);
 
   const confirmed = isDemo || (booking?.paymentStatus === "paid" && booking.status === "confirmed");
 
@@ -78,15 +82,15 @@ export function BookingSuccessClient({
           )}
         </div>
         <h1 className="mt-5 font-serif text-3xl font-semibold text-foreground">
-          {loading ? "Verifying booking" : confirmed ? "Booking confirmed" : "Booking not confirmed"}
+          {loading ? t("verifyingBooking") : confirmed ? t("bookingConfirmed") : t("bookingNotConfirmed")}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           {confirmed
-            ? "Your reservation request is confirmed. The host can follow up with arrival details, airport pickup, and any special requests."
-            : "We could not verify a paid booking from this link."}
+            ? t("confirmedCopy")
+            : t("notConfirmedCopy")}
         </p>
         <p className="mt-4 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
-          Reference: {booking?.confirmationCode ?? bookingId}
+          {t("reference", { reference: booking?.confirmationCode ?? bookingId })}
         </p>
         {error ? (
           <Alert variant="destructive" className="mt-4 text-left">
@@ -95,13 +99,13 @@ export function BookingSuccessClient({
         ) : null}
         <div className="mt-6 grid gap-3">
           <Button asChild>
-            <Link href="/">Return Home</Link>
+            <Link href={localizeHref("/", locale)}>{t("returnHome")}</Link>
           </Button>
           <Link
-            href="/#villas"
+            href={localizeHref("/#villas", locale)}
             className="text-sm font-medium text-muted-foreground transition hover:text-foreground"
           >
-            Explore more villas
+            {t("exploreMoreVillas")}
           </Link>
         </div>
       </div>

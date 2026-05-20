@@ -1,5 +1,9 @@
+"use client";
+
 import { Check, ShieldCheck } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { localizeHref } from "@/i18n/routing";
 import { getMaxSavingsForProperty, getPricingByPropertyId } from "@/lib/data/pricing";
 import { resort } from "@/lib/data/resort-config";
 
@@ -10,6 +14,8 @@ export function PriceComparison({
   propertyId: string;
   onOpen360?: () => void;
 }) {
+  const locale = useLocale();
+  const t = useTranslations("Villa");
   const pricing = getPricingByPropertyId(propertyId);
   if (!pricing) return null;
   const savings = getMaxSavingsForProperty(propertyId, 3);
@@ -19,16 +25,16 @@ export function PriceComparison({
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
-            Direct Rate
+            {t("directRate")}
           </p>
           <p className="mt-1 text-3xl font-bold text-foreground">
             {resort.currencySymbol}
             {pricing.directRate.toLocaleString()}
           </p>
-          <p className="text-sm text-muted-foreground">per night</p>
+          <p className="text-sm text-muted-foreground">{t("perNightWords")}</p>
         </div>
         <div className="rounded-full bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
-          Save ฿{savings.toLocaleString()}
+          {t("saveAmount", { amount: savings.toLocaleString() })}
         </div>
       </div>
       <div className="mt-5 space-y-2">
@@ -45,14 +51,14 @@ export function PriceComparison({
       </div>
       <div className="mt-5 grid gap-2">
         <a
-          href={`/booking?unit=${propertyId}`}
+          href={localizeHref(`/booking?unit=${propertyId}`, locale)}
           className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
         >
-          Book Direct
+          {t("bookDirect")}
         </a>
         {onOpen360 ? (
           <Button variant="outline" onClick={onOpen360} className="w-full">
-            Explore 360 First
+            {t("explore360First")}
           </Button>
         ) : null}
       </div>

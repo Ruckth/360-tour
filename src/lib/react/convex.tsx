@@ -9,10 +9,33 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexProvider, ConvexReactClient, useConvexAuth } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 
 const ConvexClientContext = createContext<ConvexReactClient | null>(null);
+const OptionalConvexAuthContext = createContext({
+  isConfigured: false,
+  isAuthEnabled: false,
+  isLoading: false,
+  isAuthenticated: false,
+});
+
+function ConvexAuthStateProvider({ children }: { children: ReactNode }) {
+  const auth = useConvexAuth();
+
+  return (
+    <OptionalConvexAuthContext.Provider
+      value={{
+        isConfigured: true,
+        isAuthEnabled: true,
+        isLoading: auth.isLoading,
+        isAuthenticated: auth.isAuthenticated,
+      }}
+    >
+      {children}
+    </OptionalConvexAuthContext.Provider>
+  );
+}
 
 export function OptionalConvexProvider({
   convexUrl,
@@ -29,14 +52,27 @@ export function OptionalConvexProvider({
   }, [convexUrl]);
 
   if (!client) {
-    return <ConvexClientContext.Provider value={null}>{children}</ConvexClientContext.Provider>;
+    return (
+      <ConvexClientContext.Provider value={null}>
+        <OptionalConvexAuthContext.Provider
+          value={{
+            isConfigured: false,
+            isAuthEnabled: clerkEnabled,
+            isLoading: false,
+            isAuthenticated: false,
+          }}
+        >
+          {children}
+        </OptionalConvexAuthContext.Provider>
+      </ConvexClientContext.Provider>
+    );
   }
 
   if (clerkEnabled) {
     return (
       <ConvexProviderWithClerk client={client} useAuth={useAuth}>
         <ConvexClientContext.Provider value={client}>
-          {children}
+          <ConvexAuthStateProvider>{children}</ConvexAuthStateProvider>
         </ConvexClientContext.Provider>
       </ConvexProviderWithClerk>
     );
@@ -45,7 +81,16 @@ export function OptionalConvexProvider({
   return (
     <ConvexProvider client={client}>
       <ConvexClientContext.Provider value={client}>
-        {children}
+        <OptionalConvexAuthContext.Provider
+          value={{
+            isConfigured: true,
+            isAuthEnabled: false,
+            isLoading: false,
+            isAuthenticated: true,
+          }}
+        >
+          {children}
+        </OptionalConvexAuthContext.Provider>
       </ConvexClientContext.Provider>
     </ConvexProvider>
   );
@@ -53,6 +98,10 @@ export function OptionalConvexProvider({
 
 export function useOptionalConvex() {
   return useContext(ConvexClientContext);
+}
+
+export function useOptionalConvexAuth() {
+  return useContext(OptionalConvexAuthContext);
 }
 
 export function useConvexQuery<T>(

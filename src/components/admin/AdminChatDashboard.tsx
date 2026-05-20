@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useOptionalConvex } from "@/lib/react/convex";
+import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
@@ -92,6 +92,7 @@ function truncate(value?: string, max = 96) {
 
 export function AdminChatDashboard() {
   const convex = useOptionalConvex();
+  const convexAuth = useOptionalConvexAuth();
   const { isLoaded, isSignedIn, user } = useUser();
   const [status, setStatus] = useState<SessionStatus>("active");
   const [propertySlug, setPropertySlug] = useState("");
@@ -108,9 +109,12 @@ export function AdminChatDashboard() {
     () => sessions.find((session) => session._id === selectedSessionId) ?? transcript?.session ?? null,
     [selectedSessionId, sessions, transcript],
   );
+  const canQueryAdmin =
+    Boolean(convex && isSignedIn) &&
+    (!convexAuth.isAuthEnabled || convexAuth.isAuthenticated);
 
   useEffect(() => {
-    if (!convex || !isSignedIn) return;
+    if (!convex || !canQueryAdmin) return;
 
     let active = true;
     setLoadingSessions(true);
@@ -139,10 +143,10 @@ export function AdminChatDashboard() {
     return () => {
       active = false;
     };
-  }, [convex, isSignedIn, propertySlug, refreshKey, status]);
+  }, [canQueryAdmin, convex, propertySlug, refreshKey, status]);
 
   useEffect(() => {
-    if (!convex || !isSignedIn || !selectedSessionId) {
+    if (!convex || !canQueryAdmin || !selectedSessionId) {
       setTranscript(null);
       return;
     }
@@ -165,7 +169,7 @@ export function AdminChatDashboard() {
     return () => {
       active = false;
     };
-  }, [convex, isSignedIn, refreshKey, selectedSessionId]);
+  }, [canQueryAdmin, convex, refreshKey, selectedSessionId]);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -206,6 +210,35 @@ export function AdminChatDashboard() {
           <h1 className="font-serif text-3xl font-semibold">Convex is not configured</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Add `NEXT_PUBLIC_CONVEX_URL` so the admin dashboard can query chat sessions.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  if (convexAuth.isAuthEnabled && convexAuth.isLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-gold" />
+          Connecting secure admin session
+        </div>
+      </div>
+    );
+  }
+
+  if (convexAuth.isAuthEnabled && !convexAuth.isAuthenticated) {
+    return (
+      <div className="grid min-h-screen place-items-center px-5">
+        <section className="max-w-lg border border-border bg-card p-7 shadow-xl">
+          <Shield className="mb-5 h-8 w-8 text-gold" />
+          <h1 className="font-serif text-3xl font-semibold">
+            Convex auth is not connected
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Clerk is signed in, but Convex could not validate the Clerk token. Check
+            the Convex `CLERK_JWT_ISSUER_DOMAIN` environment variable and the Clerk
+            `convex` JWT template.
           </p>
         </section>
       </div>

@@ -1,7 +1,16 @@
+"use client";
+
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
+import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { resort } from "@/lib/data/resort-config";
 
 export function SiteFooter() {
+  const nav = useTranslations("Nav");
+  const footer = useTranslations("Footer");
+  const activeLocale = useLocale();
+  const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
+
   return (
     <footer className="border-t border-border bg-card">
       <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[1fr_auto] md:px-8">
@@ -17,11 +26,11 @@ export function SiteFooter() {
           </p>
         </div>
         <div className="flex flex-col gap-2 text-sm text-muted-foreground md:text-right">
-          <Link className="transition hover:text-foreground" href="/#villas">
-            Villas
+          <Link className="transition hover:text-foreground" href={localizeHref("/#villas", locale)}>
+            {nav("villas")}
           </Link>
-          <Link className="transition hover:text-foreground" href="/booking">
-            Book Direct
+          <Link className="transition hover:text-foreground" href={localizeHref("/booking", locale)}>
+            {footer("bookDirect")}
           </Link>
           <a className="transition hover:text-foreground" href={`mailto:${resort.contactEmail}`}>
             {resort.contactEmail}

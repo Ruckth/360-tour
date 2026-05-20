@@ -10,7 +10,8 @@ export const respond = action({
 	args: {
 		sessionId: v.id('chatSessions'),
 		userMessage: v.string(),
-		propertySlug: v.optional(v.string())
+		propertySlug: v.optional(v.string()),
+		locale: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.runQuery(api.chat.getSession, {
@@ -52,6 +53,10 @@ PRICING:
 
 STYLE:
 - Be warm, concise, and helpful
+- Detect the language of the latest visitor message and reply in that same language
+- If the latest visitor message language is unclear, reply in English
+- Keep resort facts, prices, villa names, cancellation rules, discounts, and booking rules exactly consistent with the data above
+- Do not translate villa names, price amounts, currency symbols, or booking rules into different facts
 - Use ฿ symbol for prices
 - Suggest the 360° virtual tour when relevant
 - If the guest seems ready to book, encourage them to use the booking form on the website
@@ -71,12 +76,12 @@ STYLE:
 		const complexity = classifyComplexity(args.userMessage);
 
 		const apiKey = process.env.AI_API_KEY;
-		const apiBase = process.env.AI_API_BASE_URL || 'https://api.openai.com/v1';
-		const simpleModel = process.env.AI_SIMPLE_MODEL || 'gpt-4o-mini';
-		const complexModel = process.env.AI_COMPLEX_MODEL || 'gpt-4o';
+		const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
+		const simpleModel = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+		const complexModel = process.env.AI_COMPLEX_MODEL || 'grok-4.3';
 
 		if (!apiKey) {
-			const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty);
+			const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale);
 			await ctx.runMutation(api.chat.addMessage, {
 				sessionId: args.sessionId,
 				role: 'assistant',

@@ -1,4 +1,8 @@
+"use client";
+
 import { MessageCircle } from "lucide-react";
+import { useLocale } from "next-intl";
+import { localizeHref } from "@/i18n/routing";
 
 export function MessagingButtons({
   whatsappNumber,
@@ -7,6 +11,7 @@ export function MessagingButtons({
   whatsappNumber: string;
   lineId?: string;
 }) {
+  const locale = useLocale();
   const cleanNumber = whatsappNumber.replace(/[^\d]/g, "");
 
   return (
@@ -21,7 +26,7 @@ export function MessagingButtons({
         WhatsApp
       </a>
       <a
-        href={lineId ? `https://line.me/R/ti/p/${encodeURIComponent(lineId)}` : "/#contact"}
+        href={lineId ? `https://line.me/R/ti/p/${encodeURIComponent(lineId)}` : localizeHref("/#contact", locale)}
         target={lineId ? "_blank" : undefined}
         rel={lineId ? "noreferrer" : undefined}
         className="inline-flex items-center justify-center rounded-lg bg-lime-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-lime-500"

@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, Mail, Minus, Phone, Plus, Shield, User } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ export function GuestCountsPanel({
   onChangeAdults: (guests: number) => void;
   onChangeChildren: (guests: number) => void;
 }) {
+  const t = useTranslations("Booking");
   const totalGuests = adults + childCount;
   const remainingCapacity = Math.max(0, property.maxGuests - totalGuests);
 
@@ -41,15 +43,15 @@ export function GuestCountsPanel({
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-foreground">Guests</h2>
+      <h2 className="text-xl font-semibold text-foreground">{t("guests")}</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        {property.name} hosts up to {property.maxGuests} guests.
+        {t("guestCapacity", { propertyName: property.name, count: property.maxGuests })}
       </p>
       <div className="mt-6 space-y-3">
         <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-4">
           <div>
-            <p className="text-sm font-semibold text-foreground">Adults</p>
-            <p className="text-xs text-muted-foreground">Age 13+</p>
+            <p className="text-sm font-semibold text-foreground">{t("adults")}</p>
+            <p className="text-xs text-muted-foreground">{t("adultsAge")}</p>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="icon" onClick={() => updateAdults(adults - 1)} disabled={adults <= 1}>
@@ -68,8 +70,8 @@ export function GuestCountsPanel({
         </div>
         <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-4">
           <div>
-            <p className="text-sm font-semibold text-foreground">Children</p>
-            <p className="text-xs text-muted-foreground">Age 0-12</p>
+            <p className="text-sm font-semibold text-foreground">{t("children")}</p>
+            <p className="text-xs text-muted-foreground">{t("childrenAge")}</p>
           </div>
           <div className="flex items-center gap-3">
             <Button
@@ -93,7 +95,7 @@ export function GuestCountsPanel({
         </div>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
-        {totalGuests} total guest{totalGuests > 1 ? "s" : ""}.
+        {t("totalGuests", { count: totalGuests })}
       </p>
     </div>
   );
@@ -114,11 +116,12 @@ export function GuestDetailsPanel({
   onGuestEmailChange: (value: string) => void;
   onGuestPhoneChange: (value: string) => void;
 }) {
+  const t = useTranslations("Booking");
   const fields = [
     {
       id: "booking-guest-name",
       icon: User,
-      label: "Full name",
+      label: t("fullName"),
       value: guestName,
       set: onGuestNameChange,
       type: "text",
@@ -127,7 +130,7 @@ export function GuestDetailsPanel({
     {
       id: "booking-guest-email",
       icon: Mail,
-      label: "Email",
+      label: t("email"),
       value: guestEmail,
       set: onGuestEmailChange,
       type: "email",
@@ -136,7 +139,7 @@ export function GuestDetailsPanel({
     {
       id: "booking-guest-phone",
       icon: Phone,
-      label: "Phone / WhatsApp",
+      label: t("phone"),
       value: guestPhone,
       set: onGuestPhoneChange,
       type: "tel",
@@ -146,7 +149,7 @@ export function GuestDetailsPanel({
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-foreground">Guest details</h2>
+      <h2 className="text-xl font-semibold text-foreground">{t("guestDetails")}</h2>
       {fields.map((field) => {
         const Icon = field.icon;
         return (
@@ -185,18 +188,22 @@ export function ReviewPanel({
   checkOut: string;
   bookingMode: BookingMode;
 }) {
+  const t = useTranslations("Booking");
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-foreground">Review and pay</h2>
+      <h2 className="text-xl font-semibold text-foreground">{t("reviewPay")}</h2>
       <div className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
-        {property.name}, {guests} guest{guests > 1 ? "s" : ""}, {nights} night
-        {nights > 1 ? "s" : ""}, {formatDisplayDate(checkIn)} to {formatDisplayDate(checkOut)}.
+        {t("reviewSummary", {
+          propertyName: property.name,
+          guests,
+          nights,
+          checkIn: formatDisplayDate(checkIn),
+          checkOut: formatDisplayDate(checkOut),
+        })}
       </div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Shield className="h-4 w-4 text-gold" />
-        {bookingMode === "live"
-          ? "Your booking will be checked once more before payment."
-          : "Demo payment will not create a live booking."}
+        {bookingMode === "live" ? t("livePaymentNote") : t("demoPaymentNote")}
       </div>
     </div>
   );
@@ -215,6 +222,7 @@ export function DateStatus({
   nights: number;
   discountPercent: number;
 }) {
+  const t = useTranslations("Booking");
   return (
     <>
       {dateWarning ? (
@@ -224,16 +232,16 @@ export function DateStatus({
       ) : null}
       {conflicts ? (
         <Alert variant="destructive">
-          <AlertTitle>Dates blocked</AlertTitle>
+          <AlertTitle>{t("datesBlocked")}</AlertTitle>
           <AlertDescription>
-            {propertyName} is not available for part of this stay. Please choose another villa or date range.
+            {t("notAvailable", { propertyName })}
           </AlertDescription>
         </Alert>
       ) : null}
       {nights > 0 && !conflicts ? (
         <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
           <CheckCircle2 className="h-4 w-4 text-gold" />
-          {nights} night{nights > 1 ? "s" : ""} selected. Direct booking saves {discountPercent}%.
+          {t("directSavings", { count: nights, discountPercent })}
         </div>
       ) : null}
     </>

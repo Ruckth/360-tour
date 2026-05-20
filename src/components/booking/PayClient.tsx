@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreditCard, ShieldCheck } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { localizeHref } from "@/i18n/routing";
 import { getPublicBooking, type PublicBooking } from "@/lib/react/convex-api";
 import { useOptionalConvex } from "@/lib/react/convex";
 
@@ -17,6 +19,8 @@ export function PayClient({
   accessToken?: string;
 }) {
   const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations("Booking");
   const convex = useOptionalConvex();
   const isDemo = bookingId === "demo";
   const [loading, setLoading] = useState(false);
@@ -32,12 +36,12 @@ export function PayClient({
         return;
       }
       if (!convex) {
-        setError("Live booking verification is unavailable. Please try again when the booking service is connected.");
+        setError(t("liveVerificationUnavailable"));
         setChecking(false);
         return;
       }
       if (!accessToken) {
-        setError("This booking link is missing its secure access token.");
+        setError(t("missingToken"));
         setChecking(false);
         return;
       }
@@ -49,14 +53,14 @@ export function PayClient({
         });
         if (!active) return;
         if (!result) {
-          setError("Booking not found.");
+          setError(t("bookingNotFound"));
         } else {
           setBooking(result);
           setError("");
         }
       } catch (err) {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Unable to verify this booking.");
+        setError(err instanceof Error ? err.message : t("unableToVerify"));
       } finally {
         if (active) setChecking(false);
       }
@@ -65,19 +69,21 @@ export function PayClient({
     return () => {
       active = false;
     };
-  }, [accessToken, bookingId, convex, isDemo]);
+  }, [accessToken, bookingId, convex, isDemo, t]);
 
   async function confirmPayment() {
     setLoading(true);
     setError("");
     try {
       if (!isDemo) {
-        throw new Error("Live payment confirmation is handled by secure checkout. Please use the host payment link or contact the concierge.");
+        throw new Error(t("secureCheckoutOnly"));
       }
       const tokenParam = accessToken ? `&token=${encodeURIComponent(accessToken)}` : "";
-      router.push(`/booking/success?bookingId=${encodeURIComponent(bookingId)}${tokenParam}`);
+      router.push(
+        localizeHref(`/booking/success?bookingId=${encodeURIComponent(bookingId)}${tokenParam}`, locale),
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Payment could not be confirmed.");
+      setError(err instanceof Error ? err.message : t("paymentCouldNotConfirm"));
     } finally {
       setLoading(false);
     }
@@ -90,20 +96,24 @@ export function PayClient({
           <CreditCard className="h-6 w-6 text-gold" />
         </div>
         <h1 className="mt-5 font-serif text-3xl font-semibold text-foreground">
-          {isDemo ? "Confirm demo payment" : "Confirm payment"}
+          {isDemo ? t("confirmDemoPayment") : t("confirmPayment")}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           {isDemo
-            ? "Demo checkout keeps the booking flow testable locally. No real card is charged."
-            : "Live payment is confirmed by a trusted payment webhook, not by this browser page."}
+            ? t("demoPaymentCopy")
+            : t("livePaymentCopy")}
         </p>
         <div className="mt-5 flex items-center gap-2 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
           <ShieldCheck className="h-4 w-4 text-gold" />
-          Booking ID: {bookingId}
+          {t("bookingId", { bookingId })}
         </div>
         {booking ? (
           <div className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Total: {booking.currency} {booking.total.toLocaleString()} · Status: {booking.paymentStatus}
+            {t("bookingTotalStatus", {
+              currency: booking.currency,
+              total: booking.total.toLocaleString(),
+              status: booking.paymentStatus,
+            })}
           </div>
         ) : null}
         {error ? (
@@ -117,18 +127,18 @@ export function PayClient({
             disabled={!isDemo || loading || checking || Boolean(error && !isDemo)}
           >
             {checking
-              ? "Verifying..."
+              ? t("verifying")
               : loading
-                ? "Confirming..."
+                ? t("confirming")
                 : isDemo
-                  ? "Confirm Demo Payment"
-                  : "Await Secure Checkout"}
+                  ? t("confirmDemoPaymentCta")
+                  : t("awaitSecureCheckout")}
           </Button>
           <Link
-            href="/booking"
+            href={localizeHref("/booking", locale)}
             className="text-center text-sm font-medium text-muted-foreground transition hover:text-foreground"
           >
-            Back to booking
+            {t("backToBooking")}
           </Link>
         </div>
       </div>

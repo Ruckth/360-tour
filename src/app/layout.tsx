@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
@@ -37,11 +39,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+  const messages = await getMessages();
   const convexUrl =
     process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
   const clerkPublishableKey =
@@ -51,18 +55,20 @@ export default function RootLayout({
     Boolean(clerkPublishableKey) && !clerkPublishableKey?.includes("placeholder");
   const app = (
     <Providers convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
-      <SiteShell clerkEnabled={clerkEnabled}>{children}</SiteShell>
+      <SiteShell>{children}</SiteShell>
     </Providers>
   );
 
   return (
-    <html lang="en" suppressHydrationWarning className={`${serif.variable} ${sans.variable}`}>
+    <html lang={locale} suppressHydrationWarning className={`${serif.variable} ${sans.variable}`}>
       <body>
-        {clerkEnabled ? (
-          <ClerkProvider publishableKey={clerkPublishableKey}>{app}</ClerkProvider>
-        ) : (
-          app
-        )}
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          {clerkEnabled ? (
+            <ClerkProvider publishableKey={clerkPublishableKey}>{app}</ClerkProvider>
+          ) : (
+            app
+          )}
+        </NextIntlClientProvider>
       </body>
     </html>
   );

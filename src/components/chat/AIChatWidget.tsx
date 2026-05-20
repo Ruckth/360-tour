@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageCircle, Send, Sparkles, X } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useOptionalConvex } from "@/lib/react/convex";
@@ -25,24 +26,6 @@ type ContactForm = { name: string; email: string; phone: string };
 const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
 const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
 const HEARTBEAT_MS = 30_000;
-
-const suggestions = [
-  {
-    text: "Which villa is best for a couple?",
-    answer:
-      "The Garden Suite is the quietest couples' retreat. If you want more space and your own pool, the Pool Villa is the indulgent step-up.",
-  },
-  {
-    text: "What's included when booking direct?",
-    answer:
-      "Direct booking saves around 15% versus OTA pricing and keeps support with the host. Airport pickup, welcome amenities, and direct WhatsApp help are the big wins.",
-  },
-  {
-    text: "Can I see the villa in 360?",
-    answer:
-      "Yes. Open any villa card or detail page and choose Explore 360. You can move room to room with hotspots and finish directly into booking.",
-  },
-];
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -99,6 +82,8 @@ export function AIChatWidget({
   whatsappNumber: string;
   lineId?: string;
 }) {
+  const t = useTranslations("Chat");
+  const locale = useLocale();
   const convex = useOptionalConvex();
   const pageContext = useChatPageContext();
   const activePropertySlug = propertySlug ?? pageContext?.context.propertySlug;
@@ -118,8 +103,27 @@ export function AIChatWidget({
   const inputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
 
-  const title = activePropertyName ? `${activePropertyName} concierge` : "Seaview concierge";
-  const visibleSuggestions = useMemo(() => suggestions.slice(0, 2), []);
+  const title = activePropertyName
+    ? t("propertyTitle", { propertyName: activePropertyName })
+    : t("defaultTitle");
+  const suggestions = useMemo(
+    () => [
+      {
+        text: t("suggestionCouple"),
+        answer: t("answerCouple"),
+      },
+      {
+        text: t("suggestionDirect"),
+        answer: t("answerDirect"),
+      },
+      {
+        text: t("suggestion360"),
+        answer: t("answer360"),
+      },
+    ],
+    [t],
+  );
+  const visibleSuggestions = useMemo(() => suggestions.slice(0, 2), [suggestions]);
   const hideFloatingTriggerOnMobileRoom = pathname.startsWith("/rooms/");
   const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
   useBodyScrollLock(shouldLockScroll);
@@ -284,8 +288,8 @@ export function AIChatWidget({
         ...items,
         {
           role: "assistant",
-          content:
-            "I can help compare villas here, and live chat will connect once Convex is configured for this Next.js app.",
+            content:
+            t("noConvex"),
         },
       ]);
       return;
@@ -299,19 +303,20 @@ export function AIChatWidget({
         sessionId: id,
         userMessage: clean,
         propertySlug: activePropertySlug || undefined,
+        locale,
       });
       const response =
         typeof result === "object" && result && "response" in result
           ? String(result.response)
-          : "I sent that to the concierge. Please use WhatsApp if you need an immediate reply.";
+          : t("sent");
       setMessages((items) => [...items, { role: "assistant", content: response }]);
     } catch {
       setMessages((items) => [
         ...items,
         {
           role: "assistant",
-          content:
-            "I’m having trouble connecting to the live concierge. WhatsApp is the fastest fallback for now.",
+            content:
+            t("fallback"),
         },
       ]);
     } finally {
@@ -329,7 +334,7 @@ export function AIChatWidget({
           hideFloatingTriggerOnMobileRoom && "hidden md:flex",
           open && "pointer-events-none opacity-0",
         )}
-        aria-label="Open concierge chat"
+        aria-label={t("open")}
       >
         <MessageCircle className="h-6 w-6" />
       </button>
@@ -360,7 +365,7 @@ export function AIChatWidget({
               size="icon"
               onClick={closeChat}
               className="h-8 w-8 rounded-full text-white/70 hover:bg-white/10 hover:text-white"
-              aria-label="Close chat"
+              aria-label={t("close")}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -368,8 +373,8 @@ export function AIChatWidget({
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 md:px-4 md:py-4">
             {messages.length === 0 ? (
-              <div className="rounded-2xl bg-muted p-4 text-base leading-relaxed text-muted-foreground md:p-3 md:text-sm">
-                I can help pick the right villa, explain direct booking savings, or point you into the 360 tour.
+              <div className="rounded-2xl bg-muted p-4 text-base leading-relaxed text-slate-700 dark:text-slate-200 md:p-3 md:text-sm">
+                {t("intro")}
               </div>
             ) : null}
             {messages.map((message, index) => (
@@ -386,8 +391,8 @@ export function AIChatWidget({
               </div>
             ))}
             {isTyping ? (
-              <div className="inline-flex rounded-2xl bg-muted px-3 py-2 text-sm text-muted-foreground">
-                Thinking...
+              <div className="inline-flex rounded-2xl bg-muted px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
+                {t("thinking")}
               </div>
             ) : null}
           </div>
@@ -399,7 +404,7 @@ export function AIChatWidget({
                   key={item.text}
                   type="button"
                   onClick={() => sendMessage(item.text)}
-                  className="rounded-full border border-border bg-background/80 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-muted-foreground shadow-sm transition hover:border-gold/50 hover:bg-gold/10 hover:text-foreground"
+                  className="rounded-full border border-border bg-background/80 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-slate-700 shadow-sm transition hover:border-gold/50 hover:bg-gold/10 hover:text-foreground dark:text-slate-300 dark:hover:text-white"
                 >
                   {item.text}
                 </button>
@@ -407,8 +412,8 @@ export function AIChatWidget({
             </div>
             <MessagingButtons whatsappNumber={whatsappNumber} lineId={lineId} />
             <details className="rounded-xl border border-border bg-background/70 px-3 py-2 text-sm">
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Share contact details
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-300">
+                {t("shareContact")}
               </summary>
               <form className="mt-3 grid gap-2" onSubmit={saveContact}>
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -418,8 +423,8 @@ export function AIChatWidget({
                       setContactForm((current) => ({ ...current, name: event.target.value }))
                     }
                     className="h-9 rounded-lg text-sm"
-                    placeholder="Name"
-                    aria-label="Name"
+                    placeholder={t("name")}
+                    aria-label={t("name")}
                   />
                   <Input
                     value={contactForm.email}
@@ -427,9 +432,9 @@ export function AIChatWidget({
                       setContactForm((current) => ({ ...current, email: event.target.value }))
                     }
                     className="h-9 rounded-lg text-sm"
-                    placeholder="Email"
+                    placeholder={t("email")}
                     type="email"
-                    aria-label="Email"
+                    aria-label={t("email")}
                   />
                   <Input
                     value={contactForm.phone}
@@ -437,17 +442,17 @@ export function AIChatWidget({
                       setContactForm((current) => ({ ...current, phone: event.target.value }))
                     }
                     className="h-9 rounded-lg text-sm"
-                    placeholder="Phone"
-                    aria-label="Phone"
+                    placeholder={t("phone")}
+                    aria-label={t("phone")}
                   />
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-slate-700 dark:text-slate-300">
                     {contactStatus === "saved"
-                      ? "Saved for the concierge."
+                      ? t("saved")
                       : contactStatus === "error"
-                        ? "Could not save right now."
-                        : "Optional, for follow-up."}
+                        ? t("error")
+                        : t("optional")}
                   </span>
                   <Button
                     type="submit"
@@ -455,7 +460,7 @@ export function AIChatWidget({
                     disabled={contactStatus === "saving"}
                     className="h-8 rounded-lg px-3 text-xs"
                   >
-                    {contactStatus === "saving" ? "Saving" : "Save"}
+                    {contactStatus === "saving" ? t("saving") : t("save")}
                   </Button>
                 </div>
               </form>
@@ -471,10 +476,10 @@ export function AIChatWidget({
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                className="h-12 min-w-0 flex-1 rounded-xl text-base md:h-10 md:rounded-lg md:text-sm"
-                placeholder="Ask a question"
+                className="h-12 min-w-0 flex-1 rounded-xl text-base placeholder:text-slate-500 dark:placeholder:text-slate-400 md:h-10 md:rounded-lg md:text-sm"
+                placeholder={t("askPlaceholder")}
               />
-              <Button type="submit" size="icon" aria-label="Send message">
+              <Button type="submit" size="icon" aria-label={t("send")}>
                 <Send className="h-4 w-4" />
               </Button>
             </form>

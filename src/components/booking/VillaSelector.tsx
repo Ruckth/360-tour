@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { SwipeRail } from "@/components/ui/SwipeRail";
 import type { BookingProperty } from "@/lib/booking/booking";
@@ -17,6 +18,9 @@ export function VillaSelector({
   availablePropertyIds: Set<string>;
   onSelect: (property: BookingProperty) => void;
 }) {
+  const t = useTranslations("Booking");
+  const villaT = useTranslations("Villa");
+
   function renderCard(item: BookingProperty) {
     const unavailable = !availablePropertyIds.has(item.slug);
     const selected = selectedId === item.slug;
@@ -42,18 +46,19 @@ export function VillaSelector({
           />
           {unavailable ? (
             <span className="absolute right-3 top-3 rounded-full bg-destructive px-2.5 py-1 text-[10px] font-bold text-destructive-foreground">
-              Unavailable
+              {t("unavailable")}
             </span>
           ) : null}
           <span className="absolute bottom-3 right-3 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-bold text-foreground shadow-lg backdrop-blur">
-            Up to {item.maxGuests} guests
+            {t("upToGuests", { count: item.maxGuests })}
           </span>
         </div>
         <div className="p-3">
           <p className="text-sm font-semibold text-foreground">{item.name}</p>
           <p className="text-xs text-muted-foreground">
             {resort.currencySymbol}
-            {item.pricePerNight.toLocaleString()}/night
+            {item.pricePerNight.toLocaleString()}
+            {villaT("perNight")}
           </p>
         </div>
       </button>
@@ -64,7 +69,7 @@ export function VillaSelector({
     <>
       <div className="md:hidden">
         <SwipeRail
-          label="Villa options"
+          label={t("villaOptions")}
           viewportClassName="-mx-5 px-5"
           itemClassName="basis-[84%]"
         >

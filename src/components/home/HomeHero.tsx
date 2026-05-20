@@ -3,7 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowDown, ArrowRight } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
+import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { resort } from "@/lib/data/resort-config";
 import { isHorizontalSwipe, swipeDirection, type SwipePoint, wrapIndex } from "@/lib/interaction/swipe";
 import { cn } from "@/lib/utils";
@@ -33,6 +35,9 @@ const mobileSlides = [
 ];
 
 export function HomeHero() {
+  const t = useTranslations("Home");
+  const activeLocale = useLocale();
+  const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const [loaded, setLoaded] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [desktopStep, setDesktopStep] = useState(0);
@@ -214,7 +219,7 @@ export function HomeHero() {
 
       <div className="absolute inset-0 z-10 flex items-center justify-center">
         <Link
-          href="/#villas"
+          href={localizeHref("/#villas", locale)}
           className="hero-card-reveal group flex items-center gap-3 bg-navy/80 px-4 py-2.5 shadow-lg backdrop-blur-sm transition-all hover:bg-navy/90 dark:bg-gold/80 dark:hover:bg-gold/90 sm:gap-4 sm:px-5 sm:py-3 md:gap-5 md:px-6 lg:gap-6 lg:px-8 lg:py-3.5"
         >
           <div>
@@ -228,7 +233,7 @@ export function HomeHero() {
           <div className="h-5 w-px bg-white/15 dark:bg-navy/15 sm:h-6" />
           <div className="flex items-center gap-1.5">
             <span className="text-[9px] font-medium text-white/70 dark:text-navy/70 sm:text-[10px] md:text-xs">
-              View Villas
+              {t("viewVillas")}
             </span>
             <ArrowRight className="h-3 w-3 text-white/50 transition-transform group-hover:translate-x-0.5 dark:text-navy/50" />
           </div>

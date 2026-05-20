@@ -197,7 +197,7 @@ export async function identifyChatVisitor(
 
 export async function askConcierge(
   client: ConvexReactClient,
-  args: { sessionId: string; userMessage: string; propertySlug?: string },
+  args: { sessionId: string; userMessage: string; propertySlug?: string; locale?: string },
 ) {
   return (await withConvexTimeout(
     client.action(api.chatAi.respond, args as never),

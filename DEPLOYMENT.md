@@ -9,7 +9,7 @@ This project now ships as a Next.js App Router app with Convex for backend data/
 - 360 room tour with sphere imagery and room navigation hotspots.
 - Booking funnel with villa/date/guest/details/review steps, Convex-backed availability when seeded, secure booking access tokens, and client-only demo mode when live inventory is unavailable.
 - Demo payment flow that confirms verified live bookings through Convex or stays local for `bookingId=demo`.
-- Concierge chat backed by Convex, with AI responses when configured and static fallback responses when no AI key is present.
+- Concierge chat backed by Convex, with Grok-powered multilingual AI responses when configured and static fallback responses when no AI key is present.
 - Optional Clerk sign-in/sign-up screens. Keep Clerk disabled for demo launch unless production auth is configured.
 
 ## Vercel Project Settings
@@ -38,16 +38,27 @@ Set these in Vercel:
 | `CONVEX_DEPLOY_KEY` | Production, Preview | Yes | Generate from the Convex dashboard. Use a production key for production and a preview key for preview deployments. |
 | `NEXT_PUBLIC_CONVEX_URL` | Production, Preview | Yes | Usually injected by `convex deploy`; keep a placeholder only if Vercel requires the key to exist before first deploy. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Production, Preview | No | Use `placeholder` or omit to keep auth disabled for demo launch. |
-| `AI_API_KEY` | Convex deployment | No | Enables live AI concierge responses. Without it, the app uses fallback responses. |
-| `AI_API_BASE_URL` | Convex deployment | No | Defaults to `https://api.openai.com/v1`. |
-| `AI_SIMPLE_MODEL` | Convex deployment | No | Defaults to `gpt-4o-mini`. |
-| `AI_COMPLEX_MODEL` | Convex deployment | No | Defaults to `gpt-4o`. |
+| `AI_API_KEY` | Convex deployment | No | xAI API key. Enables live Grok concierge responses. Without it, the app uses localized fallback responses where available. |
+| `AI_API_BASE_URL` | Convex deployment | No | Set to `https://api.x.ai/v1` for xAI. |
+| `AI_SIMPLE_MODEL` | Convex deployment | No | Set to `grok-4.3`. |
+| `AI_COMPLEX_MODEL` | Convex deployment | No | Set to `grok-4.3`. |
 | `RESEND_API_KEY` | Convex deployment | No | Reserved for transactional email actions. |
 | `OWNER_NOTIFICATION_EMAIL` | Convex deployment | No | Used with Resend owner notification actions. |
 | `CLERK_JWT_ISSUER_DOMAIN` | Convex deployment | No | Required only if enabling Clerk auth. |
 | `ADMIN_EMAILS` | Convex deployment | No | Comma-separated Clerk account emails allowed to open `/admin/chat`; required for the admin chat dashboard. |
 
 Convex environment variables are managed in the Convex dashboard or with `npx convex env set NAME value`.
+
+For multilingual chat, configure Convex with:
+
+```sh
+npx convex env set AI_API_BASE_URL https://api.x.ai/v1
+npx convex env set AI_SIMPLE_MODEL grok-4.3
+npx convex env set AI_COMPLEX_MODEL grok-4.3
+npx convex env set AI_API_KEY <xAI key>
+```
+
+Grok detects the visitor's latest message language and replies in that language. Static website and chat UI copy uses `next-intl`; Google Translate is not part of the v1 runtime.
 
 If Vercel fails with `Vercel build environment detected but no Convex deployment configuration found`, add `CONVEX_DEPLOY_KEY` to the Vercel project for the environment being deployed, then redeploy. The build-script warnings from pnpm are not the cause of that failure.
 

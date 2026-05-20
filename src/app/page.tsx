@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { Anchor, Bell, Car, Check, Heart, Sparkles, Sun, Utensils, Waves } from "lucide-react";
+import { getLocale, getTranslations } from "next-intl/server";
 import { HomeHero } from "@/components/home/HomeHero";
 import { VillaCard } from "@/components/home/VillaCard";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
@@ -8,6 +9,7 @@ import { properties } from "@/lib/data/properties";
 import { resort } from "@/lib/data/resort-config";
 import { getSocialProofByPropertyId } from "@/lib/data/social-proof";
 import { getPropertyTagline } from "@/lib/data/stories";
+import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 
 const amenityIcons = {
   waves: Waves,
@@ -20,7 +22,11 @@ const amenityIcons = {
   anchor: Anchor,
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const t = await getTranslations("Home");
+  const nav = await getTranslations("Nav");
+  const activeLocale = await getLocale();
+  const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const reviews = properties
     .flatMap((property) => getSocialProofByPropertyId(property.id)?.reviews ?? [])
     .sort((a, b) => b.rating - a.rating)
@@ -39,10 +45,10 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
-              Welcome
+              {t("welcome")}
             </p>
             <h1 className="mt-3 font-serif text-3xl font-semibold text-foreground md:text-4xl lg:text-5xl">
-              A Sanctuary Above the Sea
+              {t("sanctuaryTitle")}
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-muted-foreground md:mt-6 md:text-base">
               {resort.description}
@@ -67,13 +73,13 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="mb-12 text-center md:mb-16">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
-              Accommodations
+              {t("accommodations")}
             </p>
             <h2 className="mt-3 font-serif text-3xl font-semibold text-foreground md:text-4xl lg:text-5xl">
-              Our Villas
+              {t("ourVillas")}
             </h2>
             <p className="mx-auto mt-4 max-w-lg text-sm text-muted-foreground md:text-base">
-              Three distinct experiences, each with immersive 360° virtual tours.
+              {t("villasIntro")}
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 md:gap-8 lg:gap-10 2xl:grid-cols-3">
@@ -93,13 +99,13 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="mx-auto mb-12 max-w-3xl text-center md:mb-16">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
-              Experience
+              {t("experience")}
             </p>
             <h2 className="mt-3 font-serif text-3xl font-semibold text-foreground md:text-4xl lg:text-5xl">
-              Resort Amenities
+              {t("amenitiesTitle")}
             </h2>
             <p className="mx-auto mt-4 max-w-lg text-sm text-muted-foreground md:text-base">
-              Everything you need for an unforgettable stay, included with every villa.
+              {t("amenitiesIntro")}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
@@ -127,13 +133,13 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="mx-auto mb-12 max-w-3xl text-center md:mb-16">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
-              Testimonials
+              {t("testimonials")}
             </p>
             <h2 className="mt-3 font-serif text-3xl font-semibold text-foreground md:text-4xl lg:text-5xl">
-              What Our Guests Say
+              {t("reviewsTitle")}
             </h2>
             <p className="mx-auto mt-4 max-w-lg text-sm text-muted-foreground md:text-base">
-              Real reviews from guests who experienced {resort.name}.
+              {t("reviewsIntro", { resortName: resort.name })}
             </p>
           </div>
           <ReviewCarousel reviews={reviews} />
@@ -145,16 +151,13 @@ export default function HomePage() {
           <div className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
-                Location
+                {t("location")}
               </p>
               <h2 className="mt-3 font-serif text-3xl font-semibold text-foreground md:text-4xl">
                 {resort.location}
               </h2>
               <p className="mt-4 text-sm leading-relaxed text-muted-foreground md:text-base">
-                Perched on the hillside overlooking the Gulf of Thailand,
-                {` ${resort.name} `}is minutes from pristine beaches, world-class
-                diving, and vibrant local markets. Yet once inside our gates,
-                the world falls away.
+                {t("locationCopy", { resortName: resort.name })}
               </p>
               <ul className="mt-6 space-y-3">
                 {[
@@ -185,24 +188,23 @@ export default function HomePage() {
       <section id="contact" className="bg-navy py-20 text-white dark:bg-card md:py-28">
         <div className="mx-auto max-w-3xl px-5 text-center md:px-6">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/50">
-            Begin Your Stay
+            {t("beginStay")}
           </p>
           <h2 className="mt-3 font-serif text-3xl font-semibold text-white md:text-4xl lg:text-5xl">
-            Ready to Experience {resort.name}?
+            {t("readyTitle", { resortName: resort.name })}
           </h2>
           <p className="mt-4 text-sm text-white/70 md:text-lg">
-            Book direct and save 15% compared to online travel agencies. Includes
-            complimentary airport transfer and welcome amenities.
+            {t("readyCopy")}
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center md:mt-10 md:gap-4">
-            <ButtonLink href="/booking" variant="gold" className="w-full sm:w-auto">
-              Book
+            <ButtonLink href={localizeHref("/booking", locale)} variant="gold" className="w-full sm:w-auto">
+              {nav("book")}
             </ButtonLink>
             <a
               href={`mailto:${resort.contactEmail}`}
               className="inline-flex w-full items-center justify-center rounded-lg border border-white/25 px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
             >
-              Contact Us
+              {t("contactUs")}
             </a>
           </div>
         </div>

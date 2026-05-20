@@ -1,27 +1,32 @@
 "use client";
 
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { LanguageSwitcher } from "@/components/global/LanguageSwitcher";
 import { ThemeToggle } from "@/components/global/ThemeToggle";
+import { defaultLocale, isLocale, localizeHref, stripLocalePrefix } from "@/i18n/routing";
 import { resort } from "@/lib/data/resort-config";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "/#villas", label: "Villas" },
-  { href: "/#amenities", label: "Amenities" },
-  { href: "/#reviews", label: "Reviews" },
-  { href: "/#contact", label: "Contact" },
-];
+  { href: "/#villas", labelKey: "villas" },
+  { href: "/#amenities", labelKey: "amenities" },
+  { href: "/#reviews", labelKey: "reviews" },
+  { href: "/#contact", labelKey: "contact" },
+] as const;
 
-export function SiteHeader({ clerkEnabled = false }: { clerkEnabled?: boolean }) {
+export function SiteHeader() {
+  const t = useTranslations("Nav");
+  const activeLocale = useLocale();
+  const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const isHome = pathname === "/";
+  const isHome = stripLocalePrefix(pathname) === "/";
   const solid = scrolled || !isHome || mobileMenuOpen;
 
   useEffect(() => {
@@ -43,7 +48,11 @@ export function SiteHeader({ clerkEnabled = false }: { clerkEnabled?: boolean })
       )}
     >
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 md:px-8 md:py-4">
-        <Link href="/" className="flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
+        <Link
+          href={localizeHref("/", locale)}
+          className="flex items-center gap-2"
+          onClick={() => setMobileMenuOpen(false)}
+        >
           <span
             className={cn(
               "font-serif text-xl font-semibold tracking-tight md:text-2xl",
@@ -58,7 +67,7 @@ export function SiteHeader({ clerkEnabled = false }: { clerkEnabled?: boolean })
           {navLinks.map((link) => (
             <Link
               key={link.href}
-              href={link.href}
+              href={localizeHref(link.href, locale)}
               className={cn(
                 "text-sm font-medium transition-colors",
                 solid
@@ -66,35 +75,18 @@ export function SiteHeader({ clerkEnabled = false }: { clerkEnabled?: boolean })
                   : "text-white/70 hover:text-white",
               )}
             >
-              {link.label}
+              {t(link.labelKey)}
             </Link>
           ))}
-          <ButtonLink href="/booking" size="nav" variant={solid ? "primary" : "glass"}>
-            Book
+          <ButtonLink href={localizeHref("/booking", locale)} size="nav" variant={solid ? "primary" : "glass"}>
+            {t("book")}
           </ButtonLink>
-          {clerkEnabled ? (
-            <div className="flex items-center gap-2">
-              <Show when="signed-out">
-                <SignInButton mode="modal">
-                  <Button type="button" variant={solid ? "ghost" : "glass"} size="nav">
-                    Sign in
-                  </Button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <Button type="button" variant={solid ? "outline" : "glass"} size="nav">
-                    Sign up
-                  </Button>
-                </SignUpButton>
-              </Show>
-              <Show when="signed-in">
-                <UserButton />
-              </Show>
-            </div>
-          ) : null}
+          <LanguageSwitcher solid={solid} />
           <ThemeToggle solid={solid} />
         </div>
 
         <div className="flex items-center gap-2 md:hidden">
+          <LanguageSwitcher solid={solid} className="h-9 max-w-[7.5rem]" />
           <ThemeToggle solid={solid} />
           <Button
             type="button"
@@ -119,53 +111,21 @@ export function SiteHeader({ clerkEnabled = false }: { clerkEnabled?: boolean })
             {navLinks.map((link) => (
               <Link
                 key={link.href}
-                href={link.href}
+                href={localizeHref(link.href, locale)}
                 onClick={() => setMobileMenuOpen(false)}
                 className="rounded-lg px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-muted"
               >
-                {link.label}
+                {t(link.labelKey)}
               </Link>
             ))}
             <ButtonLink
-              href="/booking"
+              href={localizeHref("/booking", locale)}
               size="nav"
               className="mt-2 w-full justify-center"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Book
+              {t("book")}
             </ButtonLink>
-            {clerkEnabled ? (
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Show when="signed-out">
-                  <SignInButton mode="modal">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="nav"
-                      className="w-full"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Sign in
-                    </Button>
-                  </SignInButton>
-                  <SignUpButton mode="modal">
-                    <Button
-                      type="button"
-                      size="nav"
-                      className="w-full"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Sign up
-                    </Button>
-                  </SignUpButton>
-                </Show>
-                <Show when="signed-in">
-                  <div className="col-span-2 flex justify-center rounded-lg border border-border py-2">
-                    <UserButton />
-                  </div>
-                </Show>
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}

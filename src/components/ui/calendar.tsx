@@ -41,13 +41,18 @@ export function Calendar({
           buttonVariants({ variant: "ghost" }),
           "h-9 w-9 p-0 font-normal aria-selected:opacity-100",
         ),
-        selected:
-          "rounded-md bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-        today: "rounded-md bg-accent text-accent-foreground",
-        outside: "text-muted-foreground opacity-50",
-        disabled: "text-muted-foreground opacity-35",
+        selected: "text-foreground",
+        today:
+          "rounded-md border border-gold bg-transparent font-semibold text-foreground",
+        outside: "text-muted-foreground opacity-45",
+        disabled: "text-muted-foreground opacity-30",
         hidden: "invisible",
-        range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
+        range_start:
+          "rounded-l-md bg-primary text-primary-foreground [&>button]:bg-primary [&>button]:text-primary-foreground hover:[&>button]:bg-primary hover:[&>button]:text-primary-foreground",
+        range_end:
+          "rounded-r-md bg-primary text-primary-foreground [&>button]:bg-primary [&>button]:text-primary-foreground hover:[&>button]:bg-primary hover:[&>button]:text-primary-foreground",
+        range_middle:
+          "rounded-none bg-gold-light/45 text-foreground [&>button]:rounded-none [&>button]:bg-transparent [&>button]:text-foreground hover:[&>button]:bg-transparent",
         ...classNames,
       }}
       components={{
