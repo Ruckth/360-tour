@@ -57,10 +57,11 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   await page.getByPlaceholder("Ask a question").fill("What's included when booking direct?");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText(/Direct booking saves around 15%/i)).toBeVisible();
-  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toBeVisible();
+  await expect(page.getByTestId("chat-booking-card")).toBeVisible();
+  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toHaveCount(0);
   await expect(
     chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -97,6 +98,60 @@ test("thai locale renders translated public UI and chat labels", async ({ page }
   await expect(page.getByText("คอนเซียจ Seaview")).toBeVisible();
   await expect(page.getByText("ฝากข้อมูลติดต่อ")).toBeVisible();
   await expect(page.getByPlaceholder("พิมพ์คำถาม")).toBeVisible();
+});
+
+test("thai booking chat shows a prefilled booking handoff", async ({ page }) => {
+  await page.goto("/th");
+
+  await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
+  await page
+    .getByPlaceholder("พิมพ์คำถาม")
+    .fill("Pool Villa สำหรับ 4 คน 30 ตุลาคม ถึง 3 พฤศจิกายน จองเลยครับ");
+  await page.getByRole("button", { name: "ส่งข้อความ" }).click();
+
+  const bookingCard = page.getByTestId("chat-booking-card");
+  await expect(bookingCard).toBeVisible();
+  await expect(bookingCard.getByLabel("เช็กอิน")).toHaveValue("2026-10-30");
+  await expect(bookingCard.getByLabel("เช็กเอาต์")).toHaveValue("2026-11-03");
+  await expect(bookingCard.getByText(/Pool Villa/)).toBeVisible();
+  await expect(bookingCard.getByText(/ผู้เข้าพัก 4 คน/)).toBeVisible();
+  await expect(bookingCard.getByText(/4 คืน/)).toBeVisible();
+  await expect(bookingCard.getByText(/฿28,900/)).toBeVisible();
+
+  await bookingCard.getByRole("button", { name: "จอง" }).click();
+  await expect(page).toHaveURL((url) => {
+    expect(url.pathname).toBe("/th/booking");
+    expect(url.searchParams.get("checkin")).toBe("2026-10-30");
+    expect(url.searchParams.get("checkout")).toBe("2026-11-03");
+    expect(url.searchParams.get("unit")).toBe("pool-villa");
+    expect(url.searchParams.get("guests")).toBe("4");
+    return true;
+  });
+});
+
+test("english booking chat lets visitors choose missing dates before booking", async ({ page }) => {
+  const checkIn = "2026-10-30";
+  const checkOut = "2026-11-03";
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open concierge chat" }).click({ force: true });
+  await page.getByPlaceholder("Ask a question").fill("I want to book a villa");
+  await page.getByRole("button", { name: "Send message" }).click();
+
+  const bookingCard = page.getByTestId("chat-booking-card");
+  await expect(bookingCard).toBeVisible();
+  await expect(bookingCard.getByLabel("Check in")).toHaveValue("");
+  await expect(bookingCard.getByLabel("Check out")).toHaveValue("");
+
+  await bookingCard.getByLabel("Check in").fill(checkIn);
+  await bookingCard.getByLabel("Check out").fill(checkOut);
+  await bookingCard.getByRole("button", { name: "Book" }).click();
+  await expect(page).toHaveURL((url) => {
+    expect(url.pathname).toBe("/booking");
+    expect(url.searchParams.get("checkin")).toBe(checkIn);
+    expect(url.searchParams.get("checkout")).toBe(checkOut);
+    return true;
+  });
 });
 
 test("german chat suggestions float under assistant messages and update", async ({ page }) => {

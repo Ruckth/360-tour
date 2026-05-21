@@ -9,6 +9,7 @@ import { useOptionalConvex } from "@/lib/react/convex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { ChatBookingCard } from "@/components/chat/ChatBookingCard";
 import { useChatPageContext } from "@/components/chat/ChatContext";
 import { MessagingButtons } from "@/components/chat/MessagingButtons";
 import {
@@ -25,6 +26,7 @@ import {
   type ChatSuggestionCandidate,
   type ChatSuggestionId,
 } from "@/lib/chat/suggestions";
+import { extractChatBookingContext } from "@/lib/chat/booking-intent";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
@@ -252,8 +254,21 @@ export function AIChatWidget({
     }
     return -1;
   }, [messages]);
+  const latestBookingContext = useMemo(
+    () =>
+      latestExchange
+        ? extractChatBookingContext({
+            latestUserMessage: latestExchange.userMessage,
+            latestAssistantMessage: latestExchange.assistantMessage,
+            activePropertySlug: activePropertySlug || undefined,
+          })
+        : null,
+    [activePropertySlug, latestExchange],
+  );
   const canShowMessageSuggestions =
     !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1;
+  const canShowBookingCard =
+    canShowMessageSuggestions && Boolean(latestBookingContext?.hasBookingIntent);
   const hideFloatingTriggerOnMobileRoom = pathname.startsWith("/rooms/");
   const liftFloatingTriggerOnBooking = pathname === "/booking" || pathname.includes("/booking");
   const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
@@ -630,7 +645,16 @@ export function AIChatWidget({
                 >
                   {renderMessage(message.content)}
                 </div>
-                {message.role === "assistant" && index === latestAssistantIndex && canShowMessageSuggestions ? (
+                {message.role === "assistant" &&
+                index === latestAssistantIndex &&
+                canShowBookingCard &&
+                latestBookingContext ? (
+                  <ChatBookingCard context={latestBookingContext} />
+                ) : null}
+                {message.role === "assistant" &&
+                index === latestAssistantIndex &&
+                canShowMessageSuggestions &&
+                !canShowBookingCard ? (
                   <SuggestionChips suggestions={visibleSuggestions} onSelect={sendMessage} />
                 ) : null}
               </div>
@@ -645,7 +669,11 @@ export function AIChatWidget({
             data-testid="chat-footer"
             className="shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-4 backdrop-blur md:px-3 md:py-3"
           >
-            <MessagingButtons whatsappNumber={whatsappNumber} lineId={lineId} />
+            <MessagingButtons
+              whatsappNumber={whatsappNumber}
+              lineId={lineId}
+              quiet={canShowBookingCard}
+            />
             <details className="rounded-xl border border-border bg-background/70 px-3 py-2 text-sm">
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-300">
                 {t("shareContact")}
