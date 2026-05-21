@@ -61,7 +61,12 @@ export default async function RootLayout({
   );
 
   return (
-    <html lang={locale} suppressHydrationWarning className={`${serif.variable} ${sans.variable}`}>
+    <html
+      lang={locale}
+      suppressHydrationWarning
+      data-scroll-behavior="smooth"
+      className={`${serif.variable} ${sans.variable}`}
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

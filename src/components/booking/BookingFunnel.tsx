@@ -366,6 +366,7 @@ export function BookingFunnel({
                   checkOut={checkOut}
                   onChange={updateDateRange}
                   isDateDisabled={isStayDateDisabled}
+                  unavailableDates={propertyBlockedDates}
                   helperText={invalidRange ? t("checkoutAfterCheckin") : nightHelperText}
                 />
               </div>
@@ -381,8 +382,6 @@ export function BookingFunnel({
                 dateWarning={dateWarning}
                 conflicts={conflicts}
                 propertyName={property.name}
-                nights={nights}
-                discountPercent={property.directDiscountPercent}
               />
             </div>
           ) : null}

@@ -3,13 +3,14 @@ import type { ConvexReactClient } from "convex/react";
 import type { BookingProperty } from "@/lib/booking/booking";
 
 const CONVEX_TIMEOUT_MS = 8_000;
+const AI_CONVEX_TIMEOUT_MS = 45_000;
 
-async function withConvexTimeout<T>(promise: Promise<T>, label: string) {
+async function withConvexTimeout<T>(promise: Promise<T>, label: string, timeoutMs = CONVEX_TIMEOUT_MS) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error(`${label} timed out. Please try again.`));
-    }, CONVEX_TIMEOUT_MS);
+    }, timeoutMs);
   });
 
   try {
@@ -54,6 +55,14 @@ export type LiveBookingQuote = {
   discountAmount: number;
   directTotal: number;
   currency: string;
+};
+
+export type ChatTranscriptMessage = {
+  _id?: string;
+  sessionId?: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp?: number;
 };
 
 export async function listLiveProperties(client: ConvexReactClient) {
@@ -140,6 +149,11 @@ export async function createChatSession(
     currentPath?: string;
     referrer?: string;
     userAgent?: string;
+    timeZone?: string;
+    browserLanguage?: string;
+    screenSize?: string;
+    viewportSize?: string;
+    platform?: string;
   },
 ) {
   return (await withConvexTimeout(
@@ -156,6 +170,11 @@ export async function touchChatSession(
     currentPath?: string;
     referrer?: string;
     userAgent?: string;
+    timeZone?: string;
+    browserLanguage?: string;
+    screenSize?: string;
+    viewportSize?: string;
+    platform?: string;
     isOpen?: boolean;
   },
 ) {
@@ -185,9 +204,26 @@ export async function addChatMessage(
   );
 }
 
+export async function getChatMessages(
+  client: ConvexReactClient,
+  args: { sessionId: string; limit?: number },
+) {
+  return (await withConvexTimeout(
+    client.query(api.chat.getMessages, args as never),
+    "Loading chat messages",
+  )) as ChatTranscriptMessage[];
+}
+
 export async function identifyChatVisitor(
   client: ConvexReactClient,
-  args: { sessionId: string; name?: string; email?: string; phone?: string },
+  args: {
+    sessionId: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    contactApp?: "whatsapp" | "line";
+    contactHandle?: string;
+  },
 ) {
   return await withConvexTimeout(
     client.mutation(api.chat.identifyVisitor, args as never),
@@ -202,5 +238,6 @@ export async function askConcierge(
   return (await withConvexTimeout(
     client.action(api.chatAi.respond, args as never),
     "Asking concierge",
+    AI_CONVEX_TIMEOUT_MS,
   )) as { response?: string };
 }

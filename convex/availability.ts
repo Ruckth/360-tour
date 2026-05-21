@@ -1,6 +1,11 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import { assertValidIsoDate } from './lib/validation';
+import type { Doc } from './_generated/dataModel';
+
+function blocksNewBookings(booking: Doc<'bookings'>): boolean {
+	return booking.status === 'confirmed' || booking.status === 'completed';
+}
 
 export const getForProperty = query({
 	args: {
@@ -141,6 +146,6 @@ export const isAvailable = query({
 			)
 			.take(500);
 
-		return bookings.every((booking) => booking.status === 'cancelled' || booking.checkOut <= args.checkIn);
+		return bookings.every((booking) => !blocksNewBookings(booking) || booking.checkOut <= args.checkIn);
 	}
 });

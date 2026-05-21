@@ -69,7 +69,7 @@ export function SwipeRail({
     <section
       aria-label={label}
       aria-roledescription="carousel"
-      className={cn("relative", className)}
+      className={cn("relative overflow-hidden", className)}
     >
       <ul
         ref={viewportRef}

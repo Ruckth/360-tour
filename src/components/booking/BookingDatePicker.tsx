@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { dateToIso, formatDisplayDate, isoToDate } from "@/lib/booking/dates";
+import { dateToIso, formatDisplayDate, isoToDate, todayIsoLocal } from "@/lib/booking/dates";
 import { cn } from "@/lib/utils";
 
 export function BookingDatePicker({
@@ -15,12 +15,14 @@ export function BookingDatePicker({
   checkOut,
   onChange,
   isDateDisabled,
+  unavailableDates = [],
   helperText,
 }: {
   checkIn: string;
   checkOut: string;
   onChange: (range: { checkIn: string; checkOut: string }) => void;
   isDateDisabled: (date: Date) => boolean;
+  unavailableDates?: string[];
   helperText?: string;
 }) {
   const t = useTranslations("Booking");
@@ -29,6 +31,22 @@ export function BookingDatePicker({
   const checkOutLabel = checkOut ? formatDisplayDate(checkOut) : t("checkOut");
   const checkInDate = isoToDate(checkIn);
   const checkOutDate = isoToDate(checkOut);
+  const todayIso = todayIsoLocal();
+  const unavailableDateSet = new Set(unavailableDates);
+  const calendarPopoverClassName = "w-[min(22rem,calc(100vw-2rem))] p-3 sm:p-4";
+  const unavailableDayClassName =
+    "rounded-md bg-destructive/10 text-destructive opacity-100 after:absolute after:left-1/2 after:top-1/2 after:h-px after:w-5 after:-translate-x-1/2 after:-translate-y-1/2 after:-rotate-45 after:bg-destructive/70 [&>button]:text-destructive [&>button]:opacity-100";
+  const invalidCheckoutClassName =
+    "rounded-md bg-muted/70 text-muted-foreground opacity-50 [&>button]:text-muted-foreground";
+
+  function isUnavailableDate(date: Date) {
+    const iso = dateToIso(date);
+    return iso >= todayIso && unavailableDateSet.has(iso);
+  }
+
+  function isInvalidCheckoutDate(date: Date) {
+    return Boolean(checkIn && dateToIso(date) <= checkIn && !isUnavailableDate(date));
+  }
 
   function selectCheckIn(date: Date | undefined) {
     const nextCheckIn = dateToIso(date);
@@ -67,14 +85,18 @@ export function BookingDatePicker({
               </Button>
             </PopoverTrigger>
           </div>
-          <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[24rem] p-4 sm:w-auto">
+          <PopoverContent align="center" className={calendarPopoverClassName}>
             <Calendar
               mode="single"
               selected={checkInDate}
+              defaultMonth={checkInDate}
               onSelect={selectCheckIn}
               disabled={isDateDisabled}
+              modifiers={{ unavailable: isUnavailableDate }}
+              modifiersClassNames={{ unavailable: unavailableDayClassName }}
               initialFocus
             />
+            <CalendarLegend />
           </PopoverContent>
         </Popover>
 
@@ -99,23 +121,60 @@ export function BookingDatePicker({
               </Button>
             </PopoverTrigger>
           </div>
-          <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[24rem] p-4 sm:w-auto">
+          <PopoverContent align="center" className={calendarPopoverClassName}>
             <Calendar
               mode="single"
               selected={checkOutDate}
+              defaultMonth={checkOutDate ?? checkInDate}
               onSelect={selectCheckOut}
               disabled={(date) => {
                 if (isDateDisabled(date)) return true;
                 return Boolean(checkIn && dateToIso(date) <= checkIn);
               }}
+              modifiers={{ unavailable: isUnavailableDate, invalidCheckout: isInvalidCheckoutDate }}
+              modifiersClassNames={{
+                unavailable: unavailableDayClassName,
+                invalidCheckout: invalidCheckoutClassName,
+              }}
               initialFocus
             />
+            <CalendarLegend />
           </PopoverContent>
         </Popover>
       </div>
       {helperText ? (
         <p className="text-xs leading-relaxed text-muted-foreground">{helperText}</p>
       ) : null}
+    </div>
+  );
+}
+
+function CalendarLegend() {
+  const t = useTranslations("Booking");
+  const items = [
+    {
+      label: t("calendarLegendAvailable"),
+      swatch: "border-border bg-background",
+    },
+    {
+      label: t("calendarLegendUnavailable"),
+      swatch:
+        "border-destructive/30 bg-destructive/10 after:absolute after:left-1/2 after:top-1/2 after:h-px after:w-4 after:-translate-x-1/2 after:-translate-y-1/2 after:-rotate-45 after:bg-destructive/70",
+    },
+    {
+      label: t("calendarLegendPast"),
+      swatch: "border-border bg-muted opacity-40",
+    },
+  ];
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 border-t border-border pt-3 text-[11px] font-medium text-muted-foreground">
+      {items.map((item) => (
+        <span key={item.label} className="inline-flex items-center gap-1.5">
+          <span className={cn("relative h-3 w-3 rounded border", item.swatch)} aria-hidden="true" />
+          {item.label}
+        </span>
+      ))}
     </div>
   );
 }

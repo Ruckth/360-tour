@@ -9,7 +9,7 @@ export default function SignUpPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-5 py-24">
       {enabled ? (
-        <SignUp />
+        <SignUp routing="hash" />
       ) : (
         <div className="max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-lg">
           <h1 className="font-serif text-3xl font-semibold text-foreground">Create account</h1>

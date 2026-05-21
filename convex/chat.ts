@@ -22,7 +22,12 @@ export const createSession = mutation({
 		visitorId: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
-		userAgent: v.optional(v.string())
+		userAgent: v.optional(v.string()),
+		timeZone: v.optional(v.string()),
+		browserLanguage: v.optional(v.string()),
+		screenSize: v.optional(v.string()),
+		viewportSize: v.optional(v.string()),
+		platform: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		let propertyId = args.propertyId;
@@ -43,6 +48,11 @@ export const createSession = mutation({
 			currentPath: args.currentPath,
 			referrer: args.referrer,
 			userAgent: args.userAgent,
+			timeZone: args.timeZone,
+			browserLanguage: args.browserLanguage,
+			screenSize: args.screenSize,
+			viewportSize: args.viewportSize,
+			platform: args.platform,
 			lastSeenAt: now,
 			lastOpenedAt: now,
 			createdAt: now
@@ -57,6 +67,11 @@ export const touchSession = mutation({
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
 		userAgent: v.optional(v.string()),
+		timeZone: v.optional(v.string()),
+		browserLanguage: v.optional(v.string()),
+		screenSize: v.optional(v.string()),
+		viewportSize: v.optional(v.string()),
+		platform: v.optional(v.string()),
 		isOpen: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
@@ -74,6 +89,11 @@ export const touchSession = mutation({
 			currentPath: args.currentPath ?? session.currentPath,
 			referrer: args.referrer ?? session.referrer,
 			userAgent: args.userAgent ?? session.userAgent,
+			timeZone: args.timeZone ?? session.timeZone,
+			browserLanguage: args.browserLanguage ?? session.browserLanguage,
+			screenSize: args.screenSize ?? session.screenSize,
+			viewportSize: args.viewportSize ?? session.viewportSize,
+			platform: args.platform ?? session.platform,
 			lastSeenAt: now,
 			lastOpenedAt: args.isOpen ? now : session.lastOpenedAt
 		});
@@ -99,7 +119,9 @@ export const identifyVisitor = mutation({
 		sessionId: v.id('chatSessions'),
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
-		phone: v.optional(v.string())
+		phone: v.optional(v.string()),
+		contactApp: v.optional(v.union(v.literal('whatsapp'), v.literal('line'))),
+		contactHandle: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
@@ -107,13 +129,16 @@ export const identifyVisitor = mutation({
 
 		const name = args.name?.trim() || undefined;
 		const phone = args.phone?.trim() || undefined;
+		const contactHandle = args.contactHandle?.trim() || phone || undefined;
 		const email = args.email?.trim() ? normalizeEmail(args.email) : undefined;
 		if (email) assertValidEmail(email);
 
 		await ctx.db.patch(args.sessionId, {
 			visitorName: name,
 			visitorEmail: email,
-			visitorPhone: phone,
+			visitorPhone: args.contactApp === 'whatsapp' ? contactHandle : phone,
+			visitorContactApp: args.contactApp,
+			visitorContactHandle: contactHandle,
 			lastSeenAt: Date.now()
 		});
 

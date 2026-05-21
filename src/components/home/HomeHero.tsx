@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowDown, ArrowRight } from "lucide-react";
+import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
@@ -115,7 +115,7 @@ export function HomeHero() {
   }
 
   return (
-    <section className="relative h-screen overflow-hidden">
+    <section className="relative h-[72svh] min-h-[520px] overflow-hidden md:h-screen">
       <div className={cn("absolute inset-0 transition-opacity duration-1000", loaded ? "opacity-100" : "opacity-0")}>
         {isDesktop ? (
           <>
@@ -198,14 +198,35 @@ export function HomeHero() {
                 <div className={cn("absolute inset-0", slot === "top" ? "bg-gradient-to-b from-black/20 via-transparent to-black/30" : "bg-gradient-to-t from-black/40 via-transparent to-black/20")} />
               </div>
             ))}
-            <div className="absolute bottom-14 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+            <div className="absolute inset-x-5 bottom-20 z-10 flex items-center justify-between md:hidden">
+              <button
+                type="button"
+                onClick={() => setManualMobileSlide(mobileSlide - 1)}
+                aria-label="Previous hero slide"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white shadow-lg backdrop-blur-md transition hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setManualMobileSlide(mobileSlide + 1)}
+                aria-label="Next hero slide"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white shadow-lg backdrop-blur-md transition hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 gap-2 md:hidden">
               {mobileSlides.map((_, index) => (
                 <button
                   key={index}
                   type="button"
                   onClick={() => setManualMobileSlide(index)}
                   aria-current={mobileSlide === index ? "true" : undefined}
-                  className={cn("h-2 rounded-full transition-all", mobileSlide === index ? "w-6 bg-white" : "w-2 bg-white/40")}
+                  className={cn(
+                    "h-2.5 rounded-full border border-white/30 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+                    mobileSlide === index ? "w-8 bg-white" : "w-2.5 bg-white/40",
+                  )}
                   aria-label={`Go to slide ${index + 1}`}
                 />
               ))}
@@ -217,10 +238,10 @@ export function HomeHero() {
       <div className="absolute inset-0 z-[2] hidden bg-gradient-to-b from-black/25 via-transparent to-black/50 md:block" />
       <div className="hero-grain pointer-events-none absolute inset-0 z-[3] opacity-[0.035] dark:opacity-[0.06]" />
 
-      <div className="absolute inset-0 z-10 flex items-center justify-center">
+      <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
         <Link
           href={localizeHref("/#villas", locale)}
-          className="hero-card-reveal group flex items-center gap-3 bg-navy/80 px-4 py-2.5 shadow-lg backdrop-blur-sm transition-all hover:bg-navy/90 dark:bg-gold/80 dark:hover:bg-gold/90 sm:gap-4 sm:px-5 sm:py-3 md:gap-5 md:px-6 lg:gap-6 lg:px-8 lg:py-3.5"
+          className="hero-card-reveal pointer-events-auto group flex items-center gap-3 bg-navy/80 px-4 py-2.5 shadow-lg backdrop-blur-sm transition-all hover:bg-navy/90 dark:bg-gold/80 dark:hover:bg-gold/90 sm:gap-4 sm:px-5 sm:py-3 md:gap-5 md:px-6 lg:gap-6 lg:px-8 lg:py-3.5"
         >
           <div>
             <p className="font-serif text-xs font-semibold text-white dark:text-navy sm:text-sm md:text-base lg:text-lg">
@@ -243,7 +264,7 @@ export function HomeHero() {
       <Link
         href="#about"
         aria-label="Scroll down"
-        className="absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-1.5 md:bottom-8"
+        className="absolute bottom-6 left-1/2 z-10 hidden -translate-x-1/2 flex-col items-center gap-1.5 md:bottom-8 md:flex"
       >
         <ArrowDown className="h-5 w-5 animate-bounce text-white/50 md:h-6 md:w-6" />
       </Link>

@@ -72,9 +72,19 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   ).toBeVisible();
 
   await page.getByText("Share contact details").click();
-  await page.getByLabel("Name").fill("Test Visitor");
   await page.getByLabel("Email").fill("visitor@example.com");
-  await page.getByLabel("Phone").fill("+66 77 111 222");
+  await page.getByLabel("Preferred app").click();
+  const whatsappOption = page.getByTestId("contact-app-option-whatsapp");
+  const lineOption = page.getByTestId("contact-app-option-line");
+  await expect(whatsappOption).toBeVisible();
+  await expect(whatsappOption.getByTestId("contact-app-icon-whatsapp")).toBeVisible();
+  await expect(lineOption).toBeVisible();
+  await expect(lineOption.getByTestId("contact-app-icon-line")).toBeVisible();
+  await page.getByRole("option", { name: "LINE" }).click();
+  await expect(page.getByPlaceholder("LINE ID or phone number")).toBeVisible();
+  await page.getByLabel("Contact handle").fill("@testvisitor");
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await page.getByLabel("Contact handle").fill("+66 81 234 5678");
   await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 });
 

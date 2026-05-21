@@ -3,10 +3,12 @@
 import { MessageCircle, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { useChatPageContext } from "@/components/chat/ChatContext";
 import { MessagingButtons } from "@/components/chat/MessagingButtons";
 import {
@@ -14,6 +16,7 @@ import {
   askConcierge,
   closeChatSession,
   createChatSession,
+  getChatMessages,
   identifyChatVisitor,
   touchChatSession,
 } from "@/lib/react/convex-api";
@@ -26,7 +29,8 @@ import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
 type Message = { role: "user" | "assistant"; content: string };
-type ContactForm = { name: string; email: string; phone: string };
+type ContactApp = "whatsapp" | "line";
+type ContactForm = { email: string; preferredApp: ContactApp; contactHandle: string };
 type ChatSuggestion = ChatSuggestionCandidate & { answer: string };
 type LatestExchange = {
   userMessage: string;
@@ -37,6 +41,11 @@ type LatestExchange = {
 const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
 const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
 const HEARTBEAT_MS = 30_000;
+const contactApps: ContactApp[] = ["whatsapp", "line"];
+const TRANSCRIPT_RECOVERY_ATTEMPTS = 10;
+const TRANSCRIPT_RECOVERY_DELAY_MS = 2_000;
+const BACKGROUND_RECONCILE_ATTEMPTS = 30;
+const BACKGROUND_RECONCILE_DELAY_MS = 2_000;
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -75,11 +84,27 @@ function getOrCreateVisitorId() {
 function getBrowserChatMetadata() {
   if (typeof window === "undefined") return {};
 
+  const navigatorWithUserAgentData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+
   return {
     currentPath: `${window.location.pathname}${window.location.search}`,
     referrer: document.referrer || undefined,
     userAgent: navigator.userAgent || undefined,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+    browserLanguage: navigator.languages?.join(", ") || navigator.language || undefined,
+    screenSize:
+      typeof window.screen?.width === "number" && typeof window.screen?.height === "number"
+        ? `${window.screen.width}x${window.screen.height}`
+        : undefined,
+    viewportSize: `${window.innerWidth}x${window.innerHeight}`,
+    platform: navigatorWithUserAgentData.userAgentData?.platform || navigator.platform || undefined,
   };
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function SuggestionChips({
@@ -108,6 +133,50 @@ function SuggestionChips({
   );
 }
 
+function ContactAppIcon({ app }: { app: ContactApp }) {
+  if (app === "whatsapp") {
+    return (
+      <span
+        data-testid="contact-app-icon-whatsapp"
+        aria-hidden="true"
+        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0a9f6a] text-white"
+      >
+        <MessageCircle className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      data-testid="contact-app-icon-line"
+      aria-hidden="true"
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[#06c755] text-white"
+    >
+      <MessageCircle className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
+function TypingIndicator({ label }: { label: string }) {
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 rounded-2xl bg-muted px-3 py-2 text-slate-700 dark:text-slate-200"
+      role="status"
+      aria-label={label}
+    >
+      <span className="sr-only">{label}</span>
+      {[0, 1, 2].map((index) => (
+        <span
+          key={index}
+          className="h-2 w-2 animate-bounce rounded-full bg-current"
+          style={{ animationDelay: `${index * 140}ms` }}
+          aria-hidden="true"
+        />
+      ))}
+    </div>
+  );
+}
+
 export function AIChatWidget({
   propertySlug,
   propertyName,
@@ -126,6 +195,7 @@ export function AIChatWidget({
   const activePropertySlug = propertySlug ?? pageContext?.context.propertySlug;
   const activePropertyName = propertyName ?? pageContext?.context.propertyName;
   const [open, setOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -133,9 +203,9 @@ export function AIChatWidget({
   const [isTyping, setIsTyping] = useState(false);
   const [latestExchange, setLatestExchange] = useState<LatestExchange | null>(null);
   const [contactForm, setContactForm] = useState<ContactForm>({
-    name: "",
     email: "",
-    phone: "",
+    preferredApp: "whatsapp",
+    contactHandle: "",
   });
   const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -185,25 +255,77 @@ export function AIChatWidget({
   const canShowMessageSuggestions =
     !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1;
   const hideFloatingTriggerOnMobileRoom = pathname.startsWith("/rooms/");
+  const liftFloatingTriggerOnBooking = pathname === "/booking" || pathname.includes("/booking");
   const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
   useBodyScrollLock(shouldLockScroll);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     setLatestExchange(null);
   }, [activePropertySlug]);
 
-  function openChat() {
+  const ensureSession = useCallback(
+    async (markOpen = false) => {
+      if (!convex) return null;
+      if (sessionId) {
+        if (markOpen) {
+          await touchChatSession(convex, {
+            sessionId,
+            propertySlug: activePropertySlug || undefined,
+            ...getBrowserChatMetadata(),
+            isOpen: true,
+          });
+        }
+        return sessionId;
+      }
+
+      const storedId =
+        typeof window !== "undefined" ? window.sessionStorage.getItem(SESSION_ID_STORAGE_KEY) : null;
+      if (storedId) {
+        try {
+          await touchChatSession(convex, {
+            sessionId: storedId,
+            propertySlug: activePropertySlug || undefined,
+            ...getBrowserChatMetadata(),
+            isOpen: markOpen,
+          });
+          setSessionId(storedId);
+          return storedId;
+        } catch {
+          window.sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
+        }
+      }
+
+      const id = await createChatSession(convex, {
+        propertySlug: activePropertySlug || undefined,
+        channel: "web",
+        visitorId: getOrCreateVisitorId(),
+        ...getBrowserChatMetadata(),
+      });
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(SESSION_ID_STORAGE_KEY, id);
+      }
+      setSessionId(id);
+      return id;
+    },
+    [activePropertySlug, convex, sessionId],
+  );
+
+  const openChat = useCallback(() => {
     setMounted(true);
     void ensureSession(true);
-    window.requestAnimationFrame(() => setOpen(true));
-  }
+    setOpen(true);
+  }, [ensureSession]);
 
-  function closeChat() {
+  const closeChat = useCallback(() => {
     setOpen(false);
     if (convex && sessionId) {
       void closeChatSession(convex, { sessionId }).catch(() => undefined);
     }
-  }
+  }, [convex, sessionId]);
 
   useEffect(() => {
     function openFromStickyBar() {
@@ -212,7 +334,7 @@ export function AIChatWidget({
 
     window.addEventListener("open-concierge-chat", openFromStickyBar);
     return () => window.removeEventListener("open-concierge-chat", openFromStickyBar);
-  }, []);
+  }, [openChat]);
 
   useEffect(() => {
     if (open) return;
@@ -242,56 +364,12 @@ export function AIChatWidget({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
-
-  async function ensureSession(markOpen = false) {
-    if (!convex) return null;
-    if (sessionId) {
-      if (markOpen) {
-        await touchChatSession(convex, {
-          sessionId,
-          propertySlug: activePropertySlug || undefined,
-          ...getBrowserChatMetadata(),
-          isOpen: true,
-        });
-      }
-      return sessionId;
-    }
-
-    const storedId =
-      typeof window !== "undefined" ? window.sessionStorage.getItem(SESSION_ID_STORAGE_KEY) : null;
-    if (storedId) {
-      try {
-        await touchChatSession(convex, {
-          sessionId: storedId,
-          propertySlug: activePropertySlug || undefined,
-          ...getBrowserChatMetadata(),
-          isOpen: markOpen,
-        });
-        setSessionId(storedId);
-        return storedId;
-      } catch {
-        window.sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
-      }
-    }
-
-    const id = await createChatSession(convex, {
-      propertySlug: activePropertySlug || undefined,
-      channel: "web",
-      visitorId: getOrCreateVisitorId(),
-      ...getBrowserChatMetadata(),
-    });
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(SESSION_ID_STORAGE_KEY, id);
-    }
-    setSessionId(id);
-    return id;
-  }
+  }, [closeChat, open]);
 
   useEffect(() => {
     if (!open) return;
     void ensureSession(true);
-  }, [activePropertySlug, convex, open, sessionId]);
+  }, [ensureSession, open]);
 
   useEffect(() => {
     if (!open || !convex) return;
@@ -299,11 +377,11 @@ export function AIChatWidget({
       void ensureSession(true);
     }, HEARTBEAT_MS);
     return () => window.clearInterval(interval);
-  }, [activePropertySlug, convex, open, sessionId]);
+  }, [convex, ensureSession, open]);
 
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!contactForm.name.trim() && !contactForm.email.trim() && !contactForm.phone.trim()) return;
+    if (!contactForm.email.trim() && !contactForm.contactHandle.trim()) return;
     if (!convex) {
       setContactStatus("error");
       return;
@@ -315,13 +393,65 @@ export function AIChatWidget({
       if (!id) throw new Error("No chat session");
       await identifyChatVisitor(convex, {
         sessionId: id,
-        name: contactForm.name || undefined,
         email: contactForm.email || undefined,
-        phone: contactForm.phone || undefined,
+        phone: contactForm.preferredApp === "whatsapp" ? contactForm.contactHandle || undefined : undefined,
+        contactApp: contactForm.preferredApp,
+        contactHandle: contactForm.contactHandle || undefined,
       });
       setContactStatus("saved");
     } catch {
       setContactStatus("error");
+    }
+  }
+
+  async function recoverPersistedAssistantMessage(sessionId: string, userMessage: string) {
+    for (let attempt = 0; attempt < TRANSCRIPT_RECOVERY_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) await wait(TRANSCRIPT_RECOVERY_DELAY_MS);
+
+      try {
+        const transcript = await getChatMessages(convex!, { sessionId, limit: 25 });
+        const matchingUserIndex = transcript.findLastIndex(
+          (message) => message.role === "user" && message.content.trim() === userMessage,
+        );
+        const assistantAfterUser =
+          matchingUserIndex >= 0
+            ? transcript.slice(matchingUserIndex + 1).find((message) => message.role === "assistant")
+            : undefined;
+
+        if (assistantAfterUser?.content.trim()) return assistantAfterUser.content;
+      } catch {
+        // Keep trying briefly before falling back locally.
+      }
+    }
+
+    return null;
+  }
+
+  async function reconcilePersistedAssistantMessage(
+    sessionId: string,
+    userMessage: string,
+    placeholderMessage: string,
+  ) {
+    for (let attempt = 0; attempt < BACKGROUND_RECONCILE_ATTEMPTS; attempt += 1) {
+      await wait(BACKGROUND_RECONCILE_DELAY_MS);
+      const recoveredMessage = await recoverPersistedAssistantMessage(sessionId, userMessage);
+      if (!recoveredMessage || recoveredMessage === placeholderMessage) continue;
+
+      setMessages((items) => {
+        const next = [...items];
+        for (let index = next.length - 1; index >= 0; index -= 1) {
+          if (next[index]?.role === "assistant" && next[index]?.content === placeholderMessage) {
+            next[index] = { role: "assistant", content: recoveredMessage };
+            return next;
+          }
+        }
+        return [...items, { role: "assistant", content: recoveredMessage }];
+      });
+      setLatestExchange({
+        userMessage,
+        assistantMessage: recoveredMessage,
+      });
+      return;
     }
   }
 
@@ -376,8 +506,9 @@ export function AIChatWidget({
     }
 
     setIsTyping(true);
+    let id: string | null = null;
     try {
-      const id = await ensureSession(true);
+      id = await ensureSession(true);
       if (!id) throw new Error("No chat session");
       const result = await askConcierge(convex, {
         sessionId: id,
@@ -395,7 +526,8 @@ export function AIChatWidget({
         assistantMessage: response,
       });
     } catch {
-      const assistantMessage = t("fallback");
+      const recoveredMessage = id ? await recoverPersistedAssistantMessage(id, clean) : null;
+      const assistantMessage = recoveredMessage ?? t("fallback");
       setMessages((items) => [
         ...items,
         {
@@ -407,6 +539,9 @@ export function AIChatWidget({
         userMessage: clean,
         assistantMessage,
       });
+      if (!recoveredMessage && id) {
+        void reconcilePersistedAssistantMessage(id, clean, assistantMessage);
+      }
     } finally {
       setIsTyping(false);
     }
@@ -414,29 +549,33 @@ export function AIChatWidget({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={openChat}
-        className={cn(
-          "fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105",
-          hideFloatingTriggerOnMobileRoom && "hidden md:flex",
-          open && "pointer-events-none opacity-0",
-        )}
-        aria-label={t("open")}
-      >
-        <MessageCircle className="h-6 w-6" />
-      </button>
+      {hydrated ? (
+        <button
+          type="button"
+          onClick={openChat}
+          className={cn(
+            "fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105",
+            hideFloatingTriggerOnMobileRoom && "hidden md:flex",
+            liftFloatingTriggerOnBooking && "bottom-24 md:bottom-5",
+            open && "pointer-events-none opacity-0",
+          )}
+          aria-label={t("open")}
+        >
+          <MessageCircle className="h-6 w-6" />
+        </button>
+      ) : null}
 
-      {mounted ? (
+      {hydrated && mounted ? createPortal((
         <div
           className={cn(
-            "fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none md:pointer-events-none md:bg-transparent md:backdrop-blur-0",
+            "fixed inset-0 z-50 bg-background/85 backdrop-blur-sm transition-opacity duration-200 motion-reduce:transition-none md:pointer-events-none md:bg-transparent md:backdrop-blur-0",
             open ? "opacity-100" : "opacity-0",
           )}
         >
           <div
+            data-testid="chat-panel"
             className={cn(
-              "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[70vh] md:max-h-[720px] md:w-[480px] md:origin-bottom-right md:rounded-2xl md:border",
+              "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[78vh] md:max-h-[820px] md:w-[640px] md:max-w-[calc(100vw-2.5rem)] md:origin-bottom-right md:rounded-2xl md:border",
               open
                 ? "translate-y-0 scale-100 opacity-100"
                 : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95",
@@ -497,9 +636,7 @@ export function AIChatWidget({
               </div>
             ))}
             {isTyping ? (
-              <div className="inline-flex rounded-2xl bg-muted px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
-                {t("thinking")}
-              </div>
+              <TypingIndicator label={t("thinking")} />
             ) : null}
             <div ref={transcriptEndRef} />
           </div>
@@ -514,16 +651,7 @@ export function AIChatWidget({
                 {t("shareContact")}
               </summary>
               <form className="mt-3 grid gap-2" onSubmit={saveContact}>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <Input
-                    value={contactForm.name}
-                    onChange={(event) =>
-                      setContactForm((current) => ({ ...current, name: event.target.value }))
-                    }
-                    className="h-9 rounded-lg text-sm"
-                    placeholder={t("name")}
-                    aria-label={t("name")}
-                  />
+                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_9.5rem_minmax(0,1fr)]">
                   <Input
                     value={contactForm.email}
                     onChange={(event) =>
@@ -534,14 +662,51 @@ export function AIChatWidget({
                     type="email"
                     aria-label={t("email")}
                   />
+                  <Select
+                    value={contactForm.preferredApp}
+                    onValueChange={(value) =>
+                      setContactForm((current) => ({
+                        ...current,
+                        preferredApp: value as ContactApp,
+                        contactHandle: "",
+                      }))
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={t("preferredApp")}
+                      className="h-9 rounded-lg px-3 text-sm"
+                    >
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <ContactAppIcon app={contactForm.preferredApp} />
+                        <span className="truncate">{t(contactForm.preferredApp)}</span>
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contactApps.map((app) => (
+                        <SelectItem key={app} value={app}>
+                          <span
+                            data-testid={`contact-app-option-${app}`}
+                            className="inline-flex min-w-0 items-center gap-2"
+                          >
+                            <ContactAppIcon app={app} />
+                            <span className="truncate">{t(app)}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Input
-                    value={contactForm.phone}
+                    value={contactForm.contactHandle}
                     onChange={(event) =>
-                      setContactForm((current) => ({ ...current, phone: event.target.value }))
+                      setContactForm((current) => ({ ...current, contactHandle: event.target.value }))
                     }
                     className="h-9 rounded-lg text-sm"
-                    placeholder={t("phone")}
-                    aria-label={t("phone")}
+                    placeholder={
+                      contactForm.preferredApp === "whatsapp"
+                        ? t("whatsappPlaceholder")
+                        : t("linePlaceholder")
+                    }
+                    aria-label={t("contactHandle")}
                   />
                 </div>
                 <div className="flex items-center justify-between gap-3">
@@ -584,7 +749,7 @@ export function AIChatWidget({
           </div>
           </div>
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }

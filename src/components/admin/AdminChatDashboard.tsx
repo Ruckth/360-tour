@@ -4,9 +4,12 @@ import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import {
   Clock,
   ExternalLink,
+  Globe2,
   Loader2,
   Mail,
+  MapPin,
   MessageCircle,
+  MonitorSmartphone,
   Phone,
   Search,
   Shield,
@@ -35,9 +38,18 @@ type AdminSession = {
   visitorName?: string;
   visitorEmail?: string;
   visitorPhone?: string;
+  visitorContactApp?: "whatsapp" | "line";
+  visitorContactHandle?: string;
   propertySlug?: string;
   propertyName?: string;
   currentPath?: string;
+  referrer?: string;
+  userAgent?: string;
+  timeZone?: string;
+  browserLanguage?: string;
+  screenSize?: string;
+  viewportSize?: string;
+  platform?: string;
   channel: "web" | "whatsapp" | "line";
   createdAt: number;
   lastSeenAt?: number;
@@ -88,6 +100,19 @@ function formatDateTime(timestamp?: number) {
 function truncate(value?: string, max = 96) {
   if (!value) return "";
   return value.length > max ? `${value.slice(0, max - 1)}...` : value;
+}
+
+function contactLabel(session: AdminSession) {
+  const app = session.visitorContactApp
+    ? session.visitorContactApp === "line"
+      ? "LINE"
+      : "WhatsApp"
+    : "Contact";
+  return session.visitorContactHandle
+    ? `${app}: ${session.visitorContactHandle}`
+    : session.visitorPhone
+      ? `WhatsApp: ${session.visitorPhone}`
+      : "No contact app";
 }
 
 export function AdminChatDashboard() {
@@ -190,7 +215,7 @@ export function AdminChatDashboard() {
       <div className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,var(--background),var(--secondary))] px-5">
         <section className="w-full max-w-md border border-border bg-card p-7 shadow-xl">
           <Shield className="mb-5 h-8 w-8 text-gold" />
-          <h1 className="font-serif text-4xl font-semibold text-foreground">Admin chat</h1>
+          <h1 className="font-serif text-4xl font-semibold text-foreground">Admin</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Sign in with an allowlisted admin account to view visitor chat activity and
             transcripts.
@@ -255,7 +280,7 @@ export function AdminChatDashboard() {
               Concierge operations
             </div>
             <h1 className="mt-2 font-serif text-4xl font-semibold text-foreground">
-              Admin chat monitor
+              Admin
             </h1>
           </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -400,7 +425,7 @@ export function AdminChatDashboard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Phone className="h-4 w-4 text-gold" />
-                      {selectedSession.visitorPhone ?? "No phone"}
+                      {contactLabel(selectedSession)}
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-gold" />
@@ -422,6 +447,47 @@ export function AdminChatDashboard() {
                       {selectedSession.currentPath}
                     </Badge>
                   ) : null}
+                </div>
+                <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
+                    <MapPin className="h-3.5 w-3.5" />
+                    Visitor context
+                  </div>
+                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="flex items-center gap-2">
+                      <Globe2 className="h-3.5 w-3.5 text-gold" />
+                      {selectedSession.timeZone ?? "Unknown timezone"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Globe2 className="h-3.5 w-3.5 text-gold" />
+                      {selectedSession.browserLanguage ?? "Unknown language"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+                      {selectedSession.viewportSize
+                        ? `Viewport ${selectedSession.viewportSize}`
+                        : "Unknown viewport"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
+                      {selectedSession.screenSize
+                        ? `Screen ${selectedSession.screenSize}`
+                        : "Unknown screen"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <UserRound className="h-3.5 w-3.5 text-gold" />
+                      {selectedSession.platform ?? "Unknown platform"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ExternalLink className="h-3.5 w-3.5 text-gold" />
+                      {truncate(selectedSession.referrer, 44) || "No referrer"}
+                    </div>
+                  </div>
+                  <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">
+                    {selectedSession.userAgent
+                      ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
+                      : "No user agent"}
+                  </p>
                 </div>
               </div>
 

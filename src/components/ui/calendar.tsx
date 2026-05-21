@@ -2,7 +2,6 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DayPicker, getDefaultClassNames, type DayPickerProps } from "react-day-picker";
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function Calendar({
@@ -18,29 +17,24 @@ export function Calendar({
       showOutsideDays={showOutsideDays}
       className={cn("p-0", className)}
       classNames={{
-        root: cn(defaultClassNames.root),
+        root: cn(defaultClassNames.root, "relative"),
         months: "flex flex-col gap-4",
-        month: "space-y-4",
-        month_caption: "flex h-9 items-center justify-center",
+        month: "relative space-y-4",
+        month_caption: "pointer-events-none flex h-9 items-center justify-center px-10",
         caption_label: "text-sm font-semibold text-foreground",
-        nav: "absolute inset-x-0 top-0 flex items-center justify-between",
-        button_previous: cn(
-          buttonVariants({ variant: "outline", size: "icon" }),
-          "h-8 w-8 bg-transparent p-0",
-        ),
-        button_next: cn(
-          buttonVariants({ variant: "outline", size: "icon" }),
-          "h-8 w-8 bg-transparent p-0",
-        ),
+        nav: "pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between",
+        button_previous:
+          "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-35",
+        button_next:
+          "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-35",
         month_grid: "w-full border-collapse space-y-1",
-        weekdays: "flex",
-        weekday: "w-9 rounded-md text-[0.8rem] font-medium text-muted-foreground",
-        week: "mt-2 flex w-full",
-        day: "relative h-9 w-9 p-0 text-center text-sm",
-        day_button: cn(
-          buttonVariants({ variant: "ghost" }),
-          "h-9 w-9 p-0 font-normal aria-selected:opacity-100",
-        ),
+        weekdays: "grid grid-cols-7",
+        weekday:
+          "flex h-9 items-center justify-center rounded-md text-[0.8rem] font-medium text-muted-foreground",
+        week: "mt-2 grid grid-cols-7",
+        day: "relative flex h-9 w-full items-center justify-center p-0 text-center text-sm",
+        day_button:
+          "inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-sm font-normal transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-45",
         selected: "text-foreground",
         today:
           "rounded-md border border-gold bg-transparent font-semibold text-foreground",

@@ -47,6 +47,10 @@ function toPublicBooking(booking: Doc<'bookings'>) {
 	};
 }
 
+function blocksNewBookings(booking: Doc<'bookings'>): boolean {
+	return booking.status === 'confirmed' || booking.status === 'completed';
+}
+
 async function loadProperty(
 	ctx: QueryCtx | MutationCtx,
 	slug: string
@@ -106,7 +110,7 @@ async function assertNoOverlap(
 		.take(500);
 
 	const overlapping = candidates.filter(
-		(b) => b.status !== 'cancelled' && b.checkOut > checkIn
+		(b) => blocksNewBookings(b) && b.checkOut > checkIn
 	);
 
 	if (overlapping.length > 0) {

@@ -2,6 +2,7 @@ import Image from "next/image";
 import { Anchor, Bell, Car, Check, Heart, Sparkles, Sun, Utensils, Waves } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { HomeHero } from "@/components/home/HomeHero";
+import { HomeQuickBooking } from "@/components/home/HomeQuickBooking";
 import { VillaCard } from "@/components/home/VillaCard";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { ButtonLink } from "@/components/ui/button";
@@ -40,6 +41,7 @@ export default async function HomePage() {
   return (
     <>
       <HomeHero />
+      <HomeQuickBooking />
 
       <section id="about" className="py-20 md:py-28">
         <div className="mx-auto max-w-7xl px-5 md:px-8">

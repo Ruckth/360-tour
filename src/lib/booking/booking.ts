@@ -23,8 +23,12 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+export function isValidPhone(phone: string): boolean {
+  return phone.trim().replace(/^\+\d{1,3}\s*/, "").replace(/\D/g, "").length >= 6;
+}
+
 export function isValidGuestInfo(name: string, email: string, phone: string): boolean {
-  return name.trim().length >= 2 && isValidEmail(email) && phone.trim().length >= 6;
+  return name.trim().length >= 2 && isValidEmail(email) && isValidPhone(phone);
 }
 
 export function getHighestAllowedStepIndex({
