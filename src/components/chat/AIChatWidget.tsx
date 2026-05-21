@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle, Send, Sparkles, X } from "lucide-react";
+import { MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -17,6 +17,7 @@ import {
   askConcierge,
   closeChatSession,
   createChatSession,
+  getReusableChatSession,
   getChatMessages,
   identifyChatVisitor,
   touchChatSession,
@@ -42,6 +43,7 @@ type LatestExchange = {
 
 const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
 const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
+const REUSABLE_CHAT_MESSAGE_LIMIT = 20;
 const HEARTBEAT_MS = 30_000;
 const contactApps: ContactApp[] = ["whatsapp", "line"];
 const TRANSCRIPT_RECOVERY_ATTEMPTS = 10;
@@ -107,6 +109,45 @@ function getBrowserChatMetadata() {
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function getStoredSessionId() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(SESSION_ID_STORAGE_KEY);
+}
+
+function setStoredSessionId(sessionId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SESSION_ID_STORAGE_KEY, sessionId);
+}
+
+function clearStoredSessionId() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(SESSION_ID_STORAGE_KEY);
+}
+
+function normalizeTranscriptMessages(transcript: { role: "user" | "assistant"; content: string }[]) {
+  return transcript.map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+}
+
+function latestExchangeFromMessages(items: Message[]): LatestExchange | null {
+  for (let assistantIndex = items.length - 1; assistantIndex >= 0; assistantIndex -= 1) {
+    if (items[assistantIndex]?.role !== "assistant") continue;
+
+    for (let userIndex = assistantIndex - 1; userIndex >= 0; userIndex -= 1) {
+      if (items[userIndex]?.role === "user") {
+        return {
+          userMessage: items[userIndex].content,
+          assistantMessage: items[assistantIndex].content,
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 function SuggestionChips({
@@ -282,10 +323,64 @@ export function AIChatWidget({
     setLatestExchange(null);
   }, [activePropertySlug]);
 
+  const createFreshSession = useCallback(async () => {
+    if (!convex) return null;
+    const id = await createChatSession(convex, {
+      propertySlug: activePropertySlug || undefined,
+      channel: "web",
+      visitorId: getOrCreateVisitorId(),
+      ...getBrowserChatMetadata(),
+    });
+    setStoredSessionId(id);
+    setSessionId(id);
+    return id;
+  }, [activePropertySlug, convex]);
+
+  const hydrateExistingSession = useCallback(
+    async (id: string, markOpen = false) => {
+      if (!convex) return null;
+      await touchChatSession(convex, {
+        sessionId: id,
+        propertySlug: activePropertySlug || undefined,
+        ...getBrowserChatMetadata(),
+        isOpen: markOpen,
+      });
+
+      const transcript = await getChatMessages(convex, {
+        sessionId: id,
+        limit: REUSABLE_CHAT_MESSAGE_LIMIT,
+      });
+      if (transcript.length >= REUSABLE_CHAT_MESSAGE_LIMIT) {
+        throw new Error("Chat session has reached the reusable message limit.");
+      }
+
+      const restoredMessages = normalizeTranscriptMessages(transcript);
+      setStoredSessionId(id);
+      setSessionId(id);
+      setMessages(restoredMessages);
+      setLatestExchange(latestExchangeFromMessages(restoredMessages));
+      return id;
+    },
+    [activePropertySlug, convex],
+  );
+
   const ensureSession = useCallback(
-    async (markOpen = false) => {
+    async (markOpen = false, validateForReuse = false) => {
       if (!convex) return null;
       if (sessionId) {
+        if (validateForReuse) {
+          try {
+            await hydrateExistingSession(sessionId, markOpen);
+            return sessionId;
+          } catch {
+            clearStoredSessionId();
+            setSessionId(null);
+            setMessages([]);
+            setLatestExchange(null);
+            return await createFreshSession();
+          }
+        }
+
         if (markOpen) {
           await touchChatSession(convex, {
             sessionId,
@@ -297,43 +392,68 @@ export function AIChatWidget({
         return sessionId;
       }
 
-      const storedId =
-        typeof window !== "undefined" ? window.sessionStorage.getItem(SESSION_ID_STORAGE_KEY) : null;
+      const storedId = getStoredSessionId();
       if (storedId) {
         try {
-          await touchChatSession(convex, {
-            sessionId: storedId,
-            propertySlug: activePropertySlug || undefined,
-            ...getBrowserChatMetadata(),
-            isOpen: markOpen,
-          });
-          setSessionId(storedId);
+          await hydrateExistingSession(storedId, markOpen);
           return storedId;
         } catch {
-          window.sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
+          clearStoredSessionId();
         }
       }
 
-      const id = await createChatSession(convex, {
-        propertySlug: activePropertySlug || undefined,
-        channel: "web",
-        visitorId: getOrCreateVisitorId(),
-        ...getBrowserChatMetadata(),
-      });
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(SESSION_ID_STORAGE_KEY, id);
+      const visitorId = getOrCreateVisitorId();
+      if (visitorId) {
+        try {
+          const reusableSession = await getReusableChatSession(convex, {
+            visitorId,
+            messageLimit: REUSABLE_CHAT_MESSAGE_LIMIT,
+          });
+          if (reusableSession?._id) {
+            return await hydrateExistingSession(reusableSession._id, markOpen);
+          }
+        } catch {
+          // If lookup fails, create a clean session so chat stays available.
+        }
       }
-      setSessionId(id);
-      return id;
+
+      return await createFreshSession();
     },
-    [activePropertySlug, convex, sessionId],
+    [activePropertySlug, convex, createFreshSession, hydrateExistingSession, sessionId],
   );
 
   const openChat = useCallback(() => {
     setMounted(true);
-    void ensureSession(true);
+    void ensureSession(true, true);
     setOpen(true);
   }, [ensureSession]);
+
+  const restartChat = useCallback(async () => {
+    if (!convex) {
+      clearStoredSessionId();
+      setSessionId(null);
+      setMessages([]);
+      setLatestExchange(null);
+      setInput("");
+      setIsTyping(false);
+      setContactStatus("idle");
+      setOpen(true);
+      return;
+    }
+
+    try {
+      const id = await createFreshSession();
+      if (!id) throw new Error("No chat session");
+      setMessages([]);
+      setLatestExchange(null);
+      setInput("");
+      setIsTyping(false);
+      setContactStatus("idle");
+      setOpen(true);
+    } catch {
+      setContactStatus("error");
+    }
+  }, [convex, createFreshSession]);
 
   const closeChat = useCallback(() => {
     setOpen(false);
@@ -380,11 +500,6 @@ export function AIChatWidget({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeChat, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    void ensureSession(true);
-  }, [ensureSession, open]);
 
   useEffect(() => {
     if (!open || !convex) return;
@@ -599,7 +714,17 @@ export function AIChatWidget({
           <div className="flex shrink-0 items-center justify-between border-b border-border bg-navy px-4 py-2.5 text-white md:px-4 md:py-2.5">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-gold" />
-              <p className="text-sm font-semibold">{title}</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={restartChat}
+                className="h-8 rounded-full px-2 text-sm font-semibold text-white hover:bg-white/10 hover:text-white"
+                aria-label={`${t("restartChat")} - ${title}`}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>{t("restartChat")}</span>
+              </Button>
             </div>
             <Button
               type="button"

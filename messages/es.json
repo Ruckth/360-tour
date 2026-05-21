@@ -153,6 +153,7 @@
     "propertyTitle": "Conserjería de {propertyName}",
     "open": "Abrir chat de conserjería",
     "close": "Cerrar chat",
+    "restartChat": "Reiniciar chat",
     "intro": "Puedo ayudarle a elegir la villa ideal, explicar los ahorros de reservar directo o guiarle al tour 360°.",
     "askPlaceholder": "Haga una pregunta",
     "thinking": "Pensando...",

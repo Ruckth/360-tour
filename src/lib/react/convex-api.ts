@@ -65,6 +65,12 @@ export type ChatTranscriptMessage = {
   timestamp?: number;
 };
 
+export type ReusableChatSession = {
+  _id: string;
+  visitorId?: string;
+  createdAt: number;
+};
+
 export async function listLiveProperties(client: ConvexReactClient) {
   return (await withConvexTimeout(
     client.query(api.properties.list, {} as never),
@@ -160,6 +166,16 @@ export async function createChatSession(
     client.mutation(api.chat.createSession, args as never),
     "Creating chat session",
   )) as string;
+}
+
+export async function getReusableChatSession(
+  client: ConvexReactClient,
+  args: { visitorId: string; messageLimit?: number },
+) {
+  return (await withConvexTimeout(
+    client.query(api.chat.getReusableSession, args as never),
+    "Loading previous chat session",
+  )) as ReusableChatSession | null;
 }
 
 export async function touchChatSession(

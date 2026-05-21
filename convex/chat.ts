@@ -1,5 +1,9 @@
 import { internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import {
+	DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
+	isReusableChatMessageCount
+} from './lib/chatReuse';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 
 async function resolvePropertyId(
@@ -97,6 +101,45 @@ export const touchSession = mutation({
 			lastSeenAt: now,
 			lastOpenedAt: args.isOpen ? now : session.lastOpenedAt
 		});
+	}
+});
+
+export const getReusableSession = query({
+	args: {
+		visitorId: v.string(),
+		messageLimit: v.optional(v.number())
+	},
+	handler: async (ctx, args) => {
+		const visitorId = args.visitorId.trim();
+		const messageLimit = Math.max(
+			0,
+			Math.floor(args.messageLimit ?? DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT)
+		);
+		if (!visitorId || messageLimit <= 0) return null;
+
+		const sessions = await ctx.db
+			.query('chatSessions')
+			.withIndex('by_visitor', (q) => q.eq('visitorId', visitorId))
+			.order('desc')
+			.take(25);
+
+		for (const session of sessions) {
+			if (session.channel !== 'web') continue;
+
+			const legacyMessageCount = session.messages?.length ?? 0;
+			if (!isReusableChatMessageCount(legacyMessageCount, messageLimit)) continue;
+
+			const messages = await ctx.db
+				.query('chatMessages')
+				.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+				.take(messageLimit - legacyMessageCount);
+
+			if (isReusableChatMessageCount(legacyMessageCount + messages.length, messageLimit)) {
+				return session;
+			}
+		}
+
+		return null;
 	}
 });
 

@@ -153,6 +153,7 @@
     "propertyTitle": "Conciergerie {propertyName}",
     "open": "Ouvrir le chat concierge",
     "close": "Fermer le chat",
+    "restartChat": "Redémarrer le chat",
     "intro": "Je peux vous aider à choisir la bonne villa, expliquer les économies de réservation directe ou vous guider vers la visite 360°.",
     "askPlaceholder": "Posez une question",
     "thinking": "Réflexion...",

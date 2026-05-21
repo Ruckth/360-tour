@@ -32,7 +32,7 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   await expect(page.getByText("Seaview Residence").first()).toBeVisible();
   await page.getByRole("button", { name: "Open concierge chat" }).click({ force: true });
 
-  await expect(page.getByText("Seaview concierge")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Restart chat/i })).toBeVisible();
   await expect(page.getByText("Share contact details")).toBeVisible();
   const chatMessages = page.getByTestId("chat-messages");
   const chatFooter = page.getByTestId("chat-footer");
@@ -72,6 +72,10 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
     ),
   ).toBeVisible();
 
+  await page.getByRole("button", { name: /Restart chat/i }).click();
+  await expect(page.getByText("Do you have airport pickup?")).toHaveCount(0);
+  await expect(page.getByText(/I can help pick the right villa/i)).toBeVisible();
+
   await page.getByText("Share contact details").click();
   await page.getByLabel("Email").fill("visitor@example.com");
   await page.getByLabel("Preferred app").click();
@@ -95,7 +99,7 @@ test("thai locale renders translated public UI and chat labels", async ({ page }
   await expect(page.getByRole("link", { name: "จอง" }).first()).toBeVisible();
   await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
 
-  await expect(page.getByText("คอนเซียจ Seaview")).toBeVisible();
+  await expect(page.getByRole("button", { name: /เริ่มแชตใหม่/i })).toBeVisible();
   await expect(page.getByText("ฝากข้อมูลติดต่อ")).toBeVisible();
   await expect(page.getByPlaceholder("พิมพ์คำถาม")).toBeVisible();
 });
