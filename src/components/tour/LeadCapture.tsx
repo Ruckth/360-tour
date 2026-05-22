@@ -1,6 +1,7 @@
 "use client";
 
 import { Mail, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,8 @@ export function LeadCapture({
   propertySlug: string;
   onClose: () => void;
 }) {
+  const tourT = useTranslations("Tour");
+  const a11y = useTranslations("A11y");
   const convex = useOptionalConvex();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -22,7 +25,7 @@ export function LeadCapture({
   async function submit() {
     setError("");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError("Enter a valid email.");
+      setError(tourT("invalidEmail"));
       return;
     }
     try {
@@ -35,7 +38,7 @@ export function LeadCapture({
       }
       setSubmitted(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save this email.");
+      setError(err instanceof Error ? err.message : tourT("saveError"));
     }
   }
 
@@ -48,7 +51,7 @@ export function LeadCapture({
           size="icon"
           onClick={onClose}
           className="absolute right-3 top-3 rounded-full text-white/55 hover:bg-white/10 hover:text-white"
-          aria-label="Close"
+          aria-label={a11y("close")}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -56,26 +59,26 @@ export function LeadCapture({
           <Mail className="h-5 w-5 text-gold" />
         </div>
         <h2 className="mt-5 font-serif text-3xl font-semibold">
-          Save this dream
+          {tourT("leadTitle")}
         </h2>
         {submitted ? (
           <p className="mt-3 text-sm leading-relaxed text-white/70">
-            Saved. We’ll keep this villa warm in your inbox with direct booking details.
+            {tourT("leadSaved")}
           </p>
         ) : (
           <>
             <p className="mt-3 text-sm leading-relaxed text-white/70">
-              Get the direct booking link and a reminder of the villa you just explored.
+              {tourT("leadBody")}
             </p>
             <Input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
+              placeholder={tourT("leadEmailPlaceholder")}
               className="mt-5 h-12 rounded-xl border-white/15 bg-white/10 text-white placeholder:text-white/35 focus-visible:ring-gold/40"
             />
             {error ? <p className="mt-2 text-sm text-red-300">{error}</p> : null}
             <Button variant="gold" className="mt-4 w-full" onClick={submit}>
-              Save
+              {tourT("save")}
             </Button>
           </>
         )}

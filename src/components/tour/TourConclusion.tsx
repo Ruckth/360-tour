@@ -5,9 +5,9 @@ import { Check, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { Button } from "@/components/ui/button";
-import { getConclusionForProperty } from "@/lib/data/tourflow";
 import type { Property } from "@/lib/data/properties";
 import { localizeHref } from "@/i18n/routing";
+import { getLocalizedTourConclusion } from "@/lib/i18n/public-content";
 
 export function TourConclusion({
   property,
@@ -22,7 +22,7 @@ export function TourConclusion({
   const locale = useLocale();
   const t = useTranslations("Booking");
   const navT = useTranslations("Nav");
-  const conclusion = getConclusionForProperty(property.id);
+  const conclusion = getLocalizedTourConclusion(property.id, locale);
   if (!conclusion) return null;
 
   function book() {

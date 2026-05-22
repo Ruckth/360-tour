@@ -13,8 +13,8 @@ import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { dateToIso, isoToDate, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
-import { properties } from "@/lib/data/properties";
 import { resort } from "@/lib/data/resort-config";
+import { getLocalizedProperties } from "@/lib/i18n/public-content";
 import { cn } from "@/lib/utils";
 
 export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
@@ -24,6 +24,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const villaT = useTranslations("Villa");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
+  const properties = useMemo(() => getLocalizedProperties(locale), [locale]);
   const today = todayIsoLocal();
   const todayDate = useMemo(() => isoToDate(today), [today]);
   const [selectedPropertySlug, setSelectedPropertySlug] = useState(context.propertySlug ?? "");
@@ -42,7 +43,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
 
   const property = useMemo(
     () => properties.find((item) => item.id === selectedPropertySlug),
-    [selectedPropertySlug],
+    [properties, selectedPropertySlug],
   );
   const nights = useMemo(() => nightsBetweenIso(checkIn, checkOut), [checkIn, checkOut]);
   const quote = useMemo(() => {

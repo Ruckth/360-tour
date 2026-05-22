@@ -34,8 +34,11 @@ import {
   todayIsoLocal,
 } from "@/lib/booking/dates";
 import { calculateBookingQuote } from "@/lib/booking/quote";
-import { properties as demoProperties } from "@/lib/data/properties";
 import { resort } from "@/lib/data/resort-config";
+import {
+  getLocalizedProperties,
+  localizePropertyLike,
+} from "@/lib/i18n/public-content";
 import {
   createBooking,
   getBlockedDatesByProperty,
@@ -45,14 +48,16 @@ import {
 import { useOptionalConvex } from "@/lib/react/convex";
 import { localizeHref } from "@/i18n/routing";
 
-const demoInventory: BookingProperty[] = demoProperties.map((property) => ({
-  ...property,
-  _id: `demo-${property.id}`,
-  slug: property.id,
-  currency: resort.currency,
-  directDiscountPercent: 15,
-  source: "demo",
-}));
+function getDemoInventory(locale: string): BookingProperty[] {
+  return getLocalizedProperties(locale).map((property) => ({
+    ...property,
+    _id: `demo-${property.id}`,
+    slug: property.id,
+    currency: resort.currency,
+    directDiscountPercent: 15,
+    source: "demo",
+  }));
+}
 
 export function BookingFunnel({
   initialCheckIn = "",
@@ -74,6 +79,7 @@ export function BookingFunnel({
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations("Booking");
+  const demoInventory = useMemo(() => getDemoInventory(locale), [locale]);
   const convex = useOptionalConvex();
   const todayIso = todayIsoLocal();
   const parsedInitialGuests = Number(initialGuests);
@@ -96,7 +102,7 @@ export function BookingFunnel({
 
   const [step, setStep] = useState<BookingStep>("select");
   const [bookingMode, setBookingMode] = useState<BookingMode>(convex ? "live" : "demo");
-  const [propertyList, setPropertyList] = useState<BookingProperty[]>(demoInventory);
+  const [propertyList, setPropertyList] = useState<BookingProperty[]>(() => demoInventory);
   const [selectedId, setSelectedId] = useState(initialProperty);
   const [checkIn, setCheckIn] = useState(initialCheckIn);
   const [checkOut, setCheckOut] = useState(derivedInitialCheckOut);
@@ -137,25 +143,30 @@ export function BookingFunnel({
 
         const liveRows = rows;
         if (liveRows.length > 0) {
-          const liveInventory = liveRows.map((row) => ({
-            id: row.slug,
-            slug: row.slug,
-            _id: row._id,
-            name: row.name,
-            tagline: row.tagline,
-            description: row.description,
-            pricePerNight: row.pricePerNight,
-            maxGuests: row.maxGuests,
-            bedrooms: row.bedrooms,
-            bathrooms: row.bathrooms,
-            area: row.area,
-            images: row.images,
-            amenities: row.amenities,
-            tourRoomIds: row.tourRoomIds,
-            currency: row.currency,
-            directDiscountPercent: row.directDiscountPercent,
-            source: "live" as const,
-          }));
+          const liveInventory = liveRows.map((row) =>
+            localizePropertyLike(
+              {
+                id: row.slug,
+                slug: row.slug,
+                _id: row._id,
+                name: row.name,
+                tagline: row.tagline,
+                description: row.description,
+                pricePerNight: row.pricePerNight,
+                maxGuests: row.maxGuests,
+                bedrooms: row.bedrooms,
+                bathrooms: row.bathrooms,
+                area: row.area,
+                images: row.images,
+                amenities: row.amenities,
+                tourRoomIds: row.tourRoomIds,
+                currency: row.currency,
+                directDiscountPercent: row.directDiscountPercent,
+                source: "live" as const,
+              },
+              locale,
+            ),
+          );
           setPropertyList(liveInventory);
           setSelectedId((current) => liveInventory.some((item) => item.slug === current) ? current : liveInventory[0].slug);
           setBookingMode("live");
@@ -181,7 +192,7 @@ export function BookingFunnel({
     return () => {
       active = false;
     };
-  }, [convex, t, todayIso]);
+  }, [convex, demoInventory, locale, t, todayIso]);
 
   const property = propertyList.find((item) => item.slug === selectedId) ?? propertyList[0];
   const propertyId = property._id;

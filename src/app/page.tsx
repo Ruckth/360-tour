@@ -6,11 +6,15 @@ import { HomeQuickBooking } from "@/components/home/HomeQuickBooking";
 import { VillaCard } from "@/components/home/VillaCard";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { ButtonLink } from "@/components/ui/button";
-import { properties } from "@/lib/data/properties";
-import { resort } from "@/lib/data/resort-config";
-import { getSocialProofByPropertyId } from "@/lib/data/social-proof";
-import { getPropertyTagline } from "@/lib/data/stories";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
+import {
+  getLocalizedProperties,
+  getLocalizedPropertyTagline,
+  getLocalizedResort,
+  getLocalizedSocialProofByPropertyId,
+  getLocationBullets,
+  getLocationImageAlt,
+} from "@/lib/i18n/public-content";
 
 const amenityIcons = {
   waves: Waves,
@@ -28,15 +32,18 @@ export default async function HomePage() {
   const nav = await getTranslations("Nav");
   const activeLocale = await getLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
+  const resort = getLocalizedResort(locale);
+  const properties = getLocalizedProperties(locale);
   const reviews = properties
-    .flatMap((property) => getSocialProofByPropertyId(property.id)?.reviews ?? [])
+    .flatMap((property) => getLocalizedSocialProofByPropertyId(property.id, locale)?.reviews ?? [])
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 6);
   const villaItems = properties.map((property) => ({
     property,
-    socialProof: getSocialProofByPropertyId(property.id),
-    storyTagline: getPropertyTagline(property.id),
+    socialProof: getLocalizedSocialProofByPropertyId(property.id, locale),
+    storyTagline: getLocalizedPropertyTagline(property.id, locale),
   }));
+  const locationBullets = getLocationBullets(locale);
 
   return (
     <>
@@ -162,12 +169,7 @@ export default async function HomePage() {
                 {t("locationCopy", { resortName: resort.name })}
               </p>
               <ul className="mt-6 space-y-3">
-                {[
-                  "5 min to Bophut Beach",
-                  "15 min from Samui Airport",
-                  "10 min to Fisherman's Village",
-                  "Private airport transfer included",
-                ].map((item) => (
+                {locationBullets.map((item) => (
                   <li key={item} className="flex items-center gap-3 text-sm text-foreground">
                     <Check className="h-4 w-4 flex-shrink-0 text-gold" />
                     {item}
@@ -178,7 +180,7 @@ export default async function HomePage() {
             <div className="relative min-h-[320px] overflow-hidden rounded-2xl">
               <Image
                 src="https://images.unsplash.com/photo-1537956965359-7573183d1f57?w=800&h=600&fit=crop"
-                alt={`${resort.location} aerial view`}
+                alt={getLocationImageAlt(locale)}
                 fill
                 className="object-cover"
               />

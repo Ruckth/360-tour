@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,6 +39,7 @@ export function LanguageSwitcher({
   className?: string;
 }) {
   const locale = useLocale();
+  const a11y = useTranslations("A11y");
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentLocale = isLocale(locale) ? locale : defaultLocale;
@@ -83,7 +84,7 @@ export function LanguageSwitcher({
   return (
     <Popover>
       <PopoverTrigger
-        aria-label="Language"
+        aria-label={a11y("language")}
         className={cn(
           "inline-flex h-9 items-center justify-between gap-2 rounded-full border text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-3 focus:ring-ring/40",
           compact ? "w-[4.25rem] px-3" : "w-[8rem] px-3",

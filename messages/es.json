@@ -198,5 +198,301 @@
   },
   "Footer": {
     "bookDirect": "Reservar directo"
+  },
+  "SEO": {
+    "rootTitle": "Seaview Residence - Villas de lujo en Koh Samui, Thailand",
+    "rootDescription": "Una colección boutique de villas de lujo en la ladera de Koh Samui, con vistas al golfo de Tailandia, piscinas privadas y servicio tranquilo de isla.",
+    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
+    "bookingTitle": "Reservar directo - Seaview Residence",
+    "payTitle": "Pago seguro - Seaview Residence",
+    "successTitle": "Confirmación de reserva - Seaview Residence",
+    "villaFallback": "Villa"
+  },
+  "A11y": {
+    "previousHeroSlide": "Image précédente",
+    "nextHeroSlide": "Image suivante",
+    "goToSlide": "Aller à l’image {index}",
+    "scrollDown": "Faire défiler vers le bas",
+    "showPhoto": "Afficher la photo {index}",
+    "previousPhoto": "Photo précédente",
+    "nextPhoto": "Photo suivante",
+    "language": "Langue",
+    "countryCode": "Indicatif pays",
+    "close": "Fermer",
+    "closeTour": "Fermer la visite",
+    "toggleTheme": "Cambiar tema",
+    "toggleMenu": "Abrir o cerrar menú"
+  },
+  "Resort": {
+    "tagline": "Donde el océano encuentra la serenidad",
+    "description": "Una colección boutique de villas de lujo en la ladera de Koh Samui, con vistas panorámicas al golfo de Tailandia, piscinas privadas y un servicio pausado que convierte la estancia en recuerdo.",
+    "location": "Koh Samui, Thailand",
+    "locationImageAlt": "Vue aérienne de Koh Samui, Thailand",
+    "amenities": {
+      "infinityPool": "Piscina infinita",
+      "spaWellness": "Spa y bienestar",
+      "farmRestaurant": "Restaurante de la granja a la mesa",
+      "airportTransfer": "Traslado al aeropuerto",
+      "conciergeService": "Servicio de conserjería",
+      "privateBeach": "Acceso a playa privada",
+      "yogaMeditation": "Yoga y meditación",
+      "waterSports": "Deportes acuáticos"
+    },
+    "highlights": {
+      "villaTypes": "Tipos de villa",
+      "guestRating": "Valoración de huéspedes",
+      "reviews": "Reseñas",
+      "directSavings": "Ahorro directo"
+    },
+    "locationBullets": {
+      "bophut": "5 min a Bophut Beach",
+      "airport": "15 min desde Samui Airport",
+      "fisherman": "10 min a Fisherman's Village",
+      "transfer": "Traslado privado al aeropuerto incluido"
+    }
+  },
+  "Properties": {
+    "pool-villa": {
+      "tagline": "Paraíso privado con piscina infinita",
+      "description": "Disfrute del lujo en la amplia Pool Villa, con piscina infinita privada, sala abierta y jardín tropical. Los ventanales de suelo a techo llevan la vista exterior a cada habitación.",
+      "storyTagline": "Mañanas que empiezan con un baño privado bajo cielo abierto",
+      "amenities": {
+        "privatePool": "Piscina privada",
+        "wifi": "WiFi",
+        "airConditioning": "Aire acondicionado",
+        "kitchen": "Cocina",
+        "gardenView": "Vista al jardín",
+        "kingBed": "Cama king"
+      }
+    },
+    "garden-suite": {
+      "tagline": "Retiro sereno rodeado de naturaleza",
+      "description": "La Garden Suite está entre jardines tropicales y ofrece dormitorio amplio, baño moderno y terraza privada. Despierte con canto de aves y aroma de frangipani.",
+      "storyTagline": "Un rincón tranquilo de la isla, envuelto en verde",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "Aire acondicionado",
+        "gardenTerrace": "Terraza jardín",
+        "rainShower": "Ducha de lluvia",
+        "queenBed": "Cama queen"
+      }
+    },
+    "penthouse": {
+      "tagline": "Loft boho enmarcado por ventanas a los árboles",
+      "description": "Canopy Loft Penthouse es una villa luminosa estilo loft con ventanales altos, madera cálida, textiles suaves y detalles boho. La plataforma para dormir, el lounge y la cocineta crean un refugio íntimo sobre los árboles.",
+      "storyTagline": "Despertar entre luz suave, madera cálida y ventanas a las copas",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "Aire acondicionado",
+        "kitchenette": "Cocineta",
+        "treetopWindows": "Ventanas a los árboles",
+        "loftLounge": "Lounge loft",
+        "kingBed": "Cama king",
+        "designerLighting": "Iluminación de diseño"
+      }
+    }
+  },
+  "Rooms": {
+    "pv-living": {
+      "name": "Sala de estar",
+      "hotspots": {
+        "pv-living-to-pool": "Zona de piscina"
+      }
+    },
+    "pv-pool": {
+      "name": "Zona de piscina",
+      "hotspots": {
+        "pv-pool-to-living": "Sala de estar"
+      }
+    },
+    "gs-lounge": {
+      "name": "Lounge",
+      "hotspots": {
+        "gs-lounge-to-dining": "Comedor"
+      }
+    },
+    "gs-dining": {
+      "name": "Comedor",
+      "hotspots": {
+        "gs-dining-to-garden": "Vista al jardín",
+        "gs-dining-to-lounge": "Lounge"
+      }
+    },
+    "gs-garden": {
+      "name": "Vista al jardín",
+      "hotspots": {
+        "gs-garden-to-dining": "Comedor"
+      }
+    },
+    "ph-bedroom": {
+      "name": "Vista 360° de Canopy Loft",
+      "hotspots": {}
+    }
+  },
+  "Tour": {
+    "roomsExplored": "{visited}/{total} habitaciones exploradas",
+    "loading": "Chargement...",
+    "leadTitle": "Guardar este sueño",
+    "leadSaved": "Guardado. Le enviaremos los detalles de reserva directa de esta villa.",
+    "leadBody": "Reciba el enlace de reserva directa y un recordatorio de la villa que acaba de explorar.",
+    "leadEmailPlaceholder": "you@example.com",
+    "invalidEmail": "Saisissez une adresse e-mail valide.",
+    "saveError": "Impossible d’enregistrer cet e-mail.",
+    "save": "Sauvegarder"
+  },
+  "TourConclusions": {
+    "pool-villa": {
+      "headline": "Su estancia le espera",
+      "summary": "Dos espacios llenos de sol, una piscina infinita privada y una calma que permite volver a escucharse. No es un hotel: es su casa en la isla.",
+      "highlights": {
+        "one": "Piscina infinita privada a pasos de la cama",
+        "two": "Sala abierta con vidrio de suelo a techo",
+        "three": "Jardín tropical alrededor de la villa",
+        "four": "Conserje personal para excursiones"
+      },
+      "closingLine": "Haga que sea más que un sueño"
+    },
+    "garden-suite": {
+      "headline": "Su retiro le espera",
+      "summary": "Rodeada de jardines tropicales, la Garden Suite baja el ritmo de la vida al sonido de las palmas. Cada detalle invita a quedarse un poco más.",
+      "highlights": {
+        "one": "Terraza privada con vista al jardín",
+        "two": "Ducha de lluvia rodeada de naturaleza",
+        "three": "A pasos de playas tranquilas",
+        "four": "Desayuno diario con sabores frescos de la isla"
+      },
+      "closingLine": "Haga que sea más que un sueño"
+    },
+    "penthouse": {
+      "headline": "Su loft le espera",
+      "summary": "Canopy Loft Penthouse se siente como un estudio privado sobre los árboles: ventanas altas, vigas negras, madera cálida y texturas suaves en un refugio tranquilo.",
+      "highlights": {
+        "one": "Ventanas altas a los árboles con banco integrado",
+        "two": "Plataforma de descanso acogedora",
+        "three": "Rincón lounge boho y relajado",
+        "four": "Cocineta compacta para mañanas lentas"
+      },
+      "closingLine": "Haga que sea más que un sueño"
+    }
+  },
+  "Pricing": {
+    "benefits": {
+      "freeAirportPickup": "Recogida gratis en el aeropuerto",
+      "welcomeBasket": "Cesta de bienvenida",
+      "lateCheckout": "Salida tardía (14:00)",
+      "noServiceFees": "Sin cargos de servicio",
+      "freeCancellation": "Cancelación gratis (48h)",
+      "directWhatsappSupport": "Soporte directo por WhatsApp"
+    }
+  },
+  "Reviews": {
+    "pv-r1": {
+      "title": "La piscina era absolutamente espectacular",
+      "body": "Nos encantaron las mañanas en la piscina infinita, el espacio abierto y la privacidad del jardín tropical. La villa estaba impecable, muy bien equipada y el host respondió rápido con buenas recomendaciones."
+    },
+    "pv-r2": {
+      "title": "Escapada perfecta de luna de miel",
+      "body": "Nos encantaron las mañanas en la piscina infinita, el espacio abierto y la privacidad del jardín tropical. La villa estaba impecable, muy bien equipada y el host respondió rápido con buenas recomendaciones."
+    },
+    "pv-r3": {
+      "title": "Se sintió como un resort cinco estrellas",
+      "body": "Nos encantaron las mañanas en la piscina infinita, el espacio abierto y la privacidad del jardín tropical. La villa estaba impecable, muy bien equipada y el host respondió rápido con buenas recomendaciones."
+    },
+    "pv-r4": {
+      "title": "Villa preciosa, ideal para familias",
+      "body": "Nos encantaron las mañanas en la piscina infinita, el espacio abierto y la privacidad del jardín tropical. La villa estaba impecable, muy bien equipada y el host respondió rápido con buenas recomendaciones."
+    },
+    "pv-r5": {
+      "title": "La mejor estancia en Thailand",
+      "body": "Nos encantaron las mañanas en la piscina infinita, el espacio abierto y la privacidad del jardín tropical. La villa estaba impecable, muy bien equipada y el host respondió rápido con buenas recomendaciones."
+    },
+    "pv-r6": {
+      "title": "Superhost por una razón",
+      "body": "Nos encantaron las mañanas en la piscina infinita, el espacio abierto y la privacidad del jardín tropical. La villa estaba impecable, muy bien equipada y el host respondió rápido con buenas recomendaciones."
+    },
+    "gs-r1": {
+      "title": "La vista al jardín al atardecer fue mágica",
+      "body": "La Garden Suite fue tranquila, íntima y rodeada de naturaleza. La terraza, la ducha de lluvia y el sonido del jardín hicieron que todo se sintiera relajado y fácil."
+    },
+    "gs-r2": {
+      "title": "Perfecta para parejas",
+      "body": "La Garden Suite fue tranquila, íntima y rodeada de naturaleza. La terraza, la ducha de lluvia y el sonido del jardín hicieron que todo se sintiera relajado y fácil."
+    },
+    "gs-r3": {
+      "title": "Encantadora y bien ubicada",
+      "body": "La Garden Suite fue tranquila, íntima y rodeada de naturaleza. La terraza, la ducha de lluvia y el sonido del jardín hicieron que todo se sintiera relajado y fácil."
+    },
+    "gs-r4": {
+      "title": "Gran valor para Koh Tao",
+      "body": "La Garden Suite fue tranquila, íntima y rodeada de naturaleza. La terraza, la ducha de lluvia y el sonido del jardín hicieron que todo se sintiera relajado y fácil."
+    },
+    "gs-r5": {
+      "title": "Escape isleño tranquilo",
+      "body": "La Garden Suite fue tranquila, íntima y rodeada de naturaleza. La terraza, la ducha de lluvia y el sonido del jardín hicieron que todo se sintiera relajado y fácil."
+    },
+    "ph-r1": {
+      "title": "Un loft lleno de luz suave",
+      "body": "Canopy Loft Penthouse tiene una luz preciosa, madera cálida y detalles cuidados. Las ventanas altas, el lounge y la cocineta crean una sensación de estudio privado sobre los árboles."
+    },
+    "ph-r2": {
+      "title": "Vale cada baht",
+      "body": "Canopy Loft Penthouse tiene una luz preciosa, madera cálida y detalles cuidados. Las ventanas altas, el lounge y la cocineta crean una sensación de estudio privado sobre los árboles."
+    },
+    "ph-r3": {
+      "title": "El mejor alojamiento en Koh Tao",
+      "body": "Canopy Loft Penthouse tiene una luz preciosa, madera cálida y detalles cuidados. Las ventanas altas, el lounge y la cocineta crean una sensación de estudio privado sobre los árboles."
+    },
+    "ph-r4": {
+      "title": "Lujo elevado en una isla tropical",
+      "body": "Canopy Loft Penthouse tiene una luz preciosa, madera cálida y detalles cuidados. Las ventanas altas, el lounge y la cocineta crean una sensación de estudio privado sobre los árboles."
+    },
+    "ph-r5": {
+      "title": "Estancia inolvidable",
+      "body": "Canopy Loft Penthouse tiene una luz preciosa, madera cálida y detalles cuidados. Las ventanas altas, el lounge y la cocineta crean una sensación de estudio privado sobre los árboles."
+    }
+  },
+  "TourSnippets": {
+    "pv-ts1": {
+      "quote": "¡La piscina infinita al amanecer es mágica!"
+    },
+    "pv-ts2": {
+      "quote": "La sala abierta se siente realmente lujosa."
+    },
+    "gs-ts1": {
+      "quote": "Un retiro muy tranquilo rodeado de naturaleza."
+    },
+    "gs-ts2": {
+      "quote": "¡Desayunar en la terraza fue lo mejor!"
+    },
+    "ph-ts1": {
+      "quote": "La luz de la mañana por las ventanas altas es preciosa."
+    }
+  },
+  "BookingDocuments": {
+    "invoice": "Factura",
+    "receipt": "Recibo",
+    "guest": "Huésped",
+    "email": "Email",
+    "phone": "Teléfono",
+    "property": "Propiedad",
+    "stayDates": "Fechas de estancia",
+    "to": "a",
+    "night": "noche",
+    "nights": "noches",
+    "guestUnit": "huésped",
+    "guestUnits": "huéspedes",
+    "directBookingDiscount": "Descuento por reserva directa",
+    "total": "Total",
+    "invoiceNumber": "Número de factura",
+    "demoInvoice": "Factura demo",
+    "issueDate": "Fecha de emisión",
+    "demoInvoiceNotice": "Esta factura demo fue generada por Seaview Residence solo para demostración del producto.",
+    "receiptNumber": "Número de recibo",
+    "demoReceipt": "Recibo demo",
+    "confirmationCode": "Código de confirmación",
+    "demoConfirmation": "Confirmación demo",
+    "paidDate": "Fecha de pago",
+    "paymentMethodDemo": "Método de pago: tarjeta demo terminada en 4242",
+    "paidNotice": "Pagado por completo. Este recibo es solo de demostración y no se cargó ninguna tarjeta real."
   }
 }

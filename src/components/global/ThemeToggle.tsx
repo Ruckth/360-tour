@@ -1,12 +1,14 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { resolveStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 export function ThemeToggle({ solid = true }: { solid?: boolean }) {
+  const a11y = useTranslations("A11y");
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export function ThemeToggle({ solid = true }: { solid?: boolean }) {
       variant="ghost"
       size="icon"
       onClick={toggle}
-      aria-label="Toggle theme"
+      aria-label={a11y("toggleTheme")}
       className={cn(
         "h-9 w-9 rounded-full",
         solid

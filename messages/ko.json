@@ -198,5 +198,301 @@
   },
   "Footer": {
     "bookDirect": "직접 예약"
+  },
+  "SEO": {
+    "rootTitle": "Seaview Residence - Koh Samui, Thailand 럭셔리 빌라",
+    "rootDescription": "Koh Samui 언덕 위의 부티크 럭셔리 빌라 컬렉션. 태국만 전망, 프라이빗 풀, 여유로운 섬 서비스를 제공합니다.",
+    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
+    "bookingTitle": "직접 예약 - Seaview Residence",
+    "payTitle": "보안 결제 - Seaview Residence",
+    "successTitle": "예약 확인 - Seaview Residence",
+    "villaFallback": "빌라"
+  },
+  "A11y": {
+    "previousHeroSlide": "이전 히어로 슬라이드",
+    "nextHeroSlide": "다음 히어로 슬라이드",
+    "goToSlide": "{index}번 슬라이드로 이동",
+    "scrollDown": "아래로 스크롤",
+    "showPhoto": "사진 {index} 보기",
+    "previousPhoto": "이전 사진",
+    "nextPhoto": "다음 사진",
+    "language": "언어",
+    "countryCode": "국가 코드",
+    "close": "닫기",
+    "closeTour": "투어 닫기",
+    "toggleTheme": "테마 전환",
+    "toggleMenu": "메뉴 전환"
+  },
+  "Resort": {
+    "tagline": "바다와 고요함이 만나는 곳",
+    "description": "Koh Samui 언덕 위의 부티크 럭셔리 빌라 컬렉션으로, 태국만 파노라마 전망, 프라이빗 풀, 기억에 남는 여유로운 서비스를 제공합니다.",
+    "location": "Koh Samui, Thailand",
+    "locationImageAlt": "Koh Samui, Thailand 항공 전망",
+    "amenities": {
+      "infinityPool": "인피니티 풀",
+      "spaWellness": "스파 & 웰니스",
+      "farmRestaurant": "팜투테이블 레스토랑",
+      "airportTransfer": "공항 이동 서비스",
+      "conciergeService": "컨시어지 서비스",
+      "privateBeach": "프라이빗 비치 접근",
+      "yogaMeditation": "요가 & 명상",
+      "waterSports": "수상 스포츠"
+    },
+    "highlights": {
+      "villaTypes": "빌라 유형",
+      "guestRating": "게스트 평점",
+      "reviews": "리뷰",
+      "directSavings": "직접 예약 절약"
+    },
+    "locationBullets": {
+      "bophut": "Bophut Beach까지 5분",
+      "airport": "Samui Airport에서 15분",
+      "fisherman": "Fisherman's Village까지 10분",
+      "transfer": "프라이빗 공항 이동 포함"
+    }
+  },
+  "Properties": {
+    "pool-villa": {
+      "tagline": "인피니티 풀이 있는 프라이빗 파라다이스",
+      "description": "넓은 Pool Villa에서 프라이빗 인피니티 풀, 오픈형 거실, 울창한 열대 정원을 즐겨보세요. 천장까지 이어지는 창이 모든 방에 바깥 풍경을 들여옵니다.",
+      "storyTagline": "탁 트인 하늘 아래 프라이빗 풀로 시작하는 아침",
+      "amenities": {
+        "privatePool": "프라이빗 풀",
+        "wifi": "WiFi",
+        "airConditioning": "에어컨",
+        "kitchen": "주방",
+        "gardenView": "정원 전망",
+        "kingBed": "킹 침대"
+      }
+    },
+    "garden-suite": {
+      "tagline": "자연에 둘러싸인 고요한 휴식처",
+      "description": "Garden Suite는 열대 정원 사이에 자리한 조용한 공간으로, 넓은 침실, 현대적인 욕실, 프라이빗 테라스를 갖추고 있습니다. 새소리와 프랑지파니 향으로 아침을 맞이하세요.",
+      "storyTagline": "초록으로 감싸인 섬의 조용한 한켠",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "에어컨",
+        "gardenTerrace": "정원 테라스",
+        "rainShower": "레인 샤워",
+        "queenBed": "퀸 침대"
+      }
+    },
+    "penthouse": {
+      "tagline": "나무 전망 창으로 둘러싸인 보호 로프트",
+      "description": "Canopy Loft Penthouse는 높은 격자 창, 따뜻한 목재, 부드러운 뉴트럴 패브릭, 편안한 보호 디테일이 어우러진 밝은 로프트형 빌라입니다. 수면 플랫폼, 라운지, 간이 주방이 나무 위의 아늑한 은신처를 만듭니다.",
+      "storyTagline": "부드러운 빛과 따뜻한 나무, 나무 전망 창 사이에서 맞는 아침",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "에어컨",
+        "kitchenette": "간이 주방",
+        "treetopWindows": "나무 전망 창",
+        "loftLounge": "로프트 라운지",
+        "kingBed": "킹 침대",
+        "designerLighting": "디자이너 조명"
+      }
+    }
+  },
+  "Rooms": {
+    "pv-living": {
+      "name": "거실 공간",
+      "hotspots": {
+        "pv-living-to-pool": "수영장 공간"
+      }
+    },
+    "pv-pool": {
+      "name": "수영장 공간",
+      "hotspots": {
+        "pv-pool-to-living": "거실 공간"
+      }
+    },
+    "gs-lounge": {
+      "name": "라운지",
+      "hotspots": {
+        "gs-lounge-to-dining": "식사 공간"
+      }
+    },
+    "gs-dining": {
+      "name": "식사 공간",
+      "hotspots": {
+        "gs-dining-to-garden": "정원 전망",
+        "gs-dining-to-lounge": "라운지"
+      }
+    },
+    "gs-garden": {
+      "name": "정원 전망",
+      "hotspots": {
+        "gs-garden-to-dining": "식사 공간"
+      }
+    },
+    "ph-bedroom": {
+      "name": "Canopy Loft 360° 전망",
+      "hotspots": {}
+    }
+  },
+  "Tour": {
+    "roomsExplored": "{visited}/{total}개 객실 탐색",
+    "loading": "로딩 중...",
+    "leadTitle": "이 꿈 저장하기",
+    "leadSaved": "저장되었습니다. 이 빌라의 직접 예약 정보를 이메일로 보내드릴게요.",
+    "leadBody": "직접 예약 링크와 방금 둘러본 빌라 알림을 받아보세요.",
+    "leadEmailPlaceholder": "you@example.com",
+    "invalidEmail": "유효한 이메일을 입력하세요.",
+    "saveError": "이 이메일을 저장할 수 없습니다.",
+    "save": "저장"
+  },
+  "TourConclusions": {
+    "pool-villa": {
+      "headline": "당신의 숙박이 기다립니다",
+      "summary": "햇살이 드는 두 공간, 프라이빗 인피니티 풀, 그리고 내 생각을 다시 들을 수 있는 고요함. 호텔이 아니라 섬 위의 집입니다.",
+      "highlights": {
+        "one": "침대에서 몇 걸음 거리의 프라이빗 인피니티 풀",
+        "two": "천장까지 이어지는 유리의 오픈형 거실",
+        "three": "빌라를 둘러싼 열대 정원",
+        "four": "섬 투어를 위한 개인 컨시어지"
+      },
+      "closingLine": "상상을 현실의 숙박으로 바꿔보세요"
+    },
+    "garden-suite": {
+      "headline": "당신의 휴식처가 기다립니다",
+      "summary": "열대 정원에 둘러싸인 Garden Suite에서는 삶의 속도가 야자수 소리에 맞춰 느려집니다.",
+      "highlights": {
+        "one": "정원을 바라보는 프라이빗 테라스",
+        "two": "자연 속 레인 샤워",
+        "three": "조용한 섬 해변과 가까운 위치",
+        "four": "신선한 섬의 맛을 담은 매일 아침 식사"
+      },
+      "closingLine": "상상을 현실의 숙박으로 바꿔보세요"
+    },
+    "penthouse": {
+      "headline": "당신의 로프트가 기다립니다",
+      "summary": "Canopy Loft Penthouse는 나무 위의 개인 스튜디오처럼 느껴집니다. 밝은 창, 검은 빔, 따뜻한 목재와 부드러운 텍스처가 평온한 은신처를 만듭니다.",
+      "highlights": {
+        "one": "붙박이 창턱이 있는 높은 나무 전망 창",
+        "two": "아늑한 로프트 수면 플랫폼",
+        "three": "편안한 보호 스타일 라운지",
+        "four": "느린 아침을 위한 간이 주방"
+      },
+      "closingLine": "상상을 현실의 숙박으로 바꿔보세요"
+    }
+  },
+  "Pricing": {
+    "benefits": {
+      "freeAirportPickup": "무료 공항 픽업",
+      "welcomeBasket": "웰컴 바스켓",
+      "lateCheckout": "레이트 체크아웃(오후 2시)",
+      "noServiceFees": "서비스 수수료 없음",
+      "freeCancellation": "무료 취소(48시간)",
+      "directWhatsappSupport": "WhatsApp 직접 지원"
+    }
+  },
+  "Reviews": {
+    "pv-r1": {
+      "title": "수영장이 정말 아름다웠어요",
+      "body": "인피니티 풀에서 맞는 아침, 넓은 거실, 프라이빗한 열대 정원이 인상적이었습니다. 빌라는 깨끗하고 잘 갖춰져 있었고 host도 빠르게 도와주었습니다."
+    },
+    "pv-r2": {
+      "title": "완벽한 허니문 휴식처",
+      "body": "인피니티 풀에서 맞는 아침, 넓은 거실, 프라이빗한 열대 정원이 인상적이었습니다. 빌라는 깨끗하고 잘 갖춰져 있었고 host도 빠르게 도와주었습니다."
+    },
+    "pv-r3": {
+      "title": "5성급 리조트 같았어요",
+      "body": "인피니티 풀에서 맞는 아침, 넓은 거실, 프라이빗한 열대 정원이 인상적이었습니다. 빌라는 깨끗하고 잘 갖춰져 있었고 host도 빠르게 도와주었습니다."
+    },
+    "pv-r4": {
+      "title": "가족에게 좋은 아름다운 빌라",
+      "body": "인피니티 풀에서 맞는 아침, 넓은 거실, 프라이빗한 열대 정원이 인상적이었습니다. 빌라는 깨끗하고 잘 갖춰져 있었고 host도 빠르게 도와주었습니다."
+    },
+    "pv-r5": {
+      "title": "Thailand 최고의 숙박",
+      "body": "인피니티 풀에서 맞는 아침, 넓은 거실, 프라이빗한 열대 정원이 인상적이었습니다. 빌라는 깨끗하고 잘 갖춰져 있었고 host도 빠르게 도와주었습니다."
+    },
+    "pv-r6": {
+      "title": "Superhost인 이유가 있어요",
+      "body": "인피니티 풀에서 맞는 아침, 넓은 거실, 프라이빗한 열대 정원이 인상적이었습니다. 빌라는 깨끗하고 잘 갖춰져 있었고 host도 빠르게 도와주었습니다."
+    },
+    "gs-r1": {
+      "title": "석양의 정원 전망이 마법 같았어요",
+      "body": "Garden Suite는 조용하고 아늑하며 녹음에 둘러싸여 있었습니다. 개인 테라스와 레인 샤워, 정원의 소리가 매우 편안한 숙박을 만들어 주었습니다."
+    },
+    "gs-r2": {
+      "title": "커플에게 완벽해요",
+      "body": "Garden Suite는 조용하고 아늑하며 녹음에 둘러싸여 있었습니다. 개인 테라스와 레인 샤워, 정원의 소리가 매우 편안한 숙박을 만들어 주었습니다."
+    },
+    "gs-r3": {
+      "title": "매력적이고 위치가 좋아요",
+      "body": "Garden Suite는 조용하고 아늑하며 녹음에 둘러싸여 있었습니다. 개인 테라스와 레인 샤워, 정원의 소리가 매우 편안한 숙박을 만들어 주었습니다."
+    },
+    "gs-r4": {
+      "title": "Koh Tao에서 훌륭한 가치",
+      "body": "Garden Suite는 조용하고 아늑하며 녹음에 둘러싸여 있었습니다. 개인 테라스와 레인 샤워, 정원의 소리가 매우 편안한 숙박을 만들어 주었습니다."
+    },
+    "gs-r5": {
+      "title": "평화로운 섬 휴식",
+      "body": "Garden Suite는 조용하고 아늑하며 녹음에 둘러싸여 있었습니다. 개인 테라스와 레인 샤워, 정원의 소리가 매우 편안한 숙박을 만들어 주었습니다."
+    },
+    "ph-r1": {
+      "title": "부드러운 빛이 가득한 로프트",
+      "body": "Canopy Loft Penthouse는 밝고 따뜻하며 디테일이 아름답습니다. 높은 창, 라운지, 간이 주방이 나무 위의 개인 스튜디오처럼 느껴졌습니다."
+    },
+    "ph-r2": {
+      "title": "가격만큼 가치 있어요",
+      "body": "Canopy Loft Penthouse는 밝고 따뜻하며 디테일이 아름답습니다. 높은 창, 라운지, 간이 주방이 나무 위의 개인 스튜디오처럼 느껴졌습니다."
+    },
+    "ph-r3": {
+      "title": "Koh Tao 최고의 숙소",
+      "body": "Canopy Loft Penthouse는 밝고 따뜻하며 디테일이 아름답습니다. 높은 창, 라운지, 간이 주방이 나무 위의 개인 스튜디오처럼 느껴졌습니다."
+    },
+    "ph-r4": {
+      "title": "열대 섬의 고급스러운 럭셔리",
+      "body": "Canopy Loft Penthouse는 밝고 따뜻하며 디테일이 아름답습니다. 높은 창, 라운지, 간이 주방이 나무 위의 개인 스튜디오처럼 느껴졌습니다."
+    },
+    "ph-r5": {
+      "title": "잊지 못할 숙박",
+      "body": "Canopy Loft Penthouse는 밝고 따뜻하며 디테일이 아름답습니다. 높은 창, 라운지, 간이 주방이 나무 위의 개인 스튜디오처럼 느껴졌습니다."
+    }
+  },
+  "TourSnippets": {
+    "pv-ts1": {
+      "quote": "일출의 인피니티 풀은 정말 마법 같아요!"
+    },
+    "pv-ts2": {
+      "quote": "오픈형 거실이 매우 럭셔리하게 느껴져요."
+    },
+    "gs-ts1": {
+      "quote": "자연에 둘러싸인 아주 평화로운 휴식처예요."
+    },
+    "gs-ts2": {
+      "quote": "테라스에서의 아침 식사가 가장 좋았어요!"
+    },
+    "ph-ts1": {
+      "quote": "높은 창으로 들어오는 아침빛이 아름다워요."
+    }
+  },
+  "BookingDocuments": {
+    "invoice": "청구서",
+    "receipt": "영수증",
+    "guest": "게스트",
+    "email": "이메일",
+    "phone": "전화",
+    "property": "숙소",
+    "stayDates": "숙박 날짜",
+    "to": "부터",
+    "night": "박",
+    "nights": "박",
+    "guestUnit": "명",
+    "guestUnits": "명",
+    "directBookingDiscount": "직접 예약 할인",
+    "total": "합계",
+    "invoiceNumber": "청구서 번호",
+    "demoInvoice": "데모 청구서",
+    "issueDate": "발행일",
+    "demoInvoiceNotice": "이 데모 청구서는 Seaview Residence 제품 시연용으로만 생성되었습니다.",
+    "receiptNumber": "영수증 번호",
+    "demoReceipt": "데모 영수증",
+    "confirmationCode": "확인 코드",
+    "demoConfirmation": "데모 확인",
+    "paidDate": "결제일",
+    "paymentMethodDemo": "결제 수단: 4242로 끝나는 데모 카드",
+    "paidNotice": "전액 결제됨. 이 영수증은 데모용이며 실제 카드가 청구되지 않았습니다."
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourCanvas } from "@/components/tour/TourCanvas";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
 import { rooms as allRooms } from "@/lib/data/rooms";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
+import { localizeRooms } from "@/lib/i18n/public-content";
 import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
@@ -21,12 +23,16 @@ export function TourViewer({
   property: Property;
   onClose: () => void;
 }) {
+  const locale = useLocale();
+  const tourT = useTranslations("Tour");
+  const a11y = useTranslations("A11y");
+  const localizedRooms = useMemo(() => localizeRooms(allRooms, locale), [locale]);
   const activeRooms = useMemo(
     () =>
       property.tourRoomIds
-        .map((roomId) => allRooms.find((room) => room.id === roomId))
-        .filter((room): room is (typeof allRooms)[number] => Boolean(room)),
-    [property.tourRoomIds],
+        .map((roomId) => localizedRooms.find((room) => room.id === roomId))
+        .filter((room): room is (typeof localizedRooms)[number] => Boolean(room)),
+    [localizedRooms, property.tourRoomIds],
   );
   const [phase, setPhase] = useState<Phase>("intro");
   const [currentRoomId, setCurrentRoomId] = useState(activeRooms[0]?.id ?? "");
@@ -120,7 +126,7 @@ export function TourViewer({
             type="button"
             onClick={onClose}
             className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/60 transition hover:bg-white/20 hover:text-white"
-            aria-label="Close"
+            aria-label={a11y("close")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -133,7 +139,7 @@ export function TourViewer({
               style={{ width: texturesLoaded && minimumReached ? "100%" : "62%" }}
             />
           </div>
-          {!texturesLoaded ? <p className="mt-3 text-xs text-white/30">Loading...</p> : null}
+          {!texturesLoaded ? <p className="mt-3 text-xs text-white/30">{tourT("loading")}</p> : null}
         </div>
       ) : null}
 
@@ -143,7 +149,7 @@ export function TourViewer({
             type="button"
             onClick={onClose}
             className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50 md:right-6 md:top-5"
-            aria-label="Close tour"
+            aria-label={a11y("closeTour")}
           >
             <X className="h-5 w-5" />
           </button>

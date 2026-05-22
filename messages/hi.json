@@ -198,5 +198,301 @@
   },
   "Footer": {
     "bookDirect": "सीधे बुक करें"
+  },
+  "SEO": {
+    "rootTitle": "Seaview Residence - Koh Samui, Thailand में लक्जरी विला",
+    "rootDescription": "Koh Samui की पहाड़ी पर लक्जरी विला का बुटीक संग्रह, थाईलैंड की खाड़ी के दृश्य, निजी पूल और शांत द्वीपीय सेवा के साथ।",
+    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
+    "bookingTitle": "सीधे बुक करें - Seaview Residence",
+    "payTitle": "सुरक्षित checkout - Seaview Residence",
+    "successTitle": "बुकिंग पुष्टि - Seaview Residence",
+    "villaFallback": "विला"
+  },
+  "A11y": {
+    "previousHeroSlide": "पिछली हीरो स्लाइड",
+    "nextHeroSlide": "अगली हीरो स्लाइड",
+    "goToSlide": "स्लाइड {index} पर जाएँ",
+    "scrollDown": "नीचे स्क्रोल करें",
+    "showPhoto": "फोटो {index} दिखाएँ",
+    "previousPhoto": "पिछली फोटो",
+    "nextPhoto": "अगली फोटो",
+    "language": "भाषा",
+    "countryCode": "देश कोड",
+    "close": "बंद करें",
+    "closeTour": "टूर बंद करें",
+    "toggleTheme": "थीम बदलें",
+    "toggleMenu": "मेनू खोलें या बंद करें"
+  },
+  "Resort": {
+    "tagline": "जहाँ समुद्र शांति से मिलता है",
+    "description": "Koh Samui की पहाड़ी पर लक्जरी विला का बुटीक संग्रह, थाईलैंड की खाड़ी के पैनोरमिक दृश्य, निजी पूल और ऐसी शांत सेवा के साथ जो ठहराव को याद बना देती है।",
+    "location": "Koh Samui, Thailand",
+    "locationImageAlt": "Koh Samui, Thailand का aerial view",
+    "amenities": {
+      "infinityPool": "इन्फिनिटी पूल",
+      "spaWellness": "स्पा और वेलनेस",
+      "farmRestaurant": "फार्म-टू-टेबल रेस्तरां",
+      "airportTransfer": "एयरपोर्ट ट्रांसफर",
+      "conciergeService": "कंसीयर्ज सेवा",
+      "privateBeach": "निजी बीच पहुंच",
+      "yogaMeditation": "योग और ध्यान",
+      "waterSports": "वॉटर स्पोर्ट्स"
+    },
+    "highlights": {
+      "villaTypes": "विला प्रकार",
+      "guestRating": "मेहमान रेटिंग",
+      "reviews": "समीक्षाएँ",
+      "directSavings": "सीधी बचत"
+    },
+    "locationBullets": {
+      "bophut": "Bophut Beach तक 5 मिनट",
+      "airport": "Samui Airport से 15 मिनट",
+      "fisherman": "Fisherman's Village तक 10 मिनट",
+      "transfer": "private airport transfer शामिल"
+    }
+  },
+  "Properties": {
+    "pool-villa": {
+      "tagline": "infinity pool के साथ private paradise",
+      "description": "Pool Villa में private infinity pool, खुला living area और tropical garden है। floor-to-ceiling windows हर कमरे में बाहर का सुंदर view लाती हैं।",
+      "storyTagline": "खुले आसमान के नीचे private pool से शुरू होने वाली सुबहें",
+      "amenities": {
+        "privatePool": "निजी पूल",
+        "wifi": "WiFi",
+        "airConditioning": "एयर कंडीशनिंग",
+        "kitchen": "किचन",
+        "gardenView": "गार्डन व्यू",
+        "kingBed": "किंग बेड"
+      }
+    },
+    "garden-suite": {
+      "tagline": "प्रकृति से घिरा शांत retreat",
+      "description": "Garden Suite tropical gardens के बीच है, जिसमें spacious bedroom, modern bathroom और private terrace है। पक्षियों की आवाज़ और frangipani की खुशबू के साथ जागें।",
+      "storyTagline": "हरियाली में लिपटा island का शांत कोना",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "एयर कंडीशनिंग",
+        "gardenTerrace": "गार्डन टेरेस",
+        "rainShower": "रेन शॉवर",
+        "queenBed": "क्वीन बेड"
+      }
+    },
+    "penthouse": {
+      "tagline": "treetop windows से घिरा boho loft living",
+      "description": "Canopy Loft Penthouse एक bright loft-style villa है, जिसमें ऊँची grid windows, warm wood, soft neutral textiles और relaxed boho details हैं। sleeping platform, lounge और kitchenette इसे trees के ऊपर intimate hideaway बनाते हैं।",
+      "storyTagline": "soft light, warm wood और treetop windows के बीच जागना",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "एयर कंडीशनिंग",
+        "kitchenette": "किचनेट",
+        "treetopWindows": "पेड़ों के बीच खिड़कियाँ",
+        "loftLounge": "लॉफ्ट लाउंज",
+        "kingBed": "किंग बेड",
+        "designerLighting": "डिज़ाइनर लाइटिंग"
+      }
+    }
+  },
+  "Rooms": {
+    "pv-living": {
+      "name": "लिविंग एरिया",
+      "hotspots": {
+        "pv-living-to-pool": "पूल एरिया"
+      }
+    },
+    "pv-pool": {
+      "name": "पूल एरिया",
+      "hotspots": {
+        "pv-pool-to-living": "लिविंग एरिया"
+      }
+    },
+    "gs-lounge": {
+      "name": "लाउंज",
+      "hotspots": {
+        "gs-lounge-to-dining": "डाइनिंग एरिया"
+      }
+    },
+    "gs-dining": {
+      "name": "डाइनिंग एरिया",
+      "hotspots": {
+        "gs-dining-to-garden": "गार्डन व्यू",
+        "gs-dining-to-lounge": "लाउंज"
+      }
+    },
+    "gs-garden": {
+      "name": "गार्डन व्यू",
+      "hotspots": {
+        "gs-garden-to-dining": "डाइनिंग एरिया"
+      }
+    },
+    "ph-bedroom": {
+      "name": "Canopy Loft 360° व्यू",
+      "hotspots": {}
+    }
+  },
+  "Tour": {
+    "roomsExplored": "{visited}/{total} कमरे देखे गए",
+    "loading": "लोड हो रहा है...",
+    "leadTitle": "इस सपने को सहेजें",
+    "leadSaved": "सहेजा गया। हम इस विला की सीधी बुकिंग जानकारी आपके inbox में भेजेंगे।",
+    "leadBody": "सीधी बुकिंग लिंक और अभी देखे गए विला की याद दिलाने वाला ईमेल पाएँ।",
+    "leadEmailPlaceholder": "you@example.com",
+    "invalidEmail": "मान्य ईमेल दर्ज करें।",
+    "saveError": "यह ईमेल सहेजा नहीं जा सका।",
+    "save": "सहेजें"
+  },
+  "TourConclusions": {
+    "pool-villa": {
+      "headline": "आपका stay इंतज़ार कर रहा है",
+      "summary": "धूप से भरे दो कमरे, private infinity pool और ऐसी शांति जहाँ आप खुद को फिर सुन सकें। यह hotel नहीं, island पर आपका घर है।",
+      "highlights": {
+        "one": "bed से कुछ steps दूर private infinity pool",
+        "two": "floor-to-ceiling glass वाला open living",
+        "three": "villa को घेरता tropical garden",
+        "four": "island excursions के लिए personal concierge"
+      },
+      "closingLine": "इसे daydream से ज्यादा बनाइए"
+    },
+    "garden-suite": {
+      "headline": "आपका retreat इंतज़ार कर रहा है",
+      "summary": "tropical gardens से घिरा Garden Suite life की pace को palms की आवाज़ के साथ धीमा कर देता है।",
+      "highlights": {
+        "one": "garden view वाला private terrace",
+        "two": "nature के बीच rainfall shower",
+        "three": "शांत island beaches के करीब",
+        "four": "fresh island flavors के साथ daily breakfast"
+      },
+      "closingLine": "इसे daydream से ज्यादा बनाइए"
+    },
+    "penthouse": {
+      "headline": "आपका loft इंतज़ार कर रहा है",
+      "summary": "Canopy Loft Penthouse trees के ऊपर private studio जैसा लगता है: bright windows, black beams, warm wood और soft textures।",
+      "highlights": {
+        "one": "built-in ledge वाली tall treetop windows",
+        "two": "cozy loft sleeping platform",
+        "three": "relaxed boho lounge corner",
+        "four": "slow mornings के लिए compact kitchenette"
+      },
+      "closingLine": "इसे daydream से ज्यादा बनाइए"
+    }
+  },
+  "Pricing": {
+    "benefits": {
+      "freeAirportPickup": "मुफ्त एयरपोर्ट पिकअप",
+      "welcomeBasket": "वेलकम बास्केट",
+      "lateCheckout": "लेट checkout (2pm)",
+      "noServiceFees": "कोई service fee नहीं",
+      "freeCancellation": "मुफ्त cancellation (48h)",
+      "directWhatsappSupport": "सीधा WhatsApp support"
+    }
+  },
+  "Reviews": {
+    "pv-r1": {
+      "title": "पूल सच में शानदार था",
+      "body": "हमें infinity pool वाली सुबहें, खुला living space और private tropical garden बहुत पसंद आया। villa साफ, आरामदायक और अच्छी तरह equipped थी, और host ने जल्दी जवाब देकर अच्छे सुझाव दिए।"
+    },
+    "pv-r2": {
+      "title": "हनीमून के लिए परफेक्ट जगह",
+      "body": "हमें infinity pool वाली सुबहें, खुला living space और private tropical garden बहुत पसंद आया। villa साफ, आरामदायक और अच्छी तरह equipped थी, और host ने जल्दी जवाब देकर अच्छे सुझाव दिए।"
+    },
+    "pv-r3": {
+      "title": "पाँच सितारा resort जैसा लगा",
+      "body": "हमें infinity pool वाली सुबहें, खुला living space और private tropical garden बहुत पसंद आया। villa साफ, आरामदायक और अच्छी तरह equipped थी, और host ने जल्दी जवाब देकर अच्छे सुझाव दिए।"
+    },
+    "pv-r4": {
+      "title": "परिवारों के लिए सुंदर villa",
+      "body": "हमें infinity pool वाली सुबहें, खुला living space और private tropical garden बहुत पसंद आया। villa साफ, आरामदायक और अच्छी तरह equipped थी, और host ने जल्दी जवाब देकर अच्छे सुझाव दिए।"
+    },
+    "pv-r5": {
+      "title": "Thailand में सबसे अच्छा stay",
+      "body": "हमें infinity pool वाली सुबहें, खुला living space और private tropical garden बहुत पसंद आया। villa साफ, आरामदायक और अच्छी तरह equipped थी, और host ने जल्दी जवाब देकर अच्छे सुझाव दिए।"
+    },
+    "pv-r6": {
+      "title": "Superhost होने की वजह साफ है",
+      "body": "हमें infinity pool वाली सुबहें, खुला living space और private tropical garden बहुत पसंद आया। villa साफ, आरामदायक और अच्छी तरह equipped थी, और host ने जल्दी जवाब देकर अच्छे सुझाव दिए।"
+    },
+    "gs-r1": {
+      "title": "सूर्यास्त पर garden view जादुई था",
+      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+    },
+    "gs-r2": {
+      "title": "couples के लिए perfect",
+      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+    },
+    "gs-r3": {
+      "title": "आकर्षक और अच्छी location",
+      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+    },
+    "gs-r4": {
+      "title": "Koh Tao के लिए बढ़िया value",
+      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+    },
+    "gs-r5": {
+      "title": "शांत island escape",
+      "body": "Garden Suite शांत, private और greenery से घिरी हुई थी। terrace, rain shower और garden की आवाज़ों ने stay को बहुत relaxing बना दिया।"
+    },
+    "ph-r1": {
+      "title": "नरम रोशनी से भरा loft",
+      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+    },
+    "ph-r2": {
+      "title": "हर baht के लायक",
+      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+    },
+    "ph-r3": {
+      "title": "Koh Tao में सबसे अच्छा accommodation",
+      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+    },
+    "ph-r4": {
+      "title": "tropical island पर elevated luxury",
+      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+    },
+    "ph-r5": {
+      "title": "यादगार stay",
+      "body": "Canopy Loft Penthouse bright, warm और thoughtful details से भरा है। ऊँची windows, lounge और kitchenette इसे पेड़ों के ऊपर private studio जैसा बनाते हैं।"
+    }
+  },
+  "TourSnippets": {
+    "pv-ts1": {
+      "quote": "sunrise पर infinity pool सच में magical है!"
+    },
+    "pv-ts2": {
+      "quote": "open-plan living बहुत luxurious लगता है।"
+    },
+    "gs-ts1": {
+      "quote": "nature से घिरा बहुत peaceful retreat।"
+    },
+    "gs-ts2": {
+      "quote": "terrace पर breakfast हमारा favorite हिस्सा था!"
+    },
+    "ph-ts1": {
+      "quote": "ऊँची windows से आती morning light बहुत सुंदर है।"
+    }
+  },
+  "BookingDocuments": {
+    "invoice": "इनवॉइस",
+    "receipt": "रसीद",
+    "guest": "मेहमान",
+    "email": "ईमेल",
+    "phone": "फोन",
+    "property": "प्रॉपर्टी",
+    "stayDates": "stay dates",
+    "to": "से",
+    "night": "रात",
+    "nights": "रातें",
+    "guestUnit": "मेहमान",
+    "guestUnits": "मेहमान",
+    "directBookingDiscount": "सीधी बुकिंग छूट",
+    "total": "कुल",
+    "invoiceNumber": "इनवॉइस नंबर",
+    "demoInvoice": "डेमो इनवॉइस",
+    "issueDate": "जारी तारीख",
+    "demoInvoiceNotice": "यह demo invoice Seaview Residence ने product demo के लिए बनाया है।",
+    "receiptNumber": "रसीद नंबर",
+    "demoReceipt": "डेमो रसीद",
+    "confirmationCode": "confirmation code",
+    "demoConfirmation": "demo confirmation",
+    "paidDate": "paid date",
+    "paymentMethodDemo": "Payment method: demo card ending in 4242",
+    "paidNotice": "पूरा भुगतान हो गया। यह receipt demo purpose के लिए है और कोई real card charge नहीं हुआ।"
   }
 }

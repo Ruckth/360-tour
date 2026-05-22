@@ -24,6 +24,7 @@ export function VillaCard({
   storyTagline?: string;
 }) {
   const t = useTranslations("Villa");
+  const a11y = useTranslations("A11y");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const [index, setIndex] = useState(0);
@@ -88,14 +89,14 @@ export function VillaCard({
                     "h-2 rounded-full transition-all",
                     index === dotIndex ? "w-6 bg-white" : "w-2 bg-white/45 hover:bg-white/70",
                   )}
-                  aria-label={`Show photo ${dotIndex + 1}`}
+                  aria-label={a11y("showPhoto", { index: dotIndex + 1 })}
                 />
               ))}
             </div>
             <button
               type="button"
               onClick={() => goTo(index - 1)}
-              aria-label="Previous photo"
+              aria-label={a11y("previousPhoto")}
               className="absolute left-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-lg transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 md:flex"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -103,7 +104,7 @@ export function VillaCard({
             <button
               type="button"
               onClick={() => goTo(index + 1)}
-              aria-label="Next photo"
+              aria-label={a11y("nextPhoto")}
               className="absolute right-3 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-lg transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 md:flex"
             >
               <ChevronRight className="h-5 w-5" />

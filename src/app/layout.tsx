@@ -5,7 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
-import { resort } from "@/lib/data/resort-config";
+import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/public-content";
 import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
 
@@ -21,24 +21,30 @@ const sans = Manrope({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://seaviewresidence.com"),
-  title: `${resort.name} — Luxury Villas in ${resort.location}`,
-  description: resort.description,
-  openGraph: {
-    type: "website",
-    siteName: resort.name,
-    title: `${resort.name} — ${resort.location}`,
-    description: resort.description,
-    images: ["/garden-image.webp"],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: `${resort.name} — ${resort.location}`,
-    description: resort.description,
-    images: ["/garden-image.webp"],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const resort = getLocalizedResort(locale);
+  const seo = getPublicMessages(locale).SEO;
+
+  return {
+    metadataBase: new URL("https://seaviewresidence.com"),
+    title: seo.rootTitle,
+    description: seo.rootDescription,
+    openGraph: {
+      type: "website",
+      siteName: resort.name,
+      title: seo.rootOgTitle,
+      description: seo.rootDescription,
+      images: ["/garden-image.webp"],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: seo.rootOgTitle,
+      description: seo.rootDescription,
+      images: ["/garden-image.webp"],
+    },
+  };
+}
 
 export default async function RootLayout({
   children,

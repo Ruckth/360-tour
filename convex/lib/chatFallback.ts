@@ -12,6 +12,165 @@ type FallbackCopy = {
 	generic: string;
 };
 
+const amenityCopies: Record<LocaleCode, Record<string, string>> = {
+	en: {},
+	th: {
+		'Private Pool': 'สระส่วนตัว',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'เครื่องปรับอากาศ',
+		Kitchen: 'ครัว',
+		'Garden View': 'วิวสวน',
+		'King Bed': 'เตียงคิงไซส์',
+		'Garden Terrace': 'ระเบียงสวน',
+		'Rain Shower': 'เรนชาวเวอร์',
+		'Queen Bed': 'เตียงควีนไซส์',
+		Kitchenette: 'คิทเชเน็ต',
+		'Treetop Windows': 'หน้าต่างยอดไม้',
+		'Loft Lounge': 'เลานจ์ลอฟต์',
+		'Designer Lighting': 'ไฟดีไซน์'
+	},
+	'zh-CN': {
+		'Private Pool': '私人泳池',
+		WiFi: 'WiFi',
+		'Air Conditioning': '空调',
+		Kitchen: '厨房',
+		'Garden View': '花园景观',
+		'King Bed': '特大床',
+		'Garden Terrace': '花园露台',
+		'Rain Shower': '雨淋花洒',
+		'Queen Bed': '大床',
+		Kitchenette: '小厨房',
+		'Treetop Windows': '树梢窗',
+		'Loft Lounge': '阁楼休闲区',
+		'Designer Lighting': '设计灯具'
+	},
+	ja: {
+		'Private Pool': 'プライベートプール',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'エアコン',
+		Kitchen: 'キッチン',
+		'Garden View': 'ガーデンビュー',
+		'King Bed': 'キングベッド',
+		'Garden Terrace': 'ガーデンテラス',
+		'Rain Shower': 'レインシャワー',
+		'Queen Bed': 'クイーンベッド',
+		Kitchenette: '簡易キッチン',
+		'Treetop Windows': '木々を望む窓',
+		'Loft Lounge': 'ロフトラウンジ',
+		'Designer Lighting': 'デザイン照明'
+	},
+	ko: {
+		'Private Pool': '프라이빗 풀',
+		WiFi: 'WiFi',
+		'Air Conditioning': '에어컨',
+		Kitchen: '주방',
+		'Garden View': '정원 전망',
+		'King Bed': '킹 침대',
+		'Garden Terrace': '정원 테라스',
+		'Rain Shower': '레인 샤워',
+		'Queen Bed': '퀸 침대',
+		Kitchenette: '간이 주방',
+		'Treetop Windows': '나무 전망 창',
+		'Loft Lounge': '로프트 라운지',
+		'Designer Lighting': '디자이너 조명'
+	},
+	fr: {
+		'Private Pool': 'piscine privée',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'climatisation',
+		Kitchen: 'cuisine',
+		'Garden View': 'vue jardin',
+		'King Bed': 'lit king-size',
+		'Garden Terrace': 'terrasse jardin',
+		'Rain Shower': 'douche pluie',
+		'Queen Bed': 'lit queen-size',
+		Kitchenette: 'kitchenette',
+		'Treetop Windows': 'fenêtres sur la canopée',
+		'Loft Lounge': 'lounge loft',
+		'Designer Lighting': 'éclairage design'
+	},
+	de: {
+		'Private Pool': 'privater Pool',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'Klimaanlage',
+		Kitchen: 'Küche',
+		'Garden View': 'Gartenblick',
+		'King Bed': 'Kingsize-Bett',
+		'Garden Terrace': 'Gartenterrasse',
+		'Rain Shower': 'Regendusche',
+		'Queen Bed': 'Queensize-Bett',
+		Kitchenette: 'Kitchenette',
+		'Treetop Windows': 'Baumwipfelfenster',
+		'Loft Lounge': 'Loft-Lounge',
+		'Designer Lighting': 'Designbeleuchtung'
+	},
+	es: {
+		'Private Pool': 'piscina privada',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'aire acondicionado',
+		Kitchen: 'cocina',
+		'Garden View': 'vista al jardín',
+		'King Bed': 'cama king',
+		'Garden Terrace': 'terraza jardín',
+		'Rain Shower': 'ducha de lluvia',
+		'Queen Bed': 'cama queen',
+		Kitchenette: 'cocineta',
+		'Treetop Windows': 'ventanas a los árboles',
+		'Loft Lounge': 'sala loft',
+		'Designer Lighting': 'iluminación de diseño'
+	},
+	ru: {
+		'Private Pool': 'частный бассейн',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'кондиционер',
+		Kitchen: 'кухня',
+		'Garden View': 'вид на сад',
+		'King Bed': 'кровать king-size',
+		'Garden Terrace': 'садовая терраса',
+		'Rain Shower': 'тропический душ',
+		'Queen Bed': 'кровать queen-size',
+		Kitchenette: 'мини-кухня',
+		'Treetop Windows': 'окна в кроны деревьев',
+		'Loft Lounge': 'лофт-гостиная',
+		'Designer Lighting': 'дизайнерское освещение'
+	},
+	it: {
+		'Private Pool': 'piscina privata',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'aria condizionata',
+		Kitchen: 'cucina',
+		'Garden View': 'vista giardino',
+		'King Bed': 'letto king',
+		'Garden Terrace': 'terrazza giardino',
+		'Rain Shower': 'doccia a pioggia',
+		'Queen Bed': 'letto queen',
+		Kitchenette: 'angolo cottura',
+		'Treetop Windows': 'finestre sugli alberi',
+		'Loft Lounge': 'lounge loft',
+		'Designer Lighting': 'illuminazione di design'
+	},
+	hi: {
+		'Private Pool': 'निजी पूल',
+		WiFi: 'WiFi',
+		'Air Conditioning': 'एयर कंडीशनिंग',
+		Kitchen: 'किचन',
+		'Garden View': 'गार्डन व्यू',
+		'King Bed': 'किंग बेड',
+		'Garden Terrace': 'गार्डन टेरेस',
+		'Rain Shower': 'रेन शॉवर',
+		'Queen Bed': 'क्वीन बेड',
+		Kitchenette: 'किचनेट',
+		'Treetop Windows': 'पेड़ों के बीच खिड़कियाँ',
+		'Loft Lounge': 'लॉफ्ट लाउंज',
+		'Designer Lighting': 'डिज़ाइनर लाइटिंग'
+	}
+};
+
+function localizedAmenities(property: Doc<'properties'>, locale: LocaleCode) {
+	const copy = amenityCopies[locale];
+	return property.amenities.map((amenity) => copy[amenity] ?? amenity).join(', ');
+}
+
 const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 	en: {
 		night: 'night',
@@ -22,7 +181,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`Use the booking card below to choose a villa and dates, then continue to secure direct booking. Direct booking gives you **15% off** plus free airport pickup, welcome basket, and late checkout.`,
 		details: (property) =>
-			`**${property.name}** includes: ${property.amenities.join(', ')}. It's ${property.area}m² with ${property.bedrooms} bedroom(s) and ${property.bathrooms} bathroom(s), perfect for up to ${property.maxGuests} guests. Take the **360° virtual tour** to explore every room!`,
+			`**${property.name}** includes: ${localizedAmenities(property, 'en')}. It's ${property.area}m² with ${property.bedrooms} bedroom(s) and ${property.bathrooms} bathroom(s), perfect for up to ${property.maxGuests} guests. Take the **360° virtual tour** to explore every room!`,
 		generic:
 			`Welcome to Seaview Residence! I can help you with:\n- **Pricing** for our luxury villas\n- **Availability** for your travel dates\n- **Property details** and amenities\n\nWhich property are you interested in? We have the Pool Villa, Garden Suite, and Canopy Loft Penthouse in Koh Samui, Thailand.`
 	},
@@ -35,7 +194,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`ใช้การ์ดจองด้านล่างเลือกวิลล่าและวันที่ แล้วไปจองตรงอย่างปลอดภัยได้เลย จองตรงรับ **ส่วนลด 15%** พร้อมบริการรับสนามบิน ของต้อนรับ และเช็กเอาต์สาย`,
 		details: (property) =>
-			`**${property.name}** มีสิ่งอำนวยความสะดวก: ${property.amenities.join(', ')} พื้นที่ ${property.area}m² มี ${property.bedrooms} ห้องนอน และ ${property.bathrooms} ห้องน้ำ รองรับผู้เข้าพักสูงสุด ${property.maxGuests} คน ลองชม **ทัวร์เสมือนจริง 360°** เพื่อดูทุกห้องได้เลย`,
+			`**${property.name}** มีสิ่งอำนวยความสะดวก: ${localizedAmenities(property, 'th')} พื้นที่ ${property.area}m² มี ${property.bedrooms} ห้องนอน และ ${property.bathrooms} ห้องน้ำ รองรับผู้เข้าพักสูงสุด ${property.maxGuests} คน ลองชม **ทัวร์เสมือนจริง 360°** เพื่อดูทุกห้องได้เลย`,
 		generic:
 			`ยินดีต้อนรับสู่ Seaview Residence! ฉันช่วยได้เรื่อง:\n- **ราคา** วิลล่าหรูของเรา\n- **ห้องว่าง** ตามวันที่เดินทาง\n- **รายละเอียดที่พัก** และสิ่งอำนวยความสะดวก\n\nสนใจ Pool Villa, Garden Suite หรือ Canopy Loft Penthouse ในเกาะสมุยเป็นพิเศษไหม?`
 	},
@@ -48,7 +207,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`请使用下方预订卡选择别墅和日期，然后继续安全的直接预订。直接预订可享 **15% 折扣**，并包含免费机场接送、欢迎礼遇和延迟退房。`,
 		details: (property) =>
-			`**${property.name}** 包含：${property.amenities.join(', ')}。面积 ${property.area}m²，设有 ${property.bedrooms} 间卧室和 ${property.bathrooms} 间浴室，最多适合 ${property.maxGuests} 位住客。您可以通过 **360° 虚拟导览** 查看每个房间！`,
+			`**${property.name}** 包含：${localizedAmenities(property, 'zh-CN')}。面积 ${property.area}m²，设有 ${property.bedrooms} 间卧室和 ${property.bathrooms} 间浴室，最多适合 ${property.maxGuests} 位住客。您可以通过 **360° 虚拟导览** 查看每个房间！`,
 		generic:
 			`欢迎来到 Seaview Residence！我可以帮助您了解：\n- 豪华别墅的 **价格**\n- 旅行日期的 **可订情况**\n- **房源详情** 和设施\n\n您对 Koh Samui, Thailand 的 Pool Villa、Garden Suite 还是 Canopy Loft Penthouse 感兴趣？`
 	},
@@ -61,7 +220,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`下の予約カードでヴィラと日付を選び、安全な直接予約へ進んでください。直接予約では **15% オフ**に加え、無料空港送迎、ウェルカムバスケット、レイトチェックアウトが含まれます。`,
 		details: (property) =>
-			`**${property.name}** には ${property.amenities.join(', ')} が含まれます。広さは ${property.area}m²、${property.bedrooms} ベッドルーム、${property.bathrooms} バスルームで、最大 ${property.maxGuests} 名に最適です。**360° バーチャルツアー**で全室をご覧ください！`,
+			`**${property.name}** には ${localizedAmenities(property, 'ja')} が含まれます。広さは ${property.area}m²、${property.bedrooms} ベッドルーム、${property.bathrooms} バスルームで、最大 ${property.maxGuests} 名に最適です。**360° バーチャルツアー**で全室をご覧ください！`,
 		generic:
 			`Seaview Residence へようこそ！\n- ラグジュアリーヴィラの **料金**\n- ご旅行日の **空室状況**\n- **宿泊施設の詳細** と設備\n\nKoh Samui, Thailand の Pool Villa、Garden Suite、Canopy Loft Penthouse のどれに興味がありますか？`
 	},
@@ -74,7 +233,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`아래 예약 카드에서 빌라와 날짜를 선택한 뒤 안전한 직접 예약으로 진행하세요. 직접 예약 시 **15% 할인**과 무료 공항 픽업, 웰컴 바스켓, 레이트 체크아웃이 제공됩니다.`,
 		details: (property) =>
-			`**${property.name}** 포함 사항: ${property.amenities.join(', ')}. ${property.area}m², 침실 ${property.bedrooms}개, 욕실 ${property.bathrooms}개이며 최대 ${property.maxGuests}명에게 적합합니다. **360° 가상 투어**로 모든 방을 둘러보세요!`,
+			`**${property.name}** 포함 사항: ${localizedAmenities(property, 'ko')}. ${property.area}m², 침실 ${property.bedrooms}개, 욕실 ${property.bathrooms}개이며 최대 ${property.maxGuests}명에게 적합합니다. **360° 가상 투어**로 모든 방을 둘러보세요!`,
 		generic:
 			`Seaview Residence 에 오신 것을 환영합니다! 다음을 도와드릴 수 있습니다:\n- 고급 빌라 **가격**\n- 여행 날짜 **예약 가능 여부**\n- **숙소 상세 정보** 및 편의시설\n\nKoh Samui, Thailand 의 Pool Villa, Garden Suite, Canopy Loft Penthouse 중 어떤 곳이 궁금하신가요?`
 	},
@@ -87,7 +246,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`Utilisez la carte de réservation ci-dessous pour choisir la villa et les dates, puis continuez vers la réservation directe sécurisée. La réservation directe offre **15% de réduction**, le transfert aéroport gratuit, un panier de bienvenue et le départ tardif.`,
 		details: (property) =>
-			`**${property.name}** inclut : ${property.amenities.join(', ')}. C’est un espace de ${property.area}m² avec ${property.bedrooms} chambre(s) et ${property.bathrooms} salle(s) de bain, parfait pour jusqu’à ${property.maxGuests} hôtes. Lancez la **visite virtuelle 360°** pour tout explorer !`,
+			`**${property.name}** inclut : ${localizedAmenities(property, 'fr')}. C’est un espace de ${property.area}m² avec ${property.bedrooms} chambre(s) et ${property.bathrooms} salle(s) de bain, parfait pour jusqu’à ${property.maxGuests} hôtes. Lancez la **visite virtuelle 360°** pour tout explorer !`,
 		generic:
 			`Bienvenue à Seaview Residence ! Je peux vous aider avec :\n- les **prix** de nos villas de luxe\n- les **disponibilités** à vos dates\n- les **détails** et équipements\n\nQuel hébergement vous intéresse : Pool Villa, Garden Suite ou Canopy Loft Penthouse à Koh Samui, Thailand ?`
 	},
@@ -100,7 +259,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`Wählen Sie Villa und Daten in der Buchungskarte unten und fahren Sie mit der sicheren Direktbuchung fort. Direktbuchung bietet **15% Rabatt** plus kostenlosen Flughafentransfer, Willkommenskorb und späten Checkout.`,
 		details: (property) =>
-			`**${property.name}** umfasst: ${property.amenities.join(', ')}. Sie hat ${property.area}m², ${property.bedrooms} Schlafzimmer und ${property.bathrooms} Badezimmer, ideal für bis zu ${property.maxGuests} Gäste. Erkunden Sie alles in der **360°-Tour**!`,
+			`**${property.name}** umfasst: ${localizedAmenities(property, 'de')}. Sie hat ${property.area}m², ${property.bedrooms} Schlafzimmer und ${property.bathrooms} Badezimmer, ideal für bis zu ${property.maxGuests} Gäste. Erkunden Sie alles in der **360°-Tour**!`,
 		generic:
 			`Willkommen bei Seaview Residence! Ich helfe Ihnen mit:\n- **Preisen** unserer Luxusvillen\n- **Verfügbarkeit** für Ihre Reisedaten\n- **Details** und Ausstattung\n\nInteressieren Sie sich für Pool Villa, Garden Suite oder Canopy Loft Penthouse in Koh Samui, Thailand?`
 	},
@@ -113,7 +272,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`Use la tarjeta de reserva de abajo para elegir villa y fechas, y continúe con la reserva directa segura. La reserva directa ofrece **15% de descuento**, traslado gratuito desde el aeropuerto, cesta de bienvenida y salida tardía.`,
 		details: (property) =>
-			`**${property.name}** incluye: ${property.amenities.join(', ')}. Tiene ${property.area}m², ${property.bedrooms} dormitorio(s) y ${property.bathrooms} baño(s), perfecto para hasta ${property.maxGuests} huéspedes. ¡Explore cada habitación con el **tour virtual 360°**!`,
+			`**${property.name}** incluye: ${localizedAmenities(property, 'es')}. Tiene ${property.area}m², ${property.bedrooms} dormitorio(s) y ${property.bathrooms} baño(s), perfecto para hasta ${property.maxGuests} huéspedes. ¡Explore cada habitación con el **tour virtual 360°**!`,
 		generic:
 			`¡Bienvenido a Seaview Residence! Puedo ayudarle con:\n- **precios** de nuestras villas de lujo\n- **disponibilidad** para sus fechas\n- **detalles** y servicios\n\n¿Qué propiedad le interesa: Pool Villa, Garden Suite o Canopy Loft Penthouse en Koh Samui, Thailand?`
 	},
@@ -126,7 +285,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`Выберите виллу и даты в карточке бронирования ниже, затем перейдите к безопасному прямому бронированию. Прямое бронирование дает **скидку 15%**, бесплатный трансфер из аэропорта, приветственный набор и поздний выезд.`,
 		details: (property) =>
-			`**${property.name}** включает: ${property.amenities.join(', ')}. Площадь ${property.area}m², ${property.bedrooms} спальни и ${property.bathrooms} ванные, подходит до ${property.maxGuests} гостей. Посмотрите все комнаты в **виртуальном туре 360°**!`,
+			`**${property.name}** включает: ${localizedAmenities(property, 'ru')}. Площадь ${property.area}m², ${property.bedrooms} спальни и ${property.bathrooms} ванные, подходит до ${property.maxGuests} гостей. Посмотрите все комнаты в **виртуальном туре 360°**!`,
 		generic:
 			`Добро пожаловать в Seaview Residence! Я могу помочь с:\n- **ценами** на наши роскошные виллы\n- **доступностью** на ваши даты\n- **деталями объекта** и удобствами\n\nЧто вас интересует: Pool Villa, Garden Suite или Canopy Loft Penthouse в Koh Samui, Thailand?`
 	},
@@ -139,7 +298,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`Usa la scheda di prenotazione sotto per scegliere villa e date, poi continua con la prenotazione diretta sicura. La prenotazione diretta offre **15% di sconto**, transfer aeroportuale gratuito, welcome basket e late checkout.`,
 		details: (property) =>
-			`**${property.name}** include: ${property.amenities.join(', ')}. È di ${property.area}m² con ${property.bedrooms} camera/e e ${property.bathrooms} bagno/i, perfetta per fino a ${property.maxGuests} ospiti. Esplora ogni stanza con il **tour virtuale 360°**!`,
+			`**${property.name}** include: ${localizedAmenities(property, 'it')}. È di ${property.area}m² con ${property.bedrooms} camera/e e ${property.bathrooms} bagno/i, perfetta per fino a ${property.maxGuests} ospiti. Esplora ogni stanza con il **tour virtuale 360°**!`,
 		generic:
 			`Benvenuto a Seaview Residence! Posso aiutarti con:\n- **prezzi** delle nostre ville di lusso\n- **disponibilità** per le tue date\n- **dettagli** e servizi\n\nTi interessa Pool Villa, Garden Suite o Canopy Loft Penthouse a Koh Samui, Thailand?`
 	},
@@ -152,7 +311,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 		booking:
 			`नीचे बुकिंग कार्ड से विला और तारीखें चुनें, फिर सुरक्षित सीधी बुकिंग पर जाएँ। सीधी बुकिंग में **15% छूट**, मुफ्त एयरपोर्ट पिकअप, वेलकम बास्केट और लेट चेकआउट मिलता है।`,
 		details: (property) =>
-			`**${property.name}** में शामिल हैं: ${property.amenities.join(', ')}। यह ${property.area}m² है, इसमें ${property.bedrooms} बेडरूम और ${property.bathrooms} बाथरूम हैं, और अधिकतम ${property.maxGuests} मेहमानों के लिए उपयुक्त है। हर कमरे को देखने के लिए **360° वर्चुअल टूर** लें!`,
+			`**${property.name}** में शामिल हैं: ${localizedAmenities(property, 'hi')}। यह ${property.area}m² है, इसमें ${property.bedrooms} बेडरूम और ${property.bathrooms} बाथरूम हैं, और अधिकतम ${property.maxGuests} मेहमानों के लिए उपयुक्त है। हर कमरे को देखने के लिए **360° वर्चुअल टूर** लें!`,
 		generic:
 			`Seaview Residence में आपका स्वागत है! मैं मदद कर सकता हूँ:\n- हमारी लक्जरी विला की **कीमतों** में\n- आपकी यात्रा तारीखों की **उपलब्धता** में\n- **प्रॉपर्टी विवरण** और सुविधाओं में\n\nKoh Samui, Thailand में Pool Villa, Garden Suite या Canopy Loft Penthouse में से किसमें रुचि है?`
 	}

@@ -198,5 +198,301 @@
   },
   "Footer": {
     "bookDirect": "Book Direct"
+  },
+  "SEO": {
+    "rootTitle": "Seaview Residence - Luxury Villas in Koh Samui, Thailand",
+    "rootDescription": "A boutique collection of luxury villas perched on the hillside of Koh Samui with panoramic Gulf of Thailand views, private pools, and unhurried island service.",
+    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
+    "bookingTitle": "Book Direct - Seaview Residence",
+    "payTitle": "Secure Checkout - Seaview Residence",
+    "successTitle": "Booking Confirmation - Seaview Residence",
+    "villaFallback": "Villa"
+  },
+  "A11y": {
+    "previousHeroSlide": "Previous hero slide",
+    "nextHeroSlide": "Next hero slide",
+    "goToSlide": "Go to slide {index}",
+    "scrollDown": "Scroll down",
+    "showPhoto": "Show photo {index}",
+    "previousPhoto": "Previous photo",
+    "nextPhoto": "Next photo",
+    "language": "Language",
+    "countryCode": "Country code",
+    "close": "Close",
+    "closeTour": "Close tour",
+    "toggleTheme": "Toggle theme",
+    "toggleMenu": "Toggle menu"
+  },
+  "Resort": {
+    "tagline": "Where the ocean meets serenity",
+    "description": "A boutique collection of luxury villas perched on the hillside of Koh Samui, offering panoramic Gulf of Thailand views, private pools, and the kind of unhurried service that turns a stay into a memory.",
+    "location": "Koh Samui, Thailand",
+    "locationImageAlt": "Aerial view of Koh Samui, Thailand",
+    "amenities": {
+      "infinityPool": "Infinity Pool",
+      "spaWellness": "Spa & Wellness",
+      "farmRestaurant": "Farm-to-Table Restaurant",
+      "airportTransfer": "Airport Transfer",
+      "conciergeService": "Concierge Service",
+      "privateBeach": "Private Beach Access",
+      "yogaMeditation": "Yoga & Meditation",
+      "waterSports": "Water Sports"
+    },
+    "highlights": {
+      "villaTypes": "Villa Types",
+      "guestRating": "Guest Rating",
+      "reviews": "Reviews",
+      "directSavings": "Direct Savings"
+    },
+    "locationBullets": {
+      "bophut": "5 min to Bophut Beach",
+      "airport": "15 min from Samui Airport",
+      "fisherman": "10 min to Fisherman's Village",
+      "transfer": "Private airport transfer included"
+    }
+  },
+  "Properties": {
+    "pool-villa": {
+      "tagline": "Private paradise with infinity pool",
+      "description": "Experience ultimate luxury in our spacious Pool Villa featuring a private infinity pool, open-plan living area, and lush tropical garden. Floor-to-ceiling windows bring the outside in, with stunning views from every room.",
+      "storyTagline": "Where mornings begin with a private dip under open skies",
+      "amenities": {
+        "privatePool": "Private Pool",
+        "wifi": "WiFi",
+        "airConditioning": "Air Conditioning",
+        "kitchen": "Kitchen",
+        "gardenView": "Garden View",
+        "kingBed": "King Bed"
+      }
+    },
+    "garden-suite": {
+      "tagline": "Serene retreat surrounded by nature",
+      "description": "Nestled among tropical gardens, the Garden Suite offers a tranquil escape with a spacious bedroom, modern bathroom, and private terrace. Wake up to birdsong and the scent of frangipani.",
+      "storyTagline": "A quiet corner of the island, wrapped in green",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "Air Conditioning",
+        "gardenTerrace": "Garden Terrace",
+        "rainShower": "Rain Shower",
+        "queenBed": "Queen Bed"
+      }
+    },
+    "penthouse": {
+      "tagline": "Boho loft living framed by treetop windows",
+      "description": "Our Canopy Loft Penthouse is a bright, loft-style villa wrapped in tall grid windows, warm wood ledges, soft neutral textiles, and relaxed boho details. A cozy sleeping platform, lounge corner, and kitchenette create an intimate hideaway above the trees.",
+      "storyTagline": "Wake among soft light, warm wood, and treetop windows",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "Air Conditioning",
+        "kitchenette": "Kitchenette",
+        "treetopWindows": "Treetop Windows",
+        "loftLounge": "Loft Lounge",
+        "kingBed": "King Bed",
+        "designerLighting": "Designer Lighting"
+      }
+    }
+  },
+  "Rooms": {
+    "pv-living": {
+      "name": "Living Area",
+      "hotspots": {
+        "pv-living-to-pool": "Pool Area"
+      }
+    },
+    "pv-pool": {
+      "name": "Pool Area",
+      "hotspots": {
+        "pv-pool-to-living": "Living Area"
+      }
+    },
+    "gs-lounge": {
+      "name": "Lounge",
+      "hotspots": {
+        "gs-lounge-to-dining": "Dining Area"
+      }
+    },
+    "gs-dining": {
+      "name": "Dining Area",
+      "hotspots": {
+        "gs-dining-to-garden": "Garden View",
+        "gs-dining-to-lounge": "Lounge"
+      }
+    },
+    "gs-garden": {
+      "name": "Garden View",
+      "hotspots": {
+        "gs-garden-to-dining": "Dining Area"
+      }
+    },
+    "ph-bedroom": {
+      "name": "Canopy Loft 360 View",
+      "hotspots": {}
+    }
+  },
+  "Tour": {
+    "roomsExplored": "{visited}/{total} rooms explored",
+    "loading": "Loading...",
+    "leadTitle": "Save this dream",
+    "leadSaved": "Saved. We'll keep this villa warm in your inbox with direct booking details.",
+    "leadBody": "Get the direct booking link and a reminder of the villa you just explored.",
+    "leadEmailPlaceholder": "you@example.com",
+    "invalidEmail": "Enter a valid email.",
+    "saveError": "Unable to save this email.",
+    "save": "Save"
+  },
+  "TourConclusions": {
+    "pool-villa": {
+      "headline": "Your Stay Awaits",
+      "summary": "Two sun-drenched rooms, a private infinity pool, and the kind of quiet that lets you hear your own thoughts again. This is not a hotel. This is your home on the island.",
+      "highlights": {
+        "one": "Private infinity pool steps from your bed",
+        "two": "Open-plan living with floor-to-ceiling glass",
+        "three": "Tropical garden surrounding the villa",
+        "four": "Personal concierge for island excursions"
+      },
+      "closingLine": "Make this more than a daydream"
+    },
+    "garden-suite": {
+      "headline": "Your Retreat Awaits",
+      "summary": "Wrapped in tropical gardens, the Garden Suite is where the pace of life slows to the rhythm of rustling palms. Every detail invites you to stay a little longer.",
+      "highlights": {
+        "one": "Private terrace overlooking the gardens",
+        "two": "Rainfall shower surrounded by nature",
+        "three": "Steps from secluded island beaches",
+        "four": "Daily breakfast with fresh island flavors"
+      },
+      "closingLine": "Make this more than a daydream"
+    },
+    "penthouse": {
+      "headline": "Your Loft Awaits",
+      "summary": "The Canopy Loft Penthouse feels like a private studio above the trees: bright grid windows, black beams, warm wood, and soft woven textures pulled together into one calm hideaway.",
+      "highlights": {
+        "one": "Tall treetop windows with a built-in ledge",
+        "two": "Cozy loft sleeping platform",
+        "three": "Relaxed lounge corner with boho styling",
+        "four": "Compact kitchenette for slow mornings"
+      },
+      "closingLine": "Make this more than a daydream"
+    }
+  },
+  "Pricing": {
+    "benefits": {
+      "freeAirportPickup": "Free airport pickup",
+      "welcomeBasket": "Welcome basket",
+      "lateCheckout": "Late checkout (2pm)",
+      "noServiceFees": "No service fees",
+      "freeCancellation": "Free cancellation (48h)",
+      "directWhatsappSupport": "Direct WhatsApp support"
+    }
+  },
+  "Reviews": {
+    "pv-r1": {
+      "title": "The pool was absolutely stunning",
+      "body": "We spent every morning swimming in the infinity pool watching the sunrise over Koh Tao. The villa is even more beautiful in person than the photos. The kitchen was fully equipped and the king bed was incredibly comfortable. Our host was responsive and provided excellent restaurant recommendations."
+    },
+    "pv-r2": {
+      "title": "Perfect honeymoon getaway",
+      "body": "My wife and I chose the Pool Villa for our honeymoon and it exceeded every expectation. The private pool area is so peaceful, and the open-plan living space feels incredibly luxurious. The tropical garden surrounding the villa gives you complete privacy. We will definitely be back."
+    },
+    "pv-r3": {
+      "title": "Felt like a five-star resort",
+      "body": "The villa is impeccably maintained. Every detail has been thought of, from the quality linens to the Bluetooth speaker by the pool. Air conditioning worked perfectly even in the hottest part of the day. The location is quiet but close enough to walk to shops and restaurants."
+    },
+    "pv-r4": {
+      "title": "Beautiful villa, great for families",
+      "body": "We stayed with our two kids and had an amazing time. The pool is safe and the garden provides plenty of space for the children to play. The villa is spacious with two proper bedrooms. Only minor note is that the WiFi could be a bit stronger by the pool area."
+    },
+    "pv-r5": {
+      "title": "Best stay in Thailand",
+      "body": "After travelling through Thailand for three weeks, this was by far our favourite accommodation. The pool villa is paradise. Waking up, opening the sliding doors, and diving straight into the pool - you cannot beat that. The host arranged a private chef one evening which was unforgettable."
+    },
+    "pv-r6": {
+      "title": "Superhost for a reason",
+      "body": "From check-in to check-out, everything was seamless. The villa photos are accurate, the amenities are top-notch, and the location on Koh Tao is ideal. We did the 360 tour before booking and what you see is exactly what you get. Highly recommend."
+    },
+    "gs-r1": {
+      "title": "Garden view at sunset was magical",
+      "body": "The private terrace looking out over the tropical garden is where we spent every evening. Watching the sunset with the frangipani trees swaying - it was like being in a painting. The rain shower is also fantastic after a day at the beach. Such a peaceful retreat."
+    },
+    "gs-r2": {
+      "title": "Perfect for couples",
+      "body": "The Garden Suite is exactly what you need for a romantic getaway. Cosy but not cramped, beautifully designed, and the garden setting feels very private. We loved having breakfast on the terrace every morning. The bed is extremely comfortable."
+    },
+    "gs-r3": {
+      "title": "Charming and well-located",
+      "body": "A lovely space surrounded by nature. The garden is lush and well-maintained, and you can hear birds singing in the morning. The suite itself is modern with nice touches. Walking distance to the best restaurants and dive shops on the island."
+    },
+    "gs-r4": {
+      "title": "Great value for Koh Tao",
+      "body": "Honestly surprised by the quality at this price point. The suite is spotless, tastefully decorated, and the air conditioning keeps it perfectly cool. The garden terrace is a highlight. Communication with the host was quick and helpful."
+    },
+    "gs-r5": {
+      "title": "Peaceful island escape",
+      "body": "Exactly what we were looking for. A quiet retreat with beautiful surroundings. The garden is filled with tropical flowers and the sound of nature is incredibly calming. We used the suite as our base for diving and exploring the island. Highly recommended."
+    },
+    "ph-r1": {
+      "title": "A loft hideaway full of soft light",
+      "body": "The tall windows alone are worth the stay. We had slow mornings on the window ledge, coffee in hand, with the trees just outside. The Canopy Loft Penthouse is beautifully styled with warm wood, woven details, and a kitchenette that made it easy to settle in."
+    },
+    "ph-r2": {
+      "title": "Worth every penny",
+      "body": "We celebrated our anniversary at the Canopy Loft Penthouse and it was perfect. The sleeping nook is cozy, the lounge feels intimate, and the whole space has this calm studio atmosphere. The host arranged flowers and champagne for our arrival. Truly special."
+    },
+    "ph-r3": {
+      "title": "The best accommodation in Koh Tao",
+      "body": "We have stayed at many places on the island but nothing compares to the Canopy Loft Penthouse. The loft feels airy without losing warmth, the designer details are gorgeous, and the treetop windows make every morning feel cinematic."
+    },
+    "ph-r4": {
+      "title": "Elevated luxury on a tropical island",
+      "body": "The attention to detail in the Canopy Loft Penthouse is remarkable. From the quality of the mattress to the kitchenette styling, everything feels intentional. We spent our evenings in the lounge with the string lights on and did not want to leave."
+    },
+    "ph-r5": {
+      "title": "Unforgettable stay",
+      "body": "Traveling with friends, the Canopy Loft Penthouse gave us the space and comfort we needed. The lounge, kitchenette, and sleeping area flow together beautifully, and the treetop light is genuinely stunning. Photos do not do it justice."
+    }
+  },
+  "TourSnippets": {
+    "pv-ts1": {
+      "quote": "The infinity pool at sunrise is absolutely magical!"
+    },
+    "pv-ts2": {
+      "quote": "Open-plan living feels incredibly luxurious."
+    },
+    "gs-ts1": {
+      "quote": "Such a peaceful retreat surrounded by nature."
+    },
+    "gs-ts2": {
+      "quote": "Breakfast on the terrace was our favourite part!"
+    },
+    "ph-ts1": {
+      "quote": "The morning light through the tall windows is beautiful."
+    }
+  },
+  "BookingDocuments": {
+    "invoice": "Invoice",
+    "receipt": "Receipt",
+    "guest": "Guest",
+    "email": "Email",
+    "phone": "Phone",
+    "property": "Property",
+    "stayDates": "Stay dates",
+    "to": "to",
+    "night": "night",
+    "nights": "nights",
+    "guestUnit": "guest",
+    "guestUnits": "guests",
+    "directBookingDiscount": "Direct booking discount",
+    "total": "Total",
+    "invoiceNumber": "Invoice number",
+    "demoInvoice": "Demo invoice",
+    "issueDate": "Issue date",
+    "demoInvoiceNotice": "This demo invoice was generated by Seaview Residence for product demonstration only.",
+    "receiptNumber": "Receipt number",
+    "demoReceipt": "Demo receipt",
+    "confirmationCode": "Confirmation code",
+    "demoConfirmation": "Demo confirmation",
+    "paidDate": "Paid date",
+    "paymentMethodDemo": "Payment method: Demo card ending in 4242",
+    "paidNotice": "Paid in full. This receipt is for demo purposes and no real card was charged."
   }
 }

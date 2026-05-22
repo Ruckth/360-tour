@@ -1,12 +1,13 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { getPricingByPropertyId } from "@/lib/data/pricing";
+import { useLocale, useTranslations } from "next-intl";
+import { getLocalizedPricingByPropertyId } from "@/lib/i18n/public-content";
 
 export function DirectBookingBenefits({ propertyId }: { propertyId: string }) {
   const t = useTranslations("Villa");
-  const pricing = getPricingByPropertyId(propertyId);
+  const locale = useLocale();
+  const pricing = getLocalizedPricingByPropertyId(propertyId, locale);
   if (!pricing) return null;
 
   return (

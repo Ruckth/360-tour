@@ -6,7 +6,7 @@ import { ArrowDown, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
-import { resort } from "@/lib/data/resort-config";
+import { getLocalizedResort } from "@/lib/i18n/public-content";
 import { isHorizontalSwipe, swipeDirection, type SwipePoint, wrapIndex } from "@/lib/interaction/swipe";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +36,10 @@ const mobileSlides = [
 
 export function HomeHero() {
   const t = useTranslations("Home");
+  const a11y = useTranslations("A11y");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
+  const resort = getLocalizedResort(locale);
   const [loaded, setLoaded] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [desktopStep, setDesktopStep] = useState(0);
@@ -202,7 +204,7 @@ export function HomeHero() {
               <button
                 type="button"
                 onClick={() => setManualMobileSlide(mobileSlide - 1)}
-                aria-label="Previous hero slide"
+                aria-label={a11y("previousHeroSlide")}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white shadow-lg backdrop-blur-md transition hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -210,7 +212,7 @@ export function HomeHero() {
               <button
                 type="button"
                 onClick={() => setManualMobileSlide(mobileSlide + 1)}
-                aria-label="Next hero slide"
+                aria-label={a11y("nextHeroSlide")}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-white/25 bg-black/25 text-white shadow-lg backdrop-blur-md transition hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
               >
                 <ChevronRight className="h-5 w-5" />
@@ -227,7 +229,7 @@ export function HomeHero() {
                     "h-2.5 rounded-full border border-white/30 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
                     mobileSlide === index ? "w-8 bg-white" : "w-2.5 bg-white/40",
                   )}
-                  aria-label={`Go to slide ${index + 1}`}
+                  aria-label={a11y("goToSlide", { index: index + 1 })}
                 />
               ))}
             </div>
@@ -263,7 +265,7 @@ export function HomeHero() {
 
       <Link
         href="#about"
-        aria-label="Scroll down"
+        aria-label={a11y("scrollDown")}
         className="absolute bottom-6 left-1/2 z-10 hidden -translate-x-1/2 flex-col items-center gap-1.5 md:bottom-8 md:flex"
       >
         <ArrowDown className="h-5 w-5 animate-bounce text-white/50 md:h-6 md:w-6" />

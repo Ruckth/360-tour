@@ -16,9 +16,11 @@ import { StarRating } from "@/components/social/StarRating";
 import { TrustBadges } from "@/components/trust/TrustBadges";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import { getSocialProofByPropertyId } from "@/lib/data/social-proof";
-import { resort } from "@/lib/data/resort-config";
 import type { Property } from "@/lib/data/properties";
+import {
+  getLocalizedResort,
+  getLocalizedSocialProofByPropertyId,
+} from "@/lib/i18n/public-content";
 
 const TourViewer = dynamic(
   () => import("@/components/tour/TourViewer").then((mod) => mod.TourViewer),
@@ -36,7 +38,8 @@ export function RoomDetailClient({ property }: { property: Property }) {
   const chatContext = useChatPageContext();
   const setChatContext = chatContext?.setContext;
   const clearChatContext = chatContext?.clearContext;
-  const socialProof = getSocialProofByPropertyId(property.id);
+  const resort = getLocalizedResort(locale);
+  const socialProof = getLocalizedSocialProofByPropertyId(property.id, locale);
   const images = property.images.length ? property.images : [resort.heroImage];
 
   useEffect(() => {

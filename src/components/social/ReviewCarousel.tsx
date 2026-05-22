@@ -1,16 +1,18 @@
 "use client";
 
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { StarRating } from "@/components/social/StarRating";
 import { SwipeRail } from "@/components/ui/SwipeRail";
 import type { Review } from "@/lib/data/reviews";
 
 export function ReviewCarousel({ reviews }: { reviews: Review[] }) {
+  const t = useTranslations("Villa");
   const featuredReviews = reviews.slice(0, 6);
 
   return (
     <>
-      <SwipeRail label="Guest reviews" className="md:hidden">
+      <SwipeRail label={t("whatGuestsSay")} className="md:hidden">
         {featuredReviews.map((review) => (
           <ReviewCard key={review.id} review={review} />
         ))}

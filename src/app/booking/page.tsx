@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
+import { getLocale } from "next-intl/server";
 import { BookingFunnel } from "@/components/booking/BookingFunnel";
+import { getPublicMessages } from "@/lib/i18n/public-content";
 
-export const metadata = {
-  title: "Book Direct — Seaview Residence",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return {
+    title: getPublicMessages(locale).SEO.bookingTitle,
+  };
+}
 
 type BookingSearchParams = Record<string, string | string[] | undefined>;
 

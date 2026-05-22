@@ -198,5 +198,301 @@
   },
   "Footer": {
     "bookDirect": "直接予約"
+  },
+  "SEO": {
+    "rootTitle": "Seaview Residence - Koh Samui, Thailand のラグジュアリーヴィラ",
+    "rootDescription": "Koh Samui の丘に佇むブティックヴィラ。タイ湾の眺望、プライベートプール、ゆったりした島のサービスをお楽しみください。",
+    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
+    "bookingTitle": "直接予約 - Seaview Residence",
+    "payTitle": "安全な決済 - Seaview Residence",
+    "successTitle": "予約確認 - Seaview Residence",
+    "villaFallback": "ヴィラ"
+  },
+  "A11y": {
+    "previousHeroSlide": "前のヒーロースライド",
+    "nextHeroSlide": "次のヒーロースライド",
+    "goToSlide": "{index}枚目へ移動",
+    "scrollDown": "下へスクロール",
+    "showPhoto": "写真 {index} を表示",
+    "previousPhoto": "前の写真",
+    "nextPhoto": "次の写真",
+    "language": "言語",
+    "countryCode": "国番号",
+    "close": "閉じる",
+    "closeTour": "ツアーを閉じる",
+    "toggleTheme": "テーマを切り替え",
+    "toggleMenu": "メニューを切り替え"
+  },
+  "Resort": {
+    "tagline": "海と静けさが出会う場所",
+    "description": "Koh Samui の丘に佇むブティック・ラグジュアリーヴィラ。タイ湾のパノラマビュー、プライベートプール、思い出に変わるゆったりしたサービスをご用意しています.",
+    "location": "Koh Samui, Thailand",
+    "locationImageAlt": "Koh Samui, Thailand 航拍景观",
+    "amenities": {
+      "infinityPool": "インフィニティプール",
+      "spaWellness": "スパ＆ウェルネス",
+      "farmRestaurant": "ファーム・トゥ・テーブルレストラン",
+      "airportTransfer": "空港送迎",
+      "conciergeService": "コンシェルジュサービス",
+      "privateBeach": "プライベートビーチアクセス",
+      "yogaMeditation": "ヨガ＆瞑想",
+      "waterSports": "ウォータースポーツ"
+    },
+    "highlights": {
+      "villaTypes": "ヴィラタイプ",
+      "guestRating": "ゲスト評価",
+      "reviews": "レビュー",
+      "directSavings": "直接予約の割引"
+    },
+    "locationBullets": {
+      "bophut": "Bophut Beach まで5分",
+      "airport": "Samui Airport から15分",
+      "fisherman": "Fisherman's Village まで10分",
+      "transfer": "専用空港送迎込み"
+    }
+  },
+  "Properties": {
+    "pool-villa": {
+      "tagline": "インフィニティプール付きのプライベートな楽園",
+      "description": "広々とした Pool Villa で、専用インフィニティプール、開放的なリビング、緑豊かなトロピカルガーデンをお楽しみください。床から天井までの窓が景色を室内へ招きます。",
+      "storyTagline": "開放的な空の下、専用プールから始まる朝",
+      "amenities": {
+        "privatePool": "プライベートプール",
+        "wifi": "WiFi",
+        "airConditioning": "エアコン",
+        "kitchen": "キッチン",
+        "gardenView": "ガーデンビュー",
+        "kingBed": "キングベッド"
+      }
+    },
+    "garden-suite": {
+      "tagline": "自然に包まれた静かな隠れ家",
+      "description": "Garden Suite はトロピカルガーデンに囲まれ、広いベッドルーム、モダンなバスルーム、専用テラスを備えています。鳥の声とフランジパニの香りで目覚めます。",
+      "storyTagline": "緑に包まれた島の静かな一角",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "エアコン",
+        "gardenTerrace": "ガーデンテラス",
+        "rainShower": "レインシャワー",
+        "queenBed": "クイーンベッド"
+      }
+    },
+    "penthouse": {
+      "tagline": "木々の窓に囲まれたボーホーなロフト滞在",
+      "description": "Canopy Loft Penthouse は高い格子窓、温かな木、柔らかなニュートラルの布地、ボーホーなディテールに包まれた明るいロフトヴィラです。",
+      "storyTagline": "柔らかな光、温かな木、木々の窓のそばで目覚める",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "エアコン",
+        "kitchenette": "簡易キッチン",
+        "treetopWindows": "木々を望む窓",
+        "loftLounge": "ロフトラウンジ",
+        "kingBed": "キングベッド",
+        "designerLighting": "デザイン照明"
+      }
+    }
+  },
+  "Rooms": {
+    "pv-living": {
+      "name": "リビングエリア",
+      "hotspots": {
+        "pv-living-to-pool": "プールエリア"
+      }
+    },
+    "pv-pool": {
+      "name": "プールエリア",
+      "hotspots": {
+        "pv-pool-to-living": "リビングエリア"
+      }
+    },
+    "gs-lounge": {
+      "name": "ラウンジ",
+      "hotspots": {
+        "gs-lounge-to-dining": "ダイニングエリア"
+      }
+    },
+    "gs-dining": {
+      "name": "ダイニングエリア",
+      "hotspots": {
+        "gs-dining-to-garden": "ガーデンビュー",
+        "gs-dining-to-lounge": "ラウンジ"
+      }
+    },
+    "gs-garden": {
+      "name": "ガーデンビュー",
+      "hotspots": {
+        "gs-garden-to-dining": "ダイニングエリア"
+      }
+    },
+    "ph-bedroom": {
+      "name": "Canopy Loft 360°ビュー",
+      "hotspots": {}
+    }
+  },
+  "Tour": {
+    "roomsExplored": "{visited}/{total} 部屋を探索済み",
+    "loading": "読み込み中...",
+    "leadTitle": "この夢を保存",
+    "leadSaved": "保存しました。このヴィラの直接予約詳細をメールでお送りします。",
+    "leadBody": "直接予約リンクと、今見たヴィラのリマインダーを受け取れます。",
+    "leadEmailPlaceholder": "you@example.com",
+    "invalidEmail": "有効なメールアドレスを入力してください。",
+    "saveError": "このメールを保存できません。",
+    "save": "保存"
+  },
+  "TourConclusions": {
+    "pool-villa": {
+      "headline": "滞在があなたを待っています",
+      "summary": "陽光に包まれた2つの空間、専用インフィニティプール、そして自分の思考が戻ってくるような静けさ。ここはホテルではなく、島の家です。",
+      "highlights": {
+        "one": "ベッドからすぐの専用インフィニティプール",
+        "two": "床から天井までのガラスがある開放的なリビング",
+        "three": "ヴィラを囲むトロピカルガーデン",
+        "four": "島の体験を整える専任コンシェルジュ"
+      },
+      "closingLine": "白昼夢で終わらせない滞在へ"
+    },
+    "garden-suite": {
+      "headline": "静かな隠れ家が待っています",
+      "summary": "トロピカルガーデンに包まれた Garden Suite では、暮らしの速度が椰子の葉音に合わせてゆっくりになります。",
+      "highlights": {
+        "one": "庭を望む専用テラス",
+        "two": "自然に包まれたレインシャワー",
+        "three": "静かなビーチまですぐ",
+        "four": "島の新鮮な味を楽しむ毎日の朝食"
+      },
+      "closingLine": "白昼夢で終わらせない滞在へ"
+    },
+    "penthouse": {
+      "headline": "ロフトがあなたを待っています",
+      "summary": "Canopy Loft Penthouse は木々の上のプライベートスタジオのよう。明るい窓、黒い梁、温かな木、柔らかな素材が静かな隠れ家を作ります。",
+      "highlights": {
+        "one": "造り付けベンチのある高い木々の窓",
+        "two": "居心地のよいロフト寝台",
+        "three": "リラックスしたボーホーラウンジ",
+        "four": "ゆっくりした朝のための簡易キッチン"
+      },
+      "closingLine": "白昼夢で終わらせない滞在へ"
+    }
+  },
+  "Pricing": {
+    "benefits": {
+      "freeAirportPickup": "無料空港送迎",
+      "welcomeBasket": "ウェルカムバスケット",
+      "lateCheckout": "レイトチェックアウト（14:00）",
+      "noServiceFees": "サービス料なし",
+      "freeCancellation": "無料キャンセル（48時間）",
+      "directWhatsappSupport": "WhatsApp 直接サポート"
+    }
+  },
+  "Reviews": {
+    "pv-r1": {
+      "title": "プールが本当に素晴らしい",
+      "body": "インフィニティプールで迎える朝、開放的なリビング、プライベートな庭がとても印象的でした。ヴィラは清潔で設備も整い、host の返信も早くおすすめも的確でした。"
+    },
+    "pv-r2": {
+      "title": "完璧なハネムーンの隠れ家",
+      "body": "インフィニティプールで迎える朝、開放的なリビング、プライベートな庭がとても印象的でした。ヴィラは清潔で設備も整い、host の返信も早くおすすめも的確でした。"
+    },
+    "pv-r3": {
+      "title": "五つ星リゾートのよう",
+      "body": "インフィニティプールで迎える朝、開放的なリビング、プライベートな庭がとても印象的でした。ヴィラは清潔で設備も整い、host の返信も早くおすすめも的確でした。"
+    },
+    "pv-r4": {
+      "title": "家族にも素晴らしいヴィラ",
+      "body": "インフィニティプールで迎える朝、開放的なリビング、プライベートな庭がとても印象的でした。ヴィラは清潔で設備も整い、host の返信も早くおすすめも的確でした。"
+    },
+    "pv-r5": {
+      "title": "Thailand で最高の滞在",
+      "body": "インフィニティプールで迎える朝、開放的なリビング、プライベートな庭がとても印象的でした。ヴィラは清潔で設備も整い、host の返信も早くおすすめも的確でした。"
+    },
+    "pv-r6": {
+      "title": "Superhost と呼ばれる理由がある",
+      "body": "インフィニティプールで迎える朝、開放的なリビング、プライベートな庭がとても印象的でした。ヴィラは清潔で設備も整い、host の返信も早くおすすめも的確でした。"
+    },
+    "gs-r1": {
+      "title": "夕暮れの庭の眺めが魔法のよう",
+      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+    },
+    "gs-r2": {
+      "title": "カップルにぴったり",
+      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+    },
+    "gs-r3": {
+      "title": "魅力的で便利な立地",
+      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+    },
+    "gs-r4": {
+      "title": "Koh Tao でとても良い価値",
+      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+    },
+    "gs-r5": {
+      "title": "静かな島の逃避先",
+      "body": "Garden Suite は静かで親密、緑に囲まれていました。専用テラス、レインシャワー、庭の音が滞在をとても穏やかにしてくれました。"
+    },
+    "ph-r1": {
+      "title": "柔らかな光に満ちたロフト",
+      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+    },
+    "ph-r2": {
+      "title": "価格以上の価値",
+      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+    },
+    "ph-r3": {
+      "title": "Koh Tao で最高の宿",
+      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+    },
+    "ph-r4": {
+      "title": "南国の島で味わう上質な贅沢",
+      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+    },
+    "ph-r5": {
+      "title": "忘れられない滞在",
+      "body": "Canopy Loft Penthouse は明るく温かく、細部まで美しい空間です。高い窓、ラウンジ、簡易キッチンが木々の上のプライベートスタジオのようでした。"
+    }
+  },
+  "TourSnippets": {
+    "pv-ts1": {
+      "quote": "日の出のインフィニティプールは本当に魔法のようです！"
+    },
+    "pv-ts2": {
+      "quote": "開放的なリビングはとても贅沢に感じます。"
+    },
+    "gs-ts1": {
+      "quote": "自然に囲まれたとても静かな隠れ家です。"
+    },
+    "gs-ts2": {
+      "quote": "テラスでの朝食が一番のお気に入りでした！"
+    },
+    "ph-ts1": {
+      "quote": "高い窓から入る朝の光が美しいです。"
+    }
+  },
+  "BookingDocuments": {
+    "invoice": "請求書",
+    "receipt": "領収書",
+    "guest": "ゲスト",
+    "email": "メール",
+    "phone": "電話",
+    "property": "宿泊施設",
+    "stayDates": "滞在日",
+    "to": "から",
+    "night": "泊",
+    "nights": "泊",
+    "guestUnit": "名",
+    "guestUnits": "名",
+    "directBookingDiscount": "直接予約割引",
+    "total": "合計",
+    "invoiceNumber": "請求書番号",
+    "demoInvoice": "デモ請求書",
+    "issueDate": "発行日",
+    "demoInvoiceNotice": "このデモ請求書は Seaview Residence の製品デモ用に生成されました。",
+    "receiptNumber": "領収書番号",
+    "demoReceipt": "デモ領収書",
+    "confirmationCode": "確認コード",
+    "demoConfirmation": "デモ確認",
+    "paidDate": "支払日",
+    "paymentMethodDemo": "支払い方法: 4242 で終わるデモカード",
+    "paidNotice": "全額支払い済み。この領収書はデモ用であり、実際のカード請求はありません。"
   }
 }

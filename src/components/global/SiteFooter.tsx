@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
-import { resort } from "@/lib/data/resort-config";
+import { getLocalizedResort } from "@/lib/i18n/public-content";
 
 export function SiteFooter() {
   const nav = useTranslations("Nav");
   const footer = useTranslations("Footer");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
+  const resort = getLocalizedResort(locale);
 
   return (
     <footer className="border-t border-border bg-card">

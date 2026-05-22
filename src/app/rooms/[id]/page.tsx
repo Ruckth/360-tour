@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { RoomDetailClient } from "@/components/rooms/RoomDetailClient";
-import { getPropertyById, properties } from "@/lib/data/properties";
-import { resort } from "@/lib/data/resort-config";
+import { properties } from "@/lib/data/properties";
 import { Suspense } from "react";
 import { localizeHref } from "@/i18n/routing";
+import {
+  getLocalizedPropertyById,
+  getLocalizedResort,
+  getPublicMessages,
+} from "@/lib/i18n/public-content";
 
 export function generateStaticParams() {
   return properties.map((property) => ({ id: property.id }));
@@ -16,9 +20,12 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const property = getPropertyById(id);
+  const locale = await getLocale();
+  const property = getLocalizedPropertyById(id, locale);
+  const resort = getLocalizedResort(locale);
+  const seo = getPublicMessages(locale).SEO;
   return {
-    title: `${property?.name ?? "Villa"} — ${resort.name}`,
+    title: `${property?.name ?? seo.villaFallback} — ${resort.name}`,
     description: property?.description ?? resort.description,
   };
 }
@@ -31,7 +38,7 @@ export default async function RoomPage({
   const { id } = await params;
   const locale = await getLocale();
   const t = await getTranslations("Villa");
-  const property = getPropertyById(id);
+  const property = getLocalizedPropertyById(id, locale);
 
   if (!property) {
     return (

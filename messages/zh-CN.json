@@ -198,5 +198,301 @@
   },
   "Footer": {
     "bookDirect": "直接预订"
+  },
+  "SEO": {
+    "rootTitle": "Seaview Residence - Koh Samui, Thailand 豪华别墅",
+    "rootDescription": "位于 Koh Samui 山坡上的精品豪华别墅，享有泰国湾全景、私人泳池和从容的海岛服务。",
+    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
+    "bookingTitle": "直接预订 - Seaview Residence",
+    "payTitle": "安全结账 - Seaview Residence",
+    "successTitle": "预订确认 - Seaview Residence",
+    "villaFallback": "别墅"
+  },
+  "A11y": {
+    "previousHeroSlide": "上一张主视觉",
+    "nextHeroSlide": "下一张主视觉",
+    "goToSlide": "前往第 {index} 张",
+    "scrollDown": "向下滚动",
+    "showPhoto": "显示照片 {index}",
+    "previousPhoto": "上一张照片",
+    "nextPhoto": "下一张照片",
+    "language": "语言",
+    "countryCode": "国家区号",
+    "close": "关闭",
+    "closeTour": "关闭导览",
+    "toggleTheme": "切换主题",
+    "toggleMenu": "切换菜单"
+  },
+  "Resort": {
+    "tagline": "海洋与宁静相遇之处",
+    "description": "Seaview Residence 是 Koh Samui 山坡上的精品豪华别墅系列，拥有泰国湾全景、私人泳池，以及让假期成为回忆的从容服务。",
+    "location": "Koh Samui, Thailand",
+    "locationImageAlt": "Koh Samui, Thailand 航拍景观",
+    "amenities": {
+      "infinityPool": "无边泳池",
+      "spaWellness": "水疗与康养",
+      "farmRestaurant": "农场到餐桌餐厅",
+      "airportTransfer": "机场接送",
+      "conciergeService": "礼宾服务",
+      "privateBeach": "私人海滩通道",
+      "yogaMeditation": "瑜伽与冥想",
+      "waterSports": "水上运动"
+    },
+    "highlights": {
+      "villaTypes": "别墅类型",
+      "guestRating": "住客评分",
+      "reviews": "评价",
+      "directSavings": "直接预订优惠"
+    },
+    "locationBullets": {
+      "bophut": "距 Bophut Beach 5 分钟",
+      "airport": "距 Samui Airport 15 分钟",
+      "fisherman": "距 Fisherman's Village 10 分钟",
+      "transfer": "包含私人机场接送"
+    }
+  },
+  "Properties": {
+    "pool-villa": {
+      "tagline": "带无边泳池的私人天堂",
+      "description": "宽敞的 Pool Villa 配有私人无边泳池、开放式起居区和葱郁热带花园。落地窗将户外景致引入室内，每个房间都有迷人视野。",
+      "storyTagline": "清晨从露天私人泳池开始",
+      "amenities": {
+        "privatePool": "私人泳池",
+        "wifi": "WiFi",
+        "airConditioning": "空调",
+        "kitchen": "厨房",
+        "gardenView": "花园景观",
+        "kingBed": "特大床"
+      }
+    },
+    "garden-suite": {
+      "tagline": "被自然环绕的宁静休憩地",
+      "description": "Garden Suite 隐于热带花园之中，拥有宽敞卧室、现代浴室和私人露台。伴着鸟鸣和鸡蛋花香醒来。",
+      "storyTagline": "岛上一处被绿意包围的安静角落",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "空调",
+        "gardenTerrace": "花园露台",
+        "rainShower": "雨淋花洒",
+        "queenBed": "大床"
+      }
+    },
+    "penthouse": {
+      "tagline": "被树梢窗景包围的波西米亚阁楼",
+      "description": "Canopy Loft Penthouse 是明亮的阁楼式别墅，拥有高大的格窗、温暖木质、柔和中性色织物和轻松的波西米亚细节。睡眠平台、休闲角和小厨房构成树上隐居感。",
+      "storyTagline": "在柔光、温木与树梢窗边醒来",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "空调",
+        "kitchenette": "小厨房",
+        "treetopWindows": "树梢窗",
+        "loftLounge": "阁楼休闲区",
+        "kingBed": "特大床",
+        "designerLighting": "设计灯具"
+      }
+    }
+  },
+  "Rooms": {
+    "pv-living": {
+      "name": "起居区",
+      "hotspots": {
+        "pv-living-to-pool": "泳池区"
+      }
+    },
+    "pv-pool": {
+      "name": "泳池区",
+      "hotspots": {
+        "pv-pool-to-living": "起居区"
+      }
+    },
+    "gs-lounge": {
+      "name": "休息区",
+      "hotspots": {
+        "gs-lounge-to-dining": "用餐区"
+      }
+    },
+    "gs-dining": {
+      "name": "用餐区",
+      "hotspots": {
+        "gs-dining-to-garden": "花园景观",
+        "gs-dining-to-lounge": "休息区"
+      }
+    },
+    "gs-garden": {
+      "name": "花园景观",
+      "hotspots": {
+        "gs-garden-to-dining": "用餐区"
+      }
+    },
+    "ph-bedroom": {
+      "name": "Canopy Loft 360° 景观",
+      "hotspots": {}
+    }
+  },
+  "Tour": {
+    "roomsExplored": "已探索 {visited}/{total} 个房间",
+    "loading": "正在加载...",
+    "leadTitle": "保存这个梦想",
+    "leadSaved": "已保存。我们会把这间别墅的直接预订详情发送到您的邮箱。",
+    "leadBody": "获取直接预订链接，并保存您刚刚探索过的别墅提醒。",
+    "leadEmailPlaceholder": "you@example.com",
+    "invalidEmail": "请输入有效的电子邮箱。",
+    "saveError": "无法保存此邮箱。",
+    "save": "保存"
+  },
+  "TourConclusions": {
+    "pool-villa": {
+      "headline": "您的假期正在等待",
+      "summary": "两个洒满阳光的空间、一座私人无边泳池，以及能重新听见自己思绪的安静。这不是酒店，而是您在岛上的家。",
+      "highlights": {
+        "one": "距床几步之遥的私人无边泳池",
+        "two": "落地玻璃环绕的开放式起居空间",
+        "three": "热带花园环绕别墅",
+        "four": "私人礼宾安排岛上体验"
+      },
+      "closingLine": "让它不止是白日梦"
+    },
+    "garden-suite": {
+      "headline": "您的静居正在等待",
+      "summary": "Garden Suite 被热带花园包围，让生活节奏随着棕榈叶声慢下来。每个细节都邀请您多停留一会儿。",
+      "highlights": {
+        "one": "俯瞰花园的私人露台",
+        "two": "自然氛围中的雨淋花洒",
+        "three": "靠近宁静海滩",
+        "four": "每日供应新鲜岛屿风味早餐"
+      },
+      "closingLine": "让它不止是白日梦"
+    },
+    "penthouse": {
+      "headline": "您的阁楼正在等待",
+      "summary": "Canopy Loft Penthouse 像树梢上的私人工作室：明亮格窗、黑色横梁、温暖木质和柔软织物，共同构成平静的隐居处。",
+      "highlights": {
+        "one": "带内置窗台的高大树梢窗",
+        "two": "舒适的阁楼睡眠平台",
+        "three": "轻松的波西米亚休闲角",
+        "four": "适合慢早晨的小厨房"
+      },
+      "closingLine": "让它不止是白日梦"
+    }
+  },
+  "Pricing": {
+    "benefits": {
+      "freeAirportPickup": "免费机场接机",
+      "welcomeBasket": "欢迎礼篮",
+      "lateCheckout": "延迟退房（下午2点）",
+      "noServiceFees": "无服务费",
+      "freeCancellation": "48小时免费取消",
+      "directWhatsappSupport": "WhatsApp 直接支持"
+    }
+  },
+  "Reviews": {
+    "pv-r1": {
+      "title": "泳池美得令人惊艳",
+      "body": "我们喜欢每天早晨在无边泳池游泳，也喜欢开放式起居空间和私密的热带花园。别墅维护得很好，设施齐全，host 回复迅速并给了很棒的建议。"
+    },
+    "pv-r2": {
+      "title": "完美蜜月假期",
+      "body": "我们喜欢每天早晨在无边泳池游泳，也喜欢开放式起居空间和私密的热带花园。别墅维护得很好，设施齐全，host 回复迅速并给了很棒的建议。"
+    },
+    "pv-r3": {
+      "title": "像五星级度假村",
+      "body": "我们喜欢每天早晨在无边泳池游泳，也喜欢开放式起居空间和私密的热带花园。别墅维护得很好，设施齐全，host 回复迅速并给了很棒的建议。"
+    },
+    "pv-r4": {
+      "title": "漂亮别墅，适合家庭",
+      "body": "我们喜欢每天早晨在无边泳池游泳，也喜欢开放式起居空间和私密的热带花园。别墅维护得很好，设施齐全，host 回复迅速并给了很棒的建议。"
+    },
+    "pv-r5": {
+      "title": "Thailand 最棒的一次住宿",
+      "body": "我们喜欢每天早晨在无边泳池游泳，也喜欢开放式起居空间和私密的热带花园。别墅维护得很好，设施齐全，host 回复迅速并给了很棒的建议。"
+    },
+    "pv-r6": {
+      "title": "Superhost 实至名归",
+      "body": "我们喜欢每天早晨在无边泳池游泳，也喜欢开放式起居空间和私密的热带花园。别墅维护得很好，设施齐全，host 回复迅速并给了很棒的建议。"
+    },
+    "gs-r1": {
+      "title": "日落时的花园景观很梦幻",
+      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+    },
+    "gs-r2": {
+      "title": "非常适合情侣",
+      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+    },
+    "gs-r3": {
+      "title": "迷人且位置便利",
+      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+    },
+    "gs-r4": {
+      "title": "Koh Tao 性价比很高",
+      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+    },
+    "gs-r5": {
+      "title": "安静的海岛假期",
+      "body": "Garden Suite 安静、亲密，被绿意包围。私人露台、雨淋花洒和花园里的自然声音让整个住宿非常放松。"
+    },
+    "ph-r1": {
+      "title": "充满柔光的阁楼隐居处",
+      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+    },
+    "ph-r2": {
+      "title": "物有所值",
+      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+    },
+    "ph-r3": {
+      "title": "Koh Tao 最好的住宿",
+      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+    },
+    "ph-r4": {
+      "title": "热带岛屿上的高级奢华",
+      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+    },
+    "ph-r5": {
+      "title": "难忘的住宿",
+      "body": "Canopy Loft Penthouse 明亮温暖，细节精致。高窗、休闲角和小厨房让这里像树梢上的私人工作室。"
+    }
+  },
+  "TourSnippets": {
+    "pv-ts1": {
+      "quote": "日出时的无边泳池太迷人了！"
+    },
+    "pv-ts2": {
+      "quote": "开放式起居空间非常奢华。"
+    },
+    "gs-ts1": {
+      "quote": "被自然环绕的宁静休憩地。"
+    },
+    "gs-ts2": {
+      "quote": "露台早餐是我们最喜欢的部分！"
+    },
+    "ph-ts1": {
+      "quote": "晨光穿过高窗非常美。"
+    }
+  },
+  "BookingDocuments": {
+    "invoice": "发票",
+    "receipt": "收据",
+    "guest": "住客",
+    "email": "电子邮箱",
+    "phone": "电话",
+    "property": "房源",
+    "stayDates": "入住日期",
+    "to": "至",
+    "night": "晚",
+    "nights": "晚",
+    "guestUnit": "位住客",
+    "guestUnits": "位住客",
+    "directBookingDiscount": "直接预订折扣",
+    "total": "总计",
+    "invoiceNumber": "发票编号",
+    "demoInvoice": "演示发票",
+    "issueDate": "开具日期",
+    "demoInvoiceNotice": "此演示发票仅由 Seaview Residence 用于产品展示。",
+    "receiptNumber": "收据编号",
+    "demoReceipt": "演示收据",
+    "confirmationCode": "确认码",
+    "demoConfirmation": "演示确认",
+    "paidDate": "付款日期",
+    "paymentMethodDemo": "付款方式：尾号 4242 的演示卡",
+    "paidNotice": "已全额支付。此收据仅用于演示，未扣除真实银行卡。"
   }
 }

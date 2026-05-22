@@ -21,6 +21,7 @@ const navLinks = [
 
 export function SiteHeader() {
   const t = useTranslations("Nav");
+  const a11y = useTranslations("A11y");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const pathname = usePathname();
@@ -97,7 +98,7 @@ export function SiteHeader() {
               "h-9 w-9 rounded-full hover:bg-transparent",
               solid ? "text-foreground" : "text-white",
             )}
-            aria-label="Toggle menu"
+            aria-label={a11y("toggleMenu")}
             aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

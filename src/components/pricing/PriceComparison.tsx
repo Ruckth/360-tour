@@ -4,8 +4,9 @@ import { Check, ShieldCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import { getMaxSavingsForProperty, getPricingByPropertyId } from "@/lib/data/pricing";
+import { getMaxSavingsForProperty } from "@/lib/data/pricing";
 import { resort } from "@/lib/data/resort-config";
+import { getLocalizedPricingByPropertyId } from "@/lib/i18n/public-content";
 
 export function PriceComparison({
   propertyId,
@@ -16,7 +17,7 @@ export function PriceComparison({
 }) {
   const locale = useLocale();
   const t = useTranslations("Villa");
-  const pricing = getPricingByPropertyId(propertyId);
+  const pricing = getLocalizedPricingByPropertyId(propertyId, locale);
   if (!pricing) return null;
   const savings = getMaxSavingsForProperty(propertyId, 3);
 

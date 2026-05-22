@@ -198,5 +198,301 @@
   },
   "Footer": {
     "bookDirect": "Réserver en direct"
+  },
+  "SEO": {
+    "rootTitle": "Seaview Residence - Villas de luxe à Koh Samui, Thailand",
+    "rootDescription": "Une collection boutique de villas de luxe sur les hauteurs de Koh Samui, avec vues panoramiques sur le golfe de Thaïlande, piscines privées et service insulaire paisible.",
+    "rootOgTitle": "Seaview Residence - Koh Samui, Thailand",
+    "bookingTitle": "Réserver en direct - Seaview Residence",
+    "payTitle": "Paiement sécurisé - Seaview Residence",
+    "successTitle": "Confirmation de réservation - Seaview Residence",
+    "villaFallback": "Villa"
+  },
+  "A11y": {
+    "previousHeroSlide": "Image précédente",
+    "nextHeroSlide": "Image suivante",
+    "goToSlide": "Aller à l’image {index}",
+    "scrollDown": "Faire défiler vers le bas",
+    "showPhoto": "Afficher la photo {index}",
+    "previousPhoto": "Photo précédente",
+    "nextPhoto": "Photo suivante",
+    "language": "Langue",
+    "countryCode": "Indicatif pays",
+    "close": "Fermer",
+    "closeTour": "Fermer la visite",
+    "toggleTheme": "Changer le thème",
+    "toggleMenu": "Ouvrir ou fermer le menu"
+  },
+  "Resort": {
+    "tagline": "Là où l’océan rencontre la sérénité",
+    "description": "Une collection boutique de villas de luxe perchées sur les hauteurs de Koh Samui, avec vues panoramiques sur le golfe de Thaïlande, piscines privées et un service paisible qui transforme le séjour en souvenir.",
+    "location": "Koh Samui, Thailand",
+    "locationImageAlt": "Vue aérienne de Koh Samui, Thailand",
+    "amenities": {
+      "infinityPool": "Piscine à débordement",
+      "spaWellness": "Spa & bien-être",
+      "farmRestaurant": "Restaurant de la ferme à la table",
+      "airportTransfer": "Transfert aéroport",
+      "conciergeService": "Service de conciergerie",
+      "privateBeach": "Accès plage privée",
+      "yogaMeditation": "Yoga & méditation",
+      "waterSports": "Sports nautiques"
+    },
+    "highlights": {
+      "villaTypes": "Types de villas",
+      "guestRating": "Note des clients",
+      "reviews": "Avis",
+      "directSavings": "Économies directes"
+    },
+    "locationBullets": {
+      "bophut": "5 min de Bophut Beach",
+      "airport": "15 min de Samui Airport",
+      "fisherman": "10 min de Fisherman's Village",
+      "transfer": "Transfert aéroport privé inclus"
+    }
+  },
+  "Properties": {
+    "pool-villa": {
+      "tagline": "Paradis privé avec piscine à débordement",
+      "description": "Découvrez le luxe dans notre spacieuse Pool Villa avec piscine à débordement privée, séjour ouvert et jardin tropical luxuriant. Les baies vitrées du sol au plafond font entrer l’extérieur dans chaque pièce.",
+      "storyTagline": "Des matins qui commencent par un bain privé sous le ciel ouvert",
+      "amenities": {
+        "privatePool": "Piscine privée",
+        "wifi": "WiFi",
+        "airConditioning": "Climatisation",
+        "kitchen": "Cuisine",
+        "gardenView": "Vue jardin",
+        "kingBed": "Lit king-size"
+      }
+    },
+    "garden-suite": {
+      "tagline": "Retraite paisible entourée de nature",
+      "description": "Nichée dans les jardins tropicaux, la Garden Suite offre une échappée tranquille avec chambre spacieuse, salle de bain moderne et terrasse privée. Réveillez-vous au chant des oiseaux et au parfum du frangipanier.",
+      "storyTagline": "Un coin calme de l’île, enveloppé de verdure",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "Climatisation",
+        "gardenTerrace": "Terrasse jardin",
+        "rainShower": "Douche pluie",
+        "queenBed": "Lit queen-size"
+      }
+    },
+    "penthouse": {
+      "tagline": "Vie de loft bohème encadrée par les fenêtres des arbres",
+      "description": "Le Canopy Loft Penthouse est une villa lumineuse de style loft, enveloppée de hautes fenêtres quadrillées, de bois chaleureux, de textiles neutres et de détails bohèmes. Plateforme de couchage, coin lounge et kitchenette créent une cachette intime au-dessus des arbres.",
+      "storyTagline": "Se réveiller entre lumière douce, bois chaleureux et fenêtres sur la canopée",
+      "amenities": {
+        "wifi": "WiFi",
+        "airConditioning": "Climatisation",
+        "kitchenette": "Kitchenette",
+        "treetopWindows": "Fenêtres sur la canopée",
+        "loftLounge": "Lounge loft",
+        "kingBed": "Lit king-size",
+        "designerLighting": "Éclairage design"
+      }
+    }
+  },
+  "Rooms": {
+    "pv-living": {
+      "name": "Séjour",
+      "hotspots": {
+        "pv-living-to-pool": "Espace piscine"
+      }
+    },
+    "pv-pool": {
+      "name": "Espace piscine",
+      "hotspots": {
+        "pv-pool-to-living": "Séjour"
+      }
+    },
+    "gs-lounge": {
+      "name": "Lounge",
+      "hotspots": {
+        "gs-lounge-to-dining": "Salle à manger"
+      }
+    },
+    "gs-dining": {
+      "name": "Salle à manger",
+      "hotspots": {
+        "gs-dining-to-garden": "Vue jardin",
+        "gs-dining-to-lounge": "Lounge"
+      }
+    },
+    "gs-garden": {
+      "name": "Vue jardin",
+      "hotspots": {
+        "gs-garden-to-dining": "Salle à manger"
+      }
+    },
+    "ph-bedroom": {
+      "name": "Vue 360° du Canopy Loft",
+      "hotspots": {}
+    }
+  },
+  "Tour": {
+    "roomsExplored": "{visited}/{total} pièces explorées",
+    "loading": "Chargement...",
+    "leadTitle": "Sauvegarder ce rêve",
+    "leadSaved": "Sauvegardé. Nous vous enverrons les détails de réservation directe de cette villa.",
+    "leadBody": "Recevez le lien de réservation directe et un rappel de la villa que vous venez d’explorer.",
+    "leadEmailPlaceholder": "you@example.com",
+    "invalidEmail": "Saisissez une adresse e-mail valide.",
+    "saveError": "Impossible d’enregistrer cet e-mail.",
+    "save": "Sauvegarder"
+  },
+  "TourConclusions": {
+    "pool-villa": {
+      "headline": "Votre séjour vous attend",
+      "summary": "Deux pièces baignées de soleil, une piscine à débordement privée et un calme qui laisse réentendre ses propres pensées. Ce n’est pas un hôtel, c’est votre maison sur l’île.",
+      "highlights": {
+        "one": "Piscine à débordement privée à quelques pas du lit",
+        "two": "Séjour ouvert avec baies vitrées pleine hauteur",
+        "three": "Jardin tropical autour de la villa",
+        "four": "Concierge personnel pour les excursions"
+      },
+      "closingLine": "Faites-en plus qu’un rêve éveillé"
+    },
+    "garden-suite": {
+      "headline": "Votre retraite vous attend",
+      "summary": "Entourée de jardins tropicaux, la Garden Suite ralentit le rythme de la vie au son des palmes. Chaque détail invite à rester plus longtemps.",
+      "highlights": {
+        "one": "Terrasse privée sur les jardins",
+        "two": "Douche pluie dans une ambiance naturelle",
+        "three": "À deux pas de plages paisibles",
+        "four": "Petit-déjeuner quotidien aux saveurs fraîches de l’île"
+      },
+      "closingLine": "Faites-en plus qu’un rêve éveillé"
+    },
+    "penthouse": {
+      "headline": "Votre loft vous attend",
+      "summary": "Le Canopy Loft Penthouse ressemble à un studio privé au-dessus des arbres : fenêtres lumineuses, poutres noires, bois chaud et textures tissées dans une cachette calme.",
+      "highlights": {
+        "one": "Hautes fenêtres dans les arbres avec banquette intégrée",
+        "two": "Plateforme de couchage cosy",
+        "three": "Coin lounge bohème détendu",
+        "four": "Kitchenette compacte pour les matins lents"
+      },
+      "closingLine": "Faites-en plus qu’un rêve éveillé"
+    }
+  },
+  "Pricing": {
+    "benefits": {
+      "freeAirportPickup": "Accueil aéroport gratuit",
+      "welcomeBasket": "Panier de bienvenue",
+      "lateCheckout": "Départ tardif (14h)",
+      "noServiceFees": "Aucuns frais de service",
+      "freeCancellation": "Annulation gratuite (48h)",
+      "directWhatsappSupport": "Assistance WhatsApp directe"
+    }
+  },
+  "Reviews": {
+    "pv-r1": {
+      "title": "La piscine était absolument superbe",
+      "body": "Nous avons adoré les matins dans la piscine à débordement, la sensation d’espace et le jardin tropical très privé. La villa était encore plus belle que prévu, parfaitement équipée et le host a répondu vite avec d’excellentes recommandations."
+    },
+    "pv-r2": {
+      "title": "Escapade parfaite pour une lune de miel",
+      "body": "Nous avons adoré les matins dans la piscine à débordement, la sensation d’espace et le jardin tropical très privé. La villa était encore plus belle que prévu, parfaitement équipée et le host a répondu vite avec d’excellentes recommandations."
+    },
+    "pv-r3": {
+      "title": "Comme un resort cinq étoiles",
+      "body": "Nous avons adoré les matins dans la piscine à débordement, la sensation d’espace et le jardin tropical très privé. La villa était encore plus belle que prévu, parfaitement équipée et le host a répondu vite avec d’excellentes recommandations."
+    },
+    "pv-r4": {
+      "title": "Belle villa, idéale en famille",
+      "body": "Nous avons adoré les matins dans la piscine à débordement, la sensation d’espace et le jardin tropical très privé. La villa était encore plus belle que prévu, parfaitement équipée et le host a répondu vite avec d’excellentes recommandations."
+    },
+    "pv-r5": {
+      "title": "Notre meilleur séjour en Thailand",
+      "body": "Nous avons adoré les matins dans la piscine à débordement, la sensation d’espace et le jardin tropical très privé. La villa était encore plus belle que prévu, parfaitement équipée et le host a répondu vite avec d’excellentes recommandations."
+    },
+    "pv-r6": {
+      "title": "Superhost pour une bonne raison",
+      "body": "Nous avons adoré les matins dans la piscine à débordement, la sensation d’espace et le jardin tropical très privé. La villa était encore plus belle que prévu, parfaitement équipée et le host a répondu vite avec d’excellentes recommandations."
+    },
+    "gs-r1": {
+      "title": "La vue jardin au coucher du soleil était magique",
+      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+    },
+    "gs-r2": {
+      "title": "Parfait pour les couples",
+      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+    },
+    "gs-r3": {
+      "title": "Charmant et très bien situé",
+      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+    },
+    "gs-r4": {
+      "title": "Excellent rapport qualité-prix pour Koh Tao",
+      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+    },
+    "gs-r5": {
+      "title": "Échappée paisible sur l’île",
+      "body": "La Garden Suite était calme, intime et entourée de verdure. La terrasse privée, la douche pluie et le chant des oiseaux ont rendu le séjour très reposant, avec tout à distance facile sur l’île."
+    },
+    "ph-r1": {
+      "title": "Un refuge loft rempli de lumière douce",
+      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+    },
+    "ph-r2": {
+      "title": "Vaut chaque baht",
+      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+    },
+    "ph-r3": {
+      "title": "Le meilleur hébergement de Koh Tao",
+      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+    },
+    "ph-r4": {
+      "title": "Luxe élevé sur une île tropicale",
+      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+    },
+    "ph-r5": {
+      "title": "Séjour inoubliable",
+      "body": "Le Canopy Loft Penthouse est lumineux, chaleureux et soigneusement stylé. Les hautes fenêtres, le coin lounge et la kitchenette donnent une vraie atmosphère de studio privé au-dessus des arbres."
+    }
+  },
+  "TourSnippets": {
+    "pv-ts1": {
+      "quote": "La piscine à débordement au lever du soleil est magique !"
+    },
+    "pv-ts2": {
+      "quote": "Le séjour ouvert paraît incroyablement luxueux."
+    },
+    "gs-ts1": {
+      "quote": "Une retraite si paisible au milieu de la nature."
+    },
+    "gs-ts2": {
+      "quote": "Le petit-déjeuner sur la terrasse était notre moment préféré !"
+    },
+    "ph-ts1": {
+      "quote": "La lumière du matin à travers les hautes fenêtres est superbe."
+    }
+  },
+  "BookingDocuments": {
+    "invoice": "Facture",
+    "receipt": "Reçu",
+    "guest": "Client",
+    "email": "E-mail",
+    "phone": "Téléphone",
+    "property": "Hébergement",
+    "stayDates": "Dates de séjour",
+    "to": "au",
+    "night": "nuit",
+    "nights": "nuits",
+    "guestUnit": "client",
+    "guestUnits": "clients",
+    "directBookingDiscount": "Remise réservation directe",
+    "total": "Total",
+    "invoiceNumber": "Numéro de facture",
+    "demoInvoice": "Facture démo",
+    "issueDate": "Date d’émission",
+    "demoInvoiceNotice": "Cette facture démo a été générée par Seaview Residence uniquement pour une démonstration produit.",
+    "receiptNumber": "Numéro de reçu",
+    "demoReceipt": "Reçu démo",
+    "confirmationCode": "Code de confirmation",
+    "demoConfirmation": "Confirmation démo",
+    "paidDate": "Date de paiement",
+    "paymentMethodDemo": "Moyen de paiement : carte démo se terminant par 4242",
+    "paidNotice": "Payé intégralement. Ce reçu est une démo et aucune vraie carte n’a été débitée."
   }
 }

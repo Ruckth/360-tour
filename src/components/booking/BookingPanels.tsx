@@ -145,6 +145,7 @@ export function GuestDetailsPanel({
   onGuestPhoneChange: (value: string) => void;
 }) {
   const t = useTranslations("Booking");
+  const a11y = useTranslations("A11y");
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
   const { country: selectedPhoneCountry, number: phoneNumber } = splitPhoneValue(guestPhone);
   const fields = [
@@ -266,7 +267,7 @@ export function GuestDetailsPanel({
             <span className="ml-1 text-gold" aria-hidden="true">
               *
             </span>
-            <span className="sr-only"> required</span>
+            <span className="sr-only"> {t("required")}</span>
           </Label>
         </div>
         <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2">
@@ -278,7 +279,7 @@ export function GuestDetailsPanel({
             }}
           >
             <SelectTrigger
-              aria-label="Country code"
+              aria-label={a11y("countryCode")}
               className="h-12 rounded-xl px-3 text-base font-semibold md:h-11 md:text-sm"
             >
               <SelectValue />
