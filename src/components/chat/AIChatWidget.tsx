@@ -330,16 +330,21 @@ export function AIChatWidget({
   const shouldLockScroll = open && typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches;
   const mobileKeyboardActive =
     composerFocused || mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
+  const mobileComposerDocked =
+    mobileKeyboardActive && mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
   const chatFooterStyle =
-    mobileKeyboardInset > 0
+    mobileComposerDocked
       ? {
-          transform: `translate3d(0, -${mobileKeyboardInset}px, 0)`,
-          willChange: "transform",
+          bottom: mobileKeyboardInset,
+          left: 0,
+          position: "fixed" as const,
+          right: 0,
+          zIndex: 60,
         }
       : undefined;
   const messagesStyle =
-    mobileKeyboardActive && mobileKeyboardInset > 0
-      ? { paddingBottom: `calc(${mobileKeyboardInset}px + 6rem)` }
+    mobileComposerDocked
+      ? { paddingBottom: `calc(${mobileKeyboardInset}px + 6.5rem)` }
       : undefined;
   useBodyScrollLock(shouldLockScroll);
 
@@ -889,7 +894,10 @@ export function AIChatWidget({
 
           <div
             data-testid="chat-footer"
-            className="shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:px-3 md:py-3"
+            className={cn(
+              "shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:px-3 md:py-3",
+              mobileComposerDocked && "shadow-[0_-18px_40px_rgba(0,0,0,0.22)] md:shadow-none",
+            )}
             style={chatFooterStyle}
           >
             <div className={cn(mobileKeyboardActive && "hidden md:block")}>
