@@ -141,6 +141,29 @@ test("localized mobile chat trigger keeps the locale on the chat page", async ({
   await expect(page.getByPlaceholder("พิมพ์คำถาม")).toBeVisible();
 });
 
+test("mobile chat page keeps the composer visible while typing", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/chat");
+
+  const chatFooter = page.getByTestId("chat-footer");
+  const input = page.getByPlaceholder("Ask a question");
+
+  await input.focus();
+  await input.fill("Hello from mobile");
+
+  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
+  await expect(chatFooter.getByText("Share contact details")).toBeHidden();
+
+  const inputBox = await input.boundingBox();
+  expect(inputBox).not.toBeNull();
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(760);
+
+  await input.blur();
+  await expect(chatFooter).toHaveCSS("position", "sticky");
+  await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeVisible();
+});
+
 test("thai booking chat shows a prefilled booking handoff", async ({ page }) => {
   await page.goto("/th");
 
@@ -243,7 +266,14 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   await page.getByRole("button", { name: "Send message" }).click();
 
   const bookingCard = page.getByTestId("chat-booking-card");
+  const chatFooter = page.getByTestId("chat-footer");
+  const input = page.getByPlaceholder("Ask a question");
   await expect(bookingCard).toBeVisible();
+  await input.focus();
+  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(input).toBeVisible();
+  await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
+
   const poolCard = bookingCard.getByTestId("chat-villa-option-pool-villa");
   const guestBadge = poolCard.getByText(/Up to 4 guests/);
   const price = bookingCard.getByTestId("chat-villa-price-pool-villa");

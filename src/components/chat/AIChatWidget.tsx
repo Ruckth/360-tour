@@ -61,6 +61,7 @@ const TRANSCRIPT_RECOVERY_DELAY_MS = 2_000;
 const BACKGROUND_RECONCILE_ATTEMPTS = 30;
 const BACKGROUND_RECONCILE_DELAY_MS = 2_000;
 const MOBILE_KEYBOARD_THRESHOLD = 80;
+const PAGE_COMPOSER_RESERVE_FALLBACK = 84;
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -272,8 +273,11 @@ function ChatExperience({
   const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
   const [composerFocused, setComposerFocused] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [composerReserveHeight, setComposerReserveHeight] = useState(PAGE_COMPOSER_RESERVE_FALLBACK);
   const inputRef = useRef<HTMLInputElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const chatFooterRef = useRef<HTMLDivElement>(null);
   const keyboardInsetRef = useRef(0);
   const pathname = usePathname();
   const normalizedPathname = stripLocalePrefix(pathname);
@@ -344,12 +348,22 @@ function ChatExperience({
     open &&
     typeof window !== "undefined" &&
     !window.matchMedia("(min-width: 768px)").matches;
+  const keyboardInsetActive = mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
   const mobileKeyboardActive =
-    composerFocused || mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
-  const mobileComposerDocked =
-    mobileKeyboardActive && mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
+    isMobileViewport && (composerFocused || keyboardInsetActive);
+  const hideAuxiliaryControls = mobileKeyboardActive;
+  const overlayComposerDocked =
+    mode === "overlay" && mobileKeyboardActive && keyboardInsetActive;
+  const pageComposerDocked = mode === "page" && mobileKeyboardActive;
+  const pageComposerBottom = keyboardInsetActive
+    ? mobileKeyboardInset
+    : "env(safe-area-inset-bottom, 0px)";
+  const pageComposerReserveHeight = Math.max(
+    composerReserveHeight,
+    PAGE_COMPOSER_RESERVE_FALLBACK,
+  );
   const chatFooterStyle =
-    mode === "overlay" && mobileComposerDocked
+    overlayComposerDocked
       ? {
           bottom: mobileKeyboardInset,
           left: 0,
@@ -357,10 +371,26 @@ function ChatExperience({
           right: 0,
           zIndex: 60,
         }
+      : pageComposerDocked
+        ? {
+            bottom: pageComposerBottom,
+            left: 0,
+            marginInline: "auto",
+            maxWidth: "48rem",
+            position: "fixed" as const,
+            right: 0,
+            transform: "translateZ(0)",
+            width: "100%",
+            zIndex: 60,
+          }
       : undefined;
   const messagesStyle =
-    mode === "overlay" && mobileComposerDocked
+    overlayComposerDocked
       ? { paddingBottom: "1rem" }
+      : pageComposerDocked
+        ? {
+            paddingBottom: `calc(${pageComposerReserveHeight}px + env(safe-area-inset-bottom, 0px))`,
+          }
       : undefined;
   useBodyScrollLock(shouldLockScroll);
 
@@ -546,8 +576,6 @@ function ChatExperience({
   }, [mode, open]);
 
   useEffect(() => {
-    if (mode === "page") return;
-
     if (!open) {
       keyboardInsetRef.current = 0;
       setMobileKeyboardInset(0);
@@ -559,6 +587,7 @@ function ChatExperience({
     let frame = 0;
 
     function updateKeyboardInset() {
+      setIsMobileViewport(mobileQuery.matches);
       if (!mobileQuery.matches) {
         keyboardInsetRef.current = 0;
         setMobileKeyboardInset(0);
@@ -602,6 +631,27 @@ function ChatExperience({
       mobileQuery.removeEventListener("change", scheduleKeyboardInsetUpdate);
     };
   }, [mode, open]);
+
+  useEffect(() => {
+    if (mode !== "page") return;
+    const node = chatFooterRef.current;
+    if (!node) return;
+    const footerNode = node;
+
+    function updateComposerReserve() {
+      setComposerReserveHeight(Math.ceil(footerNode.getBoundingClientRect().height));
+    }
+
+    updateComposerReserve();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateComposerReserve);
+      return () => window.removeEventListener("resize", updateComposerReserve);
+    }
+
+    const observer = new ResizeObserver(updateComposerReserve);
+    observer.observe(footerNode);
+    return () => observer.disconnect();
+  }, [mode]);
 
   useEffect(() => {
     if (!open) return;
@@ -908,16 +958,19 @@ function ChatExperience({
 
           <div
             data-testid="chat-footer"
+            ref={chatFooterRef}
             className={cn(
               "shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:px-3 md:py-3",
               mode === "overlay" &&
-                mobileComposerDocked &&
+                overlayComposerDocked &&
                 "shadow-[0_-18px_40px_rgba(0,0,0,0.22)] md:shadow-none",
-              mode === "page" && "sticky bottom-0 z-10",
+              mode === "page" && !pageComposerDocked && "sticky bottom-0 z-10",
+              pageComposerDocked &&
+                "inset-x-0 mx-auto w-full max-w-3xl shadow-[0_-18px_40px_rgba(0,0,0,0.22)]",
             )}
             style={chatFooterStyle}
           >
-            <div className={cn(mode === "overlay" && mobileKeyboardActive && "hidden md:block")}>
+            <div className={cn(hideAuxiliaryControls && "hidden md:block")}>
               <MessagingButtons
                 whatsappNumber={whatsappNumber}
                 lineId={lineId}
@@ -927,7 +980,7 @@ function ChatExperience({
             <details
               className={cn(
                 "rounded-xl border border-border bg-background/70 px-3 py-2 text-sm",
-                mode === "overlay" && mobileKeyboardActive && "hidden md:block",
+                hideAuxiliaryControls && "hidden md:block",
               )}
             >
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-300">

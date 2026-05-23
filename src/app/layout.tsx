@@ -31,6 +31,12 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL("https://seaviewresidence.com"),
     title: seo.rootTitle,
     description: seo.rootDescription,
+    icons: {
+      icon: [
+        { url: "/favicon.ico", sizes: "256x256" },
+        { url: "/icon.png", type: "image/png", sizes: "512x512" },
+      ],
+    },
     openGraph: {
       type: "website",
       siteName: resort.name,
