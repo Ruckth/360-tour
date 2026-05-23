@@ -146,12 +146,14 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   await page.goto("/chat");
 
   const chatFooter = page.getByTestId("chat-footer");
+  const chatMessages = page.getByTestId("chat-messages");
   const input = page.getByPlaceholder("Ask a question");
 
   await input.focus();
   await input.fill("Hello from mobile");
 
-  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(chatFooter).toHaveCSS("position", "static");
+  await expect(chatMessages).toHaveCSS("overflow-y", "auto");
   await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
   await expect(chatFooter.getByText("Share contact details")).toBeHidden();
 
@@ -160,7 +162,7 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(760);
 
   await input.blur();
-  await expect(chatFooter).toHaveCSS("position", "sticky");
+  await expect(chatFooter).toHaveCSS("position", "static");
   await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeVisible();
 });
 
@@ -270,7 +272,7 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   const input = page.getByPlaceholder("Ask a question");
   await expect(bookingCard).toBeVisible();
   await input.focus();
-  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(chatFooter).toHaveCSS("position", "static");
   await expect(input).toBeVisible();
   await expect(chatFooter.getByRole("link", { name: "WhatsApp" })).toBeHidden();
 

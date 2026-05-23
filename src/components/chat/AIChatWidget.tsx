@@ -61,7 +61,9 @@ const TRANSCRIPT_RECOVERY_DELAY_MS = 2_000;
 const BACKGROUND_RECONCILE_ATTEMPTS = 30;
 const BACKGROUND_RECONCILE_DELAY_MS = 2_000;
 const MOBILE_KEYBOARD_THRESHOLD = 80;
-const PAGE_COMPOSER_RESERVE_FALLBACK = 84;
+const CHAT_PAGE_HEADER_OFFSET = 64;
+const CHAT_PAGE_MIN_HEIGHT = 360;
+const CHAT_PAGE_VIEWPORT_FALLBACK = "calc(100svh - 4rem)";
 
 function renderMessage(content: string) {
   return content.split("\n").map((line, lineIndex) => {
@@ -274,10 +276,10 @@ function ChatExperience({
   const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
   const [composerFocused, setComposerFocused] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
-  const [composerReserveHeight, setComposerReserveHeight] = useState(PAGE_COMPOSER_RESERVE_FALLBACK);
+  const [chatPageViewportHeight, setChatPageViewportHeight] = useState(CHAT_PAGE_VIEWPORT_FALLBACK);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
-  const chatFooterRef = useRef<HTMLDivElement>(null);
   const keyboardInsetRef = useRef(0);
   const pathname = usePathname();
   const normalizedPathname = stripLocalePrefix(pathname);
@@ -354,14 +356,6 @@ function ChatExperience({
   const hideAuxiliaryControls = mobileKeyboardActive;
   const overlayComposerDocked =
     mode === "overlay" && mobileKeyboardActive && keyboardInsetActive;
-  const pageComposerDocked = mode === "page" && mobileKeyboardActive;
-  const pageComposerBottom = keyboardInsetActive
-    ? mobileKeyboardInset
-    : "env(safe-area-inset-bottom, 0px)";
-  const pageComposerReserveHeight = Math.max(
-    composerReserveHeight,
-    PAGE_COMPOSER_RESERVE_FALLBACK,
-  );
   const chatFooterStyle =
     overlayComposerDocked
       ? {
@@ -371,28 +365,51 @@ function ChatExperience({
           right: 0,
           zIndex: 60,
         }
-      : pageComposerDocked
-        ? {
-            bottom: pageComposerBottom,
-            left: 0,
-            marginInline: "auto",
-            maxWidth: "48rem",
-            position: "fixed" as const,
-            right: 0,
-            transform: "translateZ(0)",
-            width: "100%",
-            zIndex: 60,
-          }
       : undefined;
   const messagesStyle =
     overlayComposerDocked
       ? { paddingBottom: "1rem" }
-      : pageComposerDocked
-        ? {
-            paddingBottom: `calc(${pageComposerReserveHeight}px + env(safe-area-inset-bottom, 0px))`,
-          }
       : undefined;
   useBodyScrollLock(shouldLockScroll);
+
+  const updateChatPageViewportHeight = useCallback(() => {
+    if (mode !== "page" || typeof window === "undefined") return;
+
+    const visualViewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const nextHeight = Math.max(
+      CHAT_PAGE_MIN_HEIGHT,
+      Math.round(visualViewportHeight - CHAT_PAGE_HEADER_OFFSET),
+    );
+    setChatPageViewportHeight(`${nextHeight}px`);
+  }, [mode]);
+
+  const scrollTranscriptToEnd = useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      if (mode === "page") {
+        const messagesNode = chatMessagesRef.current;
+        if (messagesNode) {
+          messagesNode.scrollTo({ top: messagesNode.scrollHeight, behavior });
+          return;
+        }
+      }
+
+      transcriptEndRef.current?.scrollIntoView({ block: "end", behavior });
+    },
+    [mode],
+  );
+
+  const refreshChatPageAfterKeyboardChange = useCallback(() => {
+    if (mode !== "page" || typeof window === "undefined") return;
+
+    updateChatPageViewportHeight();
+    scrollTranscriptToEnd();
+    [80, 180, 360].forEach((delay) => {
+      window.setTimeout(() => {
+        updateChatPageViewportHeight();
+        scrollTranscriptToEnd();
+      }, delay);
+    });
+  }, [mode, scrollTranscriptToEnd, updateChatPageViewportHeight]);
 
   useEffect(() => {
     setHydrated(true);
@@ -588,6 +605,7 @@ function ChatExperience({
 
     function updateKeyboardInset() {
       setIsMobileViewport(mobileQuery.matches);
+      updateChatPageViewportHeight();
       if (!mobileQuery.matches) {
         keyboardInsetRef.current = 0;
         setMobileKeyboardInset(0);
@@ -607,7 +625,7 @@ function ChatExperience({
 
       keyboardInsetRef.current = nextInset;
       setMobileKeyboardInset(nextInset);
-      if (nextInset <= MOBILE_KEYBOARD_THRESHOLD) {
+      if (nextInset <= MOBILE_KEYBOARD_THRESHOLD && document.activeElement !== inputRef.current) {
         setComposerFocused(false);
       }
     }
@@ -619,6 +637,7 @@ function ChatExperience({
 
     scheduleKeyboardInsetUpdate();
     window.visualViewport?.addEventListener("resize", scheduleKeyboardInsetUpdate);
+    window.visualViewport?.addEventListener("scroll", scheduleKeyboardInsetUpdate);
     window.addEventListener("resize", scheduleKeyboardInsetUpdate);
     window.addEventListener("orientationchange", scheduleKeyboardInsetUpdate);
     mobileQuery.addEventListener("change", scheduleKeyboardInsetUpdate);
@@ -626,37 +645,17 @@ function ChatExperience({
     return () => {
       window.cancelAnimationFrame(frame);
       window.visualViewport?.removeEventListener("resize", scheduleKeyboardInsetUpdate);
+      window.visualViewport?.removeEventListener("scroll", scheduleKeyboardInsetUpdate);
       window.removeEventListener("resize", scheduleKeyboardInsetUpdate);
       window.removeEventListener("orientationchange", scheduleKeyboardInsetUpdate);
       mobileQuery.removeEventListener("change", scheduleKeyboardInsetUpdate);
     };
-  }, [mode, open]);
-
-  useEffect(() => {
-    if (mode !== "page") return;
-    const node = chatFooterRef.current;
-    if (!node) return;
-    const footerNode = node;
-
-    function updateComposerReserve() {
-      setComposerReserveHeight(Math.ceil(footerNode.getBoundingClientRect().height));
-    }
-
-    updateComposerReserve();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateComposerReserve);
-      return () => window.removeEventListener("resize", updateComposerReserve);
-    }
-
-    const observer = new ResizeObserver(updateComposerReserve);
-    observer.observe(footerNode);
-    return () => observer.disconnect();
-  }, [mode]);
+  }, [mode, open, updateChatPageViewportHeight]);
 
   useEffect(() => {
     if (!open) return;
-    transcriptEndRef.current?.scrollIntoView({ block: "end" });
-  }, [canShowBookingCard, messages.length, open]);
+    scrollTranscriptToEnd();
+  }, [canShowBookingCard, messages.length, open, scrollTranscriptToEnd]);
 
   useEffect(() => {
     if (!open) return;
@@ -860,12 +859,13 @@ function ChatExperience({
       className={cn(
         mode === "overlay"
           ? "pointer-events-auto fixed inset-0 flex h-[100dvh] flex-col overflow-hidden border-border bg-card shadow-2xl transition duration-300 ease-out motion-reduce:transition-none md:inset-auto md:bottom-5 md:right-5 md:h-[78vh] md:max-h-[820px] md:w-[640px] md:max-w-[calc(100vw-2.5rem)] md:origin-bottom-right md:rounded-2xl md:border"
-          : "mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-3xl flex-col bg-card",
+          : "mx-auto mt-16 flex w-full max-w-3xl flex-col overflow-hidden bg-card",
         mode === "overlay" &&
           (open
             ? "translate-y-0 scale-100 opacity-100"
             : "translate-y-8 scale-[0.98] opacity-0 md:translate-y-3 md:scale-95"),
       )}
+      style={mode === "page" ? { height: chatPageViewportHeight } : undefined}
     >
           <div className="flex shrink-0 items-center justify-between border-b border-border bg-navy px-4 py-2.5 text-white md:px-4 md:py-2.5">
             <div className="flex items-center gap-2">
@@ -896,10 +896,10 @@ function ChatExperience({
 
           <div
             data-testid="chat-messages"
+            ref={chatMessagesRef}
             className={cn(
-              "min-h-0 flex-1 space-y-3 px-5 py-5 md:px-4 md:py-4",
-              mode === "overlay" && "overflow-y-auto",
-              mode === "page" && "pb-6",
+              "min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 md:px-4 md:py-4",
+              mode === "page" && "overscroll-contain pb-6",
             )}
             style={messagesStyle}
           >
@@ -958,15 +958,12 @@ function ChatExperience({
 
           <div
             data-testid="chat-footer"
-            ref={chatFooterRef}
             className={cn(
               "shrink-0 space-y-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:px-3 md:py-3",
+              mode === "page" && "pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]",
               mode === "overlay" &&
                 overlayComposerDocked &&
                 "shadow-[0_-18px_40px_rgba(0,0,0,0.22)] md:shadow-none",
-              mode === "page" && !pageComposerDocked && "sticky bottom-0 z-10",
-              pageComposerDocked &&
-                "inset-x-0 mx-auto w-full max-w-3xl shadow-[0_-18px_40px_rgba(0,0,0,0.22)]",
             )}
             style={chatFooterStyle}
           >
@@ -1077,9 +1074,13 @@ function ChatExperience({
                 onChange={(event) => setInput(event.target.value)}
                 onFocus={() => {
                   setComposerFocused(true);
+                  refreshChatPageAfterKeyboardChange();
                 }}
                 onBlur={() => {
-                  window.setTimeout(() => setComposerFocused(false), 120);
+                  window.setTimeout(() => {
+                    setComposerFocused(false);
+                    refreshChatPageAfterKeyboardChange();
+                  }, 120);
                 }}
                 className="h-12 min-w-0 flex-1 rounded-2xl border-muted bg-muted/70 px-4 text-base placeholder:text-slate-500 focus-visible:ring-2 dark:placeholder:text-slate-400 md:h-10 md:rounded-lg md:bg-background md:px-3 md:text-sm"
                 placeholder={t("askPlaceholder")}
