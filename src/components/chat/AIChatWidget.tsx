@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -26,7 +26,9 @@ import { MessagingButtons } from "@/components/chat/MessagingButtons";
 import {
   addChatMessage,
   askConcierge,
+  claimChatBrowserHandoff,
   closeChatSession,
+  createChatBrowserHandoff,
   createChatSession,
   getReusableChatSession,
   getChatMessages,
@@ -44,6 +46,15 @@ import {
 } from "@/lib/chat/suggestions";
 import { localizeHref, stripLocalePrefix } from "@/i18n/routing";
 import { extractChatBookingContext, getBookingPromptKey, type ChatBookingContext } from "@/lib/chat/booking-intent";
+import {
+  appendChatExternalParams,
+  buildExternalBrowserTarget,
+  CHAT_CONTINUE_IN_APP_PARAM,
+  CHAT_HANDOFF_PARAM,
+  detectChatInAppBrowser,
+  shouldBypassChatBrowserGate,
+  stripChatHandoffParam,
+} from "@/lib/chat/external-browser";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { cn } from "@/lib/utils";
 
@@ -475,6 +486,84 @@ function TypingIndicator({ label }: { label: string }) {
   );
 }
 
+function ChatBrowserGate({
+  browserUrl,
+  copyStatus,
+  externalOpenUrl,
+  onContinue,
+  onCopy,
+}: {
+  browserUrl: string | null;
+  copyStatus: "idle" | "copied" | "error";
+  externalOpenUrl: string | null;
+  onContinue: () => void;
+  onCopy: () => void;
+}) {
+  const t = useTranslations("Chat");
+
+  return (
+    <div className="min-h-[100svh] bg-background px-5 py-8 text-foreground">
+      <div
+        data-testid="chat-browser-gate"
+        className="mx-auto flex min-h-[calc(100svh-4rem)] w-full max-w-md flex-col justify-center"
+      >
+        <div className="rounded-lg border border-border bg-card p-5 shadow-xl shadow-black/10">
+          <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-gold text-navy">
+            <ExternalLink className="h-5 w-5" />
+          </div>
+          <h1 className="text-2xl font-semibold text-foreground">
+            {t("browserGateTitle")}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-300">
+            {t("browserGateDescription")}
+          </p>
+          <div className="mt-6 grid gap-3">
+            {externalOpenUrl ? (
+              <Button asChild size="lg" variant="gold" className="w-full">
+                <a href={externalOpenUrl} data-testid="chat-open-chrome">
+                  <ExternalLink className="h-4 w-4" />
+                  {t("browserGateOpenChrome")}
+                </a>
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="w-full"
+              onClick={onCopy}
+              disabled={!browserUrl}
+              data-testid="chat-copy-browser-link"
+            >
+              {copyStatus === "copied" ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copyStatus === "copied"
+                ? t("browserGateCopied")
+                : t("browserGateCopy")}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="ghost"
+              className="w-full"
+              onClick={onContinue}
+              data-testid="chat-continue-in-app"
+            >
+              {t("browserGateContinue")}
+            </Button>
+          </div>
+          <p className="mt-4 text-xs leading-5 text-slate-600 dark:text-slate-400">
+            {t("browserGateFallback")}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChatExperience({
   contactEmail,
   mode,
@@ -521,6 +610,10 @@ function ChatExperience({
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [chatPageViewportHeight, setChatPageViewportHeight] = useState(CHAT_PAGE_VIEWPORT_FALLBACK);
   const [composerReserveHeight, setComposerReserveHeight] = useState(PAGE_COMPOSER_RESERVE_FALLBACK);
+  const [browserGateVisible, setBrowserGateVisible] = useState(false);
+  const [browserGateUrl, setBrowserGateUrl] = useState<string | null>(null);
+  const [browserGateOpenUrl, setBrowserGateOpenUrl] = useState<string | null>(null);
+  const [browserGateCopyStatus, setBrowserGateCopyStatus] = useState<"idle" | "copied" | "error">("idle");
   const inputRef = useRef<HTMLInputElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   const chatFooterRef = useRef<HTMLDivElement>(null);
@@ -531,12 +624,16 @@ function ChatExperience({
   const keyboardViewportBaselineRef = useRef<number | null>(null);
   const restoredMessageCacheRef = useRef(false);
   const previousPropertySlugRef = useRef(activePropertySlug);
+  const browserGateAttemptedRef = useRef(false);
+  const claimedHandoffTokenRef = useRef<string | null>(null);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const normalizedPathname = stripLocalePrefix(pathname);
   const currentSearch = searchParams.toString();
   const currentPathWithSearch = currentSearch ? `${pathname}?${currentSearch}` : pathname;
   const returnToParam = searchParams.get(CHAT_RETURN_TO_PARAM);
+  const browserHandoffToken = searchParams.get(CHAT_HANDOFF_PARAM);
+  const browserGateBypassed = shouldBypassChatBrowserGate(searchParams);
 
   const title = activePropertyName
     ? t("propertyTitle", { propertyName: activePropertyName })
@@ -774,6 +871,22 @@ function ChatExperience({
   }, []);
 
   useEffect(() => {
+    if (mode !== "page" || !hydrated) return;
+    if (browserGateBypassed || browserHandoffToken) {
+      setBrowserGateVisible(false);
+      return;
+    }
+
+    const detection = detectChatInAppBrowser(navigator.userAgent);
+    setBrowserGateVisible(detection.isInAppBrowser);
+    if (!detection.isInAppBrowser) {
+      browserGateAttemptedRef.current = false;
+      setBrowserGateUrl(null);
+      setBrowserGateOpenUrl(null);
+    }
+  }, [browserGateBypassed, browserHandoffToken, hydrated, mode]);
+
+  useEffect(() => {
     const storedSessionId = getStoredSessionId();
     const cachedTranscript =
       readCachedChatMessages(storedSessionId) ?? readCachedChatMessages(null);
@@ -872,7 +985,12 @@ function ChatExperience({
   }, [activePropertySlug, convex]);
 
   const hydrateExistingSession = useCallback(
-    async (id: string, markOpen = false, hydrateMessages = true) => {
+    async (
+      id: string,
+      markOpen = false,
+      hydrateMessages = true,
+      enforceReusableLimit = true,
+    ) => {
       if (!convex) return null;
       await touchChatSession(convex, {
         sessionId: id,
@@ -892,7 +1010,7 @@ function ChatExperience({
         sessionId: id,
         limit: REUSABLE_CHAT_MESSAGE_LIMIT,
       });
-      if (transcript.length >= REUSABLE_CHAT_MESSAGE_LIMIT) {
+      if (enforceReusableLimit && transcript.length >= REUSABLE_CHAT_MESSAGE_LIMIT) {
         throw new Error("Chat session has reached the reusable message limit.");
       }
 
@@ -911,6 +1029,29 @@ function ChatExperience({
       hydrateMessages = false,
     }: EnsureSessionOptions = {}) => {
       if (!convex) return null;
+      if (
+        browserHandoffToken &&
+        claimedHandoffTokenRef.current !== browserHandoffToken
+      ) {
+        claimedHandoffTokenRef.current = browserHandoffToken;
+        try {
+          const claimedSessionId = await claimChatBrowserHandoff(convex, {
+            token: browserHandoffToken,
+          });
+          router.replace(stripChatHandoffParam(currentPathWithSearch));
+          if (claimedSessionId) {
+            return await hydrateExistingSession(
+              claimedSessionId,
+              markOpen,
+              hydrateMessages,
+              false,
+            );
+          }
+        } catch {
+          router.replace(stripChatHandoffParam(currentPathWithSearch));
+        }
+      }
+
       if (sessionId) {
         if (validateForReuse) {
           try {
@@ -971,8 +1112,69 @@ function ChatExperience({
 
       return await createFreshSession();
     },
-    [activePropertySlug, convex, createFreshSession, hydrateExistingSession, sessionId],
+    [
+      activePropertySlug,
+      browserHandoffToken,
+      convex,
+      createFreshSession,
+      currentPathWithSearch,
+      hydrateExistingSession,
+      router,
+      sessionId,
+    ],
   );
+
+  useEffect(() => {
+    if (mode !== "page" || !browserGateVisible || !messageCacheReady) return;
+    if (browserGateAttemptedRef.current) return;
+    browserGateAttemptedRef.current = true;
+
+    let cancelled = false;
+    let fallbackTimeout = 0;
+
+    async function openExternalBrowser() {
+      let handoffToken: string | undefined;
+      try {
+        const id = await ensureSession({
+          markOpen: true,
+          validateForReuse: true,
+          hydrateMessages: false,
+        });
+        if (id && convex) {
+          handoffToken = await createChatBrowserHandoff(convex, { sessionId: id });
+        }
+      } catch {
+        // The browser link still works without a restorable Convex session.
+      }
+
+      if (cancelled) return;
+
+      const browserUrl = appendChatExternalParams(window.location.href, {
+        handoffToken,
+      });
+      const target = buildExternalBrowserTarget(browserUrl, navigator.userAgent);
+      setBrowserGateUrl(browserUrl);
+      setBrowserGateOpenUrl(target.url);
+
+      fallbackTimeout = window.setTimeout(() => {
+        setBrowserGateCopyStatus("idle");
+      }, 1200);
+      window.location.href = target.url;
+    }
+
+    void openExternalBrowser();
+
+    return () => {
+      cancelled = true;
+      if (fallbackTimeout) window.clearTimeout(fallbackTimeout);
+    };
+  }, [
+    browserGateVisible,
+    convex,
+    ensureSession,
+    messageCacheReady,
+    mode,
+  ]);
 
   const primeSessionForOpen = useCallback(async () => {
     if (!convex || !messageCacheReady) {
@@ -1059,9 +1261,11 @@ function ChatExperience({
 
   useEffect(() => {
     if (mode !== "page") return;
+    if (browserGateVisible) return;
     if (!open || !messageCacheReady || sessionReady || isHydratingSession) return;
     void primeSessionForOpen();
   }, [
+    browserGateVisible,
     isHydratingSession,
     messageCacheReady,
     mode,
@@ -1224,12 +1428,12 @@ function ChatExperience({
   }, [closeChat, open]);
 
   useEffect(() => {
-    if (!open || !convex) return;
+    if (!open || !convex || browserGateVisible) return;
     const interval = window.setInterval(() => {
       void ensureSession({ markOpen: true });
     }, HEARTBEAT_MS);
     return () => window.clearInterval(interval);
-  }, [convex, ensureSession, open]);
+  }, [browserGateVisible, convex, ensureSession, open]);
 
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1426,6 +1630,36 @@ function ChatExperience({
     } finally {
       setIsTyping(false);
     }
+  }
+
+  const continueInAppBrowser = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set(CHAT_CONTINUE_IN_APP_PARAM, "1");
+    url.searchParams.delete(CHAT_HANDOFF_PARAM);
+    setBrowserGateVisible(false);
+    router.replace(`${url.pathname}${url.search}${url.hash}`);
+  }, [router]);
+
+  const copyBrowserLink = useCallback(async () => {
+    if (!browserGateUrl) return;
+    try {
+      await navigator.clipboard.writeText(browserGateUrl);
+      setBrowserGateCopyStatus("copied");
+    } catch {
+      setBrowserGateCopyStatus("error");
+    }
+  }, [browserGateUrl]);
+
+  if (mode === "page" && hydrated && browserGateVisible) {
+    return (
+      <ChatBrowserGate
+        browserUrl={browserGateUrl}
+        copyStatus={browserGateCopyStatus}
+        externalOpenUrl={browserGateOpenUrl}
+        onContinue={continueInAppBrowser}
+        onCopy={copyBrowserLink}
+      />
+    );
   }
 
   const panel = (

@@ -167,6 +167,9 @@
     "contactHandle": "联系方式",
     "whatsappPlaceholder": "+66 81 234 5678",
     "linePlaceholder": "LINE ID 或电话号码",
+    "lineQrTitle": "扫描 LINE 二维码",
+    "lineQrDescription": "在手机上打开 LINE，扫描此二维码给我们发消息。",
+    "lineQrFallback": "改为打开 LINE",
     "optional": "可选，用于后续联系。",
     "saved": "已为礼宾保存。",
     "error": "现在无法保存。",
@@ -193,7 +196,14 @@
     "answer360": "可以。打开任意别墅卡片或详情页并选择探索 360°。您可以通过热点在房间间移动，并直接进入预订。",
     "noConvex": "我可以在这里帮您比较别墅；配置 Convex 后会连接实时聊天。",
     "fallback": "请重试，或通过下方方式联系我们。",
-    "sent": "我已发送给礼宾。如需即时回复，请使用 WhatsApp。"
+    "sent": "我已发送给礼宾。如需即时回复，请使用 WhatsApp。",
+    "browserGateTitle": "正在用 Chrome 打开聊天",
+    "browserGateDescription": "当前应用内浏览器可能会遮挡键盘或丢失聊天状态。我们会在 Chrome 中打开同一段聊天，体验更稳定。",
+    "browserGateOpenChrome": "在 Chrome 中打开",
+    "browserGateCopy": "复制浏览器链接",
+    "browserGateCopied": "已复制",
+    "browserGateContinue": "继续在此打开",
+    "browserGateFallback": "如果 Chrome 没有打开，请复制链接并粘贴到 Chrome 或 Safari。"
   },
   "Footer": {
     "bookDirect": "直接预订"

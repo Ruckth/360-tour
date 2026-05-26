@@ -167,6 +167,9 @@
     "contactHandle": "Kontakt",
     "whatsappPlaceholder": "+66 81 234 5678",
     "linePlaceholder": "LINE-ID oder Telefonnummer",
+    "lineQrTitle": "LINE-QR-Code scannen",
+    "lineQrDescription": "Öffnen Sie LINE auf Ihrem Telefon und scannen Sie diesen Code, um uns zu schreiben.",
+    "lineQrFallback": "LINE öffnen",
     "optional": "Optional, für Rückfragen.",
     "saved": "Für den Concierge gespeichert.",
     "error": "Speichern derzeit nicht möglich.",
@@ -193,7 +196,14 @@
     "answer360": "Ja. Öffnen Sie eine Villenkarte oder Detailseite und wählen Sie 360° ansehen. Sie können per Hotspots von Raum zu Raum gehen und direkt zur Buchung wechseln.",
     "noConvex": "Ich kann hier Villen vergleichen; der Live-Chat verbindet sich, sobald Convex für diese Next.js-App konfiguriert ist.",
     "fallback": "Bitte versuchen Sie es erneut oder kontaktieren Sie uns unten.",
-    "sent": "Ich habe das an den Concierge gesendet. Nutzen Sie WhatsApp, wenn Sie sofort eine Antwort brauchen."
+    "sent": "Ich habe das an den Concierge gesendet. Nutzen Sie WhatsApp, wenn Sie sofort eine Antwort brauchen.",
+    "browserGateTitle": "Chat wird in Chrome geöffnet",
+    "browserGateDescription": "Der In-App-Browser kann die Tastatur verdecken oder den Chatstatus verlieren. Wir öffnen denselben Chat in Chrome für eine stabilere Nutzung.",
+    "browserGateOpenChrome": "In Chrome öffnen",
+    "browserGateCopy": "Browser-Link kopieren",
+    "browserGateCopied": "Kopiert",
+    "browserGateContinue": "Hier fortfahren",
+    "browserGateFallback": "Wenn Chrome nicht geöffnet wird, kopieren Sie den Link und fügen Sie ihn in Chrome oder Safari ein."
   },
   "Footer": {
     "bookDirect": "Direkt buchen"

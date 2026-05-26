@@ -252,6 +252,16 @@ export default defineSchema({
 		timestamp: v.number()
 	}).index('by_session', ['sessionId', 'timestamp']),
 
+	chatBrowserHandoffs: defineTable({
+		token: v.string(),
+		sessionId: v.id('chatSessions'),
+		expiresAt: v.number(),
+		claimedAt: v.optional(v.number()),
+		createdAt: v.number()
+	})
+		.index('by_token', ['token'])
+		.index('by_expires_at', ['expiresAt']),
+
 	chatSuggestedQuestions: defineTable({
 		sessionId: v.id('chatSessions'),
 		assistantMessageId: v.id('chatMessages'),

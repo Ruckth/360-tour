@@ -167,6 +167,9 @@
     "contactHandle": "Contact",
     "whatsappPlaceholder": "+66 81 234 5678",
     "linePlaceholder": "ID LINE ou numéro de téléphone",
+    "lineQrTitle": "Scannez le QR code LINE",
+    "lineQrDescription": "Ouvrez LINE sur votre téléphone et scannez ce code pour nous envoyer un message.",
+    "lineQrFallback": "Ouvrir LINE",
     "optional": "Facultatif, pour le suivi.",
     "saved": "Enregistré pour la conciergerie.",
     "error": "Impossible d’enregistrer maintenant.",
@@ -193,7 +196,14 @@
     "answer360": "Oui. Ouvrez une carte de villa ou une page détail et choisissez Explorer en 360°. Vous pouvez passer de pièce en pièce avec les hotspots puis continuer vers la réservation.",
     "noConvex": "Je peux comparer les villas ici, et le chat en direct se connectera lorsque Convex sera configuré pour cette app Next.js.",
     "fallback": "Veuillez réessayer ou nous contacter ci-dessous.",
-    "sent": "J’ai transmis cela à la conciergerie. Utilisez WhatsApp si vous avez besoin d’une réponse immédiate."
+    "sent": "J’ai transmis cela à la conciergerie. Utilisez WhatsApp si vous avez besoin d’une réponse immédiate.",
+    "browserGateTitle": "Ouverture du chat dans Chrome",
+    "browserGateDescription": "Le navigateur intégré de cette app peut masquer le clavier ou perdre l’état du chat. Nous ouvrons le même chat dans Chrome pour une expérience plus fiable.",
+    "browserGateOpenChrome": "Ouvrir dans Chrome",
+    "browserGateCopy": "Copier le lien",
+    "browserGateCopied": "Copié",
+    "browserGateContinue": "Continuer ici",
+    "browserGateFallback": "Si Chrome ne s’ouvre pas, copiez le lien puis collez-le dans Chrome ou Safari."
   },
   "Footer": {
     "bookDirect": "Réserver en direct"

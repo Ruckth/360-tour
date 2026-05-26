@@ -167,6 +167,9 @@
     "contactHandle": "Contact handle",
     "whatsappPlaceholder": "+66 81 234 5678",
     "linePlaceholder": "LINE ID or phone number",
+    "lineQrTitle": "Scan LINE QR code",
+    "lineQrDescription": "Open LINE on your phone and scan this code to message us.",
+    "lineQrFallback": "Open LINE instead",
     "optional": "Optional, for follow-up.",
     "saved": "Saved for the concierge.",
     "error": "Could not save right now.",
@@ -193,7 +196,14 @@
     "answer360": "Yes. Open any villa card or detail page and choose Explore 360. You can move room to room with hotspots and finish directly into booking.",
     "noConvex": "I can help compare villas here, and live chat will connect once Convex is configured for this Next.js app.",
     "fallback": "Please try again, or contact us below.",
-    "sent": "I sent that to the concierge. Please use WhatsApp if you need an immediate reply."
+    "sent": "I sent that to the concierge. Please use WhatsApp if you need an immediate reply.",
+    "browserGateTitle": "Opening chat in Chrome",
+    "browserGateDescription": "This app browser can hide the keyboard or lose chat state. We are opening the same chat in Chrome for a smoother experience.",
+    "browserGateOpenChrome": "Open in Chrome",
+    "browserGateCopy": "Copy browser link",
+    "browserGateCopied": "Copied",
+    "browserGateContinue": "Continue here",
+    "browserGateFallback": "If Chrome does not open, copy the link and paste it into Chrome or Safari."
   },
   "Footer": {
     "bookDirect": "Book Direct"

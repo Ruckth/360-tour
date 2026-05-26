@@ -7,6 +7,14 @@ import {
 } from './lib/chatReuse';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 
+const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
+
+function createBrowserHandoffToken() {
+	const bytes = new Uint8Array(24);
+	crypto.getRandomValues(bytes);
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 async function resolvePropertyId(
 	ctx: MutationCtx,
 	propertySlug?: string
@@ -155,6 +163,53 @@ export const closeSession = mutation({
 			lastClosedAt: now,
 			lastSeenAt: now
 		});
+	}
+});
+
+export const createBrowserHandoff = mutation({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		const now = Date.now();
+		const token = createBrowserHandoffToken();
+		await ctx.db.insert('chatBrowserHandoffs', {
+			token,
+			sessionId: args.sessionId,
+			expiresAt: now + BROWSER_HANDOFF_TTL_MS,
+			createdAt: now
+		});
+
+		return token;
+	}
+});
+
+export const claimBrowserHandoff = mutation({
+	args: { token: v.string() },
+	handler: async (ctx, args) => {
+		const token = args.token.trim();
+		if (!token) return null;
+
+		const handoff = await ctx.db
+			.query('chatBrowserHandoffs')
+			.withIndex('by_token', (q) => q.eq('token', token))
+			.unique();
+		if (!handoff || handoff.claimedAt || handoff.expiresAt <= Date.now()) {
+			return null;
+		}
+
+		const session = await ctx.db.get(handoff.sessionId);
+		if (!session) return null;
+
+		const now = Date.now();
+		await ctx.db.patch(handoff._id, { claimedAt: now });
+		await ctx.db.patch(handoff.sessionId, {
+			lastSeenAt: now,
+			lastOpenedAt: now
+		});
+
+		return handoff.sessionId;
 	}
 });
 

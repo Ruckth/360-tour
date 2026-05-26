@@ -222,6 +222,26 @@ export async function closeChatSession(
   );
 }
 
+export async function createChatBrowserHandoff(
+  client: ConvexReactClient,
+  args: { sessionId: string },
+) {
+  return (await withConvexTimeout(
+    client.mutation(api.chat.createBrowserHandoff, args as never),
+    "Preparing browser handoff",
+  )) as string;
+}
+
+export async function claimChatBrowserHandoff(
+  client: ConvexReactClient,
+  args: { token: string },
+) {
+  return (await withConvexTimeout(
+    client.mutation(api.chat.claimBrowserHandoff, args as never),
+    "Restoring browser handoff",
+  )) as string | null;
+}
+
 export async function addChatMessage(
   client: ConvexReactClient,
   args: {

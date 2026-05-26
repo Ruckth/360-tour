@@ -167,6 +167,9 @@
     "contactHandle": "連絡先",
     "whatsappPlaceholder": "+66 81 234 5678",
     "linePlaceholder": "LINE ID または電話番号",
+    "lineQrTitle": "LINE QRコードをスキャン",
+    "lineQrDescription": "スマートフォンでLINEを開き、このコードをスキャンしてお問い合わせください。",
+    "lineQrFallback": "LINEを開く",
     "optional": "任意。フォローアップ用です。",
     "saved": "コンシェルジュ用に保存しました。",
     "error": "現在保存できません。",
@@ -193,7 +196,14 @@
     "answer360": "はい。任意のヴィラカードまたは詳細ページを開き、360°を見るを選択してください。ホットスポットで部屋を移動し、そのまま予約へ進めます。",
     "noConvex": "ここでヴィラ比較のお手伝いができます。Convex が設定されるとライブチャットに接続されます。",
     "fallback": "もう一度お試しください。または下の連絡方法をご利用ください。",
-    "sent": "コンシェルジュへ送信しました。すぐに返信が必要な場合は WhatsApp をご利用ください。"
+    "sent": "コンシェルジュへ送信しました。すぐに返信が必要な場合は WhatsApp をご利用ください。",
+    "browserGateTitle": "Chromeでチャットを開いています",
+    "browserGateDescription": "このアプリ内ブラウザではキーボード表示やチャット状態に問題が出る場合があります。同じチャットをChromeで開きます。",
+    "browserGateOpenChrome": "Chromeで開く",
+    "browserGateCopy": "リンクをコピー",
+    "browserGateCopied": "コピーしました",
+    "browserGateContinue": "ここで続ける",
+    "browserGateFallback": "Chromeが開かない場合は、リンクをコピーしてChromeまたはSafariに貼り付けてください。"
   },
   "Footer": {
     "bookDirect": "直接予約"

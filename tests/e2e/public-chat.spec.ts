@@ -21,6 +21,10 @@ const localizedSmoke = [
 const CHAT_SESSION_STORAGE_KEY = "sv_chat_session_id";
 const CHAT_MESSAGE_CACHE_PREFIX = "sv_chat_messages:";
 const CHAT_MESSAGE_CACHE_VERSION = 1;
+const CONTACT_PREFILL_MESSAGE =
+  "Hi, I'm interested in having a website built with you. I'm available on [date] at [time]. Could we talk then?";
+const CONTACT_EMAIL = "rugbykritsakorn@gmail.com";
+const LINE_URL = "https://line.me/ti/p/iSjTWG5aMg";
 
 type SeededChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -48,6 +52,24 @@ async function openCalendarPopover(page: Page, trigger: Locator) {
     if (opened) return;
   }
   await expect(page.getByRole("grid")).toBeVisible();
+}
+
+async function expectPrefilledWhatsApp(link: Locator) {
+  const href = await link.getAttribute("href");
+  expect(href).not.toBeNull();
+  const url = new URL(href!);
+  expect(`${url.origin}${url.pathname}`).toBe("https://wa.me/66956823432");
+  expect(url.searchParams.get("text")).toBe(CONTACT_PREFILL_MESSAGE);
+}
+
+async function expectPrefilledEmail(link: Locator) {
+  const href = await link.getAttribute("href");
+  expect(href).not.toBeNull();
+  const url = new URL(href!);
+  expect(url.protocol).toBe("mailto:");
+  expect(url.pathname).toBe(CONTACT_EMAIL);
+  expect(url.searchParams.get("subject")).toBe("Website inquiry");
+  expect(url.searchParams.get("body")).toBe(CONTACT_PREFILL_MESSAGE);
 }
 
 async function installMockVisualViewport(page: Page, userAgent: string) {
@@ -263,7 +285,7 @@ test("mobile chat page restores cached messages and keeps the first new send", a
     { role: "assistant", content: "Cached answer about private transfers" },
   ]);
 
-  await page.goto("/chat");
+  await page.goto("/chat?continueInApp=1");
 
   await expect(page.getByText("Cached question about airport pickup")).toBeVisible();
   await expect(page.getByText("Cached answer about private transfers")).toBeVisible();
@@ -342,16 +364,16 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   const floatingContactActions = page.getByTestId("floating-contact-actions");
   const chatMessages = page.getByTestId("chat-messages");
   const input = page.getByPlaceholder("Ask a question");
+  const whatsappLink = floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i });
+  const lineLink = floatingContactActions.getByRole("link", { name: /Open LINE chat/i });
+  const emailLink = floatingContactActions.getByRole("link", { name: /Email concierge/i });
 
-  await expect(
-    floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i }),
-  ).toBeVisible();
-  await expect(
-    floatingContactActions.getByRole("link", { name: /Open LINE chat/i }),
-  ).toBeVisible();
-  await expect(
-    floatingContactActions.getByRole("link", { name: /Email concierge/i }),
-  ).toBeVisible();
+  await expect(whatsappLink).toBeVisible();
+  await expect(lineLink).toBeVisible();
+  await expect(lineLink).toHaveAttribute("href", LINE_URL);
+  await expect(emailLink).toBeVisible();
+  await expectPrefilledWhatsApp(whatsappLink);
+  await expectPrefilledEmail(emailLink);
   await expect(
     chatFooter.getByRole("link", { name: /Open WhatsApp chat/i }),
   ).toHaveCount(0);
@@ -370,15 +392,35 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
 
   await input.blur();
   await expect(chatFooter).toHaveCSS("position", "static");
-  await expect(
-    floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i }),
-  ).toBeVisible();
-  await expect(
-    floatingContactActions.getByRole("link", { name: /Open LINE chat/i }),
-  ).toBeVisible();
-  await expect(
-    floatingContactActions.getByRole("link", { name: /Email concierge/i }),
-  ).toBeVisible();
+  await expect(whatsappLink).toBeVisible();
+  await expect(lineLink).toBeVisible();
+  await expect(emailLink).toBeVisible();
+});
+
+test("desktop chat contact actions show LINE QR and use prefilled links", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/chat");
+
+  const floatingContactActions = page.getByTestId("floating-contact-actions");
+  const whatsappLink = floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i });
+  const emailLink = floatingContactActions.getByRole("link", { name: /Email concierge/i });
+  const lineButton = floatingContactActions.getByRole("button", { name: /Open LINE chat/i });
+
+  await expect(whatsappLink).toBeVisible();
+  await expectPrefilledWhatsApp(whatsappLink);
+  await expect(emailLink).toBeVisible();
+  await expectPrefilledEmail(emailLink);
+  await expect(floatingContactActions.getByRole("link", { name: /Open LINE chat/i })).toHaveCount(0);
+  await expect(lineButton).toBeVisible();
+
+  await lineButton.click();
+  const dialog = page.getByRole("dialog", { name: "Scan LINE QR code" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByAltText("LINE QR code for contacting us")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Open LINE instead" })).toHaveAttribute(
+    "href",
+    LINE_URL,
+  );
 });
 
 test("mobile Chrome keeps Thai contact details typable while the viewport resizes", async ({
@@ -389,7 +431,7 @@ test("mobile Chrome keeps Thai contact details typable while the viewport resize
     page,
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
   );
-  await page.goto("/th/chat");
+  await page.goto("/th/chat?continueInApp=1");
 
   const chatFooter = page.getByTestId("chat-footer");
   const emailInput = page.getByRole("textbox", { name: "อีเมล" });
@@ -413,6 +455,64 @@ test("mobile Chrome keeps Thai contact details typable while the viewport resize
   await expect(chatInput).toBeHidden();
 });
 
+test("instagram in-app browser shows the external browser chat gate", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      get: () =>
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36 Instagram 333.0.0.0.0 Android",
+    });
+  });
+
+  await page.goto("/chat");
+
+  const gate = page.getByTestId("chat-browser-gate");
+  await expect(gate).toBeVisible();
+  await expect(page.getByText("Opening chat in Chrome")).toBeVisible();
+  await expect(page.getByTestId("chat-open-chrome")).toHaveAttribute(
+    "href",
+    /intent:\/\/.*external=1.*package=com\.android\.chrome/,
+  );
+  await expect(page.getByTestId("chat-copy-browser-link")).toBeVisible();
+  await expect(page.getByTestId("chat-continue-in-app")).toBeVisible();
+});
+
+test("LINE in-app browser shows the external browser chat gate", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      get: () =>
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1 Line/14.0.0",
+    });
+  });
+
+  await page.goto("/chat");
+
+  await expect(page.getByTestId("chat-browser-gate")).toBeVisible();
+  await expect(page.getByTestId("chat-open-chrome")).toHaveAttribute(
+    "href",
+    /googlechrome:\/\/.*external=1/,
+  );
+});
+
+test("external and continue-in-app flags bypass the in-app browser gate", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      get: () =>
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36 Instagram 333.0.0.0.0 Android",
+    });
+  });
+
+  await page.goto("/chat?external=1");
+  await expect(page.getByTestId("chat-browser-gate")).toHaveCount(0);
+  await expect(page.getByPlaceholder("Ask a question")).toBeVisible();
+
+  await page.goto("/chat?continueInApp=1");
+  await expect(page.getByTestId("chat-browser-gate")).toHaveCount(0);
+  await expect(page.getByPlaceholder("Ask a question")).toBeVisible();
+});
+
 test("instagram in-app browser lifts the composer when viewport inset is unavailable", async ({
   page,
 }) => {
@@ -423,7 +523,7 @@ test("instagram in-app browser lifts the composer when viewport inset is unavail
         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36 Instagram 333.0.0.0.0 Android",
     });
   });
-  await page.goto("/chat");
+  await page.goto("/chat?continueInApp=1");
 
   const chatFooter = page.getByTestId("chat-footer");
   const input = page.getByPlaceholder("Ask a question");
@@ -460,7 +560,7 @@ test("instagram in-app browser keeps Thai contact details above the keyboard fal
         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36 Instagram 333.0.0.0.0 Android",
     });
   });
-  await page.goto("/th/chat");
+  await page.goto("/th/chat?continueInApp=1");
 
   const chatFooter = page.getByTestId("chat-footer");
   const emailInput = page.getByRole("textbox", { name: "อีเมล" });
@@ -498,7 +598,7 @@ test("LINE/Safari resized viewport keeps the composer near the keyboard", async 
     page,
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1 Line/14.0.0",
   );
-  await page.goto("/chat");
+  await page.goto("/chat?continueInApp=1");
 
   const chatPanel = page.getByTestId("chat-panel");
   const chatFooter = page.getByTestId("chat-footer");
@@ -554,7 +654,7 @@ test("unknown mobile browser with zero inset avoids synthetic overlay fallback",
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Mobile Safari/537.36",
     });
   });
-  await page.goto("/chat");
+  await page.goto("/chat?continueInApp=1");
 
   const chatFooter = page.getByTestId("chat-footer");
   const input = page.getByPlaceholder("Ask a question");
