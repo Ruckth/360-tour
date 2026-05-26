@@ -381,6 +381,38 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   ).toBeVisible();
 });
 
+test("mobile Chrome keeps Thai contact details typable while the viewport resizes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await installMockVisualViewport(
+    page,
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
+  );
+  await page.goto("/th/chat");
+
+  const chatFooter = page.getByTestId("chat-footer");
+  const emailInput = page.getByRole("textbox", { name: "อีเมล" });
+  const chatInput = page.getByPlaceholder("พิมพ์คำถาม");
+
+  await page.getByText("ฝากข้อมูลติดต่อ").click();
+  await emailInput.focus();
+  await page.evaluate(() => {
+    (
+      window as unknown as {
+        __setTestVisualViewportHeight: (height: number) => void;
+      }
+    ).__setTestVisualViewportHeight(500);
+  });
+  await emailInput.fill("visitor@example.com");
+
+  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect(page.getByText("ฝากข้อมูลติดต่อ")).toBeVisible();
+  await expect(emailInput).toBeVisible();
+  await expect(emailInput).toHaveValue("visitor@example.com");
+  await expect(chatInput).toBeHidden();
+});
+
 test("instagram in-app browser lifts the composer when viewport inset is unavailable", async ({
   page,
 }) => {
@@ -416,6 +448,48 @@ test("instagram in-app browser lifts the composer when viewport inset is unavail
   const inputBox = await input.boundingBox();
   expect(inputBox).not.toBeNull();
   expect(inputBox!.y + inputBox!.height).toBeLessThan(520);
+});
+
+test("instagram in-app browser keeps Thai contact details above the keyboard fallback", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      get: () =>
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36 Instagram 333.0.0.0.0 Android",
+    });
+  });
+  await page.goto("/th/chat");
+
+  const chatFooter = page.getByTestId("chat-footer");
+  const emailInput = page.getByRole("textbox", { name: "อีเมล" });
+  const chatInput = page.getByPlaceholder("พิมพ์คำถาม");
+
+  await page.getByText("ฝากข้อมูลติดต่อ").click();
+  await emailInput.focus();
+  await emailInput.fill("visitor@example.com");
+
+  await expect(chatFooter).toHaveCSS("position", "fixed");
+  await expect
+    .poll(async () =>
+      chatFooter.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).bottom)),
+    )
+    .toBeGreaterThan(250);
+  await expect
+    .poll(async () =>
+      chatFooter.evaluate((node) =>
+        Number.parseFloat(window.getComputedStyle(node).getPropertyValue("--chat-keyboard-inset")),
+      ),
+    )
+    .toBeGreaterThan(250);
+  await expect(page.getByText("ฝากข้อมูลติดต่อ")).toBeVisible();
+  await expect(emailInput).toHaveValue("visitor@example.com");
+  await expect(chatInput).toBeHidden();
+
+  const emailBox = await emailInput.boundingBox();
+  expect(emailBox).not.toBeNull();
+  expect(emailBox!.y + emailBox!.height).toBeLessThan(520);
 });
 
 test("LINE/Safari resized viewport keeps the composer near the keyboard", async ({ page }) => {

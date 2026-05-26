@@ -48,6 +48,7 @@ type ContactApp = "whatsapp" | "line";
 type ContactForm = { email: string; preferredApp: ContactApp; contactHandle: string };
 type ChatSuggestion = ChatSuggestionCandidate & { answer: string };
 type ChatExperienceMode = "overlay" | "page";
+type FooterFocusScope = "composer" | "contact" | null;
 type LatestExchange = {
   userMessage: string;
   assistantMessage: string;
@@ -183,6 +184,21 @@ function getVisualViewportHeight() {
 function getKeyboardViewportBaselineHeight() {
   if (typeof window === "undefined") return 0;
   return Math.max(window.innerHeight, getVisualViewportHeight());
+}
+
+function isKeyboardInputElement(element: Element | null): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false;
+  return element.matches("input, textarea, [contenteditable='true']");
+}
+
+function getFocusedFooterInput(footerNode: HTMLElement | null) {
+  if (typeof document === "undefined") return null;
+  const activeElement = document.activeElement;
+  if (!footerNode?.contains(activeElement) || !isKeyboardInputElement(activeElement)) {
+    return null;
+  }
+
+  return activeElement;
 }
 
 function clampKeyboardInset(inset: number) {
@@ -488,13 +504,14 @@ function ChatExperience({
   });
   const [contactStatus, setContactStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [mobileKeyboardInset, setMobileKeyboardInset] = useState(0);
-  const [composerFocused, setComposerFocused] = useState(false);
+  const [footerFocusScope, setFooterFocusScope] = useState<FooterFocusScope>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [chatPageViewportHeight, setChatPageViewportHeight] = useState(CHAT_PAGE_VIEWPORT_FALLBACK);
   const [composerReserveHeight, setComposerReserveHeight] = useState(PAGE_COMPOSER_RESERVE_FALLBACK);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   const chatFooterRef = useRef<HTMLDivElement>(null);
+  const contactFormRef = useRef<HTMLFormElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const keyboardInsetRef = useRef(0);
   const keyboardFocusStartedAtRef = useRef(0);
@@ -584,9 +601,12 @@ function ChatExperience({
     typeof window !== "undefined" &&
     !window.matchMedia("(min-width: 768px)").matches;
   const keyboardInsetActive = mobileKeyboardInset > MOBILE_KEYBOARD_THRESHOLD;
+  const contactFocused = footerFocusScope === "contact";
   const mobileKeyboardActive =
-    isMobileViewport && (composerFocused || keyboardInsetActive);
+    isMobileViewport && (footerFocusScope !== null || keyboardInsetActive);
   const hideAuxiliaryControls = mobileKeyboardActive;
+  const hideContactDetails = mobileKeyboardActive && !contactFocused;
+  const hideMainComposer = isMobileViewport && contactFocused;
   const overlayComposerDocked =
     mode === "overlay" && mobileKeyboardActive && keyboardInsetActive;
   const pageComposerDocked = mode === "page" && mobileKeyboardActive;
@@ -622,6 +642,9 @@ function ChatExperience({
             transform: "translateZ(0)",
             width: "100%",
             zIndex: 60,
+            maxHeight: "calc(var(--chat-visible-height) - 0.75rem)",
+            overflowY: "auto",
+            overscrollBehavior: "contain",
           } satisfies ChatPanelStyle
       : undefined;
   const messagesStyle =
@@ -683,6 +706,38 @@ function ChatExperience({
       }, delay);
     });
   }, [mode, scrollTranscriptToEnd, updateChatPageViewportHeight]);
+
+  const focusFooterInput = useCallback(
+    (scope: Exclude<FooterFocusScope, null>) => {
+      keyboardFocusStartedAtRef.current = Date.now();
+      keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
+      setFooterFocusScope(scope);
+      refreshChatPageAfterKeyboardChange();
+    },
+    [refreshChatPageAfterKeyboardChange],
+  );
+
+  const clearFooterFocusAfterBlur = useCallback(() => {
+    window.setTimeout(() => {
+      const focusedInput = getFocusedFooterInput(chatFooterRef.current);
+      if (focusedInput === inputRef.current) {
+        setFooterFocusScope("composer");
+        refreshChatPageAfterKeyboardChange();
+        return;
+      }
+
+      if (focusedInput && contactFormRef.current?.contains(focusedInput)) {
+        setFooterFocusScope("contact");
+        refreshChatPageAfterKeyboardChange();
+        return;
+      }
+
+      keyboardFocusStartedAtRef.current = 0;
+      keyboardViewportBaselineRef.current = null;
+      setFooterFocusScope(null);
+      refreshChatPageAfterKeyboardChange();
+    }, 120);
+  }, [refreshChatPageAfterKeyboardChange]);
 
   useEffect(() => {
     setHydrated(true);
@@ -971,7 +1026,7 @@ function ChatExperience({
       keyboardInsetRef.current = 0;
       keyboardViewportBaselineRef.current = null;
       setMobileKeyboardInset(0);
-      setComposerFocused(false);
+      setFooterFocusScope(null);
       return;
     }
 
@@ -989,10 +1044,17 @@ function ChatExperience({
         return;
       }
 
-      const focusedInputIsActive = document.activeElement === inputRef.current;
-      if (mode === "page" && focusedInputIsActive && !composerFocused) {
+      const focusedInput = getFocusedFooterInput(chatFooterRef.current);
+      const focusedInputIsActive = Boolean(focusedInput);
+      if (mode === "page" && focusedInputIsActive && !footerFocusScope) {
         keyboardFocusStartedAtRef.current ||= Date.now();
-        setComposerFocused(true);
+        setFooterFocusScope(
+          focusedInput === inputRef.current
+            ? "composer"
+            : focusedInput && contactFormRef.current?.contains(focusedInput)
+              ? "contact"
+              : null,
+        );
       }
       if (focusedInputIsActive) {
         keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
@@ -1004,7 +1066,7 @@ function ChatExperience({
         fallbackAllowed,
         focusedInputIsActive,
         footerNode: chatFooterRef.current,
-        inputNode: inputRef.current,
+        inputNode: focusedInput,
         mode,
         viewportBaselineHeight: keyboardViewportBaselineRef.current,
       });
@@ -1019,7 +1081,7 @@ function ChatExperience({
       keyboardInsetRef.current = effectiveInset;
       setMobileKeyboardInset(effectiveInset);
       if (effectiveInset <= MOBILE_KEYBOARD_THRESHOLD && !focusedInputIsActive) {
-        setComposerFocused(false);
+        setFooterFocusScope(null);
       }
     }
 
@@ -1047,7 +1109,7 @@ function ChatExperience({
       window.removeEventListener("orientationchange", scheduleKeyboardInsetUpdate);
       mobileQuery.removeEventListener("change", scheduleKeyboardInsetUpdate);
     };
-  }, [composerFocused, mode, open, updateChatPageViewportHeight]);
+  }, [footerFocusScope, mode, open, updateChatPageViewportHeight]);
 
   useEffect(() => {
     const node = chatFooterRef.current;
@@ -1413,13 +1475,19 @@ function ChatExperience({
             <details
               className={cn(
                 "rounded-xl border border-border bg-background/70 px-3 py-2 text-sm",
-                hideAuxiliaryControls && "hidden md:block",
+                hideContactDetails && "hidden md:block",
               )}
             >
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 dark:text-slate-300">
                 {t("shareContact")}
               </summary>
-              <form className="mt-3 grid gap-2" onSubmit={saveContact}>
+              <form
+                ref={contactFormRef}
+                className="mt-3 grid gap-2"
+                onFocusCapture={() => focusFooterInput("contact")}
+                onBlurCapture={clearFooterFocusAfterBlur}
+                onSubmit={saveContact}
+              >
                 <div className="grid gap-2 md:grid-cols-2">
                   <Input
                     value={contactForm.email}
@@ -1501,7 +1569,7 @@ function ChatExperience({
               </form>
             </details>
             <form
-              className="flex gap-2"
+              className={cn("flex gap-2", hideMainComposer && "hidden md:flex")}
               onSubmit={(event) => {
                 event.preventDefault();
                 sendMessage(input);
@@ -1515,19 +1583,9 @@ function ChatExperience({
                   keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
                 }}
                 onFocus={() => {
-                  keyboardFocusStartedAtRef.current = Date.now();
-                  keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
-                  setComposerFocused(true);
-                  refreshChatPageAfterKeyboardChange();
+                  focusFooterInput("composer");
                 }}
-                onBlur={() => {
-                  window.setTimeout(() => {
-                    keyboardFocusStartedAtRef.current = 0;
-                    keyboardViewportBaselineRef.current = null;
-                    setComposerFocused(false);
-                    refreshChatPageAfterKeyboardChange();
-                  }, 120);
-                }}
+                onBlur={clearFooterFocusAfterBlur}
                 className="h-12 min-w-0 flex-1 rounded-2xl border-muted bg-muted/70 px-4 text-base placeholder:text-slate-500 focus-visible:ring-2 dark:placeholder:text-slate-400 md:h-10 md:rounded-lg md:bg-background md:px-3 md:text-sm"
                 placeholder={t("askPlaceholder")}
                 enterKeyHint="send"
