@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
+import { buildEmailHref } from "@/lib/contact-links";
 import { getLocalizedResort } from "@/lib/i18n/public-content";
 
 export function SiteFooter() {
@@ -33,7 +34,7 @@ export function SiteFooter() {
           <Link className="transition hover:text-foreground" href={localizeHref("/booking", locale)}>
             {footer("bookDirect")}
           </Link>
-          <a className="transition hover:text-foreground" href={`mailto:${resort.contactEmail}`}>
+          <a className="transition hover:text-foreground" href={buildEmailHref(resort.contactEmail)}>
             {resort.contactEmail}
           </a>
         </div>

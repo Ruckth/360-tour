@@ -37,6 +37,8 @@ export default async function ChatPage({
       contactEmail={resort.contactEmail}
       whatsappNumber={resort.whatsapp}
       lineId={resort.lineId}
+      lineUrl={resort.lineUrl}
+      lineQrImage={resort.lineQrImage}
     />
   );
 }

@@ -571,6 +571,8 @@ function ChatExperience({
   propertyName,
   whatsappNumber,
   lineId,
+  lineUrl,
+  lineQrImage,
 }: {
   mode: ChatExperienceMode;
   propertySlug?: string;
@@ -578,6 +580,8 @@ function ChatExperience({
   contactEmail: string;
   whatsappNumber: string;
   lineId?: string;
+  lineUrl?: string;
+  lineQrImage?: string;
 }) {
   const isPageMode = mode === "page";
   const t = useTranslations("Chat");
@@ -1783,6 +1787,8 @@ function ChatExperience({
                 contactEmail={contactEmail}
                 whatsappNumber={whatsappNumber}
                 lineId={lineId}
+                lineUrl={lineUrl}
+                lineQrImage={lineQrImage}
                 quiet={canShowBookingCard}
               />
             </div>

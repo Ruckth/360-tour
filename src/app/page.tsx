@@ -7,6 +7,7 @@ import { VillaCard } from "@/components/home/VillaCard";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { ButtonLink } from "@/components/ui/button";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
+import { buildEmailHref } from "@/lib/contact-links";
 import {
   getLocalizedProperties,
   getLocalizedPropertyTagline,
@@ -215,7 +216,7 @@ export default async function HomePage() {
               {nav("book")}
             </ButtonLink>
             <a
-              href={`mailto:${resort.contactEmail}`}
+              href={buildEmailHref(resort.contactEmail)}
               className="inline-flex w-full items-center justify-center rounded-lg border border-white/25 px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
             >
               {t("contactUs")}

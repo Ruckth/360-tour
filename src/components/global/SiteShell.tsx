@@ -38,6 +38,8 @@ export function SiteShell({ children }: { children: ReactNode }) {
           contactEmail={resort.contactEmail}
           whatsappNumber={resort.whatsapp}
           lineId={resort.lineId}
+          lineUrl={resort.lineUrl}
+          lineQrImage={resort.lineQrImage}
         />
       </ChatContextProvider>
     </div>
