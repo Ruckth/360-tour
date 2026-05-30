@@ -207,7 +207,13 @@
     "browserGateCopied": "已复制",
     "browserGateContinue": "继续在此打开",
     "browserGateFallback": "如果 Chrome 没有打开，请复制链接并粘贴到 Chrome 或 Safari。",
-    "browserGateFallbackSafari": "如果 Safari 没有打开，请复制链接并粘贴到 Safari。"
+    "browserGateFallbackSafari": "如果 Safari 没有打开，请复制链接并粘贴到 Safari。",
+    "suggestionAvailability": "可以查询我的日期是否有空房吗？",
+    "answerAvailability": "可以。告诉我入住和退房日期，我可以帮您缩小最适合且可预订的别墅，并继续带您完成预订。",
+    "suggestionGuests": "最多几位客人住得舒适？",
+    "answerGuests": "Tideglass Pool Residence 最多 4 位，Mossbell Garden Suite 最多 2 位，Canopy Halo Loft 最多 6 位。我可以帮您的同行人数匹配合适别墅。",
+    "suggestionContact": "如何直接联系房东？",
+    "answerContact": "请使用这里的 WhatsApp、LINE 或电子邮件按钮。直接联系可让问题、抵达细节和特殊需求直接交给房东。"
   },
   "Footer": {
     "bookDirect": "直接预订"

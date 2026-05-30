@@ -207,7 +207,13 @@
     "browserGateCopied": "コピーしました",
     "browserGateContinue": "ここで続ける",
     "browserGateFallback": "Chromeが開かない場合は、リンクをコピーしてChromeまたはSafariに貼り付けてください。",
-    "browserGateFallbackSafari": "Safariが開かない場合は、リンクをコピーしてSafariに貼り付けてください。"
+    "browserGateFallbackSafari": "Safariが開かない場合は、リンクをコピーしてSafariに貼り付けてください。",
+    "suggestionAvailability": "希望日の空室を確認できますか？",
+    "answerAvailability": "はい。チェックイン日とチェックアウト日を教えていただければ、空きのある最適なヴィラを絞り込み、予約へご案内できます。",
+    "suggestionGuests": "何名まで快適に泊まれますか？",
+    "answerGuests": "Tideglass Pool Residence は最大4名、Mossbell Garden Suite は最大2名、Canopy Halo Loft は最大6名まで滞在できます。人数に合うヴィラ選びをお手伝いします。",
+    "suggestionContact": "ホストに直接連絡するには？",
+    "answerContact": "こちらの WhatsApp、LINE、またはメールボタンをご利用ください。直接連絡すると、質問、到着情報、特別リクエストをホストに直接届けられます。"
   },
   "Footer": {
     "bookDirect": "直接予約"

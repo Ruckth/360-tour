@@ -207,7 +207,13 @@
     "browserGateCopied": "कॉपी हो गया",
     "browserGateContinue": "यहीं जारी रखें",
     "browserGateFallback": "अगर Chrome नहीं खुलता है, तो लिंक कॉपी करके Chrome या Safari में पेस्ट करें।",
-    "browserGateFallbackSafari": "अगर Safari नहीं खुलता है, तो लिंक कॉपी करके Safari में पेस्ट करें।"
+    "browserGateFallbackSafari": "अगर Safari नहीं खुलता है, तो लिंक कॉपी करके Safari में पेस्ट करें।",
+    "suggestionAvailability": "क्या मैं अपनी तारीखों की उपलब्धता जांच सकता/सकती हूँ?",
+    "answerAvailability": "हाँ। अपनी चेक-इन और चेकआउट तारीखें बताएं, मैं उपलब्ध सबसे सही विला चुनने में मदद कर सकता/सकती हूँ और फिर बुकिंग तक ले जा सकता/सकती हूँ।",
+    "suggestionGuests": "कितने मेहमान आराम से ठहर सकते हैं?",
+    "answerGuests": "Tideglass Pool Residence में 4 तक, Mossbell Garden Suite में 2 तक, और Canopy Halo Loft में 6 तक मेहमान ठहर सकते हैं। मैं आपके समूह के लिए सही विला चुनने में मदद कर सकता/सकती हूँ।",
+    "suggestionContact": "होस्ट से सीधे कैसे संपर्क करें?",
+    "answerContact": "यहाँ WhatsApp, LINE या ईमेल बटन इस्तेमाल करें। सीधा संपर्क सवालों, आगमन विवरण और विशेष अनुरोधों को सीधे होस्ट तक रखता है।"
   },
   "Footer": {
     "bookDirect": "सीधे बुक करें"

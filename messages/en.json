@@ -207,7 +207,13 @@
     "browserGateCopied": "Copied",
     "browserGateContinue": "Continue here",
     "browserGateFallback": "If Chrome does not open, copy the link and paste it into Chrome or Safari.",
-    "browserGateFallbackSafari": "If Safari does not open, copy the link and paste it into Safari."
+    "browserGateFallbackSafari": "If Safari does not open, copy the link and paste it into Safari.",
+    "suggestionAvailability": "Can I check availability for my dates?",
+    "answerAvailability": "Yes. Share your check-in and checkout dates and I can help narrow the best available villa, then hand you off to booking.",
+    "suggestionGuests": "How many guests can stay comfortably?",
+    "answerGuests": "Tideglass Pool Residence hosts up to 4 guests, Mossbell Garden Suite up to 2, and Canopy Halo Loft up to 6. I can help match your group to the right villa.",
+    "suggestionContact": "How do I contact the host directly?",
+    "answerContact": "Use the WhatsApp, LINE, or email buttons here. Direct contact keeps questions, arrival details, and special requests with the host."
   },
   "Footer": {
     "bookDirect": "Book Direct"

@@ -1,4 +1,4 @@
-export type ChatSuggestionId = "couple" | "direct" | "tour";
+export type ChatSuggestionId = "couple" | "direct" | "tour" | "availability" | "guests" | "contact";
 
 export interface ChatSuggestionCandidate {
   id: ChatSuggestionId;
@@ -14,13 +14,30 @@ export interface ChatSuggestionSelectionInput {
   limit?: number;
 }
 
-const INITIAL_HOME_ORDER: ChatSuggestionId[] = ["couple", "direct"];
-const INITIAL_PROPERTY_ORDER: ChatSuggestionId[] = ["tour", "direct"];
+const INITIAL_HOME_ORDER: ChatSuggestionId[] = [
+  "couple",
+  "direct",
+  "tour",
+  "availability",
+  "guests",
+  "contact",
+];
+const INITIAL_PROPERTY_ORDER: ChatSuggestionId[] = [
+  "tour",
+  "direct",
+  "availability",
+  "couple",
+  "guests",
+  "contact",
+];
 
 const FOLLOW_UP_ORDERS: Record<ChatSuggestionId, ChatSuggestionId[]> = {
-  couple: ["direct", "tour", "couple"],
-  direct: ["tour", "couple", "direct"],
-  tour: ["direct", "couple", "tour"],
+  couple: ["direct", "tour", "availability", "guests", "contact", "couple"],
+  direct: ["tour", "couple", "availability", "contact", "guests", "direct"],
+  tour: ["direct", "couple", "availability", "guests", "contact", "tour"],
+  availability: ["couple", "direct", "tour", "guests", "contact", "availability"],
+  guests: ["couple", "availability", "direct", "tour", "contact", "guests"],
+  contact: ["availability", "direct", "tour", "couple", "guests", "contact"],
 };
 
 const KEYWORDS: Record<ChatSuggestionId, string[]> = {
@@ -88,6 +105,51 @@ const KEYWORDS: Record<ChatSuggestionId, string[]> = {
     "見",
     "투어",
   ],
+  availability: [
+    "available",
+    "availability",
+    "date",
+    "dates",
+    "check in",
+    "check-in",
+    "checkout",
+    "check out",
+    "vacancy",
+    "ว่าง",
+    "ห้องว่าง",
+    "วันที่",
+    "空房",
+    "空き",
+    "예약 가능",
+  ],
+  guests: [
+    "guest",
+    "guests",
+    "group",
+    "family",
+    "capacity",
+    "sleep",
+    "stay comfortably",
+    "ผู้เข้าพัก",
+    "กี่คน",
+    "客人",
+    "ゲスト",
+    "인원",
+  ],
+  contact: [
+    "contact",
+    "host",
+    "whatsapp",
+    "line",
+    "message",
+    "call",
+    "ติดต่อ",
+    "เจ้าของ",
+    "โฮสต์",
+    "联系",
+    "連絡",
+    "호스트",
+  ],
 };
 
 function normalizeText(value?: string) {
@@ -109,7 +171,14 @@ function detectTopic({
   const searchable = normalizeText(`${latestUserMessage ?? ""} ${latestAssistantMessage ?? ""}`);
   if (!searchable) return null;
 
-  for (const id of ["couple", "direct", "tour"] satisfies ChatSuggestionId[]) {
+  for (const id of [
+    "couple",
+    "direct",
+    "tour",
+    "availability",
+    "guests",
+    "contact",
+  ] satisfies ChatSuggestionId[]) {
     if (KEYWORDS[id].some((keyword) => searchable.includes(keyword))) {
       return id;
     }
@@ -141,8 +210,8 @@ function orderCandidates(
 }
 
 export function selectChatSuggestions(input: ChatSuggestionSelectionInput) {
-  const limit = input.limit ?? 2;
   const topic = detectTopic(input);
+  const limit = input.limit ?? (topic ? 2 : 6);
   const initialOrder = input.activePropertySlug ? INITIAL_PROPERTY_ORDER : INITIAL_HOME_ORDER;
   const order = topic ? FOLLOW_UP_ORDERS[topic] : initialOrder;
 

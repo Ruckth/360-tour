@@ -923,6 +923,34 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   await expect(page.getByTestId("booking-range-checkOut")).toBeVisible();
 });
 
+test("thai chat initializes with six question chips before regular chat", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/th/chat?returnTo=%2Fth");
+
+  const chatMessages = page.getByTestId("chat-messages");
+  const chatFooter = page.getByTestId("chat-footer");
+  const initialSuggestions = chatMessages.getByTestId("chat-suggestions");
+  await expect(chatMessages.getByText("ฉันช่วยเลือกวิลล่าที่เหมาะสม")).toHaveCount(0);
+  await expect(initialSuggestions.getByRole("button")).toHaveCount(6);
+  await expect(initialSuggestions.getByRole("button", { name: "เช็กห้องว่างตามวันที่ได้ไหม?" })).toBeVisible();
+  await expect(initialSuggestions.getByRole("button", { name: "พักได้สบายกี่คน?" })).toBeVisible();
+  await expect(
+    initialSuggestions.getByRole("button", { name: "ติดต่อเจ้าของที่พักโดยตรงอย่างไร?" }),
+  ).toBeVisible();
+
+  await initialSuggestions.getByRole("button", { name: "วิลล่าไหนเหมาะกับคู่รักที่สุด?" }).click();
+  await expect(chatMessages.getByText("วิลล่าไหนเหมาะกับคู่รักที่สุด?")).toBeVisible();
+  await expect(chatMessages.getByText(/Mossbell Garden Suite เงียบ/)).toBeVisible();
+  await expect(chatMessages.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(2);
+  await expect(
+    chatMessages.getByRole("button", { name: "จองตรงได้อะไรบ้าง?" }),
+  ).toBeVisible();
+  await expect(
+    chatMessages.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" }),
+  ).toBeVisible();
+  await expect(chatFooter.getByRole("button", { name: "จองตรงได้อะไรบ้าง?" })).toHaveCount(0);
+});
+
 test("german chat suggestions float under assistant messages and update", async ({ page }) => {
   await page.goto("/de");
 

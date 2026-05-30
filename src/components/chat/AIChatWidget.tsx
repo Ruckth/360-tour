@@ -690,6 +690,24 @@ function ChatExperience({
         answer: t("answer360"),
         source: "static",
       },
+      {
+        id: "availability",
+        text: t("suggestionAvailability"),
+        answer: t("answerAvailability"),
+        source: "static",
+      },
+      {
+        id: "guests",
+        text: t("suggestionGuests"),
+        answer: t("answerGuests"),
+        source: "static",
+      },
+      {
+        id: "contact",
+        text: t("suggestionContact"),
+        answer: t("answerContact"),
+        source: "static",
+      },
     ],
     [t],
   );
@@ -1793,9 +1811,6 @@ function ChatExperience({
           >
             {messages.length === 0 ? (
               <div className="max-w-[92%]">
-                <div className="rounded-2xl bg-muted p-4 text-base leading-relaxed text-slate-700 dark:text-slate-200 md:p-3 md:text-sm">
-                  {t("intro")}
-                </div>
                 {!isTyping ? (
                   <SuggestionChips
                     suggestions={visibleSuggestions}

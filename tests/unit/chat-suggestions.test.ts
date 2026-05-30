@@ -5,22 +5,29 @@ const candidates: ChatSuggestionCandidate[] = [
   { id: "couple", text: "Which villa is best for a couple?" },
   { id: "direct", text: "What's included when booking direct?" },
   { id: "tour", text: "Can I see the villa in 360?" },
+  { id: "availability", text: "Can I check availability for my dates?" },
+  { id: "guests", text: "How many guests can stay comfortably?" },
+  { id: "contact", text: "How do I contact the host directly?" },
 ];
 
 describe("selectChatSuggestions", () => {
-  it("shows couple and direct suggestions on general pages", () => {
+  it("shows six curated suggestions on general pages", () => {
     expect(selectChatSuggestions({ candidates }).map((item) => item.id)).toEqual([
       "couple",
       "direct",
+      "tour",
+      "availability",
+      "guests",
+      "contact",
     ]);
   });
 
-  it("starts with tour and direct suggestions on property pages", () => {
+  it("starts with tour and direct but still shows six suggestions on property pages", () => {
     expect(
       selectChatSuggestions({ candidates, activePropertySlug: "garden-suite" }).map(
         (item) => item.id,
       ),
-    ).toEqual(["tour", "direct"]);
+    ).toEqual(["tour", "direct", "availability", "couple", "guests", "contact"]);
   });
 
   it("does not repeat a clicked couple suggestion", () => {
