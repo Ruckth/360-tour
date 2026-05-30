@@ -156,6 +156,7 @@
     "restartChat": "チャットを再開",
     "intro": "最適なヴィラ選び、直接予約の割引説明、360°ツアーへの案内をお手伝いします。",
     "askPlaceholder": "質問を入力",
+    "initialPrompt": "何でも聞いてください",
     "thinking": "考え中...",
     "shareContact": "連絡先を共有",
     "name": "名前",

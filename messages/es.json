@@ -156,6 +156,7 @@
     "restartChat": "Reiniciar chat",
     "intro": "Puedo ayudarle a elegir la villa ideal, explicar los ahorros de reservar directo o guiarle al tour 360°.",
     "askPlaceholder": "Haga una pregunta",
+    "initialPrompt": "Pregunte lo que quiera",
     "thinking": "Pensando...",
     "shareContact": "Compartir datos de contacto",
     "name": "Nombre",

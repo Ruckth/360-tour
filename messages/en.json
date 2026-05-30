@@ -156,6 +156,7 @@
     "restartChat": "Restart chat",
     "intro": "I can help pick the right villa, explain direct booking savings, or point you into the 360 tour.",
     "askPlaceholder": "Ask a question",
+    "initialPrompt": "Ask anything?",
     "thinking": "Thinking...",
     "shareContact": "Share contact details",
     "name": "Name",

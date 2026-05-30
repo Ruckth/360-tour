@@ -213,7 +213,10 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
   await expect(page.getByText("Do you have airport pickup?")).toHaveCount(0);
-  await expect(page.getByText(/I can help pick the right villa/i)).toBeVisible();
+  await expect(page.getByText("Ask anything?")).toBeVisible();
+  await expect(
+    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+  ).toBeVisible();
 
   await page.getByText("Share contact details").click();
   await page.getByRole("textbox", { name: "Email" }).fill("visitor@example.com");
@@ -345,7 +348,8 @@ test("restart chat clears cached mobile messages", async ({ page }) => {
 
   await expect(page.getByText("Cached restart question")).toHaveCount(0);
   await expect(page.getByText("Cached restart answer")).toHaveCount(0);
-  await expect(page.getByText(/I can help pick the right villa/i)).toBeVisible();
+  await expect(page.getByText("Ask anything?")).toBeVisible();
+  await expect(page.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(6);
   await expect
     .poll(async () =>
       page.evaluate(
@@ -929,14 +933,22 @@ test("thai chat initializes with six question chips before regular chat", async 
 
   const chatMessages = page.getByTestId("chat-messages");
   const chatFooter = page.getByTestId("chat-footer");
+  const initialPromptGroup = chatMessages.getByTestId("chat-initial-prompts");
   const initialSuggestions = chatMessages.getByTestId("chat-suggestions");
   await expect(chatMessages.getByText("ฉันช่วยเลือกวิลล่าที่เหมาะสม")).toHaveCount(0);
+  await expect(initialPromptGroup.getByText("ถามได้เลย")).toBeVisible();
   await expect(initialSuggestions.getByRole("button")).toHaveCount(6);
+  await expect(initialSuggestions).toHaveCSS("justify-content", "center");
   await expect(initialSuggestions.getByRole("button", { name: "เช็กห้องว่างตามวันที่ได้ไหม?" })).toBeVisible();
   await expect(initialSuggestions.getByRole("button", { name: "พักได้สบายกี่คน?" })).toBeVisible();
   await expect(
     initialSuggestions.getByRole("button", { name: "ติดต่อเจ้าของที่พักโดยตรงอย่างไร?" }),
   ).toBeVisible();
+  const firstInitialChipBox = await initialSuggestions
+    .getByRole("button", { name: "วิลล่าไหนเหมาะกับคู่รักที่สุด?" })
+    .boundingBox();
+  expect(firstInitialChipBox).not.toBeNull();
+  expect(firstInitialChipBox!.height).toBeGreaterThanOrEqual(44);
 
   await initialSuggestions.getByRole("button", { name: "วิลล่าไหนเหมาะกับคู่รักที่สุด?" }).click();
   await expect(chatMessages.getByText("วิลล่าไหนเหมาะกับคู่รักที่สุด?")).toBeVisible();

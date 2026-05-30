@@ -443,15 +443,23 @@ function SuggestionChips({
   suggestions,
   onSelect,
   disabled = false,
+  variant = "compact",
 }: {
   suggestions: ChatSuggestion[];
   onSelect: (suggestion: ChatSuggestion) => void;
   disabled?: boolean;
+  variant?: "compact" | "initial";
 }) {
   if (!suggestions.length) return null;
 
   return (
-    <div data-testid="chat-suggestions" className="mt-2 flex flex-wrap gap-2">
+    <div
+      data-testid="chat-suggestions"
+      className={cn(
+        "mt-2 flex flex-wrap",
+        variant === "initial" ? "justify-center gap-3" : "gap-2",
+      )}
+    >
       {suggestions.map((item) => (
         <button
           key={item.id}
@@ -461,7 +469,12 @@ function SuggestionChips({
           onClick={() => {
             if (!disabled) onSelect(item);
           }}
-          className="rounded-full border border-border bg-background/85 px-3 py-1.5 text-left text-[11px] font-medium leading-tight text-slate-700 shadow-sm shadow-black/5 transition hover:border-gold/60 hover:bg-gold/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-60 dark:border-white/15 dark:bg-background/60 dark:text-slate-300 dark:hover:text-white"
+          className={cn(
+            "max-w-full rounded-full border border-border bg-background/85 font-medium text-slate-700 shadow-sm shadow-black/5 transition hover:border-gold/60 hover:bg-gold/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-60 dark:border-white/15 dark:bg-background/60 dark:text-slate-300 dark:hover:text-white",
+            variant === "initial"
+              ? "min-h-11 px-4 py-2.5 text-center text-sm leading-snug sm:px-5 sm:text-[15px]"
+              : "px-3 py-1.5 text-left text-[11px] leading-tight",
+          )}
         >
           {item.text}
         </button>
@@ -1810,13 +1823,22 @@ function ChatExperience({
             style={messagesStyle}
           >
             {messages.length === 0 ? (
-              <div className="max-w-[92%]">
+              <div
+                data-testid="chat-initial-prompts"
+                className="mx-auto flex w-full max-w-4xl flex-col items-center px-1 pt-7 text-center sm:pt-10"
+              >
                 {!isTyping ? (
-                  <SuggestionChips
-                    suggestions={visibleSuggestions}
-                    onSelect={sendMessage}
-                    disabled={chatInputDisabled}
-                  />
+                  <>
+                    <h2 className="text-xl font-semibold text-foreground sm:text-2xl">
+                      {t("initialPrompt")}
+                    </h2>
+                    <SuggestionChips
+                      suggestions={visibleSuggestions}
+                      onSelect={sendMessage}
+                      disabled={chatInputDisabled}
+                      variant="initial"
+                    />
+                  </>
                 ) : null}
               </div>
             ) : null}

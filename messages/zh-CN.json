@@ -156,6 +156,7 @@
     "restartChat": "重新开始聊天",
     "intro": "我可以帮您选择合适的别墅、说明直接预订优惠，或带您进入 360° 导览。",
     "askPlaceholder": "输入问题",
+    "initialPrompt": "想问什么都可以",
     "thinking": "正在思考...",
     "shareContact": "留下联系方式",
     "name": "姓名",
