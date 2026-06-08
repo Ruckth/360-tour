@@ -130,6 +130,8 @@ For LINE Console verification against local development, expose the local app th
 https://<your-ngrok-domain>/api/line/webhook
 ```
 
+For the full LINE automation audit checklist, including LINE OA response settings, token checks, customer link checks, and production smoke tests, see [LINE_AUTOMATION_AUDIT.md](./LINE_AUTOMATION_AUDIT.md).
+
 ## Deployment
 
 Deploy with the Vercel Git integration or with:

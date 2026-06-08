@@ -92,4 +92,37 @@ describe("LINE webhook helpers", () => {
     expect(answer?.text).toContain("https://tour.helpgueststay.com/booking");
     expect(answer?.text).not.toContain("/api/line/webhook/booking");
   });
+
+  it("keeps all deterministic customer links on the public site origin", () => {
+    const webhookSiteUrl = "https://tour.helpgueststay.com/api/line/webhook";
+    const scenarios = [
+      { eventType: "follow" as const },
+      { eventType: "message" as const, messageText: "Check dates" },
+      { eventType: "message" as const, messageText: "See prices" },
+      { eventType: "message" as const, messageText: "Direct booking" },
+      { eventType: "message" as const, messageText: "Villa details" },
+      { eventType: "message" as const, messageText: "View 360 tour" },
+      { eventType: "message" as const, messageText: "Where are you located" },
+      { eventType: "postback" as const, postbackData: "intent=availability" },
+      { eventType: "postback" as const, postbackData: "intent=pricing" },
+      { eventType: "postback" as const, postbackData: "intent=direct_booking" },
+      { eventType: "postback" as const, postbackData: "intent=villa_details" },
+      { eventType: "postback" as const, postbackData: "intent=tour" },
+      { eventType: "postback" as const, postbackData: "intent=contact" },
+    ];
+
+    for (const scenario of scenarios) {
+      const answer = resolveLineQuickAnswer({
+        eventType: scenario.eventType,
+        messageText: "messageText" in scenario ? scenario.messageText : undefined,
+        postbackData: "postbackData" in scenario ? scenario.postbackData : undefined,
+        properties,
+        siteUrl: webhookSiteUrl,
+      });
+
+      expect(answer, JSON.stringify(scenario)).not.toBeNull();
+      expect(answer?.text, JSON.stringify(scenario)).not.toContain("/api/line/webhook");
+      expect(answer?.text, JSON.stringify(scenario)).not.toContain("tour.helpgueststay.com/api");
+    }
+  });
 });
