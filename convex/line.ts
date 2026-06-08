@@ -75,7 +75,16 @@ export const claimEvent = mutation({
 			.unique();
 		const now = Date.now();
 
-		if (existing && existing.status !== 'failed') {
+		if (
+			existing &&
+			(existing.status === 'processing' ||
+				existing.status === 'replied' ||
+				existing.status === 'ignored' ||
+				(existing.status === 'failed' &&
+					typeof existing.lineReplyStatus === 'number' &&
+					existing.lineReplyStatus >= 200 &&
+					existing.lineReplyStatus < 300))
+		) {
 			return {
 				eventId: existing._id,
 				sessionId: existing.sessionId,
@@ -93,9 +102,13 @@ export const claimEvent = mutation({
 			eventType: args.eventType,
 			...(args.messageText ? { messageText: args.messageText } : {}),
 			...(args.postbackData ? { postbackData: args.postbackData } : {}),
-			status: 'processing' as const,
+			status: 'received' as const,
 			...(typeof args.eventTimestamp === 'number' ? { eventTimestamp: args.eventTimestamp } : {}),
-			processingStartedAt: now,
+			processingStartedAt: existing?.processingStartedAt ?? now,
+			replyMode: undefined,
+			lineReplyStatus: undefined,
+			error: undefined,
+			processedAt: undefined,
 			updatedAt: now
 		};
 
@@ -105,7 +118,7 @@ export const claimEvent = mutation({
 				eventId: existing._id,
 				sessionId,
 				duplicate: false,
-				status: 'processing'
+				status: 'received'
 			};
 		}
 
@@ -119,7 +132,54 @@ export const claimEvent = mutation({
 			eventId,
 			sessionId,
 			duplicate: false,
-			status: 'processing'
+			status: 'received'
+		};
+	}
+});
+
+export const recordInboundEvent = mutation({
+	args: {
+		eventId: v.id('lineWebhookEvents'),
+		sessionId: v.id('chatSessions'),
+		userContent: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		const event = await ctx.db.get(args.eventId);
+		if (!event) throw new Error('LINE event not found');
+		if (event.status === 'replied' || event.status === 'ignored') {
+			return {
+				recorded: false,
+				duplicate: true,
+				userMessageId: event.userMessageId
+			};
+		}
+
+		const now = Date.now();
+		const userContent = args.userContent?.trim();
+		let userMessageId = event.userMessageId;
+
+		if (userContent && !userMessageId) {
+			userMessageId = await ctx.db.insert('chatMessages', {
+				sessionId: args.sessionId,
+				role: 'user',
+				content: userContent,
+				timestamp: event.eventTimestamp ?? now
+			});
+		}
+
+		await ctx.db.patch(args.eventId, {
+			sessionId: args.sessionId,
+			...(userMessageId ? { userMessageId } : {}),
+			status: 'processing',
+			processingStartedAt: event.processingStartedAt ?? now,
+			updatedAt: now
+		});
+		await ctx.db.patch(args.sessionId, { lastSeenAt: now });
+
+		return {
+			recorded: Boolean(userMessageId),
+			duplicate: false,
+			userMessageId
 		};
 	}
 });
@@ -143,10 +203,10 @@ export const completeEvent = mutation({
 		const now = Date.now();
 		const userContent = args.userContent?.trim();
 		const assistantContent = args.assistantContent.trim();
-		let userMessageId: Id<'chatMessages'> | undefined;
+		let userMessageId = event.userMessageId;
 		let assistantMessageId: Id<'chatMessages'> | undefined;
 
-		if (userContent) {
+		if (userContent && !userMessageId) {
 			userMessageId = await ctx.db.insert('chatMessages', {
 				sessionId: args.sessionId,
 				role: 'user',
@@ -169,6 +229,9 @@ export const completeEvent = mutation({
 			status: 'replied',
 			replyMode: args.replyMode,
 			lineReplyStatus: args.lineReplyStatus,
+			...(userMessageId ? { userMessageId } : {}),
+			...(assistantMessageId ? { assistantMessageId } : {}),
+			error: undefined,
 			processedAt: now,
 			updatedAt: now
 		});
@@ -210,7 +273,8 @@ export const markEventIgnored = mutation({
 export const markEventFailed = mutation({
 	args: {
 		eventId: v.id('lineWebhookEvents'),
-		error: v.string()
+		error: v.string(),
+		lineReplyStatus: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const event = await ctx.db.get(args.eventId);
@@ -224,6 +288,7 @@ export const markEventFailed = mutation({
 			status: 'failed',
 			replyMode: 'failed',
 			error: args.error.slice(0, 1000),
+			...(typeof args.lineReplyStatus === 'number' ? { lineReplyStatus: args.lineReplyStatus } : {}),
 			processedAt: now,
 			updatedAt: now
 		});

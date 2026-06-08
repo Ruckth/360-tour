@@ -61,6 +61,16 @@ type GeneratedReply = {
   model?: string;
 };
 
+class LineReplyError extends Error {
+  status: number;
+
+  constructor(status: number, body: string) {
+    super(`LINE reply failed (${status}): ${body}`);
+    this.name = "LineReplyError";
+    this.status = status;
+  }
+}
+
 let convexClient: ConvexHttpClient | null = null;
 let convexClientUrl: string | null = null;
 
@@ -165,7 +175,7 @@ async function replyToLine({
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`LINE reply failed (${response.status}): ${errorText}`);
+    throw new LineReplyError(response.status, errorText);
   }
 
   return response.status;
@@ -210,32 +220,55 @@ async function handleLineEvent({
   const lineUserId = getLineUserId(event);
   const messageText = getMessageText(event);
   const postbackData = getPostbackData(event);
+  const eventKey = getEventKey(event);
+  const userContent = getUserContent(eventType, event);
 
-  const claimed = (await client.mutation(api.line.claimEvent, {
-    eventKey: getEventKey(event),
-    lineUserId,
-    sourceType: event.source?.type,
-    eventType,
-    messageText,
-    postbackData,
-    eventTimestamp: event.timestamp,
-  } as never)) as ClaimedLineEvent;
+  let claimed: ClaimedLineEvent;
+  try {
+    claimed = (await client.mutation(api.line.claimEvent, {
+      eventKey,
+      lineUserId,
+      sourceType: event.source?.type,
+      eventType,
+      messageText,
+      postbackData,
+      eventTimestamp: event.timestamp,
+    } as never)) as ClaimedLineEvent;
+  } catch (error) {
+    console.error("LINE webhook failed to claim event", {
+      eventKey,
+      eventType,
+      lineUserId,
+      error: error instanceof Error ? error.message : "Unknown Convex failure",
+    });
+    throw error;
+  }
 
   if (claimed.duplicate) return;
 
-  if (!event.replyToken || !claimed.sessionId || eventType === "unsupported") {
-    await client.mutation(api.line.markEventIgnored, {
-      eventId: claimed.eventId,
-      reason: !event.replyToken
-        ? "Missing LINE reply token"
-        : !claimed.sessionId
-          ? "Missing direct LINE user id"
-          : "Unsupported LINE event type",
-    } as never);
-    return;
-  }
+  let lineReplyStatus: number | undefined;
 
   try {
+    if (claimed.sessionId) {
+      await client.mutation(api.line.recordInboundEvent, {
+        eventId: claimed.eventId,
+        sessionId: claimed.sessionId,
+        ...(userContent ? { userContent } : {}),
+      } as never);
+    }
+
+    if (!event.replyToken || !claimed.sessionId || eventType === "unsupported") {
+      await client.mutation(api.line.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: !event.replyToken
+          ? "Missing LINE reply token"
+          : !claimed.sessionId
+            ? "Missing direct LINE user id"
+            : "Unsupported LINE event type",
+      } as never);
+      return;
+    }
+
     const siteUrl = getSiteUrl(request);
     const properties = (await client.query(api.properties.list, {})) as LinePropertySummary[];
     const quickAnswer = resolveLineQuickAnswer({
@@ -245,7 +278,6 @@ async function handleLineEvent({
       properties,
       siteUrl,
     });
-    const userContent = getUserContent(eventType, event);
     const generated = quickAnswer
       ? null
       : await timeout(
@@ -260,7 +292,7 @@ async function handleLineEvent({
         );
     const responseText = quickAnswer?.text ?? generated?.response ?? timeoutFallbackReply().response;
     const quickReplyItems = quickAnswer?.quickReplyItems ?? [];
-    const lineReplyStatus = await replyToLine({
+    lineReplyStatus = await replyToLine({
       accessToken,
       replyToken: event.replyToken,
       messages: [createLineTextMessage(responseText, quickReplyItems)],
@@ -269,16 +301,40 @@ async function handleLineEvent({
     await client.mutation(api.line.completeEvent, {
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
-      userContent,
+      ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
       replyMode: quickAnswer?.mode ?? (generated?.model === "timeout" ? "failed" : "ai"),
       lineReplyStatus,
     } as never);
   } catch (error) {
-    await client.mutation(api.line.markEventFailed, {
-      eventId: claimed.eventId,
-      error: error instanceof Error ? error.message : "Unknown LINE webhook failure",
-    } as never);
+    const failedLineReplyStatus = error instanceof LineReplyError ? error.status : lineReplyStatus;
+    const errorMessage = error instanceof Error ? error.message : "Unknown LINE webhook failure";
+
+    console.error("LINE webhook event failed", {
+      eventKey,
+      eventType,
+      lineUserId,
+      lineReplyStatus: failedLineReplyStatus,
+      error: errorMessage,
+    });
+
+    try {
+      await client.mutation(api.line.markEventFailed, {
+        eventId: claimed.eventId,
+        error: errorMessage,
+        ...(typeof failedLineReplyStatus === "number"
+          ? { lineReplyStatus: failedLineReplyStatus }
+          : {}),
+      } as never);
+    } catch (markFailedError) {
+      console.error("LINE webhook failed to record failure", {
+        eventKey,
+        eventType,
+        lineUserId,
+        error: markFailedError instanceof Error ? markFailedError.message : "Unknown Convex failure",
+      });
+      throw markFailedError;
+    }
   }
 }
 

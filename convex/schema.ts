@@ -277,6 +277,7 @@ export default defineSchema({
 		messageText: v.optional(v.string()),
 		postbackData: v.optional(v.string()),
 		status: v.union(
+			v.literal('received'),
 			v.literal('processing'),
 			v.literal('replied'),
 			v.literal('ignored'),
@@ -293,6 +294,8 @@ export default defineSchema({
 			)
 		),
 		lineReplyStatus: v.optional(v.number()),
+		userMessageId: v.optional(v.id('chatMessages')),
+		assistantMessageId: v.optional(v.id('chatMessages')),
 		error: v.optional(v.string()),
 		eventTimestamp: v.optional(v.number()),
 		processingStartedAt: v.number(),

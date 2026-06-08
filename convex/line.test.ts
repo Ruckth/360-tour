@@ -25,6 +25,12 @@ describe("LINE webhook events", () => {
       messageText: "See prices",
       eventTimestamp: 1_700_000_000_000,
     });
+    await t.mutation(api.line.recordInboundEvent, {
+      eventId: firstClaim.eventId,
+      sessionId: firstClaim.sessionId!,
+      userContent: "See prices",
+    });
+
     const duplicateClaim = await t.mutation(api.line.claimEvent, {
       eventKey: "line-event-1",
       lineUserId: "U123",
@@ -42,7 +48,6 @@ describe("LINE webhook events", () => {
     await t.mutation(api.line.completeEvent, {
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
-      userContent: "See prices",
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
       replyMode: "exact",
       lineReplyStatus: 200,
@@ -65,5 +70,47 @@ describe("LINE webhook events", () => {
       ["user", "See prices"],
       ["assistant", "Current direct booking prices start from ฿4,500/night."],
     ]);
+  });
+
+  it("keeps inbound LINE text visible when replying to LINE fails", async () => {
+    const t = convexTest(schema, modules);
+
+    const claim = await t.mutation(api.line.claimEvent, {
+      eventKey: "line-event-failed-reply",
+      lineUserId: "U999",
+      sourceType: "user",
+      eventType: "message",
+      messageText: "ราคาเท่าไหร่",
+      eventTimestamp: 1_700_000_000_000,
+    });
+
+    await t.mutation(api.line.recordInboundEvent, {
+      eventId: claim.eventId,
+      sessionId: claim.sessionId!,
+      userContent: "ราคาเท่าไหร่",
+    });
+    await t.mutation(api.line.markEventFailed, {
+      eventId: claim.eventId,
+      error: "LINE reply failed (401): invalid token",
+      lineReplyStatus: 401,
+    });
+
+    const messages = await t.query(api.chat.getMessages, {
+      sessionId: claim.sessionId!,
+    });
+    const duplicateClaim = await t.mutation(api.line.claimEvent, {
+      eventKey: "line-event-failed-reply",
+      lineUserId: "U999",
+      sourceType: "user",
+      eventType: "message",
+      messageText: "ราคาเท่าไหร่",
+      eventTimestamp: 1_700_000_000_000,
+    });
+
+    expect(messages.map((message) => [message.role, message.content])).toEqual([
+      ["user", "ราคาเท่าไหร่"],
+    ]);
+    expect(duplicateClaim.duplicate).toBe(false);
+    expect(duplicateClaim.status).toBe("received");
   });
 });

@@ -36,12 +36,19 @@ export const listSessions = query({
 		const selected = filtered.slice(0, limit);
 		const sessions = await Promise.all(
 			selected.map(async (session) => {
-				const [latestMessage, property] = await Promise.all([
+				const [latestMessage, latestLineEvent, property] = await Promise.all([
 					ctx.db
 						.query('chatMessages')
 						.withIndex('by_session', (q) => q.eq('sessionId', session._id))
 						.order('desc')
 						.first(),
+					session.channel === 'line'
+						? ctx.db
+								.query('lineWebhookEvents')
+								.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+								.order('desc')
+								.first()
+						: null,
 					session.propertyId ? ctx.db.get(session.propertyId) : null
 				]);
 
@@ -49,6 +56,7 @@ export const listSessions = query({
 					...session,
 					propertyName: property?.name,
 					latestMessage,
+					latestLineEvent,
 					isActive: isChatSessionActive(session, now)
 				};
 			})
@@ -71,12 +79,19 @@ export const getTranscript = query({
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
-		const [messages, property] = await Promise.all([
+		const [messages, lineEvents, property] = await Promise.all([
 			ctx.db
 				.query('chatMessages')
 				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 				.order('asc')
 				.take(500),
+			session.channel === 'line'
+				? ctx.db
+						.query('lineWebhookEvents')
+						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.order('desc')
+						.take(10)
+				: [],
 			session.propertyId ? ctx.db.get(session.propertyId) : null
 		]);
 
@@ -86,7 +101,8 @@ export const getTranscript = query({
 				propertyName: property?.name,
 				isActive: isChatSessionActive(session, now)
 			},
-			messages
+			messages,
+			lineEvents
 		};
 	}
 });

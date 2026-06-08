@@ -52,6 +52,23 @@ type AdminMessage = {
   timestamp: number;
 };
 
+type LineWebhookStatus = "received" | "processing" | "replied" | "ignored" | "failed";
+type LineReplyMode = "exact" | "ai" | "postback" | "follow" | "ignored" | "failed";
+
+type AdminLineEvent = {
+  _id: Id<"lineWebhookEvents">;
+  eventType: "message" | "follow" | "postback" | "unsupported";
+  messageText?: string;
+  postbackData?: string;
+  status: LineWebhookStatus;
+  replyMode?: LineReplyMode;
+  lineReplyStatus?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+  processedAt?: number;
+};
+
 type AdminSession = {
   _id: Id<"chatSessions">;
   visitorId?: string;
@@ -77,6 +94,7 @@ type AdminSession = {
   lastClosedAt?: number;
   isActive: boolean;
   latestMessage?: AdminMessage;
+  latestLineEvent?: AdminLineEvent | null;
 };
 
 type SessionListResult = {
@@ -87,6 +105,7 @@ type SessionListResult = {
 type TranscriptResult = {
   session: AdminSession;
   messages: AdminMessage[];
+  lineEvents?: AdminLineEvent[];
 };
 
 type AdminSuggestedQuestion = {
@@ -191,6 +210,23 @@ function contactLabel(session: AdminSession) {
     : session.visitorPhone
       ? `WhatsApp: ${session.visitorPhone}`
       : "No contact app";
+}
+
+function lineEventLabel(event?: AdminLineEvent | null) {
+  if (!event) return "";
+  const mode = event.replyMode && event.replyMode !== "failed" ? ` · ${event.replyMode}` : "";
+  if (event.status === "failed") return `LINE failed${event.lineReplyStatus ? ` ${event.lineReplyStatus}` : ""}`;
+  if (event.status === "replied") return `LINE replied${mode}`;
+  if (event.status === "ignored") return "LINE ignored";
+  if (event.status === "processing") return "LINE processing";
+  return "LINE received";
+}
+
+function lineEventTone(event?: AdminLineEvent | null) {
+  if (!event) return "secondary" as const;
+  if (event.status === "replied") return "default" as const;
+  if (event.status === "failed") return "outline" as const;
+  return "secondary" as const;
 }
 
 function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
@@ -595,6 +631,18 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                   <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
                     {session.latestMessage.role}: {truncate(session.latestMessage.content, 118)}
                   </p>
+                ) : session.latestLineEvent ? (
+                  <p
+                    className={cn(
+                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
+                      session.latestLineEvent.status === "failed" && "text-red-300",
+                    )}
+                  >
+                    {lineEventLabel(session.latestLineEvent)}
+                    {session.latestLineEvent.error
+                      ? `: ${truncate(session.latestLineEvent.error, 96)}`
+                      : ""}
+                  </p>
                 ) : (
                   <p className="mt-2 text-xs text-muted-foreground">No messages yet</p>
                 )}
@@ -664,6 +712,8 @@ function AdminSessionDetail({
     );
   }
 
+  const latestLineEvent = transcript?.lineEvents?.[0] ?? selectedSession.latestLineEvent;
+
   return (
     <div
       className={cn(
@@ -720,6 +770,45 @@ function AdminSessionDetail({
             </Badge>
           ) : null}
         </div>
+        {selectedSession.channel === "line" && latestLineEvent ? (
+          <div
+            className={cn(
+              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
+              latestLineEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <MessageCircle className="h-3.5 w-3.5 text-gold" />
+              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
+                LINE delivery
+              </span>
+              <Badge
+                variant={lineEventTone(latestLineEvent)}
+                className={cn(
+                  "rounded-full",
+                  latestLineEvent.status === "failed" && "border-red-500/50 text-red-200",
+                )}
+              >
+                {lineEventLabel(latestLineEvent)}
+              </Badge>
+            </div>
+            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
+              <div>{formatDateTime(latestLineEvent.updatedAt)}</div>
+              <div className="break-words">
+                {latestLineEvent.messageText
+                  ? truncate(latestLineEvent.messageText, 120)
+                  : latestLineEvent.postbackData
+                    ? truncate(latestLineEvent.postbackData, 120)
+                    : latestLineEvent.eventType}
+              </div>
+            </div>
+            {latestLineEvent.error ? (
+              <p className="mt-2 break-words leading-5 text-red-200">
+                {truncate(latestLineEvent.error, 260)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
             <MapPin className="h-3.5 w-3.5" />
@@ -790,7 +879,9 @@ function AdminSessionDetail({
           ))}
           {!loadingTranscript && transcript?.messages.length === 0 ? (
             <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
-              This visitor opened chat but has not sent a message yet.
+              {latestLineEvent
+                ? `No transcript message is stored yet. Latest LINE event: ${lineEventLabel(latestLineEvent)}.`
+                : "This visitor opened chat but has not sent a message yet."}
             </div>
           ) : null}
         </div>
