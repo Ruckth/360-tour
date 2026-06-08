@@ -1,48 +1,62 @@
-import { action } from './_generated/server';
+import { action, type ActionCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
 import { callAI, classifyComplexity } from './lib/chatLlm';
 import type { ChatMessage } from './lib/chatLlm';
 import { TOOLS, executeTool } from './lib/chatTools';
 import { getFallbackResponse } from './lib/chatFallback';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
+const chatChannelValidator = v.union(v.literal('web'), v.literal('line'));
 
-export const respond = action({
-	args: {
-		sessionId: v.id('chatSessions'),
-		userMessage: v.string(),
-		propertySlug: v.optional(v.string()),
-		locale: v.optional(v.string()),
-		actionHint: v.optional(chatActionValidator)
-	},
-	handler: async (ctx, args) => {
-		const session = await ctx.runQuery(api.chat.getSession, {
-			sessionId: args.sessionId
-		});
-		if (!session) throw new Error('Session not found');
+type GenerateConciergeReplyArgs = {
+	sessionId: Id<'chatSessions'>;
+	userMessage: string;
+	propertySlug?: string;
+	locale?: string;
+	channel?: 'web' | 'line';
+	siteUrl?: string;
+};
 
-		const userMessageId: Id<'chatMessages'> = await ctx.runMutation(api.chat.addMessage, {
-			sessionId: args.sessionId,
-			role: 'user',
-			content: args.userMessage
-		});
+function normalizeSiteUrl(siteUrl?: string) {
+	const trimmed = siteUrl?.trim().replace(/\/+$/, '');
+	return trimmed || undefined;
+}
 
-		const properties = await ctx.runQuery(api.properties.list, {});
+function lineChannelGuidance(siteUrl?: string) {
+	const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
+	return `
+LINE CHANNEL:
+- The guest is messaging through LINE, not the website chat widget.
+- Reply as a short plain-text LINE message.
+- Do not mention a booking card, buttons below the chat, or UI that only exists on the website.
+- If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
+- For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
+- Keep LINE responses under 120 words unless the guest explicitly asks for detail.`;
+}
 
-		const propertyContext = properties
-			.map(
-				(p) =>
-					`- ${p.name} (slug: ${p.slug}): ${p.tagline}. ฿${p.pricePerNight}/night, ${p.maxGuests} guests max, ${p.bedrooms} bed, ${p.bathrooms} bath, ${p.area}m². Amenities: ${p.amenities.join(', ')}`
-			)
-			.join('\n');
+async function generateConciergeReply(
+	ctx: ActionCtx,
+	args: GenerateConciergeReplyArgs,
+	session: Doc<'chatSessions'>
+): Promise<{ response: string; model: string }> {
+	const properties: Doc<'properties'>[] = await ctx.runQuery(api.properties.list, {});
 
-		const currentProperty = args.propertySlug
-			? properties.find((p) => p.slug === args.propertySlug) ?? null
-			: null;
+	const propertyContext = properties
+		.map(
+			(p) =>
+				`- ${p.name} (slug: ${p.slug}): ${p.tagline}. ฿${p.pricePerNight}/night, ${p.maxGuests} guests max, ${p.bedrooms} bed, ${p.bathrooms} bath, ${p.area}m². Amenities: ${p.amenities.join(', ')}`
+		)
+		.join('\n');
 
-		const systemPrompt = `You are a helpful, friendly AI concierge for Auralis Cove Retreat, a boutique luxury villa resort in Koh Samui, Thailand. You help guests find the perfect villa and answer questions about pricing and availability.
+	const effectivePropertySlug = args.propertySlug ?? session.propertySlug;
+	const currentProperty = effectivePropertySlug
+		? properties.find((p) => p.slug === effectivePropertySlug) ?? null
+		: null;
+	const channel = args.channel ?? session.channel;
+
+	const systemPrompt = `You are a helpful, friendly AI concierge for Auralis Cove Retreat, a boutique luxury villa resort in Koh Samui, Thailand. You help guests find the perfect villa and answer questions about pricing and availability.
 
 PROPERTIES:
 ${propertyContext}
@@ -67,90 +81,130 @@ STYLE:
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
 - If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under 150 words unless detailed info is requested`;
+- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}`;
 
-		const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
+	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
-		const recentHistory = await ctx.runQuery(internal.chat.getRecentMessages, {
-			sessionId: args.sessionId,
-			limit: 10
+	const recentHistory = await ctx.runQuery(internal.chat.getRecentMessages, {
+		sessionId: args.sessionId,
+		limit: 10
+	});
+	for (const msg of recentHistory) {
+		apiMessages.push({ role: msg.role, content: msg.content });
+	}
+	const lastHistoryMessage = recentHistory[recentHistory.length - 1];
+	if (lastHistoryMessage?.role !== 'user' || lastHistoryMessage.content !== args.userMessage) {
+		apiMessages.push({ role: 'user', content: args.userMessage });
+	}
+
+	const complexity = classifyComplexity(args.userMessage);
+
+	const apiKey = process.env.AI_API_KEY;
+	const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
+	const simpleModel = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+	const complexModel = process.env.AI_COMPLEX_MODEL || 'grok-4.3';
+
+	if (!apiKey) {
+		const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale);
+		return { response: fallbackResponse, model: 'fallback' };
+	}
+
+	const selectedModel = complexity === 'simple' ? simpleModel : complexModel;
+
+	let response = await callAI(apiBase, apiKey, selectedModel, apiMessages, TOOLS);
+
+	let maxToolRounds = 3;
+	while (response.tool_calls && response.tool_calls.length > 0 && maxToolRounds > 0) {
+		maxToolRounds--;
+
+		apiMessages.push({
+			role: 'assistant',
+			content: response.content,
+			tool_calls: response.tool_calls
 		});
-		for (const msg of recentHistory) {
-			apiMessages.push({ role: msg.role, content: msg.content });
-		}
 
-		const complexity = classifyComplexity(args.userMessage);
-
-		const apiKey = process.env.AI_API_KEY;
-		const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-		const simpleModel = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
-		const complexModel = process.env.AI_COMPLEX_MODEL || 'grok-4.3';
-
-		if (!apiKey) {
-			const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale);
-			await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
-				sessionId: args.sessionId,
-				content: fallbackResponse,
-				...(args.actionHint ? { action: args.actionHint } : {}),
-				locale: args.locale,
-				propertySlug: args.propertySlug,
-				replyToMessageId: userMessageId
-			});
-			return { response: fallbackResponse, model: 'fallback' };
-		}
-
-		const selectedModel = complexity === 'simple' ? simpleModel : complexModel;
-
-		let response = await callAI(apiBase, apiKey, selectedModel, apiMessages, TOOLS);
-
-		let maxToolRounds = 3;
-		while (response.tool_calls && response.tool_calls.length > 0 && maxToolRounds > 0) {
-			maxToolRounds--;
-
-			apiMessages.push({
-				role: 'assistant',
-				content: response.content,
-				tool_calls: response.tool_calls
-			});
-
-			for (const toolCall of response.tool_calls) {
-				const fnName = toolCall.function.name;
-				let fnArgs: Record<string, unknown>;
-				try {
-					fnArgs = JSON.parse(toolCall.function.arguments);
-				} catch {
-					fnArgs = {};
-				}
-
-				let toolResult: string;
-				try {
-					toolResult = await executeTool(ctx, fnName, fnArgs, properties);
-				} catch (e) {
-					toolResult = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
-				}
-
-				apiMessages.push({
-					role: 'tool',
-					content: toolResult,
-					tool_call_id: toolCall.id
-				});
+		for (const toolCall of response.tool_calls) {
+			const fnName = toolCall.function.name;
+			let fnArgs: Record<string, unknown>;
+			try {
+				fnArgs = JSON.parse(toolCall.function.arguments);
+			} catch {
+				fnArgs = {};
 			}
 
-			response = await callAI(apiBase, apiKey, selectedModel, apiMessages, TOOLS);
+			let toolResult: string;
+			try {
+				toolResult = await executeTool(ctx, fnName, fnArgs, properties);
+			} catch (e) {
+				toolResult = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
+			}
+
+			apiMessages.push({
+				role: 'tool',
+				content: toolResult,
+				tool_call_id: toolCall.id
+			});
 		}
 
-		const assistantMessage =
-			response.content || "I'm sorry, I couldn't process that. Please try again.";
+		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, TOOLS);
+	}
+
+	return {
+		response: response.content || "I'm sorry, I couldn't process that. Please try again.",
+		model: selectedModel
+	};
+}
+
+export const generateReply = action({
+	args: {
+		sessionId: v.id('chatSessions'),
+		userMessage: v.string(),
+		propertySlug: v.optional(v.string()),
+		locale: v.optional(v.string()),
+		channel: v.optional(chatChannelValidator),
+		siteUrl: v.optional(v.string())
+	},
+	handler: async (ctx, args): Promise<{ response: string; model: string }> => {
+		const session: Doc<'chatSessions'> | null = await ctx.runQuery(api.chat.getSession, {
+			sessionId: args.sessionId
+		});
+		if (!session) throw new Error('Session not found');
+
+		return await generateConciergeReply(ctx, args, session);
+	}
+});
+
+export const respond = action({
+	args: {
+		sessionId: v.id('chatSessions'),
+		userMessage: v.string(),
+		propertySlug: v.optional(v.string()),
+		locale: v.optional(v.string()),
+		actionHint: v.optional(chatActionValidator)
+	},
+	handler: async (ctx, args) => {
+		const session = await ctx.runQuery(api.chat.getSession, {
+			sessionId: args.sessionId
+		});
+		if (!session) throw new Error('Session not found');
+
+		const userMessageId: Id<'chatMessages'> = await ctx.runMutation(api.chat.addMessage, {
+			sessionId: args.sessionId,
+			role: 'user',
+			content: args.userMessage
+		});
+
+		const result = await generateConciergeReply(ctx, args, session);
 
 		await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 			sessionId: args.sessionId,
-			content: assistantMessage,
+			content: result.response,
 			...(args.actionHint ? { action: args.actionHint } : {}),
 			locale: args.locale,
 			propertySlug: args.propertySlug,
 			replyToMessageId: userMessageId
 		});
 
-		return { response: assistantMessage, model: selectedModel };
+		return result;
 	}
 });

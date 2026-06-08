@@ -16,6 +16,7 @@ import type * as chatAi from "../chatAi.js";
 import type * as chatSuggestions from "../chatSuggestions.js";
 import type * as emails from "../emails.js";
 import type * as leads from "../leads.js";
+import type * as line from "../line.js";
 import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_availabilityWrites from "../lib/availabilityWrites.js";
 import type * as lib_chatFallback from "../lib/chatFallback.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   chatSuggestions: typeof chatSuggestions;
   emails: typeof emails;
   leads: typeof leads;
+  line: typeof line;
   "lib/adminAuth": typeof lib_adminAuth;
   "lib/availabilityWrites": typeof lib_availabilityWrites;
   "lib/chatFallback": typeof lib_chatFallback;

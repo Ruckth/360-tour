@@ -11,6 +11,7 @@ function handleRequest(request: Request & { nextUrl: URL }) {
   const { pathname } = request.nextUrl;
 
   if (
+    pathname.startsWith("/api") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/__clerk") ||
     pathname.startsWith("/sign-in") ||

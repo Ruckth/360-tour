@@ -263,6 +263,47 @@ export default defineSchema({
 		.index('by_token', ['token'])
 		.index('by_expires_at', ['expiresAt']),
 
+	lineWebhookEvents: defineTable({
+		eventKey: v.string(),
+		sessionId: v.optional(v.id('chatSessions')),
+		lineUserId: v.optional(v.string()),
+		sourceType: v.optional(v.string()),
+		eventType: v.union(
+			v.literal('message'),
+			v.literal('follow'),
+			v.literal('postback'),
+			v.literal('unsupported')
+		),
+		messageText: v.optional(v.string()),
+		postbackData: v.optional(v.string()),
+		status: v.union(
+			v.literal('processing'),
+			v.literal('replied'),
+			v.literal('ignored'),
+			v.literal('failed')
+		),
+		replyMode: v.optional(
+			v.union(
+				v.literal('exact'),
+				v.literal('ai'),
+				v.literal('postback'),
+				v.literal('follow'),
+				v.literal('ignored'),
+				v.literal('failed')
+			)
+		),
+		lineReplyStatus: v.optional(v.number()),
+		error: v.optional(v.string()),
+		eventTimestamp: v.optional(v.number()),
+		processingStartedAt: v.number(),
+		processedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_event_key', ['eventKey'])
+		.index('by_session', ['sessionId'])
+		.index('by_status_and_created_at', ['status', 'createdAt']),
+
 	chatSuggestedQuestions: defineTable({
 		sessionId: v.id('chatSessions'),
 		assistantMessageId: v.id('chatMessages'),

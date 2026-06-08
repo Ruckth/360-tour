@@ -45,6 +45,9 @@ Set these in Vercel Production and Preview:
 | `CONVEX_DEPLOY_KEY` | Yes | Required by `pnpm vercel-build`. Use the correct Convex deploy key for each Vercel environment. |
 | `NEXT_PUBLIC_CONVEX_URL` | Yes | Usually injected by `convex deploy`; keep a placeholder only if Vercel requires the key before first deploy. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes for admin | Enables Clerk UI and admin sign-in. Do not use `placeholder` in production if admin should work. |
+| `LINE_CHANNEL_SECRET` | Yes for LINE auto-replies | LINE Developers Console -> Messaging API channel -> Basic settings -> Channel secret. |
+| `LINE_CHANNEL_ACCESS_TOKEN` | Yes for LINE auto-replies | LINE Developers Console -> Messaging API channel -> Messaging API -> Channel access token. |
+| `SITE_URL` | Yes for LINE auto-replies | Use `https://tour.helpgueststay.com` in production so LINE replies include production links. |
 
 ### Convex Environment Variables
 
@@ -106,6 +109,26 @@ To enable `/admin`:
 4. Set `ADMIN_EMAILS` in Convex with the exact Clerk account email addresses allowed to access the dashboard.
 
 If Clerk is missing or set to `placeholder`, `/admin` shows the setup state. If Clerk is enabled but Convex cannot validate the token, the admin dashboard shows the Convex auth setup warning.
+
+## LINE Webhook
+
+After deploying production, set the LINE Developers Console webhook URL to:
+
+```txt
+https://tour.helpgueststay.com/api/line/webhook
+```
+
+For local testing without LINE Console, send signed `POST` requests to:
+
+```txt
+http://localhost:3000/api/line/webhook
+```
+
+For LINE Console verification against local development, expose the local app through a tunnel and use:
+
+```txt
+https://<your-ngrok-domain>/api/line/webhook
+```
 
 ## Deployment
 
