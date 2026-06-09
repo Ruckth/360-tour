@@ -25,6 +25,19 @@ type GenerateConciergeReplyArgs = {
 	};
 };
 
+type QuestionBankMatch = {
+	source: 'exact' | 'semantic';
+	suggestionId: Id<'curatedChatQuestions'>;
+	question: string;
+	answer?: string;
+	answerMode: 'static' | 'dynamic';
+	dynamicIntent?: 'availability' | 'pricing' | 'property_details' | 'booking_help' | 'contact';
+	topic: string;
+	score: number;
+	propertySlug?: string;
+	confidence?: number;
+};
+
 function normalizeSiteUrl(siteUrl?: string) {
 	const trimmed = siteUrl?.trim().replace(/\/+$/, '');
 	if (!trimmed) return undefined;
@@ -74,11 +87,61 @@ function questionBankHintPrompt(hint?: GenerateConciergeReplyArgs['questionBankH
 	if (!hint) return '';
 	return `
 QUESTION BANK INTENT:
-- The latest LINE message matched this curated question-bank item: "${hint.question}".
+- The latest visitor message matched this curated question-bank item: "${hint.question}".
 - Source: ${hint.source ?? 'unknown'}.
 - Topic: ${hint.topic}.
 ${hint.dynamicIntent ? `- Dynamic intent: ${hint.dynamicIntent}.` : ''}
 - Use this as intent guidance only; answer with live property/pricing/availability context when relevant.`;
+}
+
+function questionBankHintFromMatch(match: QuestionBankMatch): NonNullable<GenerateConciergeReplyArgs['questionBankHint']> {
+	return {
+		question: match.question,
+		topic: match.topic,
+		...(match.dynamicIntent ? { dynamicIntent: match.dynamicIntent } : {}),
+		source: match.source
+	};
+}
+
+async function resolveQuestionBankMatch(
+	ctx: ActionCtx,
+	args: Pick<GenerateConciergeReplyArgs, 'sessionId' | 'userMessage' | 'locale'>
+) {
+	const messageText = args.userMessage.trim();
+	if (!messageText) return null;
+
+	const exactMatch: QuestionBankMatch | null = await ctx.runQuery(
+		api.chatSuggestions.resolveCuratedExact,
+		{
+			sessionId: args.sessionId,
+			messageText,
+			...(args.locale ? { locale: args.locale } : {})
+		}
+	);
+	if (exactMatch) return exactMatch;
+
+	return await ctx.runAction(api.chatSuggestions.resolveCuratedSemantic, {
+		sessionId: args.sessionId,
+		messageText,
+		...(args.locale ? { locale: args.locale } : {})
+	});
+}
+
+async function markQuestionBankMatchClicked(
+	ctx: ActionCtx,
+	sessionId: Id<'chatSessions'>,
+	match: QuestionBankMatch | null
+) {
+	if (!match) return;
+	await ctx
+		.runMutation(api.chatSuggestions.markClicked, {
+			sessionId,
+			suggestion: {
+				source: 'curated',
+				suggestionId: match.suggestionId
+			}
+		})
+		.catch(() => null);
 }
 
 async function generateConciergeReply(
@@ -270,7 +333,33 @@ export const respond = action({
 			content: args.userMessage
 		});
 
-		const result = await generateConciergeReply(ctx, args, session);
+		const guardrailReply = getResortRealityDisclosure(args.userMessage);
+		let questionBankMatch: QuestionBankMatch | null = null;
+		let result: { response: string; model: string };
+
+		if (guardrailReply) {
+			result = { response: guardrailReply, model: 'guardrail' };
+		} else {
+			questionBankMatch = await resolveQuestionBankMatch(ctx, args);
+			if (
+				questionBankMatch?.answerMode === 'static' &&
+				questionBankMatch.answer?.trim()
+			) {
+				result = {
+					response: questionBankMatch.answer.trim(),
+					model: questionBankMatch.source === 'exact'
+						? 'question_bank_exact'
+						: 'question_bank_semantic'
+				};
+			} else {
+				result = await generateConciergeReply(ctx, {
+					...args,
+					...(questionBankMatch
+						? { questionBankHint: questionBankHintFromMatch(questionBankMatch) }
+						: {})
+				}, session);
+			}
+		}
 
 		await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 			sessionId: args.sessionId,
@@ -280,6 +369,8 @@ export const respond = action({
 			propertySlug: args.propertySlug,
 			replyToMessageId: userMessageId
 		});
+
+		await markQuestionBankMatchClicked(ctx, args.sessionId, questionBankMatch);
 
 		return result;
 	}
