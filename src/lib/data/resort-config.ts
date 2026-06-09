@@ -11,9 +11,9 @@ export const resort = {
 	contactEmail: 'rugbykritsakorn@gmail.com',
 	contactPhone: '+66 95 682 3432',
 	whatsapp: '+66956823432',
-	lineId: undefined,
-	lineUrl: 'https://line.me/ti/p/iSjTWG5aMg',
-	lineQrImage: '/contact/line-qr.jpg',
+	lineId: '@361jhvij',
+	lineUrl: 'https://line.me/R/ti/p/@361jhvij',
+	lineQrImage: 'https://qr-official.line.me/gs/M_361jhvij_BW.png?oat_content=qr',
 	address: '88/8 Moo 3, Bophut, Koh Samui, Surat Thani 84320',
 	amenities: [
 		{ name: 'Infinity Pool', icon: 'waves' },

@@ -1,6 +1,7 @@
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { BookingProperty } from "@/lib/booking/booking";
+import type { ChatActionHint } from "@/lib/chat/action-card";
 
 const CONVEX_TIMEOUT_MS = 8_000;
 const AI_CONVEX_TIMEOUT_MS = 45_000;
@@ -62,13 +63,20 @@ export type ChatTranscriptMessage = {
   sessionId?: string;
   role: "user" | "assistant";
   content: string;
+  action?: ChatActionHint;
   timestamp?: number;
 };
 
 export type RankedChatSuggestion = {
   _id: string;
+  source: "generated" | "curated";
+  suggestionId: string;
   question: string;
   translations?: Record<string, string>;
+  answer?: string;
+  answerTranslations?: Record<string, string>;
+  answerMode?: "static" | "dynamic";
+  dynamicIntent?: "availability" | "pricing" | "property_details" | "booking_help" | "contact";
   topic: string;
   score: number;
   locale: string;
@@ -77,6 +85,8 @@ export type RankedChatSuggestion = {
   shownAt?: number;
   clickedAt?: number;
 };
+
+export type RankedChatSuggestionRef = Pick<RankedChatSuggestion, "source" | "suggestionId">;
 
 export type ReusableChatSession = {
   _id: string;
@@ -245,10 +255,15 @@ export async function claimChatBrowserHandoff(
 
 export async function addChatMessage(
   client: ConvexReactClient,
-  args: { sessionId: string; role: "user" | "assistant"; content: string },
+  args: { sessionId: string; role: "user" | "assistant"; content: string; action?: ChatActionHint },
 ) {
+  const persistedArgs = {
+    sessionId: args.sessionId,
+    role: args.role,
+    content: args.content,
+  };
   return (await withConvexTimeout(
-    client.mutation(api.chat.addMessage, args as never),
+    client.mutation(api.chat.addMessage, persistedArgs as never),
     "Saving chat message",
   )) as string;
 }
@@ -282,7 +297,13 @@ export async function identifyChatVisitor(
 
 export async function askConcierge(
   client: ConvexReactClient,
-  args: { sessionId: string; userMessage: string; propertySlug?: string; locale?: string },
+  args: {
+    sessionId: string;
+    userMessage: string;
+    propertySlug?: string;
+    locale?: string;
+    actionHint?: ChatActionHint;
+  },
 ) {
   return (await withConvexTimeout(
     client.action(api.chatAi.respond, args as never),
@@ -303,7 +324,7 @@ export async function getNextChatSuggestions(
 
 export async function markChatSuggestionsShown(
   client: ConvexReactClient,
-  args: { sessionId: string; suggestionIds: string[] },
+  args: { sessionId: string; suggestions: RankedChatSuggestionRef[] },
 ) {
   return await withConvexTimeout(
     client.mutation(api.chatSuggestions.markShown, args as never),
@@ -313,7 +334,7 @@ export async function markChatSuggestionsShown(
 
 export async function markChatSuggestionClicked(
   client: ConvexReactClient,
-  args: { sessionId: string; suggestionId: string },
+  args: { sessionId: string; suggestion: RankedChatSuggestionRef },
 ) {
   return await withConvexTimeout(
     client.mutation(api.chatSuggestions.markClicked, args as never),

@@ -13,12 +13,544 @@ declare global {
 }
 
 const modules = import.meta.glob("./**/*.ts");
+const adminEmail = "admin@example.com";
 
 async function finishScheduledWork(t: ReturnType<typeof convexTest>) {
   await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 }
 
+function adminTest(t: ReturnType<typeof convexTest>) {
+  return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+}
+
+async function createLineSession(t: ReturnType<typeof convexTest>, propertySlug?: string) {
+  return await t.run(async (ctx) => {
+    return await ctx.db.insert("chatSessions", {
+      channel: "line",
+      visitorId: `line-test-${Date.now()}-${Math.random()}`,
+      ...(propertySlug ? { propertySlug } : {}),
+      lastSeenAt: 1_700_000_000_000,
+      createdAt: 1_700_000_000_000,
+    });
+  });
+}
+
 describe("chatSuggestions.nextForSession", () => {
+  it("lets admins create, update, archive, restore, and delete curated questions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+
+      await expect(
+        t.mutation(api.chatSuggestions.adminCreateCurated, {
+          question: "Can I check availability?",
+          topic: "availability",
+          score: 150,
+        }),
+      ).rejects.toThrow("Not authenticated");
+
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I check availability?",
+        translations: { th: "ตรวจสอบห้องว่างได้ไหม?" },
+        topic: "availability",
+        score: 150,
+      });
+      await expect(
+        admin.mutation(api.chatSuggestions.adminCreateCurated, {
+          question: "Is this place real?",
+          answerMode: "static",
+          topic: "villa_fit",
+        }),
+      ).rejects.toThrow("Answer is required");
+      let rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        question: "Can I check availability?",
+        score: 100,
+        status: "active",
+        createdByAdminEmail: adminEmail,
+      });
+
+      await admin.mutation(api.chatSuggestions.adminUpdateCurated, {
+        questionId,
+        question: "Can I check availability for my dates?",
+        translations: { th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?" },
+        topic: "not-real",
+        score: -12,
+        propertySlug: "pool-villa",
+      });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+      expect(rows[0]).toMatchObject({
+        question: "Can I check availability for my dates?",
+        topic: "villa_fit",
+        score: 0,
+        propertySlug: "pool-villa",
+      });
+
+      await admin.mutation(api.chatSuggestions.adminArchiveCurated, { questionId });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "archived" });
+      expect(rows[0]?.status).toBe("archived");
+
+      await admin.mutation(api.chatSuggestions.adminRestoreCurated, { questionId });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+      expect(rows[0]?.status).toBe("active");
+
+      await expect(
+        admin.mutation(api.chatSuggestions.adminDeleteArchivedCurated, { questionId }),
+      ).rejects.toThrow("Archive the question");
+
+      await admin.mutation(api.chatSuggestions.adminArchiveCurated, { questionId });
+      await admin.mutation(api.chatSuggestions.adminDeleteArchivedCurated, { questionId });
+      rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "all" });
+      expect(rows).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("returns localized static answers and dynamic intent metadata for curated questions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Is this place real?",
+        translations: { th: "ที่พักนี้มีอยู่จริงไหม?" },
+        answer: "Yes. This is a real villa managed by our concierge team.",
+        answerTranslations: {
+          th: "ใช่ ที่พักนี้มีอยู่จริงและดูแลโดยทีมคอนเซียร์จของเรา",
+        },
+        answerMode: "static",
+        topic: "villa_fit",
+        score: 99,
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "What is the direct booking price?",
+        answerMode: "dynamic",
+        dynamicIntent: "pricing",
+        topic: "direct_booking",
+        score: 98,
+      });
+
+      const now = 1_700_000_000_000;
+      const sessionId = await t.run(async (ctx) => {
+        return await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-static-answer",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+      });
+
+      const selected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        locale: "th",
+        limit: 5,
+      });
+
+      expect(selected[0]).toMatchObject({
+        question: "ที่พักนี้มีอยู่จริงไหม?",
+        answer: "ใช่ ที่พักนี้มีอยู่จริงและดูแลโดยทีมคอนเซียร์จของเรา",
+        answerMode: "static",
+        source: "curated",
+      });
+      expect(selected[1]).toMatchObject({
+        question: "What is the direct booking price?",
+        answerMode: "dynamic",
+        dynamicIntent: "pricing",
+        source: "curated",
+      });
+      expect(selected[1]).not.toHaveProperty("answer");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("translates question bank drafts through the admin action", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  questionTranslations: {
+                    th: "ที่พักนี้มีอยู่จริงไหม?",
+                    de: "Ist dieser Ort echt?",
+                  },
+                  answerTranslations: {
+                    th: "ใช่ ที่พักนี้มีอยู่จริง",
+                    de: "Ja. Diese Villa ist echt.",
+                  },
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const translated = await admin.action(api.chatSuggestions.adminTranslateCuratedDraft, {
+        question: "Is this place real?",
+        answer: "Yes. This villa is real.",
+        targetLocales: ["th", "de"],
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://ai.example.test/v1/chat/completions",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(translated).toEqual({
+        questionTranslations: {
+          th: "ที่พักนี้มีอยู่จริงไหม?",
+          de: "Ist dieser Ort echt?",
+        },
+        answerTranslations: {
+          th: "ใช่ ที่พักนี้มีอยู่จริง",
+          de: "Ja. Diese Villa ist echt.",
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("resolves exact LINE question-bank matches by canonical question and translation", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Do you include airport pickup?",
+        translations: { th: "มีรถรับจากสนามบินไหม?" },
+        answer: "Yes. Direct booking includes airport pickup.",
+        answerTranslations: { th: "มีครับ การจองตรงรวมรถรับจากสนามบิน" },
+        answerMode: "static",
+        topic: "direct_booking",
+        score: 88,
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I check live availability?",
+        answerMode: "dynamic",
+        dynamicIntent: "availability",
+        topic: "availability",
+        score: 80,
+      });
+      const sessionId = await createLineSession(t);
+
+      const english = await t.query(api.chatSuggestions.resolveCuratedExact, {
+        sessionId,
+        messageText: "Do you include airport pickup?",
+        locale: "en",
+      });
+      const thai = await t.query(api.chatSuggestions.resolveCuratedExact, {
+        sessionId,
+        messageText: "มีรถรับจากสนามบินไหม?",
+        locale: "th",
+      });
+      const dynamic = await t.query(api.chatSuggestions.resolveCuratedExact, {
+        sessionId,
+        messageText: "Can I check live availability?",
+      });
+
+      expect(english).toMatchObject({
+        source: "exact",
+        suggestionId: questionId,
+        answer: "Yes. Direct booking includes airport pickup.",
+        answerMode: "static",
+      });
+      expect(thai).toMatchObject({
+        question: "มีรถรับจากสนามบินไหม?",
+        answer: "มีครับ การจองตรงรวมรถรับจากสนามบิน",
+      });
+      expect(dynamic).toMatchObject({
+        answerMode: "dynamic",
+        dynamicIntent: "availability",
+      });
+      expect(dynamic).not.toHaveProperty("answer");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("ignores archived LINE question-bank matches", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Do you have breakfast?",
+        answer: "Breakfast can be arranged with the host.",
+        answerMode: "static",
+        topic: "amenities",
+        score: 90,
+      });
+      await admin.mutation(api.chatSuggestions.adminArchiveCurated, { questionId });
+      const sessionId = await createLineSession(t);
+
+      await expect(
+        t.query(api.chatSuggestions.resolveCuratedExact, {
+          sessionId,
+          messageText: "Do you have breakfast?",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("prefers property-scoped LINE question-bank matches over global matches", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Does this villa have a private pool?",
+        answer: "Global pool answer.",
+        answerMode: "static",
+        topic: "amenities",
+        score: 100,
+      });
+      const propertyQuestionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Does this villa have a private pool?",
+        answer: "The Pool Villa has a private infinity pool.",
+        answerMode: "static",
+        topic: "amenities",
+        propertySlug: "pool-villa",
+        score: 10,
+      });
+      const sessionId = await createLineSession(t, "pool-villa");
+
+      const match = await t.query(api.chatSuggestions.resolveCuratedExact, {
+        sessionId,
+        messageText: "Does this villa have a private pool?",
+      });
+
+      expect(match).toMatchObject({
+        suggestionId: propertyQuestionId,
+        answer: "The Pool Villa has a private infinity pool.",
+        propertySlug: "pool-villa",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("accepts high-confidence semantic LINE question-bank matches", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can children stay at the villa?",
+        answer: "Children are welcome, as long as the villa guest limit is respected.",
+        answerMode: "static",
+        topic: "villa_fit",
+        score: 91,
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      matched: true,
+                      questionId,
+                      confidence: 0.93,
+                    }),
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      );
+      const sessionId = await createLineSession(t);
+
+      const match = await t.action(api.chatSuggestions.resolveCuratedSemantic, {
+        sessionId,
+        messageText: "Is it okay to bring a toddler?",
+      });
+
+      expect(match).toMatchObject({
+        source: "semantic",
+        suggestionId: questionId,
+        answer: "Children are welcome, as long as the villa guest limit is respected.",
+        confidence: 0.93,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("rejects low-confidence semantic LINE question-bank matches", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I bring a pet?",
+        answer: "Please message the host before bringing a pet.",
+        answerMode: "static",
+        topic: "amenities",
+        score: 70,
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      matched: true,
+                      questionId,
+                      confidence: 0.5,
+                    }),
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        ),
+      );
+      const sessionId = await createLineSession(t);
+
+      await expect(
+        t.action(api.chatSuggestions.resolveCuratedSemantic, {
+          sessionId,
+          messageText: "Can you help with late checkout?",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("merges active curated questions into public ranked suggestions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I check availability for my dates?",
+        translations: { th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?" },
+        topic: "availability",
+        score: 99,
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I tour the Pool Villa before booking?",
+        topic: "tour",
+        score: 98,
+        propertySlug: "pool-villa",
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Should not show for this property?",
+        topic: "villa_fit",
+        score: 100,
+        propertySlug: "garden-villa",
+      });
+
+      const now = 1_700_000_000_000;
+      const sessionId = await t.run(async (ctx) => {
+        return await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-curated",
+          propertySlug: "pool-villa",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+      });
+
+      const selected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        locale: "th",
+        limit: 5,
+      });
+
+      expect(selected.map((question) => question.question)).toEqual([
+        "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+        "Can I tour the Pool Villa before booking?",
+      ]);
+      expect(selected.map((question) => question.source)).toEqual(["curated", "curated"]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("tracks curated clicks per session without archiving the global question", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const questionId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Can I check availability for my dates?",
+        topic: "availability",
+        score: 99,
+      });
+      const now = 1_700_000_000_000;
+      const [firstSessionId, secondSessionId] = await t.run(async (ctx) => {
+        const first = await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-one",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+        const second = await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-two",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+        return [first, second];
+      });
+
+      await t.mutation(api.chatSuggestions.markClicked, {
+        sessionId: firstSessionId,
+        suggestion: { source: "curated", suggestionId: questionId },
+      });
+
+      const firstSelected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId: firstSessionId,
+        limit: 5,
+      });
+      const secondSelected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId: secondSessionId,
+        limit: 5,
+      });
+      const rows = await admin.query(api.chatSuggestions.adminListCurated, { status: "active" });
+
+      expect(firstSelected.map((question) => question.question)).toEqual([]);
+      expect(secondSelected.map((question) => question.question)).toEqual([
+        "Can I check availability for my dates?",
+      ]);
+      expect(rows[0]?.status).toBe("active");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("excludes previously asked questions and returns the top two scores", async () => {
     const t = convexTest(schema, modules);
     const now = 1_700_000_000_000;

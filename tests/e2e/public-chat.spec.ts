@@ -24,7 +24,7 @@ const CHAT_MESSAGE_CACHE_VERSION = 1;
 const CONTACT_PREFILL_MESSAGE =
   "Hi, I'm interested in having a website built with you. I'm available on [date] at [time]. Could we talk then?";
 const CONTACT_EMAIL = "rugbykritsakorn@gmail.com";
-const LINE_URL = "https://line.me/ti/p/iSjTWG5aMg";
+const LINE_URL = "https://line.me/R/ti/p/@361jhvij";
 
 type SeededChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -70,6 +70,15 @@ async function expectPrefilledEmail(link: Locator) {
   expect(url.pathname).toBe(CONTACT_EMAIL);
   expect(url.searchParams.get("subject")).toBe("Website inquiry");
   expect(url.searchParams.get("body")).toBe(CONTACT_PREFILL_MESSAGE);
+}
+
+async function expectVillaTileImageVisible(tile: Locator) {
+  const image = tile.locator("img").first();
+  await expect(image).toBeVisible();
+  await expect(image).toHaveCSS("opacity", "1");
+  await expect
+    .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
 }
 
 async function installMockVisualViewport(page: Page, userAgent: string) {
@@ -177,29 +186,29 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   const chatFooter = page.getByTestId("chat-footer");
 
   await expect(
-    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+    chatMessages.getByRole("button", { name: /Can I check my dates/i }),
   ).toBeVisible();
   await expect(
-    chatFooter.getByRole("button", { name: /Which villa is best for a couple/i }),
+    chatFooter.getByRole("button", { name: /Can I check my dates/i }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Which villa is best for a couple/i }).click();
-  await expect(page.getByText(/The Mossbell Garden Suite is the quietest couples/i)).toBeVisible();
+  await page.getByRole("button", { name: /How many guests can each villa sleep/i }).click();
+  await expect(page.getByText(/Tideglass Pool Residence sleeps up to 4/i)).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: /What's included when booking direct/i }),
+    chatMessages.getByRole("button", { name: /Which villa is best for a family or group/i }),
   ).toBeVisible();
-  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toBeVisible();
+  await expect(chatMessages.getByRole("button", { name: /Can I check my dates/i })).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+    chatMessages.getByRole("button", { name: /How many guests can each villa sleep/i }),
   ).toHaveCount(0);
 
-  await page.getByPlaceholder("Ask a question").fill("What's included when booking direct?");
+  await page.getByPlaceholder("Ask a question").fill("What do I get when I book direct?");
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByText(/Direct booking saves around 15%/i)).toBeVisible();
+  await expect(page.getByText(/Direct booking saves about 15%/i)).toBeVisible();
   await expect(page.getByTestId("chat-booking-card")).toBeVisible();
-  await expect(chatMessages.getByRole("button", { name: /Can I see the villa in 360/i })).toBeVisible();
+  await expect(chatMessages.getByRole("button", { name: /What will my stay cost/i })).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+    chatMessages.getByRole("button", { name: /Can I check my dates/i }),
   ).toBeVisible();
 
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
@@ -215,7 +224,7 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   await expect(page.getByText("Do you have airport pickup?")).toHaveCount(0);
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: /Which villa is best for a couple/i }),
+    chatMessages.getByRole("button", { name: /Can I check my dates/i }),
   ).toBeVisible();
 
   await page.getByText("Share contact details").click();
@@ -283,20 +292,20 @@ test("localized mobile chat trigger keeps the locale on the chat page", async ({
 test("localized chat page keeps cached messages and updates suggestion language", async ({ page }) => {
   const sessionId = "cached-locale-session";
   await seedChatMessageCache(page, sessionId, [
-    { role: "user", content: "What's included when booking direct?" },
+    { role: "user", content: "What do I get when I book direct?" },
     {
       role: "assistant",
       content:
-        "Direct booking saves around 15% versus OTA pricing and keeps support with the host.",
+        "Direct booking saves about 15% versus OTA pricing and keeps support with the host.",
     },
   ]);
 
   await page.goto("/th/chat?continueInApp=1");
 
-  await expect(page.getByText("What's included when booking direct?")).toBeVisible();
-  await expect(page.getByText(/Direct booking saves around 15%/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "วิลล่าไหนเหมาะกับคู่รักที่สุด?" })).toBeVisible();
+  await expect(page.getByText("What do I get when I book direct?")).toBeVisible();
+  await expect(page.getByText(/Direct booking saves about 15%/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "พักทั้งหมดประมาณเท่าไหร่?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" })).toBeVisible();
 });
 
 test("mobile chat page restores cached messages and keeps the first new send", async ({ page }) => {
@@ -345,11 +354,21 @@ test("restart chat clears cached mobile messages", async ({ page }) => {
 
   await expect(page.getByText("Cached restart question")).toBeVisible();
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  const chatMessages = page.getByTestId("chat-messages");
 
   await expect(page.getByText("Cached restart question")).toHaveCount(0);
   await expect(page.getByText("Cached restart answer")).toHaveCount(0);
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await expect(page.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(6);
+
+  await chatMessages.evaluate((node) => {
+    const element = node as HTMLElement;
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(page.getByText("Cached restart question")).toHaveCount(0);
+  await expect(page.getByText("Cached restart answer")).toHaveCount(0);
+
   await expect
     .poll(async () =>
       page.evaluate(
@@ -360,8 +379,25 @@ test("restart chat clears cached mobile messages", async ({ page }) => {
     )
     .toBeNull();
   await expect
-    .poll(async () => page.evaluate((sessionKey) => window.localStorage.getItem(sessionKey), CHAT_SESSION_STORAGE_KEY))
-    .toBeNull();
+    .poll(async () =>
+      page.evaluate((sessionKey) => window.localStorage.getItem(sessionKey), CHAT_SESSION_STORAGE_KEY),
+    )
+    .not.toBe(sessionId);
+
+  const newSessionCache = await page.evaluate(
+    ({ cachePrefix, seededSessionId, sessionKey }) => {
+      const nextSessionId = window.localStorage.getItem(sessionKey);
+      if (!nextSessionId || nextSessionId === seededSessionId) return "";
+      return window.localStorage.getItem(`${cachePrefix}${nextSessionId}`) ?? "";
+    },
+    {
+      cachePrefix: CHAT_MESSAGE_CACHE_PREFIX,
+      seededSessionId: sessionId,
+      sessionKey: CHAT_SESSION_STORAGE_KEY,
+    },
+  );
+  expect(newSessionCache).not.toContain("Cached restart question");
+  expect(newSessionCache).not.toContain("Cached restart answer");
 });
 
 test("mobile chat trigger stays in the same position on booking and home", async ({ page }) => {
@@ -845,6 +881,67 @@ test("thai booking prompt asks only for missing fields and shows villa cards", a
   await expect(bookingCard.getByTestId("chat-villa-option-penthouse")).toBeVisible();
 });
 
+test("thai availability suggestion shows the booking card and keeps it attached", async ({ page }) => {
+  await page.goto("/th");
+
+  await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
+  await page.getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" }).click();
+
+  const bookingCard = page.getByTestId("chat-booking-card");
+  await expect(bookingCard).toBeVisible();
+  await expect(page.getByTestId("chat-tour-card")).toHaveCount(0);
+  await expect(page.getByText(/เลือกวิลล่า วันเช็กอิน และวันเช็กเอาต์/)).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-villa-selector")).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-booking-check-in")).toBeVisible();
+  await expect(bookingCard.getByTestId("chat-booking-check-out")).toBeVisible();
+  await expect(bookingCard.getByRole("button", { name: "จอง" })).toBeVisible();
+
+  await page.getByPlaceholder("พิมพ์คำถาม").fill("ขอข้อมูลเพิ่มเติม");
+  await page.getByRole("button", { name: "ส่งข้อความ" }).click();
+
+  await expect(page.getByText("ขอข้อมูลเพิ่มเติม")).toBeVisible();
+  await expect(page.getByTestId("chat-booking-card")).toHaveCount(1);
+  await expect(bookingCard).toBeVisible();
+});
+
+test("thai 360 chat shows a distinct villa tour card with detail links", async ({ page }) => {
+  await page.goto("/th");
+
+  await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
+  await page.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" }).click();
+
+  const tourCard = page.getByTestId("chat-tour-card");
+  await expect(tourCard).toBeVisible();
+  await expect(page.getByTestId("chat-booking-card")).toHaveCount(0);
+  await expect(tourCard.getByTestId("chat-booking-check-in")).toHaveCount(0);
+  await expect(tourCard.getByTestId("chat-booking-check-out")).toHaveCount(0);
+  await expect(tourCard.getByRole("button", { name: "จอง" })).toHaveCount(0);
+  await expectVillaTileImageVisible(tourCard.getByTestId("chat-tour-villa-option-pool-villa"));
+
+  const gardenTourOption = tourCard.getByTestId("chat-tour-villa-option-garden-suite");
+  await page.waitForTimeout(1000);
+  await gardenTourOption.click();
+  await page.waitForTimeout(250);
+  await expect(page).toHaveURL(
+    (url) => url.pathname === "/th/rooms/garden-suite" && url.search === "",
+  );
+});
+
+test("chat action cards stay attached after a newer message", async ({ page }) => {
+  await page.goto("/th");
+
+  await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
+  await page.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" }).click();
+  await expect(page.getByTestId("chat-tour-card")).toBeVisible();
+
+  await page.getByPlaceholder("พิมพ์คำถาม").fill("ขอข้อมูลเพิ่มเติม");
+  await page.getByRole("button", { name: "ส่งข้อความ" }).click();
+
+  await expect(page.getByText("ขอข้อมูลเพิ่มเติม")).toBeVisible();
+  await expect(page.getByTestId("chat-tour-card")).toHaveCount(1);
+  await expect(page.getByTestId("chat-tour-card")).toBeVisible();
+});
+
 test("english booking chat lets visitors choose a missing villa before booking", async ({ page }) => {
   const checkIn = "2026-10-30";
   const checkOut = "2026-11-03";
@@ -906,6 +1003,7 @@ test("mobile booking calendars open cleanly from the chat card", async ({ page }
   ).toHaveCount(0);
 
   const poolCard = bookingCard.getByTestId("chat-villa-option-pool-villa");
+  await expectVillaTileImageVisible(poolCard);
   const guestBadge = poolCard.getByText(/Up to 4 guests/);
   const price = bookingCard.getByTestId("chat-villa-price-pool-villa");
   const guestBox = await guestBadge.boundingBox();
@@ -939,28 +1037,29 @@ test("thai chat initializes with six question chips before regular chat", async 
   await expect(initialPromptGroup.getByText("ถามได้เลย")).toBeVisible();
   await expect(initialSuggestions.getByRole("button")).toHaveCount(6);
   await expect(initialSuggestions).toHaveCSS("justify-content", "center");
-  await expect(initialSuggestions.getByRole("button", { name: "เช็กห้องว่างตามวันที่ได้ไหม?" })).toBeVisible();
-  await expect(initialSuggestions.getByRole("button", { name: "พักได้สบายกี่คน?" })).toBeVisible();
+  await expect(initialSuggestions.getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" })).toBeVisible();
+  await expect(initialSuggestions.getByRole("button", { name: "พักทั้งหมดประมาณเท่าไหร่?" })).toBeVisible();
+  await expect(initialSuggestions.getByRole("button", { name: "แต่ละวิลล่าพักได้กี่คน?" })).toBeVisible();
   await expect(
-    initialSuggestions.getByRole("button", { name: "ติดต่อเจ้าของที่พักโดยตรงอย่างไร?" }),
+    initialSuggestions.getByRole("button", { name: "ติดต่อเจ้าของที่พักได้ทางไหน?" }),
   ).toBeVisible();
   const firstInitialChipBox = await initialSuggestions
-    .getByRole("button", { name: "วิลล่าไหนเหมาะกับคู่รักที่สุด?" })
+    .getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" })
     .boundingBox();
   expect(firstInitialChipBox).not.toBeNull();
   expect(firstInitialChipBox!.height).toBeGreaterThanOrEqual(44);
 
-  await initialSuggestions.getByRole("button", { name: "วิลล่าไหนเหมาะกับคู่รักที่สุด?" }).click();
-  await expect(chatMessages.getByText("วิลล่าไหนเหมาะกับคู่รักที่สุด?")).toBeVisible();
-  await expect(chatMessages.getByText(/Mossbell Garden Suite เงียบ/)).toBeVisible();
+  await initialSuggestions.getByRole("button", { name: "แต่ละวิลล่าพักได้กี่คน?" }).click();
+  await expect(chatMessages.getByText("แต่ละวิลล่าพักได้กี่คน?")).toBeVisible();
+  await expect(chatMessages.getByText(/Tideglass Pool Residence พักได้สูงสุด 4 คน/)).toBeVisible();
   await expect(chatMessages.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(2);
   await expect(
-    chatMessages.getByRole("button", { name: "จองตรงได้อะไรบ้าง?" }),
+    chatMessages.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" }),
   ).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: "ดูวิลล่าแบบ 360° ได้ไหม?" }),
+    chatMessages.getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" }),
   ).toBeVisible();
-  await expect(chatFooter.getByRole("button", { name: "จองตรงได้อะไรบ้าง?" })).toHaveCount(0);
+  await expect(chatFooter.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" })).toHaveCount(0);
 });
 
 test("german chat suggestions float under assistant messages and update", async ({ page }) => {
@@ -971,19 +1070,19 @@ test("german chat suggestions float under assistant messages and update", async 
   const chatFooter = page.getByTestId("chat-footer");
 
   await expect(
-    chatMessages.getByRole("button", { name: "Welche Villa ist am besten für ein Paar?" }),
+    chatMessages.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
   ).toBeVisible();
   await expect(
-    chatFooter.getByRole("button", { name: "Welche Villa ist am besten für ein Paar?" }),
+    chatFooter.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Welche Villa ist am besten für ein Paar?" }).click();
-  await expect(page.getByText(/Mossbell Garden Suite ist der ruhigste Rückzugsort/i)).toBeVisible();
+  await page.getByRole("button", { name: "Welche Vorteile habe ich bei Direktbuchung?" }).click();
+  await expect(page.getByText(/Direktbuchung spart etwa 15%/i)).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: "Was ist bei Direktbuchung enthalten?" }),
+    chatMessages.getByRole("button", { name: "Was kostet mein Aufenthalt?" }),
   ).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: "Kann ich die Villa in 360° sehen?" }),
+    chatMessages.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
   ).toBeVisible();
 });
 

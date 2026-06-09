@@ -8,6 +8,7 @@ import {
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 
 const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
+const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
 
 function createBrowserHandoffToken() {
 	const bytes = new Uint8Array(24);
@@ -134,6 +135,12 @@ export const getReusableSession = query({
 
 		for (const session of sessions) {
 			if (session.channel !== 'web') continue;
+			if (
+				session.lastClosedAt &&
+				(!session.lastOpenedAt || session.lastClosedAt >= session.lastOpenedAt)
+			) {
+				continue;
+			}
 
 			const legacyMessageCount = session.messages?.length ?? 0;
 			if (!isReusableChatMessageCount(legacyMessageCount, messageLimit)) continue;
@@ -263,7 +270,8 @@ export const addMessage = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
-		content: v.string()
+		content: v.string(),
+		action: v.optional(chatActionValidator)
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
@@ -273,6 +281,7 @@ export const addMessage = mutation({
 			sessionId: args.sessionId,
 			role: args.role,
 			content: args.content,
+			...(args.action ? { action: args.action } : {}),
 			timestamp: Date.now()
 		});
 	}
@@ -282,6 +291,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
 		content: v.string(),
+		action: v.optional(chatActionValidator),
 		locale: v.optional(v.string()),
 		propertySlug: v.optional(v.string()),
 		replyToMessageId: v.optional(v.id('chatMessages'))
@@ -294,6 +304,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 			sessionId: args.sessionId,
 			role: 'assistant',
 			content: args.content,
+			...(args.action ? { action: args.action } : {}),
 			timestamp: Date.now()
 		});
 

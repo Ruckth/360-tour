@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { dateToIso, todayIsoLocal } from "@/lib/booking/dates";
-import { Button } from "@/components/ui/button";
+import { LiquidMetalBookButton } from "@/components/home/LiquidMetalBookButton";
 
 const BookingRangePicker = dynamic(
   () => import("@/components/booking/BookingDatePicker").then((mod) => mod.BookingRangePicker),
@@ -64,6 +64,7 @@ export function HomeQuickBooking() {
         onSubmit={submitQuickBooking}
         onFocusCapture={prefetchBooking}
         onPointerEnter={prefetchBooking}
+        data-testid="home-quick-booking-form"
         className="mx-auto grid max-w-5xl gap-3 md:grid-cols-[1fr_auto] md:items-end"
         aria-label={bookingT("directBooking")}
       >
@@ -80,9 +81,9 @@ export function HomeQuickBooking() {
           onRangeChange={() => setError("")}
         />
 
-        <Button type="submit" variant="gold" className="h-12 rounded-xl px-8 md:h-11">
+        <LiquidMetalBookButton type="submit">
           {navT("book")}
-        </Button>
+        </LiquidMetalBookButton>
 
         {error ? (
           <p className="text-sm font-medium text-destructive md:col-span-2" role="alert">

@@ -4,6 +4,7 @@ import { CalendarCheck, CheckCircle2, ChevronsRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
+import { PropertyImage } from "@/components/property/PropertyImage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,22 +20,15 @@ import {
 } from "@/lib/booking/dates";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
+import {
+  getChatVillaBackground,
+  getDemoChatProperties,
+  getLiveChatProperties,
+} from "@/components/chat/chat-villa-data";
 import { resort } from "@/lib/data/resort-config";
-import { getLocalizedProperties, localizePropertyLike } from "@/lib/i18n/public-content";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { getBlockedDatesByProperty, listLiveProperties } from "@/lib/react/convex-api";
 import { cn } from "@/lib/utils";
-
-function getDemoProperties(locale: string): BookingProperty[] {
-  return getLocalizedProperties(locale).map((property) => ({
-    ...property,
-    _id: `demo-${property.id}`,
-    slug: property.id,
-    currency: resort.currency,
-    directDiscountPercent: 15,
-    source: "demo",
-  }));
-}
 
 export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const chatT = useTranslations("Chat");
@@ -43,7 +37,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const villaT = useTranslations("Villa");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
-  const fallbackProperties = useMemo(() => getDemoProperties(locale), [locale]);
+  const fallbackProperties = useMemo(() => getDemoChatProperties(locale), [locale]);
   const convex = useOptionalConvex();
   const today = todayIsoLocal();
   const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
@@ -77,16 +71,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
         ]);
         if (!active) return;
 
-        const liveProperties = rows.map((row) =>
-          localizePropertyLike(
-            {
-              ...row,
-              id: row.slug,
-              source: "live" as const,
-            },
-            locale,
-          ),
-        );
+        const liveProperties = getLiveChatProperties(rows, locale);
         setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
         setBlockedByProperty((blocked ?? {}) as Record<string, string[]>);
       } catch {
@@ -240,38 +225,68 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
                   setSelectedPropertySlug(item.slug);
                   setError("");
                 }}
-                className="min-w-[72%] snap-start text-left outline-none sm:min-w-[32%]"
+                className="group min-w-[72%] snap-start text-left outline-none sm:min-w-[32%]"
               >
                 <Card
                   className={cn(
-                    "h-full rounded-xl p-3 transition hover:border-gold/60 hover:bg-gold/5 focus-within:ring-3 focus-within:ring-gold/25",
+                    "relative h-full min-h-[11.25rem] overflow-hidden rounded-xl p-0 transition focus-within:ring-3 focus-within:ring-gold/25",
                     isSelected
-                      ? "border-gold bg-gold/10 shadow-sm shadow-gold/15 ring-1 ring-gold/40"
-                      : "bg-background/80",
+                      ? "border-gold shadow-sm shadow-gold/20 ring-1 ring-gold/50"
+                      : "border-white/15 bg-background/80 hover:border-gold/60",
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="min-w-0 text-sm font-semibold leading-tight text-foreground">
-                      {item.name}
-                    </span>
-                    {isSelected ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
-                    ) : null}
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                    {item.tagline}
-                  </p>
-                  <div className="mt-2 flex flex-col items-start gap-1.5">
-                    <Badge variant={isSelected ? "gold" : "muted"} className="rounded-full px-2 py-0.5 text-[10px]">
-                      {bookingT("upToGuests", { count: item.maxGuests })}
-                    </Badge>
-                    <span
-                      data-testid={`chat-villa-price-${item.id}`}
-                      className="whitespace-nowrap text-[11px] font-bold text-navy dark:text-gold"
-                    >
-                      {moneyFormatter.format(oneNightQuote.directTotal)}
-                      <span className="font-medium text-muted-foreground"> {villaT("perNightWords")}</span>
-                    </span>
+                  <PropertyImage
+                    src={getChatVillaBackground(item)}
+                    images={item.images}
+                    fallbackImages={[resort.heroImage]}
+                    alt=""
+                    sizes="(min-width: 640px) 16rem, 72vw"
+                    className="absolute inset-0 h-full w-full bg-slate-950"
+                    imgClassName={cn(
+                      "scale-105 brightness-105 transition duration-700",
+                      isSelected ? "blur-[1px] brightness-110" : "group-hover:scale-110",
+                    )}
+                  />
+                  <div
+                    className={
+                      isSelected
+                        ? "absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.06),rgba(2,6,23,0.22)_58%,rgba(2,6,23,0.48))]"
+                        : "absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.14),rgba(2,6,23,0.38)_58%,rgba(2,6,23,0.66))]"
+                    }
+                    aria-hidden="true"
+                  />
+                  <div className="relative z-10 flex h-full min-h-[11.25rem] flex-col justify-between p-3">
+                    <div className={cn(isSelected && "-m-2 rounded-lg bg-slate-950/32 p-2 backdrop-blur-sm")}>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 text-sm font-semibold leading-tight text-white">
+                          {item.name}
+                        </span>
+                        {isSelected ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+                        ) : null}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-white/75">
+                        {item.tagline}
+                      </p>
+                    </div>
+                    <div className={cn("mt-3 flex flex-col items-start gap-1.5", isSelected && "-mx-2 -mb-2 rounded-lg bg-slate-950/32 p-2 backdrop-blur-sm")}>
+                      <Badge
+                        variant={isSelected ? "gold" : "muted"}
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px]",
+                          !isSelected && "border border-white/10 bg-white/15 text-white backdrop-blur-sm",
+                        )}
+                      >
+                        {bookingT("upToGuests", { count: item.maxGuests })}
+                      </Badge>
+                      <span
+                        data-testid={`chat-villa-price-${item.id}`}
+                        className="whitespace-nowrap text-[11px] font-bold text-gold"
+                      >
+                        {moneyFormatter.format(oneNightQuote.directTotal)}
+                        <span className="font-medium text-white/70"> {villaT("perNightWords")}</span>
+                      </span>
+                    </div>
                   </div>
                 </Card>
               </button>

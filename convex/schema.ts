@@ -249,6 +249,7 @@ export default defineSchema({
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
 		content: v.string(),
+		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
 		timestamp: v.number()
 	}).index('by_session', ['sessionId', 'timestamp']),
 
@@ -261,6 +262,52 @@ export default defineSchema({
 	})
 		.index('by_token', ['token'])
 		.index('by_expires_at', ['expiresAt']),
+
+	lineWebhookEvents: defineTable({
+		eventKey: v.string(),
+		sessionId: v.optional(v.id('chatSessions')),
+		lineUserId: v.optional(v.string()),
+		sourceType: v.optional(v.string()),
+		eventType: v.union(
+			v.literal('message'),
+			v.literal('follow'),
+			v.literal('postback'),
+			v.literal('unsupported')
+		),
+		messageText: v.optional(v.string()),
+		postbackData: v.optional(v.string()),
+		status: v.union(
+			v.literal('received'),
+			v.literal('processing'),
+			v.literal('replied'),
+			v.literal('ignored'),
+			v.literal('failed')
+		),
+		replyMode: v.optional(
+			v.union(
+				v.literal('exact'),
+				v.literal('question_bank_exact'),
+				v.literal('question_bank_semantic'),
+				v.literal('ai'),
+				v.literal('postback'),
+				v.literal('follow'),
+				v.literal('ignored'),
+				v.literal('failed')
+			)
+		),
+		lineReplyStatus: v.optional(v.number()),
+		userMessageId: v.optional(v.id('chatMessages')),
+		assistantMessageId: v.optional(v.id('chatMessages')),
+		error: v.optional(v.string()),
+		eventTimestamp: v.optional(v.number()),
+		processingStartedAt: v.number(),
+		processedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_event_key', ['eventKey'])
+		.index('by_session', ['sessionId'])
+		.index('by_status_and_created_at', ['status', 'createdAt']),
 
 	chatSuggestedQuestions: defineTable({
 		sessionId: v.id('chatSessions'),
@@ -283,6 +330,48 @@ export default defineSchema({
 		.index('by_session_and_assistant', ['sessionId', 'assistantMessageId'])
 		.index('by_created_at', ['createdAt'])
 		.index('by_status_and_created_at', ['status', 'createdAt']),
+
+	curatedChatQuestions: defineTable({
+		question: v.string(),
+		normalizedQuestion: v.string(),
+		translations: v.optional(v.record(v.string(), v.string())),
+		answer: v.optional(v.string()),
+		answerTranslations: v.optional(v.record(v.string(), v.string())),
+		answerMode: v.optional(v.union(v.literal('static'), v.literal('dynamic'))),
+		dynamicIntent: v.optional(
+			v.union(
+				v.literal('availability'),
+				v.literal('pricing'),
+				v.literal('property_details'),
+				v.literal('booking_help'),
+				v.literal('contact')
+			)
+		),
+		propertySlug: v.optional(v.string()),
+		topic: v.string(),
+		score: v.number(),
+		status: v.union(v.literal('active'), v.literal('archived')),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		archivedAt: v.optional(v.number()),
+		createdByAdminEmail: v.string(),
+		updatedByAdminEmail: v.string(),
+		archivedByAdminEmail: v.optional(v.string())
+	})
+		.index('by_created_at', ['createdAt'])
+		.index('by_status_and_created_at', ['status', 'createdAt'])
+		.index('by_status_and_score', ['status', 'score'])
+		.index('by_status_and_propertySlug_and_score', ['status', 'propertySlug', 'score']),
+
+	chatQuestionInteractions: defineTable({
+		sessionId: v.id('chatSessions'),
+		questionId: v.id('curatedChatQuestions'),
+		shownAt: v.optional(v.number()),
+		clickedAt: v.optional(v.number()),
+		createdAt: v.number()
+	})
+		.index('by_session', ['sessionId'])
+		.index('by_session_and_question', ['sessionId', 'questionId']),
 
 	propertyKnowledge: defineTable({
 		propertyId: v.id('properties'),

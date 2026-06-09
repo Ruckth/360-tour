@@ -40,9 +40,9 @@ describe("contact link helpers", () => {
     expect(
       buildLineHref({
         lineId: "@legacy",
-        lineUrl: " https://line.me/ti/p/iSjTWG5aMg ",
+        lineUrl: " https://line.me/R/ti/p/@361jhvij ",
       }),
-    ).toBe("https://line.me/ti/p/iSjTWG5aMg");
+    ).toBe("https://line.me/R/ti/p/@361jhvij");
     expect(buildLineHref({ lineId: "@legacy" })).toBe("https://line.me/R/ti/p/%40legacy");
   });
 });

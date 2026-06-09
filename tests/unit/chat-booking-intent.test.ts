@@ -16,6 +16,7 @@ describe("chat booking intent helpers", () => {
     expect(hasChatBookingIntent("Can I book these dates?")).toBe(true);
     expect(hasChatBookingIntent("Tideglass Pool Residence ยังว่างไหม")).toBe(true);
     expect(hasChatBookingIntent("Which villa has the nicest view?")).toBe(false);
+    expect(hasChatBookingIntent("How many guests can stay comfortably?")).toBe(false);
   });
 
   it("parses ISO date ranges", () => {

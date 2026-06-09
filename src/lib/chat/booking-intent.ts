@@ -130,7 +130,6 @@ const BOOKING_KEYWORDS = [
   "check out",
   "dates",
   "nights",
-  "stay",
   "จอง",
   "ว่าง",
   "เช็คอิน",
