@@ -3,9 +3,23 @@ import { v } from 'convex/values';
 import { requireAdmin } from './lib/adminAuth';
 import { isChatSessionActive } from './lib/chatPresence';
 
+const DEFAULT_MESSAGE_FILTER = 'withMessages';
+
+function sessionMatchesMessageFilter(
+	messageFilter: 'withMessages' | 'empty' | 'all',
+	hasMessages: boolean
+) {
+	if (messageFilter === 'all') return true;
+	if (messageFilter === 'empty') return !hasMessages;
+	return hasMessages;
+}
+
 export const listSessions = query({
 	args: {
 		status: v.optional(v.union(v.literal('all'), v.literal('active'), v.literal('inactive'))),
+		messageFilter: v.optional(
+			v.union(v.literal('withMessages'), v.literal('empty'), v.literal('all'))
+		),
 		propertySlug: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		cursor: v.optional(v.number()),
@@ -16,6 +30,7 @@ export const listSessions = query({
 
 		const now = args.now ?? Date.now();
 		const limit = Math.min(Math.max(args.limit ?? 30, 1), 50);
+		const messageFilter = args.messageFilter ?? DEFAULT_MESSAGE_FILTER;
 		const scanLimit = Math.min(limit * 4, 200);
 		const rows = await ctx.db
 			.query('chatSessions')
@@ -25,7 +40,7 @@ export const listSessions = query({
 			.order('desc')
 			.take(scanLimit);
 
-		const filtered = rows.filter((session) => {
+		const candidateSessions = rows.filter((session) => {
 			if (args.propertySlug && session.propertySlug !== args.propertySlug) return false;
 			const active = isChatSessionActive(session, now);
 			if (args.status === 'active') return active;
@@ -33,9 +48,8 @@ export const listSessions = query({
 			return true;
 		});
 
-		const selected = filtered.slice(0, limit);
-		const sessions = await Promise.all(
-			selected.map(async (session) => {
+		const candidates = await Promise.all(
+			candidateSessions.map(async (session) => {
 				const [latestMessage, property] = await Promise.all([
 					ctx.db
 						.query('chatMessages')
@@ -53,6 +67,12 @@ export const listSessions = query({
 				};
 			})
 		);
+
+		const sessions = candidates
+			.filter((session) =>
+				sessionMatchesMessageFilter(messageFilter, Boolean(session.latestMessage))
+			)
+			.slice(0, limit);
 
 		const lastScanned = rows[rows.length - 1];
 		return {
