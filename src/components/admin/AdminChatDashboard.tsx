@@ -24,7 +24,16 @@ import {
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Component, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  Component,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,12 +46,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { defaultLocale, localeLabels, locales, type Locale } from "@/i18n/routing";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
+type SessionMessageFilter = "withMessages" | "empty" | "all";
 type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
@@ -166,6 +182,12 @@ type QuestionBankForm = {
 };
 
 const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
+const messageFilterLabels: Record<SessionMessageFilter, string> = {
+  withMessages: "With messages",
+  empty: "Empty threads",
+  all: "All threads",
+};
+const messageFilterOptions: SessionMessageFilter[] = ["withMessages", "empty", "all"];
 const curatedStatusOptions: CuratedQuestionStatus[] = ["active", "all", "archived"];
 const questionTopics = [
   "villa_fit",
@@ -184,6 +206,10 @@ const dynamicIntentOptions: CuratedDynamicIntent[] = [
   "contact",
 ];
 const PRESENCE_CLOCK_MS = 10_000;
+
+function resetSelection(setSelectedSessionId: (sessionId: Id<"chatSessions"> | null) => void) {
+  setSelectedSessionId(null);
+}
 
 function visitorLabel(session?: AdminSession | null) {
   if (!session) return "Visitor";
@@ -514,13 +540,16 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const isLargeViewport = useMediaQuery("(min-width: 1024px)");
   const [view, setView] = useState<AdminDashboardView>("chats");
   const [status, setStatus] = useState<SessionStatus>("active");
+  const [messageFilter, setMessageFilter] =
+    useState<SessionMessageFilter>("withMessages");
   const [propertySlug, setPropertySlug] = useState("");
   const [selectedSessionId, setSelectedSessionId] =
     useState<Id<"chatSessions"> | null>(null);
   const trimmedPropertySlug = propertySlug.trim();
-  const sessionsResetKey = `${status}:${trimmedPropertySlug}`;
+  const sessionsResetKey = `${status}:${messageFilter}:${trimmedPropertySlug}`;
   const liveSessionsResult = useQuery(api.adminChat.listSessions, {
     status,
+    messageFilter,
     propertySlug: trimmedPropertySlug || undefined,
     limit: 30,
     now,
@@ -609,7 +638,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                   type="button"
                   onClick={() => {
                     setStatus(option);
-                    setSelectedSessionId(null);
+                    resetSelection(setSelectedSessionId);
                   }}
                   className={cn(
                     "flex-1 rounded-md px-3 py-2 text-xs font-semibold capitalize transition",
@@ -622,16 +651,40 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                 </button>
               ))}
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={propertySlug}
-                  onChange={(event) => setPropertySlug(event.target.value)}
+                  onChange={(event) => {
+                    setPropertySlug(event.target.value);
+                    resetSelection(setSelectedSessionId);
+                  }}
                   className="h-10 rounded-lg pl-9"
                   placeholder="Filter by property slug"
                 />
               </div>
+              <Select
+                value={messageFilter}
+                onValueChange={(value) => {
+                  setMessageFilter(value as SessionMessageFilter);
+                  resetSelection(setSelectedSessionId);
+                }}
+              >
+                <SelectTrigger
+                  className="h-10 w-full rounded-lg sm:w-[10.75rem]"
+                  aria-label="Filter chat threads by message state"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {messageFilterOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {messageFilterLabels[option]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -753,6 +806,15 @@ function AdminSessionDetail({
   selectedSession: AdminSession | null;
   transcript?: TranscriptResult;
 }) {
+  const transcriptScrollRef = useRef<HTMLDivElement>(null);
+  const messageCount = transcript?.messages.length ?? 0;
+
+  useLayoutEffect(() => {
+    const node = transcriptScrollRef.current;
+    if (!node || loadingTranscript) return;
+    node.scrollTop = node.scrollHeight;
+  }, [loadingTranscript, messageCount, selectedSession?._id]);
+
   if (!selectedSession) {
     return (
       <div className="grid h-full min-h-[420px] place-items-center p-6 text-center text-muted-foreground">
@@ -901,7 +963,10 @@ function AdminSessionDetail({
         </div>
       </div>
 
-      <div className="min-h-0 overflow-y-auto bg-background/50 p-4">
+      <div
+        ref={transcriptScrollRef}
+        className="min-h-0 overflow-y-auto bg-background/50 p-4"
+      >
         {loadingTranscript ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
