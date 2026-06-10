@@ -129,6 +129,25 @@
 	}
 }
 
+@layer components {
+	.admin-datetime-input {
+		color-scheme: light;
+	}
+
+	.dark .admin-datetime-input {
+		color-scheme: dark;
+	}
+
+	.dark .admin-datetime-input::-webkit-calendar-picker-indicator {
+		filter: invert(1);
+		opacity: 0.75;
+	}
+
+	.dark .admin-datetime-input::-webkit-calendar-picker-indicator:hover {
+		opacity: 1;
+	}
+}
+
 /* Hero center card — slow reveal via clip-path */
 .hero-card-reveal {
 	animation: hero-reveal 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.6s both;

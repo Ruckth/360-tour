@@ -48,7 +48,7 @@ import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
-type EmptyChatFilter = "all" | "empty" | "non_empty";
+type EmptyChatFilter = "all" | "empty";
 type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
@@ -396,13 +396,16 @@ function dateTimeBadgeLabel(value: string) {
 
 function emptyFilterLabel(value: EmptyChatFilter) {
   if (value === "empty") return "Empty only";
-  if (value === "non_empty") return "Non-empty only";
   return "All threads";
 }
 
 function getQuestionForLocale(question: AdminSuggestedQuestion, locale: Locale) {
   if (locale === defaultLocale) return question.question;
-  return question.translations?.[locale]?.trim() || question.question;
+  return question.translations?.[locale]?.trim() || "";
+}
+
+function isMissingSuggestionTranslation(question: AdminSuggestedQuestion, locale: Locale) {
+  return locale !== defaultLocale && !question.translations?.[locale]?.trim();
 }
 
 function getCuratedQuestionForLocale(question: AdminCuratedQuestion, locale: Locale) {
@@ -802,8 +805,8 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       Empty thread
                     </Label>
-                    <div className="grid grid-cols-3 rounded-lg border border-border bg-background p-1">
-                      {(["all", "empty", "non_empty"] satisfies EmptyChatFilter[]).map((option) => (
+                    <div className="grid grid-cols-2 rounded-lg border border-border bg-background p-1">
+                      {(["all", "empty"] satisfies EmptyChatFilter[]).map((option) => (
                         <button
                           key={option}
                           type="button"
@@ -815,7 +818,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                               : "text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
                         >
-                          {option === "all" ? "All" : option === "empty" ? "Empty" : "Non-empty"}
+                          {option === "all" ? "All" : "Empty"}
                         </button>
                       ))}
                     </div>
@@ -830,7 +833,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                         type="datetime-local"
                         value={messageStartAt}
                         onChange={(event) => setMessageStartAt(event.target.value)}
-                        className="h-10 rounded-lg"
+                        className="admin-datetime-input h-10 rounded-lg"
                       />
                     </div>
                     <div className="space-y-2">
@@ -842,7 +845,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                         type="datetime-local"
                         value={messageEndAt}
                         onChange={(event) => setMessageEndAt(event.target.value)}
-                        className="h-10 rounded-lg"
+                        className="admin-datetime-input h-10 rounded-lg"
                       />
                     </div>
                   </div>
@@ -1298,6 +1301,7 @@ function AdminQuestionsView({
   const createAnswerFromUnknown = useAction(api.chatKnowledge.adminCreateAnswerFromUnknown);
   const resolveUnknownWithAnswer = useAction(api.chatKnowledge.adminResolveUnknownWithAnswer);
   const generateSimilarQuestions = useAction(api.chatKnowledge.adminGenerateSimilarQuestions);
+  const backfillThaiSuggestions = useMutation(api.chatSuggestions.adminBackfillThaiGeneratedSuggestions);
   const answerRows = answers ?? [];
   const unknownRows = unknownQuestions ?? [];
   const generatedRows = questions ?? [];
@@ -1467,6 +1471,15 @@ function AdminQuestionsView({
     }
   }
 
+  async function runThaiSuggestionBackfill() {
+    setPendingAction("backfill-thai");
+    try {
+      await backfillThaiSuggestions({ limit: 100 });
+    } finally {
+      setPendingAction("");
+    }
+  }
+
   function answerStatusTone(status: KnowledgeAnswerStatus) {
     if (status === "approved") return "bg-emerald-600 text-white";
     if (status === "archived") return "bg-muted text-foreground";
@@ -1545,21 +1558,37 @@ function AdminQuestionsView({
               </Select>
             ) : null}
             {mode === "generated" ? (
-              <Select
-                value={selectedLocale}
-                onValueChange={(value) => setSelectedLocale(value as Locale)}
-              >
-                <SelectTrigger className="h-10 w-[11rem] rounded-lg" aria-label="Suggested question language">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {locales.map((locale) => (
-                    <SelectItem key={locale} value={locale}>
-                      {localeLabels[locale]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pendingAction === "backfill-thai"}
+                  onClick={() => void runThaiSuggestionBackfill()}
+                >
+                  {pendingAction === "backfill-thai" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4" />
+                  )}
+                  Fill Thai
+                </Button>
+                <Select
+                  value={selectedLocale}
+                  onValueChange={(value) => setSelectedLocale(value as Locale)}
+                >
+                  <SelectTrigger className="h-10 w-[11rem] rounded-lg" aria-label="Suggested question language">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locales.map((locale) => (
+                      <SelectItem key={locale} value={locale}>
+                        {localeLabels[locale]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
             ) : null}
           </div>
         </div>
@@ -1841,32 +1870,42 @@ function AdminQuestionsView({
                     </tr>
                   </thead>
                   <tbody>
-                    {generatedRows.map((question) => (
-                      <tr key={question._id} className="border-b border-border last:border-b-0">
-                        <td className="max-w-[380px] px-4 py-3">
-                          <p className="font-medium text-foreground">
-                            {getQuestionForLocale(question, selectedLocale)}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {truncate(question.currentPath, 72) ||
-                              truncate(question.visitorId, 32) ||
-                              String(question.sessionId).slice(-8)}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-sm text-foreground">{question.score}</td>
-                        <td className="px-4 py-3">
-                          <Badge variant="outline" className="rounded-full">
-                            {question.topic}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {question.propertySlug ?? "General"}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {formatDateTime(question.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
+                    {generatedRows.map((question) => {
+                      const localizedQuestion = getQuestionForLocale(question, selectedLocale);
+                      const missingTranslation = isMissingSuggestionTranslation(question, selectedLocale);
+
+                      return (
+                        <tr key={question._id} className="border-b border-border last:border-b-0">
+                          <td className="max-w-[380px] px-4 py-3">
+                            <p className="font-medium text-foreground">
+                              {localizedQuestion || question.question}
+                            </p>
+                            {missingTranslation ? (
+                              <p className="mt-1 text-xs font-semibold text-amber-300">
+                                Missing {localeLabels[selectedLocale]} translation
+                              </p>
+                            ) : null}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {truncate(question.currentPath, 72) ||
+                                truncate(question.visitorId, 32) ||
+                                String(question.sessionId).slice(-8)}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-sm text-foreground">{question.score}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline" className="rounded-full">
+                              {question.topic}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {question.propertySlug ?? "General"}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {formatDateTime(question.createdAt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2384,59 +2423,69 @@ function LegacyAdminQuestionsView({
                 </tr>
               </thead>
               <tbody>
-                {generatedRows.map((question) => (
-                  <tr key={question._id} className="border-b border-border last:border-b-0">
-                    <td className="max-w-[360px] px-4 py-3">
-                      <p className="font-medium text-foreground">
-                        {getQuestionForLocale(question, selectedLocale)}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {truncate(question.currentPath, 72) ||
-                          truncate(question.visitorId, 32) ||
-                          String(question.sessionId).slice(-8)}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-sm text-foreground">
-                      {question.score}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className="rounded-full">
-                        {question.topic}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{question.locale}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {question.propertySlug ?? "General"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge
-                          className={cn(
-                            "rounded-full",
-                            question.status === "clicked"
-                              ? "bg-emerald-600 text-white"
-                              : "bg-navy text-white",
-                          )}
-                        >
-                          {question.status}
+                {generatedRows.map((question) => {
+                  const localizedQuestion = getQuestionForLocale(question, selectedLocale);
+                  const missingTranslation = isMissingSuggestionTranslation(question, selectedLocale);
+
+                  return (
+                    <tr key={question._id} className="border-b border-border last:border-b-0">
+                      <td className="max-w-[360px] px-4 py-3">
+                        <p className="font-medium text-foreground">
+                          {localizedQuestion || question.question}
+                        </p>
+                        {missingTranslation ? (
+                          <p className="mt-1 text-xs font-semibold text-amber-300">
+                            Missing {localeLabels[selectedLocale]} translation
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {truncate(question.currentPath, 72) ||
+                            truncate(question.visitorId, 32) ||
+                            String(question.sessionId).slice(-8)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-sm text-foreground">
+                        {question.score}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className="rounded-full">
+                          {question.topic}
                         </Badge>
-                        {question.shownAt ? (
-                          <Badge variant="secondary" className="rounded-full">
-                            shown
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{question.locale}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {question.propertySlug ?? "General"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          <Badge
+                            className={cn(
+                              "rounded-full",
+                              question.status === "clicked"
+                                ? "bg-emerald-600 text-white"
+                                : "bg-navy text-white",
+                            )}
+                          >
+                            {question.status}
                           </Badge>
-                        ) : null}
-                        {question.clickedAt ? (
-                          <Badge variant="secondary" className="rounded-full">
-                            clicked
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatDateTime(question.createdAt)}
-                    </td>
-                  </tr>
-                ))}
+                          {question.shownAt ? (
+                            <Badge variant="secondary" className="rounded-full">
+                              shown
+                            </Badge>
+                          ) : null}
+                          {question.clickedAt ? (
+                            <Badge variant="secondary" className="rounded-full">
+                              clicked
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {formatDateTime(question.createdAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

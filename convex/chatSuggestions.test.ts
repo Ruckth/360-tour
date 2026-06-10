@@ -671,6 +671,110 @@ describe("chatSuggestions.nextForSession", () => {
     ]);
   });
 
+  it("stores generated Thai translations without faking missing Thai as English", async () => {
+    const t = convexTest(schema, modules);
+    const now = 1_700_000_000_000;
+    const { sessionId, assistantMessageId } = await t.run(async (ctx) => {
+      const sessionId = await ctx.db.insert("chatSessions", {
+        channel: "web",
+        visitorId: "visitor-generated-thai-storage",
+        lastSeenAt: now,
+        createdAt: now,
+      });
+      const assistantMessageId = await ctx.db.insert("chatMessages", {
+        sessionId,
+        role: "assistant",
+        content: "Direct booking includes host support.",
+        timestamp: now + 1,
+      });
+      return { sessionId, assistantMessageId };
+    });
+
+    await t.mutation(internal.chatSuggestions.storeGenerated, {
+      sessionId,
+      assistantMessageId,
+      locale: "th",
+      candidates: [
+        {
+          question: "Can I check availability for my dates?",
+          translations: { th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?" },
+          topic: "availability",
+          score: 95,
+        },
+        {
+          question: "Can I message the host on WhatsApp?",
+          topic: "contact",
+          score: 80,
+        },
+      ],
+    });
+
+    const rows = await t.run(async (ctx) => {
+      return await ctx.db
+        .query("chatSuggestedQuestions")
+        .withIndex("by_session_and_assistant", (q) =>
+          q.eq("sessionId", sessionId).eq("assistantMessageId", assistantMessageId),
+        )
+        .take(10);
+    });
+
+    expect(rows.find((row) => row.question === "Can I check availability for my dates?")?.translations).toMatchObject({
+      en: "Can I check availability for my dates?",
+      th: "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+    });
+    expect(rows.find((row) => row.question === "Can I message the host on WhatsApp?")?.translations).toEqual({
+      en: "Can I message the host on WhatsApp?",
+    });
+  });
+
+  it("backfills Thai for existing generated fallback suggestions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const now = 1_700_000_000_000;
+      const suggestionId = await t.run(async (ctx) => {
+        const sessionId = await ctx.db.insert("chatSessions", {
+          channel: "web",
+          visitorId: "visitor-generated-thai-backfill",
+          lastSeenAt: now,
+          createdAt: now,
+        });
+        const assistantMessageId = await ctx.db.insert("chatMessages", {
+          sessionId,
+          role: "assistant",
+          content: "Direct booking includes host support.",
+          timestamp: now + 1,
+        });
+        return await ctx.db.insert("chatSuggestedQuestions", {
+          sessionId,
+          assistantMessageId,
+          question: "Can I check availability for my dates?",
+          normalizedQuestion: normalizeSuggestedQuestion("Can I check availability for my dates?"),
+          translations: {
+            en: "Can I check availability for my dates?",
+            th: "Can I check availability for my dates?",
+          },
+          locale: "en",
+          topic: "availability",
+          score: 95,
+          status: "active",
+          createdAt: now + 2,
+        });
+      });
+
+      const result = await admin.mutation(api.chatSuggestions.adminBackfillThaiGeneratedSuggestions, {
+        limit: 20,
+      });
+      const updated = await t.run(async (ctx) => await ctx.db.get(suggestionId));
+
+      expect(result.updated).toBe(1);
+      expect(updated?.translations?.th).toBe("ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("blocks repeats across translated variants and falls back for older rows", async () => {
     const t = convexTest(schema, modules);
     const now = 1_700_000_000_000;
@@ -797,6 +901,44 @@ describe("chatSuggestions.nextForSession", () => {
       expect(selected.map((question) => question.question)).toEqual([
         "Can I check availability for my dates?",
         "Can I message the host on WhatsApp?",
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
+  });
+
+  it("generates Thai fallback suggestions from trusted internal assistant messages", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("AI_API_KEY", "");
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await t.mutation(api.chat.createSession, {
+        channel: "web",
+        visitorId: "visitor-internal-assistant-thai",
+      });
+      const userMessageId = await t.mutation(api.chat.addMessage, {
+        sessionId,
+        role: "user",
+        content: "What's included when booking direct?",
+      });
+
+      await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+        sessionId,
+        content: "Direct booking includes host support and better pricing.",
+        locale: "th",
+        replyToMessageId: userMessageId,
+      });
+      await finishScheduledWork(t);
+
+      const selected = await t.query(api.chatSuggestions.nextForSession, {
+        sessionId,
+        locale: "th",
+        limit: 2,
+      });
+      expect(selected.map((question) => question.question)).toEqual([
+        "ตรวจสอบห้องว่างสำหรับวันที่ของฉันได้ไหม?",
+        "ส่งข้อความหาเจ้าของที่พักทาง WhatsApp ได้ไหม?",
       ]);
     } finally {
       vi.unstubAllEnvs();
