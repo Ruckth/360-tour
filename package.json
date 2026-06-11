@@ -65,6 +65,7 @@
     "react": "^19.2.0",
     "react-day-picker": "^9.11.1",
     "react-dom": "^19.2.0",
+    "react-textarea-autosize": "^8.5.9",
     "regenerator-runtime": "^0.14.1",
     "resend": "^6.10.0",
     "tailwind-merge": "^3.5.0",

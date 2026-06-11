@@ -5,6 +5,7 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { CheckCircle2, Copy, ExternalLink, MessageCircle, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import TextareaAutosize from "react-textarea-autosize";
 import {
   useCallback,
   useEffect,
@@ -695,7 +696,7 @@ function ChatExperience({
   const [browserGateTargetBrowser, setBrowserGateTargetBrowser] =
     useState<ExternalBrowserTarget["browser"]>("browser");
   const [browserGateCopyStatus, setBrowserGateCopyStatus] = useState<"idle" | "copied" | "error">("idle");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   const chatFooterRef = useRef<HTMLDivElement>(null);
   const contactFormRef = useRef<HTMLFormElement>(null);
@@ -2226,16 +2227,22 @@ function ChatExperience({
               </form>
             </details>
             <form
-              className={cn("flex gap-2", hideMainComposer && "hidden md:flex")}
+              className={cn("flex items-end gap-2", hideMainComposer && "hidden md:flex")}
               onSubmit={(event) => {
                 event.preventDefault();
                 sendMessage(input);
               }}
             >
-              <Input
+              <TextareaAutosize
                 ref={inputRef}
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMessage(input);
+                  }
+                }}
                 onPointerDown={() => {
                   keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight();
                 }}
@@ -2243,9 +2250,13 @@ function ChatExperience({
                   focusFooterInput("composer");
                 }}
                 onBlur={clearFooterFocusAfterBlur}
-                className="h-12 min-w-0 flex-1 rounded-2xl border-muted bg-muted/70 px-4 text-base placeholder:text-slate-500 focus-visible:ring-2 dark:placeholder:text-slate-400 md:h-10 md:rounded-lg md:bg-background md:px-3 md:text-sm"
+                minRows={1}
+                maxRows={5}
+                className="max-h-36 min-h-12 min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl border border-muted bg-muted/70 px-4 py-3 text-base leading-6 text-foreground shadow-sm transition placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 dark:placeholder:text-slate-400 md:min-h-10 md:rounded-lg md:bg-background md:px-3 md:py-2 md:text-sm md:leading-5"
                 placeholder={t("askPlaceholder")}
                 enterKeyHint="send"
+                aria-label={t("askPlaceholder")}
+                disabled={chatInputDisabled}
               />
               <Button
                 type="submit"
