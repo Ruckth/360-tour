@@ -11,7 +11,8 @@ const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.l
 const chatChannelValidator = v.union(
 	v.literal('web'),
 	v.literal('line'),
-	v.literal('facebook')
+	v.literal('facebook'),
+	v.literal('whatsapp')
 );
 
 type GenerateConciergeReplyArgs = {
@@ -19,7 +20,7 @@ type GenerateConciergeReplyArgs = {
 	userMessage: string;
 	propertySlug?: string;
 	locale?: string;
-	channel?: 'web' | 'line' | 'facebook';
+	channel?: 'web' | 'line' | 'facebook' | 'whatsapp';
 	siteUrl?: string;
 	questionBankHint?: {
 		question: string;

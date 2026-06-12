@@ -157,6 +157,22 @@ For a quick production verification, this URL should return plain `hello` when t
 https://tour.helpgueststay.com/api/facebook/webhook?hub.mode=subscribe&hub.verify_token=<FACEBOOK_VERIFY_TOKEN>&hub.challenge=hello
 ```
 
+## WhatsApp Webhook
+
+After deploying production, set the Meta Developers WhatsApp webhook to:
+
+```txt
+https://tour.helpgueststay.com/api/whatsapp/webhook
+```
+
+Use the exact Vercel `WHATSAPP_VERIFY_TOKEN` value in Meta's **Verify token** field. Keep **Attach a client certificate to Webhook requests** turned off unless the webhook code is explicitly extended to validate client certificates.
+
+For a quick production verification, this URL should return plain `hello` when the token matches:
+
+```txt
+https://tour.helpgueststay.com/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=<WHATSAPP_VERIFY_TOKEN>&hub.challenge=hello
+```
+
 ## Deployment
 
 Deploy with the Vercel Git integration or with:

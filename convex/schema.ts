@@ -381,6 +381,46 @@ export default defineSchema({
 		.index('by_session', ['sessionId'])
 		.index('by_status_and_created_at', ['status', 'createdAt']),
 
+	whatsappWebhookEvents: defineTable({
+		eventKey: v.string(),
+		sessionId: v.optional(v.id('chatSessions')),
+		whatsappUserId: v.optional(v.string()),
+		phoneNumberId: v.optional(v.string()),
+		eventType: v.union(v.literal('message'), v.literal('unsupported')),
+		messageText: v.optional(v.string()),
+		status: v.union(
+			v.literal('received'),
+			v.literal('processing'),
+			v.literal('replied'),
+			v.literal('ignored'),
+			v.literal('failed')
+		),
+		replyMode: v.optional(
+			v.union(
+				v.literal('exact'),
+				v.literal('approved_exact'),
+				v.literal('question_bank_exact'),
+				v.literal('question_bank_semantic'),
+				v.literal('ai'),
+				v.literal('unknown_fallback'),
+				v.literal('ignored'),
+				v.literal('failed')
+			)
+		),
+		whatsappReplyStatus: v.optional(v.number()),
+		userMessageId: v.optional(v.id('chatMessages')),
+		assistantMessageId: v.optional(v.id('chatMessages')),
+		error: v.optional(v.string()),
+		eventTimestamp: v.optional(v.number()),
+		processingStartedAt: v.number(),
+		processedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_event_key', ['eventKey'])
+		.index('by_session', ['sessionId'])
+		.index('by_status_and_created_at', ['status', 'createdAt']),
+
 	chatSuggestedQuestions: defineTable({
 		sessionId: v.id('chatSessions'),
 		assistantMessageId: v.id('chatMessages'),

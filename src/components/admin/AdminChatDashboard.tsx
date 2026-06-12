@@ -59,7 +59,7 @@ import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
 type EmptyChatFilter = "all" | "empty";
-type SessionChannelFilter = "all" | "web" | "line" | "facebook";
+type SessionChannelFilter = "all" | "web" | "line" | "facebook" | "whatsapp";
 type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
@@ -110,6 +110,19 @@ type AdminFacebookEvent = {
   processedAt?: number;
 };
 
+type AdminWhatsAppEvent = {
+  _id: Id<"whatsappWebhookEvents">;
+  eventType: "message" | "unsupported";
+  messageText?: string;
+  status: LineWebhookStatus;
+  replyMode?: Exclude<LineReplyMode, "follow" | "postback">;
+  whatsappReplyStatus?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+  processedAt?: number;
+};
+
 type AdminSession = {
   _id: Id<"chatSessions">;
   visitorId?: string;
@@ -140,6 +153,7 @@ type AdminSession = {
   latestMessage?: AdminMessage;
   latestLineEvent?: AdminLineEvent | null;
   latestFacebookEvent?: AdminFacebookEvent | null;
+  latestWhatsAppEvent?: AdminWhatsAppEvent | null;
 };
 
 type SessionListResult = {
@@ -153,6 +167,7 @@ type SessionDetailResult = {
   session: AdminSession;
   lineEvents?: AdminLineEvent[];
   facebookEvents?: AdminFacebookEvent[];
+  whatsappEvents?: AdminWhatsAppEvent[];
 };
 
 type TranscriptPaginationResult = {
@@ -335,7 +350,7 @@ function ChannelIcon({
   channel: AdminSession["channel"] | Exclude<SessionChannelFilter, "all">;
   className?: string;
 }) {
-  if (channel === "line" || channel === "facebook") {
+  if (channel === "line" || channel === "facebook" || channel === "whatsapp") {
     return <ContactAppBrandIcon app={channel} className={className} />;
   }
   if (channel === "web") return <Globe2 className={cn("h-4 w-4", className)} aria-hidden="true" />;
@@ -372,6 +387,25 @@ function facebookEventLabel(event?: AdminFacebookEvent | null) {
 }
 
 function facebookEventTone(event?: AdminFacebookEvent | null) {
+  if (!event) return "secondary" as const;
+  if (event.status === "replied") return "default" as const;
+  if (event.status === "failed") return "outline" as const;
+  return "secondary" as const;
+}
+
+function whatsappEventLabel(event?: AdminWhatsAppEvent | null) {
+  if (!event) return "";
+  const mode = event.replyMode && event.replyMode !== "failed" ? ` · ${event.replyMode}` : "";
+  if (event.status === "failed") {
+    return `WhatsApp failed${event.whatsappReplyStatus ? ` ${event.whatsappReplyStatus}` : ""}`;
+  }
+  if (event.status === "replied") return `WhatsApp replied${mode}`;
+  if (event.status === "ignored") return "WhatsApp ignored";
+  if (event.status === "processing") return "WhatsApp processing";
+  return "WhatsApp received";
+}
+
+function whatsappEventTone(event?: AdminWhatsAppEvent | null) {
   if (!event) return "secondary" as const;
   if (event.status === "replied") return "default" as const;
   if (event.status === "failed") return "outline" as const;
@@ -911,8 +945,8 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       Channel
                     </Label>
-                    <div className="grid grid-cols-4 rounded-lg border border-border bg-background p-1">
-                      {(["all", "web", "line", "facebook"] satisfies SessionChannelFilter[]).map((option) => (
+                    <div className="grid grid-cols-5 rounded-lg border border-border bg-background p-1">
+                      {(["all", "web", "line", "facebook", "whatsapp"] satisfies SessionChannelFilter[]).map((option) => (
                         <button
                           key={option}
                           type="button"
@@ -1121,6 +1155,18 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                       ? `: ${truncate(session.latestFacebookEvent.error, 96)}`
                       : ""}
                   </p>
+                ) : session.latestWhatsAppEvent ? (
+                  <p
+                    className={cn(
+                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
+                      session.latestWhatsAppEvent.status === "failed" && "text-red-300",
+                    )}
+                  >
+                    {whatsappEventLabel(session.latestWhatsAppEvent)}
+                    {session.latestWhatsAppEvent.error
+                      ? `: ${truncate(session.latestWhatsAppEvent.error, 96)}`
+                      : ""}
+                  </p>
                 ) : (
                   <p className="mt-2 text-xs text-muted-foreground">No messages yet</p>
                 )}
@@ -1165,6 +1211,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
             facebookEvents={sessionDetail?.facebookEvents}
             lineEvents={sessionDetail?.lineEvents}
+            whatsappEvents={sessionDetail?.whatsappEvents}
             loadOlderMessages={() => transcriptPagination.loadMore(20)}
             loadingTranscript={loadingTranscript}
             loadingOlderMessages={transcriptPagination.status === "LoadingMore"}
@@ -1195,6 +1242,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
             facebookEvents={sessionDetail?.facebookEvents}
             lineEvents={sessionDetail?.lineEvents}
+            whatsappEvents={sessionDetail?.whatsappEvents}
             loadOlderMessages={() => transcriptPagination.loadMore(20)}
             loadingTranscript={loadingTranscript}
             loadingOlderMessages={transcriptPagination.status === "LoadingMore"}
@@ -1215,6 +1263,7 @@ function AdminSessionDetail({
   compact = false,
   facebookEvents,
   lineEvents,
+  whatsappEvents,
   loadOlderMessages,
   loadingTranscript,
   loadingOlderMessages,
@@ -1226,6 +1275,7 @@ function AdminSessionDetail({
   compact?: boolean;
   facebookEvents?: AdminFacebookEvent[];
   lineEvents?: AdminLineEvent[];
+  whatsappEvents?: AdminWhatsAppEvent[];
   loadOlderMessages: () => void;
   loadingTranscript: boolean;
   loadingOlderMessages: boolean;
@@ -1302,8 +1352,12 @@ function AdminSessionDetail({
 
   const latestLineEvent = lineEvents?.[0] ?? selectedSession.latestLineEvent;
   const latestFacebookEvent = facebookEvents?.[0] ?? selectedSession.latestFacebookEvent;
+  const latestWhatsAppEvent = whatsappEvents?.[0] ?? selectedSession.latestWhatsAppEvent;
   const propertyLabel = selectedSession.propertyName ?? selectedSession.propertySlug ?? "General";
-  const showVisitorContext = selectedSession.channel !== "line" && selectedSession.channel !== "facebook";
+  const showVisitorContext =
+    selectedSession.channel !== "line" &&
+    selectedSession.channel !== "facebook" &&
+    selectedSession.channel !== "whatsapp";
 
   return (
     <div
@@ -1470,6 +1524,40 @@ function AdminSessionDetail({
                 </div>
               </details>
             ) : null}
+            {selectedSession.channel === "whatsapp" && latestWhatsAppEvent ? (
+              <details
+                className={cn(
+                  "rounded-lg border border-border bg-background/70 p-3 text-xs",
+                  latestWhatsAppEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
+                )}
+              >
+                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
+                  WhatsApp delivery
+                </summary>
+                <div className="mt-3 space-y-2 text-muted-foreground">
+                  <Badge
+                    variant={whatsappEventTone(latestWhatsAppEvent)}
+                    className={cn(
+                      "rounded-full",
+                      latestWhatsAppEvent.status === "failed" && "border-red-500/50 text-red-200",
+                    )}
+                  >
+                    {whatsappEventLabel(latestWhatsAppEvent)}
+                  </Badge>
+                  <div>{formatDateTime(latestWhatsAppEvent.updatedAt)}</div>
+                  <div className="break-words">
+                    {latestWhatsAppEvent.messageText
+                      ? truncate(latestWhatsAppEvent.messageText, 120)
+                      : latestWhatsAppEvent.eventType}
+                  </div>
+                  {latestWhatsAppEvent.error ? (
+                    <p className="break-words leading-5 text-red-200">
+                      {truncate(latestWhatsAppEvent.error, 260)}
+                    </p>
+                  ) : null}
+                </div>
+              </details>
+            ) : null}
             {showVisitorContext ? (
             <details className="rounded-lg border border-border bg-background/70 p-3 text-xs">
               <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
@@ -1589,6 +1677,43 @@ function AdminSessionDetail({
             {latestFacebookEvent.error ? (
               <p className="mt-2 break-words leading-5 text-red-200">
                 {truncate(latestFacebookEvent.error, 260)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {!compact && selectedSession.channel === "whatsapp" && latestWhatsAppEvent ? (
+          <div
+            className={cn(
+              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
+              latestWhatsAppEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <ContactAppBrandIcon app="whatsapp" className="h-4 w-4" />
+              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
+                WhatsApp delivery
+              </span>
+              <Badge
+                variant={whatsappEventTone(latestWhatsAppEvent)}
+                className={cn(
+                  "rounded-full",
+                  latestWhatsAppEvent.status === "failed" && "border-red-500/50 text-red-200",
+                )}
+              >
+                {whatsappEventLabel(latestWhatsAppEvent)}
+              </Badge>
+            </div>
+            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
+              <div>{formatDateTime(latestWhatsAppEvent.updatedAt)}</div>
+              <div className="break-words">
+                {latestWhatsAppEvent.messageText
+                  ? truncate(latestWhatsAppEvent.messageText, 120)
+                  : latestWhatsAppEvent.eventType}
+              </div>
+            </div>
+            {latestWhatsAppEvent.error ? (
+              <p className="mt-2 break-words leading-5 text-red-200">
+                {truncate(latestWhatsAppEvent.error, 260)}
               </p>
             ) : null}
           </div>

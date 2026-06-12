@@ -281,6 +281,16 @@ describe("adminChat.listSessions", () => {
       latestMessageAt: 1_000,
       adminSortAt: 1_000,
     });
+    await insertAdminSession(t, {
+      visitorName: "WhatsApp guest",
+      visitorPhone: "+66956823432",
+      visitorContactHandle: "66956823432",
+      visitorId: "whatsapp:66956823432",
+      channel: "whatsapp",
+      messageCount: 1,
+      latestMessageAt: 500,
+      adminSortAt: 500,
+    });
 
     const lineResult = await admin.query(api.adminChat.listSessions, {
       status: "all",
@@ -293,10 +303,19 @@ describe("adminChat.listSessions", () => {
       searchQuery: "guest",
       paginationOpts: { numItems: 10, cursor: null },
     });
+    const whatsappResult = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      channel: "whatsapp",
+      searchQuery: "9568",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
 
     expect(lineResult.sessions.map((session) => session.channel)).toEqual(["line"]);
     expect(facebookSearchResult.sessions.map((session) => session.visitorName)).toEqual([
       "Facebook guest",
+    ]);
+    expect(whatsappResult.sessions.map((session) => session.visitorName)).toEqual([
+      "WhatsApp guest",
     ]);
   });
 
@@ -786,5 +805,45 @@ describe("admin chat metadata writes", () => {
       afterInbound?.latestMessageAt ?? 0,
     );
     expect(afterReply?.adminSearchText).toContain("umeta");
+  });
+
+  it("WhatsApp inbound and reply paths update session metadata", async () => {
+    const t = convexTest(schema, modules);
+
+    const claim = await t.mutation(api.whatsapp.claimEvent, {
+      eventKey: "whatsapp-admin-metadata",
+      whatsappUserId: "66956823432",
+      profileName: "WhatsApp Guest",
+      phoneNumberId: "1134040116463992",
+      eventType: "message",
+      messageText: "Can I check in late?",
+      eventTimestamp: 1_700_000_000_000,
+    });
+    const sessionId = claim.sessionId as Id<"chatSessions">;
+
+    await t.mutation(api.whatsapp.recordInboundEvent, {
+      eventId: claim.eventId,
+      sessionId,
+      userContent: "Can I check in late?",
+    });
+    const afterInbound = await t.query(api.chat.getSession, { sessionId });
+
+    await t.mutation(api.whatsapp.completeEvent, {
+      eventId: claim.eventId,
+      sessionId,
+      assistantContent: "Late check-in depends on availability.",
+      replyMode: "unknown_fallback",
+      whatsappReplyStatus: 200,
+    });
+    const afterReply = await t.query(api.chat.getSession, { sessionId });
+
+    expect(afterInbound?.messageCount).toBe(1);
+    expect(afterInbound?.latestMessageAt).toBe(1_700_000_000_000);
+    expect(afterReply?.messageCount).toBe(2);
+    expect(afterReply?.latestMessageAt).toBeGreaterThanOrEqual(
+      afterInbound?.latestMessageAt ?? 0,
+    );
+    expect(afterReply?.adminSearchText).toContain("whatsapp guest");
+    expect(afterReply?.adminSearchText).toContain("66956823432");
   });
 });

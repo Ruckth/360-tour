@@ -44,6 +44,7 @@ import type * as seeds_rooms from "../seeds/rooms.js";
 import type * as seeds_socialProof from "../seeds/socialProof.js";
 import type * as seeds_tourSnippets from "../seeds/tourSnippets.js";
 import type * as users from "../users.js";
+import type * as whatsapp from "../whatsapp.js";
 
 import type {
   ApiFromModules,
@@ -88,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   "seeds/socialProof": typeof seeds_socialProof;
   "seeds/tourSnippets": typeof seeds_tourSnippets;
   users: typeof users;
+  whatsapp: typeof whatsapp;
 }>;
 
 /**

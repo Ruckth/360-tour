@@ -38,12 +38,13 @@ const channelFilterValidator = v.union(
 	v.literal('all'),
 	v.literal('web'),
 	v.literal('line'),
-	v.literal('facebook')
+	v.literal('facebook'),
+	v.literal('whatsapp')
 );
 
 type SessionStatus = 'all' | 'active' | 'inactive';
 type EmptyFilter = 'all' | 'empty' | 'non_empty';
-type ChannelFilter = 'all' | 'web' | 'line' | 'facebook';
+type ChannelFilter = 'all' | 'web' | 'line' | 'facebook' | 'whatsapp';
 
 function parseSearchCursor(cursor: string | null) {
 	if (!cursor) return 0;
@@ -225,7 +226,7 @@ async function sessionMatchesFilters(
 }
 
 async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now: number) {
-	const [latestMessage, latestLineEvent, latestFacebookEvent, property] = await Promise.all([
+	const [latestMessage, latestLineEvent, latestFacebookEvent, latestWhatsAppEvent, property] = await Promise.all([
 		ctx.db
 			.query('chatMessages')
 			.withIndex('by_session', (q) => q.eq('sessionId', session._id))
@@ -245,6 +246,13 @@ async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now:
 					.order('desc')
 					.first()
 			: null,
+		session.channel === 'whatsapp'
+			? ctx.db
+					.query('whatsappWebhookEvents')
+					.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+					.order('desc')
+					.first()
+			: null,
 		session.propertyId ? ctx.db.get(session.propertyId) : null
 	]);
 
@@ -257,6 +265,7 @@ async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now:
 		latestMessage,
 		latestLineEvent,
 		latestFacebookEvent,
+		latestWhatsAppEvent,
 		isActive: isChatSessionActive(session, now)
 	};
 }
@@ -496,7 +505,7 @@ export const getSessionDetail = query({
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
-		const [lineEvents, facebookEvents, property] = await Promise.all([
+		const [lineEvents, facebookEvents, whatsappEvents, property] = await Promise.all([
 			session.channel === 'line'
 				? ctx.db
 						.query('lineWebhookEvents')
@@ -511,6 +520,13 @@ export const getSessionDetail = query({
 						.order('desc')
 						.take(10)
 				: [],
+			session.channel === 'whatsapp'
+				? ctx.db
+						.query('whatsappWebhookEvents')
+						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.order('desc')
+						.take(10)
+				: [],
 			session.propertyId ? ctx.db.get(session.propertyId) : null
 		]);
 
@@ -521,7 +537,8 @@ export const getSessionDetail = query({
 				isActive: isChatSessionActive(session, now)
 			},
 			lineEvents,
-			facebookEvents
+			facebookEvents,
+			whatsappEvents
 		};
 	}
 });
@@ -554,7 +571,7 @@ export const getTranscript = query({
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
-		const [messages, lineEvents, facebookEvents, property] = await Promise.all([
+		const [messages, lineEvents, facebookEvents, whatsappEvents, property] = await Promise.all([
 			ctx.db
 				.query('chatMessages')
 				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
@@ -574,6 +591,13 @@ export const getTranscript = query({
 						.order('desc')
 						.take(10)
 				: [],
+			session.channel === 'whatsapp'
+				? ctx.db
+						.query('whatsappWebhookEvents')
+						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.order('desc')
+						.take(10)
+				: [],
 			session.propertyId ? ctx.db.get(session.propertyId) : null
 		]);
 
@@ -585,7 +609,8 @@ export const getTranscript = query({
 			},
 			messages,
 			lineEvents,
-			facebookEvents
+			facebookEvents,
+			whatsappEvents
 		};
 	}
 });
