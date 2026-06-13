@@ -3,7 +3,7 @@
 import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "@/lib/utils";
 
-type ContactAppBrand = "whatsapp" | "line" | "facebook";
+type ContactAppBrand = "whatsapp" | "line" | "facebook" | "instagram";
 
 export function ContactAppBrandIcon({
   app,
@@ -38,6 +38,25 @@ export function ContactAppBrandIcon({
       >
         <svg className={cn("h-3.5 w-3.5", iconClassName)} viewBox="0 0 24 24" fill="currentColor">
           <path d="M13.6 22v-8.2h2.75l.42-3.2H13.6V8.56c0-.93.26-1.56 1.59-1.56h1.7V4.13c-.29-.04-1.3-.13-2.48-.13-2.45 0-4.13 1.5-4.13 4.25v2.37H7.5v3.2h2.78V22h3.32Z" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (app === "instagram") {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#f9ce34,#ee2a7b_50%,#6228d7)] text-white",
+          className,
+        )}
+        {...props}
+      >
+        <svg className={cn("h-3.5 w-3.5", iconClassName)} viewBox="0 0 24 24" fill="none">
+          <rect x="5" y="5" width="14" height="14" rx="4" stroke="currentColor" strokeWidth="2" />
+          <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="2" />
+          <circle cx="16.5" cy="7.5" r="1.1" fill="currentColor" />
         </svg>
       </span>
     );

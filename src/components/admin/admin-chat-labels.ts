@@ -6,7 +6,7 @@ type AdminChatLabelSession = {
   visitorContactHandle?: string;
 };
 
-const externalVisitorPrefixes = ["line:", "facebook:", "whatsapp:"];
+const externalVisitorPrefixes = ["line:", "facebook:", "whatsapp:", "instagram:"];
 const shortVisitorIdLength = 8;
 
 function cleanValue(value?: string) {

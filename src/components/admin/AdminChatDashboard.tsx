@@ -60,7 +60,7 @@ import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
 type EmptyChatFilter = "non_empty" | "empty";
-type SessionChannelFilter = "all" | "web" | "line" | "facebook" | "whatsapp";
+type SessionChannelFilter = "all" | "web" | "line" | "facebook" | "whatsapp" | "instagram";
 type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
@@ -124,13 +124,27 @@ type AdminWhatsAppEvent = {
   processedAt?: number;
 };
 
+type AdminInstagramEvent = {
+  _id: Id<"instagramWebhookEvents">;
+  eventType: "message" | "postback" | "unsupported";
+  messageText?: string;
+  postbackData?: string;
+  status: LineWebhookStatus;
+  replyMode?: Exclude<LineReplyMode, "follow">;
+  instagramReplyStatus?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+  processedAt?: number;
+};
+
 type AdminSession = {
   _id: Id<"chatSessions">;
   visitorId?: string;
   visitorName?: string;
   visitorEmail?: string;
   visitorPhone?: string;
-  visitorContactApp?: "whatsapp" | "line" | "facebook";
+  visitorContactApp?: "whatsapp" | "line" | "facebook" | "instagram";
   visitorContactHandle?: string;
   propertySlug?: string;
   propertyName?: string;
@@ -142,7 +156,7 @@ type AdminSession = {
   screenSize?: string;
   viewportSize?: string;
   platform?: string;
-  channel: "web" | "whatsapp" | "line" | "facebook";
+  channel: "web" | "whatsapp" | "line" | "facebook" | "instagram";
   createdAt: number;
   lastSeenAt?: number;
   lastOpenedAt?: number;
@@ -155,6 +169,7 @@ type AdminSession = {
   latestLineEvent?: AdminLineEvent | null;
   latestFacebookEvent?: AdminFacebookEvent | null;
   latestWhatsAppEvent?: AdminWhatsAppEvent | null;
+  latestInstagramEvent?: AdminInstagramEvent | null;
 };
 
 type SessionListResult = {
@@ -169,6 +184,7 @@ type SessionDetailResult = {
   lineEvents?: AdminLineEvent[];
   facebookEvents?: AdminFacebookEvent[];
   whatsappEvents?: AdminWhatsAppEvent[];
+  instagramEvents?: AdminInstagramEvent[];
 };
 
 type TranscriptPaginationResult = {
@@ -255,7 +271,7 @@ type AnswerKnowledgeForm = {
 };
 
 const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
-const channelFilterOptions = ["all", "web", "line", "facebook"] satisfies SessionChannelFilter[];
+const channelFilterOptions = ["all", "web", "line", "facebook", "whatsapp", "instagram"] satisfies SessionChannelFilter[];
 const PRESENCE_CLOCK_MS = 10_000;
 const timeHours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 const timeMinutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
@@ -325,7 +341,9 @@ function contactLabel(session: AdminSession) {
       ? "LINE"
       : session.visitorContactApp === "facebook"
         ? "Facebook"
-        : "WhatsApp"
+        : session.visitorContactApp === "instagram"
+          ? "Instagram"
+          : "WhatsApp"
     : "Contact";
   return session.visitorContactHandle
     ? `${app}: ${session.visitorContactHandle}`
@@ -339,6 +357,7 @@ function channelLabel(channel: AdminSession["channel"] | SessionChannelFilter) {
   if (channel === "facebook") return "Facebook";
   if (channel === "web") return "Web";
   if (channel === "whatsapp") return "WhatsApp";
+  if (channel === "instagram") return "Instagram";
   return "All";
 }
 
@@ -349,7 +368,7 @@ function ChannelIcon({
   channel: AdminSession["channel"] | Exclude<SessionChannelFilter, "all">;
   className?: string;
 }) {
-  if (channel === "line" || channel === "facebook" || channel === "whatsapp") {
+  if (channel === "line" || channel === "facebook" || channel === "whatsapp" || channel === "instagram") {
     return <ContactAppBrandIcon app={channel} className={className} />;
   }
   if (channel === "web") return <Globe2 className={cn("h-4 w-4", className)} aria-hidden="true" />;
@@ -405,6 +424,25 @@ function whatsappEventLabel(event?: AdminWhatsAppEvent | null) {
 }
 
 function whatsappEventTone(event?: AdminWhatsAppEvent | null) {
+  if (!event) return "secondary" as const;
+  if (event.status === "replied") return "default" as const;
+  if (event.status === "failed") return "outline" as const;
+  return "secondary" as const;
+}
+
+function instagramEventLabel(event?: AdminInstagramEvent | null) {
+  if (!event) return "";
+  const mode = event.replyMode && event.replyMode !== "failed" ? ` · ${event.replyMode}` : "";
+  if (event.status === "failed") {
+    return `Instagram failed${event.instagramReplyStatus ? ` ${event.instagramReplyStatus}` : ""}`;
+  }
+  if (event.status === "replied") return `Instagram replied${mode}`;
+  if (event.status === "ignored") return "Instagram ignored";
+  if (event.status === "processing") return "Instagram processing";
+  return "Instagram received";
+}
+
+function instagramEventTone(event?: AdminInstagramEvent | null) {
   if (!event) return "secondary" as const;
   if (event.status === "replied") return "default" as const;
   if (event.status === "failed") return "outline" as const;
@@ -1168,6 +1206,18 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                       ? `: ${truncate(session.latestWhatsAppEvent.error, 96)}`
                       : ""}
                   </p>
+                ) : session.latestInstagramEvent ? (
+                  <p
+                    className={cn(
+                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
+                      session.latestInstagramEvent.status === "failed" && "text-red-300",
+                    )}
+                  >
+                    {instagramEventLabel(session.latestInstagramEvent)}
+                    {session.latestInstagramEvent.error
+                      ? `: ${truncate(session.latestInstagramEvent.error, 96)}`
+                      : ""}
+                  </p>
                 ) : (
                   <p className="mt-2 text-xs text-muted-foreground">No messages yet</p>
                 )}
@@ -1211,6 +1261,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           <AdminSessionDetail
             canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
             facebookEvents={sessionDetail?.facebookEvents}
+            instagramEvents={sessionDetail?.instagramEvents}
             lineEvents={sessionDetail?.lineEvents}
             whatsappEvents={sessionDetail?.whatsappEvents}
             loadOlderMessages={() => transcriptPagination.loadMore(20)}
@@ -1242,6 +1293,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             compact
             canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
             facebookEvents={sessionDetail?.facebookEvents}
+            instagramEvents={sessionDetail?.instagramEvents}
             lineEvents={sessionDetail?.lineEvents}
             whatsappEvents={sessionDetail?.whatsappEvents}
             loadOlderMessages={() => transcriptPagination.loadMore(20)}
@@ -1263,6 +1315,7 @@ function AdminSessionDetail({
   canLoadOlderMessages,
   compact = false,
   facebookEvents,
+  instagramEvents,
   lineEvents,
   whatsappEvents,
   loadOlderMessages,
@@ -1275,6 +1328,7 @@ function AdminSessionDetail({
   canLoadOlderMessages: boolean;
   compact?: boolean;
   facebookEvents?: AdminFacebookEvent[];
+  instagramEvents?: AdminInstagramEvent[];
   lineEvents?: AdminLineEvent[];
   whatsappEvents?: AdminWhatsAppEvent[];
   loadOlderMessages: () => void;
@@ -1354,11 +1408,13 @@ function AdminSessionDetail({
   const latestLineEvent = lineEvents?.[0] ?? selectedSession.latestLineEvent;
   const latestFacebookEvent = facebookEvents?.[0] ?? selectedSession.latestFacebookEvent;
   const latestWhatsAppEvent = whatsappEvents?.[0] ?? selectedSession.latestWhatsAppEvent;
+  const latestInstagramEvent = instagramEvents?.[0] ?? selectedSession.latestInstagramEvent;
   const propertyLabel = selectedSession.propertyName ?? selectedSession.propertySlug ?? "General";
   const showVisitorContext =
     selectedSession.channel !== "line" &&
     selectedSession.channel !== "facebook" &&
-    selectedSession.channel !== "whatsapp";
+    selectedSession.channel !== "whatsapp" &&
+    selectedSession.channel !== "instagram";
 
   return (
     <div
@@ -1544,6 +1600,37 @@ function AdminSessionDetail({
                 </div>
               </details>
             ) : null}
+            {selectedSession.channel === "instagram" && latestInstagramEvent ? (
+              <details className="px-0 py-1 text-xs">
+                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
+                  Instagram delivery
+                </summary>
+                <div className="mt-3 space-y-2 text-muted-foreground">
+                  <Badge
+                    variant={instagramEventTone(latestInstagramEvent)}
+                    className={cn(
+                      "rounded-full",
+                      latestInstagramEvent.status === "failed" && "border-red-500/50 text-red-200",
+                    )}
+                  >
+                    {instagramEventLabel(latestInstagramEvent)}
+                  </Badge>
+                  <div>{formatDateTime(latestInstagramEvent.updatedAt)}</div>
+                  <div className="break-words">
+                    {latestInstagramEvent.messageText
+                      ? truncate(latestInstagramEvent.messageText, 120)
+                      : latestInstagramEvent.postbackData
+                        ? truncate(latestInstagramEvent.postbackData, 120)
+                        : latestInstagramEvent.eventType}
+                  </div>
+                  {latestInstagramEvent.error ? (
+                    <p className="break-words leading-5 text-red-200">
+                      {truncate(latestInstagramEvent.error, 260)}
+                    </p>
+                  ) : null}
+                </div>
+              </details>
+            ) : null}
             {showVisitorContext ? (
             <details className="rounded-lg border border-border bg-background/70 p-3 text-xs">
               <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
@@ -1704,6 +1791,45 @@ function AdminSessionDetail({
             ) : null}
           </div>
         ) : null}
+        {!compact && selectedSession.channel === "instagram" && latestInstagramEvent ? (
+          <div
+            className={cn(
+              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
+              latestInstagramEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <ContactAppBrandIcon app="instagram" className="h-4 w-4" />
+              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
+                Instagram delivery
+              </span>
+              <Badge
+                variant={instagramEventTone(latestInstagramEvent)}
+                className={cn(
+                  "rounded-full",
+                  latestInstagramEvent.status === "failed" && "border-red-500/50 text-red-200",
+                )}
+              >
+                {instagramEventLabel(latestInstagramEvent)}
+              </Badge>
+            </div>
+            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
+              <div>{formatDateTime(latestInstagramEvent.updatedAt)}</div>
+              <div className="break-words">
+                {latestInstagramEvent.messageText
+                  ? truncate(latestInstagramEvent.messageText, 120)
+                  : latestInstagramEvent.postbackData
+                    ? truncate(latestInstagramEvent.postbackData, 120)
+                    : latestInstagramEvent.eventType}
+              </div>
+            </div>
+            {latestInstagramEvent.error ? (
+              <p className="mt-2 break-words leading-5 text-red-200">
+                {truncate(latestInstagramEvent.error, 260)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {!compact && showVisitorContext ? (
           <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
@@ -1791,7 +1917,11 @@ function AdminSessionDetail({
                 ? `No transcript message is stored yet. Latest LINE event: ${lineEventLabel(latestLineEvent)}.`
                 : latestFacebookEvent
                   ? `No transcript message is stored yet. Latest Facebook event: ${facebookEventLabel(latestFacebookEvent)}.`
-                : "This visitor opened chat but has not sent a message yet."}
+                  : latestWhatsAppEvent
+                    ? `No transcript message is stored yet. Latest WhatsApp event: ${whatsappEventLabel(latestWhatsAppEvent)}.`
+                    : latestInstagramEvent
+                      ? `No transcript message is stored yet. Latest Instagram event: ${instagramEventLabel(latestInstagramEvent)}.`
+                      : "This visitor opened chat but has not sent a message yet."}
             </div>
           ) : null}
         </div>

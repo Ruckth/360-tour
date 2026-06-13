@@ -49,6 +49,11 @@ Set these in Vercel Production and Preview:
 | `FACEBOOK_PAGE_ID` | Yes for Facebook Messenger setup | Meta Developers -> Messenger API settings -> connected Page ID. |
 | `FACEBOOK_VERIFY_TOKEN` | Yes for Facebook Messenger webhook verification | Custom secret you create; must exactly match the Meta webhook Verify token field. |
 | `FACEBOOK_GRAPH_API_VERSION` | No | Defaults to `v25.0`; set only when intentionally pinning another supported Graph API version. |
+| `INSTAGRAM_ACCESS_TOKEN` | Yes for Instagram auto-replies | Instagram Messaging API access token with permission to send messages. |
+| `INSTAGRAM_VERIFY_TOKEN` | Yes for Instagram webhook verification | Custom secret you create; must exactly match the Meta webhook Verify token field. |
+| `INSTAGRAM_GRAPH_API_VERSION` | No | Defaults to `v25.0`; set only when intentionally pinning another supported Graph API version. |
+| `INSTAGRAM_APP_ID` | No for v1 webhook handling | Configured for Meta app reference; not used by the webhook route yet. |
+| `INSTAGRAM_APP_SECRET` | No for v1 webhook handling | Configured for Meta app reference; not used by the webhook route yet. |
 | `SITE_URL` | Yes for LINE auto-replies | Use `https://tour.helpgueststay.com` in production so LINE replies include production links. |
 
 ### Convex Environment Variables
@@ -171,6 +176,29 @@ For a quick production verification, this URL should return plain `hello` when t
 
 ```txt
 https://tour.helpgueststay.com/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=<WHATSAPP_VERIFY_TOKEN>&hub.challenge=hello
+```
+
+## Instagram Webhook
+
+After deploying production, set the Meta Developers Instagram webhook to:
+
+```txt
+https://tour.helpgueststay.com/api/instagram/webhook
+```
+
+Use the exact Vercel `INSTAGRAM_VERIFY_TOKEN` value in Meta's **Verify token** field. Keep **Attach a client certificate to Webhook requests** turned off unless the webhook code is explicitly extended to validate client certificates.
+
+After **Verify and save** succeeds, add subscriptions for:
+
+```txt
+messages
+messaging_postbacks
+```
+
+For a quick production verification, this URL should return plain `hello` when the token matches:
+
+```txt
+https://tour.helpgueststay.com/api/instagram/webhook?hub.mode=subscribe&hub.verify_token=<INSTAGRAM_VERIFY_TOKEN>&hub.challenge=hello
 ```
 
 ## Deployment

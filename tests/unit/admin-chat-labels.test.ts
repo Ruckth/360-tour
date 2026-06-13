@@ -23,7 +23,7 @@ describe("adminChatVisitorLabel", () => {
     ).toBe("maya@example.com");
   });
 
-  it("uses LINE and Facebook contact handles without visitor wording", () => {
+  it("uses external contact handles without visitor wording", () => {
     expect(
       adminChatVisitorLabel({
         _id: "session123456",
@@ -39,6 +39,14 @@ describe("adminChatVisitorLabel", () => {
         visitorId: "facebook:fb-user-123",
       }),
     ).toBe("fb-user-123");
+
+    expect(
+      adminChatVisitorLabel({
+        _id: "session123456",
+        visitorContactHandle: "ig-user-123",
+        visitorId: "instagram:ig-user-123",
+      }),
+    ).toBe("ig-user-123");
   });
 
   it("strips known external visitor id prefixes when no handle exists", () => {
@@ -55,6 +63,13 @@ describe("adminChatVisitorLabel", () => {
         visitorId: "line:U123",
       }),
     ).toBe("U123");
+
+    expect(
+      adminChatVisitorLabel({
+        _id: "session123456",
+        visitorId: "instagram:ig-user-123",
+      }),
+    ).toBe("ig-user-123");
   });
 
   it("shortens web visitor ids without adding visitor wording", () => {

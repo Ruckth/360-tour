@@ -12,7 +12,8 @@ const chatChannelValidator = v.union(
 	v.literal('web'),
 	v.literal('line'),
 	v.literal('facebook'),
-	v.literal('whatsapp')
+	v.literal('whatsapp'),
+	v.literal('instagram')
 );
 
 type GenerateConciergeReplyArgs = {
@@ -20,7 +21,7 @@ type GenerateConciergeReplyArgs = {
 	userMessage: string;
 	propertySlug?: string;
 	locale?: string;
-	channel?: 'web' | 'line' | 'facebook' | 'whatsapp';
+	channel?: 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
 	siteUrl?: string;
 	questionBankHint?: {
 		question: string;
@@ -228,6 +229,18 @@ FACEBOOK MESSENGER CHANNEL:
 - Keep Messenger responses under 120 words unless the guest explicitly asks for detail.`;
 }
 
+function instagramChannelGuidance(siteUrl?: string) {
+	const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
+	return `
+INSTAGRAM DM CHANNEL:
+- The guest is messaging through Instagram DMs, not the website chat widget.
+- Reply as a short plain-text Instagram message.
+- Do not mention a booking card, buttons below the chat, or UI that only exists on the website.
+- If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
+- For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
+- Keep Instagram DM responses under 120 words unless the guest explicitly asks for detail.`;
+}
+
 function questionBankHintPrompt(hint?: GenerateConciergeReplyArgs['questionBankHint']) {
 	if (!hint) return '';
 	return `
@@ -370,7 +383,7 @@ STYLE:
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
 - If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}${channel === 'facebook' ? facebookChannelGuidance(args.siteUrl) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
+- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}${channel === 'facebook' ? facebookChannelGuidance(args.siteUrl) : ''}${channel === 'instagram' ? instagramChannelGuidance(args.siteUrl) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
 
 	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 

@@ -213,14 +213,20 @@ export default defineSchema({
 			v.literal('web'),
 			v.literal('whatsapp'),
 			v.literal('line'),
-			v.literal('facebook')
+			v.literal('facebook'),
+			v.literal('instagram')
 		),
 		visitorId: v.optional(v.string()),
 		visitorName: v.optional(v.string()),
 		visitorEmail: v.optional(v.string()),
 		visitorPhone: v.optional(v.string()),
 		visitorContactApp: v.optional(
-			v.union(v.literal('whatsapp'), v.literal('line'), v.literal('facebook'))
+			v.union(
+				v.literal('whatsapp'),
+				v.literal('line'),
+				v.literal('facebook'),
+				v.literal('instagram')
+			)
 		),
 		visitorContactHandle: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
@@ -368,6 +374,52 @@ export default defineSchema({
 			)
 		),
 		facebookReplyStatus: v.optional(v.number()),
+		userMessageId: v.optional(v.id('chatMessages')),
+		assistantMessageId: v.optional(v.id('chatMessages')),
+		error: v.optional(v.string()),
+		eventTimestamp: v.optional(v.number()),
+		processingStartedAt: v.number(),
+		processedAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_event_key', ['eventKey'])
+		.index('by_session', ['sessionId'])
+		.index('by_status_and_created_at', ['status', 'createdAt']),
+
+	instagramWebhookEvents: defineTable({
+		eventKey: v.string(),
+		sessionId: v.optional(v.id('chatSessions')),
+		instagramUserId: v.optional(v.string()),
+		instagramAccountId: v.optional(v.string()),
+		eventType: v.union(
+			v.literal('message'),
+			v.literal('postback'),
+			v.literal('unsupported')
+		),
+		messageText: v.optional(v.string()),
+		postbackData: v.optional(v.string()),
+		status: v.union(
+			v.literal('received'),
+			v.literal('processing'),
+			v.literal('replied'),
+			v.literal('ignored'),
+			v.literal('failed')
+		),
+		replyMode: v.optional(
+			v.union(
+				v.literal('exact'),
+				v.literal('approved_exact'),
+				v.literal('question_bank_exact'),
+				v.literal('question_bank_semantic'),
+				v.literal('ai'),
+				v.literal('unknown_fallback'),
+				v.literal('postback'),
+				v.literal('ignored'),
+				v.literal('failed')
+			)
+		),
+		instagramReplyStatus: v.optional(v.number()),
 		userMessageId: v.optional(v.id('chatMessages')),
 		assistantMessageId: v.optional(v.id('chatMessages')),
 		error: v.optional(v.string()),

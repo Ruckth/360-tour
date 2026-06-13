@@ -30,7 +30,7 @@ async function insertAdminSession(
     propertySlug?: string;
     currentPath?: string;
     visitorId?: string;
-    channel?: "web" | "whatsapp" | "line" | "facebook";
+    channel?: "web" | "whatsapp" | "line" | "facebook" | "instagram";
     messageCount?: number;
     latestMessageAt?: number;
     adminSortAt?: number;
@@ -329,6 +329,15 @@ describe("adminChat.listSessions", () => {
       latestMessageAt: 500,
       adminSortAt: 500,
     });
+    await insertAdminSession(t, {
+      visitorName: "Instagram guest",
+      visitorContactHandle: "ig123",
+      visitorId: "instagram:ig123",
+      channel: "instagram",
+      messageCount: 1,
+      latestMessageAt: 250,
+      adminSortAt: 250,
+    });
 
     const lineResult = await admin.query(api.adminChat.listSessions, {
       status: "all",
@@ -347,6 +356,12 @@ describe("adminChat.listSessions", () => {
       searchQuery: "9568",
       paginationOpts: { numItems: 10, cursor: null },
     });
+    const instagramResult = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      channel: "instagram",
+      searchQuery: "ig123",
+      paginationOpts: { numItems: 10, cursor: null },
+    });
 
     expect(lineResult.sessions.map((session) => session.channel)).toEqual(["line"]);
     expect(facebookSearchResult.sessions.map((session) => session.visitorName)).toEqual([
@@ -354,6 +369,9 @@ describe("adminChat.listSessions", () => {
     ]);
     expect(whatsappResult.sessions.map((session) => session.visitorName)).toEqual([
       "WhatsApp guest",
+    ]);
+    expect(instagramResult.sessions.map((session) => session.visitorName)).toEqual([
+      "Instagram guest",
     ]);
   });
 

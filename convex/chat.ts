@@ -40,7 +40,8 @@ export const createSession = mutation({
 			v.literal('web'),
 			v.literal('whatsapp'),
 			v.literal('line'),
-			v.literal('facebook')
+			v.literal('facebook'),
+			v.literal('instagram')
 		),
 		visitorId: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
@@ -260,7 +261,12 @@ export const identifyVisitor = mutation({
 		email: v.optional(v.string()),
 		phone: v.optional(v.string()),
 		contactApp: v.optional(
-			v.union(v.literal('whatsapp'), v.literal('line'), v.literal('facebook'))
+			v.union(
+				v.literal('whatsapp'),
+				v.literal('line'),
+				v.literal('facebook'),
+				v.literal('instagram')
+			)
 		),
 		contactHandle: v.optional(v.string())
 	},

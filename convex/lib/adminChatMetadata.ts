@@ -4,12 +4,12 @@ import type { MutationCtx } from '../_generated/server';
 type SearchableSession = {
 	_id?: Id<'chatSessions'>;
 	propertySlug?: string;
-	channel?: 'web' | 'whatsapp' | 'line' | 'facebook';
+	channel?: 'web' | 'whatsapp' | 'line' | 'facebook' | 'instagram';
 	visitorId?: string;
 	visitorName?: string;
 	visitorEmail?: string;
 	visitorPhone?: string;
-	visitorContactApp?: 'whatsapp' | 'line' | 'facebook';
+	visitorContactApp?: 'whatsapp' | 'line' | 'facebook' | 'instagram';
 	visitorContactHandle?: string;
 	currentPath?: string;
 	referrer?: string;
