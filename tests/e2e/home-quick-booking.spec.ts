@@ -18,46 +18,48 @@ async function pickFirstAvailableRange(page: Page) {
   await availableDays.nth(1).click();
 }
 
-test("home quick booking renders the liquid metal book button and keeps validation", async ({ page }) => {
+test("home quick booking renders the solid book button and keeps validation", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("theme", "light");
   });
   await page.goto("/");
 
   const form = page.getByTestId("home-quick-booking-form");
-  await expect(form.getByRole("button", { name: "Book" })).toBeVisible();
-  await expect(page.getByTestId("home-book-metal-fx")).toBeVisible();
-  await expect(page.getByTestId("home-book-metal-fx")).toHaveAttribute("data-theme", "light");
+  const bookButton = form.getByRole("button", { name: "Book" });
+  const solidButton = page.getByTestId("home-book-solid-button");
+
+  await expect(bookButton).toBeVisible();
+  await expect(solidButton).toBeVisible();
+  await expect(solidButton).toHaveCSS("backdrop-filter", "none");
+  await expect(
+    solidButton.evaluate((node) => {
+      const button = getComputedStyle(node);
+      const before = getComputedStyle(node, "::before");
+      const after = getComputedStyle(node, "::after");
+      return {
+        afterBackground: after.backgroundImage,
+        afterContent: after.content,
+        buttonBackground: button.backgroundImage,
+        buttonBackgroundHasAlpha: button.backgroundColor.includes(" / ") || button.backgroundColor.includes("rgba("),
+        beforeBackground: before.backgroundImage,
+        beforeContent: before.content,
+      };
+    }),
+  ).resolves.toEqual({
+    afterBackground: "none",
+    afterContent: "none",
+    buttonBackground: "none",
+    buttonBackgroundHasAlpha: false,
+    beforeBackground: "none",
+    beforeContent: "none",
+  });
 
   await page.evaluate(() => {
     document.documentElement.classList.add("dark");
   });
-  await expect(page.getByTestId("home-book-metal-fx")).toHaveAttribute("data-theme", "dark");
+  await expect(solidButton).toBeVisible();
 
-  await form.getByRole("button", { name: "Book" }).click();
-  await expect(form.getByRole("alert")).toContainText("Choose your arrival and checkout dates.");
-});
-
-test("home quick booking falls back to the normal gold submit button without WebGL", async ({ page }) => {
-  await page.addInitScript(() => {
-    const getContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function patchedGetContext(
-      this: HTMLCanvasElement,
-      contextId: string,
-      options?: unknown,
-    ) {
-      if (contextId === "webgl" || contextId === "experimental-webgl") return null;
-      return getContext.call(this, contextId as never, options as never);
-    };
-  });
-
-  await page.goto("/");
-
-  const form = page.getByTestId("home-quick-booking-form");
-  await expect(page.getByTestId("home-book-metal-fx")).toHaveCount(0);
-  await expect(form.getByRole("button", { name: "Book" })).toBeVisible();
-
-  await form.getByRole("button", { name: "Book" }).click();
+  await bookButton.click();
   await expect(form.getByRole("alert")).toContainText("Choose your arrival and checkout dates.");
 });
 

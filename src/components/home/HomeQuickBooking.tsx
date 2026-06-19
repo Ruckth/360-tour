@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { dateToIso, todayIsoLocal } from "@/lib/booking/dates";
-import { LiquidMetalBookButton } from "@/components/home/LiquidMetalBookButton";
+import { HomeSolidBookButton } from "@/components/home/HomeSolidBookButton";
 
 const BookingRangePicker = dynamic(
   () => import("@/components/booking/BookingDatePicker").then((mod) => mod.BookingRangePicker),
@@ -81,9 +81,9 @@ export function HomeQuickBooking() {
           onRangeChange={() => setError("")}
         />
 
-        <LiquidMetalBookButton type="submit">
+        <HomeSolidBookButton type="submit">
           {navT("book")}
-        </LiquidMetalBookButton>
+        </HomeSolidBookButton>
 
         {error ? (
           <p className="text-sm font-medium text-destructive md:col-span-2" role="alert">
