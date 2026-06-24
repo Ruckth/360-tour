@@ -59,7 +59,7 @@ export const getBlockedDatesByProperty = query({
 		const properties = await ctx.db
 			.query('properties')
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
-			.collect();
+			.take(100);
 		const map: Record<string, string[]> = {};
 		for (const property of properties) {
 			const rows = await ctx.db

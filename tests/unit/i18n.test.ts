@@ -62,6 +62,7 @@ describe("i18n routing helpers", () => {
     expect(stripLocalePrefix("/th/booking")).toBe("/booking");
     expect(stripLocalePrefix("/zh-CN/rooms/pool-villa")).toBe("/rooms/pool-villa");
     expect(stripLocalePrefix("/ar/booking")).toBe("/ar/booking");
+    expect(localizeHref("/booking", "bad-locale")).toBe("/booking");
     expect(localizeHref("https://example.com", "ja")).toBe("https://example.com");
     expect(localizeHref("mailto:stay@example.com", "ja")).toBe("mailto:stay@example.com");
     expect(localizeHref("tel:+6677000000", "ja")).toBe("tel:+6677000000");

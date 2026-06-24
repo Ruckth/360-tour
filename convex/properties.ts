@@ -7,7 +7,7 @@ export const list = query({
 		return await ctx.db
 			.query('properties')
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
-			.collect();
+			.take(100);
 	}
 });
 
@@ -34,7 +34,7 @@ export const getRooms = query({
 		return await ctx.db
 			.query('rooms')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
+			.take(50);
 	}
 });
 
@@ -64,7 +64,7 @@ export const getReviews = query({
 		return await ctx.db
 			.query('reviews')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
+			.take(100);
 	}
 });
 
@@ -74,14 +74,14 @@ export const getRecentBookings = query({
 		return await ctx.db
 			.query('recentBookingDisplay')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
+			.take(50);
 	}
 });
 
 export const getAllRecentBookings = query({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db.query('recentBookingDisplay').collect();
+		return await ctx.db.query('recentBookingDisplay').take(100);
 	}
 });
 
@@ -91,6 +91,6 @@ export const getTourSnippets = query({
 		return await ctx.db
 			.query('tourSnippets')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
+			.take(100);
 	}
 });

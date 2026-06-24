@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server';
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
@@ -46,12 +47,12 @@ export const save = mutation({
 });
 
 export const list = query({
-	args: {},
-	handler: async (ctx) => {
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) {
 			throw new Error('Not authenticated');
 		}
-		return await ctx.db.query('leads').collect();
+		return await ctx.db.query('leads').order('desc').paginate(args.paginationOpts);
 	}
 });

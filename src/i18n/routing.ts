@@ -55,13 +55,14 @@ export function localizeHref(href: string, locale: string) {
     return href;
   }
 
+  const safeLocale = isLocale(locale) ? locale : defaultLocale;
   const [pathAndQuery, hash = ""] = href.split("#");
   const [path = "/", query = ""] = pathAndQuery.split("?");
   const normalizedPath = stripLocalePrefix(path.startsWith("/") ? path : `/${path}`);
   const localizedPath =
-    locale === defaultLocale
+    safeLocale === defaultLocale
       ? normalizedPath
-      : `/${locale}${normalizedPath === "/" ? "" : normalizedPath}`;
+      : `/${safeLocale}${normalizedPath === "/" ? "" : normalizedPath}`;
 
   return `${localizedPath}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
 }

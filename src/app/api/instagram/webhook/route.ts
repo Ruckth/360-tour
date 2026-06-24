@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { api } from "convex/_generated/api";
+import { verifyMetaSignature } from "@/lib/meta/signature";
 import {
   detectQuickAnswerLocale,
   localizedTimeoutFallbackReply,
@@ -164,6 +165,10 @@ function getSiteUrl(request: Request) {
 
 function getGraphApiVersion() {
   return process.env.INSTAGRAM_GRAPH_API_VERSION?.trim() || DEFAULT_GRAPH_API_VERSION;
+}
+
+function getInstagramAppSecret() {
+  return process.env.INSTAGRAM_APP_SECRET?.trim() || process.env.META_APP_SECRET?.trim() || "";
 }
 
 function classifyInstagramEvent(event: InstagramMessagingEvent): InstagramEventType {
@@ -582,6 +587,24 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const body = await request.text();
+  const appSecret = getInstagramAppSecret();
+  if (!appSecret) {
+    return jsonResponse(
+      { ok: false, error: "INSTAGRAM_APP_SECRET or META_APP_SECRET is required" },
+      { status: 500 },
+    );
+  }
+  if (
+    !verifyMetaSignature({
+      appSecret,
+      body,
+      signature: request.headers.get("x-hub-signature-256"),
+    })
+  ) {
+    return jsonResponse({ ok: false, error: "Invalid Instagram signature" }, { status: 401 });
+  }
+
   const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN?.trim();
   if (!accessToken) {
     return jsonResponse(
@@ -592,7 +615,7 @@ export async function POST(request: Request) {
 
   let payload: InstagramWebhookBody;
   try {
-    payload = (await request.json()) as InstagramWebhookBody;
+    payload = JSON.parse(body) as InstagramWebhookBody;
   } catch {
     return jsonResponse({ ok: false, error: "Invalid JSON payload" }, { status: 400 });
   }

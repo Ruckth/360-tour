@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
+import { verifyMetaSignature } from "@/lib/meta/signature";
 import {
   detectQuickAnswerLocale,
   localizedTimeoutFallbackReply,
@@ -100,6 +100,12 @@ type ResolvedFacebookReply = {
   questionBankMatch: QuestionBankMatch | null;
 };
 
+type FacebookConvexClient = {
+  query: (functionReference: unknown, args: unknown) => Promise<unknown>;
+  mutation: (functionReference: unknown, args: unknown) => Promise<unknown>;
+  action: (functionReference: unknown, args: unknown) => Promise<unknown>;
+};
+
 class FacebookReplyError extends Error {
   status: number;
 
@@ -110,7 +116,7 @@ class FacebookReplyError extends Error {
   }
 }
 
-let convexClient: ConvexHttpClient | null = null;
+let convexClient: FacebookConvexClient | null = null;
 let convexClientUrl: string | null = null;
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
@@ -127,14 +133,15 @@ function getTextParam(request: Request, key: string) {
   return new URL(request.url).searchParams.get(key)?.trim() ?? "";
 }
 
-function getConvexClient() {
+async function getConvexClient(): Promise<FacebookConvexClient> {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
   if (!convexUrl || convexUrl === "placeholder") {
     throw new Error("NEXT_PUBLIC_CONVEX_URL or PUBLIC_CONVEX_URL is required");
   }
 
   if (!convexClient || convexClientUrl !== convexUrl) {
-    convexClient = new ConvexHttpClient(convexUrl);
+    const { ConvexHttpClient } = await import("convex/browser");
+    convexClient = new ConvexHttpClient(convexUrl) as FacebookConvexClient;
     convexClientUrl = convexUrl;
   }
 
@@ -157,6 +164,10 @@ function getSiteUrl(request: Request) {
 
 function getGraphApiVersion() {
   return process.env.FACEBOOK_GRAPH_API_VERSION?.trim() || DEFAULT_GRAPH_API_VERSION;
+}
+
+function getFacebookAppSecret() {
+  return process.env.FACEBOOK_APP_SECRET?.trim() || process.env.META_APP_SECRET?.trim() || "";
 }
 
 function classifyFacebookEvent(event: FacebookMessagingEvent): FacebookEventType {
@@ -273,7 +284,7 @@ async function resolveFacebookReply({
   sessionId,
   siteUrl,
 }: {
-  client: ConvexHttpClient;
+  client: FacebookConvexClient;
   eventType: Exclude<FacebookEventType, "unsupported">;
   messageText?: string;
   postbackData?: string;
@@ -416,7 +427,7 @@ async function handleFacebookEvent({
   request,
 }: {
   accessToken: string;
-  client: ConvexHttpClient;
+  client: FacebookConvexClient;
   event: FacebookMessagingEvent;
   request: Request;
 }) {
@@ -573,6 +584,24 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const body = await request.text();
+  const appSecret = getFacebookAppSecret();
+  if (!appSecret) {
+    return jsonResponse(
+      { ok: false, error: "FACEBOOK_APP_SECRET or META_APP_SECRET is required" },
+      { status: 500 },
+    );
+  }
+  if (
+    !verifyMetaSignature({
+      appSecret,
+      body,
+      signature: request.headers.get("x-hub-signature-256"),
+    })
+  ) {
+    return jsonResponse({ ok: false, error: "Invalid Facebook signature" }, { status: 401 });
+  }
+
   const accessToken = process.env.FACEBOOK_ACCESS_TOKEN?.trim();
   if (!accessToken) {
     return jsonResponse(
@@ -583,7 +612,7 @@ export async function POST(request: Request) {
 
   let payload: FacebookWebhookBody;
   try {
-    payload = (await request.json()) as FacebookWebhookBody;
+    payload = JSON.parse(body) as FacebookWebhookBody;
   } catch {
     return jsonResponse({ ok: false, error: "Invalid JSON payload" }, { status: 400 });
   }
@@ -595,7 +624,7 @@ export async function POST(request: Request) {
   const events = payload.entry?.flatMap((entry) => entry.messaging ?? []) ?? [];
   if (events.length === 0) return jsonResponse({ ok: true, processed: 0 });
 
-  const client = getConvexClient();
+  const client = await getConvexClient();
   let processed = 0;
   for (const event of events) {
     await handleFacebookEvent({ accessToken, client, event, request });

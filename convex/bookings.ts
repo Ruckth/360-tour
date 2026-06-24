@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server';
 import { internalMutation, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
@@ -299,12 +300,16 @@ export const getById = query({
 });
 
 export const listByProperty = query({
-	args: { propertyId: v.id('properties') },
+	args: {
+		propertyId: v.id('properties'),
+		paginationOpts: paginationOptsValidator
+	},
 	handler: async (ctx, args) => {
 		await assertAuthenticated(ctx);
 		return await ctx.db
 			.query('bookings')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.collect();
+			.order('desc')
+			.paginate(args.paginationOpts);
 	}
 });

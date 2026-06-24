@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMetaSignature } from "@/lib/meta/signature";
 
 async function instagramWebhookRoute() {
   return await import("@/app/api/instagram/webhook/route");
@@ -43,12 +44,17 @@ describe("Instagram webhook route", () => {
 
   it("rejects unsupported webhook objects", async () => {
     vi.stubEnv("INSTAGRAM_ACCESS_TOKEN", "ig-token");
+    vi.stubEnv("INSTAGRAM_APP_SECRET", "ig-secret");
     const { POST } = await instagramWebhookRoute();
+    const body = JSON.stringify({ object: "page", entry: [] });
 
     const response = await POST(
       new Request("https://tour.helpgueststay.com/api/instagram/webhook", {
         method: "POST",
-        body: JSON.stringify({ object: "page", entry: [] }),
+        body,
+        headers: {
+          "x-hub-signature-256": createMetaSignature(body, "ig-secret"),
+        },
       }),
     );
 
