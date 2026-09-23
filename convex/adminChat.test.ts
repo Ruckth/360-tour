@@ -928,3 +928,93 @@ describe("admin chat metadata writes", () => {
     expect(afterReply?.adminSearchText).toContain("66956823432");
   });
 });
+
+describe("admin chat unanswered warning", () => {
+  it("flags the latest guest message until a reply or settle, then re-flags new guest messages", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const sessionId = await insertAdminSession(t, {
+      visitorName: "Warning guest",
+      messageCount: 1,
+      latestMessageAt: 1_000,
+    });
+    const insertMessage = (role: "user" | "assistant", timestamp: number) =>
+      t.run(async (ctx) =>
+        ctx.db.insert("chatMessages", { sessionId, role, content: `${role} ${timestamp}`, timestamp }),
+      );
+    const needsReply = async () => {
+      const result = await admin.query(api.adminChat.listSessions, {
+        status: "all",
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+      return result.sessions[0]?.needsReply;
+    };
+
+    const firstGuestMessageId = await insertMessage("user", 1_000);
+    expect(await needsReply()).toBe(true);
+
+    await insertMessage("assistant", 2_000);
+    expect(await needsReply()).toBe(false);
+
+    const secondGuestMessageId = await insertMessage("user", 3_000);
+    expect(await needsReply()).toBe(true);
+
+    await expect(
+      admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId: firstGuestMessageId }),
+    ).resolves.toBeNull();
+    expect(await needsReply()).toBe(true);
+
+    await admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId: secondGuestMessageId });
+    expect(await needsReply()).toBe(false);
+
+    await insertMessage("user", 4_000);
+    expect(await needsReply()).toBe(true);
+  });
+
+  it("requires admin identity to settle", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const sessionId = await insertAdminSession(t);
+    const messageId = await t.run(async (ctx) =>
+      ctx.db.insert("chatMessages", { sessionId, role: "user", content: "Hi", timestamp: 1 }),
+    );
+
+    await expect(
+      t.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId }),
+    ).rejects.toThrow(/Not authenticated/);
+  });
+});
+
+describe("channel profile names", () => {
+  it("stores LINE, Facebook, and Instagram profile names on the session", async () => {
+    const t = convexTest(schema, modules);
+    const claims = await Promise.all([
+      t.mutation(api.line.claimEvent, {
+        eventKey: "line-name",
+        lineUserId: "U-name",
+        profileName: " Somchai ",
+        eventType: "message",
+      }),
+      t.mutation(api.facebook.claimEvent, {
+        eventKey: "fb-name",
+        facebookUserId: "fb-name",
+        profileName: "Maya Chen",
+        eventType: "message",
+      }),
+      t.mutation(api.instagram.claimEvent, {
+        eventKey: "ig-name",
+        instagramUserId: "ig-name",
+        profileName: "ana.travels",
+        eventType: "message",
+      }),
+    ]);
+
+    const names = await t.run(async (ctx) =>
+      Promise.all(
+        claims.map(async (claim) => (await ctx.db.get(claim.sessionId as Id<"chatSessions">))?.visitorName),
+      ),
+    );
+    expect(names).toEqual(["Somchai", "Maya Chen", "ana.travels"]);
+  });
+});

@@ -213,6 +213,23 @@ function getUserContent(eventType: FacebookEventType, event: FacebookMessagingEv
   return undefined;
 }
 
+const PROFILE_LOOKUP_TIMEOUT_MS = 1500;
+
+async function fetchFacebookProfileName(accessToken: string, facebookUserId: string) {
+  const url = new URL(`https://graph.facebook.com/${getGraphApiVersion()}/${encodeURIComponent(facebookUserId)}`);
+  url.searchParams.set("fields", "name,first_name,last_name");
+  url.searchParams.set("access_token", accessToken);
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(PROFILE_LOOKUP_TIMEOUT_MS) });
+    if (!response.ok) return undefined;
+    const profile = (await response.json()) as { name?: string; first_name?: string; last_name?: string };
+    const name = profile.name ?? [profile.first_name, profile.last_name].filter(Boolean).join(" ");
+    return name.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function timeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback()), ms);
@@ -472,6 +489,7 @@ async function handleFacebookEvent({
     claimed = (await client.mutation(api.facebook.claimEvent, {
       eventKey,
       facebookUserId,
+      profileName: await fetchFacebookProfileName(accessToken, facebookUserId),
       pageId,
       eventType,
       messageText,

@@ -29,7 +29,11 @@ function instagramVisitorId(instagramUserId: string) {
 	return `instagram:${instagramUserId}`;
 }
 
-async function getOrCreateInstagramSession(ctx: MutationCtx, instagramUserId?: string) {
+async function getOrCreateInstagramSession(
+	ctx: MutationCtx,
+	instagramUserId?: string,
+	profileName?: string
+) {
 	const trimmedInstagramUserId = instagramUserId?.trim();
 	if (!trimmedInstagramUserId) return undefined;
 
@@ -41,11 +45,13 @@ async function getOrCreateInstagramSession(ctx: MutationCtx, instagramUserId?: s
 		.take(10);
 	const existingSession = existingSessions.find((session) => session.channel === 'instagram');
 	const now = Date.now();
+	const trimmedProfileName = profileName?.trim() || undefined;
 
 	if (existingSession) {
 		const patch = {
 			visitorContactApp: 'instagram' as const,
 			visitorContactHandle: trimmedInstagramUserId,
+			...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 			lastSeenAt: now
 		};
 		await ctx.db.patch(existingSession._id, {
@@ -58,6 +64,7 @@ async function getOrCreateInstagramSession(ctx: MutationCtx, instagramUserId?: s
 	return await ctx.db.insert('chatSessions', {
 		channel: 'instagram',
 		visitorId,
+		...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 		visitorContactApp: 'instagram',
 		visitorContactHandle: trimmedInstagramUserId,
 		lastSeenAt: now,
@@ -67,6 +74,7 @@ async function getOrCreateInstagramSession(ctx: MutationCtx, instagramUserId?: s
 		adminSearchText: buildAdminSearchText({
 			channel: 'instagram',
 			visitorId,
+			...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 			visitorContactApp: 'instagram',
 			visitorContactHandle: trimmedInstagramUserId,
 		}),
@@ -78,6 +86,7 @@ export const claimEvent = mutation({
 	args: {
 		eventKey: v.string(),
 		instagramUserId: v.optional(v.string()),
+		profileName: v.optional(v.string()),
 		instagramAccountId: v.optional(v.string()),
 		eventType: eventTypeValidator,
 		messageText: v.optional(v.string()),
@@ -113,7 +122,7 @@ export const claimEvent = mutation({
 		}
 
 		const sessionId =
-			existing?.sessionId ?? (await getOrCreateInstagramSession(ctx, args.instagramUserId));
+			existing?.sessionId ?? (await getOrCreateInstagramSession(ctx, args.instagramUserId, args.profileName));
 		const instagramUserId = args.instagramUserId?.trim() || undefined;
 		const instagramAccountId = args.instagramAccountId?.trim() || undefined;
 		const eventPatch = {

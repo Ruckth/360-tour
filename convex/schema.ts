@@ -258,6 +258,8 @@ export default defineSchema({
 		latestMessageAt: v.optional(v.number()),
 		adminSortAt: v.optional(v.number()),
 		adminSearchText: v.optional(v.string()),
+		// Guest message an admin marked as settled; clears the unanswered warning.
+		settledGuestMessageId: v.optional(v.id('chatMessages')),
 		// AI booking flow: last time the guest was in a booking conversation,
 		// and the quote awaiting their "yes" (bookingId is set once confirmed).
 		bookingFlowAt: v.optional(v.number()),

@@ -5,24 +5,18 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Edit3,
-  ExternalLink,
   Filter,
   Globe2,
   HelpCircle,
   Loader2,
-  Mail,
-  MapPin,
   MessageCircle,
-  MonitorSmartphone,
-  Phone,
   Plus,
   Search,
   Send,
   Shield,
   Trash2,
-  UserRound,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { api } from "convex/_generated/api";
@@ -177,6 +171,7 @@ type AdminSession = {
   adminSortAt?: number;
   isActive: boolean;
   latestMessage?: AdminMessage;
+  needsReply?: boolean;
   latestLineEvent?: AdminLineEvent | null;
   latestFacebookEvent?: AdminFacebookEvent | null;
   latestWhatsAppEvent?: AdminWhatsAppEvent | null;
@@ -460,9 +455,13 @@ function instagramEventTone(event?: AdminInstagramEvent | null) {
   return "secondary" as const;
 }
 
-function messageCountLabel(count?: number) {
-  const safeCount = Math.max(0, Math.floor(count ?? 0));
-  return `${safeCount} ${safeCount === 1 ? "message" : "messages"}`;
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="font-semibold text-foreground/80">{label}</dt>
+      <dd className="mb-1 break-all sm:mb-0">{children}</dd>
+    </>
+  );
 }
 
 function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
@@ -776,6 +775,8 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const [replyPending, setReplyPending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [replyStatus, setReplyStatus] = useState<string | null>(null);
+  const settleGuestMessageMutation = useMutation(api.adminChat.settleGuestMessage);
+  const [settlingMessageId, setSettlingMessageId] = useState<Id<"chatMessages"> | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
   const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt, "start");
   const parsedMessageEndAt = dateTimeInputToMillis(messageEndAt, "end");
@@ -890,7 +891,18 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
     }
   }
 
-  const resetSessionPaging = useCallback(() => {
+  async function settleGuestMessage(sessionId: Id<"chatSessions">, messageId: Id<"chatMessages">) {
+    setSettlingMessageId(messageId);
+    try {
+      await settleGuestMessageMutation({ sessionId, messageId });
+    } catch (error) {
+      console.error("Unable to settle guest message", error);
+    } finally {
+      setSettlingMessageId(null);
+    }
+  }
+
+    const resetSessionPaging = useCallback(() => {
     setPageIndex(0);
     setPageCursors([null]);
     setSelectedSessionId(null);
@@ -1178,99 +1190,59 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                 No chat sessions match this filter yet.
               </div>
             ) : null}
-            {sessions.map((session) => (
-              <button
-                key={session._id}
-                type="button"
-                onClick={() => setSelectedSessionId(session._id)}
-                className={cn(
-                  "block w-full border-b border-border px-4 py-3 text-left transition hover:bg-muted/60",
-                  selectedSessionId === session._id && "bg-gold/10",
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-foreground">
-                        {visitorLabel(session)}
-                      </p>
-                      {session.isActive ? (
-                        <Badge className="rounded-full bg-emerald-600 text-white">Active</Badge>
-                      ) : null}
+            {sessions.map((session) => {
+              const unansweredMessage = session.needsReply ? session.latestMessage : undefined;
+              return (
+                <div
+                  key={session._id}
+                  className={cn(
+                    "flex items-center border-b border-border transition hover:bg-muted/60",
+                    selectedSessionId === session._id && "bg-gold/10",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSessionId(session._id)}
+                    className="min-w-0 flex-1 px-4 py-3 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {visitorLabel(session)}
+                        </p>
+                        {session.isActive ? (
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Active now">
+                            <span className="sr-only">Active now</span>
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {relativeTime(session.latestMessageAt, now)}
+                      </span>
                     </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {session.propertyName ?? session.propertySlug ?? "General site"} ·{" "}
-                      <span className="inline-flex items-center gap-1 align-middle">
-                        <ChannelIcon channel={session.channel} className="h-3.5 w-3.5" />
-                        <span className="sr-only">{channelLabel(session.channel)}</span>
-                      </span>{" "}
-                      · {messageCountLabel(session.messageCount)}
+                    <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <ChannelIcon channel={session.channel} className="h-3.5 w-3.5 shrink-0" />
+                      <span className="sr-only">{channelLabel(session.channel)} ·</span>
+                      <span className="truncate">
+                        {session.propertyName ?? session.propertySlug ?? "General site"}
+                      </span>
                     </p>
-                  </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {relativeTime(
-                      session.latestMessageAt,
-                      now,
-                    )}
-                  </span>
+                  </button>
+                  {unansweredMessage ? (
+                    <button
+                      type="button"
+                      onClick={() => settleGuestMessage(session._id, unansweredMessage._id)}
+                      disabled={settlingMessageId === unansweredMessage._id}
+                      aria-label={`Unanswered guest message from ${visitorLabel(session)}. Mark as settled`}
+                      title="Unanswered guest message. Click to mark as settled."
+                      className="mr-2 grid h-9 w-9 shrink-0 place-items-center rounded-full text-amber-400 transition hover:bg-amber-500/15 disabled:opacity-50"
+                    >
+                      <TriangleAlert className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  ) : null}
                 </div>
-                {session.latestMessage ? (
-                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                    {session.latestMessage.role}: {truncate(session.latestMessage.content, 118)}
-                  </p>
-                ) : session.latestLineEvent ? (
-                  <p
-                    className={cn(
-                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
-                      session.latestLineEvent.status === "failed" && "text-red-300",
-                    )}
-                  >
-                    {lineEventLabel(session.latestLineEvent)}
-                    {session.latestLineEvent.error
-                      ? `: ${truncate(session.latestLineEvent.error, 96)}`
-                      : ""}
-                  </p>
-                ) : session.latestFacebookEvent ? (
-                  <p
-                    className={cn(
-                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
-                      session.latestFacebookEvent.status === "failed" && "text-red-300",
-                    )}
-                  >
-                    {facebookEventLabel(session.latestFacebookEvent)}
-                    {session.latestFacebookEvent.error
-                      ? `: ${truncate(session.latestFacebookEvent.error, 96)}`
-                      : ""}
-                  </p>
-                ) : session.latestWhatsAppEvent ? (
-                  <p
-                    className={cn(
-                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
-                      session.latestWhatsAppEvent.status === "failed" && "text-red-300",
-                    )}
-                  >
-                    {whatsappEventLabel(session.latestWhatsAppEvent)}
-                    {session.latestWhatsAppEvent.error
-                      ? `: ${truncate(session.latestWhatsAppEvent.error, 96)}`
-                      : ""}
-                  </p>
-                ) : session.latestInstagramEvent ? (
-                  <p
-                    className={cn(
-                      "mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground",
-                      session.latestInstagramEvent.status === "failed" && "text-red-300",
-                    )}
-                  >
-                    {instagramEventLabel(session.latestInstagramEvent)}
-                    {session.latestInstagramEvent.error
-                      ? `: ${truncate(session.latestInstagramEvent.error, 96)}`
-                      : ""}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">No messages yet</p>
-                )}
-              </button>
-            ))}
+              );
+            })}
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-border p-3">
             <Button
@@ -1482,470 +1454,114 @@ function AdminSessionDetail({
   const latestFacebookEvent = facebookEvents?.[0] ?? selectedSession.latestFacebookEvent;
   const latestWhatsAppEvent = whatsappEvents?.[0] ?? selectedSession.latestWhatsAppEvent;
   const latestInstagramEvent = instagramEvents?.[0] ?? selectedSession.latestInstagramEvent;
-  const propertyLabel = selectedSession.propertyName ?? selectedSession.propertySlug ?? "General";
-  const showVisitorContext =
-    selectedSession.channel !== "line" &&
-    selectedSession.channel !== "facebook" &&
-    selectedSession.channel !== "whatsapp" &&
-    selectedSession.channel !== "instagram";
+  const propertyLabel = selectedSession.propertyName ?? selectedSession.propertySlug ?? "General site";
+  const delivery =
+    selectedSession.channel === "line" && latestLineEvent
+      ? { event: latestLineEvent, label: lineEventLabel(latestLineEvent), tone: lineEventTone(latestLineEvent) }
+      : selectedSession.channel === "facebook" && latestFacebookEvent
+        ? {
+            event: latestFacebookEvent,
+            label: facebookEventLabel(latestFacebookEvent),
+            tone: facebookEventTone(latestFacebookEvent),
+          }
+        : selectedSession.channel === "whatsapp" && latestWhatsAppEvent
+          ? {
+              event: latestWhatsAppEvent,
+              label: whatsappEventLabel(latestWhatsAppEvent),
+              tone: whatsappEventTone(latestWhatsAppEvent),
+            }
+          : selectedSession.channel === "instagram" && latestInstagramEvent
+            ? {
+                event: latestInstagramEvent,
+                label: instagramEventLabel(latestInstagramEvent),
+                tone: instagramEventTone(latestInstagramEvent),
+              }
+            : null;
+  const deliveryText = delivery
+    ? delivery.event.messageText ??
+      ("postbackData" in delivery.event ? delivery.event.postbackData : undefined) ??
+      delivery.event.eventType
+    : "";
 
   return (
-    <div
-      className={cn(
-        "grid h-full min-h-0",
-        compact
-          ? "grid-rows-[auto_minmax(0,1fr)_auto]"
-          : "grid-rows-[minmax(12rem,34%)_minmax(0,1fr)_auto]",
-      )}
-    >
-      <div
-        className={cn(
-          "min-h-0 border-b border-border p-4",
-          compact ? "max-h-[42svh] overflow-y-auto" : "overflow-y-auto",
-        )}
-      >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className={cn("font-serif font-semibold text-foreground", compact ? "text-2xl" : "text-3xl")}>
-                {visitorLabel(selectedSession)}
-              </h2>
-              {selectedSession.isActive ? (
-                <Badge className="rounded-full bg-emerald-600 text-white">Active now</Badge>
-              ) : (
-                <Badge variant="outline" className="rounded-full">
-                  Inactive
-                </Badge>
-              )}
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt, now)}
-            </p>
-          </div>
-          <div className={cn("grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:min-w-[360px]", compact && "hidden")}>
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-gold" />
-              {selectedSession.visitorEmail ?? "No email"}
-            </div>
-            <div className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-gold" />
-              {contactLabel(selectedSession)}
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-gold" />
-              {formatDateTime(selectedSession.createdAt)}
-            </div>
-            <div className="flex items-center gap-2">
-              <ChannelIcon channel={selectedSession.channel} className="h-4 w-4 text-gold" />
-              {truncate(selectedSession.visitorId, 28) || "No visitor ID"}
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary" className="rounded-full">
-            {propertyLabel}
-          </Badge>
-          <span className="inline-flex items-center text-muted-foreground">
-            <ChannelIcon channel={selectedSession.channel} className="h-3.5 w-3.5" />
-            <span className="sr-only">{channelLabel(selectedSession.channel)}</span>
-          </span>
-          {selectedSession.currentPath ? (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
+      <div className="max-h-[40svh] min-h-0 overflow-y-auto border-b border-border p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2
+            className={cn(
+              "min-w-0 truncate font-serif font-semibold text-foreground",
+              compact ? "text-xl" : "text-2xl",
+            )}
+          >
+            {visitorLabel(selectedSession)}
+          </h2>
+          {selectedSession.isActive ? (
+            <Badge className="rounded-full bg-emerald-600 text-white">Active now</Badge>
+          ) : (
             <Badge variant="outline" className="rounded-full">
-              <ExternalLink className="mr-1 h-3 w-3" />
-              {selectedSession.currentPath}
+              Inactive
             </Badge>
-          ) : null}
+          )}
         </div>
+        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+          <span className="truncate">{propertyLabel}</span>
+          <span aria-hidden="true">·</span>
+          <span className="inline-flex items-center gap-1">
+            <ChannelIcon channel={selectedSession.channel} className="h-3.5 w-3.5" />
+            {channelLabel(selectedSession.channel)}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt, now)}</span>
+        </p>
 
-        {compact ? (
-          <div className="mt-3 space-y-2">
-            <details className="px-0 py-1 text-xs">
-              <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
-                Contact & IDs
-              </summary>
-              <div className="mt-3 grid gap-2 text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-3.5 w-3.5 text-gold" />
-                  {selectedSession.visitorEmail ?? "No email"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="h-3.5 w-3.5 text-gold" />
-                  {contactLabel(selectedSession)}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5 text-gold" />
-                  {formatDateTime(selectedSession.createdAt)}
-                </div>
-                <div className="flex items-center gap-2">
-                  <ChannelIcon channel={selectedSession.channel} className="h-3.5 w-3.5 text-gold" />
-                  {truncate(selectedSession.visitorId, 36) || "No visitor ID"}
-                </div>
-              </div>
-            </details>
-            {selectedSession.channel === "line" && latestLineEvent ? (
-              <details className="px-0 py-1 text-xs">
-                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
-                  LINE delivery
-                </summary>
-                <div className="mt-3 space-y-2 text-muted-foreground">
+        <details className="mt-3 text-xs">
+          <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
+            Contact & details
+          </summary>
+          <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
+            <DetailRow label="Email">{selectedSession.visitorEmail ?? "None"}</DetailRow>
+            <DetailRow label="Contact">{contactLabel(selectedSession)}</DetailRow>
+            <DetailRow label="Started">{formatDateTime(selectedSession.createdAt)}</DetailRow>
+            <DetailRow label="Visitor ID">{selectedSession.visitorId ?? "None"}</DetailRow>
+            <DetailRow label="Session ID">{selectedSession._id}</DetailRow>
+            {selectedSession.currentPath ? (
+              <DetailRow label="Page">{selectedSession.currentPath}</DetailRow>
+            ) : null}
+            {delivery ? (
+              <DetailRow label="Delivery">
+                <span className="flex flex-wrap items-center gap-2">
                   <Badge
-                    variant={lineEventTone(latestLineEvent)}
+                    variant={delivery.tone}
                     className={cn(
                       "rounded-full",
-                      latestLineEvent.status === "failed" && "border-red-500/50 text-red-200",
+                      delivery.event.status === "failed" && "border-red-500/50 text-red-200",
                     )}
                   >
-                    {lineEventLabel(latestLineEvent)}
+                    {delivery.label}
                   </Badge>
-                  <div>{formatDateTime(latestLineEvent.updatedAt)}</div>
-                  <div className="break-words">
-                    {latestLineEvent.messageText
-                      ? truncate(latestLineEvent.messageText, 120)
-                      : latestLineEvent.postbackData
-                        ? truncate(latestLineEvent.postbackData, 120)
-                        : latestLineEvent.eventType}
-                  </div>
-                  {latestLineEvent.error ? (
-                    <p className="break-words leading-5 text-red-200">
-                      {truncate(latestLineEvent.error, 260)}
-                    </p>
-                  ) : null}
-                </div>
-              </details>
+                  {formatDateTime(delivery.event.updatedAt)}
+                </span>
+                <span className="mt-1 block">{truncate(deliveryText, 120)}</span>
+                {delivery.event.error ? (
+                  <span className="mt-1 block leading-5 text-red-200">
+                    {truncate(delivery.event.error, 260)}
+                  </span>
+                ) : null}
+              </DetailRow>
             ) : null}
-            {selectedSession.channel === "facebook" && latestFacebookEvent ? (
-              <details className="px-0 py-1 text-xs">
-                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
-                  Facebook delivery
-                </summary>
-                <div className="mt-3 space-y-2 text-muted-foreground">
-                  <Badge
-                    variant={facebookEventTone(latestFacebookEvent)}
-                    className={cn(
-                      "rounded-full",
-                      latestFacebookEvent.status === "failed" && "border-red-500/50 text-red-200",
-                    )}
-                  >
-                    {facebookEventLabel(latestFacebookEvent)}
-                  </Badge>
-                  <div>{formatDateTime(latestFacebookEvent.updatedAt)}</div>
-                  <div className="break-words">
-                    {latestFacebookEvent.messageText
-                      ? truncate(latestFacebookEvent.messageText, 120)
-                      : latestFacebookEvent.postbackData
-                        ? truncate(latestFacebookEvent.postbackData, 120)
-                        : latestFacebookEvent.eventType}
-                  </div>
-                  {latestFacebookEvent.error ? (
-                    <p className="break-words leading-5 text-red-200">
-                      {truncate(latestFacebookEvent.error, 260)}
-                    </p>
-                  ) : null}
-                </div>
-              </details>
+            {selectedSession.channel === "web" ? (
+              <>
+                <DetailRow label="Timezone">{selectedSession.timeZone ?? "Unknown"}</DetailRow>
+                <DetailRow label="Language">{selectedSession.browserLanguage ?? "Unknown"}</DetailRow>
+                <DetailRow label="Viewport">{selectedSession.viewportSize ?? "Unknown"}</DetailRow>
+                <DetailRow label="Screen">{selectedSession.screenSize ?? "Unknown"}</DetailRow>
+                <DetailRow label="Platform">{selectedSession.platform ?? "Unknown"}</DetailRow>
+                <DetailRow label="Referrer">{selectedSession.referrer ?? "None"}</DetailRow>
+                <DetailRow label="User agent">{truncate(selectedSession.userAgent, 160) || "None"}</DetailRow>
+              </>
             ) : null}
-            {selectedSession.channel === "whatsapp" && latestWhatsAppEvent ? (
-              <details className="px-0 py-1 text-xs">
-                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
-                  WhatsApp delivery
-                </summary>
-                <div className="mt-3 space-y-2 text-muted-foreground">
-                  <Badge
-                    variant={whatsappEventTone(latestWhatsAppEvent)}
-                    className={cn(
-                      "rounded-full",
-                      latestWhatsAppEvent.status === "failed" && "border-red-500/50 text-red-200",
-                    )}
-                  >
-                    {whatsappEventLabel(latestWhatsAppEvent)}
-                  </Badge>
-                  <div>{formatDateTime(latestWhatsAppEvent.updatedAt)}</div>
-                  <div className="break-words">
-                    {latestWhatsAppEvent.messageText
-                      ? truncate(latestWhatsAppEvent.messageText, 120)
-                      : latestWhatsAppEvent.eventType}
-                  </div>
-                  {latestWhatsAppEvent.error ? (
-                    <p className="break-words leading-5 text-red-200">
-                      {truncate(latestWhatsAppEvent.error, 260)}
-                    </p>
-                  ) : null}
-                </div>
-              </details>
-            ) : null}
-            {selectedSession.channel === "instagram" && latestInstagramEvent ? (
-              <details className="px-0 py-1 text-xs">
-                <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
-                  Instagram delivery
-                </summary>
-                <div className="mt-3 space-y-2 text-muted-foreground">
-                  <Badge
-                    variant={instagramEventTone(latestInstagramEvent)}
-                    className={cn(
-                      "rounded-full",
-                      latestInstagramEvent.status === "failed" && "border-red-500/50 text-red-200",
-                    )}
-                  >
-                    {instagramEventLabel(latestInstagramEvent)}
-                  </Badge>
-                  <div>{formatDateTime(latestInstagramEvent.updatedAt)}</div>
-                  <div className="break-words">
-                    {latestInstagramEvent.messageText
-                      ? truncate(latestInstagramEvent.messageText, 120)
-                      : latestInstagramEvent.postbackData
-                        ? truncate(latestInstagramEvent.postbackData, 120)
-                        : latestInstagramEvent.eventType}
-                  </div>
-                  {latestInstagramEvent.error ? (
-                    <p className="break-words leading-5 text-red-200">
-                      {truncate(latestInstagramEvent.error, 260)}
-                    </p>
-                  ) : null}
-                </div>
-              </details>
-            ) : null}
-            {showVisitorContext ? (
-            <details className="rounded-lg border border-border bg-background/70 p-3 text-xs">
-              <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
-                Visitor context
-              </summary>
-              <div className="mt-3 grid gap-2 text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Globe2 className="h-3.5 w-3.5 text-gold" />
-                  {selectedSession.timeZone ?? "Unknown timezone"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Globe2 className="h-3.5 w-3.5 text-gold" />
-                  {selectedSession.browserLanguage ?? "Unknown language"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-                  {selectedSession.viewportSize
-                    ? `Viewport ${selectedSession.viewportSize}`
-                    : "Unknown viewport"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-                  {selectedSession.screenSize
-                    ? `Screen ${selectedSession.screenSize}`
-                    : "Unknown screen"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <UserRound className="h-3.5 w-3.5 text-gold" />
-                  {selectedSession.platform ?? "Unknown platform"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <ExternalLink className="h-3.5 w-3.5 text-gold" />
-                  {truncate(selectedSession.referrer, 44) || "No referrer"}
-                </div>
-                <p className="break-words leading-5">
-                  {selectedSession.userAgent
-                    ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
-                    : "No user agent"}
-                </p>
-              </div>
-            </details>
-            ) : null}
-          </div>
-        ) : null}
-
-        {!compact && selectedSession.channel === "line" && latestLineEvent ? (
-          <div
-            className={cn(
-              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
-              latestLineEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <ContactAppBrandIcon app="line" className="h-4 w-4" />
-              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
-                LINE delivery
-              </span>
-              <Badge
-                variant={lineEventTone(latestLineEvent)}
-                className={cn(
-                  "rounded-full",
-                  latestLineEvent.status === "failed" && "border-red-500/50 text-red-200",
-                )}
-              >
-                {lineEventLabel(latestLineEvent)}
-              </Badge>
-            </div>
-            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
-              <div>{formatDateTime(latestLineEvent.updatedAt)}</div>
-              <div className="break-words">
-                {latestLineEvent.messageText
-                  ? truncate(latestLineEvent.messageText, 120)
-                  : latestLineEvent.postbackData
-                    ? truncate(latestLineEvent.postbackData, 120)
-                    : latestLineEvent.eventType}
-              </div>
-            </div>
-            {latestLineEvent.error ? (
-              <p className="mt-2 break-words leading-5 text-red-200">
-                {truncate(latestLineEvent.error, 260)}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {!compact && selectedSession.channel === "facebook" && latestFacebookEvent ? (
-          <div
-            className={cn(
-              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
-              latestFacebookEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <ContactAppBrandIcon app="facebook" className="h-4 w-4" />
-              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
-                Facebook delivery
-              </span>
-              <Badge
-                variant={facebookEventTone(latestFacebookEvent)}
-                className={cn(
-                  "rounded-full",
-                  latestFacebookEvent.status === "failed" && "border-red-500/50 text-red-200",
-                )}
-              >
-                {facebookEventLabel(latestFacebookEvent)}
-              </Badge>
-            </div>
-            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
-              <div>{formatDateTime(latestFacebookEvent.updatedAt)}</div>
-              <div className="break-words">
-                {latestFacebookEvent.messageText
-                  ? truncate(latestFacebookEvent.messageText, 120)
-                  : latestFacebookEvent.postbackData
-                    ? truncate(latestFacebookEvent.postbackData, 120)
-                    : latestFacebookEvent.eventType}
-              </div>
-            </div>
-            {latestFacebookEvent.error ? (
-              <p className="mt-2 break-words leading-5 text-red-200">
-                {truncate(latestFacebookEvent.error, 260)}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {!compact && selectedSession.channel === "whatsapp" && latestWhatsAppEvent ? (
-          <div
-            className={cn(
-              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
-              latestWhatsAppEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <ContactAppBrandIcon app="whatsapp" className="h-4 w-4" />
-              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
-                WhatsApp delivery
-              </span>
-              <Badge
-                variant={whatsappEventTone(latestWhatsAppEvent)}
-                className={cn(
-                  "rounded-full",
-                  latestWhatsAppEvent.status === "failed" && "border-red-500/50 text-red-200",
-                )}
-              >
-                {whatsappEventLabel(latestWhatsAppEvent)}
-              </Badge>
-            </div>
-            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
-              <div>{formatDateTime(latestWhatsAppEvent.updatedAt)}</div>
-              <div className="break-words">
-                {latestWhatsAppEvent.messageText
-                  ? truncate(latestWhatsAppEvent.messageText, 120)
-                  : latestWhatsAppEvent.eventType}
-              </div>
-            </div>
-            {latestWhatsAppEvent.error ? (
-              <p className="mt-2 break-words leading-5 text-red-200">
-                {truncate(latestWhatsAppEvent.error, 260)}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {!compact && selectedSession.channel === "instagram" && latestInstagramEvent ? (
-          <div
-            className={cn(
-              "mt-4 rounded-lg border border-border bg-background/70 p-3 text-xs",
-              latestInstagramEvent.status === "failed" && "border-red-900/60 bg-red-950/20",
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <ContactAppBrandIcon app="instagram" className="h-4 w-4" />
-              <span className="font-semibold uppercase tracking-[0.16em] text-gold">
-                Instagram delivery
-              </span>
-              <Badge
-                variant={instagramEventTone(latestInstagramEvent)}
-                className={cn(
-                  "rounded-full",
-                  latestInstagramEvent.status === "failed" && "border-red-500/50 text-red-200",
-                )}
-              >
-                {instagramEventLabel(latestInstagramEvent)}
-              </Badge>
-            </div>
-            <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
-              <div>{formatDateTime(latestInstagramEvent.updatedAt)}</div>
-              <div className="break-words">
-                {latestInstagramEvent.messageText
-                  ? truncate(latestInstagramEvent.messageText, 120)
-                  : latestInstagramEvent.postbackData
-                    ? truncate(latestInstagramEvent.postbackData, 120)
-                    : latestInstagramEvent.eventType}
-              </div>
-            </div>
-            {latestInstagramEvent.error ? (
-              <p className="mt-2 break-words leading-5 text-red-200">
-                {truncate(latestInstagramEvent.error, 260)}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {!compact && showVisitorContext ? (
-          <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold">
-              <MapPin className="h-3.5 w-3.5" />
-              Visitor context
-            </div>
-            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-3">
-              <div className="flex items-center gap-2">
-                <Globe2 className="h-3.5 w-3.5 text-gold" />
-                {selectedSession.timeZone ?? "Unknown timezone"}
-              </div>
-              <div className="flex items-center gap-2">
-                <Globe2 className="h-3.5 w-3.5 text-gold" />
-                {selectedSession.browserLanguage ?? "Unknown language"}
-              </div>
-              <div className="flex items-center gap-2">
-                <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-                {selectedSession.viewportSize
-                  ? `Viewport ${selectedSession.viewportSize}`
-                  : "Unknown viewport"}
-              </div>
-              <div className="flex items-center gap-2">
-                <MonitorSmartphone className="h-3.5 w-3.5 text-gold" />
-                {selectedSession.screenSize
-                  ? `Screen ${selectedSession.screenSize}`
-                  : "Unknown screen"}
-              </div>
-              <div className="flex items-center gap-2">
-                <UserRound className="h-3.5 w-3.5 text-gold" />
-                {selectedSession.platform ?? "Unknown platform"}
-              </div>
-              <div className="flex items-center gap-2">
-                <ExternalLink className="h-3.5 w-3.5 text-gold" />
-                {truncate(selectedSession.referrer, 44) || "No referrer"}
-              </div>
-            </div>
-            <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">
-              {selectedSession.userAgent
-                ? `User agent: ${truncate(selectedSession.userAgent, 160)}`
-                : "No user agent"}
-            </p>
-          </div>
-        ) : null}
+          </dl>
+        </details>
       </div>
 
       <div

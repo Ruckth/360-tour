@@ -29,7 +29,11 @@ function facebookVisitorId(facebookUserId: string) {
 	return `facebook:${facebookUserId}`;
 }
 
-async function getOrCreateFacebookSession(ctx: MutationCtx, facebookUserId?: string) {
+async function getOrCreateFacebookSession(
+	ctx: MutationCtx,
+	facebookUserId?: string,
+	profileName?: string
+) {
 	const trimmedFacebookUserId = facebookUserId?.trim();
 	if (!trimmedFacebookUserId) return undefined;
 
@@ -41,11 +45,13 @@ async function getOrCreateFacebookSession(ctx: MutationCtx, facebookUserId?: str
 		.take(10);
 	const existingSession = existingSessions.find((session) => session.channel === 'facebook');
 	const now = Date.now();
+	const trimmedProfileName = profileName?.trim() || undefined;
 
 	if (existingSession) {
 		const patch = {
 			visitorContactApp: 'facebook' as const,
 			visitorContactHandle: trimmedFacebookUserId,
+			...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 			lastSeenAt: now
 		};
 		await ctx.db.patch(existingSession._id, {
@@ -58,6 +64,7 @@ async function getOrCreateFacebookSession(ctx: MutationCtx, facebookUserId?: str
 	return await ctx.db.insert('chatSessions', {
 		channel: 'facebook',
 		visitorId,
+		...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 		visitorContactApp: 'facebook',
 		visitorContactHandle: trimmedFacebookUserId,
 		lastSeenAt: now,
@@ -67,6 +74,7 @@ async function getOrCreateFacebookSession(ctx: MutationCtx, facebookUserId?: str
 		adminSearchText: buildAdminSearchText({
 			channel: 'facebook',
 			visitorId,
+			...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 			visitorContactApp: 'facebook',
 			visitorContactHandle: trimmedFacebookUserId,
 		}),
@@ -78,6 +86,7 @@ export const claimEvent = mutation({
 	args: {
 		eventKey: v.string(),
 		facebookUserId: v.optional(v.string()),
+		profileName: v.optional(v.string()),
 		pageId: v.optional(v.string()),
 		eventType: eventTypeValidator,
 		messageText: v.optional(v.string()),
@@ -113,7 +122,7 @@ export const claimEvent = mutation({
 		}
 
 		const sessionId =
-			existing?.sessionId ?? (await getOrCreateFacebookSession(ctx, args.facebookUserId));
+			existing?.sessionId ?? (await getOrCreateFacebookSession(ctx, args.facebookUserId, args.profileName));
 		const facebookUserId = args.facebookUserId?.trim() || undefined;
 		const pageId = args.pageId?.trim() || undefined;
 		const eventPatch = {

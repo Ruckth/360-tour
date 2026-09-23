@@ -215,6 +215,24 @@ function getUserContent(eventType: InstagramEventType, event: InstagramMessaging
   return undefined;
 }
 
+const PROFILE_LOOKUP_TIMEOUT_MS = 1500;
+
+async function fetchInstagramProfileName(accessToken: string, instagramUserId: string) {
+  const url = new URL(`https://graph.instagram.com/${getGraphApiVersion()}/${encodeURIComponent(instagramUserId)}`);
+  url.searchParams.set("fields", "name,username");
+  try {
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(PROFILE_LOOKUP_TIMEOUT_MS),
+    });
+    if (!response.ok) return undefined;
+    const profile = (await response.json()) as { name?: string; username?: string };
+    return profile.name?.trim() || profile.username?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function timeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback()), ms);
@@ -475,6 +493,7 @@ async function handleInstagramEvent({
     claimed = (await client.mutation(api.instagram.claimEvent, {
       eventKey,
       instagramUserId,
+      profileName: await fetchInstagramProfileName(accessToken, instagramUserId),
       instagramAccountId,
       eventType,
       messageText,
