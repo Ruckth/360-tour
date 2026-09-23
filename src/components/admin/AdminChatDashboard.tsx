@@ -17,7 +17,6 @@ import {
   Shield,
   Trash2,
   TriangleAlert,
-  X,
 } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -33,7 +32,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge, RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
@@ -56,6 +55,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
 import { AdminSidebar, type AdminDashboardView } from "@/components/admin/AdminSidebar";
@@ -971,25 +971,13 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       <div className="grid min-h-0 w-full flex-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)]">
         <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
           <div className="border-b border-border p-3">
-            <div className="flex rounded-lg border border-border bg-background p-1">
+            <ToggleGroup value={status} onValueChange={setStatus} aria-label="Chat status">
               {statusOptions.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => {
-                    setStatus(option);
-                  }}
-                  className={cn(
-                    "flex-1 rounded-md px-3 py-2 text-xs font-semibold capitalize transition",
-                    status === option
-                      ? "bg-navy text-white shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
+                <ToggleGroupItem key={option} value={option} className="flex-1 capitalize">
                   {option}
-                </button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
             <div className="mt-3 flex gap-2">
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1024,50 +1012,44 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                     <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       Message status
                     </Label>
-                    <div className="grid grid-cols-2 rounded-lg border border-border bg-background p-1">
+                    <ToggleGroup
+                      value={emptyFilter}
+                      onValueChange={setEmptyFilter}
+                      aria-label="Message status"
+                      className="grid grid-cols-2"
+                    >
                       {(["non_empty", "empty"] satisfies EmptyChatFilter[]).map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setEmptyFilter(option)}
-                          className={cn(
-                            "rounded-md px-2 py-2 text-xs font-semibold transition",
-                            emptyFilter === option
-                              ? "bg-navy text-white shadow-sm"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                          )}
-                        >
+                        <ToggleGroupItem key={option} value={option} className="px-2">
                           {option === "non_empty" ? "Not empty" : "Empty"}
-                        </button>
+                        </ToggleGroupItem>
                       ))}
-                    </div>
+                    </ToggleGroup>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       Channel
                     </Label>
-                    <div className="grid grid-cols-4 rounded-lg border border-border bg-background p-1">
+                    <ToggleGroup
+                      value={channelFilter}
+                      onValueChange={setChannelFilter}
+                      aria-label="Channel"
+                      className="grid grid-cols-4"
+                    >
                       {channelFilterOptions.map((option) => (
-                        <button
+                        <ToggleGroupItem
                           key={option}
-                          type="button"
-                          onClick={() => setChannelFilter(option)}
+                          value={option}
                           aria-label={`Filter by ${channelLabel(option)} channel`}
                           title={channelLabel(option)}
-                          className={cn(
-                            "inline-flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-semibold transition",
-                            channelFilter === option
-                              ? "bg-navy text-white shadow-sm"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                          )}
+                          className="px-2"
                         >
                           {option === "all" ? null : (
                             <ChannelIcon channel={option} className="h-3.5 w-3.5" />
                           )}
                           <span className={option === "all" ? undefined : "sr-only"}>{channelLabel(option)}</span>
-                        </button>
+                        </ToggleGroupItem>
                       ))}
-                    </div>
+                    </ToggleGroup>
                   </div>
                   <div className="grid gap-3">
                     <AdminDateTimeFilterField
@@ -1108,70 +1090,30 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             {trimmedSearchQuery || emptyFilter !== "non_empty" || channelFilter !== "all" || messageStartAt || messageEndAt ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {trimmedSearchQuery ? (
-                  <Badge variant="secondary" className="gap-1 rounded-full">
+                  <RemovableBadge removeLabel="Clear search" onRemove={() => setSearchQuery("")}>
                     Search: {truncate(trimmedSearchQuery, 24)}
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery("")}
-                      aria-label="Clear search"
-                      className="rounded-full p-0.5 hover:bg-background"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
+                  </RemovableBadge>
                 ) : null}
                 {emptyFilter !== "non_empty" ? (
-                  <Badge variant="secondary" className="gap-1 rounded-full">
+                  <RemovableBadge removeLabel="Clear empty filter" onRemove={() => setEmptyFilter("non_empty")}>
                     {emptyFilterLabel(emptyFilter)}
-                    <button
-                      type="button"
-                      onClick={() => setEmptyFilter("non_empty")}
-                      aria-label="Clear empty filter"
-                      className="rounded-full p-0.5 hover:bg-background"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
+                  </RemovableBadge>
                 ) : null}
                 {channelFilter !== "all" ? (
-                  <Badge variant="secondary" className="gap-1 rounded-full">
+                  <RemovableBadge removeLabel="Clear channel filter" onRemove={() => setChannelFilter("all")}>
                     <ChannelIcon channel={channelFilter} className="h-3.5 w-3.5" />
                     <span className="sr-only">{channelLabel(channelFilter)}</span>
-                    <button
-                      type="button"
-                      onClick={() => setChannelFilter("all")}
-                      aria-label="Clear channel filter"
-                      className="rounded-full p-0.5 hover:bg-background"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
+                  </RemovableBadge>
                 ) : null}
                 {messageStartAt ? (
-                  <Badge variant="secondary" className="gap-1 rounded-full">
+                  <RemovableBadge removeLabel="Clear message start" onRemove={() => setMessageStartAt("")}>
                     From {dateTimeBadgeLabel(messageStartAt)}
-                    <button
-                      type="button"
-                      onClick={() => setMessageStartAt("")}
-                      aria-label="Clear message start"
-                      className="rounded-full p-0.5 hover:bg-background"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
+                  </RemovableBadge>
                 ) : null}
                 {messageEndAt ? (
-                  <Badge variant="secondary" className="gap-1 rounded-full">
+                  <RemovableBadge removeLabel="Clear message end" onRemove={() => setMessageEndAt("")}>
                     To {dateTimeBadgeLabel(messageEndAt)}
-                    <button
-                      type="button"
-                      onClick={() => setMessageEndAt("")}
-                      aria-label="Clear message end"
-                      className="rounded-full p-0.5 hover:bg-background"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
+                  </RemovableBadge>
                 ) : null}
               </div>
             ) : null}
@@ -1758,18 +1700,14 @@ function KnowledgePropertyScopeSelector({
           </Badge>
         ) : (
           selectedScopes.map((scope) => (
-            <Badge key={scope.slug} variant="secondary" className="gap-1 rounded-full">
+            <RemovableBadge
+              key={scope.slug}
+              removeLabel={`Remove ${scope.label}`}
+              disabled={disabled}
+              onRemove={() => toggleSlug(scope.slug)}
+            >
               {scope.label}
-              <button
-                type="button"
-                aria-label={`Remove ${scope.label}`}
-                className="rounded-full p-0.5 hover:bg-background"
-                disabled={disabled}
-                onClick={() => toggleSlug(scope.slug)}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
+            </RemovableBadge>
           ))
         )}
         <Popover open={open} onOpenChange={setOpen}>
@@ -2167,23 +2105,13 @@ function AdminQuestionsView() {
             <h2 className="mt-2 font-serif text-3xl font-semibold text-foreground">
               Chatbot Knowledge
             </h2>
-            <div className="mt-4 flex w-fit rounded-lg border border-border bg-background p-1">
+            <ToggleGroup value={mode} onValueChange={setMode} aria-label="Knowledge view" className="mt-4 w-fit">
               {(["answers", "unknown"] satisfies KnowledgeViewMode[]).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setMode(option)}
-                  className={cn(
-                    "rounded-md px-4 py-2 text-xs font-semibold capitalize transition",
-                    mode === option
-                      ? "bg-navy text-white shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
+                <ToggleGroupItem key={option} value={option} className="px-4 capitalize">
                   {option}
-                </button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {mode === "answers" ? (
@@ -2623,17 +2551,13 @@ function AdminQuestionsView() {
                 {form.questions.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {form.questions.map((question) => (
-                      <Badge key={question} variant="secondary" className="gap-1 rounded-full">
+                      <RemovableBadge
+                        key={question}
+                        removeLabel={`Remove ${question}`}
+                        onRemove={() => removeAdditionalQuestion(question)}
+                      >
                         {question}
-                        <button
-                          type="button"
-                          aria-label={`Remove ${question}`}
-                          className="rounded-full p-0.5 hover:bg-background"
-                          onClick={() => removeAdditionalQuestion(question)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
+                      </RemovableBadge>
                     ))}
                   </div>
                 ) : null}
