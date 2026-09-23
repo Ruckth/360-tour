@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { SignInButton, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import {
   CalendarDays,
   ChevronLeft,
@@ -19,6 +19,7 @@ import {
   Phone,
   Plus,
   Search,
+  Send,
   Shield,
   Trash2,
   UserRound,
@@ -42,6 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
+import { ChatInput } from "@/components/ui/chat/chat-input";
 import {
   ChatBubble,
   ChatBubbleAvatar,
@@ -72,6 +74,7 @@ type AdminDashboardView = "chats" | "questions";
 type AdminMessage = {
   _id: Id<"chatMessages">;
   role: "user" | "assistant";
+  source?: "admin";
   content: string;
   timestamp: number;
 };
@@ -752,6 +755,7 @@ export function AdminChatDashboard() {
 }
 
 function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
+  const { getToken } = useAuth();
   const now = usePresenceClock();
   const isLargeViewport = useMediaQuery("(min-width: 1024px)");
   const [view, setView] = useState<AdminDashboardView>("chats");
@@ -765,6 +769,11 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const [selectedSessionId, setSelectedSessionId] =
     useState<Id<"chatSessions"> | null>(null);
+  const selectedSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyPending, setReplyPending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [replyStatus, setReplyStatus] = useState<string | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
   const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt, "start");
   const parsedMessageEndAt = dateTimeInputToMillis(messageEndAt, "end");
@@ -831,6 +840,54 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
     [selectedSessionId, sessions, sessionDetail],
   );
 
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+    setReplyDraft("");
+    setReplyError(null);
+    setReplyStatus(null);
+  }, [selectedSessionId]);
+
+  async function sendAdminReply() {
+    const sessionId = selectedSessionId;
+    const content = replyDraft.trim();
+    if (!sessionId || !content || replyPending) return;
+    setReplyPending(true);
+    setReplyError(null);
+    setReplyStatus(null);
+    try {
+      const token = await getToken({ template: "convex" });
+      if (!token) throw new Error("Admin sign-in has expired. Sign in again.");
+      const response = await fetch("/api/admin/chat/reply", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId,
+          requestId: crypto.randomUUID(),
+          content,
+        }),
+      });
+      const result = (await response.json()) as { error?: string; channel?: string };
+      if (!response.ok) throw new Error(result.error || "Unable to send reply");
+      if (selectedSessionIdRef.current === sessionId) {
+        setReplyDraft("");
+        setReplyStatus(
+          result.channel === "web"
+            ? "Reply sent"
+            : `Reply accepted by ${channelLabel(result.channel as AdminSession["channel"])}. Delivery is not confirmed.`,
+        );
+      }
+    } catch (error) {
+      if (selectedSessionIdRef.current === sessionId) {
+        setReplyError(error instanceof Error ? error.message : "Unable to send reply");
+      }
+    } finally {
+      setReplyPending(false);
+    }
+  }
+
   const resetSessionPaging = useCallback(() => {
     setPageIndex(0);
     setPageCursors([null]);
@@ -870,9 +927,9 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   }, [filterResetKey, resetSessionPaging]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/95">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+    <div className={cn("bg-background", view === "chats" ? "flex h-dvh flex-col overflow-hidden" : "min-h-screen")}>
+      <header className="shrink-0 border-b border-border bg-card/95">
+        <div className="flex flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
               <MessageCircle className="h-4 w-4" />
@@ -910,8 +967,8 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
         <AdminQuestionsView />
       ) : (
       <>
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-        <aside className="grid min-h-[calc(100vh-132px)] grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
+      <main className="grid min-h-0 w-full flex-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)]">
+        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
           <div className="border-b border-border p-3">
             <div className="flex rounded-lg border border-border bg-background p-1">
               {statusOptions.map((option) => (
@@ -1263,7 +1320,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           </div>
         </aside>
 
-        <section className="hidden h-[calc(100vh-132px)] border border-border bg-card lg:block">
+        <section className="hidden min-h-0 border border-border bg-card lg:block">
           <AdminSessionDetail
             canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
             facebookEvents={sessionDetail?.facebookEvents}
@@ -1276,6 +1333,12 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             messages={transcriptMessages}
             now={now}
             selectedSession={selectedSession}
+            replyDraft={replyDraft}
+            onReplyDraftChange={setReplyDraft}
+            onSendReply={sendAdminReply}
+            replyPending={replyPending}
+            replyError={replyError}
+            replyStatus={replyStatus}
           />
         </section>
       </main>
@@ -1308,6 +1371,12 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             messages={transcriptMessages}
             now={now}
             selectedSession={selectedSession}
+            replyDraft={replyDraft}
+            onReplyDraftChange={setReplyDraft}
+            onSendReply={sendAdminReply}
+            replyPending={replyPending}
+            replyError={replyError}
+            replyStatus={replyStatus}
           />
         </DialogContent>
       </Dialog>
@@ -1330,6 +1399,12 @@ function AdminSessionDetail({
   messages,
   now,
   selectedSession,
+  replyDraft,
+  onReplyDraftChange,
+  onSendReply,
+  replyPending,
+  replyError,
+  replyStatus,
 }: {
   canLoadOlderMessages: boolean;
   compact?: boolean;
@@ -1343,6 +1418,12 @@ function AdminSessionDetail({
   messages: AdminMessage[];
   now: number;
   selectedSession: AdminSession | null;
+  replyDraft: string;
+  onReplyDraftChange: (value: string) => void;
+  onSendReply: () => Promise<void>;
+  replyPending: boolean;
+  replyError: string | null;
+  replyStatus: string | null;
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const previousSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
@@ -1427,8 +1508,8 @@ function AdminSessionDetail({
       className={cn(
         "grid h-full min-h-0",
         compact
-          ? "grid-rows-[auto_minmax(0,1fr)]"
-          : "grid-rows-[minmax(14rem,0.42fr)_minmax(0,1fr)] min-h-[calc(100vh-132px)]",
+          ? "grid-rows-[auto_minmax(0,1fr)_auto]"
+          : "grid-rows-[minmax(12rem,34%)_minmax(0,1fr)_auto]",
       )}
     >
       <div
@@ -1907,10 +1988,10 @@ function AdminSessionDetail({
               )}
               variant={message.role === "user" ? "sent" : "received"}
             >
-              <ChatBubbleAvatar label={message.role === "user" ? "V" : "✦"} />
+              <ChatBubbleAvatar label={message.role === "user" ? "V" : message.source === "admin" ? "A" : "✦"} />
               <div className="min-w-0">
                 <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  {message.role === "user" ? "Visitor" : "Assistant"}
+                  {message.role === "user" ? "Visitor" : message.source === "admin" ? "Admin" : "Assistant"}
                 </span>
                 <ChatBubbleMessage
                   className="whitespace-pre-wrap shadow-sm"
@@ -1939,6 +2020,41 @@ function AdminSessionDetail({
           ) : null}
         </div>
       </div>
+      <form
+        className="border-t border-border bg-card p-3 sm:p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSendReply();
+        }}
+      >
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" htmlFor={compact ? "admin-reply-mobile" : "admin-reply-desktop"}>
+          Reply via {channelLabel(selectedSession.channel)}
+        </label>
+        <div className="flex items-end gap-2">
+          <ChatInput
+            id={compact ? "admin-reply-mobile" : "admin-reply-desktop"}
+            aria-label="Type an admin reply"
+            className="min-h-11"
+            value={replyDraft}
+            onChange={(event) => onReplyDraftChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+            maxLength={1000}
+            disabled={replyPending}
+            placeholder="Type a reply…"
+          />
+          <Button type="submit" disabled={replyPending || !replyDraft.trim()}>
+            {replyPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            Send
+          </Button>
+        </div>
+        {replyError ? <p role="alert" className="mt-2 text-xs text-red-300">{replyError}</p> : null}
+        {replyStatus ? <p role="status" className="mt-2 text-xs text-muted-foreground">{replyStatus}</p> : null}
+      </form>
     </div>
   );
 }
