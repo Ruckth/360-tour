@@ -106,6 +106,7 @@ export default defineSchema({
 	})
 		.index('by_property', ['propertyId'])
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
+		.index('by_checkIn', ['checkIn'])
 		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status'])
 		.index('by_chatSession', ['chatSessionId'])

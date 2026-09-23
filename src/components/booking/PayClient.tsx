@@ -8,7 +8,11 @@ import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import { getPublicBooking, type PublicBooking } from "@/lib/react/convex-api";
+import {
+  confirmDemoPayment,
+  getPublicBooking,
+  type PublicBooking,
+} from "@/lib/react/convex-api";
 import { useOptionalConvex } from "@/lib/react/convex";
 
 export function PayClient({
@@ -76,17 +80,17 @@ export function PayClient({
   }, [accessToken, bookingId, convex, isDemo, t]);
 
   useEffect(() => {
-    if (isDemo) {
-      router.prefetch(successHref);
-    }
-  }, [isDemo, router, successHref]);
+    router.prefetch(successHref);
+  }, [router, successHref]);
 
   async function confirmPayment() {
     setLoading(true);
     setError("");
     try {
+      // Demo checkout: confirming here counts as paid.
       if (!isDemo) {
-        throw new Error(t("secureCheckoutOnly"));
+        if (!convex) throw new Error(t("liveVerificationUnavailable"));
+        await confirmDemoPayment(convex, { bookingId, accessToken });
       }
       router.push(successHref);
     } catch (err) {
@@ -103,12 +107,10 @@ export function PayClient({
           <CreditCard className="h-6 w-6 text-gold" />
         </div>
         <h1 className="mt-5 font-serif text-3xl font-semibold text-foreground">
-          {isDemo ? t("confirmDemoPayment") : t("confirmPayment")}
+          {t("confirmDemoPayment")}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          {isDemo
-            ? t("demoPaymentCopy")
-            : t("livePaymentCopy")}
+          {t("demoPaymentCopy")}
         </p>
         <div className="mt-5 flex items-center gap-2 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
           <ShieldCheck className="h-4 w-4 text-gold" />
@@ -131,15 +133,13 @@ export function PayClient({
         <div className="mt-6 grid gap-3">
           <Button
             onClick={confirmPayment}
-            disabled={!isDemo || loading || checking || Boolean(error && !isDemo)}
+            disabled={loading || checking || (!isDemo && !booking)}
           >
             {checking
               ? t("verifying")
               : loading
                 ? t("confirming")
-                : isDemo
-                  ? t("confirmDemoPaymentCta")
-                  : t("awaitSecureCheckout")}
+                : t("confirmDemoPaymentCta")}
           </Button>
           <Link
             href={localizeHref("/booking", locale)}

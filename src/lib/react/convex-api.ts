@@ -150,6 +150,16 @@ export async function getPublicBooking(
   )) as PublicBooking | null;
 }
 
+export async function confirmDemoPayment(
+  client: ConvexReactClient,
+  args: { bookingId: string; accessToken: string },
+) {
+  return (await withConvexTimeout(
+    client.mutation(api.bookings.confirmDemoPayment, args as never),
+    "Confirming payment",
+  )) as PublicBooking | null;
+}
+
 export async function saveLead(
   client: ConvexReactClient,
   args: { propertySlug: string; email: string; source: "tour_completion" | "chat" | "booking_abandonment" },

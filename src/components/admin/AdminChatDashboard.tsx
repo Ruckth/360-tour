@@ -61,6 +61,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
+import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
 import { AdminSidebar, type AdminDashboardView } from "@/components/admin/AdminSidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
@@ -881,12 +882,14 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
               Concierge operations
             </p>
             <h1 className="truncate font-serif text-2xl font-semibold text-foreground">
-              {view === "chats" ? "Chats" : "Questions"}
+              {view === "chats" ? "Chats" : view === "bookings" ? "Bookings" : "Questions"}
             </h1>
           </div>
         </header>
 
-      {view === "questions" ? (
+      {view === "bookings" ? (
+        <AdminBookingsView />
+      ) : view === "questions" ? (
         <AdminQuestionsView />
       ) : (
       <>

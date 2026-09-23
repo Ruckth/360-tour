@@ -1,7 +1,7 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
-import { HelpCircle, MessageCircle, Shield } from "lucide-react";
+import { CalendarDays, HelpCircle, MessageCircle, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +17,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-export type AdminDashboardView = "chats" | "questions";
+export type AdminDashboardView = "chats" | "bookings" | "questions";
 
 export function AdminSidebar({
   view,
@@ -63,6 +63,17 @@ export function AdminSidebar({
                 >
                   <MessageCircle aria-hidden="true" />
                   <span>Chats</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={view === "bookings"}
+                  tooltip="Bookings"
+                  onClick={() => selectView("bookings")}
+                >
+                  <CalendarDays aria-hidden="true" />
+                  <span>Bookings</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

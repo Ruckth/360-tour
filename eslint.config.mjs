@@ -14,6 +14,7 @@ const config = [
       ".vercel/**",
       "archive/**",
       "convex/_generated/**",
+      "src/components/reui/**", // vendored ReUI registry code
       "build/**",
     ],
   },

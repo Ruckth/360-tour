@@ -74,7 +74,7 @@ test("thai booking calendar localizes the month header", async ({ page }) => {
 test("payment and success pages guard live links and allow demo confirmation", async ({ page }) => {
   await page.goto("/booking/pay?bookingId=live-without-token");
   await expect(page.getByText(/Live booking verification is unavailable/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Await Secure Checkout" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Confirm Demo Payment" })).toBeDisabled();
 
   await page.goto("/booking/pay?bookingId=demo");
   await page.getByRole("button", { name: "Confirm Demo Payment" }).click();

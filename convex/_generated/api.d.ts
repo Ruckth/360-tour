@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as adminBookings from "../adminBookings.js";
 import type * as adminChat from "../adminChat.js";
 import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
@@ -55,6 +56,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  adminBookings: typeof adminBookings;
   adminChat: typeof adminChat;
   availability: typeof availability;
   bookings: typeof bookings;

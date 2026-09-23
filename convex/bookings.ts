@@ -160,32 +160,47 @@ export const updatePaymentStatus = mutation({
 	}
 });
 
+export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string) {
+	const booking = await ctx.db.get(bookingId);
+	if (!booking) {
+		throw new Error('Booking not found');
+	}
+	assertNotCancelled(booking);
+	await assertPaymentStillAvailable(ctx, booking, bookingId);
+
+	const bookingIdText = bookingId as string;
+	await ctx.db.patch(bookingId, {
+		paymentStatus: 'paid',
+		status: 'confirmed',
+		paidAt: booking.paidAt ?? Date.now(),
+		paymentMethod: booking.paymentMethod ?? paymentMethod,
+		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
+		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
+		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
+	});
+
+	await blockBookingDates(ctx, booking, bookingId);
+	return await ctx.db.get(bookingId);
+}
+
 export const markPaidFromTrustedWebhook = internalMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		paymentMethod: v.optional(v.string())
 	},
+	handler: async (ctx, args) =>
+		await markBookingPaid(ctx, args.bookingId, args.paymentMethod ?? 'trusted_webhook')
+});
+
+/** Demo checkout: the guest clicking "Confirm payment" on the pay page counts as paid. */
+export const confirmDemoPayment = mutation({
+	args: { bookingId: v.id('bookings'), accessToken: v.string() },
 	handler: async (ctx, args) => {
 		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) {
-			throw new Error('Booking not found');
-		}
-		assertNotCancelled(booking);
-		await assertPaymentStillAvailable(ctx, booking, args.bookingId);
-
-		const bookingIdText = args.bookingId as string;
-		await ctx.db.patch(args.bookingId, {
-			paymentStatus: 'paid',
-			status: 'confirmed',
-			paidAt: booking.paidAt ?? Date.now(),
-			paymentMethod: booking.paymentMethod ?? args.paymentMethod ?? 'trusted_webhook',
-			confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
-			invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
-			receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
-		});
-
-		await blockBookingDates(ctx, booking, args.bookingId);
-		return await ctx.db.get(args.bookingId);
+		if (!booking) throw new Error('Booking not found');
+		assertBookingAccess(booking, args.accessToken);
+		const paid = await markBookingPaid(ctx, args.bookingId, 'demo');
+		return paid ? toPublicBooking(paid) : null;
 	}
 });
 
