@@ -122,6 +122,30 @@ export const BOOKING_TOOLS: ToolDef[] = [
 				'Create the booking held by prepare_booking. Only call this after the guest explicitly replied "yes" to the summary. Takes no arguments.',
 			parameters: { type: 'object', properties: {} }
 		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'get_my_bookings',
+			description:
+				"List this guest's bookings (reference, villa, dates, status, and a payment link for unpaid ones). Takes no arguments.",
+			parameters: { type: 'object', properties: {} }
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'cancel_booking',
+			description:
+				'Cancel one of the guest\'s unpaid bookings by reference. The first call returns needs_confirmation: read the booking back and ask the guest to reply "yes". Call again with the same reference after they confirm.',
+			parameters: {
+				type: 'object',
+				properties: {
+					reference: { type: 'string', description: 'Booking reference from get_my_bookings, e.g. CONF-2026-ABC123' }
+				},
+				required: ['reference']
+			}
+		}
 	}
 ];
 
@@ -130,7 +154,14 @@ type ToolArgs = Record<string, unknown>;
 export type ToolContext = {
 	sessionId: Id<'chatSessions'>;
 	siteUrl?: string;
+	/** When the current AI turn started; lets two-step tools require a guest reply in between. */
+	turnStartedAt: number;
 };
+
+function paymentUrl(toolContext: ToolContext, bookingId: string, accessToken: string) {
+	const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
+	return `${base}/booking/pay?bookingId=${bookingId}&token=${accessToken}`;
+}
 
 function findProperty(properties: Doc<'properties'>[], slug: unknown): Doc<'properties'> | null {
 	if (typeof slug !== 'string') return null;
@@ -262,16 +293,39 @@ export async function executeTool(
 			const booking = await ctx.runMutation(internal.bookings.confirmChatBooking, {
 				sessionId: toolContext.sessionId
 			});
-			const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
-			const paymentUrl = `${base}/booking/pay?bookingId=${booking.bookingId}&token=${booking.accessToken}`;
 			return JSON.stringify({
 				confirmationCode: booking.confirmationCode,
 				status: 'pending_payment',
 				total: booking.total,
 				currency: booking.currency,
-				paymentUrl,
+				paymentUrl: paymentUrl(toolContext, booking.bookingId, booking.accessToken),
 				alreadyConfirmed: booking.alreadyConfirmed
 			});
+		}
+
+		case 'get_my_bookings': {
+			const bookings = await ctx.runQuery(internal.bookings.listChatGuestBookings, {
+				sessionId: toolContext.sessionId
+			});
+			return JSON.stringify({
+				bookings: bookings.map(({ bookingId, accessToken, ...booking }) => ({
+					...booking,
+					...(accessToken ? { paymentUrl: paymentUrl(toolContext, bookingId, accessToken) } : {})
+				}))
+			});
+		}
+
+		case 'cancel_booking': {
+			const result = await ctx.runMutation(internal.bookings.cancelChatBooking, {
+				sessionId: toolContext.sessionId,
+				reference: String(fnArgs.reference ?? ''),
+				turnStartedAt: toolContext.turnStartedAt
+			});
+			return JSON.stringify(
+				result.state === 'needs_confirmation'
+					? { ...result, next: 'Ask the guest to reply "yes" to cancel this booking.' }
+					: result
+			);
 		}
 
 		default:
