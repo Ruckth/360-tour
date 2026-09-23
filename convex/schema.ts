@@ -311,6 +311,7 @@ export default defineSchema({
 	chatMessages: defineTable({
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
+		source: v.optional(v.literal('admin')),
 		content: v.string(),
 		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
 		timestamp: v.number()
@@ -320,6 +321,17 @@ export default defineSchema({
 			searchField: 'content',
 			filterFields: ['sessionId']
 		}),
+
+	adminReplyAttempts: defineTable({
+		requestId: v.string(),
+		sessionId: v.id('chatSessions'),
+		adminEmail: v.string(),
+		content: v.string(),
+		status: v.union(v.literal('pending'), v.literal('sent'), v.literal('failed')),
+		createdAt: v.number(),
+		completedAt: v.optional(v.number()),
+		error: v.optional(v.string())
+	}).index('by_requestId', ['requestId']),
 
 	chatBrowserHandoffs: defineTable({
 		token: v.string(),

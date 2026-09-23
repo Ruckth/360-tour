@@ -62,6 +62,7 @@ export type ChatTranscriptMessage = {
   _id?: string;
   sessionId?: string;
   role: "user" | "assistant";
+  source?: "admin";
   content: string;
   action?: ChatActionHint;
   timestamp?: number;
