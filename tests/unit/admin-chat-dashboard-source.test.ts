@@ -14,7 +14,7 @@ describe("admin chat dashboard source", () => {
     expect(dashboardSource).toContain("Not empty");
     expect(dashboardSource).toContain("Latest message start");
     expect(dashboardSource).toContain("Latest message end");
-    expect(dashboardSource).toContain("relativeTime(\n                      session.latestMessageAt,");
+    expect(dashboardSource).toContain("relativeTime(session.latestMessageAt, now)");
     expect(dashboardSource).not.toContain("session.latestMessageAt ?? session.lastSeenAt");
   });
 

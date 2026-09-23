@@ -1,40 +1,34 @@
+type AdminChatChannel = "web" | "whatsapp" | "line" | "facebook" | "instagram";
+
 type AdminChatLabelSession = {
-  _id: string;
-  visitorId?: string;
+  channel?: AdminChatChannel;
   visitorName?: string;
   visitorEmail?: string;
   visitorContactHandle?: string;
 };
 
-const externalVisitorPrefixes = ["line:", "facebook:", "whatsapp:", "instagram:"];
-const shortVisitorIdLength = 8;
+const guestLabels: Record<AdminChatChannel, string> = {
+  web: "Web guest",
+  whatsapp: "WhatsApp guest",
+  line: "LINE guest",
+  facebook: "Facebook guest",
+  instagram: "Instagram guest",
+};
 
 function cleanValue(value?: string) {
   return value?.trim() || undefined;
 }
 
-function stripVisitorPrefix(visitorId: string) {
-  const prefix = externalVisitorPrefixes.find((candidate) => visitorId.startsWith(candidate));
-  return prefix ? visitorId.slice(prefix.length) : visitorId;
-}
-
+// Raw channel IDs are never used as labels; they stay in the chat details for support.
 export function adminChatVisitorLabel(session?: AdminChatLabelSession | null) {
   if (!session) return "Unknown";
 
-  const visitorName = cleanValue(session.visitorName);
-  if (visitorName) return visitorName;
-
-  const visitorEmail = cleanValue(session.visitorEmail);
-  if (visitorEmail) return visitorEmail;
-
-  const visitorContactHandle = cleanValue(session.visitorContactHandle);
-  if (visitorContactHandle) return visitorContactHandle;
-
-  const visitorId = cleanValue(session.visitorId);
-  if (visitorId) {
-    const cleanVisitorId = stripVisitorPrefix(visitorId);
-    return cleanVisitorId === visitorId ? cleanVisitorId.slice(0, shortVisitorIdLength) : cleanVisitorId;
-  }
-
-  return session._id.slice(-6);
+  const channel = session.channel ?? "web";
+  return (
+    cleanValue(session.visitorName) ??
+    cleanValue(session.visitorEmail) ??
+    // Web visitors type their own contact handle; other channels store the raw platform ID there.
+    (channel === "web" ? cleanValue(session.visitorContactHandle) : undefined) ??
+    guestLabels[channel]
+  );
 }

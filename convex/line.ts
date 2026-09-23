@@ -31,7 +31,11 @@ function lineVisitorId(lineUserId: string) {
 	return `line:${lineUserId}`;
 }
 
-async function getOrCreateLineSession(ctx: MutationCtx, lineUserId?: string) {
+async function getOrCreateLineSession(
+	ctx: MutationCtx,
+	lineUserId?: string,
+	profileName?: string
+) {
 	const trimmedLineUserId = lineUserId?.trim();
 	if (!trimmedLineUserId) return undefined;
 
@@ -43,11 +47,13 @@ async function getOrCreateLineSession(ctx: MutationCtx, lineUserId?: string) {
 		.take(10);
 	const existingSession = existingSessions.find((session) => session.channel === 'line');
 	const now = Date.now();
+	const trimmedProfileName = profileName?.trim() || undefined;
 
 	if (existingSession) {
 		const patch = {
 			visitorContactApp: 'line' as const,
 			visitorContactHandle: trimmedLineUserId,
+			...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 			lastSeenAt: now
 		};
 		await ctx.db.patch(existingSession._id, {
@@ -60,6 +66,7 @@ async function getOrCreateLineSession(ctx: MutationCtx, lineUserId?: string) {
 	return await ctx.db.insert('chatSessions', {
 		channel: 'line',
 		visitorId,
+		...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 		visitorContactApp: 'line',
 		visitorContactHandle: trimmedLineUserId,
 		lastSeenAt: now,
@@ -69,6 +76,7 @@ async function getOrCreateLineSession(ctx: MutationCtx, lineUserId?: string) {
 		adminSearchText: buildAdminSearchText({
 			channel: 'line',
 			visitorId,
+			...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
 			visitorContactApp: 'line',
 			visitorContactHandle: trimmedLineUserId,
 		}),
@@ -80,6 +88,7 @@ export const claimEvent = mutation({
 	args: {
 		eventKey: v.string(),
 		lineUserId: v.optional(v.string()),
+		profileName: v.optional(v.string()),
 		sourceType: v.optional(v.string()),
 		eventType: eventTypeValidator,
 		messageText: v.optional(v.string()),
@@ -114,7 +123,7 @@ export const claimEvent = mutation({
 			};
 		}
 
-		const sessionId = existing?.sessionId ?? (await getOrCreateLineSession(ctx, args.lineUserId));
+		const sessionId = existing?.sessionId ?? (await getOrCreateLineSession(ctx, args.lineUserId, args.profileName));
 		const lineUserId = args.lineUserId?.trim() || undefined;
 		const eventPatch = {
 			...(sessionId ? { sessionId } : {}),

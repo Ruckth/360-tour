@@ -1,4 +1,4 @@
-import { query, type QueryCtx } from './_generated/server';
+import { mutation, query, type QueryCtx } from './_generated/server';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
@@ -282,6 +282,8 @@ async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now:
 		adminSortAt: getAdminChatSortAt(session),
 		propertyName: property?.name,
 		latestMessage,
+		needsReply:
+			latestMessage?.role === 'user' && latestMessage._id !== session.settledGuestMessageId,
 		latestLineEvent,
 		latestFacebookEvent,
 		latestWhatsAppEvent,
@@ -570,6 +572,21 @@ export const getSessionDetail = query({
 			whatsappEvents,
 			instagramEvents
 		};
+	}
+});
+
+export const settleGuestMessage = mutation({
+	args: { sessionId: v.id('chatSessions'), messageId: v.id('chatMessages') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+
+		const message = await ctx.db.get(args.messageId);
+		if (!message || message.sessionId !== args.sessionId || message.role !== 'user') {
+			throw new Error('Guest message not found');
+		}
+
+		await ctx.db.patch(args.sessionId, { settledGuestMessageId: args.messageId });
+		return null;
 	}
 });
 

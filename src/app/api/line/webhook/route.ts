@@ -225,6 +225,23 @@ async function replyToLine({
   return response.status;
 }
 
+const PROFILE_LOOKUP_TIMEOUT_MS = 1500;
+
+async function fetchLineProfileName(accessToken: string, lineUserId?: string) {
+  if (!lineUserId) return undefined;
+  try {
+    const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(lineUserId)}`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(PROFILE_LOOKUP_TIMEOUT_MS),
+    });
+    if (!response.ok) return undefined;
+    const profile = (await response.json()) as { displayName?: string };
+    return profile.displayName?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function timeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback()), ms);
@@ -279,6 +296,7 @@ async function handleLineEvent({
     claimed = (await client.mutation(api.line.claimEvent, {
       eventKey,
       lineUserId,
+      profileName: await fetchLineProfileName(accessToken, lineUserId),
       sourceType: event.source?.type,
       eventType,
       messageText,

@@ -2,82 +2,40 @@ import { describe, expect, it } from "vitest";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
 
 describe("adminChatVisitorLabel", () => {
-  it("uses explicit visitor identity before fallback ids", () => {
+  it("uses the stored name, then email", () => {
     expect(
       adminChatVisitorLabel({
-        _id: "session123456",
+        channel: "line",
         visitorName: "Maya Chen",
         visitorEmail: "maya@example.com",
         visitorContactHandle: "U123",
-        visitorId: "line:U123",
       }),
     ).toBe("Maya Chen");
 
     expect(
       adminChatVisitorLabel({
-        _id: "session123456",
+        channel: "line",
         visitorEmail: "maya@example.com",
         visitorContactHandle: "U123",
-        visitorId: "line:U123",
       }),
     ).toBe("maya@example.com");
   });
 
-  it("uses external contact handles without visitor wording", () => {
-    expect(
-      adminChatVisitorLabel({
-        _id: "session123456",
-        visitorContactHandle: "U123",
-        visitorId: "line:U123",
-      }),
-    ).toBe("U123");
-
-    expect(
-      adminChatVisitorLabel({
-        _id: "session123456",
-        visitorContactHandle: "fb-user-123",
-        visitorId: "facebook:fb-user-123",
-      }),
-    ).toBe("fb-user-123");
-
-    expect(
-      adminChatVisitorLabel({
-        _id: "session123456",
-        visitorContactHandle: "ig-user-123",
-        visitorId: "instagram:ig-user-123",
-      }),
-    ).toBe("ig-user-123");
+  it("falls back to a channel guest label instead of raw platform ids", () => {
+    expect(adminChatVisitorLabel({ channel: "line", visitorContactHandle: "U123" })).toBe("LINE guest");
+    expect(adminChatVisitorLabel({ channel: "facebook", visitorContactHandle: "fb-user-123" })).toBe(
+      "Facebook guest",
+    );
+    expect(adminChatVisitorLabel({ channel: "instagram", visitorContactHandle: "ig-user-123" })).toBe(
+      "Instagram guest",
+    );
+    expect(adminChatVisitorLabel({ channel: "whatsapp", visitorContactHandle: "66956823432" })).toBe(
+      "WhatsApp guest",
+    );
+    expect(adminChatVisitorLabel({ channel: "web" })).toBe("Web guest");
   });
 
-  it("strips known external visitor id prefixes when no handle exists", () => {
-    expect(
-      adminChatVisitorLabel({
-        _id: "session123456",
-        visitorId: "facebook:fb-user-123",
-      }),
-    ).toBe("fb-user-123");
-
-    expect(
-      adminChatVisitorLabel({
-        _id: "session123456",
-        visitorId: "line:U123",
-      }),
-    ).toBe("U123");
-
-    expect(
-      adminChatVisitorLabel({
-        _id: "session123456",
-        visitorId: "instagram:ig-user-123",
-      }),
-    ).toBe("ig-user-123");
-  });
-
-  it("shortens web visitor ids without adding visitor wording", () => {
-    expect(
-      adminChatVisitorLabel({
-        _id: "session123456",
-        visitorId: "8d4a90ec-e2e3-4f26-9983-63d36404aa27",
-      }),
-    ).toBe("8d4a90ec");
+  it("uses a web visitor's self-entered contact handle", () => {
+    expect(adminChatVisitorLabel({ channel: "web", visitorContactHandle: "@maya" })).toBe("@maya");
   });
 });
