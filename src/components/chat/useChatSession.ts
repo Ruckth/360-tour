@@ -12,6 +12,8 @@ import {
   type FormEvent,
 } from "react";
 import { useOptionalConvex } from "@/lib/react/convex";
+import { api } from "convex/_generated/api";
+import type { Id } from "convex/_generated/dataModel";
 import { useChatPageContext } from "@/components/chat/ChatContext";
 import type { ContactForm } from "@/components/chat/ChatComposer";
 import type {
@@ -422,6 +424,7 @@ function clearKnownChatMessageCaches(sessionId: string | null) {
 
 function normalizeTranscriptMessages(
   transcript: {
+    _id?: string;
     role: "user" | "assistant";
     content: string;
     action?: ChatActionHint;
@@ -431,6 +434,7 @@ function normalizeTranscriptMessages(
     message.role === "assistant" && message.action
       ? createAssistantMessage(message.content, message.action)
       : {
+          id: message._id,
           role: message.role,
           content: message.content,
         },
@@ -1575,6 +1579,31 @@ export function useChatSession({
     }, HEARTBEAT_MS);
     return () => window.clearInterval(interval);
   }, [browserGateVisible, convex, ensureSession, open]);
+
+  useEffect(() => {
+    if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
+    const watch = convex.watchQuery(
+      api.chat.getMessages,
+      { sessionId: sessionId as Id<"chatSessions">, limit: 100 },
+    );
+    const unsubscribe = watch.onUpdate(() => {
+      const transcript = watch.localQueryResult();
+      if (!transcript) return;
+        const adminMessages = transcript.filter(
+          (message) => message.source === "admin" && Boolean(message._id),
+        );
+        if (adminMessages.length === 0) return;
+        setMessages((items) => {
+          const next = [...items];
+          for (const message of adminMessages) {
+            if (next.some((item) => item.id === message._id)) continue;
+            next.push({ id: message._id, role: "assistant", content: message.content });
+          }
+          return next.length === items.length ? items : next;
+        });
+      });
+    return unsubscribe;
+  }, [browserGateVisible, convex, open, sessionId, sessionReady]);
 
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

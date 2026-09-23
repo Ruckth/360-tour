@@ -10,6 +10,7 @@
 
 import type * as adminBookings from "../adminBookings.js";
 import type * as adminChat from "../adminChat.js";
+import type * as adminReply from "../adminReply.js";
 import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
 import type * as chat from "../chat.js";
@@ -58,6 +59,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   adminBookings: typeof adminBookings;
   adminChat: typeof adminChat;
+  adminReply: typeof adminReply;
   availability: typeof availability;
   bookings: typeof bookings;
   chat: typeof chat;
