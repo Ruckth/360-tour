@@ -43,6 +43,12 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import {
+  ChatBubble,
+  ChatBubbleAvatar,
+  ChatBubbleMessage,
+  ChatBubbleTimestamp,
+} from "@/components/ui/chat/chat-bubble";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -1894,22 +1900,29 @@ function AdminSessionDetail({
             </div>
           ) : null}
           {messages.map((message) => (
-            <div
+            <ChatBubble
               key={message._id}
               className={cn(
-                "border border-border px-4 py-3 text-sm leading-6 shadow-sm",
                 compact ? "max-w-[92%]" : "max-w-[78%]",
-                message.role === "user"
-                  ? "ml-auto bg-navy text-white"
-                  : "bg-card text-foreground",
               )}
+              variant={message.role === "user" ? "sent" : "received"}
             >
-              <div className="mb-1 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-70">
-                <span>{message.role === "user" ? "Visitor" : "Assistant"}</span>
-                <span>{formatDateTime(message.timestamp)}</span>
+              <ChatBubbleAvatar label={message.role === "user" ? "V" : "✦"} />
+              <div className="min-w-0">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  {message.role === "user" ? "Visitor" : "Assistant"}
+                </span>
+                <ChatBubbleMessage
+                  className="whitespace-pre-wrap shadow-sm"
+                  variant={message.role === "user" ? "sent" : "received"}
+                >
+                  {message.content}
+                </ChatBubbleMessage>
+                <ChatBubbleTimestamp dateTime={new Date(message.timestamp).toISOString()}>
+                  {formatDateTime(message.timestamp)}
+                </ChatBubbleTimestamp>
               </div>
-              <p className="whitespace-pre-wrap">{message.content}</p>
-            </div>
+            </ChatBubble>
           ))}
           {!loadingTranscript && messages.length === 0 ? (
             <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">

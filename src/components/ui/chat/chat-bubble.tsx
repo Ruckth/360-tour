@@ -86,7 +86,7 @@ ChatBubbleMessage.displayName = "ChatBubbleMessage";
 export function ChatBubbleTimestamp({
   className,
   ...props
-}: React.HTMLAttributes<HTMLTimeElement>) {
+}: React.TimeHTMLAttributes<HTMLTimeElement>) {
   return (
     <time
       className={cn(
