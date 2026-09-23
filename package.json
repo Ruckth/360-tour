@@ -21,7 +21,8 @@
     "test:e2e": "playwright test",
     "verify": "pnpm check && pnpm lint && pnpm test:unit && pnpm build",
     "vercel-build": "npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build'",
-    "seed": "npx convex run seed:seedAll"
+    "seed": "npx convex run seed:seedAll",
+    "eval:ai-booking": "node scripts/ai-booking-eval.ts"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
