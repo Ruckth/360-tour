@@ -75,6 +75,10 @@ type AdminMessage = {
   timestamp: number;
 };
 
+export function chronologicalTranscriptMessages<T>(newestFirst: readonly T[]): T[] {
+  return [...newestFirst].reverse();
+}
+
 type LineWebhookStatus = "received" | "processing" | "replied" | "ignored" | "failed";
 type LineReplyMode =
   | "exact"
@@ -824,7 +828,10 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
     { initialNumItems: 10 },
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
-  const transcriptMessages = transcriptPagination.results;
+  const transcriptMessages = useMemo(
+    () => chronologicalTranscriptMessages(transcriptPagination.results),
+    [transcriptPagination.results],
+  );
   const loadingSessions =
     !invalidMessageDateRange && liveSessionsResult === undefined && sessionsResult === undefined;
   const loadingTranscript =
@@ -1341,7 +1348,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   );
 }
 
-function AdminSessionDetail({
+export function AdminSessionDetail({
   canLoadOlderMessages,
   compact = false,
   facebookEvents,
@@ -1382,14 +1389,16 @@ function AdminSessionDetail({
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const previousSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
+  const previousMessageCountRef = useRef(0);
+  const previousLatestMessageIdRef = useRef<Id<"chatMessages"> | null>(null);
+  const pendingOlderScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const nearBottomRef = useRef(true);
   const lastLoadRequestCountRef = useRef<number | null>(null);
 
-  const handleTranscriptScroll = useCallback(() => {
+  const requestOlderMessages = useCallback(() => {
     const node = transcriptScrollRef.current;
-    if (!node) return;
-    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
     if (
-      distanceFromBottom > 96 ||
+      !node ||
       !canLoadOlderMessages ||
       loadingOlderMessages ||
       loadingTranscript ||
@@ -1397,18 +1406,57 @@ function AdminSessionDetail({
     ) {
       return;
     }
+    pendingOlderScrollRef.current = { height: node.scrollHeight, top: node.scrollTop };
     lastLoadRequestCountRef.current = messages.length;
     loadOlderMessages();
   }, [canLoadOlderMessages, loadOlderMessages, loadingOlderMessages, loadingTranscript, messages.length]);
 
+  const handleTranscriptScroll = useCallback(() => {
+    const node = transcriptScrollRef.current;
+    if (!node) return;
+    if (node.scrollHeight - node.scrollTop - node.clientHeight < 120) {
+      nearBottomRef.current = true;
+    } else {
+      nearBottomRef.current = false;
+    }
+    if (node.scrollTop <= 96) requestOlderMessages();
+  }, [requestOlderMessages]);
+
   useLayoutEffect(() => {
-    const sessionId = selectedSession?._id ?? null;
-    if (previousSessionIdRef.current !== sessionId) {
-      transcriptScrollRef.current?.scrollTo({ top: 0 });
+    const node = transcriptScrollRef.current;
+    if (!node) {
+      previousSessionIdRef.current = null;
+      previousMessageCountRef.current = 0;
+      previousLatestMessageIdRef.current = null;
+      pendingOlderScrollRef.current = null;
       lastLoadRequestCountRef.current = null;
+      nearBottomRef.current = true;
+      return;
+    }
+    const sessionId = selectedSession?._id ?? null;
+    const latestMessageId = messages[messages.length - 1]?._id ?? null;
+    const sessionChanged = previousSessionIdRef.current !== sessionId;
+    const messagesChanged =
+      previousMessageCountRef.current !== messages.length ||
+      previousLatestMessageIdRef.current !== latestMessageId;
+
+    if (sessionChanged) {
+      pendingOlderScrollRef.current = null;
+      lastLoadRequestCountRef.current = null;
+      node.scrollTop = node.scrollHeight;
+      nearBottomRef.current = true;
+    } else if (pendingOlderScrollRef.current && messagesChanged) {
+      const previous = pendingOlderScrollRef.current;
+      node.scrollTop = node.scrollHeight - previous.height + previous.top;
+      pendingOlderScrollRef.current = null;
+    } else if (messagesChanged && nearBottomRef.current) {
+      // The first page may arrive after the conversation panel mounts.
+      node.scrollTop = node.scrollHeight;
     }
     previousSessionIdRef.current = sessionId;
-  }, [selectedSession?._id]);
+    previousMessageCountRef.current = messages.length;
+    previousLatestMessageIdRef.current = latestMessageId;
+  }, [messages, selectedSession?._id]);
 
   if (!selectedSession) {
     return (
@@ -1544,6 +1592,21 @@ function AdminSessionDetail({
           </div>
         ) : null}
         <div className="space-y-3">
+          {loadingOlderMessages ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading older messages
+            </div>
+          ) : null}
+          {canLoadOlderMessages && !loadingOlderMessages && !loadingTranscript ? (
+            <button
+              type="button"
+              className="block w-full py-2 text-center text-xs text-muted-foreground hover:text-foreground"
+              onClick={requestOlderMessages}
+            >
+              Load older messages
+            </button>
+          ) : null}
           {messages.map((message) => (
             <ChatBubble
               key={message._id}
@@ -1569,21 +1632,6 @@ function AdminSessionDetail({
               </div>
             </ChatBubble>
           ))}
-          {loadingOlderMessages ? (
-            <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Loading older messages
-            </div>
-          ) : null}
-          {canLoadOlderMessages && !loadingOlderMessages && !loadingTranscript ? (
-            <button
-              type="button"
-              className="block w-full py-2 text-center text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleTranscriptScroll}
-            >
-              Load older messages
-            </button>
-          ) : null}
           {!loadingTranscript && messages.length === 0 ? (
             <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
               {latestLineEvent
