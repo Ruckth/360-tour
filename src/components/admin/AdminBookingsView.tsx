@@ -17,6 +17,7 @@ import type {
   CalendarEvent,
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
+import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { addDaysIso, dateToIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
 
 /** One source of truth for booking state: drives chip colours and the legend. */
 const STATUS = {
@@ -362,8 +364,19 @@ function NewBookingDialog({
 }) {
   const createBooking = useMutation(api.adminBookings.createBooking);
   const [propertySlug, setPropertySlug] = useState(properties[0]?.slug ?? "");
+  const [dates, setDates] = useState({ checkIn: "", checkOut: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Same date rules as the public booking flow: no past dates, no blocked nights.
+  const today = todayIsoLocal();
+  const propertyId = properties.find((p) => p.slug === propertySlug)?._id;
+  const blockedDates =
+    useQuery(
+      api.availability.getBlockedDates,
+      propertyId ? { propertyId, startDate: today, endDate: addDaysIso(today, 365) } : "skip",
+    ) ?? [];
+  const blockedDateSet = new Set(blockedDates);
+  const conflicts = rangeIntersectsDates(blockedDates, dates.checkIn, dates.checkOut);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -377,8 +390,8 @@ function NewBookingDialog({
         guestName: text("guestName"),
         guestPhone: text("guestPhone"),
         guestEmail: text("guestEmail") || undefined,
-        checkIn: text("checkIn"),
-        checkOut: text("checkOut"),
+        checkIn: dates.checkIn,
+        checkOut: dates.checkOut,
         guests: Number(text("guests")),
       });
       onCreated(id);
@@ -420,16 +433,16 @@ function NewBookingDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="nb-checkin">Check-in</Label>
-              <Input id="nb-checkin" name="checkIn" type="date" required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="nb-checkout">Check-out</Label>
-              <Input id="nb-checkout" name="checkOut" type="date" required />
-            </div>
-          </div>
+          <BookingRangePicker
+            checkIn={dates.checkIn}
+            checkOut={dates.checkOut}
+            onChange={setDates}
+            isDateDisabled={(date) => dateToIso(date) < today || isDateInIsoList(date, blockedDateSet)}
+            unavailableDates={blockedDates}
+          />
+          {conflicts ? (
+            <p className="text-sm text-destructive">These dates overlap an existing booking or block.</p>
+          ) : null}
           <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3">
             <div className="grid gap-2">
               <Label htmlFor="nb-name">Guest name</Label>
@@ -453,7 +466,7 @@ function NewBookingDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
-            <Button type="submit" disabled={saving || !propertySlug}>
+            <Button type="submit" disabled={saving || !propertySlug || !dates.checkIn || !dates.checkOut || conflicts}>
               {saving ? <Loader2 className="size-4 animate-spin" /> : null}
               Create booking
             </Button>
