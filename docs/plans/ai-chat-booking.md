@@ -29,7 +29,10 @@ Admins can see and manage every booking in `/admin/bookings`.
    - Messenger / Instagram: ask for the guest's name + phone before `prepare_booking`, or fall back to a pre-filled `/booking?checkin=…&checkout=…&unit=…&guests=…` link.
    - Web chat: unchanged (existing booking card).
 5. **After booking**
-   - Reply with the confirmation code + `/booking/pay?id=…&token=…` link (existing demo payment flow).
+   - AI bookings are created as `pending` / payment `pending`.
+   - Reply with the confirmation code + `/booking/pay?id=…&token=…` link (demo payment page).
+   - **Clicking "Confirm payment" means the booking is paid.** Today `PayClient.confirmPayment` only works for `id=demo` and throws `secureCheckoutOnly` for real bookings, so the AI's pay link would fail. Fix: add a public mutation `bookings.confirmDemoPayment({ bookingId, accessToken })`. It checks the access token, then reuses the `markPaidFromTrustedWebhook` logic: `paymentStatus: 'paid'`, `status: 'confirmed'`, `paidAt`, `paymentMethod: 'demo'`, plus the confirmation/invoice/receipt codes. After that, go to `/booking/success`.
+   - The admin calendar and chat reflect the paid status live (Convex reactivity).
    - Optional: `get_my_bookings` / `cancel_booking` tools, looked up by session phone.
 6. **Prompt**
    - Update the per-channel prompt in `chatAi.ts`: describe the prepare → confirm flow instead of "go to the booking page".
@@ -97,6 +100,6 @@ The command installs `@reui/event-calendar`, `-content`, `-nav` and `-types` int
   - `SITE_URL`
 - Set the webhook to `https://<domain>/api/whatsapp/webhook` and subscribe to `messages`. Add the demo phone numbers as test recipients.
 
-## Open questions
-- Is the demo payment link after booking enough, or is real payment needed?
-- Should AI-created bookings start as `pending` (admin confirms) or `confirmed`?
+## Decisions
+- Payment: the demo payment link is enough. No real payment provider.
+- "Confirm payment" on the demo pay page = paid. The booking becomes `confirmed` + `paid` without admin approval.
