@@ -15,6 +15,7 @@ import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
 import type * as chat from "../chat.js";
 import type * as chatAi from "../chatAi.js";
+import type * as chatEval from "../chatEval.js";
 import type * as chatKnowledge from "../chatKnowledge.js";
 import type * as chatSuggestions from "../chatSuggestions.js";
 import type * as emails from "../emails.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   bookings: typeof bookings;
   chat: typeof chat;
   chatAi: typeof chatAi;
+  chatEval: typeof chatEval;
   chatKnowledge: typeof chatKnowledge;
   chatSuggestions: typeof chatSuggestions;
   emails: typeof emails;

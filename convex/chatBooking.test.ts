@@ -250,6 +250,50 @@ describe("AI chat booking through generateReply", () => {
     expect(bookings[0]).toMatchObject({ source: "line", guestPhone: "0812345678" });
   });
 
+  it("tells the model the guest name and the held booking waiting for yes", async () => {
+    const { t, sessionId } = await setup("whatsapp");
+    const reply = (userMessage: string) =>
+      t.action(api.chatAi.generateReply, { sessionId, userMessage, channel: "whatsapp", bookingFlow: true });
+    const systemPrompts: string[] = [];
+    const captureSystemPrompt = () => {
+      const fetchMock = vi.mocked(fetch);
+      for (const [, init] of fetchMock.mock.calls) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { messages: Array<{ role: string; content: string }> };
+        systemPrompts.push(body.messages[0].content);
+      }
+    };
+
+    await runWithAi(
+      [aiResponse(null, [{ name: "prepare_booking", args: stay }]), aiResponse("Reply yes to confirm.")],
+      async () => {
+        await reply(`Book pool villa ${checkIn} to ${checkOut} for 2`);
+        captureSystemPrompt();
+      },
+    );
+    expect(systemPrompts[0]).toContain("Guest name: Rugby");
+    expect(systemPrompts[0]).not.toContain("HELD BOOKING");
+
+    systemPrompts.length = 0;
+    await runWithAi([aiResponse("ok")], async () => {
+      await reply("yes");
+      captureSystemPrompt();
+    });
+    expect(systemPrompts[0]).toContain(`HELD BOOKING waiting for the guest's yes: Pool Villa, ${checkIn} to ${checkOut}, 2 guests, Rugby`);
+  });
+
+  it("forces a text reply when the model keeps calling tools", async () => {
+    const { t, sessionId } = await setup("whatsapp");
+    const toolCall = () => aiResponse(null, [{ name: "list_properties" }]);
+    let finalRequestTools: unknown;
+    await runWithAi([toolCall(), toolCall(), toolCall(), toolCall(), aiResponse("Here are our villas.")], async () => {
+      const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "villas?", channel: "whatsapp" });
+      const calls = vi.mocked(fetch).mock.calls;
+      finalRequestTools = JSON.parse(String(calls[calls.length - 1][1]?.body)).tools;
+      expect(result.response).toBe("Here are our villas.");
+    });
+    expect(finalRequestTools).toBeUndefined();
+  });
+
   it("does not offer booking tools in web chat", async () => {
     const { t, sessionId } = await setup("web");
     await runWithAi(

@@ -6,6 +6,7 @@ import { callAI, classifyComplexity } from './lib/chatLlm';
 import type { ChatMessage } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
 import { todayIso } from './lib/dates';
+import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getFallbackResponse } from './lib/chatFallback';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -17,7 +18,7 @@ const chatChannelValidator = v.union(
 	v.literal('instagram')
 );
 
-type GenerateConciergeReplyArgs = {
+export type GenerateConciergeReplyArgs = {
 	sessionId: Id<'chatSessions'>;
 	userMessage: string;
 	propertySlug?: string;
@@ -31,6 +32,8 @@ type GenerateConciergeReplyArgs = {
 		dynamicIntent?: 'availability' | 'pricing' | 'property_details' | 'booking_help' | 'contact';
 		source?: 'exact' | 'semantic';
 	};
+	/** Collects each tool call of this turn (used by the booking eval). */
+	toolTrace?: Array<{ name: string; args: Record<string, unknown>; result: string }>;
 };
 
 type QuestionBankMatch = {
@@ -255,20 +258,45 @@ function messagingBookingGuidance(channel: 'line' | 'facebook' | 'whatsapp' | 'i
 	const bookingUrl = `${normalizeSiteUrl(siteUrl) ?? ''}/booking`;
 	const contactStep =
 		channel === 'whatsapp'
-			? "- The guest's WhatsApp number is used as their phone automatically; do not ask for it. Ask for their name if you don't know it."
+			? "- The guest's WhatsApp number is used as their phone automatically; never ask for it. Use the guest name below if known; otherwise ask for their name."
 			: "- Ask for the guest's full name and phone number before preparing the booking. If they prefer not to share them, send a pre-filled link instead: " +
 				`${bookingUrl}?unit=<slug>&checkin=<YYYY-MM-DD>&checkout=<YYYY-MM-DD>&guests=<n>`;
 	return `
 BOOKING IN CHAT:
-- Today is ${todayIso()}. Convert the guest's dates to YYYY-MM-DD.
-- You can book directly in this chat. Collect: villa, check-in, check-out, number of guests.
+- Today is ${todayIso()} (${new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Bangkok' })}). Convert the guest's dates to YYYY-MM-DD; a year-less date means the next upcoming one.
+- You can book directly in this chat. You need: villa, check-in, check-out, number of guests, and the guest's name.
 ${contactStep}
-- Then call prepare_booking. Read the summary back (villa, dates, guests, total in ฿) and ask the guest to reply "yes" to confirm.
-- Only call confirm_booking after the guest clearly says yes to that summary. Never call it in the same turn as prepare_booking.
-- After confirm_booking, share the confirmation code and the paymentUrl so they can complete payment. The booking is held as pending until paid.
-- If a tool returns an error (dates taken, too many guests, expired), explain it briefly and help them pick another option.
+- As soon as you have those, call prepare_booking. It checks availability, capacity and price itself, so do not call check_availability or calculate_price first, and never write your own booking summary or total: only prepare_booking holds the booking.
+- After prepare_booking succeeds, read its summary back (villa, dates, guests, total in ฿) and ask the guest to reply "yes" to confirm.
+- When the guest agrees to that summary (yes, ok, confirm, go ahead, ใช่, ยืนยัน, ok ค่ะ…), call confirm_booking. Never call it in the same turn as prepare_booking. If they change details, call prepare_booking again with the new details.
+- After confirm_booking, share the confirmation code and the paymentUrl exactly as returned. The booking is pending until paid.
+- If a tool returns an error (dates taken, too many guests, expired), explain it briefly and suggest another option.
 - If the guest asks about their bookings, call get_my_bookings. Share references, dates, status, and the paymentUrl for unpaid bookings.
-- To cancel, call cancel_booking with the reference. When it returns needs_confirmation, read the booking back and ask them to reply "yes"; call cancel_booking again only after they confirm. Paid bookings can't be cancelled in chat; offer to connect them with the host.`;
+- To cancel, call cancel_booking with the reference (call get_my_bookings first if you don't know it). When it returns needs_confirmation, read the booking back and ask them to reply "yes"; after they confirm, call cancel_booking again with the same reference. Paid bookings can't be cancelled in chat; offer to connect them with the host.
+- Always call tools through the tool interface. Never write a tool call, function name, or JSON in your reply.
+- Plain text only: no tables. Short lines or simple dashes are fine.`;
+}
+
+/** Live guest + booking state, so the model knows e.g. that a held booking is waiting for "yes". */
+function messagingStateGuidance(session: Doc<'chatSessions'>, properties: Doc<'properties'>[]) {
+	const lines: string[] = [];
+	const name = session.visitorName?.trim();
+	lines.push(name ? `- Guest name: ${name}. Use it for bookings unless they give another name.` : '- Guest name: unknown.');
+
+	const quote = session.pendingBookingQuote;
+	const fresh = (createdAt: number) => Date.now() - createdAt < CHAT_BOOKING_TTL_MS;
+	if (quote && !quote.bookingId && fresh(quote.createdAt)) {
+		const villa = properties.find((p) => p.slug === quote.propertySlug)?.name ?? quote.propertySlug;
+		lines.push(
+			`- HELD BOOKING waiting for the guest's yes: ${villa}, ${quote.checkIn} to ${quote.checkOut}, ${quote.guests} guests, ${quote.guestName}, total ฿${quote.total.toLocaleString('en-US')}. If the latest message agrees, call confirm_booking now.`
+		);
+	}
+	if (session.pendingCancellation && fresh(session.pendingCancellation.createdAt)) {
+		lines.push(
+			"- CANCELLATION waiting for the guest's yes. If the latest message agrees, call cancel_booking again with the same reference."
+		);
+	}
+	return `\n\nCURRENT GUEST:\n${lines.join('\n')}`;
 }
 
 function channelGuidance(channel: GenerateConciergeReplyArgs['channel'], siteUrl?: string) {
@@ -378,7 +406,7 @@ async function recordUnknownFallback(
 	};
 }
 
-async function generateConciergeReply(
+export async function generateConciergeReply(
 	ctx: ActionCtx,
 	args: GenerateConciergeReplyArgs,
 	session: Doc<'chatSessions'>
@@ -433,7 +461,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
 `}- If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under 150 words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${questionBankHintPrompt(args.questionBankHint)}`;
+- Keep responses under 150 words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${isMessaging ? messagingStateGuidance(session, properties) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
 
 	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
@@ -504,6 +532,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 				toolResult = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
 			}
 
+			args.toolTrace?.push({ name: fnName, args: fnArgs, result: toolResult });
 			apiMessages.push({
 				role: 'tool',
 				content: toolResult,

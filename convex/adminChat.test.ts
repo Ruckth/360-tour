@@ -720,13 +720,13 @@ describe("adminChat.listSessions", () => {
     const admin = adminTest(t);
     const sessionId = await insertAdminSession(t, {
       visitorName: "Long transcript",
-      messageCount: 25,
-      latestMessageAt: 1_024,
-      adminSortAt: 1_024,
+      messageCount: 45,
+      latestMessageAt: 1_044,
+      adminSortAt: 1_044,
     });
 
     await t.run(async (ctx) => {
-      for (let index = 0; index < 25; index++) {
+      for (let index = 0; index < 45; index++) {
         await ctx.db.insert("chatMessages", {
           sessionId,
           role: index % 2 === 0 ? "user" : "assistant",
@@ -738,25 +738,29 @@ describe("adminChat.listSessions", () => {
 
     const firstPage = await admin.query(api.adminChat.listTranscriptMessages, {
       sessionId,
-      paginationOpts: { numItems: 20, cursor: null },
+      paginationOpts: { numItems: 10, cursor: null },
     });
     const secondPage = await admin.query(api.adminChat.listTranscriptMessages, {
       sessionId,
       paginationOpts: { numItems: 20, cursor: firstPage.continueCursor },
     });
+    const thirdPage = await admin.query(api.adminChat.listTranscriptMessages, {
+      sessionId,
+      paginationOpts: { numItems: 20, cursor: secondPage.continueCursor },
+    });
 
-    expect(firstPage.page).toHaveLength(20);
-    expect(firstPage.page[0]?.content).toBe("Message 24");
-    expect(firstPage.page[firstPage.page.length - 1]?.content).toBe("Message 5");
+    expect(firstPage.page).toHaveLength(10);
+    expect(firstPage.page[0]?.content).toBe("Message 44");
+    expect(firstPage.page[firstPage.page.length - 1]?.content).toBe("Message 35");
     expect(firstPage.isDone).toBe(false);
-    expect(secondPage.page.map((message) => message.content)).toEqual([
-      "Message 4",
-      "Message 3",
-      "Message 2",
-      "Message 1",
-      "Message 0",
-    ]);
-    expect(secondPage.isDone).toBe(true);
+    expect(secondPage.page).toHaveLength(20);
+    expect(secondPage.page[0]?.content).toBe("Message 34");
+    expect(secondPage.page[secondPage.page.length - 1]?.content).toBe("Message 15");
+    expect(secondPage.isDone).toBe(false);
+    expect(thirdPage.page.map((message) => message.content)).toEqual(
+      Array.from({ length: 15 }, (_, index) => `Message ${14 - index}`),
+    );
+    expect(thirdPage.isDone).toBe(true);
   });
 
   it("backfills latest-message metadata from legacy embedded messages", async () => {

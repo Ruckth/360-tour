@@ -11,7 +11,7 @@ export const TOOLS: ToolDef[] = [
 		function: {
 			name: 'check_availability',
 			description:
-				'Check if a property is available for specific dates. Returns available or blocked dates.',
+				'Answer "is it free?" questions: whether one villa is available for specific dates, with the price. Not for making a booking (use prepare_booking for that when it is offered).',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -37,7 +37,7 @@ export const TOOLS: ToolDef[] = [
 		function: {
 			name: 'calculate_price',
 			description:
-				'Calculate the total price for a stay including direct booking discount. Also shows OTA comparison prices.',
+				'Price a stay by number of nights when the guest asks what it costs (no dates needed). Includes the 15% direct discount and OTA comparison prices.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -63,7 +63,7 @@ export const TOOLS: ToolDef[] = [
 		function: {
 			name: 'get_property_details',
 			description:
-				'Get full details about a property including amenities, capacity, description, and images.',
+				'Full details for one villa (description, amenities, capacity, rooms, size) when the property list in the prompt is not enough.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -96,11 +96,11 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'prepare_booking',
 			description:
-				'Validate and quote a booking, and hold it for confirmation. Afterwards read the summary back to the guest (villa, dates, guests, total) and ask them to reply "yes" to confirm. Does NOT create the booking.',
+				'Start a booking as soon as the guest wants to book and you know villa, check-in, check-out, guests and their name. Checks availability, capacity and price itself and holds the stay for the guest to approve; it does not create the booking yet. Read the returned summary (villa, dates, guests, total) back and ask the guest to reply "yes". Call again if they change details.',
 			parameters: {
 				type: 'object',
 				properties: {
-					propertySlug: { type: 'string', description: 'The property slug' },
+					propertySlug: { type: 'string', description: 'Villa slug: pool-villa, garden-suite, or penthouse' },
 					checkIn: { type: 'string', description: 'Check-in date in YYYY-MM-DD format' },
 					checkOut: { type: 'string', description: 'Check-out date in YYYY-MM-DD format' },
 					guests: { type: 'number', description: 'Number of guests' },
@@ -119,7 +119,7 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'confirm_booking',
 			description:
-				'Create the booking held by prepare_booking. Only call this after the guest explicitly replied "yes" to the summary. Takes no arguments.',
+				'Create the booking held by prepare_booking, once the guest agrees to its summary in a later message (yes, ok, confirm, ใช่, ยืนยัน…). Returns the confirmation code and paymentUrl to share. Takes no arguments.',
 			parameters: { type: 'object', properties: {} }
 		}
 	},
@@ -128,7 +128,7 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'get_my_bookings',
 			description:
-				"List this guest's bookings (reference, villa, dates, status, and a payment link for unpaid ones). Takes no arguments.",
+				"List this guest's bookings (reference, villa, dates, status, and a payment link for unpaid ones). Use when they ask about their bookings or want to pay or cancel without giving a reference. Takes no arguments.",
 			parameters: { type: 'object', properties: {} }
 		}
 	},
