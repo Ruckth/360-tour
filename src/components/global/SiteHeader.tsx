@@ -8,12 +8,18 @@ import { useEffect, useState } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { LanguageSwitcher } from "@/components/global/LanguageSwitcher";
 import { ThemeToggle } from "@/components/global/ThemeToggle";
-import { defaultLocale, isLocale, localizeHref, stripLocalePrefix } from "@/i18n/routing";
+import {
+  defaultLocale,
+  isLocale,
+  localizeHref,
+  stripLocalePrefix,
+} from "@/i18n/routing";
 import { resort } from "@/lib/data/resort-config";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/#villas", labelKey: "villas" },
+  { href: "/experiences", labelKey: "experiences" },
   { href: "/#amenities", labelKey: "amenities" },
   { href: "/#reviews", labelKey: "reviews" },
   { href: "/#contact", labelKey: "contact" },
@@ -64,13 +70,13 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <div className="hidden items-center gap-8 md:flex">
+        <div className="hidden items-center gap-5 md:flex lg:gap-6">
           {navLinks.map((link) => (
             <Link
               key={link.href}
               href={localizeHref(link.href, locale)}
               className={cn(
-                "text-sm font-medium transition-colors",
+                "whitespace-nowrap text-sm font-medium transition-colors",
                 solid
                   ? "text-muted-foreground hover:text-foreground"
                   : "text-white/70 hover:text-white",
@@ -79,7 +85,11 @@ export function SiteHeader() {
               {t(link.labelKey)}
             </Link>
           ))}
-          <ButtonLink href={localizeHref("/booking", locale)} size="nav" variant={solid ? "primary" : "glass"}>
+          <ButtonLink
+            href={localizeHref("/booking", locale)}
+            size="nav"
+            variant={solid ? "primary" : "glass"}
+          >
             {t("book")}
           </ButtonLink>
           <LanguageSwitcher solid={solid} />
@@ -101,7 +111,11 @@ export function SiteHeader() {
             aria-label={a11y("toggleMenu")}
             aria-expanded={mobileMenuOpen}
           >
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            {mobileMenuOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
           </Button>
         </div>
       </nav>

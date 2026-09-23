@@ -1,6 +1,7 @@
 {
   "Nav": {
     "villas": "빌라",
+    "experiences": "경험",
     "amenities": "편의시설",
     "reviews": "후기",
     "contact": "문의",
@@ -26,6 +27,79 @@
     "readyCopy": "직접 예약하면 온라인 여행사 대비 15% 절약됩니다. 무료 공항 픽업과 웰컴 어메니티가 포함됩니다.",
     "contactUs": "문의하기",
     "viewVillas": "빌라 보기"
+  },
+  "Experiences": {
+    "eyebrow": "경험",
+    "title": "섬의 낮은 세심하게, 빌라의 밤은 effortless하게",
+    "intro": "느긋한 아침 식사, 바닷바람 속 액티비티, 프라이빗 웰니스 리추얼, Auralis 컨시어지의 매끄러운 도착 케어까지 원하는 기분에 맞춰 하루를 구성하세요.",
+    "primaryCta": "숙박 계획하기",
+    "secondaryCta": "컨시어지 문의",
+    "heroAlt": "인피니티 풀, 열대 야자수, 아침 식사, 황금빛 바다 전망이 있는 코사무이 럭셔리 빌라 테라스.",
+    "collectionEyebrow": "리조트 경험",
+    "collectionTitle": "하루의 리듬을 선택하세요",
+    "collectionIntro": "조용한 회복, 섬 탐험, 혹은 둘의 조화까지. 인기 경험은 빌라와 여행 일정에 맞춰 준비할 수 있습니다.",
+    "items": {
+      "privateChef": {
+        "title": "프라이빗 셰프와 선셋 다이닝",
+        "description": "태국 해산물, 열대 과일, 촛불, 그리고 일행을 위해 준비된 빌라 테라스에서 저녁을 맞이하세요.",
+        "alt": "태국 해산물, 열대 과일, 촛불, 일몰 바다 전망이 있는 프라이빗 빌라 테라스 디너.",
+        "features": [
+          "일행에 맞춘 프라이빗 셰프 메뉴",
+          "빌라 테라스에서 즐기는 선셋 다이닝",
+          "태국 해산물, 열대 과일, 기념일 디테일"
+        ]
+      },
+      "wellness": {
+        "title": "스파, 요가 & 웰니스",
+        "description": "풀사이드 요가, 빌라 내 마사지, 허브티, 고요한 아침 리추얼로 하루를 천천히 시작하세요.",
+        "alt": "코사무이 빌라의 아침 요가 매트, 스파 타월, 허브티, 열대 녹지와 인피니티 풀.",
+        "features": [
+          "프라이빗 요가 또는 명상 세션",
+          "빌라 내 마사지와 스파식 세심함",
+          "풀사이드의 부드러운 아침 준비"
+        ]
+      },
+      "beachWater": {
+        "title": "해변과 워터 데이",
+        "description": "맑은 물에서 패들보드, 해변 휴식, 보트 투어, 계절에 맞는 섬의 여유로운 장소를 즐기세요.",
+        "alt": "패들보드, 전통 롱테일 보트, 청록빛 바다, 야자수가 있는 평온한 코사무이 해변.",
+        "features": [
+          "패들보드, 보트 데이, 해변 피크닉",
+          "호스트의 계절 맞춤 추천",
+          "커플, 가족, 그룹을 위한 쉬운 일정"
+        ]
+      },
+      "arrivalConcierge": {
+        "title": "매끄러운 도착과 컨시어지",
+        "description": "공항 픽업, 시원한 타월, 짐 도움, 빌라 안내, 숙박 전후의 직접 지원으로 편안하게 도착하세요.",
+        "alt": "짐, 신선한 코코넛, 시원한 타월, 열대 정원 입구가 있는 럭셔리 빌라 도착 장면.",
+        "features": [
+          "공항 픽업 조율",
+          "웰컴 어메니티와 빌라 안내",
+          "숙박 중 WhatsApp 또는 LINE 직접 지원"
+        ]
+      }
+    },
+    "conciergeEyebrow": "컨시어지 흐름",
+    "conciergeTitle": "아이디어에서 섬의 하루까지",
+    "conciergeIntro": "원하는 여행 속도를 알려주시면 컨시어지가 빌라, 인원, 일정에 맞춰 세부 사항을 조율합니다.",
+    "steps": {
+      "chooseVilla": {
+        "title": "빌라 선택",
+        "description": "일행, 전망, 수영장 선호, 하루 리듬에 맞는 공간부터 고르세요."
+      },
+      "sharePreferences": {
+        "title": "선호 사항 공유",
+        "description": "식사, 웰니스, 도착, 섬 일정 아이디어를 체크인 전이나 도착 후에 알려주세요."
+      },
+      "arriveEffortlessly": {
+        "title": "가볍게 도착",
+        "description": "픽업, 웰컴 디테일, 경험 시간을 맞춰 첫 시간부터 안정적인 숙박이 되도록 합니다."
+      }
+    },
+    "ctaEyebrow": "숙박 시작",
+    "ctaTitle": "{resortName}을 온전히 당신의 방식으로",
+    "ctaCopy": "직접 예약으로 최적 요금을 받고, 컨시어지와 함께 아름다운 빌라 숙박을 개인적인 섬 리트리트로 바꿔보세요."
   },
   "Villa": {
     "perNight": "/박",
@@ -248,7 +322,10 @@
     "bookingTitle": "직접 예약 - Auralis Cove Retreat",
     "payTitle": "보안 결제 - Auralis Cove Retreat",
     "successTitle": "예약 확인 - Auralis Cove Retreat",
-    "villaFallback": "빌라"
+    "villaFallback": "빌라",
+    "experiencesTitle": "경험 - Auralis Cove Retreat",
+    "experiencesDescription": "코사무이 럭셔리 빌라 숙박을 위한 프라이빗 다이닝, 웰니스, 해변 일정, 도착 컨시어지 서비스.",
+    "experiencesOgTitle": "Auralis Cove Retreat의 경험"
   },
   "A11y": {
     "previousHeroSlide": "이전 히어로 슬라이드",

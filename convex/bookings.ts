@@ -3,7 +3,7 @@ import { internalMutation, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
-import { nightsBetween, todayIso } from './lib/dates';
+import { nightsBetween } from './lib/dates';
 import {
 	assertPositiveInt,
 	assertValidEmail,
@@ -12,6 +12,12 @@ import {
 import { calculateDirectQuote } from './lib/pricing';
 import { demoCode } from './lib/codes';
 import { blockBookingDates } from './lib/availabilityWrites';
+import {
+	createBookingRecord,
+	loadProperty,
+	quoteBookableStay,
+	type BookingSource
+} from './lib/bookingWrites';
 
 async function assertAuthenticated(ctx: QueryCtx | MutationCtx): Promise<void> {
 	const identity = await ctx.auth.getUserIdentity();
@@ -48,26 +54,6 @@ function toPublicBooking(booking: Doc<'bookings'>) {
 	};
 }
 
-function blocksNewBookings(booking: Doc<'bookings'>): boolean {
-	return booking.status === 'confirmed' || booking.status === 'completed';
-}
-
-async function loadProperty(
-	ctx: QueryCtx | MutationCtx,
-	slug: string
-): Promise<Doc<'properties'>> {
-	const property = await ctx.db
-		.query('properties')
-		.withIndex('by_slug', (q) => q.eq('slug', slug))
-		.first();
-
-	if (!property) {
-		throw new Error('Property not found');
-	}
-
-	return property;
-}
-
 export const quoteStay = query({
 	args: {
 		propertySlug: v.string(),
@@ -96,48 +82,6 @@ export const quoteStay = query({
 		return calculateDirectQuote(property, nights);
 	}
 });
-
-async function assertNoOverlap(
-	ctx: MutationCtx,
-	propertyId: Id<'properties'>,
-	checkIn: string,
-	checkOut: string
-): Promise<void> {
-	const candidates = await ctx.db
-		.query('bookings')
-		.withIndex('by_property_checkIn', (q) =>
-			q.eq('propertyId', propertyId).lt('checkIn', checkOut)
-		)
-		.take(500);
-
-	const overlapping = candidates.filter(
-		(b) => blocksNewBookings(b) && b.checkOut > checkIn
-	);
-
-	if (overlapping.length > 0) {
-		throw new Error('These dates are no longer available. Please choose different dates.');
-	}
-}
-
-async function assertNotBlocked(
-	ctx: MutationCtx,
-	propertyId: Id<'properties'>,
-	checkIn: string,
-	checkOut: string
-): Promise<void> {
-	const inRange = await ctx.db
-		.query('availability')
-		.withIndex('by_property_date', (q) =>
-			q.eq('propertyId', propertyId).gte('date', checkIn).lt('date', checkOut)
-		)
-		.take(366);
-
-	const blocked = inRange.filter((a) => a.status !== 'available');
-
-	if (blocked.length > 0) {
-		throw new Error('Some of these dates are blocked. Please choose different dates.');
-	}
-}
 
 async function assertPaymentStillAvailable(
 	ctx: MutationCtx,
@@ -171,56 +115,8 @@ export const create = mutation({
 		guests: v.number()
 	},
 	handler: async (ctx, args) => {
-		assertValidIsoDate(args.checkIn, 'Check-in date');
-		assertValidIsoDate(args.checkOut, 'Check-out date');
-		assertPositiveInt(args.guests, 'Guest count');
 		assertValidEmail(args.guestEmail);
-
-		const property = await loadProperty(ctx, args.propertySlug);
-
-		if (args.guests > property.maxGuests) {
-			throw new Error(`Guest count exceeds max capacity (${property.maxGuests})`);
-		}
-
-		if (args.checkIn < todayIso()) {
-			throw new Error('Check-in date cannot be in the past');
-		}
-		if (args.checkOut <= args.checkIn) {
-			throw new Error('Check-out must be after check-in');
-		}
-
-		const nights = nightsBetween(args.checkIn, args.checkOut);
-		if (!Number.isFinite(nights) || nights <= 0) {
-			throw new Error('Check-out must be after check-in');
-		}
-
-		const quote = calculateDirectQuote(property, nights);
-
-		await assertNoOverlap(ctx, property._id, args.checkIn, args.checkOut);
-		await assertNotBlocked(ctx, property._id, args.checkIn, args.checkOut);
-
-		const accessToken = crypto.randomUUID();
-		const bookingId = await ctx.db.insert('bookings', {
-			propertyId: property._id,
-			tenantId: property.tenantId,
-			guestName: args.guestName,
-			guestEmail: args.guestEmail,
-			guestPhone: args.guestPhone,
-			checkIn: args.checkIn,
-			checkOut: args.checkOut,
-			guests: args.guests,
-			nights,
-			subtotal: quote.subtotal,
-			discountAmount: quote.discountAmount,
-			total: quote.directTotal,
-			currency: quote.currency,
-			accessToken,
-			paymentStatus: 'pending',
-			status: 'pending',
-			createdAt: Date.now()
-		});
-
-		return { bookingId, accessToken };
+		return await createBookingRecord(ctx, { ...args, source: 'web' });
 	}
 });
 
@@ -311,5 +207,128 @@ export const listByProperty = query({
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.order('desc')
 			.paginate(args.paginationOpts);
+	}
+});
+
+// --- AI chat booking (prepare → guest says yes → confirm) ---
+
+export const CHAT_BOOKING_TTL_MS = 15 * 60 * 1000;
+
+const chatSourceByChannel: Record<Doc<'chatSessions'>['channel'], BookingSource> = {
+	web: 'web',
+	whatsapp: 'whatsapp',
+	facebook: 'messenger',
+	line: 'line',
+	instagram: 'instagram'
+};
+
+async function loadChatSession(ctx: QueryCtx | MutationCtx, sessionId: Id<'chatSessions'>) {
+	const session = await ctx.db.get(sessionId);
+	if (!session) throw new Error('Session not found');
+	return session;
+}
+
+/** Whether the next message in this chat should be routed to the AI booking flow. */
+export const isChatBookingFlowActive = query({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		return Boolean(session?.bookingFlowAt && Date.now() - session.bookingFlowAt < CHAT_BOOKING_TTL_MS);
+	}
+});
+
+export const touchChatBookingFlow = internalMutation({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.sessionId, { bookingFlowAt: Date.now() });
+	}
+});
+
+export const prepareChatBooking = internalMutation({
+	args: {
+		sessionId: v.id('chatSessions'),
+		propertySlug: v.string(),
+		checkIn: v.string(),
+		checkOut: v.string(),
+		guests: v.number(),
+		guestName: v.string(),
+		guestPhone: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		const session = await loadChatSession(ctx, args.sessionId);
+		// WhatsApp numbers are verified by WhatsApp, so never trust a model-supplied phone there.
+		const guestPhone = (
+			session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone
+		)?.trim();
+		if (!guestPhone) throw new Error("Ask the guest for their phone number before preparing the booking.");
+		const guestName = args.guestName.trim() || session.visitorName?.trim();
+		if (!guestName) throw new Error("Ask the guest for their name before preparing the booking.");
+
+		const { property, nights, quote } = await quoteBookableStay(ctx, args);
+		const now = Date.now();
+		await ctx.db.patch(args.sessionId, {
+			bookingFlowAt: now,
+			pendingBookingQuote: {
+				propertySlug: property.slug,
+				checkIn: args.checkIn,
+				checkOut: args.checkOut,
+				guests: args.guests,
+				guestName,
+				guestPhone,
+				nights,
+				total: quote.directTotal,
+				currency: quote.currency,
+				createdAt: now
+			}
+		});
+
+		return {
+			property: property.name,
+			checkIn: args.checkIn,
+			checkOut: args.checkOut,
+			nights,
+			guests: args.guests,
+			guestName,
+			guestPhone,
+			total: quote.directTotal,
+			currency: quote.currency
+		};
+	}
+});
+
+export const confirmChatBooking = internalMutation({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await loadChatSession(ctx, args.sessionId);
+		const pending = session.pendingBookingQuote;
+		if (!pending) throw new Error('No prepared booking. Call prepare_booking first.');
+
+		// Already confirmed (e.g. the guest said "yes" twice): return the same booking.
+		const existing = pending.bookingId ? await ctx.db.get(pending.bookingId) : null;
+		if (existing) {
+			return { bookingId: existing._id, accessToken: existing.accessToken ?? '', confirmationCode: existing.confirmationCode ?? '', total: existing.total, currency: existing.currency, alreadyConfirmed: true };
+		}
+
+		if (Date.now() - pending.createdAt > CHAT_BOOKING_TTL_MS) {
+			await ctx.db.patch(args.sessionId, { pendingBookingQuote: undefined });
+			throw new Error('The prepared booking expired. Call prepare_booking again.');
+		}
+
+		const { bookingId, accessToken } = await createBookingRecord(ctx, {
+			propertySlug: pending.propertySlug,
+			checkIn: pending.checkIn,
+			checkOut: pending.checkOut,
+			guests: pending.guests,
+			guestName: pending.guestName,
+			guestPhone: pending.guestPhone,
+			...(session.visitorEmail ? { guestEmail: session.visitorEmail } : {}),
+			source: chatSourceByChannel[session.channel],
+			chatSessionId: args.sessionId
+		});
+		const confirmationCode = demoCode('CONF', bookingId as string);
+		await ctx.db.patch(bookingId, { confirmationCode });
+		await ctx.db.patch(args.sessionId, { pendingBookingQuote: { ...pending, bookingId } });
+
+		return { bookingId, accessToken, confirmationCode, total: pending.total, currency: pending.currency, alreadyConfirmed: false };
 	}
 });

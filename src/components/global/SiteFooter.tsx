@@ -23,18 +23,31 @@ export function SiteFooter() {
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
             {resort.tagline}. {resort.location}
           </p>
-          <p className="mt-4 text-xs text-muted-foreground">
-            {resort.address}
-          </p>
+          <p className="mt-4 text-xs text-muted-foreground">{resort.address}</p>
         </div>
         <div className="flex flex-col gap-2 text-sm text-muted-foreground md:text-right">
-          <Link className="transition hover:text-foreground" href={localizeHref("/#villas", locale)}>
+          <Link
+            className="transition hover:text-foreground"
+            href={localizeHref("/#villas", locale)}
+          >
             {nav("villas")}
           </Link>
-          <Link className="transition hover:text-foreground" href={localizeHref("/booking", locale)}>
+          <Link
+            className="transition hover:text-foreground"
+            href={localizeHref("/experiences", locale)}
+          >
+            {nav("experiences")}
+          </Link>
+          <Link
+            className="transition hover:text-foreground"
+            href={localizeHref("/booking", locale)}
+          >
             {footer("bookDirect")}
           </Link>
-          <a className="transition hover:text-foreground" href={buildEmailHref(resort.contactEmail)}>
+          <a
+            className="transition hover:text-foreground"
+            href={buildEmailHref(resort.contactEmail)}
+          >
             {resort.contactEmail}
           </a>
         </div>

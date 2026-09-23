@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
+import { looksLikeBookingMessage } from "@/lib/chat/ai-booking-route";
 import { verifyLineSignature } from "@/lib/line/signature";
 import {
   detectQuickAnswerLocale,
@@ -369,6 +370,28 @@ async function handleLineEvent({
           responseText = quickAnswer.text;
           quickReplyItems = quickAnswer.quickReplyItems;
           replyMode = quickAnswer.mode;
+        } else if (
+          eventType === "message" &&
+          messageText &&
+          (looksLikeBookingMessage(messageText) ||
+            (await client.query(api.bookings.isChatBookingFlowActive, {
+              sessionId: claimed.sessionId,
+            } as never)))
+        ) {
+          generated = await timeout(
+            client.action(api.chatAi.generateReply, {
+              sessionId: claimed.sessionId,
+              userMessage: messageText,
+              channel: "line",
+              siteUrl,
+              bookingFlow: true,
+              ...(locale ? { locale } : {}),
+            } as never) as Promise<GeneratedReply>,
+            AI_REPLY_TIMEOUT_MS,
+            () => timeoutFallbackReply(locale),
+          );
+          responseText = generated.response ?? timeoutFallbackReply(locale).response;
+          replyMode = generated.model === "timeout" ? "failed" : "ai";
         } else {
           if (eventType === "message" && messageText) {
             const exactMatch = (await client.query(api.chatSuggestions.resolveCuratedExact, {

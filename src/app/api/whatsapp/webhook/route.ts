@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { api } from "convex/_generated/api";
+import { looksLikeBookingMessage } from "@/lib/chat/ai-booking-route";
 import { verifyMetaSignature } from "@/lib/meta/signature";
 import {
   detectQuickAnswerLocale,
@@ -341,6 +342,31 @@ async function resolveWhatsAppReply({
     return {
       responseText: whatsappChannelCopy(quickAnswer.text),
       replyMode: "exact",
+      questionBankMatch: null,
+    };
+  }
+
+  if (
+    messageText &&
+    (looksLikeBookingMessage(messageText) ||
+      (await client.query(api.bookings.isChatBookingFlowActive, { sessionId } as never)))
+  ) {
+    const generated = await timeout(
+      client.action(api.chatAi.generateReply, {
+        sessionId,
+        userMessage: messageText,
+        channel: "whatsapp",
+        siteUrl,
+        bookingFlow: true,
+        ...(locale ? { locale } : {}),
+      } as never) as Promise<GeneratedReply>,
+      AI_REPLY_TIMEOUT_MS,
+      () => timeoutFallbackReply(locale),
+    );
+
+    return {
+      responseText: generated.response ?? timeoutFallbackReply(locale).response,
+      replyMode: generated.model === "timeout" ? "failed" : "ai",
       questionBankMatch: null,
     };
   }

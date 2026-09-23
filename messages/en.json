@@ -1,6 +1,7 @@
 {
   "Nav": {
     "villas": "Villas",
+    "experiences": "Experiences",
     "amenities": "Amenities",
     "reviews": "Reviews",
     "contact": "Contact",
@@ -26,6 +27,79 @@
     "readyCopy": "Book direct and save 15% compared to online travel agencies. Includes complimentary airport transfer and welcome amenities.",
     "contactUs": "Contact Us",
     "viewVillas": "View Villas"
+  },
+  "Experiences": {
+    "eyebrow": "Experiences",
+    "title": "Curated island days, effortless villa nights",
+    "intro": "Shape every day around the way you want to feel: unhurried breakfasts, salt-air adventures, private wellness rituals, and seamless arrival care from the Auralis concierge.",
+    "primaryCta": "Plan Your Stay",
+    "secondaryCta": "Contact Concierge",
+    "heroAlt": "Luxury Koh Samui villa terrace with an infinity pool, tropical palms, breakfast, and ocean views at golden hour.",
+    "collectionEyebrow": "Resort Experiences",
+    "collectionTitle": "Choose the rhythm of each day",
+    "collectionIntro": "Keep your stay quiet and restorative, fill it with island discovery, or blend both. These guest favorites can be arranged around your villa and travel dates.",
+    "items": {
+      "privateChef": {
+        "title": "Private Chef & Sunset Dining",
+        "description": "Let the evening come to you with Thai seafood, tropical fruit, candlelight, and a villa terrace prepared for your group.",
+        "alt": "Private villa terrace dinner with Thai seafood, tropical fruit, candlelight, and sunset ocean views.",
+        "features": [
+          "Private chef menus shaped around your group",
+          "Sunset dining on your villa terrace",
+          "Thai seafood, tropical fruit, and celebration touches"
+        ]
+      },
+      "wellness": {
+        "title": "Spa, Yoga & Wellness",
+        "description": "Start slow with poolside yoga, in-villa massage, herbal tea, and quiet rituals that make the morning feel spacious.",
+        "alt": "Morning yoga mats, spa towels, herbal tea, tropical greenery, and an infinity pool at a Koh Samui villa.",
+        "features": [
+          "Private yoga or meditation sessions",
+          "In-villa massage and spa-style details",
+          "Gentle morning setups by the pool"
+        ]
+      },
+      "beachWater": {
+        "title": "Beach & Water Days",
+        "description": "Spend the day on clear water with paddleboards, beach time, boat outings, or easy island stops chosen for the season.",
+        "alt": "Calm Koh Samui beach with paddleboards, a traditional longtail boat, turquoise water, and tropical palms.",
+        "features": [
+          "Paddleboards, boat days, and beach picnics",
+          "Season-aware recommendations from the host",
+          "Easy plans for couples, families, and groups"
+        ]
+      },
+      "arrivalConcierge": {
+        "title": "Seamless Arrival & Concierge",
+        "description": "Land softly with airport pickup, cool towels, luggage help, villa orientation, and direct support before and during your stay.",
+        "alt": "Luxury villa arrival with luggage, fresh coconuts, cool towels, and tropical garden entry.",
+        "features": [
+          "Airport pickup coordination",
+          "Welcome amenities and villa orientation",
+          "Direct WhatsApp or LINE support while you stay"
+        ]
+      }
+    },
+    "conciergeEyebrow": "Concierge Flow",
+    "conciergeTitle": "From idea to island day",
+    "conciergeIntro": "Tell us the pace you want, and the concierge shapes the details around your villa, guests, and dates.",
+    "steps": {
+      "chooseVilla": {
+        "title": "Choose your villa",
+        "description": "Start with the space that fits your group, view, pool preference, and daily rhythm."
+      },
+      "sharePreferences": {
+        "title": "Share preferences",
+        "description": "Send dining, wellness, arrival, and island ideas before check-in or once you arrive."
+      },
+      "arriveEffortlessly": {
+        "title": "Arrive effortlessly",
+        "description": "We align pickup, welcome details, and experience timing so the stay feels settled from the first hour."
+      }
+    },
+    "ctaEyebrow": "Begin Your Stay",
+    "ctaTitle": "Make {resortName} feel entirely yours",
+    "ctaCopy": "Book direct for the best rate, then use the concierge to turn a beautiful villa stay into a personal island retreat."
   },
   "Villa": {
     "perNight": "/night",
@@ -248,7 +322,10 @@
     "bookingTitle": "Book Direct - Auralis Cove Retreat",
     "payTitle": "Secure Checkout - Auralis Cove Retreat",
     "successTitle": "Booking Confirmation - Auralis Cove Retreat",
-    "villaFallback": "Villa"
+    "villaFallback": "Villa",
+    "experiencesTitle": "Experiences - Auralis Cove Retreat",
+    "experiencesDescription": "Curated private dining, wellness, beach days, and arrival support for luxury villa stays in Koh Samui.",
+    "experiencesOgTitle": "Experiences at Auralis Cove Retreat"
   },
   "A11y": {
     "previousHeroSlide": "Previous hero slide",

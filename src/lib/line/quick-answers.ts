@@ -913,9 +913,13 @@ function answerForIntent({
   return {
     intent,
     mode,
-    text: localeCopy[locale].answers[intent](context),
+    text: stripTerminalPunctuationAfterUrls(localeCopy[locale].answers[intent](context)),
     quickReplyItems: buildLineQuickReplyItems(locale),
   };
+}
+
+function stripTerminalPunctuationAfterUrls(text: string) {
+  return text.replace(/(https?:\/\/\S+?)([.。])(?=\s|$)/gu, "$1");
 }
 
 export function resolveLineQuickAnswer({

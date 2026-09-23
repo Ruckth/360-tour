@@ -1,6 +1,6 @@
 import type { ActionCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
-import { api } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import { api, internal } from '../_generated/api';
 import { nightsBetween } from './dates';
 import { calculateDirectQuote, calculateOtaComparison, maxSavings } from './pricing';
 import type { ToolDef } from './chatLlm';
@@ -89,7 +89,48 @@ export const TOOLS: ToolDef[] = [
 	}
 ];
 
+/** Booking tools, only offered on messaging channels (web chat uses the booking card). */
+export const BOOKING_TOOLS: ToolDef[] = [
+	{
+		type: 'function',
+		function: {
+			name: 'prepare_booking',
+			description:
+				'Validate and quote a booking, and hold it for confirmation. Afterwards read the summary back to the guest (villa, dates, guests, total) and ask them to reply "yes" to confirm. Does NOT create the booking.',
+			parameters: {
+				type: 'object',
+				properties: {
+					propertySlug: { type: 'string', description: 'The property slug' },
+					checkIn: { type: 'string', description: 'Check-in date in YYYY-MM-DD format' },
+					checkOut: { type: 'string', description: 'Check-out date in YYYY-MM-DD format' },
+					guests: { type: 'number', description: 'Number of guests' },
+					guestName: { type: 'string', description: 'Full name of the guest' },
+					guestPhone: {
+						type: 'string',
+						description: 'Guest phone number as they typed it (ignored on WhatsApp)'
+					}
+				},
+				required: ['propertySlug', 'checkIn', 'checkOut', 'guests', 'guestName']
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'confirm_booking',
+			description:
+				'Create the booking held by prepare_booking. Only call this after the guest explicitly replied "yes" to the summary. Takes no arguments.',
+			parameters: { type: 'object', properties: {} }
+		}
+	}
+];
+
 type ToolArgs = Record<string, unknown>;
+
+export type ToolContext = {
+	sessionId: Id<'chatSessions'>;
+	siteUrl?: string;
+};
 
 function findProperty(properties: Doc<'properties'>[], slug: unknown): Doc<'properties'> | null {
 	if (typeof slug !== 'string') return null;
@@ -100,7 +141,8 @@ export async function executeTool(
 	ctx: ActionCtx,
 	fnName: string,
 	fnArgs: ToolArgs,
-	properties: Doc<'properties'>[]
+	properties: Doc<'properties'>[],
+	toolContext: ToolContext
 ): Promise<string> {
 	switch (fnName) {
 		case 'check_availability': {
@@ -201,6 +243,35 @@ export async function executeTool(
 				};
 			});
 			return JSON.stringify({ properties: list, currency: properties[0]?.currency ?? 'THB' });
+		}
+
+		case 'prepare_booking': {
+			const summary = await ctx.runMutation(internal.bookings.prepareChatBooking, {
+				sessionId: toolContext.sessionId,
+				propertySlug: String(fnArgs.propertySlug ?? ''),
+				checkIn: String(fnArgs.checkIn ?? ''),
+				checkOut: String(fnArgs.checkOut ?? ''),
+				guests: Number(fnArgs.guests),
+				guestName: String(fnArgs.guestName ?? ''),
+				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {})
+			});
+			return JSON.stringify({ ...summary, next: 'Ask the guest to reply "yes" to confirm.' });
+		}
+
+		case 'confirm_booking': {
+			const booking = await ctx.runMutation(internal.bookings.confirmChatBooking, {
+				sessionId: toolContext.sessionId
+			});
+			const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
+			const paymentUrl = `${base}/booking/pay?bookingId=${booking.bookingId}&token=${booking.accessToken}`;
+			return JSON.stringify({
+				confirmationCode: booking.confirmationCode,
+				status: 'pending_payment',
+				total: booking.total,
+				currency: booking.currency,
+				paymentUrl,
+				alreadyConfirmed: booking.alreadyConfirmed
+			});
 		}
 
 		default:

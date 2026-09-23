@@ -4,7 +4,8 @@ import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { callAI, classifyComplexity } from './lib/chatLlm';
 import type { ChatMessage } from './lib/chatLlm';
-import { TOOLS, executeTool } from './lib/chatTools';
+import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
+import { todayIso } from './lib/dates';
 import { getFallbackResponse } from './lib/chatFallback';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -23,6 +24,7 @@ type GenerateConciergeReplyArgs = {
 	locale?: string;
 	channel?: 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
 	siteUrl?: string;
+	bookingFlow?: boolean;
 	questionBankHint?: {
 		question: string;
 		topic: string;
@@ -212,7 +214,6 @@ LINE CHANNEL:
 - The guest is messaging through LINE, not the website chat widget.
 - Reply as a short plain-text LINE message.
 - Do not mention a booking card, buttons below the chat, or UI that only exists on the website.
-- If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
 - For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
 - Keep LINE responses under 120 words unless the guest explicitly asks for detail.`;
 }
@@ -224,7 +225,6 @@ FACEBOOK MESSENGER CHANNEL:
 - The guest is messaging through Facebook Messenger, not the website chat widget.
 - Reply as a short plain-text Messenger message.
 - Do not mention a booking card, buttons below the chat, or UI that only exists on the website.
-- If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
 - For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
 - Keep Messenger responses under 120 words unless the guest explicitly asks for detail.`;
 }
@@ -236,9 +236,52 @@ INSTAGRAM DM CHANNEL:
 - The guest is messaging through Instagram DMs, not the website chat widget.
 - Reply as a short plain-text Instagram message.
 - Do not mention a booking card, buttons below the chat, or UI that only exists on the website.
-- If the guest is ready to book or asks about availability, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/booking` : 'the booking page'}.
 - For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
 - Keep Instagram DM responses under 120 words unless the guest explicitly asks for detail.`;
+}
+
+function whatsappChannelGuidance(siteUrl?: string) {
+	const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
+	return `
+WHATSAPP CHANNEL:
+- The guest is messaging through WhatsApp, not the website chat widget.
+- Reply as a short plain-text WhatsApp message.
+- Do not mention a booking card, buttons below the chat, or UI that only exists on the website.
+- For virtual tours, direct them to ${normalizedSiteUrl ? `${normalizedSiteUrl}/#villas` : 'the villa pages'}.
+- Keep WhatsApp responses under 120 words unless the guest explicitly asks for detail.`;
+}
+
+function messagingBookingGuidance(channel: 'line' | 'facebook' | 'whatsapp' | 'instagram', siteUrl?: string) {
+	const bookingUrl = `${normalizeSiteUrl(siteUrl) ?? ''}/booking`;
+	const contactStep =
+		channel === 'whatsapp'
+			? "- The guest's WhatsApp number is used as their phone automatically; do not ask for it. Ask for their name if you don't know it."
+			: "- Ask for the guest's full name and phone number before preparing the booking. If they prefer not to share them, send a pre-filled link instead: " +
+				`${bookingUrl}?unit=<slug>&checkin=<YYYY-MM-DD>&checkout=<YYYY-MM-DD>&guests=<n>`;
+	return `
+BOOKING IN CHAT:
+- Today is ${todayIso()}. Convert the guest's dates to YYYY-MM-DD.
+- You can book directly in this chat. Collect: villa, check-in, check-out, number of guests.
+${contactStep}
+- Then call prepare_booking. Read the summary back (villa, dates, guests, total in ฿) and ask the guest to reply "yes" to confirm.
+- Only call confirm_booking after the guest clearly says yes to that summary. Never call it in the same turn as prepare_booking.
+- After confirm_booking, share the confirmation code and the paymentUrl so they can complete payment. The booking is held as pending until paid.
+- If a tool returns an error (dates taken, too many guests, expired), explain it briefly and help them pick another option.`;
+}
+
+function channelGuidance(channel: GenerateConciergeReplyArgs['channel'], siteUrl?: string) {
+	switch (channel) {
+		case 'line':
+			return lineChannelGuidance(siteUrl) + messagingBookingGuidance(channel, siteUrl);
+		case 'facebook':
+			return facebookChannelGuidance(siteUrl) + messagingBookingGuidance(channel, siteUrl);
+		case 'instagram':
+			return instagramChannelGuidance(siteUrl) + messagingBookingGuidance(channel, siteUrl);
+		case 'whatsapp':
+			return whatsappChannelGuidance(siteUrl) + messagingBookingGuidance(channel, siteUrl);
+		default:
+			return '';
+	}
 }
 
 function questionBankHintPrompt(hint?: GenerateConciergeReplyArgs['questionBankHint']) {
@@ -352,6 +395,11 @@ async function generateConciergeReply(
 		? properties.find((p) => p.slug === effectivePropertySlug) ?? null
 		: null;
 	const channel = args.channel ?? session.channel;
+	const isMessaging = channel !== 'web';
+	const tools = isMessaging ? [...TOOLS, ...BOOKING_TOOLS] : TOOLS;
+	if (isMessaging && args.bookingFlow) {
+		await ctx.runMutation(internal.bookings.touchChatBookingFlow, { sessionId: args.sessionId });
+	}
 	const realityDisclosure = getResortRealityDisclosure(args.userMessage, args.siteUrl);
 	if (realityDisclosure) {
 		return { response: realityDisclosure, model: 'guardrail' };
@@ -379,11 +427,11 @@ STYLE:
 - Do not claim that Auralis Cove Retreat is a real-world verified resort or independently verified business. If asked whether it is real, say it is presented here as a demo/preview experience and offer to help with the demo villas, pricing, availability, or 360° tour.
 - Use ฿ symbol for prices
 - Suggest the 360° virtual tour when relevant
-- If the guest seems ready to book or asks about availability, point them to the booking card below the chat
+${isMessaging ? '' : `- If the guest seems ready to book or asks about availability, point them to the booking card below the chat
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
-- If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under 150 words unless detailed info is requested${channel === 'line' ? lineChannelGuidance(args.siteUrl) : ''}${channel === 'facebook' ? facebookChannelGuidance(args.siteUrl) : ''}${channel === 'instagram' ? instagramChannelGuidance(args.siteUrl) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
+`}- If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
+- Keep responses under 150 words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${questionBankHintPrompt(args.questionBankHint)}`;
 
 	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
@@ -413,8 +461,10 @@ STYLE:
 
 	const selectedModel = complexity === 'simple' ? simpleModel : complexModel;
 
-	let response = await callAI(apiBase, apiKey, selectedModel, apiMessages, TOOLS);
+	let response = await callAI(apiBase, apiKey, selectedModel, apiMessages, tools);
 
+	const allowedTools = new Set(tools.map((tool) => tool.function.name));
+	let preparedThisTurn = false;
 	let maxToolRounds = 3;
 	while (response.tool_calls && response.tool_calls.length > 0 && maxToolRounds > 0) {
 		maxToolRounds--;
@@ -436,7 +486,16 @@ STYLE:
 
 			let toolResult: string;
 			try {
-				toolResult = await executeTool(ctx, fnName, fnArgs, properties);
+				if (!allowedTools.has(fnName)) throw new Error(`Unknown function: ${fnName}`);
+				// The guest must reply "yes" to the summary before the booking is created.
+				if (fnName === 'confirm_booking' && preparedThisTurn) {
+					throw new Error('Ask the guest to confirm the summary first; call confirm_booking after they reply yes.');
+				}
+				if (fnName === 'prepare_booking') preparedThisTurn = true;
+				toolResult = await executeTool(ctx, fnName, fnArgs, properties, {
+					sessionId: args.sessionId,
+					siteUrl: args.siteUrl
+				});
 			} catch (e) {
 				toolResult = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
 			}
@@ -448,7 +507,7 @@ STYLE:
 			});
 		}
 
-		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, TOOLS);
+		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, tools);
 	}
 
 	return {
@@ -465,6 +524,7 @@ export const generateReply = action({
 		locale: v.optional(v.string()),
 		channel: v.optional(chatChannelValidator),
 		siteUrl: v.optional(v.string()),
+		bookingFlow: v.optional(v.boolean()),
 		questionBankHint: v.optional(
 			v.object({
 				question: v.string(),

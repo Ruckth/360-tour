@@ -129,4 +129,32 @@ describe("LINE webhook helpers", () => {
       expect(answer?.text, JSON.stringify(scenario)).not.toContain("tour.helpgueststay.com/api");
     }
   });
+
+  it("does not append sentence punctuation to deterministic customer links", () => {
+    const scenarios = [
+      { eventType: "follow" as const },
+      { eventType: "message" as const, messageText: "Check dates" },
+      { eventType: "message" as const, messageText: "See prices" },
+      { eventType: "message" as const, messageText: "Direct booking" },
+      { eventType: "message" as const, messageText: "Villa details" },
+      { eventType: "message" as const, messageText: "View 360 tour" },
+      { eventType: "message" as const, messageText: "Where are you located" },
+      { eventType: "postback" as const, postbackData: "intent=availability&locale=zh-CN" },
+      { eventType: "postback" as const, postbackData: "intent=pricing&locale=ja" },
+      { eventType: "postback" as const, postbackData: "intent=tour&locale=ko" },
+    ];
+
+    for (const scenario of scenarios) {
+      const answer = resolveLineQuickAnswer({
+        eventType: scenario.eventType,
+        messageText: "messageText" in scenario ? scenario.messageText : undefined,
+        postbackData: "postbackData" in scenario ? scenario.postbackData : undefined,
+        properties,
+        siteUrl: "https://tour.helpgueststay.com",
+      });
+
+      expect(answer, JSON.stringify(scenario)).not.toBeNull();
+      expect(answer?.text, JSON.stringify(scenario)).not.toMatch(/https?:\/\/\S+[.。](?=\s|$)/u);
+    }
+  });
 });

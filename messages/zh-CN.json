@@ -1,6 +1,7 @@
 {
   "Nav": {
     "villas": "别墅",
+    "experiences": "体验",
     "amenities": "设施",
     "reviews": "评价",
     "contact": "联系",
@@ -26,6 +27,79 @@
     "readyCopy": "直接预订相比在线旅行平台节省 15%。包含免费机场接送和欢迎礼遇。",
     "contactUs": "联系我们",
     "viewVillas": "查看别墅"
+  },
+  "Experiences": {
+    "eyebrow": "体验",
+    "title": "精心安排的海岛白日，轻松惬意的别墅夜晚",
+    "intro": "让每一天都贴合你想要的感受：从悠闲早餐、海风中的探索，到私人疗愈仪式和 Auralis 礼宾的顺畅抵达照应。",
+    "primaryCta": "规划入住",
+    "secondaryCta": "联系礼宾",
+    "heroAlt": "苏梅岛奢华别墅露台，配有无边泳池、热带棕榈、早餐和金色时刻海景。",
+    "collectionEyebrow": "度假村体验",
+    "collectionTitle": "选择每一天的节奏",
+    "collectionIntro": "你可以安静修复，也可以深入探索海岛，或将二者结合。这些住客喜爱的体验都可围绕你的别墅和入住日期安排。",
+    "items": {
+      "privateChef": {
+        "title": "私人厨师与日落晚餐",
+        "description": "让夜晚来到你的露台：泰式海鲜、热带水果、烛光，以及为同行客人准备好的别墅餐桌。",
+        "alt": "私人别墅露台晚餐，摆有泰式海鲜、热带水果、烛光和日落海景。",
+        "features": [
+          "按同行客人口味定制私人厨师菜单",
+          "在别墅露台享用日落晚餐",
+          "泰式海鲜、热带水果与庆祝细节"
+        ]
+      },
+      "wellness": {
+        "title": "水疗、瑜伽与身心疗愈",
+        "description": "用泳池边瑜伽、别墅内按摩、草本茶和安静仪式慢慢开启早晨。",
+        "alt": "苏梅岛别墅内的清晨瑜伽垫、水疗毛巾、草本茶、热带绿植和无边泳池。",
+        "features": [
+          "私人瑜伽或冥想课程",
+          "别墅内按摩与水疗式细节",
+          "泳池边温柔的晨间布置"
+        ]
+      },
+      "beachWater": {
+        "title": "海滩与水上时光",
+        "description": "在清澈海水中安排桨板、海滩时光、船游，或根据季节挑选轻松的岛上停留点。",
+        "alt": "宁静的苏梅岛海滩，摆有桨板，远处有传统长尾船、碧蓝海水和棕榈树。",
+        "features": [
+          "桨板、船游和海滩野餐",
+          "主人提供符合季节的建议",
+          "适合情侣、家庭和团体的轻松计划"
+        ]
+      },
+      "arrivalConcierge": {
+        "title": "顺畅抵达与礼宾服务",
+        "description": "从机场接送、清凉毛巾、行李协助、别墅介绍，到入住前后的直接支持，让旅程轻松开始。",
+        "alt": "奢华别墅抵达场景，配有行李、新鲜椰子、清凉毛巾和热带花园入口。",
+        "features": [
+          "协调机场接送",
+          "欢迎礼遇与别墅介绍",
+          "入住期间通过 WhatsApp 或 LINE 直接支持"
+        ]
+      }
+    },
+    "conciergeEyebrow": "礼宾流程",
+    "conciergeTitle": "从想法到海岛一天",
+    "conciergeIntro": "告诉我们你想要的旅行节奏，礼宾会围绕你的别墅、住客和日期安排细节。",
+    "steps": {
+      "chooseVilla": {
+        "title": "选择你的别墅",
+        "description": "先挑选适合人数、景观、泳池偏好和每日节奏的空间。"
+      },
+      "sharePreferences": {
+        "title": "分享偏好",
+        "description": "在入住前或抵达后告诉我们餐饮、疗愈、抵达和海岛活动想法。"
+      },
+      "arriveEffortlessly": {
+        "title": "轻松抵达",
+        "description": "我们协调接送、欢迎细节和体验时间，让假期从第一小时就安稳展开。"
+      }
+    },
+    "ctaEyebrow": "开始入住",
+    "ctaTitle": "让 {resortName} 完全贴合你的方式",
+    "ctaCopy": "直接预订可获得最佳价格，再通过礼宾把美好的别墅入住变成专属于你的海岛假期。"
   },
   "Villa": {
     "perNight": "/晚",
@@ -248,7 +322,10 @@
     "bookingTitle": "直接预订 - Auralis Cove Retreat",
     "payTitle": "安全结账 - Auralis Cove Retreat",
     "successTitle": "预订确认 - Auralis Cove Retreat",
-    "villaFallback": "别墅"
+    "villaFallback": "别墅",
+    "experiencesTitle": "体验 - Auralis Cove Retreat",
+    "experiencesDescription": "为苏梅岛奢华别墅假期打造的私人用餐、身心疗愈、海滩活动与抵达礼宾服务。",
+    "experiencesOgTitle": "Auralis Cove Retreat 体验"
   },
   "A11y": {
     "previousHeroSlide": "上一张主视觉",

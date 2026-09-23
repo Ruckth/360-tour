@@ -63,8 +63,19 @@ export default defineSchema({
 		propertyId: v.id('properties'),
 		tenantId: v.optional(v.id('tenants')),
 		guestName: v.string(),
-		guestEmail: v.string(),
+		guestEmail: v.optional(v.string()),
 		guestPhone: v.string(),
+		source: v.optional(
+			v.union(
+				v.literal('web'),
+				v.literal('whatsapp'),
+				v.literal('messenger'),
+				v.literal('line'),
+				v.literal('instagram'),
+				v.literal('admin')
+			)
+		),
+		chatSessionId: v.optional(v.id('chatSessions')),
 		checkIn: v.string(),
 		checkOut: v.string(),
 		guests: v.number(),
@@ -96,7 +107,8 @@ export default defineSchema({
 		.index('by_property', ['propertyId'])
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
 		.index('by_tenant', ['tenantId'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		.index('by_chatSession', ['chatSessionId']),
 
 	reviews: defineTable({
 		propertyId: v.id('properties'),
@@ -244,6 +256,24 @@ export default defineSchema({
 		latestMessageAt: v.optional(v.number()),
 		adminSortAt: v.optional(v.number()),
 		adminSearchText: v.optional(v.string()),
+		// AI booking flow: last time the guest was in a booking conversation,
+		// and the quote awaiting their "yes" (bookingId is set once confirmed).
+		bookingFlowAt: v.optional(v.number()),
+		pendingBookingQuote: v.optional(
+			v.object({
+				propertySlug: v.string(),
+				checkIn: v.string(),
+				checkOut: v.string(),
+				guests: v.number(),
+				guestName: v.string(),
+				guestPhone: v.string(),
+				nights: v.number(),
+				total: v.number(),
+				currency: v.string(),
+				createdAt: v.number(),
+				bookingId: v.optional(v.id('bookings'))
+			})
+		),
 		// Legacy embedded messages — kept optional for migration compatibility.
 		// New sessions write to the chatMessages table instead.
 		messages: v.optional(
