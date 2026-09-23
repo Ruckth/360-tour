@@ -108,7 +108,8 @@ export default defineSchema({
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
 		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status'])
-		.index('by_chatSession', ['chatSessionId']),
+		.index('by_chatSession', ['chatSessionId'])
+		.index('by_guestPhone', ['guestPhone']),
 
 	reviews: defineTable({
 		propertyId: v.id('properties'),
@@ -272,6 +273,13 @@ export default defineSchema({
 				currency: v.string(),
 				createdAt: v.number(),
 				bookingId: v.optional(v.id('bookings'))
+			})
+		),
+		// Cancellation the guest was asked to confirm; executed on a later turn.
+		pendingCancellation: v.optional(
+			v.object({
+				bookingId: v.id('bookings'),
+				createdAt: v.number()
 			})
 		),
 		// Legacy embedded messages — kept optional for migration compatibility.

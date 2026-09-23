@@ -262,3 +262,129 @@ describe("AI chat booking through generateReply", () => {
     expect(await listBookings(t)).toHaveLength(0);
   });
 });
+
+async function bookViaChat(t: ReturnType<typeof convexTest>, sessionId: Id<"chatSessions">, guestPhone?: string) {
+  await t.mutation(internal.bookings.prepareChatBooking, {
+    sessionId,
+    ...stay,
+    ...(guestPhone ? { guestPhone } : {}),
+  });
+  return await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+}
+
+describe("get_my_bookings / cancel_booking", () => {
+  it("lists this chat's bookings, plus WhatsApp bookings under the verified number", async () => {
+    const { t, sessionId, propertyId } = await setup("whatsapp");
+    const booked = await bookViaChat(t, sessionId);
+    await t.run(async (ctx) => {
+      // A website booking with the same phone, and one with a different phone.
+      for (const guestPhone of ["66956823432", "+66000000000"]) {
+        await ctx.db.insert("bookings", {
+          propertyId,
+          guestName: "Web guest",
+          guestPhone,
+          accessToken: `token-${guestPhone}`,
+          source: "web",
+          checkIn: isoInDays(60),
+          checkOut: isoInDays(62),
+          guests: 2,
+          nights: 2,
+          subtotal: 20000,
+          discountAmount: 3000,
+          total: 17000,
+          currency: "THB",
+          paymentStatus: "pending",
+          status: "pending",
+          createdAt: Date.now(),
+        });
+      }
+    });
+
+    const bookings = await t.query(internal.bookings.listChatGuestBookings, { sessionId });
+
+    expect(bookings).toHaveLength(2);
+    expect(bookings.map((b) => b.reference)).toContain(booked.confirmationCode);
+    expect(bookings.every((b) => b.accessToken)).toBe(true);
+  });
+
+  it("does not list bookings from another chat with the same typed phone", async () => {
+    const { t, sessionId } = await setup("facebook");
+    await bookViaChat(t, sessionId, "0812345678");
+    const otherSession = await t.run(async (ctx) =>
+      ctx.db.insert("chatSessions", { channel: "facebook", visitorId: "facebook:other", createdAt: Date.now() }),
+    );
+
+    expect(await t.query(internal.bookings.listChatGuestBookings, { sessionId: otherSession })).toHaveLength(0);
+    await expect(
+      t.mutation(internal.bookings.cancelChatBooking, {
+        sessionId: otherSession,
+        reference: (await listBookings(t))[0].confirmationCode!,
+        turnStartedAt: Date.now(),
+      }),
+    ).rejects.toThrow("No booking with that reference");
+  });
+
+  it("only cancels after the guest confirms on a later turn, then blocks payment", async () => {
+    const { t, sessionId } = await setup("whatsapp");
+    const { confirmationCode, bookingId } = await bookViaChat(t, sessionId);
+    const turn1 = Date.now();
+
+    const first = await t.mutation(internal.bookings.cancelChatBooking, {
+      sessionId, reference: confirmationCode.toLowerCase(), turnStartedAt: turn1,
+    });
+    const sameTurn = await t.mutation(internal.bookings.cancelChatBooking, {
+      sessionId, reference: confirmationCode, turnStartedAt: turn1,
+    });
+    expect(first.state).toBe("needs_confirmation");
+    expect(sameTurn.state).toBe("needs_confirmation");
+    expect((await listBookings(t))[0].status).toBe("pending");
+
+    const later = await t.mutation(internal.bookings.cancelChatBooking, {
+      sessionId, reference: confirmationCode, turnStartedAt: Date.now() + 1,
+    });
+    expect(later.state).toBe("cancelled");
+    expect((await listBookings(t))[0].status).toBe("cancelled");
+
+    await expect(
+      t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId }),
+    ).rejects.toThrow("cancelled");
+  });
+
+  it("refuses to cancel paid bookings in chat", async () => {
+    const { t, sessionId } = await setup("whatsapp");
+    const { confirmationCode, bookingId } = await bookViaChat(t, sessionId);
+    await t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+
+    await expect(
+      t.mutation(internal.bookings.cancelChatBooking, {
+        sessionId, reference: confirmationCode, turnStartedAt: Date.now(),
+      }),
+    ).rejects.toThrow("cancelled by the host");
+  });
+
+  it("cancels through generateReply across two guest messages", async () => {
+    const { t, sessionId } = await setup("whatsapp");
+    const { confirmationCode } = await bookViaChat(t, sessionId);
+    const reply = (userMessage: string) =>
+      t.action(api.chatAi.generateReply, { sessionId, userMessage, channel: "whatsapp", bookingFlow: true });
+
+    await runWithAi(
+      [aiResponse(null, [{ name: "get_my_bookings" }, { name: "cancel_booking", args: { reference: confirmationCode } }]),
+        aiResponse("Cancel this booking? Reply yes.")],
+      async (toolResults) => {
+        await reply("cancel my booking");
+        expect(toolResults.join("\n")).toContain("needs_confirmation");
+      },
+    );
+    expect((await listBookings(t))[0].status).toBe("pending");
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await runWithAi(
+      [aiResponse(null, [{ name: "cancel_booking", args: { reference: confirmationCode } }]), aiResponse("Cancelled.")],
+      async () => {
+        expect((await reply("yes")).response).toBe("Cancelled.");
+      },
+    );
+    expect((await listBookings(t))[0].status).toBe("cancelled");
+  });
+});

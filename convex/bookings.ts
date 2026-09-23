@@ -1,5 +1,5 @@
 import { paginationOptsValidator } from 'convex/server';
-import { internalMutation, mutation, query } from './_generated/server';
+import { internalMutation, internalQuery, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
@@ -104,6 +104,12 @@ async function assertPaymentStillAvailable(
 	}
 }
 
+function assertNotCancelled(booking: Doc<'bookings'>): void {
+	if (booking.status === 'cancelled') {
+		throw new Error('This booking was cancelled.');
+	}
+}
+
 export const create = mutation({
 	args: {
 		propertySlug: v.string(),
@@ -141,6 +147,7 @@ export const updatePaymentStatus = mutation({
 			paymentStatus: args.paymentStatus
 		};
 		if (args.paymentStatus === 'paid') {
+			assertNotCancelled(booking);
 			await assertPaymentStillAvailable(ctx, booking, args.bookingId);
 			update.status = 'confirmed';
 			update.paidAt = Date.now();
@@ -163,6 +170,7 @@ export const markPaidFromTrustedWebhook = internalMutation({
 		if (!booking) {
 			throw new Error('Booking not found');
 		}
+		assertNotCancelled(booking);
 		await assertPaymentStillAvailable(ctx, booking, args.bookingId);
 
 		const bookingIdText = args.bookingId as string;
@@ -330,5 +338,101 @@ export const confirmChatBooking = internalMutation({
 		await ctx.db.patch(args.sessionId, { pendingBookingQuote: { ...pending, bookingId } });
 
 		return { bookingId, accessToken, confirmationCode, total: pending.total, currency: pending.currency, alreadyConfirmed: false };
+	}
+});
+
+/** Bookings this chat guest may see: made in this chat, or (WhatsApp) under their verified number. */
+async function guestBookingsForSession(ctx: QueryCtx | MutationCtx, session: Doc<'chatSessions'>) {
+	const fromChat = await ctx.db
+		.query('bookings')
+		.withIndex('by_chatSession', (q) => q.eq('chatSessionId', session._id))
+		.take(20);
+	const phone = session.channel === 'whatsapp' ? session.visitorPhone?.trim() : undefined;
+	const byPhone = phone
+		? await ctx.db
+				.query('bookings')
+				.withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone))
+				.take(20)
+		: [];
+	const unique = new Map([...fromChat, ...byPhone].map((b) => [b._id, b]));
+	return [...unique.values()].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+function bookingReference(booking: Doc<'bookings'>) {
+	return booking.confirmationCode ?? demoCode('CONF', booking._id as string);
+}
+
+export const listChatGuestBookings = internalQuery({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await loadChatSession(ctx, args.sessionId);
+		const bookings = await guestBookingsForSession(ctx, session);
+		return await Promise.all(
+			bookings.slice(0, 10).map(async (b) => ({
+				bookingId: b._id,
+				reference: bookingReference(b),
+				property: (await ctx.db.get(b.propertyId))?.name ?? 'Unknown villa',
+				checkIn: b.checkIn,
+				checkOut: b.checkOut,
+				guests: b.guests,
+				total: b.total,
+				currency: b.currency,
+				status: b.status,
+				paymentStatus: b.paymentStatus,
+				accessToken: b.paymentStatus === 'pending' && b.status === 'pending' ? b.accessToken : undefined
+			}))
+		);
+	}
+});
+
+/**
+ * Two-step cancel: the first call holds the cancellation and asks the guest to confirm;
+ * a call on a later turn (after the guest replied) cancels. `turnStartedAt` marks the current turn.
+ */
+export const cancelChatBooking = internalMutation({
+	args: {
+		sessionId: v.id('chatSessions'),
+		reference: v.string(),
+		turnStartedAt: v.number()
+	},
+	handler: async (ctx, args) => {
+		const session = await loadChatSession(ctx, args.sessionId);
+		const reference = args.reference.trim().toUpperCase();
+		const booking = (await guestBookingsForSession(ctx, session)).find(
+			(b) => bookingReference(b).toUpperCase() === reference
+		);
+		if (!booking) throw new Error('No booking with that reference was found for this guest.');
+		if (booking.status === 'cancelled') {
+			return { state: 'already_cancelled' as const, reference: bookingReference(booking) };
+		}
+		if (booking.paymentStatus === 'paid' || booking.status !== 'pending') {
+			throw new Error('Paid bookings are cancelled by the host (refunds are handled manually). Offer to connect the guest with the host.');
+		}
+
+		const pending = session.pendingCancellation;
+		const confirmedByGuest =
+			pending?.bookingId === booking._id &&
+			pending.createdAt < args.turnStartedAt &&
+			Date.now() - pending.createdAt < CHAT_BOOKING_TTL_MS;
+
+		const summary = {
+			reference: bookingReference(booking),
+			checkIn: booking.checkIn,
+			checkOut: booking.checkOut,
+			total: booking.total,
+			currency: booking.currency
+		};
+
+		if (!confirmedByGuest) {
+			await ctx.db.patch(args.sessionId, {
+				bookingFlowAt: Date.now(),
+				pendingCancellation: { bookingId: booking._id, createdAt: Date.now() }
+			});
+			return { state: 'needs_confirmation' as const, ...summary };
+		}
+
+		await ctx.db.patch(booking._id, { status: 'cancelled' });
+		await ctx.db.patch(args.sessionId, { pendingCancellation: undefined });
+		return { state: 'cancelled' as const, ...summary };
 	}
 });

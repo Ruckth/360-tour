@@ -266,7 +266,9 @@ ${contactStep}
 - Then call prepare_booking. Read the summary back (villa, dates, guests, total in ฿) and ask the guest to reply "yes" to confirm.
 - Only call confirm_booking after the guest clearly says yes to that summary. Never call it in the same turn as prepare_booking.
 - After confirm_booking, share the confirmation code and the paymentUrl so they can complete payment. The booking is held as pending until paid.
-- If a tool returns an error (dates taken, too many guests, expired), explain it briefly and help them pick another option.`;
+- If a tool returns an error (dates taken, too many guests, expired), explain it briefly and help them pick another option.
+- If the guest asks about their bookings, call get_my_bookings. Share references, dates, status, and the paymentUrl for unpaid bookings.
+- To cancel, call cancel_booking with the reference. When it returns needs_confirmation, read the booking back and ask them to reply "yes"; call cancel_booking again only after they confirm. Paid bookings can't be cancelled in chat; offer to connect them with the host.`;
 }
 
 function channelGuidance(channel: GenerateConciergeReplyArgs['channel'], siteUrl?: string) {
@@ -463,6 +465,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 
 	let response = await callAI(apiBase, apiKey, selectedModel, apiMessages, tools);
 
+	const turnStartedAt = Date.now();
 	const allowedTools = new Set(tools.map((tool) => tool.function.name));
 	let preparedThisTurn = false;
 	let maxToolRounds = 3;
@@ -494,7 +497,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 				if (fnName === 'prepare_booking') preparedThisTurn = true;
 				toolResult = await executeTool(ctx, fnName, fnArgs, properties, {
 					sessionId: args.sessionId,
-					siteUrl: args.siteUrl
+					siteUrl: args.siteUrl,
+					turnStartedAt
 				});
 			} catch (e) {
 				toolResult = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
