@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { SignInButton, useUser } from "@clerk/nextjs";
 import {
   CalendarDays,
   ChevronLeft,
@@ -61,13 +61,14 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
+import { AdminSidebar, type AdminDashboardView } from "@/components/admin/AdminSidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "all" | "active" | "inactive";
 type EmptyChatFilter = "non_empty" | "empty";
 type SessionChannelFilter = "all" | "web" | "line" | "facebook" | "whatsapp" | "instagram";
-type AdminDashboardView = "chats" | "questions";
 
 type AdminMessage = {
   _id: Id<"chatMessages">;
@@ -870,48 +871,27 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   }, [filterResetKey, resetSessionPaging]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/95">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
-              <MessageCircle className="h-4 w-4" />
+    <SidebarProvider className="min-h-screen">
+      <AdminSidebar view={view} onViewChange={setView} userEmail={userEmail} />
+      <SidebarInset className="min-w-0">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
+          <SidebarTrigger className="-ml-1" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gold">
               Concierge operations
-            </div>
-            <h1 className="mt-2 font-serif text-4xl font-semibold text-foreground">
-              Admin
+            </p>
+            <h1 className="truncate font-serif text-2xl font-semibold text-foreground">
+              {view === "chats" ? "Chats" : "Questions"}
             </h1>
-            <div className="mt-4 flex w-fit rounded-lg border border-border bg-background p-1">
-              {(["chats", "questions"] satisfies AdminDashboardView[]).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setView(option)}
-                  className={cn(
-                    "rounded-md px-4 py-2 text-xs font-semibold capitalize transition",
-                    view === option
-                      ? "bg-navy text-white shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
           </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{userEmail}</span>
-            <UserButton />
-          </div>
-        </div>
-      </header>
+        </header>
 
       {view === "questions" ? (
         <AdminQuestionsView />
       ) : (
       <>
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-        <aside className="grid min-h-[calc(100vh-132px)] grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
+      <div className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+        <aside className="grid min-h-[calc(100vh-96px)] grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
           <div className="border-b border-border p-3">
             <div className="flex rounded-lg border border-border bg-background p-1">
               {statusOptions.map((option) => (
@@ -1263,7 +1243,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
           </div>
         </aside>
 
-        <section className="hidden h-[calc(100vh-132px)] border border-border bg-card lg:block">
+        <section className="hidden h-[calc(100vh-96px)] border border-border bg-card lg:block">
           <AdminSessionDetail
             canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
             facebookEvents={sessionDetail?.facebookEvents}
@@ -1278,7 +1258,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
             selectedSession={selectedSession}
           />
         </section>
-      </main>
+      </div>
       <Dialog
         open={!isLargeViewport && Boolean(selectedSession)}
         onOpenChange={(isOpen) => {
@@ -1313,7 +1293,8 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       </Dialog>
       </>
       )}
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
@@ -2413,7 +2394,7 @@ function AdminQuestionsView() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
       <section className="border border-border bg-card">
         <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -2918,6 +2899,6 @@ function AdminQuestionsView() {
           </form>
         </DialogContent>
       </Dialog>
-    </main>
+    </div>
   );
 }
