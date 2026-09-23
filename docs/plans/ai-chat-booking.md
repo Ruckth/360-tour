@@ -14,7 +14,7 @@ Admins can see and manage every booking in `/admin/bookings`.
 ## Part 1: AI can create bookings
 
 1. **Schema** (`convex/schema.ts` → `bookings`)
-   - Add `source: 'web' | 'whatsapp' | 'messenger' | 'line' | 'instagram'` (optional, default `web`).
+   - Add `source: 'web' | 'whatsapp' | 'messenger' | 'line' | 'instagram' | 'admin'` (optional, default `web`).
    - Add `chatSessionId: v.optional(v.id('chatSessions'))`.
    - Make `guestEmail` optional (WhatsApp guests often have no email). Add a `by_chatSession` index.
 2. **Shared write logic**
@@ -43,27 +43,48 @@ Admins can see and manage every booking in `/admin/bookings`.
 
 ## Part 2: Admin bookings page
 
-1. Convex `bookings.listForAdmin`: guarded by `convex/lib/adminAuth.ts`, paginated, filters for `status` and `source`.
-2. Route `src/app/admin/bookings/page.tsx`: same Clerk gate as `src/app/admin/page.tsx`.
-3. Table columns:
-   - guest name + phone
-   - villa
-   - check-in / check-out
-   - guests
-   - total
-   - status
-   - payment
-   - source (channel icon)
-   - created at
-   
-   Each row links to its chat session in `/admin`.
-4. Row actions: confirm, cancel, mark paid. Use admin-guarded mutations that reuse `updatePaymentStatus` logic, and release availability on cancel.
-5. Add a "Chats / Bookings" nav switch in the admin header.
-6. Tests: unit test for the admin guard + filters. Playwright smoke test that the page renders.
+UI base: ReUI event calendar, "Event calendar with resource view for room bookings" (`pnpm dlx shadcn@latest add @reui/c-event-calendar-2`).
+The command installs `@reui/event-calendar`, `-content`, `-nav` and `-types` into `src/components/reui/event-calendar/`, and the example into `src/components/examples/`.
+
+1. **Install + adapt the example**
+   - Move the example to `src/components/admin/BookingCalendar.tsx`.
+   - The example imports `IconPlaceholder` from ReUI's own app. Replace it with lucide `PlusIcon`.
+   - Check it works with Tailwind v4 + our `src/app.css` tokens.
+2. **Data**
+   - Convex `bookings.listForAdmin({ from, to, status?, source? })`: guarded by `convex/lib/adminAuth.ts`, returns bookings overlapping the visible date range. Add a `by_checkIn` index if needed.
+   - Also return blocked dates (`availability` with status `blocked`) so the calendar shows iCal/OTA blocks.
+3. **Mapping to the calendar**
+   - Resources = villas (`properties`, one column each, one colour each).
+   - Event = booking:
+     - `start` = check-in at 14:00, `end` = check-out at 11:00
+     - `resourceId` = villa
+     - title = `Guest name · source`
+     - colour = status (pending, confirmed, paid, cancelled, blocked)
+   - Keep the example's single status map, which drives both the chip colours and the legend.
+4. **Views**
+   - The example's resource view is a single day on an hour grid (08:00–20:00). That suits a "today's check-ins/check-outs" board, but villa stays last several days.
+   - Default to the **month** view: stays as multi-day bars, with a villa filter.
+   - Show the **resource** view for today's turnovers, and the **agenda** view as a simple list.
+   - Enable the view switcher (the example hides it).
+5. **Interactions**
+   - Clicking a booking opens a side sheet (existing `ui/sheet.tsx`) with:
+     - guest name, phone, email
+     - dates, guests, total
+     - status + payment
+     - source + a link to its chat session in `/admin`
+   - Actions in the sheet: confirm, cancel, mark paid. Use admin-guarded mutations that reuse `updatePaymentStatus` logic, and release availability on cancel.
+   - "New booking" button → dialog for manual/phone bookings, calling the shared `createBookingRecord` with `source: 'admin'`.
+   - Turn off drag/resize for v1 (`interactions={{ drag: false, resize: false, selectSlot: false }}`). Moving a stay needs availability re-checks; add that later.
+6. **Route + nav**
+   - `src/app/admin/bookings/page.tsx`: same Clerk gate as `src/app/admin/page.tsx`.
+   - Add a "Chats / Bookings" switch in the admin header.
+7. **Tests**
+   - Unit tests: admin guard, date-range overlap query, booking → calendar event mapping.
+   - Playwright: the calendar renders with a seeded booking, and clicking it opens the sheet.
 
 ## Order / PRs
 1. PR 1: Schema, shared booking writes, and the AI prepare/confirm tools + tests. Use the web chat and LINE for local testing.
-2. PR 2: Admin bookings page.
+2. PR 2: Admin bookings calendar (ReUI event calendar).
 3. Later: WhatsApp configuration (below), then the live demo.
 
 ## Later: WhatsApp configuration (not in this plan's code work)
