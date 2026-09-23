@@ -514,6 +514,11 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, tools);
 	}
 
+	// Some models keep calling tools past the round limit; force a plain-text answer from the results so far.
+	if (!response.content?.trim()) {
+		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, []);
+	}
+
 	return {
 		response: response.content || "I'm sorry, I couldn't process that. Please try again.",
 		model: selectedModel
