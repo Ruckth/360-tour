@@ -1596,13 +1596,7 @@ export function useChatSession({
         setMessages((items) => {
           const next = [...items];
           for (const message of adminMessages) {
-            if (
-              next.some(
-                (item) =>
-                  item.id === message._id ||
-                  (item.role === "assistant" && item.content === message.content),
-              )
-            ) continue;
+            if (next.some((item) => item.id === message._id)) continue;
             next.push({ id: message._id, role: "assistant", content: message.content });
           }
           return next.length === items.length ? items : next;
