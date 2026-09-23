@@ -821,13 +821,10 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const transcriptPagination = usePaginatedQuery(
     api.adminChat.listTranscriptMessages,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
-    { initialNumItems: 20 },
+    { initialNumItems: 10 },
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
-  const transcriptMessages = useMemo(
-    () => [...transcriptPagination.results].reverse(),
-    [transcriptPagination.results],
-  );
+  const transcriptMessages = transcriptPagination.results;
   const loadingSessions =
     !invalidMessageDateRange && liveSessionsResult === undefined && sessionsResult === undefined;
   const loadingTranscript =
@@ -1385,62 +1382,33 @@ function AdminSessionDetail({
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const previousSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
-  const previousMessageCountRef = useRef(0);
-  const pendingOlderScrollRef = useRef<{ height: number; top: number } | null>(null);
-  const nearBottomRef = useRef(true);
-
-  const updateNearBottom = useCallback(() => {
-    const node = transcriptScrollRef.current;
-    if (!node) return true;
-    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
-    const nearBottom = distanceFromBottom < 120;
-    nearBottomRef.current = nearBottom;
-    return nearBottom;
-  }, []);
-
-  const scrollTranscriptToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
-    const node = transcriptScrollRef.current;
-    if (!node) return;
-    node.scrollTo({ top: node.scrollHeight, behavior });
-    nearBottomRef.current = true;
-  }, []);
+  const lastLoadRequestCountRef = useRef<number | null>(null);
 
   const handleTranscriptScroll = useCallback(() => {
     const node = transcriptScrollRef.current;
     if (!node) return;
-    updateNearBottom();
-    if (node.scrollTop > 96 || !canLoadOlderMessages || loadingOlderMessages || loadingTranscript) {
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    if (
+      distanceFromBottom > 96 ||
+      !canLoadOlderMessages ||
+      loadingOlderMessages ||
+      loadingTranscript ||
+      lastLoadRequestCountRef.current === messages.length
+    ) {
       return;
     }
-    pendingOlderScrollRef.current = {
-      height: node.scrollHeight,
-      top: node.scrollTop,
-    };
+    lastLoadRequestCountRef.current = messages.length;
     loadOlderMessages();
-  }, [canLoadOlderMessages, loadOlderMessages, loadingOlderMessages, loadingTranscript, updateNearBottom]);
+  }, [canLoadOlderMessages, loadOlderMessages, loadingOlderMessages, loadingTranscript, messages.length]);
 
   useLayoutEffect(() => {
-    const node = transcriptScrollRef.current;
-    if (!node) return;
-
     const sessionId = selectedSession?._id ?? null;
-    const sessionChanged = previousSessionIdRef.current !== sessionId;
-    const messageCountChanged = previousMessageCountRef.current !== messages.length;
-
-    if (sessionChanged) {
-      pendingOlderScrollRef.current = null;
-      scrollTranscriptToBottom();
-    } else if (pendingOlderScrollRef.current) {
-      const previous = pendingOlderScrollRef.current;
-      node.scrollTop = node.scrollHeight - previous.height + previous.top;
-      pendingOlderScrollRef.current = null;
-    } else if (messageCountChanged && nearBottomRef.current) {
-      scrollTranscriptToBottom("smooth");
+    if (previousSessionIdRef.current !== sessionId) {
+      transcriptScrollRef.current?.scrollTo({ top: 0 });
+      lastLoadRequestCountRef.current = null;
     }
-
     previousSessionIdRef.current = sessionId;
-    previousMessageCountRef.current = messages.length;
-  }, [messages.length, scrollTranscriptToBottom, selectedSession?._id]);
+  }, [selectedSession?._id]);
 
   if (!selectedSession) {
     return (
@@ -1576,12 +1544,6 @@ function AdminSessionDetail({
           </div>
         ) : null}
         <div className="space-y-3">
-          {loadingOlderMessages ? (
-            <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Loading older messages
-            </div>
-          ) : null}
           {messages.map((message) => (
             <ChatBubble
               key={message._id}
@@ -1607,6 +1569,21 @@ function AdminSessionDetail({
               </div>
             </ChatBubble>
           ))}
+          {loadingOlderMessages ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading older messages
+            </div>
+          ) : null}
+          {canLoadOlderMessages && !loadingOlderMessages && !loadingTranscript ? (
+            <button
+              type="button"
+              className="block w-full py-2 text-center text-xs text-muted-foreground hover:text-foreground"
+              onClick={handleTranscriptScroll}
+            >
+              Load older messages
+            </button>
+          ) : null}
           {!loadingTranscript && messages.length === 0 ? (
             <div className="border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
               {latestLineEvent
