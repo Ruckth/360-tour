@@ -1,7 +1,7 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
-import { CalendarDays, HelpCircle, MessageCircle, Shield } from "lucide-react";
+import { BedDouble, CalendarClock, HelpCircle, MessageCircle, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +17,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-export type AdminDashboardView = "chats" | "bookings" | "questions";
+export type AdminDashboardView = "chats" | "hotel" | "staff" | "questions";
+
+export const ADMIN_VIEW_TITLES: Record<AdminDashboardView, string> = {
+  chats: "Chats",
+  hotel: "Hotel bookings",
+  staff: "Staff bookings",
+  questions: "Questions",
+};
 
 export function AdminSidebar({
   view,
@@ -68,12 +75,23 @@ export function AdminSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   type="button"
-                  isActive={view === "bookings"}
-                  tooltip="Bookings"
-                  onClick={() => selectView("bookings")}
+                  isActive={view === "hotel"}
+                  tooltip="Hotel bookings"
+                  onClick={() => selectView("hotel")}
                 >
-                  <CalendarDays aria-hidden="true" />
-                  <span>Bookings</span>
+                  <BedDouble aria-hidden="true" />
+                  <span>Hotel bookings</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={view === "staff"}
+                  tooltip="Staff bookings"
+                  onClick={() => selectView("staff")}
+                >
+                  <CalendarClock aria-hidden="true" />
+                  <span>Staff bookings</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

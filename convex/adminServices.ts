@@ -214,7 +214,7 @@ export const listSchedule = query({
 		)) {
 			if (appointment.end > args.from && staffSet.has(appointment.staffId)) appointments.push(appointment);
 		}
-		const blocks: Array<{ staffId: Id<'staff'>; start: number; end: number; label: string; kind: 'break' | 'time_off' }> = [];
+		const blocks: Array<{ staffId: Id<'staff'>; start: number; end: number; label: string; kind: 'break' | 'time_off'; timeOffId?: Id<'staffTimeOff'> }> = [];
 		for (const person of staff) {
 			for (const block of recurringBlocks(person.breaks, args.from, args.to)) {
 				blocks.push({ staffId: person._id, start: block.start, end: block.end, label: block.label ?? '', kind: 'break' });
@@ -222,7 +222,7 @@ export const listSchedule = query({
 			for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', args.from - TIME_OFF_LOOKBACK).lt('start', args.to)
 			)) {
-				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off' });
+				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off', timeOffId: row._id });
 			}
 		}
 		return { staff, services, appointments, blocks };

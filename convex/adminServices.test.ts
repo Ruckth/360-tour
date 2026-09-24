@@ -70,7 +70,7 @@ describe('admin services', () => {
 		expect(schedule.services).toHaveLength(1);
 		expect(schedule.appointments).toHaveLength(1);
 		expect(schedule.blocks).toContainEqual({ staffId, start: at('12:00'), end: at('13:00'), label: 'Lunch', kind: 'break' });
-		expect(schedule.blocks).toContainEqual({ staffId, start: at('09:00'), end: at('10:00'), label: 'Training', kind: 'time_off' });
+		expect(schedule.blocks).toContainEqual({ staffId, start: at('09:00'), end: at('10:00'), label: 'Training', kind: 'time_off', timeOffId });
 		await admin.mutation(api.adminServices.removeTimeOff, { timeOffId });
 		expect((await admin.query(api.adminServices.listSchedule, { from: at('09:00'), to: at('17:00') })).blocks.some((block) => block.kind === 'time_off')).toBe(false);
 	});
