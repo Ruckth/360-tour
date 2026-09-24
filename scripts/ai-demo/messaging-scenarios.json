@@ -1,0 +1,60 @@
+{
+  "room-booking": {
+    "title": "AI room booking in chat",
+    "channel": "line",
+    "turns": [
+      "Hi! Do you have a villa for 2 people from October 20 to October 23?",
+      "The Mossbell Garden Suite sounds lovely. I'd like to book it.",
+      "My name is AI-EVAL Test Guest and my phone is +66 81 234 5678",
+      "Yes, please confirm",
+      "Can you show me my bookings?",
+      "Actually my plans changed, please cancel that booking.",
+      "Yes, cancel it"
+    ]
+  },
+  "service-booking": {
+    "title": "AI spa / service booking in chat",
+    "channel": "line",
+    "turns": [
+      "Hello, what spa treatments do you offer?",
+      "I'd like a Traditional Thai Massage tomorrow at 10am please",
+      "OK, 1:30 pm works for me. I'm AI-EVAL Test Guest, phone +66 81 234 5678",
+      "Yes, book it",
+      "Could I also do Sunrise Yoga the morning after tomorrow at 7am?",
+      "Yes please, same name and phone",
+      "yes"
+    ]
+  },
+  "edge-cases": {
+    "title": "Edge cases: occupied dates, missing phone, change of mind",
+    "channel": "line",
+    "turns": [
+      "I want to book the Tideglass Pool Residence from October 10 to October 13 for 4 people",
+      "Oh no. What about October 17 to October 20 then? My name is AI-EVAL Test Guest.",
+      "Can 6 of us stay in the Mossbell Garden Suite instead?",
+      "OK, let's do the Canopy Halo Loft for 5 people, October 17 to 20. My phone is +66 81 234 5678",
+      "Hmm, actually wait. Make it October 18 to 20, just 2 nights.",
+      "You know what, never mind. I don't want to book anything right now.",
+      "Did you create a booking for me?"
+    ]
+  },
+  "line-multilingual": {
+    "title": "Thai and Korean guests on LINE",
+    "channel": "line",
+    "turns": [
+      "พูลวิลล่าราคาคืนละเท่าไหร่ครับ",
+      "สปามีบริการอะไรบ้างครับ",
+      "마사지 예약할 수 있나요?",
+      "마사지 종류와 가격을 알려 주세요"
+    ]
+  },
+  "occupied-dates": {
+    "title": "Edge case: requested dates already occupied",
+    "channel": "line",
+    "turns": [
+      "Please book the Tideglass Pool Residence from October 10 to October 13 for 4 people. My name is AI-EVAL Test Guest, phone +66 81 234 5678",
+      "Which villas are free for those dates then?",
+      "Nothing for now, thanks"
+    ]
+  }
+}

@@ -1,9 +1,11 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { CalendarDays, Clock, Filter, Loader2, PlusIcon, Users } from "lucide-react";
+import { format } from "date-fns";
 import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
@@ -14,9 +16,11 @@ import type {
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { AdminStaffServicesManager } from "@/components/admin/AdminStaffServicesManager";
+import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { WheelPicker, WheelPickerWrapper } from "@/components/ui/wheel-picker";
 import {
   APPOINTMENT_STATUS,
   DAY_MS,
@@ -74,13 +79,19 @@ const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", 
 const BLOCK_COLOR = "var(--color-zinc-500)";
 const MINUTE = 60_000;
 
+/** "2026-09-24" → local Date at midnight, for the day picker. */
+function isoToLocalDate(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function todayRange() {
   const from = resortMidnight(resortIsoDate(Date.now()));
   return { from, to: from + DAY_MS };
 }
 
-export function AdminStaffBookingsView() {
-  const [tab, setTab] = useState<"calendar" | "staff" | "services">("calendar");
+export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
+  const router = useRouter();
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
@@ -89,7 +100,7 @@ export function AdminStaffBookingsView() {
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => router.push(adminStaffTabPath(key))}
             aria-current={tab === key ? "page" : undefined}
             className={cn(
               "-mb-px border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors",
@@ -288,7 +299,7 @@ function StaffCalendar() {
           onViewChange={setView}
           date={date}
           onDateChange={setDate}
-          views={["resource", "week"]}
+          views={["resource", "week", "agenda"]}
           resources={resources}
           timeZone={RESORT_ZONE}
           dayStartHour={6}
@@ -668,12 +679,14 @@ function NewAppointmentDialog({
   const staffId = qualified.some((person) => person._id === staffChoice) ? (staffChoice as Id<"staff">) : undefined;
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
+  const [dateOpen, setDateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const today = resortIsoDate(useNow());
 
   const slots = useQuery(api.adminServices.findOpenSlots, date >= today ? { serviceId, date, staffId } : "skip");
-  const selectedSlot = slots?.find((slot) => slot.start === start);
+  // The wheel always shows a time, so fall back to the first open slot.
+  const selectedSlot = slots?.find((slot) => slot.start === start) ?? slots?.[0];
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -765,17 +778,28 @@ function NewAppointmentDialog({
           ) : null}
           <div className="grid gap-2">
             <Label htmlFor="na-date">Date</Label>
-            <Input
-              id="na-date"
-              type="date"
-              min={today}
-              value={date}
-              onChange={(event) => {
-                setDate(event.target.value);
-                setStart(null);
-              }}
-              required
-            />
+            <Popover open={dateOpen} onOpenChange={setDateOpen}>
+              <PopoverTrigger asChild>
+                <Button id="na-date" type="button" variant="outline" className="justify-start font-normal">
+                  <CalendarDays aria-hidden className="size-4 text-muted-foreground" />
+                  {formatResortDate(resortMidnight(date))}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-3">
+                <Calendar
+                  mode="single"
+                  selected={isoToLocalDate(date)}
+                  defaultMonth={isoToLocalDate(date)}
+                  disabled={{ before: isoToLocalDate(today) }}
+                  onSelect={(day) => {
+                    if (!day) return;
+                    setDate(format(day, "yyyy-MM-dd"));
+                    setStart(null);
+                    setDateOpen(false);
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="grid gap-2">
             <Label>Time</Label>
@@ -794,23 +818,17 @@ function NewAppointmentDialog({
                 </Button>
               </p>
             ) : (
-              <div className="grid max-h-40 grid-cols-4 gap-1.5 overflow-y-auto sm:grid-cols-5">
-                {slots.map((slot) => (
-                  <Button
-                    key={slot.start}
-                    type="button"
-                    size="sm"
-                    variant={slot.start === start ? "default" : "outline"}
-                    aria-pressed={slot.start === start}
-                    onClick={() => setStart(slot.start)}
-                  >
-                    {formatResortTime(slot.start)}
-                  </Button>
-                ))}
-              </div>
+              <WheelPickerWrapper className="w-full">
+                <WheelPicker
+                  value={String(selectedSlot?.start ?? slots[0].start)}
+                  onValueChange={(value) => setStart(Number(value))}
+                  options={slots.map((slot) => ({ value: String(slot.start), label: formatResortTime(slot.start) }))}
+                  visibleCount={12}
+                />
+              </WheelPickerWrapper>
             )}
-            {start !== null && slots && !selectedSlot ? (
-              <p className="text-sm text-destructive">That time isn&apos;t open. Pick another.</p>
+            {start !== null && slots?.length && !slots.some((slot) => slot.start === start) ? (
+              <p className="text-sm text-destructive">That time isn&apos;t open. Showing the next open time.</p>
             ) : null}
           </div>
           <div className="grid gap-2">

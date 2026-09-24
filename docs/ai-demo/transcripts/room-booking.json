@@ -1,0 +1,127 @@
+{
+  "name": "room-booking",
+  "sessionId": "jh79k6v6b4sfjprcqf1hvj3mmh8f08k8",
+  "prod": true,
+  "channel": "line",
+  "recordedAt": "2026-09-24T14:30:47.316Z",
+  "transcript": [
+    {
+      "guest": "Hi! Do you have a villa for 2 people from October 20 to October 23?",
+      "reply": "All 3 villas are available Oct 20-23 for 2 guests:\n\n- Mossbell Garden Suite: ฿11,475 total (direct, 3 nights)\n- Tideglass Pool Residence: ฿21,675 total\n- Canopy Halo Loft: ฿30,600 total\n\n15% discount included, free cancel 48h prior. Want details or a 360° tour? https://tour.helpgueststay.com/#villas",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 8149,
+      "tools": [
+        {
+          "args": {
+            "checkIn": "2026-10-20",
+            "checkOut": "2026-10-23",
+            "propertySlug": "pool-villa"
+          },
+          "name": "check_availability",
+          "result": "{\"property\":\"Tideglass Pool Residence\",\"checkIn\":\"2026-10-20\",\"checkOut\":\"2026-10-23\",\"nights\":3,\"available\":true,\"pricePerNight\":8500,\"directPrice\":7225,\"totalDirect\":21675,\"totalOTA\":35684,\"currency\":\"THB\"}"
+        },
+        {
+          "args": {
+            "checkIn": "2026-10-20",
+            "checkOut": "2026-10-23",
+            "propertySlug": "garden-suite"
+          },
+          "name": "check_availability",
+          "result": "{\"property\":\"Mossbell Garden Suite\",\"checkIn\":\"2026-10-20\",\"checkOut\":\"2026-10-23\",\"nights\":3,\"available\":true,\"pricePerNight\":4500,\"directPrice\":3825,\"totalDirect\":11475,\"totalOTA\":18968,\"currency\":\"THB\"}"
+        },
+        {
+          "args": {
+            "checkIn": "2026-10-20",
+            "checkOut": "2026-10-23",
+            "propertySlug": "penthouse"
+          },
+          "name": "check_availability",
+          "result": "{\"property\":\"Canopy Halo Loft\",\"checkIn\":\"2026-10-20\",\"checkOut\":\"2026-10-23\",\"nights\":3,\"available\":true,\"pricePerNight\":12000,\"directPrice\":10200,\"totalDirect\":30600,\"totalOTA\":50448,\"currency\":\"THB\"}"
+        }
+      ]
+    },
+    {
+      "guest": "The Mossbell Garden Suite sounds lovely. I'd like to book it.",
+      "reply": "Great! To book Mossbell Garden Suite (garden-suite) for 2 guests, Oct 20-23, please share your full name and phone number. Or reply with a pre-filled link: https://tour.helpgueststay.com/booking?unit=garden-suite&checkin=2026-10-20&checkout=2026-10-23&guests=2",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 4530,
+      "tools": []
+    },
+    {
+      "guest": "My name is AI-EVAL Test Guest and my phone is +66 81 234 5678",
+      "reply": "Mossbell Garden Suite, Oct 20-23 (3 nights), 2 guests: ฿11,475 total. Reply \"yes\" to confirm?",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 5515,
+      "tools": [
+        {
+          "args": {
+            "checkIn": "2026-10-20",
+            "checkOut": "2026-10-23",
+            "guestName": "AI-EVAL Test Guest",
+            "guestPhone": "+66 81 234 5678",
+            "guests": 2,
+            "propertySlug": "garden-suite"
+          },
+          "name": "prepare_booking",
+          "result": "{\"checkIn\":\"2026-10-20\",\"checkOut\":\"2026-10-23\",\"currency\":\"THB\",\"guestName\":\"AI-EVAL Test Guest\",\"guestPhone\":\"+66 81 234 5678\",\"guests\":2,\"nights\":3,\"property\":\"Mossbell Garden Suite\",\"total\":11475,\"next\":\"Ask the guest to reply \\\"yes\\\" to confirm.\"}"
+        }
+      ]
+    },
+    {
+      "guest": "Yes, please confirm",
+      "reply": "Booking confirmed! Code: CONF-2026-8F1JPH. Pay here: https://tour.helpgueststay.com/booking/pay?bookingId=j975ynk7m21qnty4yxv7qvf3h98f1jph&token=65490ca9-2e05-45d2-93df-c4f6c431922a (pending until paid). Enjoy your stay!",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 5191,
+      "tools": [
+        {
+          "args": {},
+          "name": "confirm_booking",
+          "result": "{\"confirmationCode\":\"CONF-2026-8F1JPH\",\"status\":\"pending_payment\",\"total\":11475,\"currency\":\"THB\",\"paymentUrl\":\"https://tour.helpgueststay.com/booking/pay?bookingId=j975ynk7m21qnty4yxv7qvf3h98f1jph&token=65490ca9-2e05-45d2-93df-c4f6c431922a\",\"alreadyConfirmed\":false}"
+        }
+      ]
+    },
+    {
+      "guest": "Can you show me my bookings?",
+      "reply": "Your booking: CONF-2026-8F1JPH, Mossbell Garden Suite, Oct 20-23, 2 guests, ฿11,475 (pending). Pay: https://tour.helpgueststay.com/booking/pay?bookingId=j975ynk7m21qnty4yxv7qvf3h98f1jph&token=65490ca9-2e05-45d2-93df-c4f6c431922a",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 5749,
+      "tools": [
+        {
+          "args": {},
+          "name": "get_my_bookings",
+          "result": "{\"bookings\":[{\"checkIn\":\"2026-10-20\",\"checkOut\":\"2026-10-23\",\"currency\":\"THB\",\"guests\":2,\"paymentStatus\":\"pending\",\"property\":\"Mossbell Garden Suite\",\"reference\":\"CONF-2026-8F1JPH\",\"status\":\"pending\",\"total\":11475,\"paymentUrl\":\"https://tour.helpgueststay.com/booking/pay?bookingId=j975ynk7m21qnty4yxv7qvf3h98f1jph&token=65490ca9-2e05-45d2-93df-c4f6c431922a\"}],\"services\":[]}"
+        }
+      ]
+    },
+    {
+      "guest": "Actually my plans changed, please cancel that booking.",
+      "reply": "CONF-2026-8F1JPH: Mossbell Garden Suite, Oct 20-23, ฿11,475 (pending). Reply \"yes\" to cancel?",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 8276,
+      "tools": [
+        {
+          "args": {
+            "reference": "CONF-2026-8F1JPH"
+          },
+          "name": "cancel_booking",
+          "result": "{\"checkIn\":\"2026-10-20\",\"checkOut\":\"2026-10-23\",\"currency\":\"THB\",\"reference\":\"CONF-2026-8F1JPH\",\"state\":\"needs_confirmation\",\"total\":11475,\"next\":\"Ask the guest to reply \\\"yes\\\" to cancel this booking.\"}"
+        }
+      ]
+    },
+    {
+      "guest": "Yes, cancel it",
+      "reply": "Booking CONF-2026-8F1JPH cancelled. Let me know if you need anything else!",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 7309,
+      "tools": [
+        {
+          "args": {
+            "reference": "CONF-2026-8F1JPH"
+          },
+          "name": "cancel_booking",
+          "result": "{\"checkIn\":\"2026-10-20\",\"checkOut\":\"2026-10-23\",\"currency\":\"THB\",\"reference\":\"CONF-2026-8F1JPH\",\"state\":\"cancelled\",\"total\":11475}"
+        }
+      ]
+    }
+  ]
+}

@@ -15,7 +15,7 @@ test("demo disclaimer appears once per browser session on public pages", async (
 });
 
 test("demo disclaimer stays out of admin pages", async ({ page }) => {
-  await page.goto("/admin");
+  await page.goto("/admin/chats");
 
   await expect(page.getByRole("heading", { name: /Admin|Clerk is required for admin/ })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Demo website only" })).toHaveCount(0);

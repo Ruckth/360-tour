@@ -1,0 +1,53 @@
+{
+  "name": "occupied-dates",
+  "sessionId": "jh77dd8qpdttybqeabmn1nyp2d8f18hr",
+  "prod": true,
+  "channel": "line",
+  "recordedAt": "2026-09-24T14:36:08.894Z",
+  "transcript": [
+    {
+      "guest": "Please book the Tideglass Pool Residence from October 10 to October 13 for 4 people. My name is AI-EVAL Test Guest, phone +66 81 234 5678",
+      "reply": "Sorry, those dates are blocked for Tideglass. Try different dates or another villa? I can check.",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 7251,
+      "tools": [
+        {
+          "args": {
+            "checkIn": "2026-10-10",
+            "checkOut": "2026-10-13",
+            "guestName": "AI-EVAL Test Guest",
+            "guestPhone": "+66 81 234 5678",
+            "guests": 4,
+            "propertySlug": "pool-villa"
+          },
+          "name": "prepare_booking",
+          "result": "Error: Uncaught Error: Some of these dates are blocked. Please choose different dates.\n    at assertNotBlocked (../../convex/lib/bookingWrites.ts:83:0)\n    at async quoteBookableStay (../../convex/lib/bookingWrites.ts:114:0)\n    at async handler (../../convex/bookings.ts:309:37)\n"
+        }
+      ]
+    },
+    {
+      "guest": "Which villas are free for those dates then?",
+      "reply": "Canopy Halo Loft (6 guests max) is free Oct 10-13. Mossbell Garden Suite is too small for 4. Want to book the loft?",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 9183,
+      "tools": [
+        {
+          "args": {
+            "checkIn": "2026-10-10",
+            "checkOut": "2026-10-13",
+            "propertySlug": "penthouse"
+          },
+          "name": "check_availability",
+          "result": "{\"property\":\"Canopy Halo Loft\",\"checkIn\":\"2026-10-10\",\"checkOut\":\"2026-10-13\",\"nights\":3,\"available\":true,\"pricePerNight\":12000,\"directPrice\":10200,\"totalDirect\":30600,\"totalOTA\":50448,\"currency\":\"THB\"}"
+        }
+      ]
+    },
+    {
+      "guest": "Nothing for now, thanks",
+      "reply": "No problem! Let me know if you need other dates, villas, or the 360° tour.",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 3682,
+      "tools": []
+    }
+  ]
+}

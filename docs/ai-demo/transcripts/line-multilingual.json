@@ -1,0 +1,43 @@
+{
+  "name": "line-multilingual",
+  "sessionId": "jh78q5nqxww98841h2sw6t8w6h8f03at",
+  "prod": true,
+  "channel": "line",
+  "recordedAt": "2026-09-24T14:37:02.252Z",
+  "transcript": [
+    {
+      "guest": "พูลวิลล่าราคาคืนละเท่าไหร่ครับ",
+      "reply": "Tideglass Pool Residence ราคา ฿8500/คืนครับ  \nจองตรงลด 15% เหลือ ฿7225/คืน ไม่มีค่าบริการอื่น ๆ",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 4400,
+      "tools": []
+    },
+    {
+      "guest": "สปามีบริการอะไรบ้างครับ",
+      "reply": "มีบริการ Wellness ดังนี้ครับ:\n\n- Traditional Thai Massage ฿1500 (60 นาที)\n- Aromatherapy Oil Massage ฿2400 (90 นาที)\n- Sunrise Yoga ฿900 (60 นาที)\n\nสนใจบริการไหนเพิ่มเติมไหมครับ",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 7328,
+      "tools": [
+        {
+          "args": {},
+          "name": "list_services",
+          "result": "{\"services\":[{\"category\":\"Wellness\",\"currency\":\"THB\",\"description\":\"Classic 60-minute Thai massage in your villa or the garden sala.\",\"durationMin\":60,\"name\":\"Traditional Thai Massage\",\"price\":1500,\"slug\":\"ai-eval-thai-massage\",\"staff\":[\"Nok\",\"Mali\"]},{\"category\":\"Wellness\",\"currency\":\"THB\",\"description\":\"90-minute oil massage with coconut and lemongrass oils.\",\"durationMin\":90,\"name\":\"Aromatherapy Oil Massage\",\"price\":2400,\"slug\":\"ai-eval-aroma-massage\",\"staff\":[\"Nok\",\"Mali\"]},{\"category\":\"Wellness\",\"currency\":\"THB\",\"description\":\"Private beach or garden yoga session for up to 4 guests.\",\"durationMin\":60,\"name\":\"Sunrise Yoga\",\"price\":900,\"slug\":\"ai-eval-sunrise-yoga\",\"staff\":[\"Arun\"]},{\"category\":\"Dining\",\"currency\":\"THB\",\"description\":\"Seafood BBQ dinner cooked on your terrace, for up to 6 guests.\",\"durationMin\":180,\"name\":\"Private Chef Seafood BBQ\",\"price\":6500,\"slug\":\"ai-eval-chef-bbq\",\"staff\":[\"Somchai\"]},{\"category\":\"Exploration\",\"currency\":\"THB\",\"description\":\"Private driver and guide around Koh Samui viewpoints, temples and waterfalls.\",\"durationMin\":240,\"name\":\"Island Day Tour\",\"price\":4200,\"slug\":\"ai-eval-island-tour\",\"staff\":[\"Kai\"]}]}"
+        }
+      ]
+    },
+    {
+      "guest": "마사지 예약할 수 있나요?",
+      "reply": "Auralis Cove Retreat는 이 사이트에서 예약과 360° 빌라 투어를 위한 데모/미리보기 경험으로 제공됩니다. 따라서 이 채팅에서 실제로 독립 검증된 리조트라고 말할 수는 없습니다. 대신 데모 빌라, 가격, 예약 가능 여부, 360° 투어 링크는 도와드릴 수 있습니다 https://tour.helpgueststay.com.",
+      "model": "guardrail",
+      "latencyMs": 1636,
+      "tools": []
+    },
+    {
+      "guest": "마사지 종류와 가격을 알려 주세요",
+      "reply": "Traditional Thai Massage ฿1500 (60분)  \nAromatherapy Oil Massage ฿2400 (90분)  \n\nSunrise Yoga도 ฿900 (60분) 있습니다.  \n예약 원하시나요?",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 5061,
+      "tools": []
+    }
+  ]
+}
