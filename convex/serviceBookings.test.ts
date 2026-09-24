@@ -58,7 +58,7 @@ function mockAi(calls: Array<{ name: string; args?: Record<string, unknown> }>, 
 	let round = 0;
 	vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
 		const body = JSON.parse(String(init?.body ?? '{}')) as { messages: Array<{ role: string; content: string }> };
-		const last = body.messages.at(-1);
+		const last = body.messages[body.messages.length - 1];
 		if (last?.role === 'tool') results.push(last.content);
 		return new Response(JSON.stringify({ choices: [{ message: round++ === 0
 			? { content: null, tool_calls: calls.map((call, index) => ({ id: `call-${index}`, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) } })) }
