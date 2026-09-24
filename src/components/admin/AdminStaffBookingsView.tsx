@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { CalendarDays, Clock, Filter, Loader2, PlusIcon, Users } from "lucide-react";
@@ -14,6 +15,7 @@ import type {
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { AdminStaffServicesManager } from "@/components/admin/AdminStaffServicesManager";
+import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,8 +81,8 @@ function todayRange() {
   return { from, to: from + DAY_MS };
 }
 
-export function AdminStaffBookingsView() {
-  const [tab, setTab] = useState<"calendar" | "staff" | "services">("calendar");
+export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
+  const router = useRouter();
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
@@ -89,7 +91,7 @@ export function AdminStaffBookingsView() {
           <button
             key={key}
             type="button"
-            onClick={() => setTab(key)}
+            onClick={() => router.push(adminStaffTabPath(key))}
             aria-current={tab === key ? "page" : undefined}
             className={cn(
               "-mb-px border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors",

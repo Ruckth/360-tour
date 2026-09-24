@@ -21,6 +21,7 @@ import {
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useAction, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Component,
   useCallback,
@@ -58,8 +59,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
-import { ADMIN_VIEW_TITLES, AdminSidebar, type AdminDashboardView } from "@/components/admin/AdminSidebar";
+import { ADMIN_VIEW_TITLES, AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminStaffBookingsView } from "@/components/admin/AdminStaffBookingsView";
+import { adminRoute, adminViewPath } from "@/components/admin/admin-routes";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
@@ -761,10 +763,15 @@ export function AdminChatDashboard() {
 }
 
 function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const route = adminRoute(pathname);
+  const view = route?.view ?? "chats";
+  const staffTab = route?.staffTab ?? "calendar";
   const { getToken } = useAuth();
   const now = usePresenceClock();
   const isLargeViewport = useMediaQuery("(min-width: 1024px)");
-  const [view, setView] = useState<AdminDashboardView>("chats");
   const [status, setStatus] = useState<SessionStatus>("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [emptyFilter, setEmptyFilter] = useState<EmptyChatFilter>("non_empty");
@@ -773,8 +780,15 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
   const [messageEndAt, setMessageEndAt] = useState("");
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
-  const [selectedSessionId, setSelectedSessionId] =
-    useState<Id<"chatSessions"> | null>(null);
+  const selectedSessionId = (view === "chats" ? searchParams.get("session") : null) as Id<"chatSessions"> | null;
+  function selectSession(sessionId: Id<"chatSessions"> | null) {
+    if (sessionId === selectedSessionId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (sessionId) params.set("session", sessionId);
+    else params.delete("session");
+    const query = params.toString();
+    router.replace(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
+  }
   const selectedSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [replyPending, setReplyPending] = useState(false);
@@ -907,10 +921,9 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
     }
   }
 
-    const resetSessionPaging = useCallback(() => {
+  const resetSessionPaging = useCallback(() => {
     setPageIndex(0);
     setPageCursors([null]);
-    setSelectedSessionId(null);
   }, []);
 
   function handleNextPage() {
@@ -921,25 +934,21 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       nextCursor,
     ]);
     setPageIndex((current) => current + 1);
-    setSelectedSessionId(null);
+    selectSession(null);
   }
 
   function handlePreviousPage() {
     if (pageIndex <= 0) return;
     setPageIndex((current) => Math.max(0, current - 1));
-    setSelectedSessionId(null);
+    selectSession(null);
   }
 
   useEffect(() => {
-    if (!sessionsResult) return;
-
-    setSelectedSessionId((current) => {
-      if (current && sessionsResult.sessions.some((session) => session._id === current)) {
-        return current;
-      }
-      return isLargeViewport ? sessionsResult.sessions[0]?._id ?? null : null;
-    });
-  }, [isLargeViewport, sessionsResult]);
+    if (view !== "chats" || !isLargeViewport || selectedSessionId || !sessionsResult?.sessions.length) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("session", sessionsResult.sessions[0]._id);
+    router.replace(`/admin/chats?${params}`, { scroll: false });
+  }, [isLargeViewport, router, searchParams, selectedSessionId, sessionsResult, view]);
 
   useEffect(() => {
     resetSessionPaging();
@@ -949,7 +958,11 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
     <SidebarProvider
       className={cn("bg-background", view === "chats" ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen")}
     >
-      <AdminSidebar view={view} onViewChange={setView} userEmail={userEmail} />
+      <AdminSidebar
+        view={view}
+        onViewChange={(nextView) => router.push(adminViewPath(nextView))}
+        userEmail={userEmail}
+      />
       <SidebarInset className="min-h-0 min-w-0">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
           <SidebarTrigger className="-ml-1" />
@@ -966,7 +979,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       {view === "hotel" ? (
         <AdminBookingsView />
       ) : view === "staff" ? (
-        <AdminStaffBookingsView />
+        <AdminStaffBookingsView tab={staffTab} />
       ) : view === "questions" ? (
         <AdminQuestionsView />
       ) : (
@@ -1151,7 +1164,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
                 >
                   <button
                     type="button"
-                    onClick={() => setSelectedSessionId(session._id)}
+                    onClick={() => selectSession(session._id)}
                     className="min-w-0 flex-1 px-4 py-3 text-left"
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -1251,7 +1264,7 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
       <Dialog
         open={!isLargeViewport && Boolean(selectedSession)}
         onOpenChange={(isOpen) => {
-          if (!isOpen) setSelectedSessionId(null);
+          if (!isOpen) selectSession(null);
         }}
       >
         <DialogContent
