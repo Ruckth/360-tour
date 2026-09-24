@@ -12,7 +12,8 @@ import {
 	assertValidTime,
 	createAppointmentRecord,
 	findOpenSlots as openSlots,
-	recurringBlocks
+	recurringBlocks,
+	staffBusyRanges
 } from './lib/serviceSlots';
 
 const DAY = 86_400_000;
@@ -87,6 +88,19 @@ export const updateStaff = mutation({
 		const { staffId, ...changes } = args;
 		validateHours(changes.workingHours ?? staff.workingHours);
 		validateHours(changes.breaks ?? staff.breaks);
+		if (changes.workingHours || changes.breaks) {
+			// New hours must still cover every upcoming appointment.
+			const next = { ...staff, ...changes };
+			const now = Date.now();
+			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+				q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK)
+			)) {
+				if (appointment.blockedUntil <= now || appointment.status !== 'booked') continue;
+				if ((await staffBusyRanges(ctx, next, appointment.start, appointment.blockedUntil, appointment._id)).length) {
+					throw new Error('Reassign or cancel the appointments outside the new hours first');
+				}
+			}
+		}
 		await ctx.db.patch(staffId, {
 			...changes,
 			...(changes.name !== undefined ? { name: required(changes.name, 'Name') } : {}),

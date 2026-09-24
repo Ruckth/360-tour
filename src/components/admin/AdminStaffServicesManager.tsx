@@ -195,6 +195,20 @@ function Field({ label, htmlFor, children, className }: { label: string; htmlFor
   );
 }
 
+/** The form edits one shift and one break for the chosen days; anything richer is kept as-is. */
+function isSimpleSchedule(staff?: Staff) {
+  if (!staff) return true;
+  const distinct = (values: string[]) => new Set(values).size;
+  const workDays = staff.workingHours.map((row) => row.weekday);
+  const breakDays = staff.breaks.map((row) => row.weekday);
+  return (
+    distinct(staff.workingHours.map((row) => `${row.start}-${row.end}`)) <= 1 &&
+    distinct(workDays.map(String)) === workDays.length &&
+    distinct(staff.breaks.map((row) => `${row.start}-${row.end}-${row.label}`)) <= 1 &&
+    (breakDays.length === 0 || [...breakDays].sort().join() === [...workDays].sort().join())
+  );
+}
+
 function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void }) {
   const createStaff = useMutation(api.adminServices.createStaff);
   const updateStaff = useMutation(api.adminServices.updateStaff);
@@ -206,6 +220,7 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     () => new Set(staff ? staff.workingHours.map((row) => row.weekday) : [0, 1, 2, 3, 4, 5, 6]),
   );
   const [hasBreak, setHasBreak] = useState(staff ? Boolean(firstBreak) : true);
+  const simpleSchedule = isSimpleSchedule(staff);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const today = resortIsoDate(useNow());
@@ -215,30 +230,36 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "").trim();
     const weekdays = [...days].sort();
-    const fields = {
+    const profile = {
       name: text("name"),
       role: text("role"),
       avatarUrl: text("avatarUrl") || undefined,
       color: text("color"),
+    };
+    const schedule = {
       workingHours: weekdays.map((weekday) => ({ weekday, start: text("start"), end: text("end") })),
       breaks: hasBreak
         ? weekdays.map((weekday) => ({ weekday, start: text("breakStart"), end: text("breakEnd"), label: text("breakLabel") }))
         : [],
     };
+    const offFrom = text("offFrom");
+    const timeOff = (staffId: Id<"staff">) =>
+      addTimeOff({
+        staffId,
+        start: resortMidnight(offFrom),
+        end: resortMidnight(text("offTo") || offFrom) + DAY_MS,
+        label: text("offLabel") || "Time off",
+      });
     setSaving(true);
     setError("");
     try {
-      const staffId = staff ? staff._id : await createStaff(fields);
-      if (staff) await updateStaff({ staffId: staff._id, ...fields });
-      const offFrom = text("offFrom");
-      if (offFrom) {
-        const offTo = text("offTo") || offFrom;
-        await addTimeOff({
-          staffId: staffId as Id<"staff">,
-          start: resortMidnight(offFrom),
-          end: resortMidnight(offTo) + DAY_MS,
-          label: text("offLabel") || "Time off",
-        });
+      if (staff) {
+        // Time off first: if it clashes with a booking, nothing else is saved either.
+        if (offFrom) await timeOff(staff._id);
+        await updateStaff({ staffId: staff._id, ...profile, ...(simpleSchedule ? schedule : {}) });
+      } else {
+        const staffId = await createStaff({ ...profile, ...schedule });
+        if (offFrom) await timeOff(staffId);
       }
       onClose();
     } catch (err) {
@@ -270,55 +291,63 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
           <Field label="Photo URL (optional)" htmlFor="st-avatar">
             <Input id="st-avatar" name="avatarUrl" type="url" defaultValue={staff?.avatarUrl} />
           </Field>
-          <fieldset className="grid gap-2">
-            <legend className="mb-2 text-sm font-medium">Working days</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {WEEKDAYS.map((label, weekday) => (
-                <Button
-                  key={label}
-                  type="button"
-                  size="sm"
-                  variant={days.has(weekday) ? "default" : "outline"}
-                  aria-pressed={days.has(weekday)}
-                  onClick={() =>
-                    setDays((current) => {
-                      const next = new Set(current);
-                      if (next.has(weekday)) next.delete(weekday);
-                      else next.add(weekday);
-                      return next;
-                    })
-                  }
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
-          </fieldset>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Starts" htmlFor="st-start">
-              <Input id="st-start" name="start" type="time" step={900} defaultValue={firstShift?.start ?? "09:00"} required />
-            </Field>
-            <Field label="Ends" htmlFor="st-end">
-              <Input id="st-end" name="end" type="time" step={900} defaultValue={firstShift?.end ?? "18:00"} required />
-            </Field>
-          </div>
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <input type="checkbox" className="size-4 accent-foreground" checked={hasBreak} onChange={(e) => setHasBreak(e.target.checked)} />
-            Daily break
-          </label>
-          {hasBreak ? (
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Label" htmlFor="st-break-label">
-                <Input id="st-break-label" name="breakLabel" defaultValue={firstBreak?.label ?? "Lunch"} required />
-              </Field>
-              <Field label="From" htmlFor="st-break-start">
-                <Input id="st-break-start" name="breakStart" type="time" step={900} defaultValue={firstBreak?.start ?? "12:00"} required />
-              </Field>
-              <Field label="To" htmlFor="st-break-end">
-                <Input id="st-break-end" name="breakEnd" type="time" step={900} defaultValue={firstBreak?.end ?? "13:00"} required />
-              </Field>
-            </div>
-          ) : null}
+          {simpleSchedule ? (
+            <>
+              <fieldset className="grid gap-2">
+                <legend className="mb-2 text-sm font-medium">Working days</legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAYS.map((label, weekday) => (
+                    <Button
+                      key={label}
+                      type="button"
+                      size="sm"
+                      variant={days.has(weekday) ? "default" : "outline"}
+                      aria-pressed={days.has(weekday)}
+                      onClick={() =>
+                        setDays((current) => {
+                          const next = new Set(current);
+                          if (next.has(weekday)) next.delete(weekday);
+                          else next.add(weekday);
+                          return next;
+                        })
+                      }
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Starts" htmlFor="st-start">
+                  <Input id="st-start" name="start" type="time" step={900} defaultValue={firstShift?.start ?? "09:00"} required />
+                </Field>
+                <Field label="Ends" htmlFor="st-end">
+                  <Input id="st-end" name="end" type="time" step={900} defaultValue={firstShift?.end ?? "18:00"} required />
+                </Field>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" className="size-4 accent-foreground" checked={hasBreak} onChange={(e) => setHasBreak(e.target.checked)} />
+                Daily break
+              </label>
+              {hasBreak ? (
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Label" htmlFor="st-break-label">
+                    <Input id="st-break-label" name="breakLabel" defaultValue={firstBreak?.label ?? "Lunch"} required />
+                  </Field>
+                  <Field label="From" htmlFor="st-break-start">
+                    <Input id="st-break-start" name="breakStart" type="time" step={900} defaultValue={firstBreak?.start ?? "12:00"} required />
+                  </Field>
+                  <Field label="To" htmlFor="st-break-end">
+                    <Input id="st-break-end" name="breakEnd" type="time" step={900} defaultValue={firstBreak?.end ?? "13:00"} required />
+                  </Field>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              {hoursSummary(staff!)}. This custom schedule is kept as-is; it can&apos;t be edited in this form.
+            </p>
+          )}
           <fieldset className="grid gap-3 border-t border-border pt-4">
             <legend className="text-sm font-medium">Add time off (optional)</legend>
             <div className="grid grid-cols-3 gap-3">
@@ -339,7 +368,7 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || days.size === 0}>
+            <Button type="submit" disabled={saving || (simpleSchedule && days.size === 0)}>
               {saving ? <Loader2 className="size-4 animate-spin" /> : null}
               Save
             </Button>

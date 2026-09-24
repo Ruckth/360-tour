@@ -117,4 +117,13 @@ describe('admin services', () => {
 		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId });
 		await admin.mutation(api.adminServices.archiveStaff, { staffId });
 	});
+
+	it('refuses new hours that would leave booked appointments outside them', async () => {
+		const { admin, booking, staffId } = await setup();
+		await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('16:00') });
+		const shorter = weekdays.map((weekday) => ({ weekday, start: '09:00', end: '15:00' }));
+		await expect(admin.mutation(api.adminServices.updateStaff, { staffId, workingHours: shorter })).rejects.toThrow('outside the new hours');
+		await admin.mutation(api.adminServices.updateStaff, { staffId, name: 'Mali K' }); // unrelated edits still save
+		await admin.mutation(api.adminServices.updateStaff, { staffId, workingHours: weekdays.map((weekday) => ({ weekday, start: '10:00', end: '18:00' })) });
+	});
 });

@@ -50,7 +50,14 @@ import { cn } from "@/lib/utils";
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
 type Appointment = Doc<"serviceAppointments">;
-type Block = { staffId: Id<"staff">; start: number; end: number; label: string; kind: "break" | "time_off"; timeOffId?: Id<"staffTimeOff"> };
+type Block = {
+  staffId: Id<"staff">;
+  start: number;
+  end: number;
+  label: string;
+  kind: "break" | "time_off" | "turnaround";
+  timeOffId?: Id<"staffTimeOff">;
+};
 type EventData = { kind: "appointment"; appointment: Appointment } | { kind: "block"; block: Block };
 type Move = { start: number; end: number; staffId: Id<"staff"> };
 type Draft = { date: string; staffId?: Id<"staff">; start?: number };
@@ -180,7 +187,33 @@ function StaffCalendar() {
         readOnly: true,
         data: { kind: "block", block },
       }));
-    return [...blockEvents, ...appointmentEvents];
+    // Cleanup/travel after a service blocks the staff member too, so show it.
+    const turnaroundEvents = view === "resource"
+      ? appointments
+          .filter((a) => a.blockedUntil > a.end && a.status !== "cancelled" && a.status !== "no_show")
+          .map((appointment): CalendarEvent<EventData> => {
+            const move = moves.get(appointment._id);
+            const start = move?.end ?? appointment.end;
+            const block: Block = {
+              staffId: move?.staffId ?? appointment.staffId,
+              start,
+              end: start + appointment.blockedUntil - appointment.end,
+              label: "Turnaround",
+              kind: "turnaround",
+            };
+            return {
+              id: `turnaround-${appointment._id}`,
+              title: "Turnaround",
+              start: new Date(block.start),
+              end: new Date(block.end),
+              resourceId: block.staffId,
+              color: BLOCK_COLOR,
+              readOnly: true,
+              data: { kind: "block", block },
+            };
+          })
+      : [];
+    return [...blockEvents, ...turnaroundEvents, ...appointmentEvents];
   }, [data, appointments, moves, serviceById, staffById, hiddenStaff, now, view]);
 
   const renderEvent = useCallback(
@@ -278,7 +311,7 @@ function StaffCalendar() {
             }
           }}
           onSlotClick={(slot) => {
-            if (slot.allDay || !data) return;
+            if (slot.allDay || !data || activeServices.length === 0) return;
             const start = slot.date.getTime();
             setDraft({
               date: resortIsoDate(start),
