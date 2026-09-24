@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { mutation } from './_generated/server';
+import { internalMutation, mutation } from './_generated/server';
 import { requireAdmin } from './lib/adminAuth';
 import { normalizeSuggestedQuestion, supportedSuggestionLocales } from './lib/chatSuggestions';
 import { curatedQuestionSeeds, type CuratedQuestionSeed } from './seeds/curatedQuestions';
@@ -54,7 +54,6 @@ function seedNeedsUpdate(
 export const seedAll = mutation({
 	args: {},
 	handler: async (ctx) => {
-		await seedStaffServicesData(ctx);
 		const existing = await ctx.db.query('properties').first();
 		if (existing) {
 			return { status: 'already_seeded' };
@@ -67,6 +66,7 @@ export const seedAll = mutation({
 		await seedReviews(ctx, properties);
 		await seedTourSnippets(ctx, properties);
 		await seedRecentBookings(ctx, properties);
+		await seedStaffServicesData(ctx);
 
 		return {
 			status: 'seeded',
@@ -79,7 +79,8 @@ export const seedAll = mutation({
 	}
 });
 
-export const seedStaffServices = mutation({
+/** Adds demo staff/services to an already-seeded deployment: `npx convex run seed:seedStaffServices`. */
+export const seedStaffServices = internalMutation({
 	args: {},
 	handler: async (ctx) => await seedStaffServicesData(ctx)
 });

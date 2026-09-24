@@ -118,6 +118,8 @@ pnpm seed
 
 `seed:seedAll` is idempotent and exits with `already_seeded` if properties already exist.
 
+To add the demo staff, services and sample appointments to a deployment that was seeded earlier, run `npx convex run seed:seedStaffServices` (internal, also idempotent).
+
 For Preview deployments that should get fresh demo data automatically, change the Vercel build command to:
 
 ```sh

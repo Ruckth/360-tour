@@ -97,4 +97,31 @@ describe('service slots', () => {
 		expect(await admin.query(api.adminServices.findOpenSlots, { serviceId, date })).toEqual([]);
 		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') })).rejects.toThrow('Service unavailable');
 	});
+
+	it('frees no-show time and rejects an unqualified requested staff member', async () => {
+		const { admin, staffIds, serviceId, booking } = await setup();
+		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:00') });
+		vi.setSystemTime(at('09:05'));
+		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId, status: 'no_show' });
+		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		expect(slots.some((slot) => slot.start === at('09:15'))).toBe(true);
+		const other = await admin.mutation(api.adminServices.createStaff, { name: 'Chef', role: 'Chef', color: '#abc', workingHours: [], breaks: [] });
+		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: other, start: at('10:00') }))
+			.rejects.toThrow('not available for this service');
+	});
+
+	it('blocks next-day slots with an appointment that runs past midnight', async () => {
+		const { admin } = await setup();
+		const staffId = await admin.mutation(api.adminServices.createStaff, {
+			name: 'Kai', role: 'Driver', color: '#abc',
+			workingHours: weekdays.map((weekday) => ({ weekday, start: '00:00', end: '24:00' })), breaks: []
+		});
+		const serviceId = await admin.mutation(api.adminServices.createService, {
+			slug: 'transfer', name: 'Transfer', description: '', category: 'Arrival',
+			durationMin: 60, bufferMin: 30, price: 1500, currency: 'THB', staffIds: [staffId]
+		});
+		await admin.mutation(api.adminServices.createAppointment, { serviceId, guestName: 'Guest', guestPhone: '+66000000000', start: at('23:00') });
+		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date: '2026-09-26' });
+		expect(slots[0].start).toBe(localDateTimeUtc('2026-09-26', '00:30'));
+	});
 });

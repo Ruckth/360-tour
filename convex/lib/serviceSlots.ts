@@ -7,8 +7,8 @@ import { assertValidIsoDate, assertValidEmail } from './validation';
 const ZONE = 'Asia/Bangkok';
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
-const TIME_OFF_LOOKBACK = 60 * DAY;
-const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
+export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
+export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
 export const SLOT_CONFLICT = 'That time was just taken. Please choose another time.';
 
 export type Range = [start: number, end: number];
@@ -16,8 +16,9 @@ export type Slot = { start: number; staffIds: Id<'staff'>[] };
 type ReadCtx = QueryCtx | MutationCtx;
 type LocalBlock = { weekday: number; start: string; end: string; label?: string };
 
+/** Local "HH:mm"; "24:00" is allowed so shifts and breaks can end at midnight. */
 export function assertValidTime(time: string): void {
-	if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('Time must be HH:mm');
+	if (!/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/.test(time)) throw new Error('Time must be HH:mm');
 }
 
 export function localDateTimeUtc(date: string, time: string): number {
@@ -86,6 +87,10 @@ export function recurringBlocks(
 		date = nextLocalDate(date);
 	}
 	return result;
+}
+
+export function blocksTime(appointment: Doc<'serviceAppointments'>): boolean {
+	return appointment.status !== 'cancelled' && appointment.status !== 'no_show';
 }
 
 /** All unavailable time within [from, to), including the gaps around working hours. */
@@ -180,20 +185,16 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const [dayStart, dayEnd] = localDayRange(resortLocalParts(input.start).date);
 	const candidates = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
 		.filter((person): person is Doc<'staff'> => !!person && person.status === 'active' && (!input.staffId || person._id === input.staffId));
+	if (input.staffId && !candidates.length) throw new Error('Staff member is not available for this service');
 	const free: Array<{ staff: Doc<'staff'>; count: number }> = [];
 	for (const person of candidates) {
-		try {
-			await assertStaffFree(ctx, person, input.start, blockedUntil);
-		} catch (error) {
-			if (error instanceof Error && error.message === SLOT_CONFLICT) continue;
-			throw error;
-		}
+		if ((await staffBusyRanges(ctx, person, input.start, blockedUntil)).length) continue;
 		let count = 0;
 		if (!input.staffId) {
 			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', dayStart).lt('start', dayEnd)
 			)) {
-				if (appointment.status !== 'cancelled') count++;
+				if (blocksTime(appointment)) count++;
 			}
 		}
 		free.push({ staff: person, count });

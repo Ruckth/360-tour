@@ -4,7 +4,10 @@ import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 import {
+	APPOINTMENT_LOOKBACK,
+	TIME_OFF_LOOKBACK,
 	assertAppointmentStart,
+	blocksTime,
 	assertStaffFree,
 	assertValidTime,
 	createAppointmentRecord,
@@ -13,13 +16,14 @@ import {
 } from './lib/serviceSlots';
 
 const DAY = 86_400_000;
+const MINUTE = 60_000;
 const hour = v.object({ weekday: v.number(), start: v.string(), end: v.string() });
 const rest = v.object({ weekday: v.number(), start: v.string(), end: v.string(), label: v.string() });
 const staffStatus = v.union(v.literal('active'), v.literal('archived'));
 const serviceStatus = v.union(v.literal('active'), v.literal('archived'));
+// Cancelling goes through cancelAppointment.
 const appointmentStatus = v.union(
-	v.literal('booked'), v.literal('arrived'), v.literal('in_service'),
-	v.literal('completed'), v.literal('cancelled'), v.literal('no_show')
+	v.literal('arrived'), v.literal('in_service'), v.literal('completed'), v.literal('no_show')
 );
 
 function required(value: string, label: string): string {
@@ -98,6 +102,13 @@ export const archiveStaff = mutation({
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		if (!(await ctx.db.get(args.staffId))) throw new Error('Staff member not found');
+		for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			q.eq('staffId', args.staffId).gte('start', Date.now() - APPOINTMENT_LOOKBACK)
+		)) {
+			if (appointment.blockedUntil > Date.now() && blocksTime(appointment) && appointment.status !== 'completed') {
+				throw new Error('Reassign or cancel this staff member\'s upcoming appointments first');
+			}
+		}
 		await ctx.db.patch(args.staffId, { status: 'archived', updatedAt: Date.now() });
 	}
 });
@@ -166,7 +177,14 @@ export const addTimeOff = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		if (!(await ctx.db.get(args.staffId))) throw new Error('Staff member not found');
-		if (!Number.isSafeInteger(args.start) || !Number.isSafeInteger(args.end) || args.end <= args.start || args.end - args.start > 60 * DAY) throw new Error('Time off must be positive and at most 60 days');
+		if (!Number.isSafeInteger(args.start) || !Number.isSafeInteger(args.end) || args.end <= args.start || args.end - args.start > TIME_OFF_LOOKBACK) throw new Error('Time off must be positive and at most 60 days');
+		for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			q.eq('staffId', args.staffId).gte('start', args.start - APPOINTMENT_LOOKBACK).lt('start', args.end)
+		)) {
+			if (appointment.blockedUntil > args.start && appointment.status === 'booked') {
+				throw new Error('Reassign or cancel the appointments during this time off first');
+			}
+		}
 		return await ctx.db.insert('staffTimeOff', { ...args, label: required(args.label, 'Label'), createdByAdminEmail: admin.email });
 	}
 });
@@ -192,7 +210,7 @@ export const listSchedule = query({
 		const staffSet = new Set(staff.map((person) => person._id));
 		const appointments: Doc<'serviceAppointments'>[] = [];
 		for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_start', (q) =>
-			q.gte('start', args.from - DAY).lt('start', args.to)
+			q.gte('start', args.from - APPOINTMENT_LOOKBACK).lt('start', args.to)
 		)) {
 			if (appointment.end > args.from && staffSet.has(appointment.staffId)) appointments.push(appointment);
 		}
@@ -202,7 +220,7 @@ export const listSchedule = query({
 				blocks.push({ staffId: person._id, start: block.start, end: block.end, label: block.label ?? '', kind: 'break' });
 			}
 			for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
-				q.eq('staffId', person._id).gte('start', args.from - 60 * DAY).lt('start', args.to)
+				q.eq('staffId', person._id).gte('start', args.from - TIME_OFF_LOOKBACK).lt('start', args.to)
 			)) {
 				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off' });
 			}
@@ -227,22 +245,26 @@ export const createAppointment = mutation({
 	}
 });
 
+/** Move (drag) or resize an upcoming appointment; `durationMin` defaults to the current length. */
 export const rescheduleAppointment = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), start: v.number(), staffId: v.optional(v.id('staff')) },
+	args: { appointmentId: v.id('serviceAppointments'), start: v.number(), staffId: v.optional(v.id('staff')), durationMin: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const appointment = await ctx.db.get(args.appointmentId);
 		if (!appointment) throw new Error('Appointment not found');
-		if (['cancelled', 'completed', 'no_show'].includes(appointment.status)) throw new Error('Appointment cannot be rescheduled');
+		if (appointment.status !== 'booked') throw new Error('Appointment cannot be rescheduled');
 		assertAppointmentStart(args.start);
 		const service = await ctx.db.get(appointment.serviceId);
-		if (!service || service.status !== 'active') throw new Error('Service unavailable');
+		if (!service) throw new Error('Service unavailable');
+		const durationMin = args.durationMin ?? (appointment.end - appointment.start) / MINUTE;
+		validateService({ durationMin, bufferMin: service.bufferMin, price: appointment.price });
 		const staffId = args.staffId ?? appointment.staffId;
 		const staff = await ctx.db.get(staffId);
 		if (!staff || !service.staffIds.includes(staffId)) throw new Error('Staff member is not qualified');
-		const blockedUntil = args.start + (service.durationMin + service.bufferMin) * 60_000;
+		const end = args.start + durationMin * MINUTE;
+		const blockedUntil = end + service.bufferMin * MINUTE;
 		await assertStaffFree(ctx, staff, args.start, blockedUntil, appointment._id);
-		await ctx.db.patch(appointment._id, { staffId, start: args.start, end: args.start + service.durationMin * 60_000, blockedUntil });
+		await ctx.db.patch(appointment._id, { staffId, start: args.start, end, blockedUntil });
 	}
 });
 
@@ -260,6 +282,7 @@ export const updateAppointmentStatus = mutation({
 		const appointment = await ctx.db.get(args.appointmentId);
 		if (!appointment) throw new Error('Appointment not found');
 		if (!transitions[appointment.status].includes(args.status)) throw new Error('Invalid appointment status transition');
+		if (args.status === 'no_show' && appointment.start > Date.now()) throw new Error('No-show can only be marked after the start time');
 		await ctx.db.patch(appointment._id, { status: args.status });
 	}
 });

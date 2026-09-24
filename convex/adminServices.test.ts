@@ -2,7 +2,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from './_generated/api';
+import { api, internal } from './_generated/api';
 import { localDateTimeUtc } from './lib/serviceSlots';
 import schema from './schema';
 
@@ -91,16 +91,30 @@ describe('admin services', () => {
 		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: first.appointmentId, start: at('16:00') })).rejects.toThrow('cannot be rescheduled');
 		await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: second.appointmentId });
 		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId });
-		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: second.appointmentId, status: 'booked' })).rejects.toThrow('Invalid appointment status transition');
+		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: second.appointmentId, status: 'arrived' })).rejects.toThrow('Invalid appointment status transition');
 	});
 
 	it('seeds staff and services idempotently', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const t = convexTest(schema, modules);
-		await t.mutation(api.seed.seedStaffServices, {});
-		await t.mutation(api.seed.seedStaffServices, {});
+		expect((await t.mutation(internal.seed.seedStaffServices, {})).appointmentsCreated).toBe(4);
+		expect(await t.mutation(internal.seed.seedStaffServices, {})).toMatchObject({ staff: 5, services: 6, appointmentsCreated: 0 });
 		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 		expect(await admin.query(api.adminServices.listStaff, {})).toHaveLength(5);
 		expect(await admin.query(api.adminServices.listServices, {})).toHaveLength(6);
+	});
+
+	it('resizes appointments and refuses to archive staff with upcoming appointments', async () => {
+		const { admin, booking, staffId } = await setup();
+		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
+		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId, start: at('09:00'), durationMin: 90 });
+		const [appointment] = (await admin.query(api.adminServices.listSchedule, { from: at('09:00'), to: at('17:00') })).appointments;
+		expect(appointment).toMatchObject({ end: at('10:30'), blockedUntil: at('10:45') });
+		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId, start: at('11:00'), durationMin: 90 })).rejects.toThrow('That time was just taken'); // lunch
+		await expect(admin.mutation(api.adminServices.archiveStaff, { staffId })).rejects.toThrow('upcoming appointments');
+		await expect(admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('10:00'), end: at('11:00'), label: 'Leave' })).rejects.toThrow('during this time off');
+		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId, status: 'no_show' })).rejects.toThrow('after the start time');
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId });
+		await admin.mutation(api.adminServices.archiveStaff, { staffId });
 	});
 });
