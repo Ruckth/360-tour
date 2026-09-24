@@ -37,11 +37,12 @@ export function displayStatus(appointment: Pick<Doc<"serviceAppointments">, "sta
 export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 export function initials(name: string) {
+  // Only words that start with a letter, so tags like "[AI-EVAL]" or "(VIP)" are skipped.
   return name
     .split(/\s+/)
-    .filter(Boolean)
+    .filter((part) => /^\p{L}/u.test(part))
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
+    .map((part) => part[0].toUpperCase())
     .join("");
 }
 

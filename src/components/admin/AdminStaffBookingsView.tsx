@@ -9,7 +9,7 @@ import { format } from "date-fns";
 import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
-import { EventCalendarNav, EventCalendarToolbar } from "@/components/reui/event-calendar/event-calendar-nav";
+import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
 import type {
   CalendarEvent,
   CalendarView,
@@ -78,6 +78,8 @@ const SOURCE_LABELS: Record<Appointment["source"], string> = {
 const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", "completed", "no_show", "cancelled"];
 const BLOCK_COLOR = "var(--color-zinc-500)";
 const MINUTE = 60_000;
+// Stable reference: the calendar rebuilds its settings when this object changes.
+const CALENDAR_I18N = { viewNames: { resource: "Day" } };
 
 /** "2026-09-24" → local Date at midnight, for the day picker. */
 function isoToLocalDate(iso: string) {
@@ -307,7 +309,7 @@ function StaffCalendar() {
           interval={60}
           snapDuration={15}
           scrollToHour={8}
-          i18n={{ viewNames: { resource: "Day" } }}
+          i18n={CALENDAR_I18N}
           interactions={{ drag: true, resize: true, selectSlot: false }}
           renderEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
@@ -364,55 +366,53 @@ function StaffCalendar() {
           }}
           className="h-[calc(100vh-230px)] min-h-[600px] w-full"
         >
-          <div className="flex flex-wrap items-center gap-2 border-b border-border pe-2">
-            <EventCalendarNav className="min-w-0 flex-1" />
-            <EventCalendarToolbar>
-              {data === undefined ? <Loader2 className="size-4 animate-spin text-gold" /> : null}
-              <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
-                <CalendarDays aria-hidden className="size-3.5" />
-                {bookedCount} booked in view
-              </span>
-              <CheckList
-                icon={<Users aria-hidden className="size-4" />}
-                label={`${visibleStaff.length} of ${data?.staff.length ?? 0} staff`}
-                groups={[
-                  {
-                    title: "Staff",
-                    items: (data?.staff ?? []).map((s) => ({ id: s._id, label: s.name, detail: s.role })),
-                    hidden: hiddenStaff,
-                    onChange: setHiddenStaff,
-                  },
-                ]}
-              />
-              <CheckList
-                icon={<Filter aria-hidden className="size-4" />}
-                label="Filters"
-                count={filterCount}
-                groups={[
-                  {
-                    title: "Services",
-                    items: (data?.services ?? []).map((s) => ({ id: s._id, label: s.name })),
-                    hidden: hiddenServices,
-                    onChange: setHiddenServices,
-                  },
-                  {
-                    title: "Status",
-                    items: STATUS_FILTERS.map((status) => ({ id: status, label: APPOINTMENT_STATUS[status].label })),
-                    hidden: hiddenStatuses,
-                    onChange: setHiddenStatuses,
-                  },
-                ]}
-              />
-              <Button
-                size="sm"
-                disabled={!data || activeServices.length === 0}
-                onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
-              >
-                <PlusIcon aria-hidden className="size-4" />
-                New appointment
-              </Button>
-            </EventCalendarToolbar>
-          </div>
+          <AdminCalendarHeader>
+            {data === undefined ? <Loader2 aria-label="Loading" className="size-4 animate-spin text-gold" /> : null}
+            <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
+              <CalendarDays aria-hidden className="size-3.5" />
+              {bookedCount} booked in view
+            </span>
+            <CheckList
+              icon={<Users aria-hidden className="size-4" />}
+              label={`${visibleStaff.length} of ${data?.staff.length ?? 0} staff`}
+              groups={[
+                {
+                  title: "Staff",
+                  items: (data?.staff ?? []).map((s) => ({ id: s._id, label: s.name, detail: s.role })),
+                  hidden: hiddenStaff,
+                  onChange: setHiddenStaff,
+                },
+              ]}
+            />
+            <CheckList
+              icon={<Filter aria-hidden className="size-4" />}
+              label="Filters"
+              count={filterCount}
+              groups={[
+                {
+                  title: "Services",
+                  items: (data?.services ?? []).map((s) => ({ id: s._id, label: s.name })),
+                  hidden: hiddenServices,
+                  onChange: setHiddenServices,
+                },
+                {
+                  title: "Status",
+                  items: STATUS_FILTERS.map((status) => ({ id: status, label: APPOINTMENT_STATUS[status].label })),
+                  hidden: hiddenStatuses,
+                  onChange: setHiddenStatuses,
+                },
+              ]}
+            />
+            <Button
+              size="sm"
+              className="sm:ms-auto"
+              disabled={!data || activeServices.length === 0}
+              onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
+            >
+              <PlusIcon aria-hidden className="size-4" />
+              New appointment
+            </Button>
+          </AdminCalendarHeader>
           {error ? (
             <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">
               {error}

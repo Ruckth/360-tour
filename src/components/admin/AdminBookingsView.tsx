@@ -9,15 +9,12 @@ import { Loader2, PlusIcon } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
-import {
-  EventCalendarNav,
-  EventCalendarToolbar,
-} from "@/components/reui/event-calendar/event-calendar-nav";
 import type {
   CalendarEvent,
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
+import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +42,9 @@ const STATUS = {
 } as const;
 
 type StatusKey = keyof typeof STATUS;
+
+// Stable reference: the calendar rebuilds its settings when this object changes.
+const CALENDAR_I18N = { viewNames: { resource: "Villas", agenda: "List" } };
 
 const SOURCE_LABELS: Record<string, string> = {
   web: "Website",
@@ -175,6 +175,7 @@ export function AdminBookingsView() {
           dayStartHour={8}
           dayEndHour={20}
           interval={60}
+          i18n={CALENDAR_I18N}
           interactions={{ drag: false, resize: false, selectSlot: false }}
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
@@ -185,38 +186,39 @@ export function AdminBookingsView() {
           }
           className="h-[calc(100vh-190px)] min-h-[560px] w-full"
         >
-          <div className="flex flex-wrap items-center gap-2 border-b border-border pe-2">
-            <EventCalendarNav className="min-w-0 flex-1" />
-            <EventCalendarToolbar>
-              {data === undefined ? <Loader2 className="size-4 animate-spin text-gold" /> : null}
-              <Select value={villa} onValueChange={setVilla}>
-                <SelectTrigger className="h-9 w-44 rounded-lg" aria-label="Villa">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All villas</SelectItem>
-                  {data?.properties.map((p) => (
-                    <SelectItem key={p._id} value={p._id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                size="sm"
-                variant={showCancelled ? "secondary" : "outline"}
-                aria-pressed={showCancelled}
-                onClick={() => setShowCancelled((value) => !value)}
-              >
-                Show cancelled
+          <AdminCalendarHeader>
+            <Select value={villa} onValueChange={setVilla}>
+              <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg sm:w-48 sm:flex-none" aria-label="Villa">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All villas</SelectItem>
+                {data?.properties.map((p) => (
+                  <SelectItem key={p._id} value={p._id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant={showCancelled ? "secondary" : "outline"}
+              aria-pressed={showCancelled}
+              onClick={() => setShowCancelled((value) => !value)}
+            >
+              Show cancelled
+            </Button>
+            {data === undefined ? <Loader2 aria-label="Loading" className="size-4 animate-spin text-gold" /> : null}
+            <div className="flex flex-wrap items-center gap-2 sm:ms-auto">
+              <Button size="sm" variant="outline" onClick={() => setManagingCalendars(true)} disabled={!data}>
+                OTA calendars
               </Button>
               <Button size="sm" onClick={() => setCreating(true)} disabled={!data}>
                 <PlusIcon aria-hidden="true" className="size-4" />
                 New booking
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setManagingCalendars(true)} disabled={!data}>OTA calendars</Button>
-            </EventCalendarToolbar>
-          </div>
+            </div>
+          </AdminCalendarHeader>
           <EventCalendarContent />
         </EventCalendar>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
