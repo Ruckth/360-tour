@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import {
-  confirmDemoPayment,
+  createStripeCheckout,
   getPublicBooking,
   type PublicBooking,
 } from "@/lib/react/convex-api";
@@ -87,11 +87,13 @@ export function PayClient({
     setLoading(true);
     setError("");
     try {
-      // Demo checkout: confirming here counts as paid.
       if (!isDemo) {
         if (!convex) throw new Error(t("liveVerificationUnavailable"));
-        await confirmDemoPayment(convex, { bookingId, accessToken });
+        const checkout = await createStripeCheckout(convex, { bookingId, accessToken });
+        window.location.assign(checkout.url);
+        return;
       }
+      // The standalone demo has no persisted booking or payment.
       router.push(successHref);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("paymentCouldNotConfirm"));
@@ -107,10 +109,10 @@ export function PayClient({
           <CreditCard className="h-6 w-6 text-gold" />
         </div>
         <h1 className="mt-5 font-serif text-3xl font-semibold text-foreground">
-          {t("confirmDemoPayment")}
+          {t(isDemo ? "confirmDemoPayment" : "confirmPayment")}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          {t("demoPaymentCopy")}
+          {t(isDemo ? "demoPaymentCopy" : "livePaymentCopy")}
         </p>
         <div className="mt-5 flex items-center gap-2 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
           <ShieldCheck className="h-4 w-4 text-gold" />
@@ -139,7 +141,7 @@ export function PayClient({
               ? t("verifying")
               : loading
                 ? t("confirming")
-                : t("confirmDemoPaymentCta")}
+                : t(isDemo ? "confirmDemoPaymentCta" : "pay")}
           </Button>
           <Link
             href={localizeHref("/booking", locale)}

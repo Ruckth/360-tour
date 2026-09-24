@@ -22,6 +22,7 @@ export default defineSchema({
 
 	properties: defineTable({
 		tenantId: v.optional(v.id('tenants')),
+		icalExportToken: v.optional(v.string()),
 		slug: v.string(),
 		name: v.string(),
 		tagline: v.string(),
@@ -39,6 +40,7 @@ export default defineSchema({
 		status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived'))
 	})
 		.index('by_slug', ['slug'])
+		.index('by_icalExportToken', ['icalExportToken'])
 		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status']),
 
@@ -90,6 +92,11 @@ export default defineSchema({
 		invoiceNumber: v.optional(v.string()),
 		receiptNumber: v.optional(v.string()),
 		accessToken: v.optional(v.string()),
+		stripeCheckoutSessionId: v.optional(v.string()),
+		stripePaymentIntentId: v.optional(v.string()),
+		stripeCheckoutUrl: v.optional(v.string()),
+		stripeCheckoutExpiresAt: v.optional(v.number()),
+		confirmationEmailsQueuedAt: v.optional(v.number()),
 		paymentStatus: v.union(
 			v.literal('pending'),
 			v.literal('paid'),
@@ -109,6 +116,8 @@ export default defineSchema({
 		.index('by_checkIn', ['checkIn'])
 		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status'])
+		.index('by_status_createdAt', ['status', 'createdAt'])
+		.index('by_stripePaymentIntentId', ['stripePaymentIntentId'])
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone']),
 
@@ -174,6 +183,12 @@ export default defineSchema({
 		.index('by_email', ['email'])
 		.index('by_property', ['propertyId']),
 
+	rateLimits: defineTable({
+		key: v.string(),
+		count: v.number(),
+		expiresAt: v.number()
+	}).index('by_key', ['key']).index('by_expiresAt', ['expiresAt']),
+
 	pricing: defineTable({
 		propertyId: v.id('properties'),
 		directRate: v.number(),
@@ -200,7 +215,8 @@ export default defineSchema({
 		propertyId: v.id('properties'),
 		platform: v.string(),
 		icalUrl: v.string(),
-		lastSyncedAt: v.optional(v.number())
+		lastSyncedAt: v.optional(v.number()),
+		lastSyncError: v.optional(v.string())
 	}).index('by_property', ['propertyId']),
 
 	availability: defineTable({
@@ -214,9 +230,11 @@ export default defineSchema({
 			v.literal('agoda'),
 			v.literal('manual')
 		),
-		bookingId: v.optional(v.id('bookings'))
+		bookingId: v.optional(v.id('bookings')),
+		icalSourceId: v.optional(v.id('icalSources'))
 	})
 		.index('by_property', ['propertyId'])
+		.index('by_icalSourceId', ['icalSourceId'])
 		.index('by_property_date', ['propertyId', 'date']),
 
 	// Phase 3: AI Chat

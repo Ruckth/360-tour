@@ -12,19 +12,15 @@ import {
 import { calculateDirectQuote } from './lib/pricing';
 import { demoCode } from './lib/codes';
 import { blockBookingDates } from './lib/availabilityWrites';
+import { requireAdmin } from './lib/adminAuth';
+import { internal } from './_generated/api';
+import { enforceRateLimit } from './lib/rateLimit';
 import {
 	createBookingRecord,
 	loadProperty,
 	quoteBookableStay,
 	type BookingSource
 } from './lib/bookingWrites';
-
-async function assertAuthenticated(ctx: QueryCtx | MutationCtx): Promise<void> {
-	const identity = await ctx.auth.getUserIdentity();
-	if (!identity) {
-		throw new Error('Not authenticated');
-	}
-}
 
 function assertBookingAccess(
 	booking: Doc<'bookings'>,
@@ -122,6 +118,9 @@ export const create = mutation({
 	},
 	handler: async (ctx, args) => {
 		assertValidEmail(args.guestEmail);
+		await enforceRateLimit(ctx, `booking-email:${args.guestEmail.trim().toLowerCase()}`, 5, 60 * 60 * 1000);
+		await enforceRateLimit(ctx, `booking-phone:${args.guestPhone.trim()}`, 5, 60 * 60 * 1000);
+		await enforceRateLimit(ctx, 'booking:global', 100, 60 * 60 * 1000);
 		return await createBookingRecord(ctx, { ...args, source: 'web' });
 	}
 });
@@ -137,26 +136,23 @@ export const updatePaymentStatus = mutation({
 		)
 	},
 	handler: async (ctx, args) => {
-		await assertAuthenticated(ctx);
+		await requireAdmin(ctx);
 		const booking = await ctx.db.get(args.bookingId);
 		if (!booking) {
 			throw new Error('Booking not found');
+		}
+		if (args.paymentStatus === 'refunded' && booking.paymentMethod === 'stripe') {
+			throw new Error('Refund Stripe payments in Stripe; the signed webhook updates this booking.');
 		}
 
 		const update: Record<string, unknown> = {
 			paymentStatus: args.paymentStatus
 		};
 		if (args.paymentStatus === 'paid') {
-			assertNotCancelled(booking);
-			await assertPaymentStillAvailable(ctx, booking, args.bookingId);
-			update.status = 'confirmed';
-			update.paidAt = Date.now();
+			await markBookingPaid(ctx, args.bookingId, 'admin');
+			return;
 		}
 		await ctx.db.patch(args.bookingId, update);
-
-		if (args.paymentStatus === 'paid') {
-			await blockBookingDates(ctx, booking, args.bookingId);
-		}
 	}
 });
 
@@ -164,6 +160,10 @@ export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'
 	const booking = await ctx.db.get(bookingId);
 	if (!booking) {
 		throw new Error('Booking not found');
+	}
+	if (booking.paymentStatus === 'paid') return booking;
+	if (paymentMethod !== 'stripe' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
+		throw new Error('An active Stripe checkout must expire before changing this booking manually.');
 	}
 	assertNotCancelled(booking);
 	await assertPaymentStillAvailable(ctx, booking, bookingId);
@@ -180,7 +180,37 @@ export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'
 	});
 
 	await blockBookingDates(ctx, booking, bookingId);
+	await queueBookingEmails(ctx, booking);
 	return await ctx.db.get(bookingId);
+}
+
+export async function queueBookingEmails(ctx: MutationCtx, booking: Doc<'bookings'>, force = false) {
+	const bookingId = booking._id;
+	if (force || !booking.confirmationEmailsQueuedAt) {
+		const property = await ctx.db.get(booking.propertyId);
+		const details = {
+			guestName: booking.guestName,
+			propertyName: property?.name ?? 'Your stay',
+			checkIn: booking.checkIn,
+			checkOut: booking.checkOut,
+			nights: booking.nights,
+			guests: booking.guests,
+			total: booking.total,
+			currency: booking.currency
+		};
+		await ctx.db.patch(bookingId, { confirmationEmailsQueuedAt: Date.now() });
+		if (booking.guestEmail) {
+			await ctx.scheduler.runAfter(0, internal.emails.sendBookingConfirmation, {
+				...details,
+				guestEmail: booking.guestEmail
+			});
+		}
+		await ctx.scheduler.runAfter(0, internal.emails.sendOwnerNotification, {
+			...details,
+			guestEmail: booking.guestEmail ?? '',
+			guestPhone: booking.guestPhone
+		});
+	}
 }
 
 export const markPaidFromTrustedWebhook = internalMutation({
@@ -192,18 +222,6 @@ export const markPaidFromTrustedWebhook = internalMutation({
 		await markBookingPaid(ctx, args.bookingId, args.paymentMethod ?? 'trusted_webhook')
 });
 
-/** Demo checkout: the guest clicking "Confirm payment" on the pay page counts as paid. */
-export const confirmDemoPayment = mutation({
-	args: { bookingId: v.id('bookings'), accessToken: v.string() },
-	handler: async (ctx, args) => {
-		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) throw new Error('Booking not found');
-		assertBookingAccess(booking, args.accessToken);
-		const paid = await markBookingPaid(ctx, args.bookingId, 'demo');
-		return paid ? toPublicBooking(paid) : null;
-	}
-});
-
 export const getById = query({
 	args: { id: v.id('bookings'), accessToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
@@ -213,7 +231,7 @@ export const getById = query({
 			assertBookingAccess(booking, args.accessToken);
 			return toPublicBooking(booking);
 		}
-		await assertAuthenticated(ctx);
+		await requireAdmin(ctx);
 		return toPublicBooking(booking);
 	}
 });
@@ -224,7 +242,7 @@ export const listByProperty = query({
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
-		await assertAuthenticated(ctx);
+		await requireAdmin(ctx);
 		return await ctx.db
 			.query('bookings')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -422,6 +440,9 @@ export const cancelChatBooking = internalMutation({
 		}
 		if (booking.paymentStatus === 'paid' || booking.status !== 'pending') {
 			throw new Error('Paid bookings are cancelled by the host (refunds are handled manually). Offer to connect the guest with the host.');
+		}
+		if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
+			throw new Error('The payment checkout is active. Please wait for it to expire before cancelling.');
 		}
 
 		const pending = session.pendingCancellation;

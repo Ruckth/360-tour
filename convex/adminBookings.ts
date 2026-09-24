@@ -2,7 +2,7 @@ import { mutation, query } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
-import { markBookingPaid } from './bookings';
+import { markBookingPaid, queueBookingEmails } from './bookings';
 import { requireAdmin } from './lib/adminAuth';
 import { blockBookingDates } from './lib/availabilityWrites';
 import { createBookingRecord } from './lib/bookingWrites';
@@ -100,6 +100,9 @@ export const updateBooking = mutation({
 		if (!booking) throw new Error('Booking not found');
 
 		if (args.action === 'cancel') {
+			if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
+				throw new Error('The Stripe checkout is active. Wait for it to expire before cancelling.');
+			}
 			await ctx.db.patch(booking._id, { status: 'cancelled' });
 			await releaseBookingDates(ctx, booking);
 			return;
@@ -118,6 +121,17 @@ export const updateBooking = mutation({
 			status: 'confirmed',
 			confirmationCode: booking.confirmationCode ?? demoCode('CONF', booking._id as string)
 		});
+		await queueBookingEmails(ctx, booking);
+	}
+});
+
+export const resendBookingEmails = mutation({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const booking = await ctx.db.get(args.bookingId);
+		if (!booking || booking.status !== 'confirmed') throw new Error('Only confirmed bookings can be emailed');
+		await queueBookingEmails(ctx, booking, true);
 	}
 });
 

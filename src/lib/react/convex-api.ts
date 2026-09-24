@@ -151,14 +151,15 @@ export async function getPublicBooking(
   )) as PublicBooking | null;
 }
 
-export async function confirmDemoPayment(
+export async function createStripeCheckout(
   client: ConvexReactClient,
   args: { bookingId: string; accessToken: string },
 ) {
   return (await withConvexTimeout(
-    client.mutation(api.bookings.confirmDemoPayment, args as never),
-    "Confirming payment",
-  )) as PublicBooking | null;
+    client.action(api.payments.createCheckout, args as never),
+    "Starting secure checkout",
+    20_000,
+  )) as { url: string };
 }
 
 export async function saveLead(

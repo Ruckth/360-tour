@@ -2,6 +2,7 @@ import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import { assertValidIsoDate } from './lib/validation';
 import type { Doc } from './_generated/dataModel';
+import { requireAdmin } from './lib/adminAuth';
 
 function blocksNewBookings(booking: Doc<'bookings'>): boolean {
 	return booking.status === 'confirmed' || booking.status === 'completed';
@@ -84,6 +85,7 @@ export const seedBlockedRange = mutation({
 		endDate: v.string()
 	},
 	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
 		assertValidIsoDate(args.startDate, 'Start date');
 		assertValidIsoDate(args.endDate, 'End date');
 		const property = await ctx.db

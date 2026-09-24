@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import { withSentryConfig } from '@sentry/nextjs/config';
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["localhost", "127.0.0.1"],
@@ -57,4 +58,7 @@ const nextConfig: NextConfig = {
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
-export default withNextIntl(nextConfig);
+const configured = withNextIntl(nextConfig);
+export default process.env.SENTRY_DSN
+  ? withSentryConfig(configured, { silent: true, sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN } })
+  : configured;

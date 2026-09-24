@@ -10,6 +10,7 @@ import {
 	patchSessionAfterMessages
 } from './lib/adminChatMetadata';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
+import { enforceRateLimit } from './lib/rateLimit';
 
 const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -54,6 +55,7 @@ export const createSession = mutation({
 		platform: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
+		await enforceRateLimit(ctx, 'chat-session:global', 2000, 60 * 60 * 1000);
 		let propertyId = args.propertyId;
 		if (!propertyId && args.propertySlug) {
 			const property = await ctx.db

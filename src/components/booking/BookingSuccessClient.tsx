@@ -45,16 +45,15 @@ export function BookingSuccessClient({
 
       setLoading(true);
       try {
-        const result = await getPublicBooking(convex, {
-          id: bookingId,
-          accessToken,
-        });
-        if (!active) return;
-        if (!result) {
-          setError(t("bookingNotFound"));
-        } else {
+        // Stripe can redirect before its webhook reaches Convex.
+        for (let attempt = 0; attempt < 10 && active; attempt++) {
+          const result = await getPublicBooking(convex, { id: bookingId, accessToken });
+          if (!active) return;
+          if (!result) { setError(t("bookingNotFound")); break; }
           setBooking(result);
           setError("");
+          if (result.paymentStatus === "paid" || result.status === "cancelled") break;
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       } catch (err) {
         if (!active) return;

@@ -1,4 +1,4 @@
-import { action, type ActionCtx } from './_generated/server';
+import { action, internalMutation, type ActionCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
@@ -8,6 +8,7 @@ import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
 import { todayIso } from './lib/dates';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getFallbackResponse } from './lib/chatFallback';
+import { enforceRateLimit } from './lib/rateLimit';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
 const chatChannelValidator = v.union(
@@ -17,6 +18,16 @@ const chatChannelValidator = v.union(
 	v.literal('whatsapp'),
 	v.literal('instagram')
 );
+
+export const consumeChatLimit = internalMutation({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+		await enforceRateLimit(ctx, `chat:${args.sessionId}`, 20, 60 * 60 * 1000);
+		await enforceRateLimit(ctx, 'chat:global', 500, 60 * 60 * 1000);
+	}
+});
 
 export type GenerateConciergeReplyArgs = {
 	sessionId: Id<'chatSessions'>;
@@ -581,6 +592,8 @@ export const generateReply = action({
 		)
 	},
 	handler: async (ctx, args): Promise<{ response: string; model: string }> => {
+		if (args.userMessage.length > 2000) throw new Error('Message is too long');
+		await ctx.runMutation(internal.chatAi.consumeChatLimit, { sessionId: args.sessionId });
 		const session: Doc<'chatSessions'> | null = await ctx.runQuery(api.chat.getSession, {
 			sessionId: args.sessionId
 		});
@@ -609,6 +622,8 @@ export const respond = action({
 		actionHint: v.optional(chatActionValidator)
 	},
 	handler: async (ctx, args) => {
+		if (args.userMessage.length > 2000) throw new Error('Message is too long');
+		await ctx.runMutation(internal.chatAi.consumeChatLimit, { sessionId: args.sessionId });
 		const session = await ctx.runQuery(api.chat.getSession, {
 			sessionId: args.sessionId
 		});

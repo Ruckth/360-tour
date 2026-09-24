@@ -44,6 +44,8 @@ export function SiteFooter() {
           >
             {footer("bookDirect")}
           </Link>
+          <Link className="transition hover:text-foreground" href={localizeHref("/privacy", locale)}>Privacy policy</Link>
+          <Link className="transition hover:text-foreground" href={localizeHref("/terms", locale)}>Terms</Link>
           <a
             className="transition hover:text-foreground"
             href={buildEmailHref(resort.contactEmail)}
