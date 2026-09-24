@@ -9,6 +9,30 @@ export const TOOLS: ToolDef[] = [
 	{
 		type: 'function',
 		function: {
+			name: 'list_services',
+			description: 'List active resort services with descriptions, durations, prices, and available staff.',
+			parameters: { type: 'object', properties: {} }
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'check_service_availability',
+			description: 'Find available local times for a service on a date, or check one local time and get alternatives.',
+			parameters: {
+				type: 'object',
+				properties: {
+					serviceSlug: { type: 'string', description: 'Service slug from list_services' },
+					date: { type: 'string', description: 'Resort local date, YYYY-MM-DD' },
+					time: { type: 'string', description: 'Optional resort local time, HH:mm' }
+				},
+				required: ['serviceSlug', 'date']
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
 			name: 'check_availability',
 			description:
 				'Answer "is it free?" questions: whether one villa is available for specific dates, with the price. Not for making a booking (use prepare_booking for that when it is offered).',
@@ -94,6 +118,33 @@ export const BOOKING_TOOLS: ToolDef[] = [
 	{
 		type: 'function',
 		function: {
+			name: 'prepare_service_booking',
+			description: 'Prepare a service booking for guest approval. Checks the local time and price; creates no appointment. Read back the result and ask for yes. An unknown staff preference is ignored and reported.',
+			parameters: {
+				type: 'object',
+				properties: {
+					serviceSlug: { type: 'string', description: 'Service slug from list_services' },
+					date: { type: 'string', description: 'Resort local date, YYYY-MM-DD' },
+					time: { type: 'string', description: 'Resort local time, HH:mm' },
+					guestName: { type: 'string', description: 'Guest full name' },
+					guestPhone: { type: 'string', description: 'Guest phone (ignored on WhatsApp)' },
+					staffPreference: { type: 'string', description: 'Optional preferred staff first name' }
+				},
+				required: ['serviceSlug', 'date', 'time', 'guestName']
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'confirm_service_booking',
+			description: 'Create the prepared service appointment only after the guest agrees to its summary in a later message. Takes no arguments. Payment is at the resort.',
+			parameters: { type: 'object', properties: {} }
+		}
+	},
+	{
+		type: 'function',
+		function: {
 			name: 'prepare_booking',
 			description:
 				'Start a booking as soon as the guest wants to book and you know villa, check-in, check-out, guests and their name. Checks availability, capacity and price itself and holds the stay for the guest to approve; it does not create the booking yet. Read the returned summary (villa, dates, guests, total) back and ask the guest to reply "yes". Call again if they change details.',
@@ -128,7 +179,7 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'get_my_bookings',
 			description:
-				"List this guest's bookings (reference, villa, dates, status, and a payment link for unpaid ones). Use when they ask about their bookings or want to pay or cancel without giving a reference. Takes no arguments.",
+				"List this guest's villa bookings and upcoming service appointments, with references, dates, status, and villa payment links where applicable. Takes no arguments.",
 			parameters: { type: 'object', properties: {} }
 		}
 	},
@@ -137,11 +188,11 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'cancel_booking',
 			description:
-				'Cancel one of the guest\'s unpaid bookings by reference. The first call returns needs_confirmation: read the booking back and ask the guest to reply "yes". Call again with the same reference after they confirm.',
+				'Cancel one of the guest\'s eligible villa bookings or future booked service appointments (SVC- reference). The first call returns needs_confirmation: read the booking back and ask for "yes". Call again with the same reference after they confirm.',
 			parameters: {
 				type: 'object',
 				properties: {
-					reference: { type: 'string', description: 'Booking reference from get_my_bookings, e.g. CONF-2026-ABC123' }
+					reference: { type: 'string', description: 'Reference from get_my_bookings, e.g. CONF-2026-ABC123 or SVC-2026-ABC123' }
 				},
 				required: ['reference']
 			}
@@ -176,6 +227,31 @@ export async function executeTool(
 	toolContext: ToolContext
 ): Promise<string> {
 	switch (fnName) {
+		case 'list_services':
+			return JSON.stringify({ services: await ctx.runQuery(internal.serviceBookings.listActiveServices, {}) });
+
+		case 'check_service_availability':
+			return JSON.stringify(await ctx.runQuery(internal.serviceBookings.checkServiceAvailability, {
+				serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
+				...(typeof fnArgs.time === 'string' ? { time: fnArgs.time } : {})
+			}));
+
+		case 'prepare_service_booking': {
+			const summary = await ctx.runMutation(internal.serviceBookings.prepareChatServiceBooking, {
+				sessionId: toolContext.sessionId,
+				serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
+				time: String(fnArgs.time ?? ''), guestName: String(fnArgs.guestName ?? ''),
+				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {}),
+				...(typeof fnArgs.staffPreference === 'string' ? { staffPreference: fnArgs.staffPreference } : {})
+			});
+			return JSON.stringify('error' in summary ? summary : { ...summary, next: 'Ask the guest to reply "yes" to confirm.' });
+		}
+
+		case 'confirm_service_booking':
+			return JSON.stringify(await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
+				sessionId: toolContext.sessionId
+			}));
+
 		case 'check_availability': {
 			const property = findProperty(properties, fnArgs.propertySlug);
 			if (!property) return JSON.stringify({ error: 'Property not found' });
@@ -307,18 +383,24 @@ export async function executeTool(
 			const bookings = await ctx.runQuery(internal.bookings.listChatGuestBookings, {
 				sessionId: toolContext.sessionId
 			});
+			const services = await ctx.runQuery(internal.serviceBookings.listChatGuestServiceBookings, {
+				sessionId: toolContext.sessionId
+			});
 			return JSON.stringify({
 				bookings: bookings.map(({ bookingId, accessToken, ...booking }) => ({
 					...booking,
 					...(accessToken ? { paymentUrl: paymentUrl(toolContext, bookingId, accessToken) } : {})
-				}))
+				})),
+				services
 			});
 		}
 
 		case 'cancel_booking': {
-			const result = await ctx.runMutation(internal.bookings.cancelChatBooking, {
+			const reference = String(fnArgs.reference ?? '');
+			const result = await ctx.runMutation(reference.trim().toUpperCase().startsWith('SVC-')
+				? internal.serviceBookings.cancelChatServiceBooking : internal.bookings.cancelChatBooking, {
 				sessionId: toolContext.sessionId,
-				reference: String(fnArgs.reference ?? ''),
+				reference,
 				turnStartedAt: toolContext.turnStartedAt
 			});
 			return JSON.stringify(

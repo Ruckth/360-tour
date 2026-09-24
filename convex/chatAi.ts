@@ -9,6 +9,7 @@ import { todayIso } from './lib/dates';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
+import { resortLocalParts } from './lib/serviceSlots';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
 const chatChannelValidator = v.union(
@@ -282,8 +283,9 @@ ${contactStep}
 - When the guest agrees to that summary (yes, ok, confirm, go ahead, ใช่, ยืนยัน, ok ค่ะ…), call confirm_booking. Never call it in the same turn as prepare_booking. If they change details, call prepare_booking again with the new details.
 - After confirm_booking, share the confirmation code and the paymentUrl exactly as returned. The booking is pending until paid.
 - If a tool returns an error (dates taken, too many guests, expired), explain it briefly and suggest another option.
-- If the guest asks about their bookings, call get_my_bookings. Share references, dates, status, and the paymentUrl for unpaid bookings.
-- To cancel, call cancel_booking with the reference (call get_my_bookings first if you don't know it). When it returns needs_confirmation, read the booking back and ask them to reply "yes"; after they confirm, call cancel_booking again with the same reference. Paid bookings can't be cancelled in chat; offer to connect them with the host.
+- If the guest asks about their bookings, call get_my_bookings. Share references, dates, status, and the paymentUrl for unpaid villa bookings.
+- To cancel, call cancel_booking with the reference (call get_my_bookings first if you don't know it). When it returns needs_confirmation, read the booking back and ask them to reply "yes"; after they confirm, call cancel_booking again with the same reference. Paid villa bookings can't be cancelled in chat; offer to connect them with the host.
+- SERVICES: Follow list_services → check_service_availability → prepare_service_booking with service, local date/time, guest name and phone if needed. Read back the exact summary and ask for "yes"; after the guest agrees in a later message, call confirm_service_booking. Services are paid at the resort; never invent times or prices. Service cancellations use cancel_booking with the SVC- reference and a separate yes.
 - Always call tools through the tool interface. Never write a tool call, function name, or JSON in your reply.
 - Plain text only: no tables. Short lines or simple dashes are fine.`;
 }
@@ -306,6 +308,14 @@ function messagingStateGuidance(session: Doc<'chatSessions'>, properties: Doc<'p
 		lines.push(
 			"- CANCELLATION waiting for the guest's yes. If the latest message agrees, call cancel_booking again with the same reference."
 		);
+	}
+	const serviceQuote = session.pendingServiceQuote;
+	if (serviceQuote && !serviceQuote.appointmentId && fresh(serviceQuote.createdAt)) {
+		const local = resortLocalParts(serviceQuote.start);
+		lines.push(`- HELD SERVICE BOOKING waiting for the guest's yes: ${serviceQuote.serviceName}, ${local.date} ${local.time}, ${serviceQuote.guestName}, ${serviceQuote.currency} ${serviceQuote.price}. If the latest message agrees, call confirm_service_booking now.`);
+	}
+	if (session.pendingServiceCancellation && fresh(session.pendingServiceCancellation.createdAt)) {
+		lines.push("- SERVICE CANCELLATION waiting for the guest's yes. If the latest message agrees, call cancel_booking again with the same SVC- reference.");
 	}
 	return `\n\nCURRENT GUEST:\n${lines.join('\n')}`;
 }
@@ -471,6 +481,7 @@ STYLE:
 ${isMessaging ? '' : `- If the guest seems ready to book or asks about availability, point them to the booking card below the chat
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
+- Services can be booked via LINE, WhatsApp, Messenger, or at reception
 `}- If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
 - Keep responses under 150 words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${isMessaging ? messagingStateGuidance(session, properties) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
 
@@ -507,6 +518,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	const turnStartedAt = Date.now();
 	const allowedTools = new Set(tools.map((tool) => tool.function.name));
 	let preparedThisTurn = false;
+	let preparedServiceThisTurn = false;
 	let maxToolRounds = 3;
 	while (response.tool_calls && response.tool_calls.length > 0 && maxToolRounds > 0) {
 		maxToolRounds--;
@@ -533,7 +545,11 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 				if (fnName === 'confirm_booking' && preparedThisTurn) {
 					throw new Error('Ask the guest to confirm the summary first; call confirm_booking after they reply yes.');
 				}
+				if (fnName === 'confirm_service_booking' && preparedServiceThisTurn) {
+					throw new Error('Ask the guest to confirm the service summary first; call confirm_service_booking after they reply yes.');
+				}
 				if (fnName === 'prepare_booking') preparedThisTurn = true;
+				if (fnName === 'prepare_service_booking') preparedServiceThisTurn = true;
 				toolResult = await executeTool(ctx, fnName, fnArgs, properties, {
 					sessionId: args.sessionId,
 					siteUrl: args.siteUrl,

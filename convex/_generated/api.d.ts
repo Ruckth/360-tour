@@ -48,6 +48,7 @@ import type * as migrations from "../migrations.js";
 import type * as payments from "../payments.js";
 import type * as properties from "../properties.js";
 import type * as seed from "../seed.js";
+import type * as serviceBookings from "../serviceBookings.js";
 import type * as seeds_curatedQuestions from "../seeds/curatedQuestions.js";
 import type * as seeds_pricing from "../seeds/pricing.js";
 import type * as seeds_properties from "../seeds/properties.js";
@@ -107,6 +108,7 @@ declare const fullApi: ApiFromModules<{
   payments: typeof payments;
   properties: typeof properties;
   seed: typeof seed;
+  serviceBookings: typeof serviceBookings;
   "seeds/curatedQuestions": typeof seeds_curatedQuestions;
   "seeds/pricing": typeof seeds_pricing;
   "seeds/properties": typeof seeds_properties;
