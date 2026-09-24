@@ -21,6 +21,14 @@ type Booking = {
   source?: string;
   chatSessionId?: string;
 };
+type ServiceAppointment = {
+  _id: string;
+  guestName: string;
+  guestPhone: string;
+  source: string;
+  status: string;
+  chatSessionId?: string;
+};
 
 type Turn = {
   say: string;
@@ -40,9 +48,10 @@ type Scenario = {
   turns: Turn[];
   /** Checks on this session's bookings after the conversation. */
   after?: (bookings: Booking[]) => string | null;
+  afterServices?: (appointments: ServiceAppointment[]) => string | null;
 };
 
-const BOOKING_TOOLS = ["prepare_booking", "confirm_booking", "cancel_booking"];
+const BOOKING_TOOLS = ["prepare_booking", "confirm_booking", "prepare_service_booking", "confirm_service_booking", "cancel_booking"];
 
 function convex<T>(fn: string, args: unknown): T {
   const out = execFileSync("npx", ["convex", "run", fn, JSON.stringify(args)], {
@@ -61,6 +70,13 @@ function allBookings(): Booking[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as Booking);
+}
+
+function allServiceAppointments(): ServiceAppointment[] {
+  const out = execFileSync("npx", ["convex", "data", "serviceAppointments", "--limit", "500", "--format", "jsonLines"], {
+    encoding: "utf8",
+  });
+  return out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as ServiceAppointment);
 }
 
 function argsOf(turn: TurnResult, tool: string) {
@@ -121,6 +137,46 @@ const noBookings = (bookings: Booking[]) =>
 
 // Today is 2026-09-23 (Wednesday) when this eval was written; dates below are absolute.
 const SCENARIOS: Scenario[] = [
+  {
+    name: "WhatsApp service booking: prepare → yes → confirm",
+    channel: "whatsapp",
+    visitorName: "Rugby",
+    turns: [
+      {
+        say: "Book private yoga on October 20 at 10:00 AM for me, Rugby",
+        calls: ["prepare_service_booking"],
+        never: ["confirm_service_booking"],
+        check: all(expectArgs("prepare_service_booking", { serviceSlug: "private-yoga", date: "2026-10-20", time: "10:00" }), toolSucceeded("prepare_service_booking")),
+      },
+      {
+        say: "Yes, confirm it",
+        calls: ["confirm_service_booking"],
+        check: all(toolSucceeded("confirm_service_booking"), replyIncludes("SVC-")),
+      },
+    ],
+    after: noBookings,
+    afterServices: (rows) => rows.length === 1 && rows[0].status === "booked" && rows[0].source === "whatsapp" ? null : "expected one booked WhatsApp service appointment",
+  },
+  {
+    name: "Messenger service booking with preferred staff: prepare → yes → confirm",
+    channel: "facebook",
+    visitorName: "Maria",
+    turns: [
+      {
+        say: "Please book a Thai massage with Mali on October 21 at 3 PM. My name is Maria and my phone is 0812345678",
+        calls: ["prepare_service_booking"],
+        never: ["confirm_service_booking"],
+        check: all(expectArgs("prepare_service_booking", { serviceSlug: "thai-massage", date: "2026-10-21", time: "15:00", staffPreference: "Mali" }), toolSucceeded("prepare_service_booking")),
+      },
+      {
+        say: "Yes, please confirm",
+        calls: ["confirm_service_booking"],
+        check: all(toolSucceeded("confirm_service_booking"), replyIncludes("SVC-")),
+      },
+    ],
+    after: noBookings,
+    afterServices: (rows) => rows.length === 1 && rows[0].status === "booked" && rows[0].source === "messenger" ? null : "expected one booked Messenger service appointment",
+  },
   {
     name: "availability question → check_availability, no booking",
     channel: "whatsapp",
@@ -356,6 +412,12 @@ function runScenario(scenario: Scenario) {
   if (phone && bookings.some((b) => b.guestPhone !== phone)) failures.push("after: booking phone is not the WhatsApp number");
   if (scenario.after) {
     const error = scenario.after(bookings);
+    if (error) failures.push(`after: ${error}`);
+  }
+  if (scenario.afterServices) {
+    const services = allServiceAppointments().filter((row) => row.chatSessionId === sessionId);
+    if (phone && services.some((row) => row.guestPhone !== phone)) failures.push("after: service phone is not the WhatsApp number");
+    const error = scenario.afterServices(services);
     if (error) failures.push(`after: ${error}`);
   }
   return { failures, transcript };

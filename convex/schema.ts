@@ -373,6 +373,23 @@ export default defineSchema({
 				bookingId: v.optional(v.id('bookings'))
 			})
 		),
+		pendingServiceQuote: v.optional(v.object({
+			serviceSlug: v.string(),
+			serviceName: v.string(),
+			durationMin: v.optional(v.number()),
+			staffId: v.optional(v.id('staff')),
+			start: v.number(),
+			guestName: v.string(),
+			guestPhone: v.string(),
+			price: v.number(),
+			currency: v.string(),
+			createdAt: v.number(),
+			appointmentId: v.optional(v.id('serviceAppointments'))
+		})),
+		pendingServiceCancellation: v.optional(v.object({
+			appointmentId: v.id('serviceAppointments'),
+			createdAt: v.number()
+		})),
 		// Cancellation the guest was asked to confirm; executed on a later turn.
 		pendingCancellation: v.optional(
 			v.object({

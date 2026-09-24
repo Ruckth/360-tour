@@ -37,13 +37,9 @@ export const createSession = mutation({
 	args: {
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
-		channel: v.union(
-			v.literal('web'),
-			v.literal('whatsapp'),
-			v.literal('line'),
-			v.literal('facebook'),
-			v.literal('instagram')
-		),
+		// Messaging sessions are created by the webhooks; a public caller must not
+		// be able to mint one (their phone is trusted for bookings).
+		channel: v.literal('web'),
 		visitorId: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
@@ -275,6 +271,8 @@ export const identifyVisitor = mutation({
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		// Messaging contact details come from the channel itself, never from the browser.
+		if (session.channel !== 'web') throw new Error('Only web chat visitors can be identified here');
 
 		const name = args.name?.trim() || undefined;
 		const phone = args.phone?.trim() || undefined;

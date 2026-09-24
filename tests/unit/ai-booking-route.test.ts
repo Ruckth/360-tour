@@ -11,6 +11,12 @@ describe("looksLikeBookingMessage", () => {
     expect(looksLikeBookingMessage("มีห้องพรุ่งนี้ไหม")).toBe(true);
   });
 
+  it("routes resort service requests to the AI booking flow", () => {
+    expect(looksLikeBookingMessage("Do you offer massages?")).toBe(true);
+    expect(looksLikeBookingMessage("Can I get an airport transfer?")).toBe(true);
+    expect(looksLikeBookingMessage("อยากจองนวดแผนไทย")).toBe(true);
+  });
+
   it("leaves other messages alone", () => {
     expect(looksLikeBookingMessage("Which villa has the nicest view?")).toBe(false);
     expect(looksLikeBookingMessage("yes")).toBe(false);
