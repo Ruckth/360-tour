@@ -435,6 +435,7 @@ function EventCalendarDatePicker({
   children,
   tooltip = null,
   mode,
+  "aria-label": ariaLabel,
   ...props
 }: EventCalendarDatePickerProps) {
   const { date, goTo, activeRange } = useEventCalendarNavigation()
@@ -469,7 +470,7 @@ function EventCalendarDatePicker({
               size={nav.iconSize}
               data-slot="event-calendar-date-picker"
               data-mode={resolved}
-              aria-label={settings.i18n.labels.goToDate}
+              aria-label={ariaLabel ?? settings.i18n.labels.goToDate}
               className={cn(nav.className, className)}
               render={render}
             />
