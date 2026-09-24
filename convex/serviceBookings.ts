@@ -80,40 +80,55 @@ export const prepareChatServiceBooking = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const session = await sessionFor(ctx, args.sessionId);
-		const guestPhone = (session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone)?.trim();
-		if (!guestPhone) throw new Error('Ask the guest for their phone number before preparing the booking.');
-		const guestName = args.guestName.trim() || session.visitorName?.trim();
-		if (!guestName) throw new Error('Ask the guest for their name before preparing the booking.');
-		const service = await activeService(ctx, args.serviceSlug);
-		const start = localDateTimeUtc(args.date, args.time);
-		if (resortLocalParts(start).date !== args.date || resortLocalParts(start).time !== args.time) {
-			throw new Error('Choose a future local date and time in HH:mm format.');
+		try {
+			return await prepareQuote(ctx, session, args);
+		} catch (error) {
+			// A failed change must not leave the previous quote confirmable.
+			await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
+			return { error: error instanceof Error ? error.message : 'Could not prepare the service booking.', alternatives: [] };
 		}
-		assertAppointmentStart(start);
-		const staff = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
-			.filter((person): person is Doc<'staff'> => !!person && person.status === 'active');
-		const requestedName = args.staffPreference?.trim();
-		const preferred = requestedName ? staff.find((person) => firstName(person.name).toLowerCase() === requestedName.toLowerCase()) : undefined;
-		const slots = await findOpenSlots(ctx, { serviceId: service._id, date: args.date, staffId: preferred?._id });
-		if (!slots.some((slot) => slot.start === start)) {
-			return { error: SLOT_CONFLICT, alternatives: nearestTimes(slots, start) };
-		}
-		const now = Date.now();
-		await ctx.db.patch(args.sessionId, {
-			bookingFlowAt: now,
-			pendingServiceQuote: {
-				serviceSlug: service.slug, serviceName: service.name, ...(preferred ? { staffId: preferred._id } : {}),
-				start, guestName, guestPhone, price: service.price, currency: service.currency, createdAt: now
-			}
-		});
-		return {
-			service: service.name, date: args.date, time: args.time, durationMin: service.durationMin,
-			staff: preferred ? firstName(preferred.name) : 'any available therapist/staff',
-			...(requestedName && !preferred ? { staffPreferenceIgnored: `No active ${requestedName} offers this service; any available staff member will be assigned.` } : {}),
-			guestName, guestPhone, price: service.price, currency: service.currency
-		};
 	}
 });
+
+async function prepareQuote(
+	ctx: MutationCtx,
+	session: Doc<'chatSessions'>,
+	args: { sessionId: Id<'chatSessions'>; serviceSlug: string; date: string; time: string; guestName: string; guestPhone?: string; staffPreference?: string }
+) {
+	const guestPhone = (session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone)?.trim();
+	if (!guestPhone) throw new Error('Ask the guest for their phone number before preparing the booking.');
+	const guestName = args.guestName.trim() || session.visitorName?.trim();
+	if (!guestName) throw new Error('Ask the guest for their name before preparing the booking.');
+	const service = await activeService(ctx, args.serviceSlug);
+	const start = localDateTimeUtc(args.date, args.time);
+	if (resortLocalParts(start).date !== args.date || resortLocalParts(start).time !== args.time) {
+		throw new Error('Choose a future local date and time in HH:mm format.');
+	}
+	assertAppointmentStart(start);
+	const staff = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
+		.filter((person): person is Doc<'staff'> => !!person && person.status === 'active');
+	const requestedName = args.staffPreference?.trim();
+	const preferred = requestedName ? staff.find((person) => firstName(person.name).toLowerCase() === requestedName.toLowerCase()) : undefined;
+	const slots = await findOpenSlots(ctx, { serviceId: service._id, date: args.date, staffId: preferred?._id });
+	if (!slots.some((slot) => slot.start === start)) {
+		await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
+		return { error: SLOT_CONFLICT, alternatives: nearestTimes(slots, start) };
+	}
+	const now = Date.now();
+	await ctx.db.patch(args.sessionId, {
+		bookingFlowAt: now,
+		pendingServiceQuote: {
+			serviceSlug: service.slug, serviceName: service.name, durationMin: service.durationMin, ...(preferred ? { staffId: preferred._id } : {}),
+			start, guestName, guestPhone, price: service.price, currency: service.currency, createdAt: now
+		}
+	});
+	return {
+		service: service.name, date: args.date, time: args.time, durationMin: service.durationMin,
+		staff: preferred ? firstName(preferred.name) : 'any available therapist/staff',
+		...(requestedName && !preferred ? { staffPreferenceIgnored: `No active ${requestedName} offers this service; any available staff member will be assigned.` } : {}),
+		guestName, guestPhone, price: service.price, currency: service.currency
+	};
+}
 
 export const confirmChatServiceBooking = internalMutation({
 	args: { sessionId: v.id('chatSessions') },
@@ -133,12 +148,13 @@ export const confirmChatServiceBooking = internalMutation({
 			throw new Error('The prepared service booking expired. Call prepare_service_booking again.');
 		}
 		const service = await activeService(ctx, quote.serviceSlug);
-		if (service.price !== quote.price || service.currency !== quote.currency) {
-			return { error: 'The service price changed. Call prepare_service_booking again.', alternatives: [] };
+		if (service.price !== quote.price || service.currency !== quote.currency || (quote.durationMin !== undefined && service.durationMin !== quote.durationMin)) {
+			return { error: 'The service details changed. Call prepare_service_booking again.', alternatives: [] };
 		}
 		const date = resortLocalParts(quote.start).date;
 		const stays = await ctx.db.query('bookings').withIndex('by_guestPhone', (q) => q.eq('guestPhone', quote.guestPhone)).order('desc').take(100);
-		const stay = stays.filter((booking) => booking.status !== 'cancelled' && booking.checkOut > date)
+		// Link only a stay that covers the service date (arrival and departure days included).
+		const stay = stays.filter((booking) => booking.status !== 'cancelled' && booking.checkIn <= date && booking.checkOut >= date)
 			.sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0];
 		await enforceRateLimit(ctx, `booking-phone:${quote.guestPhone}`, 5, 60 * 60 * 1000);
 		await enforceRateLimit(ctx, 'booking:global', 100, 60 * 60 * 1000);
@@ -194,6 +210,7 @@ export const cancelChatServiceBooking = internalMutation({
 		if (!appointment) throw new Error('No service booking with that reference was found for this guest.');
 		if (appointment.status === 'cancelled') return { state: 'already_cancelled' as const, reference: appointment.confirmationCode };
 		if (appointment.status !== 'booked' || appointment.start <= Date.now()) throw new Error('Only future booked services can be cancelled in chat.');
+		if (appointment.paymentStatus === 'paid') throw new Error('Paid services cannot be cancelled in chat; offer to connect the guest with the host.');
 		const summary = {
 			reference: appointment.confirmationCode,
 			service: (await ctx.db.get(appointment.serviceId))?.name ?? 'Unknown service',

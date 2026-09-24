@@ -5,7 +5,6 @@ import type { Doc, Id } from './_generated/dataModel';
 import { callAI, classifyComplexity } from './lib/chatLlm';
 import type { ChatMessage } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
-import { todayIso } from './lib/dates';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
@@ -275,7 +274,7 @@ function messagingBookingGuidance(channel: 'line' | 'facebook' | 'whatsapp' | 'i
 				`${bookingUrl}?unit=<slug>&checkin=<YYYY-MM-DD>&checkout=<YYYY-MM-DD>&guests=<n>`;
 	return `
 BOOKING IN CHAT:
-- Today is ${todayIso()} (${new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Bangkok' })}). Convert the guest's dates to YYYY-MM-DD; a year-less date means the next upcoming one.
+- Today is ${resortLocalParts(Date.now()).date} (${new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Bangkok' })}). Convert the guest's dates to YYYY-MM-DD; a year-less date means the next upcoming one.
 - You can book directly in this chat. You need: villa, check-in, check-out, number of guests, and the guest's name.
 ${contactStep}
 - As soon as you have those, call prepare_booking. It checks availability, capacity and price itself, so do not call check_availability or calculate_price first, and never write your own booking summary or total: only prepare_booking holds the booking.
@@ -615,7 +614,8 @@ export const generateReply = action({
 		});
 		if (!session) throw new Error('Session not found');
 
-		return await generateConciergeReply(ctx, args, session);
+		// Booking tools depend on the channel, so trust the stored session, not the caller.
+		return await generateConciergeReply(ctx, { ...args, channel: session.channel }, session);
 	}
 });
 

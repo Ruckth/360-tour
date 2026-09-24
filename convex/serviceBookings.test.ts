@@ -201,4 +201,47 @@ describe('AI service booking', () => {
 		expect(confirmedCancel.join('\n')).toContain('"cancelled"');
 		expect((await appointments(s.t))[0].status).toBe('cancelled');
 	});
+
+	it('clears the previous quote when a changed request fails', async () => {
+		const s = await setup();
+		await prepare(s);
+		expect(await prepare(s, { time: '12:00' })).toMatchObject({ error: expect.any(String) });
+		expect((await s.t.run(async (ctx) => ctx.db.get(s.sessionId)))?.pendingServiceQuote).toBeUndefined();
+		await expect(s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow(/No prepared/);
+	});
+
+	it('only links a villa stay that covers the service date', async () => {
+		const s = await setup();
+		await s.t.run(async (ctx) => {
+			const propertyId = await ctx.db.insert('properties', {
+				slug: 'pool-villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 1, currency: 'THB', maxGuests: 2,
+				bedrooms: 1, bathrooms: 1, area: 1, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
+			});
+			await ctx.db.insert('bookings', {
+				propertyId, guestName: 'Rugby', guestPhone: '66956823432', checkIn: '2026-10-01', checkOut: '2026-10-05', guests: 2, nights: 4,
+				subtotal: 1, discountAmount: 0, total: 1, currency: 'THB', paymentStatus: 'paid', status: 'confirmed', createdAt: Date.now()
+			});
+		});
+		await prepare(s);
+		await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		expect((await appointments(s.t))[0].bookingId).toBeUndefined();
+	});
+
+	it('refuses to cancel a paid service in chat', async () => {
+		const s = await setup();
+		await prepare(s);
+		const confirmed = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		if (!('confirmationCode' in confirmed) || !confirmed.appointmentId) throw new Error('Expected a confirmed appointment');
+		const { confirmationCode, appointmentId } = confirmed;
+		await s.t.run(async (ctx) => ctx.db.patch(appointmentId, { paymentStatus: 'paid' }));
+		await expect(s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, {
+			sessionId: s.sessionId, reference: confirmationCode, turnStartedAt: Date.now()
+		})).rejects.toThrow(/Paid services/);
+	});
+
+	it('does not let public callers mint or relabel messaging sessions', async () => {
+		const s = await setup();
+		await expect(s.t.mutation(api.chat.createSession, { channel: 'whatsapp' } as never)).rejects.toThrow();
+		await expect(s.t.mutation(api.chat.identifyVisitor, { sessionId: s.sessionId, phone: '66000000000', contactApp: 'whatsapp' })).rejects.toThrow(/web chat/);
+	});
 });

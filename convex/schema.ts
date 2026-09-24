@@ -376,6 +376,7 @@ export default defineSchema({
 		pendingServiceQuote: v.optional(v.object({
 			serviceSlug: v.string(),
 			serviceName: v.string(),
+			durationMin: v.optional(v.number()),
 			staffId: v.optional(v.id('staff')),
 			start: v.number(),
 			guestName: v.string(),
