@@ -11,6 +11,7 @@
 import type * as adminBookings from "../adminBookings.js";
 import type * as adminChat from "../adminChat.js";
 import type * as adminReply from "../adminReply.js";
+import type * as adminServices from "../adminServices.js";
 import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
 import type * as chat from "../chat.js";
@@ -40,6 +41,7 @@ import type * as lib_dates from "../lib/dates.js";
 import type * as lib_ical from "../lib/ical.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
+import type * as lib_serviceSlots from "../lib/serviceSlots.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
@@ -52,6 +54,7 @@ import type * as seeds_properties from "../seeds/properties.js";
 import type * as seeds_recentBookings from "../seeds/recentBookings.js";
 import type * as seeds_reviews from "../seeds/reviews.js";
 import type * as seeds_rooms from "../seeds/rooms.js";
+import type * as seeds_staffServices from "../seeds/staffServices.js";
 import type * as seeds_socialProof from "../seeds/socialProof.js";
 import type * as seeds_tourSnippets from "../seeds/tourSnippets.js";
 import type * as users from "../users.js";
@@ -67,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   adminBookings: typeof adminBookings;
   adminChat: typeof adminChat;
   adminReply: typeof adminReply;
+  adminServices: typeof adminServices;
   availability: typeof availability;
   bookings: typeof bookings;
   chat: typeof chat;
@@ -96,6 +100,7 @@ declare const fullApi: ApiFromModules<{
   "lib/ical": typeof lib_ical;
   "lib/pricing": typeof lib_pricing;
   "lib/rateLimit": typeof lib_rateLimit;
+  "lib/serviceSlots": typeof lib_serviceSlots;
   "lib/validation": typeof lib_validation;
   line: typeof line;
   migrations: typeof migrations;
@@ -108,6 +113,7 @@ declare const fullApi: ApiFromModules<{
   "seeds/recentBookings": typeof seeds_recentBookings;
   "seeds/reviews": typeof seeds_reviews;
   "seeds/rooms": typeof seeds_rooms;
+  "seeds/staffServices": typeof seeds_staffServices;
   "seeds/socialProof": typeof seeds_socialProof;
   "seeds/tourSnippets": typeof seeds_tourSnippets;
   users: typeof users;

@@ -10,6 +10,7 @@ import { seedSocialProof } from './seeds/socialProof';
 import { seedReviews } from './seeds/reviews';
 import { seedTourSnippets } from './seeds/tourSnippets';
 import { seedRecentBookings } from './seeds/recentBookings';
+import { seedStaffServicesData } from './seeds/staffServices';
 
 function sameTranslations(left?: Record<string, string>, right?: Record<string, string>) {
 	return supportedSuggestionLocales.every((locale) => left?.[locale]?.trim() === right?.[locale]);
@@ -53,6 +54,7 @@ function seedNeedsUpdate(
 export const seedAll = mutation({
 	args: {},
 	handler: async (ctx) => {
+		await seedStaffServicesData(ctx);
 		const existing = await ctx.db.query('properties').first();
 		if (existing) {
 			return { status: 'already_seeded' };
@@ -75,6 +77,11 @@ export const seedAll = mutation({
 			}
 		};
 	}
+});
+
+export const seedStaffServices = mutation({
+	args: {},
+	handler: async (ctx) => await seedStaffServicesData(ctx)
 });
 
 export const seedCuratedQuestionBank = mutation({

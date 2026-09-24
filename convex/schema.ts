@@ -121,6 +121,83 @@ export default defineSchema({
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone']),
 
+	staff: defineTable({
+		name: v.string(),
+		role: v.string(),
+		avatarUrl: v.optional(v.string()),
+		color: v.string(),
+		status: v.union(v.literal('active'), v.literal('archived')),
+		workingHours: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string() })),
+		breaks: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string(), label: v.string() })),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	}).index('by_status', ['status']),
+
+	services: defineTable({
+		slug: v.string(),
+		name: v.string(),
+		description: v.string(),
+		category: v.string(),
+		durationMin: v.number(),
+		bufferMin: v.number(),
+		price: v.number(),
+		currency: v.string(),
+		staffIds: v.array(v.id('staff')),
+		status: v.union(v.literal('active'), v.literal('archived')),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_slug', ['slug'])
+		.index('by_status', ['status']),
+
+	staffTimeOff: defineTable({
+		staffId: v.id('staff'),
+		start: v.number(),
+		end: v.number(),
+		label: v.string(),
+		createdByAdminEmail: v.optional(v.string())
+	}).index('by_staff_start', ['staffId', 'start']),
+
+	serviceAppointments: defineTable({
+		serviceId: v.id('services'),
+		staffId: v.id('staff'),
+		start: v.number(),
+		end: v.number(),
+		blockedUntil: v.number(),
+		guestName: v.string(),
+		guestPhone: v.string(),
+		guestEmail: v.optional(v.string()),
+		bookingId: v.optional(v.id('bookings')),
+		chatSessionId: v.optional(v.id('chatSessions')),
+		source: v.union(
+			v.literal('web'),
+			v.literal('whatsapp'),
+			v.literal('messenger'),
+			v.literal('line'),
+			v.literal('instagram'),
+			v.literal('admin')
+		),
+		status: v.union(
+			v.literal('booked'),
+			v.literal('arrived'),
+			v.literal('in_service'),
+			v.literal('completed'),
+			v.literal('cancelled'),
+			v.literal('no_show')
+		),
+		paymentStatus: v.union(v.literal('unpaid'), v.literal('paid'), v.literal('refunded')),
+		price: v.number(),
+		currency: v.string(),
+		confirmationCode: v.string(),
+		accessToken: v.string(),
+		createdAt: v.number()
+	})
+		.index('by_staff_start', ['staffId', 'start'])
+		.index('by_start', ['start'])
+		.index('by_booking', ['bookingId'])
+		.index('by_chatSession', ['chatSessionId'])
+		.index('by_guestPhone', ['guestPhone']),
+
 	reviews: defineTable({
 		propertyId: v.id('properties'),
 		authorName: v.string(),
