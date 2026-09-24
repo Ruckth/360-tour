@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -63,22 +63,23 @@ async function bookedDates(t: ReturnType<typeof convexTest>) {
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("confirmDemoPayment", () => {
-  it("marks the booking paid + confirmed and blocks the dates", async () => {
+describe("Stripe checkout confirmation", () => {
+  it("marks the matched checkout paid + confirmed and blocks the dates", async () => {
     const { t } = await setup();
     const { bookingId, accessToken } = await t.mutation(api.bookings.create, {
       ...stay,
       guestEmail: "guest@example.com",
     });
-
-    const paid = await t.mutation(api.bookings.confirmDemoPayment, { bookingId, accessToken });
-
-    expect(paid).toMatchObject({ paymentStatus: "paid", status: "confirmed" });
+    await t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken, sessionId: "cs_test_1", url: "https://checkout.stripe.com/example", expiresAt: Date.now() + 1000 });
+    const amountTotal = await t.run(async ctx => Math.round((await ctx.db.get(bookingId))!.total * 100));
+    await t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: "cs_test_1", amountTotal, currency: "thb", paymentIntentId: "pi_test_1" });
+    const paid = await t.run(async ctx => await ctx.db.get(bookingId));
+    expect(paid).toMatchObject({ paymentStatus: "paid", status: "confirmed", paymentMethod: "stripe" });
     expect(paid?.confirmationCode).toBeTruthy();
     expect(await bookedDates(t)).toBe(3);
   });
 
-  it("rejects a wrong access token", async () => {
+  it("rejects a different checkout session", async () => {
     const { t } = await setup();
     const { bookingId } = await t.mutation(api.bookings.create, {
       ...stay,
@@ -86,12 +87,23 @@ describe("confirmDemoPayment", () => {
     });
 
     await expect(
-      t.mutation(api.bookings.confirmDemoPayment, { bookingId, accessToken: "nope" }),
-    ).rejects.toThrow("Booking access denied");
+      t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: "wrong", amountTotal: 850000, currency: "thb", paymentIntentId: "pi_test_wrong" }),
+    ).rejects.toThrow("Checkout session mismatch");
   });
 });
 
 describe("admin bookings", () => {
+  it("rejects signed-in non-admin access to payment changes and guest data", async () => {
+    const { t } = await setup();
+    const { bookingId } = await t.mutation(api.bookings.create, { ...stay, guestEmail: "guest@example.com" });
+    const propertyId = await t.run(async ctx => (await ctx.db.query("properties").first())!._id);
+    const visitor = t.withIdentity({ email: "visitor@example.com", tokenIdentifier: "visitor-token" });
+    await expect(visitor.mutation(api.bookings.updatePaymentStatus, { bookingId, paymentStatus: "paid" })).rejects.toThrow("Not authorized");
+    await expect(visitor.query(api.bookings.getById, { id: bookingId })).rejects.toThrow("Not authorized");
+    await expect(visitor.query(api.bookings.listByProperty, { propertyId, paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
+    await expect(visitor.query(api.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
+  });
+
   it("requires an admin", async () => {
     const { t } = await setup();
     await expect(

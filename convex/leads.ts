@@ -2,6 +2,8 @@ import { paginationOptsValidator } from 'convex/server';
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
+import { requireAdmin } from './lib/adminAuth';
+import { enforceRateLimit } from './lib/rateLimit';
 
 export const save = mutation({
 	args: {
@@ -17,6 +19,8 @@ export const save = mutation({
 	handler: async (ctx, args) => {
 		const email = normalizeEmail(args.email);
 		assertValidEmail(email);
+		await enforceRateLimit(ctx, `lead:${email}`, 5, 60 * 60 * 1000);
+		await enforceRateLimit(ctx, 'lead:global', 100, 60 * 60 * 1000);
 
 		let propertyId = args.propertyId;
 		if (!propertyId && args.propertySlug) {
@@ -49,10 +53,7 @@ export const save = mutation({
 export const list = query({
 	args: { paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) {
-			throw new Error('Not authenticated');
-		}
+		await requireAdmin(ctx);
 		return await ctx.db.query('leads').order('desc').paginate(args.paginationOpts);
 	}
 });

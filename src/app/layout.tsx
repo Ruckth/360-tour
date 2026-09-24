@@ -9,6 +9,7 @@ import { getClerkPublishableKey, isClerkConfigured } from "@/lib/clerk-config";
 import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/public-content";
 import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
+import { siteUrl } from "@/lib/site-url";
 
 const serif = Cormorant_Garamond({
   subsets: ["latin"],
@@ -28,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const seo = getPublicMessages(locale).SEO;
 
   return {
-    metadataBase: new URL("https://seaviewresidence.com"),
+    metadataBase: new URL(siteUrl()),
     title: seo.rootTitle,
     description: seo.rootDescription,
     icons: {
@@ -79,6 +80,12 @@ export default async function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'WebSite',
+          name: 'Auralis Cove Retreat',
+          url: siteUrl(),
+        }).replace(/</g, '\\u003c') }} />
       </head>
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>

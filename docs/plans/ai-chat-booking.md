@@ -1,5 +1,7 @@
 # Plan: AI booking in WhatsApp / Messenger + admin bookings page
 
+Implementation update (24 September 2026): the token-gated `confirmDemoPayment` mutation described below was removed for live bookings. Live payment now uses Stripe Checkout and a signed Convex webhook. `bookingId=demo` remains a standalone UI demonstration and creates no paid booking. The remaining "current state" notes below are historical.
+
 ## Goal
 Guests on WhatsApp and Messenger can check availability **and book** through the AI.
 Admins can see and manage every booking in `/admin/bookings`.

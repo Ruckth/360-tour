@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { addDaysIso, dateToIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
+import { IcalSourcesDialog } from './IcalSourcesDialog';
 
 /** One source of truth for booking state: drives chip colours and the legend. */
 const STATUS = {
@@ -113,6 +114,7 @@ export function AdminBookingsView() {
   const [showCancelled, setShowCancelled] = useState(false);
   const [selectedId, setSelectedId] = useState<Id<"bookings"> | null>(null);
   const [creating, setCreating] = useState(false);
+  const [managingCalendars, setManagingCalendars] = useState(false);
 
   const data = useQuery(api.adminBookings.listForAdmin, range);
 
@@ -212,6 +214,7 @@ export function AdminBookingsView() {
                 <PlusIcon aria-hidden="true" className="size-4" />
                 New booking
               </Button>
+              <Button size="sm" variant="outline" onClick={() => setManagingCalendars(true)} disabled={!data}>OTA calendars</Button>
             </EventCalendarToolbar>
           </div>
           <EventCalendarContent />
@@ -231,6 +234,9 @@ export function AdminBookingsView() {
         villaName={selectedVilla?.name}
         onClose={() => setSelectedId(null)}
       />
+      {data ? (
+        <IcalSourcesDialog open={managingCalendars} onClose={() => setManagingCalendars(false)} properties={data.properties} />
+      ) : null}
       {data ? (
         <NewBookingDialog
           open={creating}
@@ -265,6 +271,7 @@ function BookingSheet({
   onClose: () => void;
 }) {
   const updateBooking = useMutation(api.adminBookings.updateBooking);
+  const resendBookingEmails = useMutation(api.adminBookings.resendBookingEmails);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -280,6 +287,15 @@ function BookingSheet({
     } finally {
       setPending(null);
     }
+  }
+
+  async function resendEmails() {
+    if (!booking) return;
+    setPending('resend');
+    setError('');
+    try { await resendBookingEmails({ bookingId: booking._id }); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not queue emails.'); }
+    finally { setPending(null); }
   }
 
   const status = booking ? STATUS[statusKey(booking)] : null;
@@ -336,6 +352,12 @@ function BookingSheet({
                   <Button variant="secondary" onClick={() => run("markPaid")} disabled={pending !== null}>
                     {pending === "markPaid" ? <Loader2 className="size-4 animate-spin" /> : null}
                     Mark paid
+                  </Button>
+                ) : null}
+                {booking.status === 'confirmed' ? (
+                  <Button variant="outline" onClick={resendEmails} disabled={pending !== null}>
+                    {pending === 'resend' ? <Loader2 className="size-4 animate-spin" /> : null}
+                    Resend emails
                   </Button>
                 ) : null}
                 <Button variant="outline" onClick={() => run("cancel")} disabled={pending !== null}>

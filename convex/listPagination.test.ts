@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
@@ -14,8 +14,11 @@ declare global {
 const modules = import.meta.glob("./**/*.ts");
 
 function authenticatedTest(t: ReturnType<typeof convexTest>) {
+  vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   return t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin-token" });
 }
+
+afterEach(() => vi.unstubAllEnvs());
 
 async function createProperty(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => {

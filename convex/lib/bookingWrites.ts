@@ -106,6 +106,7 @@ export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: Stay
 	if (!Number.isFinite(nights) || nights <= 0) {
 		throw new Error('Check-out must be after check-in');
 	}
+	if (nights > 365) throw new Error('A stay cannot exceed 365 nights');
 
 	await assertNoOverlap(ctx, property._id, input.checkIn, input.checkOut);
 	await assertNotBlocked(ctx, property._id, input.checkIn, input.checkOut);

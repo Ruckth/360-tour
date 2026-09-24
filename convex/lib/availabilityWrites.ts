@@ -42,3 +42,10 @@ export async function blockBookingDates(
 		}
 	}
 }
+
+export async function releaseBookingDates(ctx: MutationCtx, booking: Doc<'bookings'>): Promise<void> {
+	const rows = await ctx.db.query('availability').withIndex('by_property_date', q =>
+		q.eq('propertyId', booking.propertyId).gte('date', booking.checkIn).lt('date', booking.checkOut)
+	).take(366);
+	for (const row of rows) if (row.bookingId === booking._id) await ctx.db.delete(row._id);
+}
