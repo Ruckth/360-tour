@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { mutation } from './_generated/server';
+import { internalMutation, mutation } from './_generated/server';
 import { requireAdmin } from './lib/adminAuth';
 import { normalizeSuggestedQuestion, supportedSuggestionLocales } from './lib/chatSuggestions';
 import { curatedQuestionSeeds, type CuratedQuestionSeed } from './seeds/curatedQuestions';
@@ -10,6 +10,7 @@ import { seedSocialProof } from './seeds/socialProof';
 import { seedReviews } from './seeds/reviews';
 import { seedTourSnippets } from './seeds/tourSnippets';
 import { seedRecentBookings } from './seeds/recentBookings';
+import { seedStaffServicesData } from './seeds/staffServices';
 
 function sameTranslations(left?: Record<string, string>, right?: Record<string, string>) {
 	return supportedSuggestionLocales.every((locale) => left?.[locale]?.trim() === right?.[locale]);
@@ -65,6 +66,7 @@ export const seedAll = mutation({
 		await seedReviews(ctx, properties);
 		await seedTourSnippets(ctx, properties);
 		await seedRecentBookings(ctx, properties);
+		await seedStaffServicesData(ctx);
 
 		return {
 			status: 'seeded',
@@ -75,6 +77,12 @@ export const seedAll = mutation({
 			}
 		};
 	}
+});
+
+/** Adds demo staff/services to an already-seeded deployment: `npx convex run seed:seedStaffServices`. */
+export const seedStaffServices = internalMutation({
+	args: {},
+	handler: async (ctx) => await seedStaffServicesData(ctx)
 });
 
 export const seedCuratedQuestionBank = mutation({
