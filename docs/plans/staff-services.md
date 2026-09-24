@@ -16,6 +16,12 @@ Target UI: the ReUI resource day view (`@reui/c-event-calendar-2`), styled like 
   - Re-running `pnpm dlx shadcn@latest add @reui/c-event-calendar-2` would try to overwrite those files. Only accept overwrites after diffing. The example file itself is small; we use it as the pattern, not as a dependency.
 - Villa bookings: `bookings` table, one row per night in `availability`, AI prepare → confirm tools in `convex/lib/chatTools.ts`.
 - Admin views are switched inside `AdminChatDashboard` (`"chats" | "bookings" | "questions"`).
+- PR #11 (merged) added pieces this module should reuse rather than duplicate:
+  - Stripe checkout and webhook: `convex/payments.ts`, with `stripe*` fields on `bookings`
+  - rate limits: `convex/lib/rateLimit.ts` + `rateLimits` table
+  - hourly expiry of unpaid pending bookings: `convex/crons.ts`
+  - booking emails: `convex/emails.ts`
+  - It explicitly left staff/services as a follow-up.
 
 ## Key design decision: blocking is derived, not stored
 There's no separate "staff blocked" table.
@@ -77,6 +83,10 @@ Every entry point uses the same three functions: admin UI, AI tools, and later t
   - auto-assigns staff when none was requested (the qualified, free staff member with the fewest appointments that day),
   - inserts the appointment, or throws "That time was just taken".
 - Timezone: resort time is `Asia/Bangkok` (via `@date-fns/tz`, already a dependency). Store instants as UTC ms and working hours as local `HH:mm`.
+
+- Reuse from PR #11:
+  - `enforceRateLimit` on AI appointment creation (done in PR 3)
+  - Later, if services move to online payment: generalise the Stripe checkout in `payments.ts` to take a booking or an appointment, and add an expiry step in `crons.ts` for unpaid holds. For now services are paid at the resort (PR #12 default), so neither is needed yet.
 
 ## 3. Admin backend (`convex/adminServices.ts`, all `requireAdmin`)
 - Staff CRUD (+ archive), service CRUD (+ archive), time-off add/remove.

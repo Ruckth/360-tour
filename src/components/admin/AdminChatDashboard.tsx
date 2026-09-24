@@ -58,7 +58,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
-import { AdminSidebar, type AdminDashboardView } from "@/components/admin/AdminSidebar";
+import { ADMIN_VIEW_TITLES, AdminSidebar, type AdminDashboardView } from "@/components/admin/AdminSidebar";
+import { AdminStaffBookingsView } from "@/components/admin/AdminStaffBookingsView";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
@@ -957,13 +958,15 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
               Concierge operations
             </p>
             <h1 className="truncate font-serif text-2xl font-semibold text-foreground">
-              {view === "chats" ? "Chats" : view === "bookings" ? "Bookings" : "Questions"}
+              {ADMIN_VIEW_TITLES[view]}
             </h1>
           </div>
         </header>
 
-      {view === "bookings" ? (
+      {view === "hotel" ? (
         <AdminBookingsView />
+      ) : view === "staff" ? (
+        <AdminStaffBookingsView />
       ) : view === "questions" ? (
         <AdminQuestionsView />
       ) : (

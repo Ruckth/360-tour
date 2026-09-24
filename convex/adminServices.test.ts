@@ -70,7 +70,7 @@ describe('admin services', () => {
 		expect(schedule.services).toHaveLength(1);
 		expect(schedule.appointments).toHaveLength(1);
 		expect(schedule.blocks).toContainEqual({ staffId, start: at('12:00'), end: at('13:00'), label: 'Lunch', kind: 'break' });
-		expect(schedule.blocks).toContainEqual({ staffId, start: at('09:00'), end: at('10:00'), label: 'Training', kind: 'time_off' });
+		expect(schedule.blocks).toContainEqual({ staffId, start: at('09:00'), end: at('10:00'), label: 'Training', kind: 'time_off', timeOffId });
 		await admin.mutation(api.adminServices.removeTimeOff, { timeOffId });
 		expect((await admin.query(api.adminServices.listSchedule, { from: at('09:00'), to: at('17:00') })).blocks.some((block) => block.kind === 'time_off')).toBe(false);
 	});
@@ -116,5 +116,14 @@ describe('admin services', () => {
 		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId, status: 'no_show' })).rejects.toThrow('after the start time');
 		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId });
 		await admin.mutation(api.adminServices.archiveStaff, { staffId });
+	});
+
+	it('refuses new hours that would leave booked appointments outside them', async () => {
+		const { admin, booking, staffId } = await setup();
+		await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('16:00') });
+		const shorter = weekdays.map((weekday) => ({ weekday, start: '09:00', end: '15:00' }));
+		await expect(admin.mutation(api.adminServices.updateStaff, { staffId, workingHours: shorter })).rejects.toThrow('outside the new hours');
+		await admin.mutation(api.adminServices.updateStaff, { staffId, name: 'Mali K' }); // unrelated edits still save
+		await admin.mutation(api.adminServices.updateStaff, { staffId, workingHours: weekdays.map((weekday) => ({ weekday, start: '10:00', end: '18:00' })) });
 	});
 });

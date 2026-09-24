@@ -12,7 +12,8 @@ import {
 	assertValidTime,
 	createAppointmentRecord,
 	findOpenSlots as openSlots,
-	recurringBlocks
+	recurringBlocks,
+	staffBusyRanges
 } from './lib/serviceSlots';
 
 const DAY = 86_400_000;
@@ -87,6 +88,19 @@ export const updateStaff = mutation({
 		const { staffId, ...changes } = args;
 		validateHours(changes.workingHours ?? staff.workingHours);
 		validateHours(changes.breaks ?? staff.breaks);
+		if (changes.workingHours || changes.breaks) {
+			// New hours must still cover every upcoming appointment.
+			const next = { ...staff, ...changes };
+			const now = Date.now();
+			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+				q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK)
+			)) {
+				if (appointment.blockedUntil <= now || appointment.status !== 'booked') continue;
+				if ((await staffBusyRanges(ctx, next, appointment.start, appointment.blockedUntil, appointment._id)).length) {
+					throw new Error('Reassign or cancel the appointments outside the new hours first');
+				}
+			}
+		}
 		await ctx.db.patch(staffId, {
 			...changes,
 			...(changes.name !== undefined ? { name: required(changes.name, 'Name') } : {}),
@@ -214,7 +228,7 @@ export const listSchedule = query({
 		)) {
 			if (appointment.end > args.from && staffSet.has(appointment.staffId)) appointments.push(appointment);
 		}
-		const blocks: Array<{ staffId: Id<'staff'>; start: number; end: number; label: string; kind: 'break' | 'time_off' }> = [];
+		const blocks: Array<{ staffId: Id<'staff'>; start: number; end: number; label: string; kind: 'break' | 'time_off'; timeOffId?: Id<'staffTimeOff'> }> = [];
 		for (const person of staff) {
 			for (const block of recurringBlocks(person.breaks, args.from, args.to)) {
 				blocks.push({ staffId: person._id, start: block.start, end: block.end, label: block.label ?? '', kind: 'break' });
@@ -222,7 +236,7 @@ export const listSchedule = query({
 			for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', args.from - TIME_OFF_LOOKBACK).lt('start', args.to)
 			)) {
-				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off' });
+				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off', timeOffId: row._id });
 			}
 		}
 		return { staff, services, appointments, blocks };
