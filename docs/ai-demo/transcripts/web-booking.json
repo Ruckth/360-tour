@@ -1,0 +1,18 @@
+{
+  "name": "web-booking",
+  "device": "desktop",
+  "baseUrl": "https://tour.helpgueststay.com",
+  "recordedAt": "2026-09-24T14:30:40.768Z",
+  "transcript": [
+    {
+      "guest": "Is the Tideglass Pool Residence available from 2026-10-10 to 2026-10-13?",
+      "reply": "No, the Tideglass Pool Residence is not available for 2026-10-10 to 2026-10-13.\n\nWould you like to check other dates or villas?",
+      "latencyMs": 11366
+    },
+    {
+      "guest": "I'd like to book the Mossbell Garden Suite from October 20 to October 23 for 2 guests",
+      "reply": "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+      "latencyMs": 6404
+    }
+  ]
+}

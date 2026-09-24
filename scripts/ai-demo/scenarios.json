@@ -1,0 +1,25 @@
+{
+  "chat": [
+    "How much is the Tideglass Pool Residence per night?",
+    "What would 3 nights in the Canopy Halo Loft cost if I book direct?",
+    "Is the Tideglass Pool Residence available from October 10 to October 13?",
+    "Is the Mossbell Garden Suite available from October 20 to October 23?",
+    "What time is check-in?",
+    "Can I bring my dog?",
+    "We travel with a small cat, would that be okay?",
+    "What is the cancellation policy?",
+    "What spa and wellness services do you offer?",
+    "Can you help me write a Python script to sort a list?",
+    "I want something nice"
+  ],
+  "multilingual": [
+    "พูลวิลล่าราคาคืนละเท่าไหร่ครับ",
+    "เช็คอินกี่โมง",
+    "마사지 예약할 수 있나요?",
+    "3명이 묵을 수 있는 빌라 추천해 주세요"
+  ],
+  "web-booking": [
+    "Is the Tideglass Pool Residence available from 2026-10-10 to 2026-10-13?",
+    "I'd like to book the Mossbell Garden Suite from October 20 to October 23 for 2 guests"
+  ]
+}

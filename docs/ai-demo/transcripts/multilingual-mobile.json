@@ -1,0 +1,28 @@
+{
+  "name": "multilingual",
+  "device": "mobile",
+  "baseUrl": "https://tour.helpgueststay.com",
+  "recordedAt": "2026-09-24T14:29:52.481Z",
+  "transcript": [
+    {
+      "guest": "พูลวิลล่าราคาคืนละเท่าไหร่ครับ",
+      "reply": "ผมยังไม่มั่นใจคำตอบนี้ครับ เดี๋ยวผมถามทีมงานให้แล้วจะติดต่อกลับไปโดยเร็ว",
+      "latencyMs": 4827
+    },
+    {
+      "guest": "เช็คอินกี่โมง",
+      "reply": "Check-in is from 3:00 PM and check-out is by 11:00 AM (Koh Samui time). Direct bookings get a free late check-out until 2:00 PM, subject to availability. Early check-in can be arranged if the villa is ready — just let us know your arrival time.",
+      "latencyMs": 793
+    },
+    {
+      "guest": "마사지 예약할 수 있나요?",
+      "reply": "Auralis Cove Retreat는 이 사이트에서 예약과 360° 빌라 투어를 위한 데모/미리보기 경험으로 제공됩니다. 따라서 이 채팅에서 실제로 독립 검증된 리조트라고 말할 수는 없습니다. 대신 데모 빌라, 가격, 예약 가능 여부, 360° 투어 링크는 도와드릴 수 있습니다.",
+      "latencyMs": 805
+    },
+    {
+      "guest": "3명이 묵을 수 있는 빌라 추천해 주세요",
+      "reply": "3명 기준으로 Tideglass Pool Residence (최대 4명, ฿8500/밤)나 Canopy Halo Loft (최대 6명, ฿12000/밤)를 추천해요.\n\n직접 예약 시 15% 할인 적용됩니다. 360° 가상 투어 보시겠어요?",
+      "latencyMs": 11342
+    }
+  ]
+}

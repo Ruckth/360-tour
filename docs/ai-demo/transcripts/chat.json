@@ -1,0 +1,63 @@
+{
+  "name": "chat",
+  "device": "desktop",
+  "baseUrl": "https://tour.helpgueststay.com",
+  "recordedAt": "2026-09-24T14:26:17.874Z",
+  "transcript": [
+    {
+      "guest": "How much is the Tideglass Pool Residence per night?",
+      "reply": "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+      "latencyMs": 6332
+    },
+    {
+      "guest": "What would 3 nights in the Canopy Halo Loft cost if I book direct?",
+      "reply": "Direct booking for 3 nights in the Canopy Halo Loft is ฿30,600 (after 15% discount off ฿36,000 listed).\n\nReady to check availability?",
+      "latencyMs": 11847
+    },
+    {
+      "guest": "Is the Tideglass Pool Residence available from October 10 to October 13?",
+      "reply": "Yes, the Tideglass Pool Residence is available October 10–13 (3 nights). Direct booking total: ฿21,675 (฿7,225/night after 15% discount).\n\nCheck the booking card below to reserve or explore the 360° tour.",
+      "latencyMs": 14360
+    },
+    {
+      "guest": "Is the Mossbell Garden Suite available from October 20 to October 23?",
+      "reply": "Yes, the Mossbell Garden Suite is available October 20–23 (3 nights). Direct booking total: ฿11,475 (฿3,825/night after 15% discount).\n\nCheck the booking card below to reserve or explore the 360° tour.",
+      "latencyMs": 12364
+    },
+    {
+      "guest": "What time is check-in?",
+      "reply": "Check-in is from 3:00 PM and check-out is by 11:00 AM (Koh Samui time). Direct bookings get a free late check-out until 2:00 PM, subject to availability. Early check-in can be arranged if the villa is ready — just let us know your arrival time.",
+      "latencyMs": 812
+    },
+    {
+      "guest": "Can I bring my dog?",
+      "reply": "Pets are not allowed in the villas, with the exception of registered assistance animals. Please tell us in advance if you are travelling with an assistance animal so we can prepare.",
+      "latencyMs": 802
+    },
+    {
+      "guest": "We travel with a small cat, would that be okay?",
+      "reply": "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+      "latencyMs": 3820
+    },
+    {
+      "guest": "What is the cancellation policy?",
+      "reply": "Direct bookings include free cancellation up to 48 hours before check-in. For close-in changes, contact the host directly.",
+      "latencyMs": 5012
+    },
+    {
+      "guest": "What spa and wellness services do you offer?",
+      "reply": "We offer these wellness services:\n\n- Traditional Thai Massage (60 min): ฿1,500\n- Aromatherapy Oil Massage (90 min): ฿2,400\n- Sunrise Yoga (60 min, up to 4 guests): ฿900\n\nBook via LINE, WhatsApp, Messenger, or reception.",
+      "latencyMs": 5322
+    },
+    {
+      "guest": "Can you help me write a Python script to sort a list?",
+      "reply": "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+      "latencyMs": 3316
+    },
+    {
+      "guest": "I want something nice",
+      "reply": "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+      "latencyMs": 3314
+    }
+  ]
+}

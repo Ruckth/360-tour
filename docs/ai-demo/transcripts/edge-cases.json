@@ -1,0 +1,102 @@
+{
+  "name": "edge-cases",
+  "sessionId": "jh7abv6ctrfyndntgqj466vmhs8f15vf",
+  "prod": true,
+  "channel": "line",
+  "recordedAt": "2026-09-24T14:35:08.305Z",
+  "transcript": [
+    {
+      "guest": "I want to book the Tideglass Pool Residence from October 10 to October 13 for 4 people",
+      "reply": "Great choice! To book Tideglass Pool Residence from 2026-10-10 to 2026-10-13 for 4 guests, please share your full name and phone number.",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 4564,
+      "tools": []
+    },
+    {
+      "guest": "Oh no. What about October 17 to October 20 then? My name is AI-EVAL Test Guest.",
+      "reply": "To prepare the booking, please share your phone number as well.",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 6454,
+      "tools": [
+        {
+          "args": {
+            "checkIn": "2026-10-17",
+            "checkOut": "2026-10-20",
+            "guestName": "AI-EVAL Test Guest",
+            "guests": 4,
+            "propertySlug": "pool-villa"
+          },
+          "name": "prepare_booking",
+          "result": "Error: Uncaught Error: Ask the guest for their phone number before preparing the booking.\n    at handler (../../convex/bookings.ts:304:25)\n"
+        }
+      ]
+    },
+    {
+      "guest": "Can 6 of us stay in the Mossbell Garden Suite instead?",
+      "reply": "No, Mossbell Garden Suite maxes at 2 guests. Canopy Halo Loft fits 6. Want to switch to that for 2026-10-17 to 20?",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 5237,
+      "tools": []
+    },
+    {
+      "guest": "OK, let's do the Canopy Halo Loft for 5 people, October 17 to 20. My phone is +66 81 234 5678",
+      "reply": "Canopy Halo Loft, 2026-10-17 to 2026-10-20, 5 guests: ฿30600 total. Reply \"yes\" to confirm?",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 16065,
+      "tools": [
+        {
+          "args": {
+            "checkIn": "2026-10-17",
+            "checkOut": "2026-10-20",
+            "guestName": "AI-EVAL Test Guest",
+            "guestPhone": "+66 81 234 5678",
+            "guests": 5,
+            "propertySlug": "penthouse"
+          },
+          "name": "prepare_booking",
+          "result": "{\"checkIn\":\"2026-10-17\",\"checkOut\":\"2026-10-20\",\"currency\":\"THB\",\"guestName\":\"AI-EVAL Test Guest\",\"guestPhone\":\"+66 81 234 5678\",\"guests\":5,\"nights\":3,\"property\":\"Canopy Halo Loft\",\"total\":30600,\"next\":\"Ask the guest to reply \\\"yes\\\" to confirm.\"}"
+        }
+      ]
+    },
+    {
+      "guest": "Hmm, actually wait. Make it October 18 to 20, just 2 nights.",
+      "reply": "Canopy Halo Loft, 2026-10-18 to 2026-10-20, 5 guests: ฿20400 total. Reply \"yes\" to confirm?",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 5833,
+      "tools": [
+        {
+          "args": {
+            "checkIn": "2026-10-18",
+            "checkOut": "2026-10-20",
+            "guestName": "AI-EVAL Test Guest",
+            "guestPhone": "+66 81 234 5678",
+            "guests": 5,
+            "propertySlug": "penthouse"
+          },
+          "name": "prepare_booking",
+          "result": "{\"checkIn\":\"2026-10-18\",\"checkOut\":\"2026-10-20\",\"currency\":\"THB\",\"guestName\":\"AI-EVAL Test Guest\",\"guestPhone\":\"+66 81 234 5678\",\"guests\":5,\"nights\":2,\"property\":\"Canopy Halo Loft\",\"total\":20400,\"next\":\"Ask the guest to reply \\\"yes\\\" to confirm.\"}"
+        }
+      ]
+    },
+    {
+      "guest": "You know what, never mind. I don't want to book anything right now.",
+      "reply": "No problem! Let me know if you'd like to explore other dates or villas.",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 4692,
+      "tools": []
+    },
+    {
+      "guest": "Did you create a booking for me?",
+      "reply": "No bookings found. Let me know if you want to book a villa or check availability!",
+      "model": "x-ai/grok-4.3",
+      "latencyMs": 7173,
+      "tools": [
+        {
+          "args": {},
+          "name": "get_my_bookings",
+          "result": "{\"bookings\":[],\"services\":[]}"
+        }
+      ]
+    }
+  ]
+}
