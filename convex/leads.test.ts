@@ -23,5 +23,10 @@ describe('admin leads list', () => {
 		const all = await admin.query(api.leads.list, { paginationOpts: { numItems: 10, cursor: null } });
 		expect(all.page).toHaveLength(3);
 		await expect(t.query(api.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow('Not authenticated');
+		await expect(
+			t
+				.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' })
+				.query(api.leads.list, { paginationOpts: { numItems: 10, cursor: null } })
+		).rejects.toThrow('Not authorized');
 	});
 });

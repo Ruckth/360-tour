@@ -53,8 +53,7 @@ export function AdminLeadsView() {
         {status === "LoadingFirstPage" ? (
           <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />
         ) : results.length === 0 ? (
-          // A filtered page can be empty while older matches remain; "Load more" below fetches them.
-          status === "Exhausted" ? <p className="px-4 py-10 text-center text-sm text-muted-foreground">No leads yet.</p> : null
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">No leads yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">

@@ -61,6 +61,7 @@ describe('admin property editing', () => {
 		await expect(admin.mutation(api.properties.update, { propertyId, bedrooms: 1.5 })).rejects.toThrow('whole number');
 		await expect(admin.mutation(api.properties.update, { propertyId, currency: 'baht' })).rejects.toThrow('3-letter');
 		await expect(admin.mutation(api.properties.update, { propertyId, images: ['javascript:alert(1)'] })).rejects.toThrow('Images must be');
+		await expect(admin.mutation(api.properties.update, { propertyId, images: ['//evil.com/x.jpg'] })).rejects.toThrow('Images must be');
 	});
 
 	it('updates rooms', async () => {

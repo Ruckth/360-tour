@@ -258,7 +258,8 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_email', ['email'])
-		.index('by_property', ['propertyId']),
+		.index('by_property', ['propertyId'])
+		.index('by_source', ['source']),
 
 	rateLimits: defineTable({
 		key: v.string(),

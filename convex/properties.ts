@@ -204,7 +204,7 @@ function textList(values: string[], label: string, maxItems: number): string[] {
 }
 
 function imageUrl(value: string): string {
-	if (!/^(https:\/\/|\/)\S+$/.test(value)) throw new Error('Images must be https:// URLs or /public paths');
+	if (!/^(https:\/\/|\/(?!\/))\S+$/.test(value)) throw new Error('Images must be https:// URLs or /public paths');
 	return value;
 }
 

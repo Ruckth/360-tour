@@ -20,12 +20,14 @@ type Status = Property["status"];
 const STATUS_LABELS: Record<Status, string> = { active: "Active", draft: "Draft", archived: "Archived" };
 const TEXTAREA =
   "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
-const EMPTY_OTA: Pricing["otaPricing"][number] = {
+// Rows hold raw input text so number fields can be cleared while typing; converted on submit.
+type OtaRow = Record<keyof Pricing["otaPricing"][number], string>;
+const EMPTY_OTA: OtaRow = {
   platform: "",
   displayName: "",
-  nightlyRate: 0,
-  serviceFeePercent: 0,
-  cleaningFee: 0,
+  nightlyRate: "",
+  serviceFeePercent: "",
+  cleaningFee: "",
   logo: "",
 };
 
@@ -42,8 +44,8 @@ export function AdminPropertiesView() {
       ) : (
         <section className="border border-border bg-card">
           <p className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
-            Villa details, room names and price comparisons shown to guests and used by the AI concierge. Draft and
-            archived villas are hidden from guests.
+            Villa details, room names and price comparisons used by the AI concierge, the chat channels and the booking
+            flow. Villa pages still show the built-in content. Only active villas are offered in chat.
           </p>
           <ul className="divide-y divide-border">
             {properties.map((property) => (
@@ -107,7 +109,7 @@ function PropertyEditor({ propertyId, onBack }: { propertyId: Id<"properties">; 
             )}
           </Section>
           <PricingForm
-            key={data.pricing?._id ?? "new"}
+            key={propertyId}
             propertyId={propertyId}
             pricing={data.pricing}
             currency={data.property.currency}
@@ -246,23 +248,42 @@ function PricingForm({ propertyId, pricing, currency }: { propertyId: Id<"proper
   const savePricing = useMutation(api.properties.savePricing);
   const deletePricing = useMutation(api.properties.deletePricing);
   const [directRate, setDirectRate] = useState(pricing ? String(pricing.directRate) : "");
-  const [otas, setOtas] = useState(pricing?.otaPricing ?? []);
+  const [otas, setOtas] = useState<OtaRow[]>(
+    () =>
+      pricing?.otaPricing.map((ota) => ({
+        ...ota,
+        nightlyRate: String(ota.nightlyRate),
+        serviceFeePercent: String(ota.serviceFeePercent),
+        cleaningFee: String(ota.cleaningFee),
+      })) ?? [],
+  );
   const [benefits, setBenefits] = useState(pricing?.directBenefits ?? []);
   const save = useSaver();
 
-  const updateOta = (index: number, patch: Partial<typeof EMPTY_OTA>) =>
+  const updateOta = (index: number, patch: Partial<OtaRow>) =>
     setOtas((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const updateBenefit = (index: number, patch: Partial<Pricing["directBenefits"][number]>) =>
     setBenefits((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void save.run(() => savePricing({ propertyId, directRate: Number(directRate), otaPricing: otas, directBenefits: benefits }));
+    const otaPricing = otas.map((ota) => ({
+      ...ota,
+      nightlyRate: Number(ota.nightlyRate),
+      serviceFeePercent: Number(ota.serviceFeePercent),
+      cleaningFee: Number(ota.cleaningFee),
+    }));
+    void save.run(() => savePricing({ propertyId, directRate: Number(directRate), otaPricing, directBenefits: benefits }));
   }
 
   function remove() {
-    if (!window.confirm("Delete this villa's price comparison? Guests will no longer see OTA prices.")) return;
-    void save.run(() => deletePricing({ propertyId }));
+    if (!window.confirm("Delete this villa's price comparison?")) return;
+    void save.run(async () => {
+      await deletePricing({ propertyId });
+      setDirectRate("");
+      setOtas([]);
+      setBenefits([]);
+    });
   }
 
   return (
@@ -328,9 +349,9 @@ function PricingForm({ propertyId, pricing, currency }: { propertyId: Id<"proper
   );
 }
 
-function NumberInput({ label, value, max, onChange }: { label: string; value: number; max?: number; onChange: (value: number) => void }) {
+function NumberInput({ label, value, max, onChange }: { label: string; value: string; max?: number; onChange: (value: string) => void }) {
   return (
-    <Input aria-label={label} title={label} type="number" min={0} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} required />
+    <Input aria-label={label} title={label} type="number" min={0} max={max} value={value} onChange={(e) => onChange(e.target.value)} required />
   );
 }
 

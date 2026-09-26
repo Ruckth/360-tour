@@ -56,11 +56,10 @@ export const list = query({
 	args: { paginationOpts: paginationOptsValidator, source: v.optional(leadSource) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		const newest = ctx.db.query('leads').order('desc');
 		const { source } = args;
-		// Filtered pages can come back short; the client keeps loading until isDone.
-		return await (source ? newest.filter((q) => q.eq(q.field('source'), source)) : newest).paginate(
-			args.paginationOpts
-		);
+		const leads = source
+			? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
+			: ctx.db.query('leads');
+		return await leads.order('desc').paginate(args.paginationOpts);
 	}
 });
