@@ -1,7 +1,7 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
-import { BedDouble, CalendarClock, HelpCircle, MessageCircle, Shield } from "lucide-react";
+import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,14 +17,25 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-export type AdminDashboardView = "chats" | "hotel" | "staff" | "questions";
+export type AdminDashboardView = "chats" | "hotel" | "staff" | "questions" | "properties" | "leads";
 
 export const ADMIN_VIEW_TITLES: Record<AdminDashboardView, string> = {
   chats: "Chats",
   hotel: "Hotel bookings",
   staff: "Staff bookings",
   questions: "Questions",
+  properties: "Properties",
+  leads: "Leads",
 };
+
+const NAV_ITEMS = [
+  { view: "chats", icon: MessageCircle },
+  { view: "hotel", icon: BedDouble },
+  { view: "staff", icon: CalendarClock },
+  { view: "questions", icon: HelpCircle },
+  { view: "properties", icon: Building2 },
+  { view: "leads", icon: Mail },
+] as const;
 
 export function AdminSidebar({
   view,
@@ -61,50 +72,19 @@ export function AdminSidebar({
           <SidebarGroupLabel>Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  isActive={view === "chats"}
-                  tooltip="Chats"
-                  onClick={() => selectView("chats")}
-                >
-                  <MessageCircle aria-hidden="true" />
-                  <span>Chats</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  isActive={view === "hotel"}
-                  tooltip="Hotel bookings"
-                  onClick={() => selectView("hotel")}
-                >
-                  <BedDouble aria-hidden="true" />
-                  <span>Hotel bookings</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  isActive={view === "staff"}
-                  tooltip="Staff bookings"
-                  onClick={() => selectView("staff")}
-                >
-                  <CalendarClock aria-hidden="true" />
-                  <span>Staff bookings</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  isActive={view === "questions"}
-                  tooltip="Questions"
-                  onClick={() => selectView("questions")}
-                >
-                  <HelpCircle aria-hidden="true" />
-                  <span>Questions</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {NAV_ITEMS.map(({ view: itemView, icon: Icon }) => (
+                <SidebarMenuItem key={itemView}>
+                  <SidebarMenuButton
+                    type="button"
+                    isActive={view === itemView}
+                    tooltip={ADMIN_VIEW_TITLES[itemView]}
+                    onClick={() => selectView(itemView)}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span>{ADMIN_VIEW_TITLES[itemView]}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

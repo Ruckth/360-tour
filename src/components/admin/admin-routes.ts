@@ -6,6 +6,8 @@ export function adminRoute(pathname: string): { view: AdminDashboardView; staffT
   if (pathname === "/admin/chats") return { view: "chats", staffTab: "calendar" };
   if (pathname === "/admin/hotel") return { view: "hotel", staffTab: "calendar" };
   if (pathname === "/admin/questions") return { view: "questions", staffTab: "calendar" };
+  if (pathname === "/admin/properties") return { view: "properties", staffTab: "calendar" };
+  if (pathname === "/admin/leads") return { view: "leads", staffTab: "calendar" };
   if (pathname === "/admin/staff/calendar") return { view: "staff", staffTab: "calendar" };
   if (pathname === "/admin/staff/staff") return { view: "staff", staffTab: "staff" };
   if (pathname === "/admin/staff/services") return { view: "staff", staffTab: "services" };
