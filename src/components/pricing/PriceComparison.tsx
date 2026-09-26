@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { Check, Globe2, ShieldCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
+import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import { getMaxSavingsForProperty } from "@/lib/data/pricing";
+import { calculateBookingQuote } from "@/lib/booking/quote";
 import { resort } from "@/lib/data/resort-config";
 import { getLocalizedPricingByPropertyId } from "@/lib/i18n/public-content";
 
@@ -20,9 +21,20 @@ export function PriceComparison({
 }) {
   const locale = useLocale();
   const t = useTranslations("Villa");
+  const pricingT = useTranslations("Pricing");
+  const comparison = useOtaComparison(propertyId);
   const pricing = getLocalizedPricingByPropertyId(propertyId, locale);
   if (!pricing) return null;
-  const savings = getMaxSavingsForProperty(propertyId, 3);
+  // Prefer live Convex pricing (what checkout charges); static data covers demo mode.
+  const discountPercent = comparison?.directDiscountPercent ?? 0;
+  const directRate = comparison
+    ? calculateBookingQuote({
+        pricePerNight: comparison.pricePerNight,
+        nights: 1,
+        discountPercent,
+        currency: comparison.currency,
+      }).directTotal
+    : pricing.directRate;
 
   return (
     <aside className="rounded-2xl border border-border bg-card p-5 shadow-lg">
@@ -31,16 +43,36 @@ export function PriceComparison({
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
             {t("directRate")}
           </p>
-          <p className="mt-1 text-3xl font-bold text-foreground">
-            {resort.currencySymbol}
-            {pricing.directRate.toLocaleString()}
+          <p className="mt-1 flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-foreground">
+              {resort.currencySymbol}
+              {directRate.toLocaleString()}
+            </span>
+            {comparison && discountPercent > 0 ? (
+              <s className="text-sm text-muted-foreground">
+                <span className="sr-only">{pricingT("standardRate")} </span>
+                {resort.currencySymbol}
+                {comparison.pricePerNight.toLocaleString()}
+              </s>
+            ) : null}
           </p>
           <p className="text-sm text-muted-foreground">{t("perNightWords")}</p>
         </div>
-        <div className="rounded-full bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
-          {t("saveAmount", { amount: savings.toLocaleString() })}
-        </div>
+        {discountPercent > 0 ? (
+          <div className="shrink-0 rounded-full bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
+            {pricingT("directDiscount", { percent: discountPercent })}
+          </div>
+        ) : null}
       </div>
+      {comparison ? (
+        <OtaRateComparison
+          className="mt-5"
+          rates={comparison.rates}
+          pricePerNight={comparison.pricePerNight}
+          discountPercent={discountPercent}
+          showLinks
+        />
+      ) : null}
       <div className="mt-5 space-y-2">
         {pricing.directBenefits.slice(0, 5).map((benefit) => (
           <div key={benefit.benefit} className="flex items-center gap-2 text-sm text-muted-foreground">

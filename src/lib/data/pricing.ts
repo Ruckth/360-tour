@@ -127,17 +127,3 @@ export const propertyPricingData: PropertyPricing[] = [
 export function getPricingByPropertyId(propertyId: string): PropertyPricing | undefined {
 	return propertyPricingData.find((p) => p.propertyId === propertyId);
 }
-
-export function getMaxSavingsForProperty(propertyId: string, nights: number = 3): number {
-	const pricing = getPricingByPropertyId(propertyId);
-	if (!pricing) return 0;
-	const directTotal = pricing.directRate * nights;
-	let maxOtaTotal = 0;
-	for (const ota of pricing.otaPricing) {
-		const subtotal = ota.nightlyRate * nights;
-		const serviceFee = Math.round(subtotal * (ota.serviceFeePercent / 100));
-		const total = subtotal + serviceFee + ota.cleaningFee;
-		if (total > maxOtaTotal) maxOtaTotal = total;
-	}
-	return maxOtaTotal - directTotal;
-}

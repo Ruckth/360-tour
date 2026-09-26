@@ -121,7 +121,6 @@
     "previousPhoto": "前の写真",
     "nextPhoto": "次の写真",
     "directRate": "直接予約料金",
-    "saveAmount": "฿{amount} お得",
     "bookDirect": "直接予約",
     "explore360First": "先に 360°を見る",
     "directBenefits": "直接予約の特典",
@@ -502,7 +501,17 @@
       "noServiceFees": "サービス料なし",
       "freeCancellation": "無料キャンセル（48時間）",
       "directWhatsappSupport": "WhatsApp 直接サポート"
-    }
+    },
+    "compareTitle": "直接予約 vs OTA",
+    "perNight": "1泊あたり",
+    "forNights": "{count}泊の合計",
+    "directLabel": "公式サイトで直接予約",
+    "save": "{amount}お得",
+    "youSave": "直接予約で最大{amount}お得",
+    "ratesChecked": "各サイトの掲載価格（最終確認日：{date}）。料金や手数料は変動する場合があります。",
+    "viewListing": "{platform}で掲載ページを見る",
+    "directDiscount": "直接予約で{percent}%オフ",
+    "standardRate": "通常料金"
   },
   "Reviews": {
     "pv-r1": {

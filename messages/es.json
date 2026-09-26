@@ -121,7 +121,6 @@
     "previousPhoto": "Foto anterior",
     "nextPhoto": "Foto siguiente",
     "directRate": "Tarifa directa",
-    "saveAmount": "Ahorre ฿{amount}",
     "bookDirect": "Reservar directo",
     "explore360First": "Ver 360° primero",
     "directBenefits": "Ventajas de reservar directo",
@@ -502,7 +501,17 @@
       "noServiceFees": "Sin cargos de servicio",
       "freeCancellation": "Cancelación gratis (48h)",
       "directWhatsappSupport": "Soporte directo por WhatsApp"
-    }
+    },
+    "compareTitle": "Reserva directa vs OTAs",
+    "perNight": "Por noche",
+    "forNights": "Total por {count} noches",
+    "directLabel": "Directo en nuestra web",
+    "save": "Ahorra {amount}",
+    "youSave": "Ahorras hasta {amount} reservando directo",
+    "ratesChecked": "Precios publicados en cada sitio, revisados por última vez el {date}. Sus tarifas y cargos pueden cambiar.",
+    "viewListing": "Ver anuncio en {platform}",
+    "directDiscount": "{percent}% de descuento directo",
+    "standardRate": "Tarifa estándar"
   },
   "Reviews": {
     "pv-r1": {

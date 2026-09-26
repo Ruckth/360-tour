@@ -121,7 +121,6 @@
     "previousPhoto": "पिछली फोटो",
     "nextPhoto": "अगली फोटो",
     "directRate": "डायरेक्ट रेट",
-    "saveAmount": "฿{amount} बचाएँ",
     "bookDirect": "सीधे बुक करें",
     "explore360First": "पहले 360° देखें",
     "directBenefits": "सीधी बुकिंग के लाभ",
@@ -502,7 +501,17 @@
       "noServiceFees": "कोई service fee नहीं",
       "freeCancellation": "मुफ्त cancellation (48h)",
       "directWhatsappSupport": "सीधा WhatsApp support"
-    }
+    },
+    "compareTitle": "सीधी बुकिंग बनाम OTA",
+    "perNight": "प्रति रात",
+    "forNights": "{count} रातों का कुल",
+    "directLabel": "हमारी साइट पर सीधी बुकिंग",
+    "save": "{amount} की बचत",
+    "youSave": "सीधी बुकिंग पर {amount} तक की बचत",
+    "ratesChecked": "कीमतें हर साइट पर दिखाए अनुसार हैं, अंतिम बार {date} को जाँची गईं। उनकी दरें और शुल्क बदल सकते हैं।",
+    "viewListing": "{platform} पर लिस्टिंग देखें",
+    "directDiscount": "सीधी बुकिंग पर {percent}% छूट",
+    "standardRate": "सामान्य दर"
   },
   "Reviews": {
     "pv-r1": {

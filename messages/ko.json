@@ -121,7 +121,6 @@
     "previousPhoto": "이전 사진",
     "nextPhoto": "다음 사진",
     "directRate": "직접 예약가",
-    "saveAmount": "฿{amount} 절약",
     "bookDirect": "직접 예약",
     "explore360First": "먼저 360° 보기",
     "directBenefits": "직접 예약 혜택",
@@ -502,7 +501,17 @@
       "noServiceFees": "서비스 수수료 없음",
       "freeCancellation": "무료 취소(48시간)",
       "directWhatsappSupport": "WhatsApp 직접 지원"
-    }
+    },
+    "compareTitle": "직접 예약 vs OTA",
+    "perNight": "1박 기준",
+    "forNights": "{count}박 총액",
+    "directLabel": "공식 사이트 직접 예약",
+    "save": "{amount} 절약",
+    "youSave": "직접 예약 시 최대 {amount} 절약",
+    "ratesChecked": "각 사이트에 게시된 가격이며, 마지막 확인일은 {date}입니다. 요금과 수수료는 변동될 수 있습니다.",
+    "viewListing": "{platform}에서 숙소 보기",
+    "directDiscount": "직접 예약 {percent}% 할인",
+    "standardRate": "정상 요금"
   },
   "Reviews": {
     "pv-r1": {
