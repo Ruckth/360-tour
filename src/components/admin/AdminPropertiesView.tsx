@@ -11,25 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { errorText, money } from "@/lib/staff-bookings";
+import { OtaRatesDialog } from "./OtaRatesDialog";
 import { cn } from "@/lib/utils";
 
 type Property = Doc<"properties">;
-type Pricing = Doc<"pricing">;
 type Status = Property["status"];
 
 const STATUS_LABELS: Record<Status, string> = { active: "Active", draft: "Draft", archived: "Archived" };
 const TEXTAREA =
   "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
-// Rows hold raw input text so number fields can be cleared while typing; converted on submit.
-type OtaRow = Record<keyof Pricing["otaPricing"][number], string>;
-const EMPTY_OTA: OtaRow = {
-  platform: "",
-  displayName: "",
-  nightlyRate: "",
-  serviceFeePercent: "",
-  cleaningFee: "",
-  logo: "",
-};
 
 export function AdminPropertiesView() {
   const properties = useQuery(api.properties.adminList, {});
@@ -44,8 +34,8 @@ export function AdminPropertiesView() {
       ) : (
         <section className="border border-border bg-card">
           <p className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
-            Villa details, room names and price comparisons used by the AI concierge, the chat channels and the booking
-            flow. Villa pages still show the built-in content. Only active villas are offered in chat.
+            Villa details and room names used by the AI concierge, the chat channels and the booking
+            flow, plus the OTA rates guests see. Villa pages still show the built-in content. Only active villas are offered in chat.
           </p>
           <ul className="divide-y divide-border">
             {properties.map((property) => (
@@ -108,12 +98,7 @@ function PropertyEditor({ propertyId, onBack }: { propertyId: Id<"properties">; 
               <p className="text-sm text-muted-foreground">No rooms for this villa.</p>
             )}
           </Section>
-          <PricingForm
-            key={propertyId}
-            propertyId={propertyId}
-            pricing={data.pricing}
-            currency={data.property.currency}
-          />
+          <OtaRatesSection property={data.property} />
         </>
       )}
     </>
@@ -244,107 +229,14 @@ function RoomForm({ room }: { room: Doc<"rooms"> }) {
   );
 }
 
-function PricingForm({ propertyId, pricing, currency }: { propertyId: Id<"properties">; pricing: Pricing | null; currency: string }) {
-  const savePricing = useMutation(api.properties.savePricing);
-  const deletePricing = useMutation(api.properties.deletePricing);
-  const [directRate, setDirectRate] = useState(pricing ? String(pricing.directRate) : "");
-  const [otas, setOtas] = useState<OtaRow[]>(
-    () =>
-      pricing?.otaPricing.map((ota) => ({
-        ...ota,
-        nightlyRate: String(ota.nightlyRate),
-        serviceFeePercent: String(ota.serviceFeePercent),
-        cleaningFee: String(ota.cleaningFee),
-      })) ?? [],
-  );
-  const [benefits, setBenefits] = useState(pricing?.directBenefits ?? []);
-  const save = useSaver();
-
-  const updateOta = (index: number, patch: Partial<OtaRow>) =>
-    setOtas((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  const updateBenefit = (index: number, patch: Partial<Pricing["directBenefits"][number]>) =>
-    setBenefits((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const otaPricing = otas.map((ota) => ({
-      ...ota,
-      nightlyRate: Number(ota.nightlyRate),
-      serviceFeePercent: Number(ota.serviceFeePercent),
-      cleaningFee: Number(ota.cleaningFee),
-    }));
-    void save.run(() => savePricing({ propertyId, directRate: Number(directRate), otaPricing, directBenefits: benefits }));
-  }
-
-  function remove() {
-    if (!window.confirm("Delete this villa's price comparison?")) return;
-    void save.run(async () => {
-      await deletePricing({ propertyId });
-      setDirectRate("");
-      setOtas([]);
-      setBenefits([]);
-    });
-  }
-
+function OtaRatesSection({ property }: { property: Property }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Section
-      title="Price comparison"
-      description="The direct rate against OTA rates (nightly rate + service fee + cleaning), plus perks for booking direct."
-    >
-      <form onSubmit={submit} className="grid gap-5">
-        <Field label={`Direct rate per night (${currency})`} htmlFor="pc-direct" className="max-w-56">
-          <Input id="pc-direct" type="number" min={0} value={directRate} onChange={(e) => setDirectRate(e.target.value)} required />
-        </Field>
-
-        <fieldset className="grid gap-2">
-          <legend className="mb-2 text-sm font-medium">OTA rates</legend>
-          {otas.map((ota, index) => (
-            <div key={index} className="grid grid-cols-2 gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1fr_1fr_1fr_90px_1fr_70px_auto]">
-              <Input aria-label="Platform id" placeholder="booking.com" value={ota.platform} onChange={(e) => updateOta(index, { platform: e.target.value })} required />
-              <Input aria-label="Display name" placeholder="Booking.com" value={ota.displayName} onChange={(e) => updateOta(index, { displayName: e.target.value })} required />
-              <NumberInput label="Nightly rate" value={ota.nightlyRate} onChange={(nightlyRate) => updateOta(index, { nightlyRate })} />
-              <NumberInput label="Service fee %" value={ota.serviceFeePercent} max={100} onChange={(serviceFeePercent) => updateOta(index, { serviceFeePercent })} />
-              <NumberInput label="Cleaning fee" value={ota.cleaningFee} onChange={(cleaningFee) => updateOta(index, { cleaningFee })} />
-              <Input aria-label="Logo text" placeholder="B" value={ota.logo} onChange={(e) => updateOta(index, { logo: e.target.value })} />
-              <Button type="button" size="sm" variant="ghost" aria-label="Remove rate" onClick={() => setOtas((rows) => rows.filter((_, i) => i !== index))}>
-                <Trash2 aria-hidden className="size-4" />
-              </Button>
-            </div>
-          ))}
-          <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => setOtas((rows) => [...rows, EMPTY_OTA])}>
-            <PlusIcon aria-hidden className="size-4" />
-            Add OTA rate
-          </Button>
-        </fieldset>
-
-        <fieldset className="grid gap-2">
-          <legend className="mb-2 text-sm font-medium">Direct booking benefits</legend>
-          {benefits.map((row, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input aria-label="Benefit" value={row.benefit} onChange={(e) => updateBenefit(index, { benefit: e.target.value })} required />
-              <label className="flex shrink-0 items-center gap-2 text-sm">
-                <input type="checkbox" className="size-4 accent-foreground" checked={row.directOnly} onChange={(e) => updateBenefit(index, { directOnly: e.target.checked })} />
-                Direct only
-              </label>
-              <Button type="button" size="sm" variant="ghost" aria-label="Remove benefit" onClick={() => setBenefits((rows) => rows.filter((_, i) => i !== index))}>
-                <Trash2 aria-hidden className="size-4" />
-              </Button>
-            </div>
-          ))}
-          <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => setBenefits((rows) => [...rows, { benefit: "", directOnly: true }])}>
-            <PlusIcon aria-hidden className="size-4" />
-            Add benefit
-          </Button>
-        </fieldset>
-
-        <SaveBar save={save}>
-          {pricing ? (
-            <Button type="button" variant="ghost" className="mr-auto text-destructive" onClick={remove} disabled={save.saving}>
-              Delete comparison
-            </Button>
-          ) : null}
-        </SaveBar>
-      </form>
+    <Section title="OTA rates" description="Nightly prices on Booking.com, Agoda, Airbnb and Expedia, shown to guests next to the direct price.">
+      <Button type="button" variant="outline" className="w-fit" onClick={() => setOpen(true)}>
+        Edit OTA rates
+      </Button>
+      <OtaRatesDialog open={open} onClose={() => setOpen(false)} properties={[property]} />
     </Section>
   );
 }

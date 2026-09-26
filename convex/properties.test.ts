@@ -6,7 +6,6 @@ import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-const ota = { platform: 'airbnb', displayName: 'Airbnb', nightlyRate: 9800, serviceFeePercent: 14, cleaningFee: 600, logo: 'A' };
 
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
@@ -34,8 +33,6 @@ describe('admin property editing', () => {
 		const stranger = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' });
 		await expect(stranger.query(api.properties.adminGet, { propertyId })).rejects.toThrow('Not authorized');
 		await expect(stranger.mutation(api.properties.updateRoom, { roomId, name: 'X' })).rejects.toThrow('Not authorized');
-		await expect(stranger.mutation(api.properties.savePricing, { propertyId, directRate: 1, otaPricing: [], directBenefits: [] })).rejects.toThrow('Not authorized');
-		await expect(stranger.mutation(api.properties.deletePricing, { propertyId })).rejects.toThrow('Not authorized');
 	});
 
 	it('updates property fields and hides inactive villas from guests', async () => {
@@ -71,16 +68,4 @@ describe('admin property editing', () => {
 		await expect(admin.mutation(api.properties.updateRoom, { roomId, name: '' })).rejects.toThrow('Room name is required');
 	});
 
-	it('creates, replaces and deletes pricing', async () => {
-		const { admin, propertyId } = await setup();
-		const benefits = [{ benefit: 'Free pickup', directOnly: true }];
-		const id = await admin.mutation(api.properties.savePricing, { propertyId, directRate: 8500, otaPricing: [ota], directBenefits: benefits });
-		expect(await admin.mutation(api.properties.savePricing, { propertyId, directRate: 8000, otaPricing: [], directBenefits: benefits })).toBe(id);
-		expect((await admin.query(api.properties.adminGet, { propertyId }))?.pricing).toMatchObject({ directRate: 8000, otaPricing: [] });
-		await expect(admin.mutation(api.properties.savePricing, { propertyId, directRate: 1, otaPricing: [{ ...ota, serviceFeePercent: 120 }], directBenefits: [] })).rejects.toThrow('Service fee');
-		await expect(admin.mutation(api.properties.savePricing, { propertyId, directRate: 1, otaPricing: [{ ...ota, displayName: '' }], directBenefits: [] })).rejects.toThrow('Platform name is required');
-		await expect(admin.mutation(api.properties.savePricing, { propertyId, directRate: -5, otaPricing: [], directBenefits: [] })).rejects.toThrow('Direct rate');
-		await admin.mutation(api.properties.deletePricing, { propertyId });
-		expect(await admin.query(api.properties.getPricing, { propertyId })).toBeNull();
-	});
 });

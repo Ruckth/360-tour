@@ -173,16 +173,6 @@ export const getTourSnippets = query({
 // them); hide a villa from guests with status 'draft' or 'archived'.
 
 const propertyStatus = v.union(v.literal('active'), v.literal('draft'), v.literal('archived'));
-const otaRate = v.object({
-	platform: v.string(),
-	displayName: v.string(),
-	nightlyRate: v.number(),
-	serviceFeePercent: v.number(),
-	cleaningFee: v.number(),
-	logo: v.string()
-});
-const directBenefit = v.object({ benefit: v.string(), directOnly: v.boolean() });
-
 function required(value: string, label: string): string {
 	const trimmed = value.trim();
 	if (!trimmed) throw new Error(`${label} is required`);
@@ -222,11 +212,8 @@ export const adminGet = query({
 		await requireAdmin(ctx);
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) return null;
-		const [rooms, pricing] = await Promise.all([
-			ctx.db.query('rooms').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).take(50),
-			ctx.db.query('pricing').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).first()
-		]);
-		return { property, rooms, pricing };
+		const rooms = await ctx.db.query('rooms').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).take(50);
+		return { property, rooms };
 	}
 });
 
@@ -285,51 +272,3 @@ export const updateRoom = mutation({
 	}
 });
 
-/** Creates or replaces the property's direct-vs-OTA price comparison. */
-export const savePricing = mutation({
-	args: {
-		propertyId: v.id('properties'),
-		directRate: v.number(),
-		otaPricing: v.array(otaRate),
-		directBenefits: v.array(directBenefit)
-	},
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
-		if (args.otaPricing.length > 20 || args.directBenefits.length > 20) throw new Error('At most 20 rates and 20 benefits');
-		const fields = {
-			propertyId: args.propertyId,
-			directRate: amount(args.directRate, 'Direct rate'),
-			otaPricing: args.otaPricing.map((ota) => ({
-				platform: required(ota.platform, 'Platform'),
-				displayName: required(ota.displayName, 'Platform name'),
-				nightlyRate: amount(ota.nightlyRate, 'Nightly rate'),
-				serviceFeePercent: amount(ota.serviceFeePercent, 'Service fee', { max: 100 }),
-				cleaningFee: amount(ota.cleaningFee, 'Cleaning fee'),
-				logo: ota.logo.trim()
-			})),
-			directBenefits: args.directBenefits.map((row) => ({ benefit: required(row.benefit, 'Benefit'), directOnly: row.directOnly }))
-		};
-		const existing = await ctx.db
-			.query('pricing')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.first();
-		if (existing) {
-			await ctx.db.replace(existing._id, fields);
-			return existing._id;
-		}
-		return await ctx.db.insert('pricing', fields);
-	}
-});
-
-export const deletePricing = mutation({
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const existing = await ctx.db
-			.query('pricing')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.first();
-		if (existing) await ctx.db.delete(existing._id);
-	}
-});
