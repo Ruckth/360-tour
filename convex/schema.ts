@@ -266,6 +266,7 @@ export default defineSchema({
 		expiresAt: v.number()
 	}).index('by_key', ['key']).index('by_expiresAt', ['expiresAt']),
 
+	// Legacy seeded OTA fee estimates; no longer read (see otaRates). Kept so existing deployments with rows still validate.
 	pricing: defineTable({
 		propertyId: v.id('properties'),
 		directRate: v.number(),

@@ -42,16 +42,6 @@ export const getRooms = query({
 	}
 });
 
-export const getPricing = query({
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('pricing')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.first();
-	}
-});
-
 /** Public: live direct pricing plus owner-entered OTA rates for an active villa. */
 export const getOtaComparison = query({
 	args: { slug: v.string() },

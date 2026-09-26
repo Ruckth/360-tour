@@ -5,7 +5,6 @@ import { normalizeSuggestedQuestion, supportedSuggestionLocales } from './lib/ch
 import { curatedQuestionSeeds, type CuratedQuestionSeed } from './seeds/curatedQuestions';
 import { seedProperties } from './seeds/properties';
 import { seedRooms } from './seeds/rooms';
-import { seedPricing } from './seeds/pricing';
 import { seedSocialProof } from './seeds/socialProof';
 import { seedReviews } from './seeds/reviews';
 import { seedTourSnippets } from './seeds/tourSnippets';
@@ -61,7 +60,6 @@ export const seedAll = mutation({
 
 		const properties = await seedProperties(ctx);
 		await seedRooms(ctx, properties);
-		await seedPricing(ctx, properties);
 		await seedSocialProof(ctx, properties);
 		await seedReviews(ctx, properties);
 		await seedTourSnippets(ctx, properties);

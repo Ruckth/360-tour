@@ -25,6 +25,8 @@ describe('OTA reference rates', () => {
 		await expect(t.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'agoda', nightlyRate: 9000 })).rejects.toThrow('Not authenticated');
 		const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(stranger.query(api.properties.listOtaRates, { propertyId })).rejects.toThrow('Not authorized');
+		const rateId = await t.run(async (ctx) => await ctx.db.insert('otaRates', { propertyId, platform: 'agoda', nightlyRate: 9000, updatedAt: 0 }));
+		await expect(t.mutation(api.properties.removeOtaRate, { rateId })).rejects.toThrow('Not authenticated');
 	});
 
 	it('upserts one rate per platform and exposes it with direct pricing', async () => {
@@ -56,6 +58,8 @@ describe('OTA reference rates', () => {
 		const { admin, propertyId } = await setup();
 		await expect(admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'expedia', nightlyRate: 0 })).rejects.toThrow('positive');
 		await expect(admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'expedia', nightlyRate: Number.NaN })).rejects.toThrow('positive');
+		await expect(admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'expedia', nightlyRate: 10_000_001 })).rejects.toThrow('positive');
+		await expect(admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'expedia', nightlyRate: 9000, url: `https://expedia.com/${'x'.repeat(481)}` })).rejects.toThrow('HTTPS');
 		await expect(admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'expedia', nightlyRate: 9000, url: 'http://expedia.com/x' })).rejects.toThrow('HTTPS');
 		await expect(admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'expedia', nightlyRate: 9000, url: 'javascript:alert(1)' })).rejects.toThrow('HTTPS');
 		expect(await admin.query(api.properties.listOtaRates, { propertyId })).toEqual([]);

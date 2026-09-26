@@ -2,7 +2,7 @@ import type { ActionCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { api, internal } from '../_generated/api';
 import { nightsBetween } from './dates';
-import { calculateDirectQuote, calculateOtaComparison, maxSavings } from './pricing';
+import { calculateDirectQuote, maxSavings } from './pricing';
 import type { ToolDef } from './chatLlm';
 
 export const TOOLS: ToolDef[] = [
@@ -61,7 +61,7 @@ export const TOOLS: ToolDef[] = [
 		function: {
 			name: 'calculate_price',
 			description:
-				'Price a stay by number of nights when the guest asks what it costs (no dates needed). Includes the 15% direct discount and OTA comparison prices.',
+				'Price a stay by number of nights when the guest asks what it costs (no dates needed). Includes the direct discount, plus OTA comparison prices only when the owner has entered them.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -219,6 +219,16 @@ function findProperty(properties: Doc<'properties'>[], slug: unknown): Doc<'prop
 	return properties.find((p) => p.slug === slug) ?? null;
 }
 
+/** Owner-entered OTA rates only (same source as the villa-page widget); empty when none are entered. */
+async function ownerOtaQuotes(ctx: ActionCtx, slug: string, nights: number) {
+	const comparison = await ctx.runQuery(api.properties.getOtaComparison, { slug });
+	return (comparison?.rates ?? []).map(({ platform, nightlyRate }) => ({
+		platform,
+		nightlyRate,
+		total: nightlyRate * nights
+	}));
+}
+
 export async function executeTool(
 	ctx: ActionCtx,
 	fnName: string,
@@ -267,10 +277,7 @@ export async function executeTool(
 
 			const nights = nightsBetween(checkIn, checkOut);
 			const quote = calculateDirectQuote(property, nights);
-			const pricing = await ctx.runQuery(api.properties.getPricing, {
-				propertyId: property._id
-			});
-			const ota = calculateOtaComparison(pricing, nights);
+			const ota = await ownerOtaQuotes(ctx, property.slug, nights);
 
 			return JSON.stringify({
 				property: property.name,
@@ -281,7 +288,7 @@ export async function executeTool(
 				pricePerNight: property.pricePerNight,
 				directPrice: Math.round(quote.directTotal / Math.max(nights, 1)),
 				totalDirect: quote.directTotal,
-				totalOTA: ota.length > 0 ? Math.max(...ota.map((o) => o.total)) : null,
+				...(ota.length > 0 ? { totalOTA: Math.max(...ota.map((o) => o.total)) } : {}),
 				currency: property.currency
 			});
 		}
@@ -292,10 +299,7 @@ export async function executeTool(
 
 			const nights = typeof fnArgs.nights === 'number' && fnArgs.nights > 0 ? fnArgs.nights : 1;
 			const quote = calculateDirectQuote(property, nights);
-			const pricing = await ctx.runQuery(api.properties.getPricing, {
-				propertyId: property._id
-			});
-			const otaComparison = calculateOtaComparison(pricing, nights);
+			const otaComparison = await ownerOtaQuotes(ctx, property.slug, nights);
 
 			return JSON.stringify({
 				property: property.name,
@@ -307,8 +311,9 @@ export async function executeTool(
 				discountPercent: quote.discountPercent,
 				discountAmount: quote.discountAmount,
 				directTotal: quote.directTotal,
-				otaComparison,
-				maxSavings: maxSavings(quote.directTotal, otaComparison.map((o) => o.total)),
+				...(otaComparison.length > 0
+					? { otaComparison, maxSavings: maxSavings(quote.directTotal, otaComparison.map((o) => o.total)) }
+					: {}),
 				currency: property.currency
 			});
 		}

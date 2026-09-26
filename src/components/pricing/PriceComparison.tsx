@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
+import { DEMO_DIRECT_DISCOUNT_PERCENT } from "@/lib/booking/booking";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import { resort } from "@/lib/data/resort-config";
 import { getLocalizedPricingByPropertyId } from "@/lib/i18n/public-content";
@@ -25,16 +26,15 @@ export function PriceComparison({
   const comparison = useOtaComparison(propertyId);
   const pricing = getLocalizedPricingByPropertyId(propertyId, locale);
   if (!pricing) return null;
-  // Prefer live Convex pricing (what checkout charges); static data covers demo mode.
-  const discountPercent = comparison?.directDiscountPercent ?? 0;
-  const directRate = comparison
-    ? calculateBookingQuote({
-        pricePerNight: comparison.pricePerNight,
-        nights: 1,
-        discountPercent,
-        currency: comparison.currency,
-      }).directTotal
-    : pricing.directRate;
+  // Prefer live Convex pricing (what checkout charges); static data matches it for SSR and demo mode.
+  const pricePerNight = comparison?.pricePerNight ?? pricing.directRate;
+  const discountPercent = comparison?.directDiscountPercent ?? DEMO_DIRECT_DISCOUNT_PERCENT;
+  const directRate = calculateBookingQuote({
+    pricePerNight,
+    nights: 1,
+    discountPercent,
+    currency: comparison?.currency ?? resort.currency,
+  }).directTotal;
 
   return (
     <aside className="rounded-2xl border border-border bg-card p-5 shadow-lg">
@@ -48,11 +48,11 @@ export function PriceComparison({
               {resort.currencySymbol}
               {directRate.toLocaleString()}
             </span>
-            {comparison && discountPercent > 0 ? (
+            {discountPercent > 0 ? (
               <s className="text-sm text-muted-foreground">
                 <span className="sr-only">{pricingT("standardRate")} </span>
                 {resort.currencySymbol}
-                {comparison.pricePerNight.toLocaleString()}
+                {pricePerNight.toLocaleString()}
               </s>
             ) : null}
           </p>

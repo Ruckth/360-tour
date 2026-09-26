@@ -10,15 +10,6 @@ export type PriceQuote = {
 	currency: string;
 };
 
-export type OtaQuote = {
-	platform: string;
-	displayName: string;
-	nightlyRate: number;
-	serviceFee: number;
-	cleaningFee: number;
-	total: number;
-};
-
 export function calculateDirectQuote(property: Doc<'properties'>, nights: number): PriceQuote {
 	const subtotal = property.pricePerNight * nights;
 	const discountPercent = property.directDiscountPercent;
@@ -34,23 +25,6 @@ export function calculateDirectQuote(property: Doc<'properties'>, nights: number
 		directTotal,
 		currency: property.currency
 	};
-}
-
-export function calculateOtaComparison(pricing: Doc<'pricing'> | null, nights: number): OtaQuote[] {
-	if (!pricing) return [];
-
-	return pricing.otaPricing.map((ota) => {
-		const stayBeforeFees = ota.nightlyRate * nights;
-		const serviceFee = Math.round(stayBeforeFees * (ota.serviceFeePercent / 100));
-		return {
-			platform: ota.platform,
-			displayName: ota.displayName,
-			nightlyRate: ota.nightlyRate,
-			serviceFee,
-			cleaningFee: ota.cleaningFee,
-			total: stayBeforeFees + serviceFee + ota.cleaningFee
-		};
-	});
 }
 
 export function maxSavings(directTotal: number, otaTotals: number[]): number {
