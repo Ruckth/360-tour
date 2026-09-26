@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { addDaysIso, dateToIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
 import { IcalSourcesDialog } from './IcalSourcesDialog';
+import { OtaRatesDialog } from './OtaRatesDialog';
 
 /** One source of truth for booking state: drives chip colours and the legend. */
 const STATUS = {
@@ -115,6 +116,7 @@ export function AdminBookingsView() {
   const [selectedId, setSelectedId] = useState<Id<"bookings"> | null>(null);
   const [creating, setCreating] = useState(false);
   const [managingCalendars, setManagingCalendars] = useState(false);
+  const [managingRates, setManagingRates] = useState(false);
 
   const data = useQuery(api.adminBookings.listForAdmin, range);
 
@@ -213,6 +215,9 @@ export function AdminBookingsView() {
               <Button size="sm" variant="outline" onClick={() => setManagingCalendars(true)} disabled={!data}>
                 OTA calendars
               </Button>
+              <Button size="sm" variant="outline" onClick={() => setManagingRates(true)} disabled={!data}>
+                OTA rates
+              </Button>
               <Button size="sm" onClick={() => setCreating(true)} disabled={!data}>
                 <PlusIcon aria-hidden="true" className="size-4" />
                 New booking
@@ -238,6 +243,9 @@ export function AdminBookingsView() {
       />
       {data ? (
         <IcalSourcesDialog open={managingCalendars} onClose={() => setManagingCalendars(false)} properties={data.properties} />
+      ) : null}
+      {data ? (
+        <OtaRatesDialog open={managingRates} onClose={() => setManagingRates(false)} properties={data.properties} />
       ) : null}
       {data ? (
         <NewBookingDialog
