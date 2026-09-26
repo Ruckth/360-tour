@@ -49,7 +49,7 @@ export const getOtaComparison = query({
 		const property = await ctx.db
 			.query('properties')
 			.withIndex('by_slug', (q) => q.eq('slug', args.slug))
-			.first();
+			.unique();
 		if (!property || property.status !== 'active') return null;
 		const rates = await ctx.db
 			.query('otaRates')
