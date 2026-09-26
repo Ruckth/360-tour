@@ -2,7 +2,7 @@ import { mutation, query } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
-import { markBookingPaid, queueBookingEmails } from './bookings';
+import { markBookingPaid, queueBookingEmails, queueCancellationEmail } from './bookings';
 import { requireAdmin } from './lib/adminAuth';
 import { blockBookingDates } from './lib/availabilityWrites';
 import { createBookingRecord } from './lib/bookingWrites';
@@ -104,6 +104,7 @@ export const updateBooking = mutation({
 				throw new Error('The Stripe checkout is active. Wait for it to expire before cancelling.');
 			}
 			await ctx.db.patch(booking._id, { status: 'cancelled' });
+			await queueCancellationEmail(ctx, booking);
 			await releaseBookingDates(ctx, booking);
 			return;
 		}

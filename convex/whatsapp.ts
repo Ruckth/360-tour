@@ -1,6 +1,7 @@
 import { mutation, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
+import { asksForStaff, queueStaffAlert } from './chatKnowledge';
 import {
 	buildAdminChatMetadataPatch,
 	buildAdminSearchText,
@@ -199,6 +200,7 @@ export const recordInboundEvent = mutation({
 				latestMessageAt: timestamp,
 				lastSeenAt: now,
 			});
+			if (asksForStaff(userContent)) await queueStaffAlert(ctx, args.sessionId, userContent);
 		}
 
 		await ctx.db.patch(args.eventId, {

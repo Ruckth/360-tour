@@ -213,6 +213,34 @@ export async function queueBookingEmails(ctx: MutationCtx, booking: Doc<'booking
 	}
 }
 
+export async function queueCancellationEmail(ctx: MutationCtx, booking: Doc<'bookings'>) {
+	if (booking.status === 'cancelled' || booking.cancellationEmailQueuedAt || !booking.guestEmail?.trim()) return;
+	await ctx.db.patch(booking._id, { cancellationEmailQueuedAt: Date.now() });
+	await ctx.scheduler.runAfter(0, internal.emails.sendCancellation, { bookingId: booking._id });
+}
+
+export const getLifecycleEmailDetails = internalQuery({
+	args: {
+		bookingId: v.id('bookings'),
+		kind: v.union(v.literal('cancellation'), v.literal('preArrival'), v.literal('review'))
+	},
+	handler: async (ctx, args) => {
+		const booking = await ctx.db.get(args.bookingId);
+		if (!booking?.guestEmail?.trim()) return null;
+		if (args.kind === 'cancellation' && (booking.status !== 'cancelled' || !booking.cancellationEmailQueuedAt)) return null;
+		if (args.kind === 'preArrival' && (booking.status !== 'confirmed' || !booking.preArrivalEmailQueuedAt)) return null;
+		if (args.kind === 'review' && (booking.status !== 'confirmed' || !booking.reviewEmailQueuedAt)) return null;
+		const property = await ctx.db.get(booking.propertyId);
+		return {
+			guestName: booking.guestName,
+			guestEmail: booking.guestEmail,
+			propertyName: property?.name ?? 'Your stay',
+			checkIn: booking.checkIn,
+			checkOut: booking.checkOut
+		};
+	}
+});
+
 export const markPaidFromTrustedWebhook = internalMutation({
 	args: {
 		bookingId: v.id('bookings'),
@@ -468,6 +496,7 @@ export const cancelChatBooking = internalMutation({
 		}
 
 		await ctx.db.patch(booking._id, { status: 'cancelled' });
+		await queueCancellationEmail(ctx, booking);
 		await ctx.db.patch(args.sessionId, { pendingCancellation: undefined });
 		return { state: 'cancelled' as const, ...summary };
 	}

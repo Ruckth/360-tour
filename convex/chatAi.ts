@@ -559,6 +559,12 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 			}
 
 			args.toolTrace?.push({ name: fnName, args: fnArgs, result: toolResult });
+			if (toolResult.includes('Offer to connect the guest with the host.')) {
+				await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
+					sessionId: args.sessionId,
+					lastMessage: args.userMessage
+				}).catch((error) => console.error('Could not queue staff handoff alert:', error));
+			}
 			apiMessages.push({
 				role: 'tool',
 				content: toolResult,
@@ -572,6 +578,12 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	// Some models keep calling tools past the round limit; force a plain-text answer from the results so far.
 	if (!response.content?.trim()) {
 		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, []);
+	}
+	if (/\b(connect|put you in touch|have someone contact)\b.{0,60}\b(host|staff|human|person|team)\b/i.test(response.content ?? '')) {
+		await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
+			sessionId: args.sessionId,
+			lastMessage: args.userMessage
+		}).catch((error) => console.error('Could not queue staff handoff alert:', error));
 	}
 
 	return {

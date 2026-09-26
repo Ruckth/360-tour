@@ -1,5 +1,7 @@
 "use node";
-import { internalAction } from './_generated/server';
+import { internalAction, type ActionCtx } from './_generated/server';
+import { internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { Resend } from 'resend';
 
@@ -167,5 +169,111 @@ export const sendOwnerNotification = internalAction({
 		}
 
 		return { sent: true };
+	}
+});
+
+type LifecycleKind = 'cancellation' | 'preArrival' | 'review';
+
+async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kind: LifecycleKind) {
+	const details: { guestName: string; guestEmail: string; propertyName: string; checkIn: string; checkOut: string } | null =
+		await ctx.runQuery(internal.bookings.getLifecycleEmailDetails, { bookingId, kind });
+	if (!details) return { sent: false, reason: 'booking_not_eligible' };
+	const apiKey = process.env.RESEND_API_KEY;
+	const from = process.env.EMAIL_FROM;
+	if (!apiKey || !from) {
+		console.warn('RESEND_API_KEY or EMAIL_FROM not configured, skipping lifecycle email');
+		return { sent: false, reason: 'missing_config' };
+	}
+	const name = escapeHtml(details.guestName);
+	const property = escapeHtml(details.propertyName);
+	const checkIn = escapeHtml(details.checkIn);
+	const checkOut = escapeHtml(details.checkOut);
+	const content = {
+		cancellation: {
+			subject: `Booking Cancelled: ${details.propertyName}`,
+			html: `<p>Hi ${name},</p><p>Your booking at ${property} for ${checkIn} to ${checkOut} has been cancelled.</p><p>If you have questions about payment or a refund, please reply to this email.</p>`
+		},
+		preArrival: {
+			subject: `Your stay at ${details.propertyName} is coming up`,
+			html: `<p>Hi ${name},</p><p>We look forward to welcoming you to ${property} on ${checkIn}. Your check-out is ${checkOut}.</p><p>Reply to this email if you need help before arrival.</p>`
+		},
+		review: {
+			subject: `How was your stay at ${details.propertyName}?`,
+			html: `<p>Hi ${name},</p><p>Thank you for staying at ${property}. We hope you enjoyed your visit. Please reply and let us know how it went.</p>`
+		}
+	}[kind];
+	try {
+		const { error } = await new Resend(apiKey).emails.send({ from, to: details.guestEmail, ...content });
+		if (error) {
+			console.error(`Failed to send ${kind} email:`, error);
+			return { sent: false, reason: error.message };
+		}
+		return { sent: true };
+	} catch (error) {
+		console.error(`Failed to send ${kind} email:`, error);
+		return { sent: false, reason: 'send_failed' };
+	}
+}
+
+export const sendCancellation = internalAction({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'cancellation')
+});
+
+export const sendPreArrival = internalAction({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'preArrival')
+});
+
+export const sendReviewRequest = internalAction({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'review')
+});
+
+export const sendStaffAlert = internalAction({
+	args: {
+		sessionId: v.id('chatSessions'),
+		channel: v.string(),
+		guestName: v.string(),
+		lastMessage: v.string()
+	},
+	handler: async (_ctx, args) => {
+		const siteUrl = process.env.SITE_URL?.replace(/\/+$/, '');
+		const link = siteUrl ? `${siteUrl}/admin/chats?session=${encodeURIComponent(args.sessionId)}` : undefined;
+		const apiKey = process.env.RESEND_API_KEY;
+		const from = process.env.EMAIL_FROM;
+		const owner = process.env.OWNER_NOTIFICATION_EMAIL;
+		if (!link) console.warn('SITE_URL not configured, staff alert will not include an admin link');
+		if (!apiKey || !from || !owner) {
+			console.warn('RESEND_API_KEY, EMAIL_FROM, or OWNER_NOTIFICATION_EMAIL not configured, skipping staff alert email');
+		} else {
+			try {
+				const { error } = await new Resend(apiKey).emails.send({
+					from, to: owner,
+					subject: `Guest needs help on ${args.channel}`,
+					html: `<p><strong>Channel:</strong> ${escapeHtml(args.channel)}</p><p><strong>Guest:</strong> ${escapeHtml(args.guestName)}</p><p><strong>Last message:</strong> ${escapeHtml(args.lastMessage)}</p>${link ? `<p><a href="${escapeHtml(link)}">Open this chat in admin</a></p>` : ''}`
+				});
+				if (error) console.error('Failed to send staff alert email:', error);
+			} catch (error) {
+				console.error('Failed to send staff alert email:', error);
+			}
+		}
+		const lineUserId = process.env.STAFF_LINE_USER_ID;
+		const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+		if (lineUserId && lineToken) {
+			try {
+				const response = await fetch('https://api.line.me/v2/bot/message/push', {
+					method: 'POST',
+					headers: { authorization: `Bearer ${lineToken}`, 'content-type': 'application/json' },
+					body: JSON.stringify({ to: lineUserId, messages: [{ type: 'text', text: `Guest needs help (${args.channel})\n${args.guestName}: ${args.lastMessage}${link ? `\n${link}` : ''}`.slice(0, 5000) }] }),
+					signal: AbortSignal.timeout(15000)
+				});
+				if (!response.ok) console.error('Failed to send staff LINE alert:', response.status);
+			} catch (error) {
+				console.error('Failed to send staff LINE alert:', error);
+			}
+		} else if (lineUserId) {
+			console.warn('LINE_CHANNEL_ACCESS_TOKEN not configured, skipping staff LINE alert');
+		}
 	}
 });

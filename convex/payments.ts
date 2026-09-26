@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { action, internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
-import { markBookingPaid } from './bookings';
+import { markBookingPaid, queueCancellationEmail } from './bookings';
 import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 
 const CHECKOUT_LIFETIME_SECONDS = 31 * 60;
@@ -171,5 +171,6 @@ export const recordRefund = internalMutation({
     ).take(366);
     for (const block of blocks) if (block.bookingId === booking._id) await ctx.db.delete(block._id);
     await ctx.db.patch(booking._id, { paymentStatus: 'refunded', status: 'cancelled' });
+    await queueCancellationEmail(ctx, booking);
   },
 });

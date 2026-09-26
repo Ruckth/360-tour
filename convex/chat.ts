@@ -11,6 +11,7 @@ import {
 } from './lib/adminChatMetadata';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 import { enforceRateLimit } from './lib/rateLimit';
+import { asksForStaff, queueStaffAlert } from './chatKnowledge';
 
 const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -342,6 +343,7 @@ export const addMessage = mutation({
 			latestMessageAt: timestamp,
 			lastSeenAt: timestamp,
 		});
+		if (args.role === 'user' && asksForStaff(args.content)) await queueStaffAlert(ctx, args.sessionId, args.content);
 
 		return messageId;
 	}

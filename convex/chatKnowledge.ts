@@ -62,6 +62,30 @@ function normalizeQuestion(value: string) {
 	return normalizeSuggestedQuestion(value);
 }
 
+export function asksForStaff(message: string) {
+	return /\b(human|real person|live agent|staff member|representative)\b|\b(speak|talk|chat|connect|contact|reach)\b.{0,30}\b(staff|agent|host|manager|owner|someone)\b|(?:พนักงาน|เจ้าหน้าที่|คนจริง|真人客服|人工客服|担当者|직원)/iu.test(message);
+}
+
+export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'chatSessions'>, message: string) {
+	const session = await ctx.db.get(sessionId);
+	if (!session) return false;
+	const now = Date.now();
+	if (session.lastStaffAlertAt && now - session.lastStaffAlertAt < 30 * 60 * 1000) return false;
+	await ctx.db.patch(sessionId, { lastStaffAlertAt: now });
+	await ctx.scheduler.runAfter(0, internal.emails.sendStaffAlert, {
+		sessionId,
+		channel: session.channel,
+		guestName: session.visitorName?.trim() || 'Unknown guest',
+		lastMessage: message.slice(0, 1000)
+	});
+	return true;
+}
+
+export const alertStaffForHandoff = internalMutation({
+	args: { sessionId: v.id('chatSessions'), lastMessage: v.string() },
+	handler: async (ctx, args) => await queueStaffAlert(ctx, args.sessionId, args.lastMessage)
+});
+
 function normalizeTopicName(value: string) {
 	return normalizeSuggestedQuestion(value);
 }
@@ -559,6 +583,7 @@ export const recordUnknownQuestion = mutation({
 		const session = args.sessionId ? await ctx.db.get(args.sessionId) : null;
 		const { propertyId, propertySlug } = await resolveSessionProperty(ctx, session, args.propertySlug);
 		const now = Date.now();
+		if (args.sessionId && session) await queueStaffAlert(ctx, args.sessionId, userQuestion);
 
 		if (args.sessionId) {
 			const existingRows = await ctx.db
