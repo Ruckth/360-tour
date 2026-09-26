@@ -7,6 +7,7 @@ import schema from './schema';
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob('./**/*.ts');
 const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+const today = day(0);
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -49,12 +50,12 @@ it('claims each lifecycle email once across repeated cron runs', async () => {
 	vi.stubEnv('RESEND_API_KEY', 'test');
 	vi.stubEnv('EMAIL_FROM', 'test@example.com');
 	const { t, bookingId } = await bookingTest();
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival' })).toBe(1);
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival' })).toBe(0);
+	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(1);
+	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(0);
 	expect((await t.run(async ctx => await ctx.db.get(bookingId)))?.preArrivalEmailQueuedAt).toBeTruthy();
 	const past = await bookingTest(-4, -1);
-	expect(await past.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review' })).toBe(1);
-	expect(await past.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review' })).toBe(0);
+	expect(await past.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review', today })).toBe(1);
+	expect(await past.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review', today })).toBe(0);
 	expect((await past.t.run(async ctx => await ctx.db.get(past.bookingId)))?.reviewEmailQueuedAt).toBeTruthy();
 });
 
@@ -63,10 +64,10 @@ it('skips pre-arrival mail when the booking is cancelled before the cron', async
 	vi.stubEnv('EMAIL_FROM', 'test@example.com');
 	const { t, bookingId } = await bookingTest();
 	await t.run(async ctx => await ctx.db.patch(bookingId, { status: 'cancelled' }));
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival' })).toBe(0);
+	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(0);
 	expect(await t.action(internal.emails.sendPreArrival, { bookingId })).toEqual({ sent: false, reason: 'booking_not_eligible' });
 	const claimed = await bookingTest();
-	expect(await claimed.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival' })).toBe(1);
+	expect(await claimed.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(1);
 	await claimed.t.run(async ctx => await ctx.db.patch(claimed.bookingId, { status: 'cancelled' }));
 	expect(await claimed.t.action(internal.emails.sendPreArrival, { bookingId: claimed.bookingId })).toEqual({ sent: false, reason: 'booking_not_eligible' });
 });
@@ -74,9 +75,30 @@ it('skips pre-arrival mail when the booking is cancelled before the cron', async
 it('detects staff requests without flagging booking questions', async () => {
 	const { asksForStaff } = await import('./chatKnowledge');
 	expect(asksForStaff('Can I talk to the host?')).toBe(true);
+	expect(asksForStaff('Is there someone I can speak to?')).toBe(true);
 	expect(asksForStaff('ขอคุยกับพนักงาน')).toBe(true);
+	expect(asksForStaff('ติดต่อแอดมินได้ไหม')).toBe(true);
+	expect(asksForStaff('Kann ich mit einem Mitarbeiter sprechen?')).toBe(true);
+	expect(asksForStaff('Quiero hablar con una persona')).toBe(true);
+	expect(asksForStaff('Je veux parler à quelqu\'un')).toBe(true);
+	expect(asksForStaff('Хочу поговорить с человеком')).toBe(true);
+	expect(asksForStaff('转人工')).toBe(true);
+	expect(asksForStaff('スタッフと話したい')).toBe(true);
+	expect(asksForStaff('직원과 통화하고 싶어요')).toBe(true);
 	expect(asksForStaff('How much do I need to pay per person?')).toBe(false);
+	expect(asksForStaff('Can we talk about the price per person?')).toBe(false);
 	expect(asksForStaff('We want a villa for 4 people')).toBe(false);
+	expect(asksForStaff('มีพนักงานทำความสะอาดไหม')).toBe(false);
+	expect(asksForStaff('직원이 있나요?')).toBe(false);
+	expect(asksForStaff('Gibt es Mitarbeiter vor Ort?')).toBe(false);
+});
+
+it('caps staff alerts globally so anonymous sessions cannot flood the owner', async () => {
+	const t = convexTest(schema, modules);
+	await t.run(async ctx => await ctx.db.insert('rateLimits', { key: 'staff-alert:global', count: 30, expiresAt: Date.now() + 60 * 60 * 1000 }));
+	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: Date.now() }));
+	await t.mutation(api.chat.addMessage, { sessionId, role: 'user', content: 'I need a human agent' });
+	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeFalsy();
 });
 
 it('treats missing email configuration as a non-fatal skip', async () => {

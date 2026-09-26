@@ -3,6 +3,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation } from './_generated/server';
 import { releaseBookingDates } from './lib/availabilityWrites';
+import { resortLocalParts } from './lib/serviceSlots';
 
 export const PENDING_BOOKING_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -46,10 +47,11 @@ export const queueLifecycleEmails = internalMutation({
       console.warn('RESEND_API_KEY or EMAIL_FROM not configured, skipping lifecycle emails');
       return 0;
     }
-    const today = args.today ?? new Date().toISOString().slice(0, 10);
+    // Booking dates are resort-local (Asia/Bangkok) calendar days, so "today" must be too.
+    const today = args.today ?? resortLocalParts(Date.now()).date;
     const day = (offset: number) => new Date(Date.parse(`${today}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
     const page = args.kind === 'preArrival'
-      ? await ctx.db.query('bookings').withIndex('by_status_checkIn', q => q.eq('status', 'confirmed').gte('checkIn', today).lte('checkIn', day(3))).paginate({ numItems: 50, cursor: args.cursor ?? null })
+      ? await ctx.db.query('bookings').withIndex('by_status_checkIn', q => q.eq('status', 'confirmed').gte('checkIn', day(1)).lte('checkIn', day(3))).paginate({ numItems: 50, cursor: args.cursor ?? null })
       : await ctx.db.query('bookings').withIndex('by_status_checkOut', q => q.eq('status', 'confirmed').gte('checkOut', day(-7)).lte('checkOut', day(-1))).paginate({ numItems: 50, cursor: args.cursor ?? null });
     let queued = 0;
     for (const booking of page.page) {
@@ -74,6 +76,7 @@ const crons = cronJobs();
 crons.interval('expire unpaid bookings', { hours: 1 }, internal.crons.expirePending, {});
 crons.interval('sync OTA calendars', { minutes: 30 }, internal.ical.syncAll, {});
 crons.interval('clean rate limits', { hours: 1 }, internal.crons.cleanRateLimits, {});
-crons.interval('queue pre-arrival emails', { hours: 24 }, internal.crons.queueLifecycleEmails, { kind: 'preArrival' });
-crons.interval('queue review emails', { hours: 24 }, internal.crons.queueLifecycleEmails, { kind: 'review' });
+// 09:00 Asia/Bangkok, so guests get these in the resort's morning rather than at a deploy-relative time.
+crons.daily('queue pre-arrival emails', { hourUTC: 2, minuteUTC: 0 }, internal.crons.queueLifecycleEmails, { kind: 'preArrival' });
+crons.daily('queue review emails', { hourUTC: 2, minuteUTC: 10 }, internal.crons.queueLifecycleEmails, { kind: 'review' });
 export default crons;

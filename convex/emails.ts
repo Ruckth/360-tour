@@ -251,7 +251,7 @@ export const sendStaffAlert = internalAction({
 				const { error } = await new Resend(apiKey).emails.send({
 					from, to: owner,
 					subject: `Guest needs help on ${args.channel}`,
-					html: `<p><strong>Channel:</strong> ${escapeHtml(args.channel)}</p><p><strong>Guest:</strong> ${escapeHtml(args.guestName)}</p><p><strong>Last message:</strong> ${escapeHtml(args.lastMessage)}</p>${link ? `<p><a href="${escapeHtml(link)}">Open this chat in admin</a></p>` : ''}`
+					html: `<p><strong>Channel:</strong> ${escapeHtml(args.channel)}</p><p><strong>Guest:</strong> ${escapeHtml(args.guestName)}</p><p><strong>Last message:</strong></p><p style="white-space: pre-wrap;">${escapeHtml(args.lastMessage)}</p>${link ? `<p><a href="${escapeHtml(link)}">Open this chat in admin</a></p>` : ''}`
 				});
 				if (error) console.error('Failed to send staff alert email:', error);
 			} catch (error) {
