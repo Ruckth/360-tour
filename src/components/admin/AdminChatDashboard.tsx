@@ -59,6 +59,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
+import { AdminLeadsView } from "@/components/admin/AdminLeadsView";
+import { AdminPropertiesView } from "@/components/admin/AdminPropertiesView";
 import { ADMIN_VIEW_TITLES, AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminStaffBookingsView } from "@/components/admin/AdminStaffBookingsView";
 import { adminRoute, adminViewPath } from "@/components/admin/admin-routes";
@@ -982,6 +984,10 @@ function AdminChatLiveDashboard({ userEmail }: { userEmail?: string }) {
         <AdminStaffBookingsView tab={staffTab} />
       ) : view === "questions" ? (
         <AdminQuestionsView />
+      ) : view === "properties" ? (
+        <AdminPropertiesView />
+      ) : view === "leads" ? (
+        <AdminLeadsView />
       ) : (
       <>
       <div className="grid min-h-0 w-full flex-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)]">

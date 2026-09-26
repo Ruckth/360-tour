@@ -1,6 +1,8 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { api } from "convex/_generated/api";
+import type { FunctionReturnType } from "convex/server";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -13,9 +15,11 @@ import type { Property } from "@/lib/data/properties";
 import { rooms as allRooms } from "@/lib/data/rooms";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { localizeRooms } from "@/lib/i18n/public-content";
+import { useConvexQuery } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
+const tourRoomsQuery = api.properties.getTourRooms;
 
 export function TourViewer({
   property,
@@ -27,7 +31,23 @@ export function TourViewer({
   const locale = useLocale();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
-  const localizedRooms = useMemo(() => localizeRooms(allRooms, locale), [locale]);
+  const liveRooms = useConvexQuery<FunctionReturnType<typeof tourRoomsQuery>>(
+    tourRoomsQuery, { slug: property.id }, null,
+  ).data;
+  const localizedRooms = useMemo(() => {
+    const translated = localizeRooms(allRooms, locale);
+    if (!liveRooms) return translated;
+    const savedBySlug = new Map(liveRooms.map((room) => [room.slug, room]));
+    return translated.map((room, index) => {
+      const saved = savedBySlug.get(room.id);
+      if (!saved) return room;
+      return {
+        ...room,
+        name: saved.name === allRooms[index].name ? room.name : saved.name,
+        imagePath: saved.imagePath,
+      };
+    });
+  }, [locale, liveRooms]);
   const activeRooms = useMemo(
     () =>
       property.tourRoomIds
