@@ -5,16 +5,18 @@ import { assertValidEmail, normalizeEmail } from './lib/validation';
 import { requireAdmin } from './lib/adminAuth';
 import { enforceRateLimit } from './lib/rateLimit';
 
+const leadSource = v.union(
+	v.literal('tour_completion'),
+	v.literal('chat'),
+	v.literal('booking_abandonment')
+);
+
 export const save = mutation({
 	args: {
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
 		email: v.string(),
-		source: v.union(
-			v.literal('tour_completion'),
-			v.literal('chat'),
-			v.literal('booking_abandonment')
-		)
+		source: leadSource
 	},
 	handler: async (ctx, args) => {
 		const email = normalizeEmail(args.email);
@@ -51,9 +53,14 @@ export const save = mutation({
 });
 
 export const list = query({
-	args: { paginationOpts: paginationOptsValidator },
+	args: { paginationOpts: paginationOptsValidator, source: v.optional(leadSource) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		return await ctx.db.query('leads').order('desc').paginate(args.paginationOpts);
+		const newest = ctx.db.query('leads').order('desc');
+		const { source } = args;
+		// Filtered pages can come back short; the client keeps loading until isDone.
+		return await (source ? newest.filter((q) => q.eq(q.field('source'), source)) : newest).paginate(
+			args.paginationOpts
+		);
 	}
 });
