@@ -121,7 +121,6 @@
     "previousPhoto": "Предыдущее фото",
     "nextPhoto": "Следующее фото",
     "directRate": "Прямой тариф",
-    "saveAmount": "Экономия ฿{amount}",
     "bookDirect": "Бронировать напрямую",
     "explore360First": "Сначала 360°",
     "directBenefits": "Преимущества прямого бронирования",
@@ -502,7 +501,17 @@
       "noServiceFees": "Без сервисных сборов",
       "freeCancellation": "Бесплатная отмена (48 ч)",
       "directWhatsappSupport": "Прямая поддержка WhatsApp"
-    }
+    },
+    "compareTitle": "Напрямую или через OTA",
+    "perNight": "За ночь",
+    "forNights": "Итого, ночей: {count}",
+    "directLabel": "Напрямую на нашем сайте",
+    "save": "Экономия {amount}",
+    "youSave": "Экономия до {amount} при прямом бронировании",
+    "ratesChecked": "Цены указаны по данным каждого сайта, последняя проверка {date}. Их тарифы и сборы могут измениться.",
+    "viewListing": "Открыть объявление на {platform}",
+    "directDiscount": "Скидка {percent}% напрямую",
+    "standardRate": "Стандартная цена"
   },
   "Reviews": {
     "pv-r1": {

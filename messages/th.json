@@ -121,7 +121,6 @@
     "previousPhoto": "รูปก่อนหน้า",
     "nextPhoto": "รูปถัดไป",
     "directRate": "ราคาจองตรง",
-    "saveAmount": "ประหยัด ฿{amount}",
     "bookDirect": "จองตรง",
     "explore360First": "ชม 360° ก่อน",
     "directBenefits": "สิทธิประโยชน์จองตรง",
@@ -502,7 +501,17 @@
       "noServiceFees": "ไม่มีค่าบริการ",
       "freeCancellation": "ยกเลิกฟรี (48 ชม.)",
       "directWhatsappSupport": "ช่วยเหลือผ่าน WhatsApp โดยตรง"
-    }
+    },
+    "compareTitle": "จองตรง เทียบกับ OTA",
+    "perNight": "ต่อคืน",
+    "forNights": "รวม {count} คืน",
+    "directLabel": "จองตรงกับเว็บไซต์เรา",
+    "save": "ประหยัด {amount}",
+    "youSave": "ประหยัดสูงสุด {amount} เมื่อจองตรง",
+    "ratesChecked": "ราคาตามที่แสดงบนแต่ละเว็บไซต์ ตรวจสอบล่าสุด {date} ราคาและค่าธรรมเนียมอาจเปลี่ยนแปลงได้",
+    "viewListing": "ดูประกาศบน {platform}",
+    "directDiscount": "ลด {percent}% เมื่อจองตรง",
+    "standardRate": "ราคาปกติ"
   },
   "Reviews": {
     "pv-r1": {

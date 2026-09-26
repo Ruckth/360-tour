@@ -121,7 +121,6 @@
     "previousPhoto": "Previous photo",
     "nextPhoto": "Next photo",
     "directRate": "Direct Rate",
-    "saveAmount": "Save ฿{amount}",
     "bookDirect": "Book Direct",
     "explore360First": "Explore 360 First",
     "directBenefits": "Direct booking benefits",
@@ -502,7 +501,17 @@
       "noServiceFees": "No service fees",
       "freeCancellation": "Free cancellation (48h)",
       "directWhatsappSupport": "Direct WhatsApp support"
-    }
+    },
+    "compareTitle": "Book direct vs OTAs",
+    "perNight": "Per night",
+    "forNights": "{count}-night total",
+    "directLabel": "Direct on our site",
+    "save": "Save {amount}",
+    "youSave": "You save up to {amount} by booking direct",
+    "ratesChecked": "Prices as listed on each site, last checked {date}. Their rates and fees can change.",
+    "viewListing": "View listing on {platform}",
+    "directDiscount": "{percent}% off direct",
+    "standardRate": "Standard rate"
   },
   "Reviews": {
     "pv-r1": {

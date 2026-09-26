@@ -121,7 +121,6 @@
     "previousPhoto": "上一张照片",
     "nextPhoto": "下一张照片",
     "directRate": "直接预订价",
-    "saveAmount": "节省 ฿{amount}",
     "bookDirect": "直接预订",
     "explore360First": "先看 360°",
     "directBenefits": "直接预订礼遇",
@@ -502,7 +501,17 @@
       "noServiceFees": "无服务费",
       "freeCancellation": "48小时免费取消",
       "directWhatsappSupport": "WhatsApp 直接支持"
-    }
+    },
+    "compareTitle": "直接预订 vs OTA 平台",
+    "perNight": "每晚",
+    "forNights": "共 {count} 晚总价",
+    "directLabel": "官网直接预订",
+    "save": "省 {amount}",
+    "youSave": "直接预订最多可省 {amount}",
+    "ratesChecked": "价格为各平台所列价格，最近核对于 {date}。其价格和费用可能会变动。",
+    "viewListing": "在 {platform} 查看房源",
+    "directDiscount": "直订优惠 {percent}%",
+    "standardRate": "标准价"
   },
   "Reviews": {
     "pv-r1": {

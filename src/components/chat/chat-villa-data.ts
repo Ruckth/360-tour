@@ -1,4 +1,4 @@
-import type { BookingProperty } from "@/lib/booking/booking";
+import { DEMO_DIRECT_DISCOUNT_PERCENT, type BookingProperty } from "@/lib/booking/booking";
 import { resort } from "@/lib/data/resort-config";
 import { getLocalizedProperties, localizePropertyLike } from "@/lib/i18n/public-content";
 import type { LivePropertyRow } from "@/lib/react/convex-api";
@@ -19,7 +19,7 @@ export function getDemoChatProperties(locale: string): BookingProperty[] {
     _id: `demo-${property.id}`,
     slug: property.id,
     currency: resort.currency,
-    directDiscountPercent: 15,
+    directDiscountPercent: DEMO_DIRECT_DISCOUNT_PERCENT,
     source: "demo",
   }));
 }

@@ -51,7 +51,6 @@ import type * as properties from "../properties.js";
 import type * as seed from "../seed.js";
 import type * as seeds_aiEvalData from "../seeds/aiEvalData.js";
 import type * as seeds_curatedQuestions from "../seeds/curatedQuestions.js";
-import type * as seeds_pricing from "../seeds/pricing.js";
 import type * as seeds_properties from "../seeds/properties.js";
 import type * as seeds_recentBookings from "../seeds/recentBookings.js";
 import type * as seeds_reviews from "../seeds/reviews.js";
@@ -113,7 +112,6 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   "seeds/aiEvalData": typeof seeds_aiEvalData;
   "seeds/curatedQuestions": typeof seeds_curatedQuestions;
-  "seeds/pricing": typeof seeds_pricing;
   "seeds/properties": typeof seeds_properties;
   "seeds/recentBookings": typeof seeds_recentBookings;
   "seeds/reviews": typeof seeds_reviews;

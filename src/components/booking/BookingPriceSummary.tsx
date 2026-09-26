@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { Card } from "@/components/ui/card";
 import type { BookingProperty } from "@/lib/booking/booking";
@@ -21,6 +22,7 @@ export function BookingPriceSummary({
 }) {
   const t = useTranslations("Booking");
   const villaT = useTranslations("Villa");
+  const comparison = useOtaComparison(property.slug);
   return (
     <Card className="h-fit min-w-0 p-4 shadow-lg md:p-5">
       <div className="flex gap-3 lg:block">
@@ -59,6 +61,15 @@ export function BookingPriceSummary({
           <span>{resort.currencySymbol}{total.toLocaleString()}</span>
         </div>
       </div>
+      {comparison ? (
+        <OtaRateComparison
+          className="mt-4"
+          rates={comparison.rates}
+          pricePerNight={property.pricePerNight}
+          discountPercent={property.directDiscountPercent}
+          nights={nights}
+        />
+      ) : null}
     </Card>
   );
 }

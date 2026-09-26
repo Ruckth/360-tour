@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   bookingSteps,
+  DEMO_DIRECT_DISCOUNT_PERCENT,
   getHighestAllowedStepIndex,
   isValidGuestInfo,
   type BookingMode,
@@ -78,7 +79,7 @@ function getDemoInventory(locale: string): BookingProperty[] {
     _id: `demo-${property.id}`,
     slug: property.id,
     currency: resort.currency,
-    directDiscountPercent: 15,
+    directDiscountPercent: DEMO_DIRECT_DISCOUNT_PERCENT,
     source: "demo",
   }));
 }
