@@ -43,6 +43,19 @@ export const getRooms = query({
 	}
 });
 
+/** Public room content for the guest tour. */
+export const getTourRooms = query({
+	args: { slug: v.string() },
+	handler: async (ctx, args) => {
+		const property = await ctx.db.query('properties')
+			.withIndex('by_slug', (q) => q.eq('slug', args.slug)).unique();
+		if (!property || property.status !== 'active') return null;
+		const rooms = await ctx.db.query('rooms')
+			.withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(50);
+		return rooms.map(({ slug, name, imagePath }) => ({ slug, name, imagePath }));
+	}
+});
+
 /** Public: live direct pricing plus owner-entered OTA rates for an active villa. */
 export const getOtaComparison = query({
 	args: { slug: v.string() },
@@ -169,8 +182,8 @@ export const getTourSnippets = query({
 	}
 });
 
-// Admin editing. Properties and rooms are never deleted (bookings reference
-// them); hide a villa from guests with status 'draft' or 'archived'.
+// Admin editing. Properties and rooms are never deleted because bookings reference
+// them. Draft and archived villas are excluded from live booking and chat queries.
 
 const propertyStatus = v.union(v.literal('active'), v.literal('draft'), v.literal('archived'));
 function required(value: string, label: string): string {
@@ -271,4 +284,3 @@ export const updateRoom = mutation({
 		});
 	}
 });
-

@@ -35,7 +35,7 @@ describe('admin property editing', () => {
 		await expect(stranger.mutation(api.properties.updateRoom, { roomId, name: 'X' })).rejects.toThrow('Not authorized');
 	});
 
-	it('updates property fields and hides inactive villas from guests', async () => {
+	it('updates property fields and excludes inactive villas from the public list', async () => {
 		const { t, admin, propertyId } = await setup();
 		await admin.mutation(api.properties.update, {
 			propertyId, name: '  Tideglass Residence ', currency: 'usd', pricePerNight: 300, directDiscountPercent: 15,
@@ -62,9 +62,13 @@ describe('admin property editing', () => {
 	});
 
 	it('updates rooms', async () => {
-		const { t, admin, roomId } = await setup();
-		await admin.mutation(api.properties.updateRoom, { roomId, name: 'Living room' });
-		expect(await t.run((ctx) => ctx.db.get(roomId))).toMatchObject({ name: 'Living room', imagePath: '/living.webp' });
+		const { t, admin, propertyId, roomId } = await setup();
+		await admin.mutation(api.properties.updateRoom, { roomId, name: 'Living room', imagePath: '/new-living.webp' });
+		expect(await t.query(api.properties.getTourRooms, { slug: 'pool-villa' })).toEqual([
+			{ slug: 'living', name: 'Living room', imagePath: '/new-living.webp' }
+		]);
+		await admin.mutation(api.properties.update, { propertyId, status: 'draft' });
+		expect(await t.query(api.properties.getTourRooms, { slug: 'pool-villa' })).toBeNull();
 		await expect(admin.mutation(api.properties.updateRoom, { roomId, name: '' })).rejects.toThrow('Room name is required');
 	});
 
