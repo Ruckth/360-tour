@@ -268,7 +268,9 @@ export default defineSchema({
 	rateLimits: defineTable({
 		key: v.string(),
 		count: v.number(),
-		expiresAt: v.number()
+		expiresAt: v.number(),
+		// Staff alerts keep at most 30 timestamps for a rolling one-hour cap.
+		timestamps: v.optional(v.array(v.number()))
 	}).index('by_key', ['key']).index('by_expiresAt', ['expiresAt']),
 
 	pricing: defineTable({

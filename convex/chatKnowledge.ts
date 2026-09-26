@@ -13,7 +13,6 @@ import type { Doc, Id } from './_generated/dataModel';
 import { callAI, type ChatMessage } from './lib/chatLlm';
 import { requireAdmin } from './lib/adminAuth';
 import { normalizeSuggestedQuestion } from './lib/chatSuggestions';
-import { enforceRateLimit } from './lib/rateLimit';
 
 const answerStatusValidator = v.union(
 	v.literal('draft'),
@@ -82,15 +81,27 @@ export function asksForStaff(message: string) {
 	return STAFF_REQUEST.test(message);
 }
 
+async function claimStaffAlertSlot(ctx: MutationCtx, now: number) {
+	const key = 'staff-alert:global';
+	const hour = 60 * 60 * 1000;
+	const row = await ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', key)).unique();
+	// The count fallback handles a row created by the old fixed-window limiter.
+	const recent = row?.timestamps?.filter(time => time > now - hour)
+		?? (row && row.expiresAt > now ? Array(Math.min(row.count, 30)).fill(now) as number[] : []);
+	if (recent.length >= 30) return false;
+	const timestamps = [...recent, now];
+	if (row) await ctx.db.patch(row._id, { count: timestamps.length, expiresAt: now + hour, timestamps });
+	else await ctx.db.insert('rateLimits', { key, count: 1, expiresAt: now + hour, timestamps });
+	return true;
+}
+
 export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'chatSessions'>, message: string) {
 	const session = await ctx.db.get(sessionId);
 	if (!session) return false;
 	const now = Date.now();
 	if (session.lastStaffAlertAt && now - session.lastStaffAlertAt < 30 * 60 * 1000) return false;
-	// Sessions are created by anonymous clients, so a per-session throttle alone can't bound alert volume.
-	try {
-		await enforceRateLimit(ctx, 'staff-alert:global', 30, 60 * 60 * 1000);
-	} catch {
+	// Sessions are created by anonymous clients, so enforce a rolling global hour as well.
+	if (!(await claimStaffAlertSlot(ctx, now))) {
 		console.warn('Staff alert rate limit reached, skipping alert for session', sessionId);
 		return false;
 	}

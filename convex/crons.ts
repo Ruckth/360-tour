@@ -77,6 +77,6 @@ crons.interval('expire unpaid bookings', { hours: 1 }, internal.crons.expirePend
 crons.interval('sync OTA calendars', { minutes: 30 }, internal.ical.syncAll, {});
 crons.interval('clean rate limits', { hours: 1 }, internal.crons.cleanRateLimits, {});
 // 09:00 Asia/Bangkok, so guests get these in the resort's morning rather than at a deploy-relative time.
-crons.daily('queue pre-arrival emails', { hourUTC: 2, minuteUTC: 0 }, internal.crons.queueLifecycleEmails, { kind: 'preArrival' });
-crons.daily('queue review emails', { hourUTC: 2, minuteUTC: 10 }, internal.crons.queueLifecycleEmails, { kind: 'review' });
+crons.cron('queue pre-arrival emails', '0 2 * * *', internal.crons.queueLifecycleEmails, { kind: 'preArrival' });
+crons.cron('queue review emails', '0 2 * * *', internal.crons.queueLifecycleEmails, { kind: 'review' });
 export default crons;

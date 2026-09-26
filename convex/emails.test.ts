@@ -101,6 +101,21 @@ it('caps staff alerts globally so anonymous sessions cannot flood the owner', as
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeFalsy();
 });
 
+it('uses a rolling hour for the global staff alert cap', async () => {
+	const t = convexTest(schema, modules);
+	const now = Date.now();
+	await t.run(async ctx => await ctx.db.insert('rateLimits', {
+		key: 'staff-alert:global', count: 30, expiresAt: now + 60 * 60 * 1000,
+		timestamps: [now - 61 * 60 * 1000, ...Array(29).fill(now - 30 * 60 * 1000)]
+	}));
+	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: now }));
+	await t.mutation(api.chat.addMessage, { sessionId, role: 'user', content: 'I need a human agent' });
+	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeTruthy();
+	const limit = await t.run(async ctx => await ctx.db.query('rateLimits')
+		.withIndex('by_key', q => q.eq('key', 'staff-alert:global')).unique());
+	expect(limit?.timestamps).toHaveLength(30);
+});
+
 it('treats missing email configuration as a non-fatal skip', async () => {
 	vi.stubEnv('RESEND_API_KEY', '');
 	vi.stubEnv('EMAIL_FROM', '');

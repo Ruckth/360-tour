@@ -174,7 +174,16 @@ export const sendOwnerNotification = internalAction({
 
 type LifecycleKind = 'cancellation' | 'preArrival' | 'review';
 
-async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kind: LifecycleKind) {
+async function retryLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kind: LifecycleKind, attempt: number) {
+	if (attempt >= 3) return;
+	const delay = 5 * 60 * 1000 * 2 ** attempt;
+	const args = { bookingId, attempt: attempt + 1 };
+	if (kind === 'cancellation') await ctx.scheduler.runAfter(delay, internal.emails.sendCancellation, args);
+	else if (kind === 'preArrival') await ctx.scheduler.runAfter(delay, internal.emails.sendPreArrival, args);
+	else await ctx.scheduler.runAfter(delay, internal.emails.sendReviewRequest, args);
+}
+
+async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kind: LifecycleKind, attempt = 0) {
 	const details: { guestName: string; guestEmail: string; propertyName: string; checkIn: string; checkOut: string } | null =
 		await ctx.runQuery(internal.bookings.getLifecycleEmailDetails, { bookingId, kind });
 	if (!details) return { sent: false, reason: 'booking_not_eligible' };
@@ -202,32 +211,35 @@ async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kin
 			html: `<p>Hi ${name},</p><p>Thank you for staying at ${property}. We hope you enjoyed your visit. Please reply and let us know how it went.</p>`
 		}
 	}[kind];
+	let failureReason = 'send_failed';
 	try {
 		const { error } = await new Resend(apiKey).emails.send({ from, to: details.guestEmail, ...content });
 		if (error) {
 			console.error(`Failed to send ${kind} email:`, error);
-			return { sent: false, reason: error.message };
+			failureReason = error.message;
+		} else {
+			return { sent: true };
 		}
-		return { sent: true };
 	} catch (error) {
 		console.error(`Failed to send ${kind} email:`, error);
-		return { sent: false, reason: 'send_failed' };
 	}
+	await retryLifecycleEmail(ctx, bookingId, kind, attempt);
+	return { sent: false, reason: failureReason };
 }
 
 export const sendCancellation = internalAction({
-	args: { bookingId: v.id('bookings') },
-	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'cancellation')
+	args: { bookingId: v.id('bookings'), attempt: v.optional(v.number()) },
+	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'cancellation', args.attempt)
 });
 
 export const sendPreArrival = internalAction({
-	args: { bookingId: v.id('bookings') },
-	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'preArrival')
+	args: { bookingId: v.id('bookings'), attempt: v.optional(v.number()) },
+	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'preArrival', args.attempt)
 });
 
 export const sendReviewRequest = internalAction({
-	args: { bookingId: v.id('bookings') },
-	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'review')
+	args: { bookingId: v.id('bookings'), attempt: v.optional(v.number()) },
+	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'review', args.attempt)
 });
 
 export const sendStaffAlert = internalAction({
