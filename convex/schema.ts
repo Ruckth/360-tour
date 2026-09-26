@@ -287,6 +287,15 @@ export default defineSchema({
 		)
 	}).index('by_property', ['propertyId']),
 
+	// Owner-entered OTA nightly rates for the guest "book direct vs OTA" comparison.
+	otaRates: defineTable({
+		propertyId: v.id('properties'),
+		platform: v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia')),
+		nightlyRate: v.number(),
+		url: v.optional(v.string()),
+		updatedAt: v.number()
+	}).index('by_property_platform', ['propertyId', 'platform']),
+
 	// Phase 2: Availability & iCal sync
 	icalSources: defineTable({
 		propertyId: v.id('properties'),
