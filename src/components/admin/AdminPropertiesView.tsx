@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { ChevronLeft, Loader2, Pencil, PlusIcon, Trash2 } from "lucide-react";
+import { ChevronLeft, Loader2, Pencil } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -238,12 +238,6 @@ function OtaRatesSection({ property }: { property: Property }) {
       </Button>
       <OtaRatesDialog open={open} onClose={() => setOpen(false)} properties={[property]} />
     </Section>
-  );
-}
-
-function NumberInput({ label, value, max, onChange }: { label: string; value: string; max?: number; onChange: (value: string) => void }) {
-  return (
-    <Input aria-label={label} title={label} type="number" min={0} max={max} value={value} onChange={(e) => onChange(e.target.value)} required />
   );
 }
 
