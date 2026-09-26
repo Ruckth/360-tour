@@ -81,12 +81,14 @@ Set these in the Convex production deployment:
 | `AI_API_BASE_URL` | No | Use `https://api.x.ai/v1` for xAI. |
 | `AI_SIMPLE_MODEL` | No | Current expected value is `grok-4.3`. |
 | `AI_COMPLEX_MODEL` | No | Current expected value is `grok-4.3`. |
-| `RESEND_API_KEY` | Yes for booking email | Resend API key; verify the sending domain before launch. |
-| `EMAIL_FROM` | Yes for booking email | Sender address at a verified Resend domain, for example `Auralis Cove <bookings@your-domain.com>`. |
+| `RESEND_API_KEY` | Yes for booking and alert email | Resend API key; verify the sending domain before launch. |
+| `EMAIL_FROM` | Yes for booking and alert email | Sender address at a verified Resend domain, for example `Auralis Cove <bookings@your-domain.com>`. |
 | `STRIPE_SECRET_KEY` | Yes for live payments | Stripe secret API key; keep in Convex, never in a public variable. |
 | `STRIPE_WEBHOOK_SECRET` | Yes for live payments | Signing secret for the Convex webhook endpoint. |
-| `SITE_URL` | Yes for live payments | Canonical public site origin for Stripe return URLs. |
-| `OWNER_NOTIFICATION_EMAIL` | Yes for owner email | Recipient for automatic notifications after booking confirmation. |
+| `SITE_URL` | Yes for live payments and staff alerts | Canonical public site origin for Stripe return URLs and admin chat links. |
+| `OWNER_NOTIFICATION_EMAIL` | Yes for owner email | Recipient for booking confirmations and guest handoff alerts. |
+| `STAFF_LINE_USER_ID` | Optional | Staff LINE user ID for guest handoff alerts; also set `LINE_CHANNEL_ACCESS_TOKEN` in Convex to enable delivery. |
+| `LINE_CHANNEL_ACCESS_TOKEN` | If using staff LINE alerts | Messaging API token used to push alerts to `STAFF_LINE_USER_ID`. |
 
 Convex environment variables can be managed in the Convex dashboard or with:
 

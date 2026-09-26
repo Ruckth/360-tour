@@ -9,6 +9,7 @@ import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';
+import { asksForStaff } from './chatKnowledge';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
 const chatChannelValidator = v.union(
@@ -559,6 +560,12 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 			}
 
 			args.toolTrace?.push({ name: fnName, args: fnArgs, result: toolResult });
+			if (toolResult.includes('Offer to connect the guest with the host.')) {
+				await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
+					sessionId: args.sessionId,
+					lastMessage: args.userMessage
+				}).catch((error) => console.error('Could not queue staff handoff alert:', error));
+			}
 			apiMessages.push({
 				role: 'tool',
 				content: toolResult,
@@ -572,6 +579,12 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	// Some models keep calling tools past the round limit; force a plain-text answer from the results so far.
 	if (!response.content?.trim()) {
 		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, []);
+	}
+	if (asksForStaff(response.content ?? '') || /\bput you in touch\b.{0,60}\b(host|staff|human|person|team)\b/i.test(response.content ?? '')) {
+		await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
+			sessionId: args.sessionId,
+			lastMessage: args.userMessage
+		}).catch((error) => console.error('Could not queue staff handoff alert:', error));
 	}
 
 	return {

@@ -97,6 +97,9 @@ export default defineSchema({
 		stripeCheckoutUrl: v.optional(v.string()),
 		stripeCheckoutExpiresAt: v.optional(v.number()),
 		confirmationEmailsQueuedAt: v.optional(v.number()),
+		cancellationEmailQueuedAt: v.optional(v.number()),
+		preArrivalEmailQueuedAt: v.optional(v.number()),
+		reviewEmailQueuedAt: v.optional(v.number()),
 		paymentStatus: v.union(
 			v.literal('pending'),
 			v.literal('paid'),
@@ -117,6 +120,8 @@ export default defineSchema({
 		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status'])
 		.index('by_status_createdAt', ['status', 'createdAt'])
+		.index('by_status_checkIn', ['status', 'checkIn'])
+		.index('by_status_checkOut', ['status', 'checkOut'])
 		.index('by_stripePaymentIntentId', ['stripePaymentIntentId'])
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone']),
@@ -264,7 +269,9 @@ export default defineSchema({
 	rateLimits: defineTable({
 		key: v.string(),
 		count: v.number(),
-		expiresAt: v.number()
+		expiresAt: v.number(),
+		// Staff alerts keep at most 30 timestamps for a rolling one-hour cap.
+		timestamps: v.optional(v.array(v.number()))
 	}).index('by_key', ['key']).index('by_expiresAt', ['expiresAt']),
 
 	// Legacy seeded OTA fee estimates; no longer read (see otaRates). Kept so existing deployments with rows still validate.
@@ -358,6 +365,7 @@ export default defineSchema({
 		viewportSize: v.optional(v.string()),
 		platform: v.optional(v.string()),
 		lastSeenAt: v.optional(v.number()),
+		lastStaffAlertAt: v.optional(v.number()),
 		lastOpenedAt: v.optional(v.number()),
 		lastClosedAt: v.optional(v.number()),
 		messageCount: v.optional(v.number()),
