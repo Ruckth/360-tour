@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { errorText } from "@/lib/staff-bookings";
 import { useConfirm } from "./ConfirmDialog";
+import { HotspotEditorDialog } from "./HotspotEditorDialog";
 import { RoomHotspotList } from "./RoomHotspotList";
 import { Field, IMAGE_ACCEPT, panoramaWarning, SaveBar, SaveStatus, Section, Thumb, useImageUpload, useSaver } from "./property-form";
 
@@ -79,7 +80,7 @@ function RoomCard({
   const fileInput = useRef<HTMLInputElement>(null);
   const [imagePath, setImagePath] = useState(room.imagePath);
   const [warning, setWarning] = useState<string | null>(null);
-  const [showHotspots, setShowHotspots] = useState(false);
+  const [editingHotspots, setEditingHotspots] = useState(false);
   const linkedFrom = rooms.filter((other) => other.hotspots.some((hotspot) => hotspot.targetRoomSlug === room.slug));
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -141,9 +142,15 @@ function RoomCard({
           <Upload aria-hidden className="size-4" />
           Replace panorama
         </Button>
-        <Button size="sm" variant={showHotspots ? "secondary" : "outline"} onClick={() => setShowHotspots((open) => !open)} aria-expanded={showHotspots}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={rooms.length < 2}
+          title={rooms.length < 2 ? "Add another room first; hotspots move guests between rooms." : undefined}
+          onClick={() => setEditingHotspots(true)}
+        >
           <MapPin aria-hidden className="size-4" />
-          Hotspots ({room.hotspots.length})
+          Edit hotspots ({room.hotspots.length})
         </Button>
         <span className="flex-1" />
         <Button size="icon" variant="ghost" className="size-8" disabled={!onMoveUp || reordering} onClick={onMoveUp} aria-label={`Move ${room.name} earlier in the tour`}>
@@ -156,7 +163,15 @@ function RoomCard({
           <Trash2 aria-hidden className="size-4" />
         </Button>
       </div>
-      {showHotspots ? <RoomHotspotList key={JSON.stringify(room.hotspots)} room={room} rooms={rooms} /> : null}
+      {rooms.length > 1 ? (
+        <details>
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Advanced: exact hotspot positions</summary>
+          <div className="mt-2">
+            <RoomHotspotList key={JSON.stringify(room.hotspots)} room={room} rooms={rooms} />
+          </div>
+        </details>
+      ) : null}
+      {editingHotspots ? <HotspotEditorDialog room={room} rooms={rooms} onClose={() => setEditingHotspots(false)} /> : null}
     </li>
   );
 }
