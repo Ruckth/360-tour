@@ -11,6 +11,7 @@ import { getFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';
 import { asksForStaff } from './chatKnowledge';
+import type { PublicProperty } from './properties';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
 const chatChannelValidator = v.union(
@@ -433,7 +434,7 @@ export async function generateConciergeReply(
 	args: GenerateConciergeReplyArgs,
 	session: Doc<'chatSessions'>
 ): Promise<{ response: string; model: string }> {
-	const properties: Doc<'properties'>[] = await ctx.runQuery(api.properties.list, {});
+	const properties: PublicProperty[] = await ctx.runQuery(api.properties.list, {});
 
 	const settings: EffectiveSettings = await ctx.runQuery(internal.settings.effective, {});
 	const propertyContext = properties

@@ -6,31 +6,41 @@ import { requireAdmin } from './lib/adminAuth';
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
 const MAX_NIGHTLY_RATE = 10_000_000;
 
+export type PublicProperty = Omit<Doc<'properties'>, 'icalExportToken' | 'tenantId'>;
+
+/** Public queries never expose the private iCal export token or tenant link. */
+function toPublic(property: Doc<'properties'> | null): PublicProperty | null {
+	if (!property || property.status !== 'active') return null;
+	const { icalExportToken: _token, tenantId: _tenant, ...rest } = property;
+	return rest;
+}
+
 export const list = query({
 	args: {},
-	handler: async (ctx) => {
-		return await ctx.db
+	handler: async (ctx): Promise<PublicProperty[]> => {
+		const properties = await ctx.db
 			.query('properties')
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
 			.take(100);
+		return properties.flatMap((property) => toPublic(property) ?? []);
 	}
 });
 
 export const getBySlug = query({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('properties')
-			.withIndex('by_slug', (q) => q.eq('slug', args.slug))
-			.first();
+		return toPublic(
+			await ctx.db
+				.query('properties')
+				.withIndex('by_slug', (q) => q.eq('slug', args.slug))
+				.first()
+		);
 	}
 });
 
 export const getById = query({
 	args: { id: v.id('properties') },
-	handler: async (ctx, args) => {
-		return await ctx.db.get(args.id);
-	}
+	handler: async (ctx, args) => toPublic(await ctx.db.get(args.id))
 });
 
 export const getRooms = query({
