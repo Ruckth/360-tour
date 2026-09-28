@@ -15,11 +15,9 @@ import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { StarRating } from "@/components/social/StarRating";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import type { Property } from "@/lib/data/properties";
-import {
-  getLocalizedResort,
-  getLocalizedSocialProofByPropertyId,
-} from "@/lib/i18n/public-content";
+import type { Review } from "@/lib/data/reviews";
+import { getLocalizedResort } from "@/lib/i18n/public-content";
+import type { PublicVilla } from "@/lib/villas";
 import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
 
 const TourViewer = dynamic(
@@ -27,7 +25,7 @@ const TourViewer = dynamic(
   { ssr: false },
 );
 
-export function RoomDetailClient({ property }: { property: Property }) {
+export function RoomDetailClient({ property, reviews }: { property: PublicVilla; reviews: Review[] }) {
   const router = useRouter();
   const locale = useLocale();
   const navT = useTranslations("Nav");
@@ -39,7 +37,6 @@ export function RoomDetailClient({ property }: { property: Property }) {
   const setChatContext = chatContext?.setContext;
   const clearChatContext = chatContext?.clearContext;
   const resort = getLocalizedResort(locale);
-  const socialProof = getLocalizedSocialProofByPropertyId(property.id, locale);
   const images = property.images.length ? property.images : [resort.heroImage];
 
   useEffect(() => {
@@ -145,13 +142,13 @@ export function RoomDetailClient({ property }: { property: Property }) {
               <h1 className="font-serif text-3xl font-semibold text-foreground md:text-4xl">
                 {property.name}
               </h1>
-              {socialProof ? (
+              {property.rating ? (
                 <div className="mt-2">
                   <StarRating
-                    rating={socialProof.overallRating}
+                    rating={property.rating.average}
                     size="md"
                     showValue
-                    reviewCount={socialProof.totalReviews}
+                    reviewCount={property.rating.count}
                   />
                 </div>
               ) : null}
@@ -189,13 +186,13 @@ export function RoomDetailClient({ property }: { property: Property }) {
               </div>
             </section>
 
-            <DirectBookingBenefits propertyId={property.id} />
+            <DirectBookingBenefits />
 
-            {socialProof && socialProof.reviews.length > 0 ? (
+            {reviews.length > 0 ? (
               <section className="mt-10">
                 <h2 className="text-lg font-semibold text-foreground">{t("whatGuestsSay")}</h2>
                 <div className="mt-4">
-                  <ReviewCarousel reviews={socialProof.reviews} />
+                  <ReviewCarousel reviews={reviews} />
                 </div>
               </section>
             ) : null}
@@ -203,7 +200,7 @@ export function RoomDetailClient({ property }: { property: Property }) {
 
           <div className="min-w-0 space-y-3 lg:sticky lg:top-24 lg:self-start">
             <PriceComparison
-              propertyId={property.id}
+              property={property}
               onOpen360={openTour}
               onPreload360={preloadTourViewer}
             />

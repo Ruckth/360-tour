@@ -43,4 +43,29 @@ describe("localized chat fallback responses", () => {
       expect(getFallbackResponse("book dates", null, locale)).toContain(expected);
     }
   });
+
+  it("lists villas and prices from the database instead of a hardcoded catalog", () => {
+    const villas = [
+      { ...(property as object), name: "Sky House", pricePerNight: 10000, directDiscountPercent: 20, currency: "THB" },
+      { ...(property as object), name: "Reef Cabin", pricePerNight: 3000, directDiscountPercent: 20, currency: "USD" },
+    ] as never[];
+
+    const price = getFallbackResponse("How much?", null, "en", villas);
+    expect(price).toContain("We have 2 luxury properties");
+    expect(price).toContain("**Sky House**: ฿10,000/night (฿8,000 direct)");
+    expect(price).toContain("**Reef Cabin**: USD 3,000/night (USD 2,400 direct)");
+    expect(price).toContain("20% direct booking discount");
+    expect(price).not.toContain("Tideglass");
+
+    expect(getFallbackResponse("hello", null, "en", villas)).toContain("Sky House or Reef Cabin");
+    expect(getFallbackResponse("book dates", null, "th", villas)).toContain("ส่วนลด 20%");
+  });
+
+  it("omits the shared-discount line when villas have different discounts", () => {
+    const villas = [
+      { ...(property as object), name: "A", directDiscountPercent: 10 },
+      { ...(property as object), name: "B", directDiscountPercent: 15 },
+    ] as never[];
+    expect(getFallbackResponse("price", null, "en", villas)).not.toContain("All prices include");
+  });
 });

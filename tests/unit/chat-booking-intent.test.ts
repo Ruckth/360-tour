@@ -77,6 +77,13 @@ describe("chat booking intent helpers", () => {
     expect(inferChatPropertySlug("Can I book Tideglass Pool Residence?", "penthouse")).toBe("penthouse");
   });
 
+  it("matches live villa names when provided", () => {
+    const villas = [{ slug: "sky-house", name: "Sky House" }];
+    expect(inferChatPropertySlug("Is Sky House free?", undefined, villas)).toBe("sky-house");
+    expect(inferChatPropertySlug("Can I book Mossbell Garden Suite?", undefined, villas)).toBeUndefined();
+    expect(extractChatBookingContext({ latestUserMessage: "book skyhouse", villas }).propertySlug).toBe("sky-house");
+  });
+
   it("infers guest count near guest wording", () => {
     expect(inferChatGuestCount("for 4 guests")).toBe(4);
     expect(inferChatGuestCount("อันที่อยู่ได้ 4 คน")).toBe(4);

@@ -1,4 +1,4 @@
-import type { PropertySocialProof, RecentBooking } from './reviews';
+import type { PropertySocialProof } from './reviews';
 
 export const socialProofData: PropertySocialProof[] = [
 	{
@@ -141,8 +141,7 @@ export const socialProofData: PropertySocialProof[] = [
 				authorCity: 'Singapore',
 				rating: 5
 			}
-		],
-		recentBookings: []
+		]
 	},
 	{
 		propertyId: 'garden-suite',
@@ -264,8 +263,7 @@ export const socialProofData: PropertySocialProof[] = [
 				authorCity: 'Seoul',
 				rating: 5
 			}
-		],
-		recentBookings: []
+		]
 	},
 	{
 		propertyId: 'penthouse',
@@ -379,20 +377,8 @@ export const socialProofData: PropertySocialProof[] = [
 				authorCity: 'London',
 				rating: 5
 			}
-		],
-		recentBookings: []
+		]
 	}
-];
-
-export const recentBookings: RecentBooking[] = [
-	{ name: 'Mark', city: 'Sydney', propertyId: 'pool-villa', dates: 'Apr 12-17', timeAgo: '2 hours ago' },
-	{ name: 'Sakura', city: 'Tokyo', propertyId: 'garden-suite', dates: 'Apr 18-22', timeAgo: '4 hours ago' },
-	{ name: 'Lars', city: 'Oslo', propertyId: 'penthouse', dates: 'Apr 20-26', timeAgo: '5 hours ago' },
-	{ name: 'Priya', city: 'Mumbai', propertyId: 'pool-villa', dates: 'Apr 25-30', timeAgo: '7 hours ago' },
-	{ name: 'Elena', city: 'Barcelona', propertyId: 'garden-suite', dates: 'May 1-5', timeAgo: '9 hours ago' },
-	{ name: 'Tom', city: 'New York', propertyId: 'penthouse', dates: 'May 3-8', timeAgo: '11 hours ago' },
-	{ name: 'Anh', city: 'Ho Chi Minh City', propertyId: 'pool-villa', dates: 'May 10-15', timeAgo: '13 hours ago' },
-	{ name: 'Clara', city: 'Zurich', propertyId: 'garden-suite', dates: 'May 8-12', timeAgo: '16 hours ago' }
 ];
 
 export function getSocialProofByPropertyId(propertyId: string) {

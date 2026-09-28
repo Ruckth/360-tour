@@ -2,6 +2,7 @@ import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { BookingProperty } from "@/lib/booking/booking";
 import type { ChatActionHint } from "@/lib/chat/action-card";
+import type { PropertyTranslation } from "@/lib/i18n/public-content";
 
 const CONVEX_TIMEOUT_MS = 8_000;
 const AI_CONVEX_TIMEOUT_MS = 45_000;
@@ -24,6 +25,8 @@ async function withConvexTimeout<T>(promise: Promise<T>, label: string, timeoutM
 export type LivePropertyRow = Omit<BookingProperty, "id" | "source"> & {
   _id: string;
   slug: string;
+  translations?: PropertyTranslation[];
+  contentEditedAt?: number;
 };
 
 export type CreateBookingResult = {

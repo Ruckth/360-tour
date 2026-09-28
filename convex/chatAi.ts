@@ -507,7 +507,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	const complexModel = process.env.AI_COMPLEX_MODEL || 'grok-4.3';
 
 	if (!apiKey) {
-		const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale);
+		const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale, properties);
 		return { response: fallbackResponse, model: 'fallback' };
 	}
 

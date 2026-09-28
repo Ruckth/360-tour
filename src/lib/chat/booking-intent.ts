@@ -11,12 +11,18 @@ export type ChatBookingContext = {
 
 export type ChatBookingMissingField = "villa" | "checkIn" | "checkOut";
 
+/** A villa the guest can name in chat. Pass the live (DB) list; the bundled list is the fallback. */
+export type ChatVillaRef = { slug: string; name: string };
+
 export type ChatBookingContextInput = {
   latestUserMessage?: string;
   latestAssistantMessage?: string;
   activePropertySlug?: string;
+  villas?: ChatVillaRef[];
   now?: Date;
 };
+
+const bundledVillas: ChatVillaRef[] = properties.map(({ id, name }) => ({ slug: id, name }));
 
 const EN_MONTHS: Record<string, number> = {
   jan: 1,
@@ -284,18 +290,22 @@ export function parseChatDateRange(text: string, now = new Date()) {
   return parseIsoDateRanges(text) ?? parseNamedMonthDateRanges(text, now) ?? { checkIn: "", checkOut: "" };
 }
 
-export function inferChatPropertySlug(text: string, activePropertySlug?: string) {
+export function inferChatPropertySlug(
+  text: string,
+  activePropertySlug?: string,
+  villas: ChatVillaRef[] = bundledVillas,
+) {
   if (activePropertySlug) return activePropertySlug;
 
   const normalized = text.toLocaleLowerCase();
-  for (const property of properties) {
+  for (const villa of villas.length ? villas : bundledVillas) {
     const aliases = [
-      property.id,
-      property.name,
-      property.name.replace(/\s+/g, ""),
-      property.id.replace(/-/g, " "),
+      villa.slug,
+      villa.name,
+      villa.name.replace(/\s+/g, ""),
+      villa.slug.replace(/-/g, " "),
     ].map((value) => value.toLocaleLowerCase());
-    if (aliases.some((alias) => normalized.includes(alias))) return property.id;
+    if (aliases.some((alias) => alias && normalized.includes(alias))) return villa.slug;
   }
 
   return undefined;
@@ -326,6 +336,7 @@ export function extractChatBookingContext({
   latestUserMessage = "",
   latestAssistantMessage = "",
   activePropertySlug,
+  villas,
   now = new Date(),
 }: ChatBookingContextInput): ChatBookingContext {
   const combined = `${latestUserMessage}\n${latestAssistantMessage}`;
@@ -337,7 +348,7 @@ export function extractChatBookingContext({
     hasBookingIntent,
     checkIn: range.checkIn,
     checkOut: range.checkOut,
-    propertySlug: inferChatPropertySlug(combined, activePropertySlug),
+    propertySlug: inferChatPropertySlug(combined, activePropertySlug, villas),
     guests: inferChatGuestCount(combined),
   };
 }

@@ -33,6 +33,7 @@ import {
   identifyChatVisitor,
   markChatSuggestionClicked,
   markChatSuggestionsShown,
+  listLiveProperties,
   touchChatSession,
 } from "@/lib/react/convex-api";
 import {
@@ -50,6 +51,7 @@ import {
   extractChatBookingContext,
   getBookingPromptKey,
   type ChatBookingContext,
+  type ChatVillaRef,
 } from "@/lib/chat/booking-intent";
 import {
   appendChatExternalParams,
@@ -513,6 +515,8 @@ export function useChatSession({
   const activePropertySlug = propertySlug ?? pageContext?.context.propertySlug;
   const activePropertyName = propertyName ?? pageContext?.context.propertyName;
   const [open, setOpen] = useState(isPageMode);
+  // Live villa names so guests can name admin-created villas; undefined → bundled list.
+  const [villas, setVillas] = useState<ChatVillaRef[]>();
   const [hydrated, setHydrated] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -700,6 +704,18 @@ export function useChatSession({
     }
     return -1;
   }, [messages]);
+  useEffect(() => {
+    if (!convex || !open || villas) return;
+    let active = true;
+    listLiveProperties(convex)
+      .then((rows) => {
+        if (active) setVillas(rows.map(({ slug, name }) => ({ slug, name })));
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+    };
+  }, [convex, open, villas]);
   const messageActionCards = useMemo<ChatActionCard[]>(
     () =>
       messages.map((message, index) => {
@@ -713,6 +729,7 @@ export function useChatSession({
           latestUserMessage: previousUserMessageFor(messages, index),
           latestAssistantMessage: message.content,
           activePropertySlug: activePropertySlug || undefined,
+          villas,
           actionHint: message.action,
           clickedSuggestionId,
         });
@@ -722,6 +739,7 @@ export function useChatSession({
       latestAssistantIndex,
       latestExchange?.clickedSuggestionId,
       messages,
+      villas,
     ],
   );
   const canShowMessageSuggestions =
@@ -1735,6 +1753,7 @@ export function useChatSession({
     const selectedActionHint = resolveChatActionHint({
       latestUserMessage: clean,
       activePropertySlug: activePropertySlug || undefined,
+      villas,
       clickedSuggestionId: preset?.id,
     });
     if (preset) {
