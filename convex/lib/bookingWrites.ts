@@ -33,6 +33,9 @@ export async function loadProperty(
 	if (!property) {
 		throw new Error('Property not found');
 	}
+	if (property.status !== 'active') {
+		throw new Error('Property is not available for booking');
+	}
 
 	return property;
 }

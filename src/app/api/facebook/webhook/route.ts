@@ -487,6 +487,7 @@ async function handleFacebookEvent({
   let claimed: ClaimedFacebookEvent;
   try {
     claimed = (await client.mutation(api.facebook.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       facebookUserId,
       profileName: await fetchFacebookProfileName(accessToken, facebookUserId),
@@ -513,6 +514,7 @@ async function handleFacebookEvent({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.facebook.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
@@ -521,6 +523,7 @@ async function handleFacebookEvent({
 
     if (!claimed.sessionId) {
       await client.mutation(api.facebook.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: "Missing Facebook sender id",
       } as never);
@@ -564,6 +567,7 @@ async function handleFacebookEvent({
     }
 
     await client.mutation(api.facebook.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
@@ -586,6 +590,7 @@ async function handleFacebookEvent({
 
     try {
       await client.mutation(api.facebook.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedFacebookReplyStatus === "number"

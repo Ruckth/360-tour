@@ -43,6 +43,7 @@ import type * as lib_ical from "../lib/ical.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_serviceSlots from "../lib/serviceSlots.js";
+import type * as lib_serverSecret from "../lib/serverSecret.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
@@ -104,6 +105,7 @@ declare const fullApi: ApiFromModules<{
   "lib/pricing": typeof lib_pricing;
   "lib/rateLimit": typeof lib_rateLimit;
   "lib/serviceSlots": typeof lib_serviceSlots;
+  "lib/serverSecret": typeof lib_serverSecret;
   "lib/validation": typeof lib_validation;
   line: typeof line;
   migrations: typeof migrations;

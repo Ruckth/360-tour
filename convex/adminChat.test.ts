@@ -858,6 +858,7 @@ describe("admin chat metadata writes", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.line.claimEvent, {
+      serverSecret: "",
       eventKey: "line-admin-metadata",
       lineUserId: "UMETA",
       sourceType: "user",
@@ -868,6 +869,7 @@ describe("admin chat metadata writes", () => {
     const sessionId = claim.sessionId as Id<"chatSessions">;
 
     await t.mutation(api.line.recordInboundEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId,
       userContent: "Can I check in late?",
@@ -875,6 +877,7 @@ describe("admin chat metadata writes", () => {
     const afterInbound = await t.query(api.chat.getSession, { sessionId });
 
     await t.mutation(api.line.completeEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId,
       assistantContent: "Late check-in depends on availability.",
@@ -896,6 +899,7 @@ describe("admin chat metadata writes", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.whatsapp.claimEvent, {
+      serverSecret: "",
       eventKey: "whatsapp-admin-metadata",
       whatsappUserId: "66956823432",
       profileName: "WhatsApp Guest",
@@ -907,6 +911,7 @@ describe("admin chat metadata writes", () => {
     const sessionId = claim.sessionId as Id<"chatSessions">;
 
     await t.mutation(api.whatsapp.recordInboundEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId,
       userContent: "Can I check in late?",
@@ -914,6 +919,7 @@ describe("admin chat metadata writes", () => {
     const afterInbound = await t.query(api.chat.getSession, { sessionId });
 
     await t.mutation(api.whatsapp.completeEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId,
       assistantContent: "Late check-in depends on availability.",
@@ -995,18 +1001,21 @@ describe("channel profile names", () => {
     const t = convexTest(schema, modules);
     const claims = await Promise.all([
       t.mutation(api.line.claimEvent, {
+        serverSecret: "",
         eventKey: "line-name",
         lineUserId: "U-name",
         profileName: " Somchai ",
         eventType: "message",
       }),
       t.mutation(api.facebook.claimEvent, {
+        serverSecret: "",
         eventKey: "fb-name",
         facebookUserId: "fb-name",
         profileName: "Maya Chen",
         eventType: "message",
       }),
       t.mutation(api.instagram.claimEvent, {
+        serverSecret: "",
         eventKey: "ig-name",
         instagramUserId: "ig-name",
         profileName: "ana.travels",

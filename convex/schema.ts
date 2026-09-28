@@ -87,6 +87,7 @@ export default defineSchema({
 		total: v.number(),
 		currency: v.string(),
 		paidAt: v.optional(v.number()),
+		refundedAt: v.optional(v.number()),
 		paymentMethod: v.optional(v.string()),
 		confirmationCode: v.optional(v.string()),
 		invoiceNumber: v.optional(v.string()),
@@ -116,6 +117,7 @@ export default defineSchema({
 	})
 		.index('by_property', ['propertyId'])
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
+		.index('by_property_checkOut', ['propertyId', 'checkOut'])
 		.index('by_checkIn', ['checkIn'])
 		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status'])
@@ -766,6 +768,7 @@ export default defineSchema({
 		updatedByAdminEmail: v.optional(v.string())
 	})
 		.index('by_answerId', ['answerId'])
+		.index('by_answerId_and_normalizedQuestion', ['answerId', 'normalizedQuestion'])
 		.index('by_answerId_and_status', ['answerId', 'status'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
 		.index('by_status_and_normalizedQuestion', ['status', 'normalizedQuestion'])
@@ -845,6 +848,7 @@ export default defineSchema({
 		.index('by_createdAt', ['createdAt'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
 		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
+		.index('by_resolvedQuestionId', ['resolvedQuestionId'])
 		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion']),
 
 	propertyKnowledge: defineTable({

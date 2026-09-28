@@ -491,6 +491,7 @@ async function handleInstagramEvent({
   let claimed: ClaimedInstagramEvent;
   try {
     claimed = (await client.mutation(api.instagram.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       instagramUserId,
       profileName: await fetchInstagramProfileName(accessToken, instagramUserId),
@@ -517,6 +518,7 @@ async function handleInstagramEvent({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.instagram.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
@@ -525,6 +527,7 @@ async function handleInstagramEvent({
 
     if (!claimed.sessionId) {
       await client.mutation(api.instagram.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: "Missing Instagram sender id",
       } as never);
@@ -568,6 +571,7 @@ async function handleInstagramEvent({
     }
 
     await client.mutation(api.instagram.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
@@ -590,6 +594,7 @@ async function handleInstagramEvent({
 
     try {
       await client.mutation(api.instagram.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedInstagramReplyStatus === "number"

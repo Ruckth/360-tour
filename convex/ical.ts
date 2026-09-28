@@ -63,11 +63,11 @@ export const getExport = internalQuery({
     if (!property) return null;
     const from = todayIso();
     const to = new Date(Date.parse(`${from}T00:00:00Z`) + 366 * DAY_MS).toISOString().slice(0, 10);
-    const bookings = await ctx.db.query('bookings').withIndex('by_property_checkIn', q => q.eq('propertyId', property._id).lt('checkIn', to)).take(500);
+    const bookings = await ctx.db.query('bookings').withIndex('by_property_checkOut', q => q.eq('propertyId', property._id).gte('checkOut', from)).take(500);
     const blocks = await ctx.db.query('availability').withIndex('by_property_date', q => q.eq('propertyId', property._id).gte('date', from).lt('date', to)).take(500);
     return {
       propertyName: property.name,
-      bookings: bookings.filter(b => (b.status === 'confirmed' || b.status === 'completed') && b.checkOut > from).map(b => ({ id: b._id, start: b.checkIn, end: b.checkOut })),
+      bookings: bookings.filter(b => (b.status === 'confirmed' || b.status === 'completed') && b.checkIn < to).map(b => ({ id: b._id, start: b.checkIn, end: b.checkOut })),
       blocks: blocks.filter(b => b.source === 'manual' && b.status !== 'available').map(b => ({ id: b._id, date: b.date })),
     };
   },

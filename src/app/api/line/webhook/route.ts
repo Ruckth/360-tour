@@ -294,6 +294,7 @@ async function handleLineEvent({
   let claimed: ClaimedLineEvent;
   try {
     claimed = (await client.mutation(api.line.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       lineUserId,
       profileName: await fetchLineProfileName(accessToken, lineUserId),
@@ -320,6 +321,7 @@ async function handleLineEvent({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.line.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
@@ -328,6 +330,7 @@ async function handleLineEvent({
 
     if (!event.replyToken || !claimed.sessionId || eventType === "unsupported") {
       await client.mutation(api.line.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: !event.replyToken
           ? "Missing LINE reply token"
@@ -504,6 +507,7 @@ async function handleLineEvent({
     }
 
     await client.mutation(api.line.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
@@ -525,6 +529,7 @@ async function handleLineEvent({
 
     try {
       await client.mutation(api.line.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedLineReplyStatus === "number"

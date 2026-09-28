@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -58,6 +58,37 @@ async function createWebSession(
 }
 
 describe("chatKnowledge approved exact matching", () => {
+  it("reuses an approved question and clears stale unknown references when it is removed", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const answerId = await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        title: "Pets", answer: "Pets are welcome.", primaryQuestion: "Are pets allowed?",
+      });
+      const sessionId = await createWebSession(t);
+      const firstUnknown = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "May I bring my dog?" });
+      const secondUnknown = await t.run(async ctx => ctx.db.insert("chatUnknownQuestions", {
+        sessionId, userQuestion: "MAY I BRING MY DOG", normalizedQuestion: "may i bring my dog",
+        status: "new", adminNotified: false, createdAt: Date.now(), updatedAt: Date.now(),
+      }));
+      const first = await t.mutation(internal.chatKnowledge.resolveUnknownWithAnswer, { unknownQuestionId: firstUnknown, answerId, adminEmail });
+      const second = await t.mutation(internal.chatKnowledge.resolveUnknownWithAnswer, { unknownQuestionId: secondUnknown, answerId, adminEmail });
+      expect(second.questionId).toBe(first.questionId);
+      expect((await t.run(async ctx => ctx.db.query("chatQuestions").withIndex("by_answerId", q => q.eq("answerId", answerId)).collect())).length).toBe(2);
+
+      await admin.mutation(api.chatKnowledge.adminUpdateAnswer, {
+        answerId, title: "Pets", answer: "Pets are welcome.", status: "approved", primaryQuestion: "Are pets allowed?", questions: [],
+      });
+      expect(await t.run(ctx => ctx.db.get(first.questionId))).toBeNull();
+      for (const id of [firstUnknown, secondUnknown]) {
+        expect(await t.run(ctx => ctx.db.get(id))).toMatchObject({ resolvedAnswerId: answerId, status: "resolved" });
+        expect((await t.run(ctx => ctx.db.get(id)))?.resolvedQuestionId).toBeUndefined();
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("normalizes exact questions and prefers property-specific answers", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {

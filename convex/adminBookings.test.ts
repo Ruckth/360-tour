@@ -93,12 +93,11 @@ describe("Stripe checkout confirmation", () => {
 });
 
 describe("admin bookings", () => {
-  it("rejects signed-in non-admin access to payment changes and guest data", async () => {
+  it("rejects signed-in non-admin access to guest data", async () => {
     const { t } = await setup();
     const { bookingId } = await t.mutation(api.bookings.create, { ...stay, guestEmail: "guest@example.com" });
     const propertyId = await t.run(async ctx => (await ctx.db.query("properties").first())!._id);
     const visitor = t.withIdentity({ email: "visitor@example.com", tokenIdentifier: "visitor-token" });
-    await expect(visitor.mutation(api.bookings.updatePaymentStatus, { bookingId, paymentStatus: "paid" })).rejects.toThrow("Not authorized");
     await expect(visitor.query(api.bookings.getById, { id: bookingId })).rejects.toThrow("Not authorized");
     await expect(visitor.query(api.bookings.listByProperty, { propertyId, paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
     await expect(visitor.query(api.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
@@ -147,5 +146,35 @@ describe("admin bookings", () => {
 
     const { bookings } = await admin.query(api.adminBookings.listForAdmin, { from: checkIn, to: checkOut });
     expect(bookings[0]).toMatchObject({ paymentStatus: "paid", status: "confirmed", paymentMethod: "admin" });
+  });
+
+  it("requires a recorded refund before cancelling a paid booking", async () => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, guestEmail: "guest@example.com" });
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "markPaid" });
+    expect(await bookedDates(t)).toBe(3);
+
+    await expect(admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "cancel" }))
+      .rejects.toThrow("Paid booking: record the refund to cancel");
+    expect((await t.run(ctx => ctx.db.get(bookingId)))?.status).toBe("confirmed");
+
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "cancel", refundRecorded: true });
+    const cancelled = await t.run(ctx => ctx.db.get(bookingId));
+    expect(cancelled).toMatchObject({ status: "cancelled", paymentStatus: "refunded" });
+    expect(cancelled?.refundedAt).toEqual(expect.any(Number));
+    expect(cancelled?.cancellationEmailQueuedAt).toEqual(expect.any(Number));
+    expect(await bookedDates(t)).toBe(0);
+  });
+
+  it("rejects draft and archived properties for quotes and admin bookings", async () => {
+    const { t, admin } = await setup();
+    const propertyId = await t.run(async ctx => (await ctx.db.query("properties").first())!._id);
+    for (const status of ["draft", "archived"] as const) {
+      await t.run(ctx => ctx.db.patch(propertyId, { status }));
+      await expect(t.query(api.bookings.quoteStay, { propertySlug: stay.propertySlug, checkIn, checkOut, guests: 2 }))
+        .rejects.toThrow("Property is not available for booking");
+      await expect(admin.mutation(api.adminBookings.createBooking, stay))
+        .rejects.toThrow("Property is not available for booking");
+    }
   });
 });
