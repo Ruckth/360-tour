@@ -264,7 +264,8 @@ describe("chatAi.respond question-bank matching", () => {
 
       const unknownRows = await admin.query(api.chatKnowledge.adminListUnknownQuestions, {
         status: "new",
-      });
+        paginationOpts: { numItems: 50, cursor: null },
+      }).then((result) => result.page);
 
       expect(result).toMatchObject({
         response: "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",

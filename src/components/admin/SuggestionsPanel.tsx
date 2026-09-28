@@ -1,0 +1,550 @@
+"use client";
+
+import { api } from "convex/_generated/api";
+import { supportedSuggestionLocales } from "convex/lib/chatSuggestions";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { Archive, Edit3, Languages, Loader2, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
+import {
+  CURATED_DYNAMIC_INTENTS,
+  CURATED_TOPICS,
+  type AdminCuratedSuggestion,
+  type AdminKnowledgePropertyScope,
+  type CuratedAnswerMode,
+  type CuratedDynamicIntent,
+  type CuratedSuggestionStatus,
+} from "@/components/admin/admin-knowledge-types";
+
+type StatusFilter = CuratedSuggestionStatus | "all";
+
+const ALL_PROPERTIES = "__all__";
+const TRANSLATION_LOCALES = supportedSuggestionLocales.filter((locale) => locale !== "en");
+const LOCALE_LABELS: Record<string, string> = {
+  th: "Thai",
+  "zh-CN": "Chinese",
+  ja: "Japanese",
+  ko: "Korean",
+  fr: "French",
+  de: "German",
+  es: "Spanish",
+  ru: "Russian",
+  it: "Italian",
+  hi: "Hindi",
+};
+
+const textareaClass =
+  "min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
+
+function label(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+/** Curated chat chips: the question bank guests can tap, with fixed or live answers. */
+export function SuggestionsPanel() {
+  const confirm = useConfirm();
+  const [status, setStatus] = useState<StatusFilter>("active");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<AdminCuratedSuggestion | "new" | null>(null);
+  const [pendingAction, setPendingAction] = useState("");
+  const [actionError, setActionError] = useState("");
+  const suggestions = useQuery(api.chatSuggestions.adminListCurated, { status, limit: 100 }) as
+    | AdminCuratedSuggestion[]
+    | undefined;
+  const propertyScopes = useQuery(api.chatKnowledge.adminListPropertyScopes, {}) as
+    | AdminKnowledgePropertyScope[]
+    | undefined;
+  const archiveCurated = useMutation(api.chatSuggestions.adminArchiveCurated);
+  const restoreCurated = useMutation(api.chatSuggestions.adminRestoreCurated);
+  const deleteCurated = useMutation(api.chatSuggestions.adminDeleteArchivedCurated);
+  const properties = (propertyScopes ?? []).filter((scope) => scope.source === "property");
+  const propertyNames = new Map(properties.map((property) => [property.slug, property.label]));
+  const query = search.trim().toLowerCase();
+  const rows = (suggestions ?? []).filter(
+    (row) =>
+      !query ||
+      [row.question, row.answer ?? "", row.topic, ...Object.values(row.translations ?? {})]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+  );
+
+  async function runAction(key: string, action: () => Promise<unknown>) {
+    setPendingAction(key);
+    setActionError("");
+    try {
+      await action();
+    } catch (error) {
+      setActionError(errorMessage(error, "Something went wrong."));
+    } finally {
+      setPendingAction("");
+    }
+  }
+
+  async function deleteSuggestion(row: AdminCuratedSuggestion) {
+    const confirmed = await confirm({
+      title: "Delete this suggestion?",
+      description: `"${row.question}" and its click history will be removed permanently.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (confirmed) await runAction(`delete:${row._id}`, () => deleteCurated({ questionId: row._id }));
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+        <div className="relative min-w-[14rem] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search suggestions"
+            aria-label="Search suggestions"
+            className="pl-9"
+          />
+        </div>
+        <Select value={status} onValueChange={(value) => setStatus(value as StatusFilter)}>
+          <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Suggestion status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="archived">Archived</SelectItem>
+            <SelectItem value="all">All</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" onClick={() => setEditing("new")}>
+          <Plus className="h-4 w-4" />
+          Add suggestion
+        </Button>
+      </div>
+
+      {actionError ? (
+        <p role="alert" className="border-b border-border px-4 py-3 text-sm font-medium text-destructive">
+          {actionError}
+        </p>
+      ) : null}
+
+      {!suggestions ? (
+        <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading suggestions
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="p-5 text-sm leading-6 text-muted-foreground">
+          {query
+            ? "No suggestions match your search."
+            : status === "archived"
+              ? "No archived suggestions."
+              : status === "active"
+                ? "No active suggestions yet. Add the questions guests can tap in chat."
+                : "No suggestions yet."}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-left text-sm">
+            <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Suggestion</th>
+                <th className="px-4 py-3 font-semibold">Reply</th>
+                <th className="px-4 py-3 font-semibold">Topic</th>
+                <th className="px-4 py-3 font-semibold">Score</th>
+                <th className="px-4 py-3 font-semibold">Scope</th>
+                <th className="px-4 py-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const mode = row.answerMode ?? (row.answer ? "static" : "dynamic");
+                const translationCount = Object.keys(row.translations ?? {}).filter((locale) => locale !== "en").length;
+                return (
+                  <tr key={row._id} className="border-b border-border last:border-b-0">
+                    <td className="max-w-[340px] px-4 py-3">
+                      <p className="font-medium text-foreground">{row.question}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {translationCount}/{TRANSLATION_LOCALES.length} translations
+                        {row.status === "archived" ? " · archived" : ""}
+                      </p>
+                    </td>
+                    <td className="max-w-[320px] px-4 py-3 text-muted-foreground">
+                      {mode === "static" ? (
+                        <p className="line-clamp-2 text-xs leading-5">{row.answer}</p>
+                      ) : (
+                        <Badge variant="outline" className="rounded-full">
+                          Live: {label(row.dynamicIntent ?? "property_details")}
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 capitalize text-muted-foreground">{label(row.topic)}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{row.score}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {row.propertySlug ? (propertyNames.get(row.propertySlug) ?? row.propertySlug) : "Global"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setEditing(row)}>
+                          <Edit3 className="h-4 w-4" />
+                          Edit
+                        </Button>
+                        {row.status === "active" ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={pendingAction === `archive:${row._id}`}
+                            onClick={() =>
+                              void runAction(`archive:${row._id}`, () => archiveCurated({ questionId: row._id }))
+                            }
+                          >
+                            <Archive className="h-4 w-4" />
+                            Archive
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={pendingAction === `restore:${row._id}`}
+                              onClick={() =>
+                                void runAction(`restore:${row._id}`, () => restoreCurated({ questionId: row._id }))
+                              }
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                              Restore
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={pendingAction === `delete:${row._id}`}
+                              onClick={() => void deleteSuggestion(row)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          {editing ? (
+            <SuggestionForm
+              suggestion={editing === "new" ? null : editing}
+              properties={properties}
+              onClose={() => setEditing(null)}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+type SuggestionFormState = {
+  question: string;
+  answer: string;
+  answerMode: CuratedAnswerMode;
+  dynamicIntent: CuratedDynamicIntent;
+  topic: string;
+  score: string;
+  propertySlug: string;
+  translations: Record<string, string>;
+  answerTranslations: Record<string, string>;
+};
+
+function formFor(suggestion: AdminCuratedSuggestion | null): SuggestionFormState {
+  return {
+    question: suggestion?.question ?? "",
+    answer: suggestion?.answer ?? "",
+    answerMode: suggestion?.answerMode ?? (suggestion && !suggestion.answer ? "dynamic" : "static"),
+    dynamicIntent: suggestion?.dynamicIntent ?? "property_details",
+    topic: suggestion?.topic ?? "villa_fit",
+    score: String(suggestion?.score ?? 50),
+    propertySlug: suggestion?.propertySlug ?? ALL_PROPERTIES,
+    translations: { ...suggestion?.translations },
+    answerTranslations: { ...suggestion?.answerTranslations },
+  };
+}
+
+function SuggestionForm({
+  suggestion,
+  properties,
+  onClose,
+}: {
+  suggestion: AdminCuratedSuggestion | null;
+  properties: AdminKnowledgePropertyScope[];
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState(() => formFor(suggestion));
+  const [pending, setPending] = useState<"" | "save" | "translate">("");
+  const [formError, setFormError] = useState("");
+  const createCurated = useMutation(api.chatSuggestions.adminCreateCurated);
+  const updateCurated = useMutation(api.chatSuggestions.adminUpdateCurated);
+  const translateDraft = useAction(api.chatSuggestions.adminTranslateCuratedDraft);
+  const isStatic = form.answerMode === "static";
+  const translatedCount = TRANSLATION_LOCALES.filter((locale) => form.translations[locale]?.trim()).length;
+
+  function update<K extends keyof SuggestionFormState>(key: K, value: SuggestionFormState[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateTranslation(field: "translations" | "answerTranslations", locale: string, value: string) {
+    setForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }));
+  }
+
+  async function translate() {
+    if (!form.question.trim()) {
+      setFormError("Write the English question first.");
+      return;
+    }
+    setPending("translate");
+    setFormError("");
+    try {
+      const result = await translateDraft({
+        question: form.question,
+        answer: isStatic ? form.answer : undefined,
+      });
+      setForm((current) => ({
+        ...current,
+        translations: { ...current.translations, ...result.questionTranslations },
+        answerTranslations: { ...current.answerTranslations, ...result.answerTranslations },
+      }));
+    } catch (error) {
+      setFormError(errorMessage(error, "Unable to translate."));
+    } finally {
+      setPending("");
+    }
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    if (!form.question.trim()) {
+      setFormError("Question is required.");
+      return;
+    }
+    if (isStatic && !form.answer.trim()) {
+      setFormError("Write the answer, or switch to a live answer.");
+      return;
+    }
+    const args = {
+      question: form.question,
+      translations: form.translations,
+      answerMode: form.answerMode,
+      answer: isStatic ? form.answer : undefined,
+      answerTranslations: isStatic ? form.answerTranslations : undefined,
+      dynamicIntent: isStatic ? undefined : form.dynamicIntent,
+      topic: form.topic,
+      score: Number(form.score) || 0,
+      propertySlug: form.propertySlug === ALL_PROPERTIES ? undefined : form.propertySlug,
+    };
+    setPending("save");
+    try {
+      if (suggestion) await updateCurated({ questionId: suggestion._id, ...args });
+      else await createCurated(args);
+      onClose();
+    } catch (error) {
+      setFormError(errorMessage(error, "Unable to save suggestion."));
+    } finally {
+      setPending("");
+    }
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{suggestion ? "Edit Suggestion" : "Add Suggestion"}</DialogTitle>
+        <DialogDescription>
+          Suggestions are the question chips guests can tap in chat. Higher scores show first.
+        </DialogDescription>
+      </DialogHeader>
+      <form className="grid gap-4" onSubmit={submit}>
+        <div className="grid gap-2">
+          <Label htmlFor="suggestion-question">Question (English)</Label>
+          <Input
+            id="suggestion-question"
+            value={form.question}
+            maxLength={160}
+            onChange={(event) => update("question", event.target.value)}
+            placeholder="Is breakfast included?"
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label>Reply</Label>
+          <ToggleGroup
+            value={form.answerMode}
+            onValueChange={(value) => update("answerMode", value as CuratedAnswerMode)}
+            aria-label="Reply type"
+            className="w-fit"
+          >
+            <ToggleGroupItem value="static" className="px-4">Fixed answer</ToggleGroupItem>
+            <ToggleGroupItem value="dynamic" className="px-4">Live answer</ToggleGroupItem>
+          </ToggleGroup>
+          {isStatic ? (
+            <textarea
+              aria-label="Answer"
+              value={form.answer}
+              maxLength={1200}
+              onChange={(event) => update("answer", event.target.value)}
+              className={textareaClass}
+              placeholder="Breakfast is included with every stay."
+            />
+          ) : (
+            <div className="grid gap-1">
+              <Select
+                value={form.dynamicIntent}
+                onValueChange={(value) => update("dynamicIntent", value as CuratedDynamicIntent)}
+              >
+                <SelectTrigger className="h-10 w-[16rem] rounded-lg capitalize" aria-label="Live answer type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURATED_DYNAMIC_INTENTS.map((intent) => (
+                    <SelectItem key={intent} value={intent} className="capitalize">
+                      {label(intent)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The assistant answers with current data (prices, availability, villa details).
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-2">
+            <Label htmlFor="suggestion-topic">Topic</Label>
+            <Select value={form.topic} onValueChange={(value) => update("topic", value)}>
+              <SelectTrigger id="suggestion-topic" className="h-10 rounded-lg capitalize">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURATED_TOPICS.map((topic) => (
+                  <SelectItem key={topic} value={topic} className="capitalize">
+                    {label(topic)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="suggestion-score">Score (0–100)</Label>
+            <Input
+              id="suggestion-score"
+              type="number"
+              min={0}
+              max={100}
+              value={form.score}
+              onChange={(event) => update("score", event.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="suggestion-property">Property</Label>
+            <Select value={form.propertySlug} onValueChange={(value) => update("propertySlug", value)}>
+              <SelectTrigger id="suggestion-property" className="h-10 rounded-lg">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_PROPERTIES}>All properties</SelectItem>
+                {properties.map((property) => (
+                  <SelectItem key={property.slug} value={property.slug}>
+                    {property.label}
+                  </SelectItem>
+                ))}
+                {form.propertySlug !== ALL_PROPERTIES &&
+                !properties.some((property) => property.slug === form.propertySlug) ? (
+                  <SelectItem value={form.propertySlug}>{form.propertySlug}</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+            Translations ({translatedCount}/{TRANSLATION_LOCALES.length})
+          </summary>
+          <div className="grid gap-3 border-t border-border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">Empty languages fall back to English.</p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pending === "translate"}
+                onClick={() => void translate()}
+              >
+                {pending === "translate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
+                Translate with AI
+              </Button>
+            </div>
+            {TRANSLATION_LOCALES.map((locale) => (
+              <div key={locale} className="grid gap-1 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-start">
+                <Label htmlFor={`suggestion-${locale}`} className="pt-2 text-xs">
+                  {LOCALE_LABELS[locale] ?? locale}
+                </Label>
+                <div className="grid gap-1">
+                  <Input
+                    id={`suggestion-${locale}`}
+                    value={form.translations[locale] ?? ""}
+                    maxLength={160}
+                    onChange={(event) => updateTranslation("translations", locale, event.target.value)}
+                  />
+                  {isStatic ? (
+                    <textarea
+                      aria-label={`${LOCALE_LABELS[locale] ?? locale} answer`}
+                      value={form.answerTranslations[locale] ?? ""}
+                      maxLength={1200}
+                      onChange={(event) => updateTranslation("answerTranslations", locale, event.target.value)}
+                      className={`${textareaClass} min-h-14`}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+        {formError ? <p className="text-sm font-medium text-destructive">{formError}</p> : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={pending === "save"}>
+            {pending === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Save suggestion
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
+  );
+}

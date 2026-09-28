@@ -250,7 +250,8 @@ describe("chatKnowledge unknown-question loop", () => {
       });
       const unknownRows = await admin.query(api.chatKnowledge.adminListUnknownQuestions, {
         status: "new",
-      });
+        paginationOpts: { numItems: 50, cursor: null },
+      }).then((result) => result.page);
 
       expect(result).toMatchObject({
         model: "unknown_fallback",
@@ -286,7 +287,8 @@ describe("chatKnowledge unknown-question loop", () => {
       });
       const answers = await admin.query(api.chatKnowledge.adminListAnswers, {
         status: "approved",
-      });
+        paginationOpts: { numItems: 50, cursor: null },
+      }).then((result) => result.page);
       const answer = answers.find((row) => row._id === created.answerId);
 
       expect(answer).toBeTruthy();
