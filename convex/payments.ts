@@ -1,40 +1,61 @@
 import { v } from 'convex/values';
-import { action, internalMutation, internalQuery } from './_generated/server';
+import { action, internalMutation } from './_generated/server';
 import { internal } from './_generated/api';
 import { markBookingPaid, queueCancellationEmail } from './bookings';
 import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 
-const CHECKOUT_LIFETIME_SECONDS = 31 * 60;
+const CHECKOUT_LIFETIME_SECONDS = 60 * 60;
 
 /** Pending bookings, and confirmed-but-unpaid ones (e.g. host-confirmed, pay later), can be paid online. */
 function isPayable(booking: { status: string; paymentStatus: string }) {
   return (booking.status === 'pending' || booking.status === 'confirmed') && booking.paymentStatus === 'pending';
 }
 
-export const getCheckoutBooking = internalQuery({
-  args: { bookingId: v.id('bookings'), accessToken: v.string() },
+export const beginCheckout = internalMutation({
+  args: { bookingId: v.id('bookings'), accessToken: v.string(), siteUrl: v.string() },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking || !booking.accessToken || booking.accessToken !== args.accessToken) {
       throw new Error('Booking access denied');
     }
+    if (!isPayable(booking)) throw new Error('Booking is no longer payable');
+    const now = Date.now();
+    if (booking.status === 'pending' && booking.source !== 'admin' && now - booking.createdAt >= 24 * 60 * 60 * 1000) {
+      throw new Error('Booking expired. Please create a new booking.');
+    }
+    if (booking.stripeCheckoutUrl && (booking.stripeCheckoutExpiresAt ?? 0) > now) {
+      return { checkoutUrl: booking.stripeCheckoutUrl, request: null };
+    }
     const property = await ctx.db.get(booking.propertyId);
     if (!property) throw new Error('Property not found');
-    return {
-      id: booking._id,
-      createdAt: booking.createdAt,
-      status: booking.status,
-      paymentStatus: booking.paymentStatus,
-      guestEmail: booking.guestEmail,
+    // Reserve the Stripe request body along with its key. Concurrent clicks and retries
+    // use identical parameters; a stale or expired reservation starts a new attempt.
+    if (booking.checkoutRequest && booking.checkoutRequest.expiresAt > now + 30 * 60 * 1000 &&
+      booking.checkoutRequest.total === booking.total && booking.checkoutRequest.currency === booking.currency &&
+      booking.checkoutRequest.checkIn === booking.checkIn && booking.checkoutRequest.checkOut === booking.checkOut &&
+      booking.checkoutRequest.propertyName === property.name && booking.checkoutRequest.guestEmail === booking.guestEmail &&
+      booking.checkoutRequest.siteUrl === args.siteUrl) {
+      return { checkoutUrl: null, request: booking.checkoutRequest };
+    }
+    const request = {
+      attempt: (booking.checkoutAttempt ?? 0) + 1,
+      expiresAt: (Math.floor(now / 1000) + CHECKOUT_LIFETIME_SECONDS) * 1000,
       total: booking.total,
       currency: booking.currency,
-      propertyName: property.name,
       checkIn: booking.checkIn,
       checkOut: booking.checkOut,
-      checkoutUrl: booking.stripeCheckoutUrl,
-      checkoutExpiresAt: booking.stripeCheckoutExpiresAt,
-      source: booking.source,
+      propertyName: property.name,
+      siteUrl: args.siteUrl,
+      guestEmail: booking.guestEmail,
     };
+    await ctx.db.patch(booking._id, {
+      checkoutAttempt: request.attempt,
+      checkoutRequest: request,
+      stripeCheckoutSessionId: undefined,
+      stripeCheckoutUrl: undefined,
+      stripeCheckoutExpiresAt: undefined,
+    });
+    return { checkoutUrl: null, request };
   },
 });
 
@@ -45,11 +66,27 @@ export const saveCheckoutSession = internalMutation({
     sessionId: v.string(),
     url: v.string(),
     expiresAt: v.number(),
+    attempt: v.number(),
+    total: v.number(),
+    currency: v.string(),
+    checkIn: v.string(),
+    checkOut: v.string(),
   },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking || booking.accessToken !== args.accessToken || !isPayable(booking)) {
       throw new Error('Booking is no longer payable');
+    }
+    if (booking.checkoutAttempt !== args.attempt ||
+      booking.total !== args.total || booking.currency !== args.currency ||
+      booking.checkIn !== args.checkIn || booking.checkOut !== args.checkOut) {
+      throw new Error('Booking changed during checkout. Please start a new checkout.');
+    }
+    if (booking.stripeCheckoutSessionId === args.sessionId) return;
+    if (booking.checkoutRequest?.attempt !== args.attempt ||
+      booking.checkoutRequest.total !== args.total || booking.checkoutRequest.currency !== args.currency ||
+      booking.checkoutRequest.checkIn !== args.checkIn || booking.checkoutRequest.checkOut !== args.checkOut) {
+      throw new Error('Booking changed during checkout. Please start a new checkout.');
     }
     if (booking.stripeCheckoutSessionId && booking.stripeCheckoutSessionId !== args.sessionId) {
       throw new Error('A different checkout already exists');
@@ -59,6 +96,7 @@ export const saveCheckoutSession = internalMutation({
       stripeCheckoutSessionId: args.sessionId,
       stripeCheckoutUrl: args.url,
       stripeCheckoutExpiresAt: args.expiresAt,
+      checkoutRequest: undefined,
     });
     await ctx.scheduler.runAt(args.expiresAt + 60 * 60 * 1000, internal.payments.expireCheckout, {
       bookingId: args.bookingId,
@@ -71,41 +109,43 @@ export const expireCheckout = internalMutation({
   args: { bookingId: v.id('bookings'), sessionId: v.string() },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
-    if (!booking || booking.stripeCheckoutSessionId !== args.sessionId || booking.paymentStatus === 'paid' || booking.status !== 'pending') return;
+    if (!booking || booking.stripeCheckoutSessionId !== args.sessionId || booking.paymentStatus === 'paid' || !isPayable(booking)) return;
     if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) return;
+    if (booking.status === 'confirmed' || booking.source === 'admin') {
+      await ctx.db.patch(booking._id, {
+        stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined,
+        checkoutRequest: undefined,
+      });
+      return;
+    }
     await releaseBookingDates(ctx, booking);
-    await ctx.db.patch(booking._id, { status: 'cancelled', paymentStatus: 'failed' });
+    await ctx.db.patch(booking._id, {
+      status: 'cancelled', paymentStatus: 'failed',
+      stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined,
+      checkoutRequest: undefined,
+    });
   },
 });
 
 export const createCheckout = action({
   args: { bookingId: v.id('bookings'), accessToken: v.string() },
   handler: async (ctx, args): Promise<{ url: string }> => {
-    const booking = await ctx.runQuery(internal.payments.getCheckoutBooking, args);
-    if (!isPayable(booking)) {
-      throw new Error('Booking is no longer payable');
-    }
-    // Guest pending bookings expire after 24h; host-created or confirmed ones stay payable.
-    if (booking.status === 'pending' && booking.source !== 'admin' && Date.now() - booking.createdAt >= 24 * 60 * 60 * 1000) {
-      throw new Error('Booking expired. Please create a new booking.');
-    }
-    if (booking.checkoutUrl) {
-      if ((booking.checkoutExpiresAt ?? 0) <= Date.now()) throw new Error('Checkout expired. Please create a new booking.');
-      return { url: booking.checkoutUrl };
-    }
     const key = process.env.STRIPE_SECRET_KEY;
     const siteUrl = process.env.SITE_URL?.replace(/\/+$/, '');
     if (!key || !siteUrl || !/^https:\/\//.test(siteUrl) && !/^http:\/\/localhost(?::\d+)?$/.test(siteUrl)) {
       throw new Error('Payments are not configured');
     }
-    const amount = Math.round(booking.total * 100);
+    const { checkoutUrl, request } = await ctx.runMutation(internal.payments.beginCheckout, { ...args, siteUrl });
+    if (checkoutUrl) return { url: checkoutUrl };
+    if (!request) throw new Error('Could not start checkout');
+    const amount = Math.round(request.total * 100);
     if (!Number.isSafeInteger(amount) || amount < 1) throw new Error('Invalid booking amount');
-    const currency = booking.currency.toLowerCase();
+    const currency = request.currency.toLowerCase();
     if (!/^[a-z]{3}$/.test(currency)) throw new Error('Invalid booking currency');
-    const successUrl = new URL('/booking/success', siteUrl);
+    const successUrl = new URL('/booking/success', request.siteUrl);
     successUrl.searchParams.set('bookingId', args.bookingId);
     successUrl.searchParams.set('token', args.accessToken);
-    const cancelUrl = new URL('/booking/pay', siteUrl);
+    const cancelUrl = new URL('/booking/pay', request.siteUrl);
     cancelUrl.searchParams.set('bookingId', args.bookingId);
     cancelUrl.searchParams.set('token', args.accessToken);
     const body = new URLSearchParams({
@@ -117,18 +157,17 @@ export const createCheckout = action({
       'metadata[bookingId]': args.bookingId,
       'line_items[0][price_data][currency]': currency,
       'line_items[0][price_data][unit_amount]': String(amount),
-      'line_items[0][price_data][product_data][name]': `${booking.propertyName} · ${booking.checkIn}–${booking.checkOut}`,
+      'line_items[0][price_data][product_data][name]': `${request.propertyName} · ${request.checkIn}–${request.checkOut}`,
       'line_items[0][quantity]': '1',
-      expires_at: String(Math.floor(Date.now() / 1000) + CHECKOUT_LIFETIME_SECONDS),
+      expires_at: String(request.expiresAt / 1000),
     });
-    if (booking.guestEmail) body.set('customer_email', booking.guestEmail);
+    if (request.guestEmail) body.set('customer_email', request.guestEmail);
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-        // Includes the amount so an admin price edit starts a fresh checkout instead of replaying the old one.
-        'Idempotency-Key': `booking-${args.bookingId}-${amount}`,
+        'Idempotency-Key': `booking-${args.bookingId}-${request.attempt}`,
       },
       body,
     });
@@ -141,6 +180,11 @@ export const createCheckout = action({
       sessionId: session.id,
       url: session.url,
       expiresAt: session.expires_at * 1000,
+      attempt: request.attempt,
+      total: request.total,
+      currency: request.currency,
+      checkIn: request.checkIn,
+      checkOut: request.checkOut,
     });
     return { url: session.url };
   },

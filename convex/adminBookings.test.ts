@@ -62,6 +62,15 @@ async function bookedDates(t: ReturnType<typeof convexTest>) {
   );
 }
 
+async function attachCheckout(t: ReturnType<typeof convexTest>, bookingId: Id<'bookings'>, accessToken: string, sessionId: string, expiresAt: number) {
+  const { request } = await t.mutation(internal.payments.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
+  if (!request) throw new Error('Expected a new checkout request');
+  await t.mutation(internal.payments.saveCheckoutSession, {
+    bookingId, accessToken, sessionId, url: 'https://checkout.stripe.com/example', expiresAt,
+    attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut,
+  });
+}
+
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Stripe checkout confirmation", () => {
@@ -71,7 +80,7 @@ describe("Stripe checkout confirmation", () => {
       ...stay,
       guestEmail: "guest@example.com",
     });
-    await t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken, sessionId: "cs_test_1", url: "https://checkout.stripe.com/example", expiresAt: Date.now() + 1000 });
+    await attachCheckout(t, bookingId, accessToken, 'cs_test_1', Date.now() + 1000);
     const amountTotal = await t.run(async ctx => Math.round((await ctx.db.get(bookingId))!.total * 100));
     await t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: "cs_test_1", amountTotal, currency: "thb", paymentIntentId: "pi_test_1" });
     const paid = await t.run(async ctx => await ctx.db.get(bookingId));
@@ -231,6 +240,16 @@ describe("editBooking", () => {
     return { bookingId, propertyId, checkIn, checkOut, guests, guestName, guestPhone, guestEmail };
   };
 
+  it('rejects moving a paid booking into a different currency', async () => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' });
+    const usdVilla = await addVilla(t, 'usd-villa', 500);
+    await t.run(ctx => ctx.db.patch(usdVilla, { currency: 'USD' }));
+    await expect(admin.mutation(api.adminBookings.editBooking, edit(bookingId, usdVilla))).rejects.toThrow('different currency');
+    expect((await t.run(ctx => ctx.db.get(bookingId)))?.currency).toBe('THB');
+  });
+
   it("moves the held dates and recomputes the price", async () => {
     const { t, admin } = await setup();
     const propertyId = await propertyIdOf(t);
@@ -309,7 +328,7 @@ describe("editBooking", () => {
     const { t, admin } = await setup();
     const propertyId = await propertyIdOf(t);
     const { bookingId, accessToken } = await t.mutation(api.bookings.create, { ...stay, guestEmail: "guest@example.com" });
-    await t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken, sessionId: "cs_live", url: "https://checkout.stripe.com/x", expiresAt: Date.now() + 60_000 });
+    await attachCheckout(t, bookingId, accessToken, 'cs_live', Date.now() + 60_000);
     await expect(admin.mutation(api.adminBookings.editBooking, edit(bookingId, propertyId, { checkOut: isoInDays(34) })))
       .rejects.toThrow("Stripe checkout open");
     await t.run((ctx) => ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1 }));
@@ -366,9 +385,29 @@ describe("deleteBooking", () => {
     expect(await t.run((ctx) => ctx.db.get(cancelled))).toBeNull();
     await expect(t.mutation(api.adminBookings.deleteBooking, { bookingId: stripe })).rejects.toThrow();
   });
+
+  it('keeps bookings with more than 50 service appointments intact', async () => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
+    await t.run(async ctx => {
+      const staffId = await ctx.db.insert('staff', { name: 'Staff', role: 'Spa', color: '#fff', status: 'active', workingHours: [], breaks: [], createdAt: 0, updatedAt: 0 });
+      const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 100, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
+      for (let i = 0; i < 51; i++) await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: i, end: i + 1, blockedUntil: i + 1, guestName: 'Guest', guestPhone: '123', bookingId, source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 100, currency: 'THB', confirmationCode: `SPA${i}`, accessToken: 'test', createdAt: 0 });
+    });
+    await expect(admin.mutation(api.adminBookings.deleteBooking, { bookingId })).rejects.toThrow('more than 50 service appointments');
+    expect(await t.run(ctx => ctx.db.get(bookingId))).not.toBeNull();
+  });
 });
 
 describe("date blocks", () => {
+
+  it('rejects a batch over 1,500 villa nights before writing blocks', async () => {
+    const { t, admin } = await setup();
+    const villas = [await propertyIdOf(t)];
+    for (let i = 0; i < 4; i++) villas.push(await addVilla(t, `villa-${i}`, 5000));
+    await expect(admin.mutation(api.adminBookings.addDateBlocks, { propertyIds: villas, start: isoInDays(30), end: isoInDays(331), reason: 'Maintenance' })).rejects.toThrow('fewer villas or a shorter range');
+    expect(await t.run(ctx => ctx.db.query('dateBlocks').collect())).toEqual([]);
+  });
   it("adds, edits and removes a block that stops bookings", async () => {
     const { t, admin } = await setup();
     const propertyId = await propertyIdOf(t);

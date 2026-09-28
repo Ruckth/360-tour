@@ -11,6 +11,7 @@ import { amount, imageUrl, required } from './properties';
 
 const MAX_ROOMS = 50;
 const MAX_HOTSPOTS = 20;
+const MAX_DELETE_CHILDREN = 500;
 
 function validSlug(value: string, label: string): string {
 	const slug = value.trim().toLowerCase();
@@ -54,6 +55,23 @@ async function deleteBlocker(ctx: QueryCtx, property: Doc<'properties'>): Promis
 	if (await ctx.db.query('chatSessions').withIndex('by_property', (q) => q.eq('propertyId', property._id)).first()) {
 		return 'Guests have chatted about this villa. Archive it instead.';
 	}
+	const propertyId = property._id;
+	const slug = property.slug;
+	const references = [
+		['chat answers', await ctx.db.query('chatAnswers').withIndex('by_propertyId_and_status_and_updatedAt', q => q.eq('propertyId', propertyId)).first()],
+		['chat answer property scopes', await ctx.db.query('chatAnswerPropertyScopes').withIndex('by_propertySlug', q => q.eq('propertySlug', slug)).first()],
+		['chat answer property scopes', await ctx.db.query('chatAnswerPropertyScopes').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
+		['chat knowledge scopes', await ctx.db.query('chatKnowledgeScopes').withIndex('by_normalizedSlug', q => q.eq('normalizedSlug', slug)).first()],
+		['chat topics', await ctx.db.query('chatTopics').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
+		['chat questions', await ctx.db.query('chatQuestions').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
+		['chat answer topics', await ctx.db.query('chatAnswerTopics').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
+		['unknown chat questions', await ctx.db.query('chatUnknownQuestions').withIndex('by_propertyId_and_status_and_createdAt', q => q.eq('propertyId', propertyId)).first()],
+		['unknown chat questions', await ctx.db.query('chatUnknownQuestions').withIndex('by_propertySlug', q => q.eq('propertySlug', slug)).first()],
+		['curated chat questions', await ctx.db.query('curatedChatQuestions').withIndex('by_propertySlug_and_normalizedQuestion', q => q.eq('propertySlug', slug)).first()],
+		['leads', await ctx.db.query('leads').withIndex('by_property', q => q.eq('propertyId', propertyId)).first()],
+	] as const;
+	const found = [...new Set(references.filter(([, row]) => row !== null).map(([name]) => name))];
+	if (found.length) return `This villa has ${found.join(', ')}. Remove those references before deleting it.`;
 	return null;
 }
 
@@ -235,9 +253,15 @@ export const deleteDraft = mutation({
 			ctx.db.query('icalSources').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
 			ctx.db.query('propertyKnowledge').withIndex('by_property', (q) => q.eq('propertyId', propertyId))
 		];
+		const childRows = [];
 		for (const rows of children) {
-			for (const row of await rows.take(500)) await ctx.db.delete(row._id);
+			const batch = await rows.take(MAX_DELETE_CHILDREN + 1);
+			if (batch.length > MAX_DELETE_CHILDREN) {
+				throw new Error(`This villa has more than ${MAX_DELETE_CHILDREN} child records in a table. Remove some before deleting it.`);
+			}
+			childRows.push(batch);
 		}
+		for (const batch of childRows) for (const row of batch) await ctx.db.delete(row._id);
 		await ctx.db.delete(propertyId);
 	}
 });

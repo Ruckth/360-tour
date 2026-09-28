@@ -112,6 +112,18 @@ export default defineSchema({
 		stripePaymentIntentId: v.optional(v.string()),
 		stripeCheckoutUrl: v.optional(v.string()),
 		stripeCheckoutExpiresAt: v.optional(v.number()),
+		checkoutAttempt: v.optional(v.number()),
+		checkoutRequest: v.optional(v.object({
+			attempt: v.number(),
+			expiresAt: v.number(),
+			total: v.number(),
+			currency: v.string(),
+			checkIn: v.string(),
+			checkOut: v.string(),
+			propertyName: v.string(),
+			siteUrl: v.string(),
+			guestEmail: v.optional(v.string())
+		})),
 		confirmationEmailsQueuedAt: v.optional(v.number()),
 		cancellationEmailQueuedAt: v.optional(v.number()),
 		preArrivalEmailQueuedAt: v.optional(v.number()),
@@ -276,6 +288,7 @@ export default defineSchema({
 		photos: v.optional(v.array(v.string()))
 	})
 		.index('by_property', ['propertyId'])
+		.index('by_property_date', ['propertyId', 'date'])
 		.index('by_rating', ['rating']),
 
 	socialProof: defineTable({
@@ -854,6 +867,7 @@ export default defineSchema({
 		updatedByAdminEmail: v.optional(v.string())
 	})
 		.index('by_answerId', ['answerId'])
+		.index('by_propertyId', ['propertyId'])
 		.index('by_answerId_and_normalizedQuestion', ['answerId', 'normalizedQuestion'])
 		.index('by_answerId_and_status', ['answerId', 'status'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
@@ -888,6 +902,7 @@ export default defineSchema({
 		updatedByAdminEmail: v.string()
 	})
 		.index('by_answerId', ['answerId'])
+		.index('by_propertyId', ['propertyId'])
 		.index('by_normalizedSlug', ['normalizedSlug'])
 		.index('by_propertySlug', ['propertySlug'])
 		.index('by_propertySlug_and_answerId', ['propertySlug', 'answerId']),
@@ -935,6 +950,7 @@ export default defineSchema({
 		.index('by_createdAt', ['createdAt'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
 		.index('by_status_and_normalizedQuestion', ['status', 'normalizedQuestion'])
+		.index('by_propertySlug', ['propertySlug'])
 		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
 		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion'])
 		.index('by_resolvedAnswerId', ['resolvedAnswerId'])

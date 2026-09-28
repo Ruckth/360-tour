@@ -2,6 +2,7 @@ import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
+import { allowedImageUrl, IMAGE_HOSTS } from './lib/imageUrls';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
 const MAX_NIGHTLY_RATE = 10_000_000;
@@ -226,7 +227,7 @@ function textList(values: string[], label: string, maxItems: number): string[] {
 }
 
 export function imageUrl(value: string): string {
-	if (!/^(https:\/\/|\/(?!\/))\S+$/.test(value)) throw new Error('Images must be https:// URLs or /public paths');
+	if (!allowedImageUrl(value)) throw new Error(`Images must be /public paths or https URLs. Use an uploaded photo or an image from ${IMAGE_HOSTS.join(' or ')}.`);
 	return value;
 }
 
