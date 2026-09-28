@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   AdminSessionDetail,
   chronologicalTranscriptMessages,
-} from "@/components/admin/AdminChatDashboard";
+} from "@/components/admin/AdminSessionDetail";
 
 type DetailProps = Parameters<typeof AdminSessionDetail>[0];
 

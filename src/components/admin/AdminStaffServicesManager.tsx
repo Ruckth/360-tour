@@ -5,6 +5,7 @@ import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { Archive, Loader2, Pencil, PlusIcon } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,10 +26,12 @@ type Staff = Doc<"staff">;
 type Service = Doc<"services">;
 
 function slugify(value: string) {
-  return value
+  const slug = value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+  // Names with no Latin letters or digits (e.g. Thai-only) would give an empty slug.
+  return slug || `service-${Math.random().toString(36).slice(2, 8).padEnd(6, "0")}`;
 }
 
 /** Hours as one line, e.g. "Mon–Fri 09:00–18:00". Mixed schedules list each shift. */
@@ -52,6 +55,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const archiveStaff = useMutation(api.adminServices.archiveStaff);
   const archiveService = useMutation(api.adminServices.archiveService);
   const [error, setError] = useState("");
+  const confirm = useConfirm();
 
   if (!staff || !services) {
     return <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />;
@@ -62,7 +66,13 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const archivedCount = rows.filter((row) => row.status === "archived").length;
 
   async function archive(action: () => Promise<unknown>, what: string) {
-    if (!window.confirm(`Archive ${what}? It will no longer be bookable.`)) return;
+    const confirmed = await confirm({
+      title: `Archive ${what}?`,
+      description: "It will no longer be bookable.",
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setError("");
     try {
       await action();
@@ -254,9 +264,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     setError("");
     try {
       if (staff) {
-        // Time off first: if it clashes with a booking, nothing else is saved either.
-        if (offFrom) await timeOff(staff._id);
+        // Profile and hours first: saving them again is harmless, so a retry after a
+        // failed time-off insert (e.g. a clash with a booking) can't duplicate the time off.
         await updateStaff({ staffId: staff._id, ...profile, ...(simpleSchedule ? schedule : {}) });
+        if (offFrom) await timeOff(staff._id);
       } else {
         const staffId = await createStaff({ ...profile, ...schedule });
         if (offFrom) await timeOff(staffId);

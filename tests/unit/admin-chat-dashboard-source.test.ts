@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 describe("admin chat dashboard source", () => {
   it("defaults the admin chat filters to not-empty latest-message mode", () => {
     const dashboardSource = readFileSync(
-      new URL("../../src/components/admin/AdminChatDashboard.tsx", import.meta.url),
+      new URL("../../src/components/admin/ChatsView.tsx", import.meta.url),
       "utf8",
     );
 
@@ -19,10 +19,13 @@ describe("admin chat dashboard source", () => {
   });
 
   it("does not expose the old Fill Thai backfill action", () => {
-    const dashboardSource = readFileSync(
-      new URL("../../src/components/admin/AdminChatDashboard.tsx", import.meta.url),
-      "utf8",
-    );
+    const dashboardSource = [
+      "ChatsView.tsx",
+      "QuestionsView.tsx",
+      "AnswerFormDialog.tsx",
+    ]
+      .map((file) => readFileSync(new URL(`../../src/components/admin/${file}`, import.meta.url), "utf8"))
+      .join("\n");
     const suggestionsSource = readFileSync(
       new URL("../../convex/chatSuggestions.ts", import.meta.url),
       "utf8",
@@ -36,7 +39,7 @@ describe("admin chat dashboard source", () => {
 
   it("does not show an empty link-answer select when no approved answers exist", () => {
     const dashboardSource = readFileSync(
-      new URL("../../src/components/admin/AdminChatDashboard.tsx", import.meta.url),
+      new URL("../../src/components/admin/QuestionsView.tsx", import.meta.url),
       "utf8",
     );
     const selectSource = readFileSync(

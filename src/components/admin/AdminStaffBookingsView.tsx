@@ -17,6 +17,7 @@ import type {
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { AdminStaffServicesManager } from "@/components/admin/AdminStaffServicesManager";
 import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -136,6 +137,7 @@ function StaffCalendar() {
   const data = useQuery(api.adminServices.listSchedule, range);
   const reschedule = useMutation(api.adminServices.rescheduleAppointment);
   const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
+  const confirm = useConfirm();
 
   const staffById = useMemo(() => new Map((data?.staff ?? []).map((s) => [s._id as string, s])), [data?.staff]);
   const serviceById = useMemo(() => new Map((data?.services ?? []).map((s) => [s._id as string, s])), [data?.services]);
@@ -318,9 +320,14 @@ function StaffCalendar() {
             if (eventData?.kind === "appointment") setSelectedId(eventData.appointment._id);
             if (eventData?.kind === "block" && eventData.block.timeOffId) {
               const { timeOffId, label } = eventData.block;
-              if (window.confirm(`Remove "${label}" time off?`)) {
-                removeTimeOff({ timeOffId }).catch((err: unknown) => setError(errorText(err, "Could not remove time off.")));
-              }
+              void confirm({ title: `Remove "${label}" time off?`, confirmLabel: "Remove", destructive: true }).then(
+                (confirmed) => {
+                  if (!confirmed) return;
+                  removeTimeOff({ timeOffId }).catch((err: unknown) =>
+                    setError(errorText(err, "Could not remove time off.")),
+                  );
+                },
+              );
             }
           }}
           onSlotClick={(slot) => {
@@ -563,10 +570,22 @@ function AppointmentSheet({
   const [pending, setPending] = useState<SheetAction | null>(null);
   const [error, setError] = useState("");
   const now = useNow();
+  const confirm = useConfirm();
 
   async function run(action: SheetAction) {
     if (!appointment) return;
-    if (action === "cancel" && !window.confirm("Cancel this appointment and free the staff member's time?")) return;
+    if (
+      action === "cancel" &&
+      !(await confirm({
+        title: "Cancel this appointment?",
+        description: "The appointment is cancelled and the staff member's time is freed.",
+        confirmLabel: "Cancel appointment",
+        cancelLabel: "Keep appointment",
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     setPending(action);
     setError("");
     try {

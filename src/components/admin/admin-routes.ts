@@ -1,23 +1,49 @@
-import type { AdminDashboardView } from "@/components/admin/AdminSidebar";
+import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, type LucideIcon } from "lucide-react";
 
-export type AdminStaffTab = "calendar" | "staff" | "services";
+export type AdminNavItem = { href: string; label: string; icon: LucideIcon };
 
-export function adminRoute(pathname: string): { view: AdminDashboardView; staffTab: AdminStaffTab } | null {
-  if (pathname === "/admin/chats") return { view: "chats", staffTab: "calendar" };
-  if (pathname === "/admin/hotel") return { view: "hotel", staffTab: "calendar" };
-  if (pathname === "/admin/questions") return { view: "questions", staffTab: "calendar" };
-  if (pathname === "/admin/properties") return { view: "properties", staffTab: "calendar" };
-  if (pathname === "/admin/leads") return { view: "leads", staffTab: "calendar" };
-  if (pathname === "/admin/staff/calendar") return { view: "staff", staffTab: "calendar" };
-  if (pathname === "/admin/staff/staff") return { view: "staff", staffTab: "staff" };
-  if (pathname === "/admin/staff/services") return { view: "staff", staffTab: "services" };
-  return null;
+/** Sidebar sections, in order. Add a page under `src/app/admin/<section>` and list it here. */
+export const ADMIN_NAV: readonly AdminNavItem[] = [
+  { href: "/admin/chats", label: "Chats", icon: MessageCircle },
+  { href: "/admin/hotel", label: "Hotel bookings", icon: BedDouble },
+  { href: "/admin/staff/calendar", label: "Staff bookings", icon: CalendarClock },
+  { href: "/admin/questions", label: "Questions", icon: HelpCircle },
+  { href: "/admin/properties", label: "Properties", icon: Building2 },
+  { href: "/admin/leads", label: "Leads", icon: Mail },
+];
+
+/** "/admin/staff/services" -> "/admin/staff": the part of a path that picks the sidebar section. */
+function adminSection(pathname: string) {
+  return pathname.split("/").slice(0, 3).join("/");
 }
 
-export function adminViewPath(view: AdminDashboardView): string {
-  return view === "staff" ? "/admin/staff/calendar" : `/admin/${view}`;
+export function adminNavItem(pathname: string): AdminNavItem | undefined {
+  const section = adminSection(pathname);
+  return ADMIN_NAV.find((item) => adminSection(item.href) === section);
+}
+
+export const ADMIN_STAFF_TABS = ["calendar", "staff", "services"] as const;
+export type AdminStaffTab = (typeof ADMIN_STAFF_TABS)[number];
+
+export function isAdminStaffTab(value: string): value is AdminStaffTab {
+  return (ADMIN_STAFF_TABS as readonly string[]).includes(value);
 }
 
 export function adminStaffTabPath(tab: AdminStaffTab): string {
   return `/admin/staff/${tab}`;
+}
+
+const ADMIN_HOME = "/admin/chats";
+
+/**
+ * Used by the proxy: where to send an `/admin` URL whose section doesn't exist
+ * (`/admin`, the old `/admin/chat`, typos), or null to render the page.
+ */
+export function adminRedirectPath(pathname: string): string | null {
+  const [, , section, subpage] = pathname.split("/");
+  if (section === "staff") {
+    if (!subpage) return adminStaffTabPath("calendar");
+    return isAdminStaffTab(subpage) ? null : ADMIN_HOME;
+  }
+  return adminNavItem(pathname) ? null : ADMIN_HOME;
 }

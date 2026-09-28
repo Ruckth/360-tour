@@ -7,6 +7,7 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useConfirm } from '@/components/admin/ConfirmDialog';
 
 type Property = { _id: Id<'properties'>; name: string };
 
@@ -16,6 +17,7 @@ export function IcalSourcesDialog({ open, onClose, properties }: { open: boolean
   const [icalUrl, setIcalUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const confirm = useConfirm();
   const selected = propertyId || properties[0]?._id;
   const sources = useQuery(api.ical.listSources, open && selected ? { propertyId: selected } : 'skip');
   const token = useQuery(api.ical.getExportToken, open && selected ? { propertyId: selected } : 'skip');
@@ -56,7 +58,7 @@ export function IcalSourcesDialog({ open, onClose, properties }: { open: boolean
           <h3 className="font-semibold">Imported feeds</h3>
           {sources?.length ? sources.map(source => <div key={source._id} className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between gap-3"><strong>{source.platform}</strong><Button size="sm" variant="outline" disabled={busy} onClick={async () => {
-              if (!window.confirm('Remove this calendar and its imported blocks?')) return;
+              if (!(await confirm({ title: 'Remove this calendar?', description: 'Its imported blocks are removed too.', confirmLabel: 'Remove', destructive: true }))) return;
               setBusy(true); setError('');
               try { await removeSource({ sourceId: source._id }); } catch (err) { setError(err instanceof Error ? err.message : 'Could not remove calendar.'); } finally { setBusy(false); }
             }}>Remove</Button></div>
@@ -70,7 +72,7 @@ export function IcalSourcesDialog({ open, onClose, properties }: { open: boolean
           {exportUrl ? <Input readOnly aria-label="iCal export URL" value={exportUrl} onFocus={event => event.currentTarget.select()} /> : <p className="text-muted-foreground">Generate a private feed URL for this villa.</p>}
           <Button variant="outline" disabled={busy || !selected} onClick={async () => {
             if (!selected) return;
-            if (token && !window.confirm('Rotate the export URL? Existing OTA subscriptions will stop updating.')) return;
+            if (token && !(await confirm({ title: 'Rotate the export URL?', description: 'Existing OTA subscriptions will stop updating.', confirmLabel: 'Rotate URL', destructive: true }))) return;
             setBusy(true); setError('');
             try { await rotateToken({ propertyId: selected }); } catch (err) { setError(err instanceof Error ? err.message : 'Could not generate export URL.'); } finally { setBusy(false); }
           }}>{token ? 'Rotate export URL' : 'Generate export URL'}</Button>

@@ -7,6 +7,7 @@ import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useConfirm } from '@/components/admin/ConfirmDialog';
 import { resort } from '@/lib/data/resort-config';
 
 type Property = { _id: Id<'properties'>; name: string };
@@ -23,6 +24,7 @@ export function OtaRatesDialog({ open, onClose, properties }: { open: boolean; o
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const confirm = useConfirm();
   const [now] = useState(() => Date.now());
   const selected = propertyId || properties[0]?._id;
   const rates = useQuery(api.properties.listOtaRates, open && selected ? { propertyId: selected } : 'skip');
@@ -67,7 +69,7 @@ export function OtaRatesDialog({ open, onClose, properties }: { open: boolean; o
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => { setPlatform(rate.platform); setNightlyRate(String(rate.nightlyRate)); setUrl(rate.url ?? ''); }}>Edit</Button>
                 <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
-                  if (!window.confirm(`Remove the ${PLATFORMS[rate.platform]} rate?`)) return;
+                  if (!(await confirm({ title: `Remove the ${PLATFORMS[rate.platform]} rate?`, confirmLabel: 'Remove', destructive: true }))) return;
                   setBusy(true); setError('');
                   try { await removeRate({ rateId: rate._id }); } catch (err) { setError(err instanceof Error ? err.message : 'Could not remove rate.'); } finally { setBusy(false); }
                 }}>Remove</Button>

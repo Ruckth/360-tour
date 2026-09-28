@@ -1,6 +1,7 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import createMiddleware from "next-intl/middleware";
 import { NextResponse } from "next/server";
+import { adminRedirectPath } from "@/components/admin/admin-routes";
 import { routing } from "@/i18n/routing";
 import { isClerkConfigured } from "@/lib/clerk-config";
 
@@ -9,6 +10,11 @@ const clerkEnabled = isClerkConfigured();
 
 function handleRequest(request: Request & { nextUrl: URL }) {
   const { pathname } = request.nextUrl;
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    const target = adminRedirectPath(pathname);
+    return target ? NextResponse.redirect(new URL(target, request.url)) : NextResponse.next();
+  }
 
   if (
     pathname.startsWith("/api") ||

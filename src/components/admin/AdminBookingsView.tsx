@@ -15,6 +15,7 @@ import type {
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -284,10 +285,22 @@ function BookingSheet({
   const resendBookingEmails = useMutation(api.adminBookings.resendBookingEmails);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const confirm = useConfirm();
 
   async function run(action: "confirm" | "cancel" | "markPaid") {
     if (!booking) return;
-    if (action === "cancel" && !window.confirm("Cancel this booking and release its dates?")) return;
+    if (
+      action === "cancel" &&
+      !(await confirm({
+        title: "Cancel this booking?",
+        description: "The booking is cancelled and its dates are released.",
+        confirmLabel: "Cancel booking",
+        cancelLabel: "Keep booking",
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     setPending(action);
     setError("");
     try {

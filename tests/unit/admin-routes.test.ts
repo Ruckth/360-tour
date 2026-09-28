@@ -1,32 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { adminRoute, adminStaffTabPath, adminViewPath } from "@/components/admin/admin-routes";
+import { adminNavItem, adminRedirectPath, adminStaffTabPath, isAdminStaffTab } from "@/components/admin/admin-routes";
 
 describe("admin routes", () => {
   it.each([
-    ["/admin/chats", "chats", "calendar"],
-    ["/admin/hotel", "hotel", "calendar"],
-    ["/admin/staff/calendar", "staff", "calendar"],
-    ["/admin/staff/staff", "staff", "staff"],
-    ["/admin/staff/services", "staff", "services"],
-    ["/admin/questions", "questions", "calendar"],
-    ["/admin/properties", "properties", "calendar"],
-    ["/admin/leads", "leads", "calendar"],
-  ] as const)("maps %s to %s", (path, view, staffTab) => {
-    expect(adminRoute(path)).toEqual({ view, staffTab });
+    ["/admin/chats", "Chats"],
+    ["/admin/hotel", "Hotel bookings"],
+    ["/admin/staff/calendar", "Staff bookings"],
+    ["/admin/staff/staff", "Staff bookings"],
+    ["/admin/staff/services", "Staff bookings"],
+    ["/admin/questions", "Questions"],
+    ["/admin/properties", "Properties"],
+    ["/admin/leads", "Leads"],
+  ] as const)("maps %s to the %s sidebar item", (path, label) => {
+    expect(adminNavItem(path)?.label).toBe(label);
   });
 
-  it.each(["/admin", "/admin/chat", "/admin/staff", "/admin/other", "/admin/staff/other"])(
-    "rejects %s",
-    (path) => expect(adminRoute(path)).toBeNull(),
+  it.each(["/admin", "/admin/chat", "/admin/other"])("has no sidebar item for %s", (path) =>
+    expect(adminNavItem(path)).toBeUndefined(),
   );
 
-  it("builds module and staff tab paths", () => {
-    expect(adminViewPath("chats")).toBe("/admin/chats");
-    expect(adminViewPath("hotel")).toBe("/admin/hotel");
-    expect(adminViewPath("staff")).toBe("/admin/staff/calendar");
-    expect(adminViewPath("questions")).toBe("/admin/questions");
-    expect(adminViewPath("properties")).toBe("/admin/properties");
-    expect(adminViewPath("leads")).toBe("/admin/leads");
+  it.each([
+    ["/admin", "/admin/chats"],
+    ["/admin/chat", "/admin/chats"],
+    ["/admin/unknown", "/admin/chats"],
+    ["/admin/staff", "/admin/staff/calendar"],
+    ["/admin/staff/unknown", "/admin/chats"],
+    ["/admin/chats", null],
+    ["/admin/hotel", null],
+    ["/admin/staff/services", null],
+    ["/admin/properties", null],
+  ] as const)("redirects %s to %s", (path, target) => {
+    expect(adminRedirectPath(path)).toBe(target);
+  });
+
+  it("validates staff tabs and builds their paths", () => {
+    expect(isAdminStaffTab("calendar")).toBe(true);
+    expect(isAdminStaffTab("services")).toBe(true);
+    expect(isAdminStaffTab("other")).toBe(false);
     expect(adminStaffTabPath("calendar")).toBe("/admin/staff/calendar");
     expect(adminStaffTabPath("staff")).toBe("/admin/staff/staff");
     expect(adminStaffTabPath("services")).toBe("/admin/staff/services");
