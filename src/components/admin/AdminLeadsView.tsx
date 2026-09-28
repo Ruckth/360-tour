@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { toCsv } from "@/lib/admin/csv";
 
 const SOURCES = {
   tour_completion: "Tour completed",
@@ -23,18 +24,16 @@ const SOURCES = {
 type Source = keyof typeof SOURCES;
 const PAGE_SIZE = 25;
 
-function csvCell(value: string) {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
-
 function downloadCsv(filename: string, rows: string[][]) {
-  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  // Revoking synchronously can cancel the download in some browsers.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function AdminLeadsView() {
@@ -115,11 +114,17 @@ export function AdminLeadsView() {
               ))}
             </SelectContent>
           </Select>
-          <DisabledReason reason={status !== "LoadingFirstPage" && results.length === 0 && "No leads to export"}>
+          <DisabledReason
+            reason={
+              properties === undefined
+                ? "Loading villas"
+                : status !== "LoadingFirstPage" && results.length === 0 && "No leads to export"
+            }
+          >
             <Button
               size="sm"
               variant="outline"
-              disabled={pending === "export" || results.length === 0}
+              disabled={pending === "export" || results.length === 0 || properties === undefined}
               onClick={() => void exportCsv()}
             >
               {pending === "export" ? (

@@ -2,6 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
+import type { FunctionReference } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import { Link2, MessageSquare, Plus, RotateCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -35,6 +36,15 @@ import { cn } from "@/lib/utils";
 
 const UNKNOWN_STATUSES = ["new", "resolved", "ignored"] as const;
 
+/** What adminUndoLinkUnknownGroups needs to restore the questions and the answer's question list. */
+type LinkUndo = {
+  unknownQuestionIds: Id<"chatUnknownQuestions">[];
+  questionChanges: { questionId: Id<"chatQuestions">; previousStatus: "approved" | "suggested" | "rejected" | null }[];
+};
+
+// TODO(merge): the bulk mutations will return `remaining` (and link returns `undo`); drop the optional widening then.
+type WithRemaining<T> = T & { remaining?: number };
+
 /** "New", or "2 New · 1 Resolved" for groups whose questions are in different states. */
 function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } {
   const label = UNKNOWN_STATUSES.filter((status) => group.counts[status] > 0)
@@ -67,7 +77,13 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
   const ignoreGroups = useMutation(api.chatKnowledge.adminIgnoreUnknownGroups);
   const reopenGroups = useMutation(api.chatKnowledge.adminReopenUnknownGroups);
   const linkGroups = useMutation(api.chatKnowledge.adminLinkUnknownGroups);
+  // TODO(merge): typed after backend merge; use api.chatKnowledge.adminUndoLinkUnknownGroups directly.
+  const undoLinkGroups = useMutation(
+    (api.chatKnowledge as unknown as { adminUndoLinkUnknownGroups: FunctionReference<"mutation", "public", LinkUndo> })
+      .adminUndoLinkUnknownGroups,
+  );
   const undo = useUndoNotice();
+  const [leftover, setLeftover] = useState<{ remaining: number; rerun: () => void } | null>(null);
   const groups = result?.groups ?? [];
   const selection = useSelection(groups.map((group) => group.normalizedQuestion));
   const selectedGroups = groups.filter((group) => selection.isSelected(group.normalizedQuestion));
@@ -81,6 +97,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
   async function run(key: string, fallback: string, action: () => Promise<void>) {
     setPendingAction(key);
     setActionError("");
+    setLeftover(null);
     try {
       await action();
     } catch (error) {
@@ -90,37 +107,52 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
     }
   }
 
+  /** Bulk actions stop at a per-call limit; offer to repeat the action for whatever is left. */
+  function offerRerun(remaining: number | undefined, rerun: () => void) {
+    if (remaining && remaining > 0) setLeftover({ remaining, rerun });
+  }
+
   const reopenIds = (ids: Id<"chatUnknownQuestions">[]) => () => reopenGroups({ unknownQuestionIds: ids });
 
   async function ignore(keys: string[]) {
     await run(`ignore:${keys.join("|")}`, "Unable to ignore the questions.", async () => {
-      const done = await ignoreGroups({ normalizedQuestions: keys });
+      const done: WithRemaining<{ ignored: number; unknownQuestionIds: Id<"chatUnknownQuestions">[] }> =
+        await ignoreGroups({ normalizedQuestions: keys });
       selection.clear();
       undo.show(`Ignored ${pluralize(done.ignored, "question")}.`, reopenIds(done.unknownQuestionIds));
+      offerRerun(done.remaining, () => void ignore(keys));
     });
   }
 
   async function reopen(keys: string[]) {
     await run(`reopen:${keys.join("|")}`, "Unable to reopen the questions.", async () => {
-      const done = await reopenGroups({ normalizedQuestions: keys });
+      const done: WithRemaining<{ reopened: number }> = await reopenGroups({ normalizedQuestions: keys });
       selection.clear();
       undo.show(`Reopened ${pluralize(done.reopened, "question")}.`);
+      offerRerun(done.remaining, () => void reopen(keys));
     });
   }
 
   async function link(keys: string[], answerId: string) {
     if (!answerId) return;
     await run(`link:${keys.join("|")}`, "Unable to link the answer.", async () => {
-      const done = await linkGroups({
+      const done: WithRemaining<{
+        linked: number;
+        unknownQuestionIds: Id<"chatUnknownQuestions">[];
+        undo?: LinkUndo;
+      }> = await linkGroups({
         normalizedQuestions: keys,
         answerId: answerId as Id<"chatAnswers">,
         generateSimilar: true,
       });
       selection.clear();
+      const undoPayload = done.undo;
       undo.show(
         `Linked ${pluralize(done.linked, "question")} to "${answerTitle(answerId)}".`,
-        reopenIds(done.unknownQuestionIds),
+        // Undo removes the questions the link added to the answer, not just the resolved status.
+        undoPayload ? () => undoLinkGroups(undoPayload) : reopenIds(done.unknownQuestionIds),
       );
+      offerRerun(done.remaining, () => void link(keys, answerId));
     });
   }
 
@@ -198,6 +230,18 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
         </p>
       ) : null}
       {undo.element}
+      {leftover ? (
+        <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2 text-sm">
+          <span className="text-foreground">
+            {pluralize(leftover.remaining, "more matching question")}{" "}
+            {leftover.remaining === 1 ? "wasn't" : "weren't"} updated.
+          </span>
+          <Button type="button" size="sm" variant="outline" disabled={pendingAction !== ""} onClick={leftover.rerun}>
+            <RotateCcw aria-hidden="true" className="h-4 w-4" />
+            Run again
+          </Button>
+        </div>
+      ) : null}
 
       <BulkActionBar count={selectedGroups.length} noun={selectedGroups.length === 1 ? "group" : "groups"} onClear={selection.clear}>
         {selectedNew.length > 0 ? (

@@ -275,6 +275,7 @@
     "noConvex": "ここでヴィラ比較のお手伝いができます。Convex が設定されるとライブチャットに接続されます。",
     "fallback": "もう一度お試しください。または下の連絡方法をご利用ください。",
     "sent": "コンシェルジュへ送信しました。すぐに返信が必要な場合は WhatsApp をご利用ください。",
+    "staffWillReply": "まもなくスタッフがこちらで返信いたします。",
     "browserGateTitle": "Chromeでチャットを開いています",
     "browserGateTitleSafari": "Safariでチャットを開いています",
     "browserGateDescription": "このアプリ内ブラウザではキーボード表示やチャット状態に問題が出る場合があります。同じチャットをChromeで開きます。",

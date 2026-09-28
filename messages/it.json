@@ -275,6 +275,7 @@
     "noConvex": "Posso aiutarti a confrontare le ville qui; la live chat si collegherà quando Convex sarà configurato per questa app Next.js.",
     "fallback": "Riprova oppure contattaci qui sotto.",
     "sent": "L’ho inviato al concierge. Usa WhatsApp se hai bisogno di una risposta immediata.",
+    "staffWillReply": "Un membro del team ti risponderà qui a breve.",
     "browserGateTitle": "Apertura della chat in Chrome",
     "browserGateTitleSafari": "Apertura della chat in Safari",
     "browserGateDescription": "Il browser interno di questa app può nascondere la tastiera o perdere lo stato della chat. Apriamo la stessa chat in Chrome per un’esperienza più stabile.",

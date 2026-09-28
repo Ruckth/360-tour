@@ -42,6 +42,8 @@ import { statusMeta } from "@/components/admin/status-tones";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 25;
+/** adminListAnswers returns at most this many search matches (SEARCH_RESULT_LIMIT in convex/chatKnowledge.ts). */
+const ANSWER_SEARCH_LIMIT = 50;
 const TAB_LABELS: Record<KnowledgeViewMode, string> = {
   answers: "Answers",
   unknown: "Unknown questions",
@@ -545,6 +547,11 @@ export function QuestionsView() {
                 </table>
               </div>
             )}
+            {answerSearch && answers.status !== "LoadingFirstPage" && answerRows.length >= ANSWER_SEARCH_LIMIT ? (
+              <p role="status" className="border-t border-border p-3 text-center text-xs text-muted-foreground">
+                Showing the top {ANSWER_SEARCH_LIMIT} matches. Refine your search to find others.
+              </p>
+            ) : null}
             <LoadMore status={answers.status} onLoadMore={() => answers.loadMore(PAGE_SIZE)} />
           </div>
         ) : null}

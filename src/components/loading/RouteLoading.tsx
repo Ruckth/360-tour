@@ -27,26 +27,6 @@ export function HomeLoading() {
   );
 }
 
-export function VillaLoading() {
-  return (
-    <div className="min-h-screen bg-background px-4 pt-20 text-foreground md:px-6 md:pt-24">
-      <LoadingLine />
-      <div className="mx-auto max-w-6xl">
-        <SkeletonBlock className="h-4 w-48" />
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_380px]">
-          <SkeletonBlock className="aspect-[4/3] w-full" />
-          <div className="space-y-4">
-            <SkeletonBlock className="h-10 w-3/4" />
-            <SkeletonBlock className="h-24" />
-            <SkeletonBlock className="h-12" />
-            <SkeletonBlock className="h-12" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function BookingLoading() {
   return (
     <div className="min-h-screen bg-background px-4 py-24 text-foreground md:px-6">
