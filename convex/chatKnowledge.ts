@@ -509,6 +509,12 @@ async function syncApprovedQuestions(
 
 	for (const question of existing) {
 		if (question.status === 'approved' && !keptQuestionIds.has(question._id)) {
+			const references = await ctx.db.query('chatUnknownQuestions')
+				.withIndex('by_resolvedQuestionId', (q) => q.eq('resolvedQuestionId', question._id))
+				.collect();
+			for (const reference of references) {
+				await ctx.db.patch(reference._id, { resolvedQuestionId: undefined });
+			}
 			await ctx.db.delete(question._id);
 		}
 	}
@@ -1051,7 +1057,15 @@ export const resolveUnknownWithAnswer = internalMutation({
 		if (answer.status === 'archived') throw new Error('Cannot link to an archived answer');
 
 		const now = Date.now();
-		const questionId = await insertApprovedQuestion(ctx, {
+		const normalizedQuestion = normalizeQuestion(unknown.userQuestion);
+		const existingQuestions = await ctx.db.query('chatQuestions')
+			.withIndex('by_answerId_and_normalizedQuestion', (q) =>
+				q.eq('answerId', args.answerId).eq('normalizedQuestion', normalizedQuestion)
+			).take(20);
+		const matchingQuestion = existingQuestions.find((question) =>
+			question.status === 'approved'
+		);
+		const questionId = matchingQuestion?._id ?? await insertApprovedQuestion(ctx, {
 			answerId: args.answerId,
 			propertyId: answer.propertyId,
 			questionText: unknown.userQuestion,

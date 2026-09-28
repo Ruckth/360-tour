@@ -18,6 +18,7 @@ describe("WhatsApp webhook events", () => {
     const t = convexTest(schema, modules);
 
     const firstClaim = await t.mutation(api.whatsapp.claimEvent, {
+      serverSecret: "",
       eventKey: "whatsapp-event-1",
       whatsappUserId: "66956823432",
       profileName: "Rugby",
@@ -27,12 +28,14 @@ describe("WhatsApp webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.whatsapp.recordInboundEvent, {
+      serverSecret: "",
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       userContent: "See prices",
     });
 
     const duplicateClaim = await t.mutation(api.whatsapp.claimEvent, {
+      serverSecret: "",
       eventKey: "whatsapp-event-1",
       whatsappUserId: "66956823432",
       profileName: "Rugby",
@@ -48,6 +51,7 @@ describe("WhatsApp webhook events", () => {
     expect(duplicateClaim.sessionId).toBe(firstClaim.sessionId);
 
     await t.mutation(api.whatsapp.completeEvent, {
+      serverSecret: "",
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
@@ -86,6 +90,7 @@ describe("WhatsApp webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.whatsapp.claimEvent, {
+      serverSecret: "",
       eventKey: "whatsapp-event-failed-reply",
       whatsappUserId: "66999999999",
       phoneNumberId: "1134040116463992",
@@ -95,11 +100,13 @@ describe("WhatsApp webhook events", () => {
     });
 
     await t.mutation(api.whatsapp.recordInboundEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "ราคาเท่าไหร่",
     });
     await t.mutation(api.whatsapp.markEventFailed, {
+      serverSecret: "",
       eventId: claim.eventId,
       error: "WhatsApp reply failed (401): invalid token",
       whatsappReplyStatus: 401,
@@ -109,6 +116,7 @@ describe("WhatsApp webhook events", () => {
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.whatsapp.claimEvent, {
+      serverSecret: "",
       eventKey: "whatsapp-event-failed-reply",
       whatsappUserId: "66999999999",
       phoneNumberId: "1134040116463992",

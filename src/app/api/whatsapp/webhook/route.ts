@@ -465,6 +465,7 @@ async function handleWhatsAppMessage({
   let claimed: ClaimedWhatsAppEvent;
   try {
     claimed = (await client.mutation(api.whatsapp.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       whatsappUserId,
       profileName,
@@ -490,6 +491,7 @@ async function handleWhatsAppMessage({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.whatsapp.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(messageText ? { userContent: messageText } : {}),
@@ -498,6 +500,7 @@ async function handleWhatsAppMessage({
 
     if (!claimed.sessionId) {
       await client.mutation(api.whatsapp.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: "Missing WhatsApp sender id",
       } as never);
@@ -506,6 +509,7 @@ async function handleWhatsAppMessage({
 
     if (eventType === "unsupported" || !messageText) {
       await client.mutation(api.whatsapp.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: `Unsupported WhatsApp message type: ${message.type ?? "unknown"}`,
       } as never);
@@ -548,6 +552,7 @@ async function handleWhatsAppMessage({
     }
 
     await client.mutation(api.whatsapp.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       userContent: messageText,
@@ -570,6 +575,7 @@ async function handleWhatsAppMessage({
 
     try {
       await client.mutation(api.whatsapp.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedWhatsAppReplyStatus === "number"

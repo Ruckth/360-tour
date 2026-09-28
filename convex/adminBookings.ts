@@ -1,10 +1,9 @@
 import { mutation, query } from './_generated/server';
-import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { markBookingPaid, queueBookingEmails, queueCancellationEmail } from './bookings';
 import { requireAdmin } from './lib/adminAuth';
-import { blockBookingDates } from './lib/availabilityWrites';
+import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 import { createBookingRecord } from './lib/bookingWrites';
 import { demoCode } from './lib/codes';
 import { assertValidIsoDate } from './lib/validation';
@@ -77,22 +76,11 @@ export const listForAdmin = query({
 	}
 });
 
-async function releaseBookingDates(ctx: MutationCtx, booking: Doc<'bookings'>) {
-	const rows = await ctx.db
-		.query('availability')
-		.withIndex('by_property_date', (q) =>
-			q.eq('propertyId', booking.propertyId).gte('date', booking.checkIn).lt('date', booking.checkOut)
-		)
-		.take(366);
-	for (const row of rows) {
-		if (row.bookingId === booking._id) await ctx.db.delete(row._id);
-	}
-}
-
 export const updateBooking = mutation({
 	args: {
 		bookingId: v.id('bookings'),
-		action: v.union(v.literal('confirm'), v.literal('cancel'), v.literal('markPaid'))
+		action: v.union(v.literal('confirm'), v.literal('cancel'), v.literal('markPaid')),
+		refundRecorded: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
@@ -100,10 +88,16 @@ export const updateBooking = mutation({
 		if (!booking) throw new Error('Booking not found');
 
 		if (args.action === 'cancel') {
+			if (booking.paymentStatus === 'paid' && args.refundRecorded !== true) {
+				throw new Error('Paid booking: record the refund to cancel');
+			}
 			if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
 				throw new Error('The Stripe checkout is active. Wait for it to expire before cancelling.');
 			}
-			await ctx.db.patch(booking._id, { status: 'cancelled' });
+			await ctx.db.patch(booking._id, {
+				status: 'cancelled',
+				...(booking.paymentStatus === 'paid' ? { paymentStatus: 'refunded' as const, refundedAt: Date.now() } : {})
+			});
 			await queueCancellationEmail(ctx, booking);
 			await releaseBookingDates(ctx, booking);
 			return;

@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { internalMutation, mutation } from './_generated/server';
 import { requireAdmin } from './lib/adminAuth';
-import { normalizeSuggestedQuestion, supportedSuggestionLocales } from './lib/chatSuggestions';
-import { curatedQuestionSeeds, type CuratedQuestionSeed } from './seeds/curatedQuestions';
+import { normalizeSuggestedQuestion } from './lib/chatSuggestions';
+import { curatedQuestionSeeds } from './seeds/curatedQuestions';
 import { seedProperties } from './seeds/properties';
 import { seedRooms } from './seeds/rooms';
 import { seedSocialProof } from './seeds/socialProof';
@@ -11,46 +11,7 @@ import { seedTourSnippets } from './seeds/tourSnippets';
 import { seedRecentBookings } from './seeds/recentBookings';
 import { seedStaffServicesData } from './seeds/staffServices';
 
-function sameTranslations(left?: Record<string, string>, right?: Record<string, string>) {
-	return supportedSuggestionLocales.every((locale) => left?.[locale]?.trim() === right?.[locale]);
-}
-
-function seedNeedsUpdate(
-	existing: {
-		question: string;
-		normalizedQuestion: string;
-		translations?: Record<string, string>;
-		answer?: string;
-		answerTranslations?: Record<string, string>;
-		answerMode?: 'static' | 'dynamic';
-		dynamicIntent?: 'availability' | 'pricing' | 'property_details' | 'booking_help' | 'contact';
-		propertySlug?: string;
-		topic: string;
-		score: number;
-		status: 'active' | 'archived';
-		archivedAt?: number;
-		archivedByAdminEmail?: string;
-	},
-	seed: CuratedQuestionSeed
-) {
-	return (
-		existing.question !== seed.question ||
-		existing.normalizedQuestion !== normalizeSuggestedQuestion(seed.question) ||
-		!sameTranslations(existing.translations, seed.translations) ||
-		existing.answer !== undefined ||
-		existing.answerTranslations !== undefined ||
-		existing.answerMode !== 'dynamic' ||
-		existing.dynamicIntent !== seed.dynamicIntent ||
-		existing.propertySlug !== undefined ||
-		existing.topic !== seed.topic ||
-		existing.score !== seed.score ||
-		existing.status !== 'active' ||
-		existing.archivedAt !== undefined ||
-		existing.archivedByAdminEmail !== undefined
-	);
-}
-
-export const seedAll = mutation({
+export const seedAll = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const existing = await ctx.db.query('properties').first();
@@ -92,7 +53,7 @@ export const seedCuratedQuestionBank = mutation({
 		const dryRun = args.dryRun ?? false;
 		const now = Date.now();
 		let created = 0;
-		let updated = 0;
+		const updated = 0;
 		let unchanged = 0;
 		let duplicateExistingRows = 0;
 		const items: Array<{
@@ -135,33 +96,8 @@ export const seedCuratedQuestionBank = mutation({
 				continue;
 			}
 
-			if (!seedNeedsUpdate(existing, seed)) {
-				unchanged++;
-				items.push({ question: seed.question, action: 'unchanged', duplicateExistingRows: duplicates });
-				continue;
-			}
-
-			updated++;
-			items.push({ question: seed.question, action: 'update', duplicateExistingRows: duplicates });
-			if (!dryRun) {
-				await ctx.db.patch(existing._id, {
-					question: seed.question,
-					normalizedQuestion,
-					translations: seed.translations,
-					answer: undefined,
-					answerTranslations: undefined,
-					answerMode: 'dynamic',
-					dynamicIntent: seed.dynamicIntent,
-					propertySlug: undefined,
-					topic: seed.topic,
-					score: seed.score,
-					status: 'active',
-					archivedAt: undefined,
-					archivedByAdminEmail: undefined,
-					updatedAt: now,
-					updatedByAdminEmail: admin.email
-				});
-			}
+			unchanged++;
+			items.push({ question: seed.question, action: 'unchanged', duplicateExistingRows: duplicates });
 		}
 
 		return {

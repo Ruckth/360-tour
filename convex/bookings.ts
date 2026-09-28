@@ -11,7 +11,7 @@ import {
 } from './lib/validation';
 import { calculateDirectQuote } from './lib/pricing';
 import { demoCode } from './lib/codes';
-import { blockBookingDates } from './lib/availabilityWrites';
+import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 import { requireAdmin } from './lib/adminAuth';
 import { internal } from './_generated/api';
 import { enforceRateLimit } from './lib/rateLimit';
@@ -122,37 +122,6 @@ export const create = mutation({
 		await enforceRateLimit(ctx, `booking-phone:${args.guestPhone.trim()}`, 5, 60 * 60 * 1000);
 		await enforceRateLimit(ctx, 'booking:global', 100, 60 * 60 * 1000);
 		return await createBookingRecord(ctx, { ...args, source: 'web' });
-	}
-});
-
-export const updatePaymentStatus = mutation({
-	args: {
-		bookingId: v.id('bookings'),
-		paymentStatus: v.union(
-			v.literal('pending'),
-			v.literal('paid'),
-			v.literal('failed'),
-			v.literal('refunded')
-		)
-	},
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) {
-			throw new Error('Booking not found');
-		}
-		if (args.paymentStatus === 'refunded' && booking.paymentMethod === 'stripe') {
-			throw new Error('Refund Stripe payments in Stripe; the signed webhook updates this booking.');
-		}
-
-		const update: Record<string, unknown> = {
-			paymentStatus: args.paymentStatus
-		};
-		if (args.paymentStatus === 'paid') {
-			await markBookingPaid(ctx, args.bookingId, 'admin');
-			return;
-		}
-		await ctx.db.patch(args.bookingId, update);
 	}
 });
 
@@ -497,6 +466,7 @@ export const cancelChatBooking = internalMutation({
 
 		await ctx.db.patch(booking._id, { status: 'cancelled' });
 		await queueCancellationEmail(ctx, booking);
+		await releaseBookingDates(ctx, booking);
 		await ctx.db.patch(args.sessionId, { pendingCancellation: undefined });
 		return { state: 'cancelled' as const, ...summary };
 	}

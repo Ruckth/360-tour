@@ -109,6 +109,16 @@ describe("chatSuggestions.nextForSession", () => {
         expect(row?.translations).toEqual(seed.translations);
         expectAllSupportedLocaleTranslations(row?.translations);
       }
+
+      const editedId = await t.run(async ctx => {
+        const row = (await ctx.db.query("curatedChatQuestions").first())!;
+        await ctx.db.patch(row._id, { status: "archived", answer: "Admin answer", answerMode: "static", score: 1 });
+        return row._id;
+      });
+      const afterEdit = await admin.mutation(api.seed.seedCuratedQuestionBank, { dryRun: false });
+      expect(afterEdit).toMatchObject({ created: 0, updated: 0, unchanged: 10 });
+      expect(await t.run(ctx => ctx.db.get(editedId))).toMatchObject({ status: "archived", answer: "Admin answer", answerMode: "static", score: 1 });
+
     } finally {
       vi.unstubAllEnvs();
     }
