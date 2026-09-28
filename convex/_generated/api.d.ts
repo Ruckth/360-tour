@@ -31,6 +31,7 @@ import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminChatMetadata from "../lib/adminChatMetadata.js";
 import type * as lib_availabilityWrites from "../lib/availabilityWrites.js";
 import type * as lib_bookingWrites from "../lib/bookingWrites.js";
+import type * as lib_channelReplyWindow from "../lib/channelReplyWindow.js";
 import type * as lib_chatFallback from "../lib/chatFallback.js";
 import type * as lib_chatLlm from "../lib/chatLlm.js";
 import type * as lib_chatPresence from "../lib/chatPresence.js";
@@ -95,6 +96,7 @@ declare const fullApi: ApiFromModules<{
   "lib/adminChatMetadata": typeof lib_adminChatMetadata;
   "lib/availabilityWrites": typeof lib_availabilityWrites;
   "lib/bookingWrites": typeof lib_bookingWrites;
+  "lib/channelReplyWindow": typeof lib_channelReplyWindow;
   "lib/chatFallback": typeof lib_chatFallback;
   "lib/chatLlm": typeof lib_chatLlm;
   "lib/chatPresence": typeof lib_chatPresence;

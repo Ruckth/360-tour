@@ -1,4 +1,5 @@
-import { mutation, query, type QueryCtx } from './_generated/server';
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+import { internal } from './_generated/api';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
@@ -9,6 +10,7 @@ import {
 	normalizeAdminSearchText
 } from './lib/adminChatMetadata';
 import { isChatSessionActive } from './lib/chatPresence';
+import { getChannelReplyWindow } from './lib/channelReplyWindow';
 
 const PAGE_SIZE = 10;
 const SEARCH_SESSION_LIMIT = 50;
@@ -25,8 +27,17 @@ type FilterCursor = {
 const sessionStatusValidator = v.union(
 	v.literal('all'),
 	v.literal('active'),
-	v.literal('inactive')
+	v.literal('inactive'),
+	v.literal('needs_reply')
 );
+
+const adminStatusValidator = v.union(
+	v.literal('open'),
+	v.literal('resolved'),
+	v.literal('archived')
+);
+
+const adminStatusFilterValidator = v.union(v.literal('all'), adminStatusValidator);
 
 const emptyFilterValidator = v.union(
 	v.literal('all'),
@@ -43,7 +54,8 @@ const channelFilterValidator = v.union(
 	v.literal('instagram')
 );
 
-type SessionStatus = 'all' | 'active' | 'inactive';
+type SessionStatus = 'all' | 'active' | 'inactive' | 'needs_reply';
+type AdminStatusFilter = 'all' | 'open' | 'resolved' | 'archived';
 type EmptyFilter = 'all' | 'empty' | 'non_empty';
 type ChannelFilter = 'all' | 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
 
@@ -179,11 +191,28 @@ async function getSessionLatestMessageAt(ctx: QueryCtx, session: Doc<'chatSessio
 	return latestStoredMessage?.timestamp ?? latestLegacyMessageAt ?? session.latestMessageAt;
 }
 
+function getLatestStoredMessage(ctx: QueryCtx, sessionId: Id<'chatSessions'>) {
+	return ctx.db
+		.query('chatMessages')
+		.withIndex('by_session', (q) => q.eq('sessionId', sessionId))
+		.order('desc')
+		.first();
+}
+
+/** The guest wrote last and no admin marked that message as settled. */
+function sessionNeedsReply(
+	session: Doc<'chatSessions'>,
+	latestMessage: Doc<'chatMessages'> | null
+) {
+	return latestMessage?.role === 'user' && latestMessage._id !== session.settledGuestMessageId;
+}
+
 async function sessionMatchesFilters(
 	ctx: QueryCtx,
 	session: Doc<'chatSessions'>,
 	options: {
 		status: SessionStatus;
+		adminStatus: AdminStatusFilter;
 		empty: EmptyFilter;
 		channel: ChannelFilter;
 		messageStartAt?: number;
@@ -195,6 +224,15 @@ async function sessionMatchesFilters(
 	if (options.status === 'active' && !active) return false;
 	if (options.status === 'inactive' && active) return false;
 	if (options.channel !== 'all' && session.channel !== options.channel) return false;
+	if (options.adminStatus !== 'all' && (session.adminStatus ?? 'open') !== options.adminStatus) {
+		return false;
+	}
+	if (
+		options.status === 'needs_reply' &&
+		!sessionNeedsReply(session, await getLatestStoredMessage(ctx, session._id))
+	) {
+		return false;
+	}
 
 	const messageCount = getAdminChatMessageCount(session);
 	if (options.empty === 'empty') {
@@ -239,11 +277,7 @@ async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now:
 		latestInstagramEvent,
 		property
 	] = await Promise.all([
-		ctx.db
-			.query('chatMessages')
-			.withIndex('by_session', (q) => q.eq('sessionId', session._id))
-			.order('desc')
-			.first(),
+		getLatestStoredMessage(ctx, session._id),
 		session.channel === 'line'
 			? ctx.db
 					.query('lineWebhookEvents')
@@ -282,8 +316,7 @@ async function decorateSession(ctx: QueryCtx, session: Doc<'chatSessions'>, now:
 		adminSortAt: getAdminChatSortAt(session),
 		propertyName: property?.name,
 		latestMessage,
-		needsReply:
-			latestMessage?.role === 'user' && latestMessage._id !== session.settledGuestMessageId,
+		needsReply: sessionNeedsReply(session, latestMessage),
 		latestLineEvent,
 		latestFacebookEvent,
 		latestWhatsAppEvent,
@@ -306,6 +339,7 @@ async function searchSessions(
 		query: string;
 		cursor: string | null;
 		status: SessionStatus;
+		adminStatus: AdminStatusFilter;
 		empty: EmptyFilter;
 		channel: ChannelFilter;
 		messageStartAt?: number;
@@ -384,6 +418,7 @@ async function listFilteredSessions(
 	options: {
 		cursor: string | null;
 		status: SessionStatus;
+		adminStatus: AdminStatusFilter;
 		empty: EmptyFilter;
 		channel: ChannelFilter;
 		messageStartAt?: number;
@@ -466,6 +501,7 @@ export const listSessions = query({
 	args: {
 		paginationOpts: v.optional(paginationOptsValidator),
 		status: v.optional(sessionStatusValidator),
+		adminStatus: v.optional(adminStatusFilterValidator),
 		empty: v.optional(emptyFilterValidator),
 		channel: v.optional(channelFilterValidator),
 		messageStartAt: v.optional(v.number()),
@@ -481,6 +517,7 @@ export const listSessions = query({
 
 		const now = args.now ?? Date.now();
 		const status = args.status ?? 'active';
+		const adminStatus = args.adminStatus ?? 'all';
 		const empty = args.empty ?? 'non_empty';
 		const channel = args.channel ?? 'all';
 		const messageStartAt = args.messageStartAt;
@@ -498,6 +535,7 @@ export const listSessions = query({
 				query: searchQuery,
 				cursor: paginationOpts.cursor,
 				status,
+				adminStatus,
 				empty,
 				channel,
 				messageStartAt,
@@ -510,6 +548,7 @@ export const listSessions = query({
 		return await listFilteredSessions(ctx, {
 			cursor: paginationOpts.cursor,
 			status,
+			adminStatus,
 			empty,
 			channel,
 			messageStartAt,
@@ -527,9 +566,10 @@ export const getSessionDetail = query({
 
 		const now = args.now ?? Date.now();
 		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
+		// Deep links may point at a deleted chat.
+		if (!session) return null;
 
-		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property] = await Promise.all([
+		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property, replyWindow] = await Promise.all([
 			session.channel === 'line'
 				? ctx.db
 						.query('lineWebhookEvents')
@@ -558,7 +598,8 @@ export const getSessionDetail = query({
 						.order('desc')
 						.take(10)
 				: [],
-			session.propertyId ? ctx.db.get(session.propertyId) : null
+			session.propertyId ? ctx.db.get(session.propertyId) : null,
+			getChannelReplyWindow(ctx, session)
 		]);
 
 		return {
@@ -567,6 +608,7 @@ export const getSessionDetail = query({
 				propertyName: property?.name,
 				isActive: isChatSessionActive(session, now)
 			},
+			replyWindow,
 			lineEvents,
 			facebookEvents,
 			whatsappEvents,
@@ -599,7 +641,7 @@ export const listTranscriptMessages = query({
 		await requireAdmin(ctx);
 
 		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
+		if (!session) return { page: [], isDone: true, continueCursor: '' };
 
 		return await ctx.db
 			.query('chatMessages')
@@ -667,5 +709,99 @@ export const getTranscript = query({
 			whatsappEvents,
 			instagramEvents
 		};
+	}
+});
+
+export const setSessionStatus = mutation({
+	args: { sessionId: v.id('chatSessions'), status: adminStatusValidator },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		const now = Date.now();
+		await ctx.db.patch(args.sessionId, {
+			adminStatus: args.status === 'open' ? undefined : args.status,
+			resolvedAt: args.status === 'resolved' ? now : undefined,
+			archivedAt: args.status === 'archived' ? now : undefined
+		});
+		return null;
+	}
+});
+
+export const setAiPaused = mutation({
+	args: { sessionId: v.id('chatSessions'), paused: v.boolean() },
+	handler: async (ctx, args) => {
+		const { email } = await requireAdmin(ctx);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+
+		await ctx.db.patch(args.sessionId, {
+			aiPaused: args.paused ? true : undefined,
+			assignedAdminEmail: args.paused ? email : undefined
+		});
+		return null;
+	}
+});
+
+const DELETE_BATCH_SIZE = 200;
+
+/** Deletes up to one batch of a session's child rows. Returns true once nothing is left. */
+async function deleteSessionChildrenBatch(ctx: MutationCtx, sessionId: Id<'chatSessions'>) {
+	let budget = DELETE_BATCH_SIZE;
+	const batches = [
+		(limit: number) =>
+			ctx.db.query('chatMessages').withIndex('by_session', (q) => q.eq('sessionId', sessionId)).take(limit),
+		(limit: number) =>
+			ctx.db.query('adminReplyAttempts').withIndex('by_sessionId', (q) => q.eq('sessionId', sessionId)).take(limit),
+		(limit: number) =>
+			ctx.db.query('chatBrowserHandoffs').withIndex('by_sessionId', (q) => q.eq('sessionId', sessionId)).take(limit),
+		(limit: number) =>
+			ctx.db.query('chatQuestionInteractions').withIndex('by_session', (q) => q.eq('sessionId', sessionId)).take(limit),
+		(limit: number) =>
+			ctx.db
+				.query('chatStaticSuggestionInteractions')
+				.withIndex('by_session', (q) => q.eq('sessionId', sessionId))
+				.take(limit),
+		(limit: number) =>
+			ctx.db
+				.query('chatSuggestedQuestions')
+				.withIndex('by_session_and_status', (q) => q.eq('sessionId', sessionId))
+				.take(limit)
+	];
+
+	for (const takeBatch of batches) {
+		const rows = await takeBatch(budget);
+		for (const row of rows) await ctx.db.delete(row._id);
+		budget -= rows.length;
+		if (budget <= 0) return false;
+	}
+	return true;
+}
+
+export const deleteSessionChildren = internalMutation({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		if (!(await deleteSessionChildrenBatch(ctx, args.sessionId))) {
+			await ctx.scheduler.runAfter(0, internal.adminChat.deleteSessionChildren, args);
+		}
+		return null;
+	}
+});
+
+/** Hard-deletes an archived chat and (in batches) its transcript and interactions. Webhook logs are kept. */
+export const deleteArchivedSession = mutation({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+		if (session.adminStatus !== 'archived') throw new Error('Archive the chat before deleting it');
+
+		await ctx.db.delete(args.sessionId);
+		if (!(await deleteSessionChildrenBatch(ctx, args.sessionId))) {
+			await ctx.scheduler.runAfter(0, internal.adminChat.deleteSessionChildren, args);
+		}
+		return null;
 	}
 });

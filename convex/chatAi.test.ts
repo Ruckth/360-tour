@@ -415,3 +415,30 @@ describe("chatAi.respond question-bank matching", () => {
     }
   });
 });
+
+describe("AI takeover", () => {
+  it("records the guest message but skips the AI reply while staff has paused the AI", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await createWebSession(t);
+      await adminTest(t).mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
+
+      const result = await t.action(api.chatAi.respond, {
+        sessionId,
+        userMessage: "Is Auralis Cove a real luxury villa resort?",
+      });
+      const transcript = await t.query(api.chat.getMessages, { sessionId });
+
+      expect(result).toMatchObject({ model: "ai_paused", aiPaused: true, response: "" });
+      expect(transcript.map((message) => [message.role, message.content])).toEqual([
+        ["user", "Is Auralis Cove a real luxury villa resort?"],
+      ]);
+      await expect(
+        t.action(api.chatAi.generateReply, { sessionId, userMessage: "Hello?", channel: "whatsapp" }),
+      ).rejects.toThrow(/paused/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

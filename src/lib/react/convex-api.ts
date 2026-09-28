@@ -312,7 +312,7 @@ export async function askConcierge(
     client.action(api.chatAi.respond, args as never),
     "Asking concierge",
     AI_CONVEX_TIMEOUT_MS,
-  )) as { response?: string };
+  )) as { response?: string; aiPaused?: boolean };
 }
 
 export async function getNextChatSuggestions(

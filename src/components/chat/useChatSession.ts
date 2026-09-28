@@ -1818,6 +1818,8 @@ export function useChatSession({
         ...(selectedActionHint ? { actionHint: selectedActionHint } : {}),
       });
       if (generation !== chatGenerationRef.current) return;
+      // Staff took over: their reply arrives through the transcript watch below.
+      if (result?.aiPaused) return;
       const response =
         typeof result === "object" && result && "response" in result
           ? String(result.response)

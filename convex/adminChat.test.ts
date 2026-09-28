@@ -1031,3 +1031,206 @@ describe("channel profile names", () => {
     expect(names).toEqual(["Somchai", "Maya Chen", "ana.travels"]);
   });
 });
+
+describe("adminChat inbox lifecycle", () => {
+  async function insertMessage(
+    t: ReturnType<typeof convexTest>,
+    sessionId: Id<"chatSessions">,
+    role: "user" | "assistant",
+    timestamp: number,
+  ) {
+    return await t.run((ctx) =>
+      ctx.db.insert("chatMessages", {
+        sessionId,
+        role,
+        content: role === "user" ? "Guest question" : "Reply",
+        timestamp,
+      }),
+    );
+  }
+
+  it("filters by admin status and needs reply", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const base = 1_700_000_000_000;
+    const waiting = await insertAdminSession(t, { visitorName: "Waiting", messageCount: 1, latestMessageAt: base + 3 });
+    const answered = await insertAdminSession(t, { visitorName: "Answered", messageCount: 2, latestMessageAt: base + 2 });
+    const settled = await insertAdminSession(t, { visitorName: "Settled", messageCount: 1, latestMessageAt: base + 1 });
+    await insertMessage(t, waiting, "user", base + 3);
+    await insertMessage(t, answered, "user", base + 1);
+    await insertMessage(t, answered, "assistant", base + 2);
+    const settledMessage = await insertMessage(t, settled, "user", base + 1);
+    await admin.mutation(api.adminChat.settleGuestMessage, { sessionId: settled, messageId: settledMessage });
+
+    const needsReply = await admin.query(api.adminChat.listSessions, {
+      status: "needs_reply",
+      adminStatus: "open",
+      now: base,
+    });
+    expect(needsReply.sessions.map((session) => session.visitorName)).toEqual(["Waiting"]);
+
+    await admin.mutation(api.adminChat.setSessionStatus, { sessionId: waiting, status: "resolved" });
+    const open = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "open", now: base });
+    expect(open.sessions.map((session) => session.visitorName)).toEqual(["Answered", "Settled"]);
+    const resolved = await admin.query(api.adminChat.listSessions, {
+      status: "all",
+      adminStatus: "resolved",
+      now: base,
+    });
+    expect(resolved.sessions).toMatchObject([{ visitorName: "Waiting", adminStatus: "resolved" }]);
+    expect(typeof resolved.sessions[0].resolvedAt).toBe("number");
+
+    await admin.mutation(api.adminChat.setSessionStatus, { sessionId: waiting, status: "open" });
+    const reopened = await t.run((ctx) => ctx.db.get(waiting));
+    expect(reopened?.adminStatus).toBeUndefined();
+    expect(reopened?.resolvedAt).toBeUndefined();
+  });
+
+  it("reopens a resolved or archived chat when the guest writes again, but not on admin replies", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const sessionId = await insertAdminSession(t, { visitorName: "Guest" });
+
+    await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: "archived" });
+    await admin.mutation(api.adminReply.claim, { sessionId, requestId: "r-1", content: "Following up" });
+    await admin.mutation(api.adminReply.complete, { requestId: "r-1" });
+    expect((await t.run((ctx) => ctx.db.get(sessionId)))?.adminStatus).toBe("archived");
+
+    await t.mutation(api.chat.addMessage, { sessionId, role: "user", content: "Hello again" });
+    const session = await t.run((ctx) => ctx.db.get(sessionId));
+    expect(session?.adminStatus).toBeUndefined();
+    expect(session?.archivedAt).toBeUndefined();
+  });
+
+  it("pauses and resumes the AI with the assigned admin", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const sessionId = await insertAdminSession(t);
+
+    await expect(t.mutation(api.adminChat.setAiPaused, { sessionId, paused: true })).rejects.toThrow(
+      "Not authenticated",
+    );
+    await admin.mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
+    expect(await t.query(api.chat.isAiPaused, { sessionId })).toBe(true);
+    expect(await t.run((ctx) => ctx.db.get(sessionId))).toMatchObject({
+      aiPaused: true,
+      assignedAdminEmail: adminEmail,
+    });
+
+    await admin.mutation(api.adminChat.setAiPaused, { sessionId, paused: false });
+    const resumed = await t.run((ctx) => ctx.db.get(sessionId));
+    expect(resumed?.aiPaused).toBeUndefined();
+    expect(resumed?.assignedAdminEmail).toBeUndefined();
+    expect(await t.query(api.chat.isAiPaused, { sessionId })).toBe(false);
+  });
+
+  it("returns the 24-hour reply window for Meta channels", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const web = await insertAdminSession(t, { channel: "web" });
+    const whatsapp = await insertAdminSession(t, { channel: "whatsapp" });
+    const guestAt = 1_700_000_000_000;
+    await insertMessage(t, whatsapp, "user", guestAt);
+    await insertMessage(t, whatsapp, "assistant", guestAt + 5);
+
+    expect((await admin.query(api.adminChat.getSessionDetail, { sessionId: web }))?.replyWindow).toEqual({
+      applies: false,
+    });
+    expect((await admin.query(api.adminChat.getSessionDetail, { sessionId: whatsapp }))?.replyWindow).toEqual({
+      applies: true,
+      lastGuestMessageAt: guestAt,
+      closesAt: guestAt + 24 * 60 * 60 * 1000,
+    });
+  });
+
+  it("deletes only archived chats and cascades their rows in batches", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const sessionId = await insertAdminSession(t);
+      const keptSessionId = await insertAdminSession(t);
+      await t.run(async (ctx) => {
+        const questionId = await ctx.db.insert("curatedChatQuestions", {
+          question: "Pool?",
+          normalizedQuestion: "pool",
+          topic: "amenities",
+          score: 1,
+          status: "active",
+          createdAt: 1,
+          updatedAt: 1,
+          createdByAdminEmail: adminEmail,
+          updatedByAdminEmail: adminEmail,
+        });
+        for (let index = 0; index < 250; index++) {
+          await ctx.db.insert("chatMessages", { sessionId, role: "user", content: `m${index}`, timestamp: index });
+        }
+        const assistantMessageId = await ctx.db.insert("chatMessages", {
+          sessionId,
+          role: "assistant",
+          content: "answer",
+          timestamp: 999,
+        });
+        await ctx.db.insert("chatMessages", { sessionId: keptSessionId, role: "user", content: "keep", timestamp: 1 });
+        await ctx.db.insert("adminReplyAttempts", {
+          requestId: "req",
+          sessionId,
+          adminEmail,
+          content: "hi",
+          status: "sent",
+          createdAt: 1,
+        });
+        await ctx.db.insert("chatBrowserHandoffs", { token: "tok", sessionId, expiresAt: 2, createdAt: 1 });
+        await ctx.db.insert("chatQuestionInteractions", { sessionId, questionId, createdAt: 1 });
+        await ctx.db.insert("chatStaticSuggestionInteractions", {
+          sessionId,
+          suggestionKey: "pool",
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        await ctx.db.insert("chatSuggestedQuestions", {
+          sessionId,
+          assistantMessageId,
+          question: "Pool?",
+          normalizedQuestion: "pool",
+          locale: "en",
+          topic: "amenities",
+          score: 1,
+          status: "active",
+          createdAt: 1,
+        });
+      });
+
+      await expect(admin.mutation(api.adminChat.deleteArchivedSession, { sessionId })).rejects.toThrow(
+        "Archive the chat before deleting it",
+      );
+      await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: "archived" });
+      await admin.mutation(api.adminChat.deleteArchivedSession, { sessionId });
+      expect(await t.run((ctx) => ctx.db.get(sessionId))).toBeNull();
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+      const remaining = await t.run(async (ctx) => ({
+        messages: await ctx.db.query("chatMessages").collect(),
+        attempts: await ctx.db.query("adminReplyAttempts").collect(),
+        handoffs: await ctx.db.query("chatBrowserHandoffs").collect(),
+        questionInteractions: await ctx.db.query("chatQuestionInteractions").collect(),
+        staticInteractions: await ctx.db.query("chatStaticSuggestionInteractions").collect(),
+        suggested: await ctx.db.query("chatSuggestedQuestions").collect(),
+      }));
+      expect(remaining.messages.map((message) => message.content)).toEqual(["keep"]);
+      expect(remaining.attempts).toHaveLength(0);
+      expect(remaining.handoffs).toHaveLength(0);
+      expect(remaining.questionInteractions).toHaveLength(0);
+      expect(remaining.staticInteractions).toHaveLength(0);
+      expect(remaining.suggested).toHaveLength(0);
+      expect(await admin.query(api.adminChat.getSessionDetail, { sessionId })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

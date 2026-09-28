@@ -2,9 +2,9 @@ import { mutation } from './_generated/server';
 import { v } from 'convex/values';
 import { patchSessionAfterMessages } from './lib/adminChatMetadata';
 import { requireAdmin } from './lib/adminAuth';
+import { getChannelReplyWindow } from './lib/channelReplyWindow';
 
 const MAX_REPLY_LENGTH = 1000;
-const CHANNEL_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function recipientForSession(session: {
   channel: 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
@@ -52,21 +52,11 @@ export const claim = mutation({
       throw new Error('This chat has no channel recipient to reply to');
     }
 
-    if (session.channel !== 'web' && session.channel !== 'line') {
-      const recentMessages = await ctx.db
-        .query('chatMessages')
-        .withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-        .order('desc')
-        .take(100);
-      const lastVisitorMessage = recentMessages.find((message) => message.role === 'user');
-      if (
-        !lastVisitorMessage ||
-        Date.now() - lastVisitorMessage.timestamp > CHANNEL_REPLY_WINDOW_MS
-      ) {
-        throw new Error(
-          `${session.channel} allows a free-text reply only within 24 hours of the visitor's last message`
-        );
-      }
+    const replyWindow = await getChannelReplyWindow(ctx, session);
+    if (replyWindow.applies && (!replyWindow.closesAt || Date.now() > replyWindow.closesAt)) {
+      throw new Error(
+        `${session.channel} allows a free-text reply only within 24 hours of the visitor's last message`
+      );
     }
 
     await ctx.db.insert('adminReplyAttempts', {
@@ -104,6 +94,12 @@ export const complete = mutation({
     await patchSessionAfterMessages(ctx, attempt.sessionId, {
       addedMessages: 1,
       latestMessageAt: timestamp,
+      fromAdmin: true,
+    });
+    // Staff replied, so the AI stops answering this guest until an admin resumes it.
+    await ctx.db.patch(attempt.sessionId, {
+      aiPaused: true,
+      assignedAdminEmail: attempt.adminEmail,
     });
     await ctx.db.patch(attempt._id, { status: 'sent', completedAt: timestamp });
     return messageId;

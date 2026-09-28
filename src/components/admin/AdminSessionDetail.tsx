@@ -1,7 +1,7 @@
 "use client";
 
 import type { Id } from "convex/_generated/dataModel";
-import { Loader2, Send } from "lucide-react";
+import { BookmarkPlus, Loader2, Send } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import type {
   AdminMessage,
   AdminSession,
   AdminWhatsAppEvent,
+  ChannelReplyWindow,
 } from "@/components/admin/admin-chat-types";
 import { cn } from "@/lib/utils";
 
@@ -125,6 +126,15 @@ function instagramEventTone(event?: AdminInstagramEvent | null) {
   return "secondary" as const;
 }
 
+const WINDOW_WARNING_MS = 3 * 60 * 60 * 1000;
+
+function durationLabel(ms: number) {
+  const minutes = Math.max(1, Math.round(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+}
+
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
@@ -153,6 +163,9 @@ export function AdminSessionDetail({
   replyPending,
   replyError,
   replyStatus,
+  replyWindow,
+  onSaveAsAnswer,
+  actions,
 }: {
   canLoadOlderMessages: boolean;
   compact?: boolean;
@@ -172,6 +185,10 @@ export function AdminSessionDetail({
   replyPending: boolean;
   replyError: string | null;
   replyStatus: string | null;
+  replyWindow?: ChannelReplyWindow;
+  onSaveAsAnswer?: (message: AdminMessage) => void;
+  /** Status / AI takeover controls (see AdminSessionActions), rendered under the header. */
+  actions?: ReactNode;
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const previousSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
@@ -252,6 +269,13 @@ export function AdminSessionDetail({
     );
   }
 
+  const session = selectedSession;
+  const windowClosesAt = replyWindow?.applies ? replyWindow.closesAt : undefined;
+  const replyWindowClosed =
+    replyWindow?.applies === true && (typeof windowClosesAt !== "number" || now > windowClosesAt);
+  const replyWindowClosingSoon =
+    !replyWindowClosed && typeof windowClosesAt === "number" && windowClosesAt - now < WINDOW_WARNING_MS;
+
   const latestLineEvent = lineEvents?.[0] ?? selectedSession.latestLineEvent;
   const latestFacebookEvent = facebookEvents?.[0] ?? selectedSession.latestFacebookEvent;
   const latestWhatsAppEvent = whatsappEvents?.[0] ?? selectedSession.latestWhatsAppEvent;
@@ -315,6 +339,8 @@ export function AdminSessionDetail({
           <span aria-hidden="true">·</span>
           <span>Last seen {relativeTime(selectedSession.lastSeenAt ?? selectedSession.createdAt, now)}</span>
         </p>
+
+        {actions}
 
         <details className="mt-3 text-xs">
           <summary className="cursor-pointer font-semibold uppercase tracking-[0.14em] text-gold">
@@ -415,6 +441,16 @@ export function AdminSessionDetail({
                 <ChatBubbleTimestamp dateTime={new Date(message.timestamp).toISOString()}>
                   {formatDateTime(message.timestamp)}
                 </ChatBubbleTimestamp>
+                {message.role === "user" && onSaveAsAnswer ? (
+                  <button
+                    type="button"
+                    onClick={() => onSaveAsAnswer(message)}
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                    Save as answer
+                  </button>
+                ) : null}
               </div>
             </ChatBubble>
           ))}
@@ -457,15 +493,32 @@ export function AdminSessionDetail({
               }
             }}
             maxLength={1000}
-            disabled={replyPending}
-            placeholder="Type a reply…"
+            disabled={replyPending || replyWindowClosed}
+            placeholder={replyWindowClosed ? "Reply window closed" : "Type a reply…"}
           />
-          <Button type="submit" disabled={replyPending || !replyDraft.trim()}>
+          <Button type="submit" disabled={replyPending || replyWindowClosed || !replyDraft.trim()}>
             {replyPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Send
           </Button>
         </div>
-        {replyError ? <p role="alert" className="mt-2 text-xs text-red-300">{replyError}</p> : null}
+        {replyWindowClosed ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {channelLabel(session.channel)} only allows free-text replies within 24 hours of the guest&apos;s last
+            message
+            {replyWindow?.applies && replyWindow.lastGuestMessageAt
+              ? ` (last message ${relativeTime(replyWindow.lastGuestMessageAt, now)})`
+              : ""}
+            . You can reply once they write again.
+          </p>
+        ) : replyWindowClosingSoon && typeof windowClosesAt === "number" ? (
+          <p role="status" className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+            The 24-hour {channelLabel(session.channel)} reply window closes in {durationLabel(windowClosesAt - now)}.
+          </p>
+        ) : null}
+        {!session.aiPaused && !replyWindowClosed ? (
+          <p className="mt-2 text-xs text-muted-foreground">Sending a reply pauses the AI for this chat.</p>
+        ) : null}
+        {replyError ? <p role="alert" className="mt-2 text-xs text-destructive">{replyError}</p> : null}
         {replyStatus ? <p role="status" className="mt-2 text-xs text-muted-foreground">{replyStatus}</p> : null}
       </form>
     </div>

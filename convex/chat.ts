@@ -12,6 +12,7 @@ import {
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 import { enforceRateLimit } from './lib/rateLimit';
 import { asksForStaff, queueStaffAlert } from './chatKnowledge';
+import { recordLead } from './leads';
 
 const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -302,19 +303,7 @@ export const identifyVisitor = mutation({
 		});
 
 		if (email) {
-			const existingLead = await ctx.db
-				.query('leads')
-				.withIndex('by_email', (q) => q.eq('email', email))
-				.first();
-
-			if (!existingLead) {
-				await ctx.db.insert('leads', {
-					propertyId: session.propertyId,
-					email,
-					source: 'chat',
-					createdAt: Date.now()
-				});
-			}
+			await recordLead(ctx, { email, source: 'chat', propertyId: session.propertyId });
 		}
 	}
 });
@@ -385,6 +374,15 @@ export const getSession = query({
 	args: { sessionId: v.id('chatSessions') },
 	handler: async (ctx, args) => {
 		return await ctx.db.get(args.sessionId);
+	}
+});
+
+/** Webhooks check this before any automatic reply: staff took over the chat. */
+export const isAiPaused = query({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		return Boolean(session?.aiPaused);
 	}
 });
 

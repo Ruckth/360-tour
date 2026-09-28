@@ -25,10 +25,14 @@ import type {
   KnowledgeAnswerStatus,
 } from "@/components/admin/admin-knowledge-types";
 
-/** What the dialog edits: an existing answer, a new answer from an unknown question, or (empty) a new answer. */
+/**
+ * What the dialog edits: an existing answer, a new answer from an unknown question,
+ * a new answer prefilled with a guest's question (from a chat), or (empty) a new answer.
+ */
 export type AnswerFormTarget = {
   answer?: AdminKnowledgeAnswer;
   unknown?: AdminUnknownQuestion;
+  question?: string;
 };
 
 type AnswerKnowledgeForm = {
@@ -200,7 +204,11 @@ function AnswerForm({
       ? formForUnknownQuestion(sourceUnknown)
       : editingAnswer
         ? formForKnowledgeAnswer(editingAnswer)
-        : emptyKnowledgeForm(),
+        : {
+            ...emptyKnowledgeForm(),
+            title: target.question?.slice(0, 120) ?? "",
+            primaryQuestion: target.question?.slice(0, 240) ?? "",
+          },
   );
   const [formError, setFormError] = useState("");
   const [pendingAction, setPendingAction] = useState("");
