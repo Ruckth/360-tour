@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Loader2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Badge, RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { KnowledgePropertyScopeSelector } from "@/components/admin/KnowledgePropertyScopeSelector";
 import type {
   AdminKnowledgeAnswer,
@@ -24,6 +26,7 @@ import type {
   AdminUnknownQuestion,
   KnowledgeAnswerStatus,
 } from "@/components/admin/admin-knowledge-types";
+import { STATUS_LABELS } from "@/components/admin/labels";
 
 /**
  * What the dialog edits: an existing answer, a new answer from an unknown question,
@@ -96,6 +99,8 @@ function topicKey(value: string) {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, " ");
 }
 
+const TOPIC_OPTION = "rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 /** Pick existing topics or type a new one and press Enter. */
 function TopicPicker({ value, onChange }: { value: string[]; onChange: (topics: string[]) => void }) {
   const [query, setQuery] = useState("");
@@ -140,20 +145,24 @@ function TopicPicker({ value, onChange }: { value: string[]; onChange: (topics: 
           add(exact ?? options[0] ?? query);
         }}
         placeholder="Search or add a topic"
+        aria-describedby="knowledge-topics-hint"
       />
+      <p id="knowledge-topics-hint" className="text-xs text-muted-foreground">
+        Press Enter to add the first match, or a new topic.
+      </p>
       {options.length > 0 || canCreate ? (
         <div className="flex flex-wrap gap-1">
           {options.map((topic) => (
-            <button key={topic} type="button" onClick={() => add(topic)}>
+            <button key={topic} type="button" onClick={() => add(topic)} className={TOPIC_OPTION}>
               <Badge variant="outline" className="cursor-pointer rounded-full hover:bg-muted">
                 {topic}
               </Badge>
             </button>
           ))}
           {canCreate ? (
-            <button type="button" onClick={() => add(query)}>
+            <button type="button" onClick={() => add(query)} className={TOPIC_OPTION}>
               <Badge variant="secondary" className="cursor-pointer rounded-full">
-                <Plus className="h-3 w-3" />
+                <Plus aria-hidden="true" className="h-3 w-3" />
                 Add &quot;{query.trim()}&quot;
               </Badge>
             </button>
@@ -180,7 +189,7 @@ export function AnswerFormDialog({
         if (!isOpen) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto">
         {/* Mounted per open, so the form state starts fresh each time. */}
         {target ? <AnswerForm target={target} propertyScopes={propertyScopes} onClose={onClose} /> : null}
       </DialogContent>
@@ -337,7 +346,7 @@ function AnswerForm({
     <>
       <DialogHeader>
         <DialogTitle>
-          {sourceUnknown ? "Create Answer From Unknown" : editingAnswer ? "Edit Answer" : "Add Answer"}
+          {sourceUnknown ? "Create answer from a guest question" : editingAnswer ? "Edit answer" : "Add answer"}
         </DialogTitle>
         <DialogDescription>
           Approved answers are the source of truth. Suggested questions still need approval.
@@ -368,7 +377,7 @@ function AnswerForm({
               <SelectContent>
                 {(["approved", "draft", "archived"] satisfies KnowledgeAnswerStatus[]).map((status) => (
                   <SelectItem key={status} value={status}>
-                    {status}
+                    {STATUS_LABELS.answer[status]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -377,18 +386,19 @@ function AnswerForm({
         </div>
         <div className="grid gap-2">
           <Label htmlFor="knowledge-answer">Answer</Label>
-          <textarea
+          <Textarea
             id="knowledge-answer"
             value={form.answer}
             maxLength={2000}
             onChange={(event) => setForm((current) => ({ ...current, answer: event.target.value }))}
-            className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+            className="min-h-32"
           />
         </div>
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <Label>Properties</Label>
+            <Label id="knowledge-properties">Properties</Label>
             <KnowledgePropertyScopeSelector
+              labelledBy="knowledge-properties"
               scopes={propertyScopes}
               selectedSlugs={form.propertySlugs}
               disabled={Boolean(sourceUnknown)}
@@ -397,6 +407,9 @@ function AnswerForm({
               onCreate={(slug) => void createKnowledgePropertyScope(slug)}
               onDelete={(slug) => void deleteKnowledgePropertyScope(slug)}
             />
+            {sourceUnknown ? (
+              <p className="text-xs text-muted-foreground">Uses the property where the guest asked.</p>
+            ) : null}
           </div>
         </div>
         <div className="grid gap-2">
@@ -408,7 +421,13 @@ function AnswerForm({
             disabled={Boolean(sourceUnknown)}
             onChange={(event) => setForm((current) => ({ ...current, primaryQuestion: event.target.value }))}
             placeholder="Who is the creator of this website?"
+            aria-describedby={sourceUnknown ? "knowledge-primary-question-hint" : undefined}
           />
+          {sourceUnknown ? (
+            <p id="knowledge-primary-question-hint" className="text-xs text-muted-foreground">
+              The guest&apos;s question, as they asked it.
+            </p>
+          ) : null}
         </div>
         {!sourceUnknown ? (
           <div className="grid gap-2">
@@ -429,9 +448,8 @@ function AnswerForm({
                 }}
                 placeholder="Add another way guests ask this"
               />
-              <Button type="button" variant="secondary" size="icon" onClick={addAdditionalQuestion}>
-                <Plus className="h-4 w-4" />
-                <span className="sr-only">Add question</span>
+              <Button type="button" variant="secondary" size="icon" onClick={addAdditionalQuestion} aria-label="Add question">
+                <Plus aria-hidden="true" className="h-4 w-4" />
               </Button>
             </div>
             {form.questions.length > 0 ? (
@@ -456,13 +474,17 @@ function AnswerForm({
             onChange={(topicNames) => setForm((current) => ({ ...current, topicNames }))}
           />
         </div>
-        {formError ? <p className="text-sm font-medium text-destructive">{formError}</p> : null}
+        {formError ? (
+          <p role="alert" className="text-sm font-medium text-destructive">
+            {formError}
+          </p>
+        ) : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" disabled={pendingAction === "save-answer"}>
-            {pendingAction === "save-answer" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {pendingAction === "save-answer" ? <Spinner label="Saving" className="text-current" /> : null}
             Save answer
           </Button>
         </DialogFooter>

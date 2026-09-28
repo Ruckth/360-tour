@@ -7,6 +7,7 @@ import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
 import { getClerkPublishableKey, isClerkConfigured } from "@/lib/clerk-config";
 import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/public-content";
+import { getVillaCatalog } from "@/lib/server/villas";
 import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
 import { siteUrl } from "@/lib/site-url";
@@ -65,9 +66,11 @@ export default async function RootLayout({
     process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
   const clerkPublishableKey = getClerkPublishableKey();
   const clerkEnabled = isClerkConfigured();
+  // The home page only renders its reviews section when a live villa has reviews (cached read).
+  const hasReviews = (await getVillaCatalog(locale)).villas.some((villa) => villa.rating);
   const app = (
     <Providers convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
-      <SiteShell>{children}</SiteShell>
+      <SiteShell hasReviews={hasReviews}>{children}</SiteShell>
     </Providers>
   );
 

@@ -66,6 +66,8 @@ export function AdminDateTimeFilterField({
       }).format(date)
     : "Select date";
 
+  const timeHint = "Pick a date first";
+
   function updateTime(nextHour: string, nextMinute: string) {
     if (!date) return;
     onChange(dateTimeValueFromParts(date, nextHour, nextMinute));
@@ -73,7 +75,7 @@ export function AdminDateTimeFilterField({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={id} className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <Label htmlFor={id} className="admin-eyebrow">
         {label}
       </Label>
       <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] gap-2">
@@ -88,7 +90,7 @@ export function AdminDateTimeFilterField({
                 !date && "text-muted-foreground",
               )}
             >
-              <CalendarDays className="h-4 w-4 text-gold" />
+              <CalendarDays aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
               <span className="min-w-0 truncate">{dateLabel}</span>
             </Button>
           </PopoverTrigger>
@@ -104,7 +106,7 @@ export function AdminDateTimeFilterField({
           </PopoverContent>
         </Popover>
         <Select value={hour} onValueChange={(nextHour) => updateTime(nextHour, minute)} disabled={!date}>
-          <SelectTrigger className="h-10 rounded-lg" aria-label={`${label} hour`}>
+          <SelectTrigger className="h-10 rounded-lg" aria-label={`${label} hour`} title={date ? undefined : timeHint}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -116,7 +118,7 @@ export function AdminDateTimeFilterField({
           </SelectContent>
         </Select>
         <Select value={minute} onValueChange={(nextMinute) => updateTime(hour, nextMinute)} disabled={!date}>
-          <SelectTrigger className="h-10 rounded-lg" aria-label={`${label} minute`}>
+          <SelectTrigger className="h-10 rounded-lg" aria-label={`${label} minute`} title={date ? undefined : timeHint}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

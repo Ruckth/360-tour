@@ -1,11 +1,13 @@
 "use client";
 
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge, RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
+import { DisabledReason } from "@/components/admin/DisabledReason";
 import type { AdminKnowledgePropertyScope } from "@/components/admin/admin-knowledge-types";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +21,21 @@ function normalizePropertySlugInput(value: string) {
     .replace(/^-|-$/g, "");
 }
 
+const OPTION =
+  "flex items-center justify-between gap-3 px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+
+function SelectedMark() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-gold-text">
+      <Check aria-hidden="true" className="h-3.5 w-3.5" />
+      Selected
+    </span>
+  );
+}
+
 export function KnowledgePropertyScopeSelector({
   disabled = false,
+  labelledBy,
   onChange,
   onCreate,
   onDelete,
@@ -29,6 +44,8 @@ export function KnowledgePropertyScopeSelector({
   selectedSlugs,
 }: {
   disabled?: boolean;
+  /** Id of the visible label, so the group and its button are named. */
+  labelledBy?: string;
   onChange: (slugs: string[]) => void;
   onCreate: (slug: string) => void;
   onDelete: (slug: string) => void;
@@ -73,7 +90,11 @@ export function KnowledgePropertyScopeSelector({
   }
 
   return (
-    <div className={cn("rounded-lg border border-input bg-background p-2", disabled && "opacity-60")}>
+    <div
+      role="group"
+      aria-labelledby={labelledBy}
+      className={cn("rounded-lg border border-input bg-background p-2", disabled && "opacity-60")}
+    >
       <div className="flex min-h-9 flex-wrap items-center gap-2">
         {selectedScopes.length === 0 ? (
           <Badge variant="secondary" className="rounded-full">
@@ -94,7 +115,7 @@ export function KnowledgePropertyScopeSelector({
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button type="button" variant="outline" size="sm" disabled={disabled} className="ml-auto">
-              <Plus className="h-4 w-4" />
+              <Plus aria-hidden="true" className="h-4 w-4" />
               Properties
             </Button>
           </PopoverTrigger>
@@ -110,18 +131,21 @@ export function KnowledgePropertyScopeSelector({
                   }
                 }}
                 placeholder="Search or add a slug"
+                aria-label="Search properties or add a slug"
               />
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 <button
                   type="button"
+                  aria-pressed={selectedSlugs.length === 0}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition hover:bg-muted",
+                    OPTION,
+                    "w-full rounded-lg transition hover:bg-muted",
                     selectedSlugs.length === 0 && "bg-muted text-foreground",
                   )}
                   onClick={() => onChange([])}
                 >
                   <span>All properties</span>
-                  {selectedSlugs.length === 0 ? <span className="text-xs text-gold">Selected</span> : null}
+                  {selectedSlugs.length === 0 ? <SelectedMark /> : null}
                 </button>
                 {filteredScopes.map((scope) => {
                   const selected = selectedSlugs.includes(scope.slug);
@@ -130,32 +154,35 @@ export function KnowledgePropertyScopeSelector({
                     <div key={scope.slug} className="flex items-center gap-1 rounded-lg hover:bg-muted">
                       <button
                         type="button"
-                        className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2 text-left text-sm"
+                        aria-pressed={selected}
+                        className={cn(OPTION, "min-w-0 flex-1 rounded-lg")}
                         onClick={() => toggleSlug(scope.slug)}
                       >
                         <span className="min-w-0">
                           <span className="block truncate font-medium text-foreground">{scope.label}</span>
                           <span className="block truncate text-xs text-muted-foreground">{scope.slug}</span>
                         </span>
-                        {selected ? <span className="text-xs text-gold">Selected</span> : null}
+                        {selected ? <SelectedMark /> : null}
                       </button>
                       {scope.source === "custom" ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={!scope.canDelete || deleting}
-                          aria-label={`Delete ${scope.label}`}
-                          title={
-                            scope.canDelete
-                              ? `Delete ${scope.label}`
-                              : "Cannot delete while linked to an answer"
-                          }
-                          onClick={() => onDelete(scope.slug)}
-                          className="mr-1 h-8 w-8"
-                        >
-                          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                        </Button>
+                        <DisabledReason reason={!scope.canDelete && "Cannot delete while linked to an answer"}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={!scope.canDelete || deleting}
+                            aria-label={`Delete ${scope.label}`}
+                            title={scope.canDelete ? `Delete ${scope.label}` : undefined}
+                            onClick={() => onDelete(scope.slug)}
+                            className="mr-1 h-8 w-8"
+                          >
+                            {deleting ? (
+                              <Spinner label="Deleting" className="h-3.5 w-3.5" />
+                            ) : (
+                              <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </DisabledReason>
                       ) : null}
                     </div>
                   );
@@ -173,9 +200,9 @@ export function KnowledgePropertyScopeSelector({
                   onClick={createScope}
                 >
                   {pendingAction === "create-property-scope" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Spinner label="Adding" className="text-current" />
                   ) : (
-                    <Plus className="h-4 w-4" />
+                    <Plus aria-hidden="true" className="h-4 w-4" />
                   )}
                   Add {normalizedQuery}
                 </Button>

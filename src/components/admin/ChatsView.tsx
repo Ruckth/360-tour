@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { ChevronLeft, ChevronRight, Filter, Hand, Keyboard, Loader2, Search, TriangleAlert } from "lucide-react";
+import { CheckCheck, ChevronLeft, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -9,20 +9,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AdminDateTimeFilterField } from "@/components/admin/AdminDateTimeFilterField";
 import { AdminSessionActions } from "@/components/admin/AdminSessionActions";
 import { AdminSessionDetail, chronologicalTranscriptMessages } from "@/components/admin/AdminSessionDetail";
 import { AnswerFormDialog, type AnswerFormTarget } from "@/components/admin/AnswerFormDialog";
+import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { SetupBanner } from "@/components/admin/SetupChecklist";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
+import { sourceLabel } from "@/components/admin/labels";
+import { TONES, statusMeta } from "@/components/admin/status-tones";
 import type { AdminKnowledgePropertyScope } from "@/components/admin/admin-knowledge-types";
 import {
   ChannelIcon,
-  channelLabel,
   formatDateTime,
   relativeTime,
   truncate,
@@ -30,7 +33,6 @@ import {
 } from "@/components/admin/admin-chat-format";
 import type {
   AdminMessage,
-  AdminSession,
   AdminSessionStatus,
   SessionChannelFilter,
   SessionDetailResult,
@@ -43,14 +45,15 @@ import { cn } from "@/lib/utils";
 type SessionStatus = "needs_reply" | "active" | "all" | "inactive";
 type EmptyChatFilter = "non_empty" | "empty";
 
-const statusOptions = ["needs_reply", "active", "all", "inactive"] satisfies SessionStatus[];
-const statusLabels: Record<SessionStatus, string> = {
-  needs_reply: "Needs reply",
-  active: "Live",
-  all: "All",
-  inactive: "Inactive",
-};
+const statusTabs = [
+  { value: "needs_reply", label: "Needs reply" },
+  { value: "active", label: "Live" },
+  { value: "all", label: "All" },
+  { value: "inactive", label: "Inactive" },
+] satisfies { value: SessionStatus; label: string }[];
+const statusOptions = statusTabs.map((tab) => tab.value);
 const adminStatusOptions = ["open", "resolved", "archived"] satisfies AdminSessionStatus[];
+const adminStatusTabs = adminStatusOptions.map((value) => ({ value, label: statusMeta("chatSession", value).label }));
 const emptyFilterOptions = ["non_empty", "empty"] satisfies EmptyChatFilter[];
 const channelFilterOptions = ["all", "web", "line", "facebook", "whatsapp", "instagram"] satisfies SessionChannelFilter[];
 // URL param defaults; a param equal to its default is left out of the URL.
@@ -137,6 +140,10 @@ function dateTimeBadgeLabel(value: string) {
 function emptyFilterLabel(value: EmptyChatFilter) {
   if (value === "empty") return "Empty only";
   return "Not empty";
+}
+
+function channelFilterLabel(channel: SessionChannelFilter) {
+  return channel === "all" ? "All" : sourceLabel(channel);
 }
 
 export function ChatsView() {
@@ -297,7 +304,7 @@ export function ChatsView() {
         setReplyStatus(
           result.channel === "web"
             ? "Reply sent"
-            : `Reply accepted by ${channelLabel(result.channel as AdminSession["channel"])}. Delivery is not confirmed.`,
+            : `Reply accepted by ${sourceLabel(result.channel)}. Delivery is not confirmed.`,
         );
       }
     } catch (error) {
@@ -320,11 +327,6 @@ export function ChatsView() {
       setSettlingMessageId(null);
     }
   }
-
-  const resetSessionPaging = useCallback(() => {
-    setPageIndex(0);
-    setPageCursors([null]);
-  }, []);
 
   function handleNextPage() {
     const nextCursor = sessionsResult?.continueCursor ?? sessionsResult?.nextCursor ?? null;
@@ -373,15 +375,66 @@ export function ChatsView() {
     updateParams({ session: sessionsResult.sessions[0]._id });
   }, [isLargeViewport, selectedSessionId, sessionsResult, updateParams]);
 
+  // A new filter starts again from the first page.
   useEffect(() => {
-    resetSessionPaging();
-  }, [filterResetKey, resetSessionPaging]);
+    setPageIndex(0);
+    setPageCursors([null]);
+  }, [filterResetKey]);
 
   useEffect(() => {
     if ((searchParams.get("q") ?? "") === trimmedSearchQuery) return;
     const timeout = window.setTimeout(() => updateParams({ q: trimmedSearchQuery }), 300);
     return () => window.clearTimeout(timeout);
   }, [searchParams, trimmedSearchQuery, updateParams]);
+
+  const activeFilterCount = [emptyFilter !== "non_empty", channelFilter !== "all", messageStartAt, messageEndAt].filter(
+    Boolean,
+  ).length;
+  const emptyList: { message: string; action?: ReactNode } =
+    trimmedSearchQuery || activeFilterCount > 0
+      ? {
+          message: "No chats match this search and these filters.",
+          action: (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("");
+                updateParams({ q: null, empty: null, channel: null, from: null, to: null });
+              }}
+            >
+              Clear search and filters
+            </Button>
+          ),
+        }
+      : status === "needs_reply" && adminStatus === "open"
+        ? {
+            message: "No open chats are waiting for a reply.",
+            action: (
+              <Button type="button" size="sm" onClick={() => setStatus("all")}>
+                Show all open chats
+              </Button>
+            ),
+          }
+        : adminStatus !== "open"
+          ? {
+              message: `No ${adminStatus} chats here.`,
+              action: (
+                <Button type="button" size="sm" onClick={() => setAdminStatus("open")}>
+                  Show open chats
+                </Button>
+              ),
+            }
+          : status !== "all"
+            ? {
+                message: "No open chats match this activity filter.",
+                action: (
+                  <Button type="button" size="sm" onClick={() => setStatus("all")}>
+                    Show all open chats
+                  </Button>
+                ),
+              }
+            : { message: "No chats yet. Guest conversations from every channel appear here." };
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const selectedIndex = sessions.findIndex((session) => session._id === selectedSessionId);
@@ -434,30 +487,33 @@ export function ChatsView() {
     <>
       <SetupBanner className="mx-4 mt-4 shrink-0 sm:mx-6" />
       <div className="grid min-h-0 w-full flex-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)]">
-        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
-          <div className="border-b border-border p-3">
-            <ToggleGroup value={status} onValueChange={setStatus} aria-label="Chat activity">
-              {statusOptions.map((option) => (
-                <ToggleGroupItem key={option} value={option} className="flex-1 px-2">
-                  {statusLabels[option]}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-            <ToggleGroup
+        <aside
+          aria-label="Chat list"
+          className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card"
+        >
+          <div className="grid gap-2 border-b border-border p-3">
+            <SegmentedTabs
+              tabs={statusTabs}
+              value={status}
+              onValueChange={setStatus}
+              label="Chat activity"
+              controls="admin-chat-list"
+              fill
+            />
+            <SegmentedTabs
+              tabs={adminStatusTabs}
               value={adminStatus}
               onValueChange={setAdminStatus}
-              aria-label="Chat status"
-              className="mt-2"
-            >
-              {adminStatusOptions.map((option) => (
-                <ToggleGroupItem key={option} value={option} className="flex-1 capitalize">
-                  {option}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-            <div className="mt-3 flex gap-2">
+              label="Chat status"
+              controls="admin-chat-list"
+              fill
+            />
+            <div className="mt-1 flex gap-2">
               <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                />
                 <Input
                   id="admin-chat-search"
                   value={searchQuery}
@@ -465,7 +521,7 @@ export function ChatsView() {
                   onKeyDown={(event) => {
                     if (event.key === "Escape") event.currentTarget.blur();
                   }}
-                  className="h-10 rounded-lg pl-9"
+                  className="h-9 rounded-lg pl-9"
                   placeholder="Search contacts or messages"
                   aria-label="Search contacts or messages"
                   aria-keyshortcuts="/"
@@ -476,29 +532,27 @@ export function ChatsView() {
                   <Button
                     type="button"
                     variant="outline"
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-lg",
-                      (emptyFilter !== "non_empty" || channelFilter !== "all" || messageStartAt || messageEndAt) &&
-                        "border-gold text-gold",
-                    )}
-                    aria-label="Open chat filters"
+                    className={cn("h-9 shrink-0 rounded-lg px-3", activeFilterCount > 0 && "border-ring")}
+                    aria-label={activeFilterCount > 0 ? `Chat filters, ${activeFilterCount} active` : "Chat filters"}
                   >
-                    <Filter className="h-4 w-4" />
+                    <Filter aria-hidden="true" className="h-4 w-4" />
+                    {activeFilterCount > 0 ? (
+                      <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
+                        {activeFilterCount}
+                      </span>
+                    ) : null}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-[24rem] max-w-[calc(100vw-2rem)] space-y-4">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">Filters</p>
-                  </div>
+                  <p className="text-sm font-semibold text-foreground">Filters</p>
                   <div className="space-y-2">
-                    <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    <p id="admin-chat-empty-filter" className="admin-eyebrow">
                       Message status
-                    </Label>
+                    </p>
                     <ToggleGroup
                       value={emptyFilter}
                       onValueChange={setEmptyFilter}
-                      aria-label="Message status"
+                      aria-labelledby="admin-chat-empty-filter"
                       className="grid grid-cols-2"
                     >
                       {(["non_empty", "empty"] satisfies EmptyChatFilter[]).map((option) => (
@@ -509,27 +563,19 @@ export function ChatsView() {
                     </ToggleGroup>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    <p id="admin-chat-channel-filter" className="admin-eyebrow">
                       Channel
-                    </Label>
+                    </p>
                     <ToggleGroup
                       value={channelFilter}
                       onValueChange={setChannelFilter}
-                      aria-label="Channel"
-                      className="grid grid-cols-4"
+                      aria-labelledby="admin-chat-channel-filter"
+                      className="grid grid-cols-2"
                     >
                       {channelFilterOptions.map((option) => (
-                        <ToggleGroupItem
-                          key={option}
-                          value={option}
-                          aria-label={`Filter by ${channelLabel(option)} channel`}
-                          title={channelLabel(option)}
-                          className="px-2"
-                        >
-                          {option === "all" ? null : (
-                            <ChannelIcon channel={option} className="h-3.5 w-3.5" />
-                          )}
-                          <span className={option === "all" ? undefined : "sr-only"}>{channelLabel(option)}</span>
+                        <ToggleGroupItem key={option} value={option} className="min-w-0 justify-start px-2">
+                          {option === "all" ? null : <ChannelIcon channel={option} className="h-3.5 w-3.5 shrink-0" />}
+                          <span className="truncate">{channelFilterLabel(option)}</span>
                         </ToggleGroupItem>
                       ))}
                     </ToggleGroup>
@@ -557,6 +603,7 @@ export function ChatsView() {
                       type="button"
                       variant="outline"
                       size="sm"
+                      disabled={activeFilterCount === 0}
                       onClick={() => {
                         updateParams({ empty: null, channel: null, from: null, to: null });
                       }}
@@ -567,8 +614,8 @@ export function ChatsView() {
                 </PopoverContent>
               </Popover>
             </div>
-            {trimmedSearchQuery || emptyFilter !== "non_empty" || channelFilter !== "all" || messageStartAt || messageEndAt ? (
-              <div className="mt-3 flex flex-wrap gap-2">
+            {trimmedSearchQuery || activeFilterCount > 0 ? (
+              <div className="flex flex-wrap gap-2">
                 {trimmedSearchQuery ? (
                   <RemovableBadge removeLabel="Clear search" onRemove={() => setSearchQuery("")}>
                     Search: {truncate(trimmedSearchQuery, 24)}
@@ -582,7 +629,7 @@ export function ChatsView() {
                 {channelFilter !== "all" ? (
                   <RemovableBadge removeLabel="Clear channel filter" onRemove={() => setChannelFilter("all")}>
                     <ChannelIcon channel={channelFilter} className="h-3.5 w-3.5" />
-                    <span className="sr-only">{channelLabel(channelFilter)}</span>
+                    {channelFilterLabel(channelFilter)}
                   </RemovableBadge>
                 ) : null}
                 {messageStartAt ? (
@@ -599,8 +646,9 @@ export function ChatsView() {
             ) : null}
             <button
               type="button"
+              aria-haspopup="dialog"
               onClick={() => setShortcutsOpen(true)}
-              className="mt-2 hidden items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground lg:inline-flex"
+              className="hidden w-fit items-center gap-1.5 rounded text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:inline-flex"
             >
               <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
               <span>
@@ -609,86 +657,75 @@ export function ChatsView() {
             </button>
           </div>
 
-          <div className="min-h-0 overflow-y-auto">
+          <div id="admin-chat-list" aria-busy={loadingSessions} className="min-h-0 overflow-y-auto">
             {settleError ? (
               <p role="alert" className="border-b border-border px-4 py-3 text-sm font-medium text-destructive">
                 {settleError}
               </p>
             ) : null}
             {invalidMessageDateRange ? (
-              <div className="p-5 text-sm leading-6 text-red-200">
+              <p role="alert" className="p-5 text-sm leading-6 text-destructive">
                 Latest message start must be before latest message end.
-              </div>
+              </p>
             ) : null}
-            {loadingSessions && sessions.length === 0 ? (
-              <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading sessions
-              </div>
-            ) : null}
+            {loadingSessions && sessions.length === 0 ? <SkeletonRows label="Loading chats" rows={6} /> : null}
             {!invalidMessageDateRange && !loadingSessions && sessions.length === 0 ? (
-              <div className="p-5 text-sm leading-6 text-muted-foreground">
-                {status === "needs_reply" && adminStatus === "open"
-                  ? "No open chats are waiting for a reply."
-                  : "No chat sessions match this filter yet."}
-              </div>
+              <EmptyState action={emptyList.action}>{emptyList.message}</EmptyState>
             ) : null}
             {sessions.map((session) => {
               const unansweredMessage = session.needsReply ? session.latestMessage : undefined;
+              const selected = selectedSessionId === session._id;
               return (
                 <div
                   key={session._id}
                   data-session-id={session._id}
                   className={cn(
                     "flex items-center border-b border-border transition hover:bg-muted/60",
-                    selectedSessionId === session._id && "bg-gold/10",
+                    selected && "bg-gold/10",
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => selectSession(session._id)}
-                    className="min-w-0 flex-1 px-4 py-3 text-left"
+                    aria-current={selected ? "true" : undefined}
+                    className="min-w-0 flex-1 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {visitorLabel(session)}
-                        </p>
-                        {session.isActive ? (
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Active now">
-                            <span className="sr-only">Active now</span>
-                          </span>
-                        ) : null}
-                        {session.aiPaused ? (
-                          <span className="shrink-0 text-muted-foreground" title="AI paused: staff is replying">
-                            <Hand className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span className="sr-only">AI paused</span>
-                          </span>
-                        ) : null}
-                      </div>
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                        {visitorLabel(session)}
+                      </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
                         {relativeTime(session.latestMessageAt, now)}
                       </span>
-                    </div>
-                    <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    </span>
+                    <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                       <ChannelIcon channel={session.channel} className="h-3.5 w-3.5 shrink-0" />
-                      <span className="sr-only">{channelLabel(session.channel)} ·</span>
+                      <span className="sr-only">{sourceLabel(session.channel)} ·</span>
                       <span className="truncate">
                         {session.propertyName ?? session.propertySlug ?? "General site"}
                       </span>
-                    </p>
+                    </span>
+                    {session.needsReply || session.isActive || session.aiPaused ? (
+                      <span className="mt-2 flex flex-wrap gap-1.5">
+                        {session.needsReply ? <StatusBadge {...statusMeta("chatSession", "needs_reply")} /> : null}
+                        {session.isActive ? <StatusBadge tone="success" label="Live now" /> : null}
+                        {session.aiPaused ? <StatusBadge {...statusMeta("chatSession", "ai_paused")} /> : null}
+                      </span>
+                    ) : null}
                   </button>
                   {unansweredMessage ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       onClick={() => settleGuestMessage(session._id, unansweredMessage._id)}
                       disabled={settlingMessageId === unansweredMessage._id}
-                      aria-label={`Unanswered guest message from ${visitorLabel(session)}. Mark as settled`}
-                      title="Unanswered guest message. Click to mark as settled."
-                      className="mr-2 grid h-9 w-9 shrink-0 place-items-center rounded-full text-amber-400 transition hover:bg-amber-500/15 disabled:opacity-50"
+                      aria-label={`Mark the message from ${visitorLabel(session)} as settled`}
+                      title="Mark as settled: no reply needed (e)"
+                      className={cn("mr-2 size-9 shrink-0 rounded-full", TONES.warning.text)}
                     >
-                      <TriangleAlert className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                      <CheckCheck className="h-4 w-4" aria-hidden="true" />
+                    </Button>
                   ) : null}
                 </div>
               );
@@ -702,13 +739,13 @@ export function ChatsView() {
               onClick={handlePreviousPage}
               disabled={pageIndex === 0 || loadingSessions}
             >
-              <ChevronLeft className="mr-1 h-4 w-4" />
+              <ChevronLeft aria-hidden="true" className="h-4 w-4" />
               Previous
             </Button>
-            <div className="text-center text-xs text-muted-foreground">
-              <p className="font-semibold text-foreground">Page {pageIndex + 1}</p>
-              <p>10 per page</p>
-            </div>
+            <p className="text-center text-xs text-muted-foreground">
+              <span className="block font-semibold text-foreground">Page {pageIndex + 1}</span>
+              10 per page
+            </p>
             <Button
               type="button"
               variant="outline"
@@ -722,12 +759,12 @@ export function ChatsView() {
               }
             >
               Next
-              <ChevronRight className="ml-1 h-4 w-4" />
+              <ChevronRight aria-hidden="true" className="h-4 w-4" />
             </Button>
           </div>
         </aside>
 
-        <section className="hidden min-h-0 border border-border bg-card lg:block">
+        <section aria-label="Selected chat" className="hidden min-h-0 border border-border bg-card lg:block">
           <AdminSessionDetail key={selectedSession?._id ?? "none"} {...detailProps} />
         </section>
       </div>
@@ -757,8 +794,10 @@ export function ChatsView() {
       />
       <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
         <DialogContent className="max-w-sm">
-          <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>Work when the cursor is not in a text box.</DialogDescription>
+          <DialogHeader>
+            <DialogTitle>Keyboard shortcuts</DialogTitle>
+            <DialogDescription>They work when the cursor is not in a text box.</DialogDescription>
+          </DialogHeader>
           <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
             {CHAT_SHORTCUTS.map(([keys, label]) => (
               <div key={label} className="contents">
@@ -785,12 +824,12 @@ const CHAT_SHORTCUTS: Array<[string[], string]> = [
   [["e"], "Mark the guest's message settled and move on"],
   [["/"], "Search chats"],
   [["?"], "Show these shortcuts"],
-  [["Esc"], "Leave a text box"],
+  [["Esc"], "Leave a text box or close a dialog"],
 ];
 
 function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="rounded border border-border bg-muted px-1.5 font-mono text-[0.7rem] leading-5 text-foreground">
+    <kbd className="rounded border border-border bg-muted px-1.5 font-mono text-xs leading-5 text-foreground">
       {children}
     </kbd>
   );

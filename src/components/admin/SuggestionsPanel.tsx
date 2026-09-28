@@ -4,7 +4,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { supportedSuggestionLocales } from "convex/lib/chatSuggestions";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Archive, Edit3, Languages, Loader2, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, Edit3, Languages, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,9 +19,23 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import { BulkActionBar, SelectCheckbox, pluralize, useSelection, useUndoNotice } from "@/components/admin/admin-bulk";
+import { DisabledReason } from "@/components/admin/DisabledReason";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import {
+  BulkActionBar,
+  EmptyState,
+  STACKED_TABLE,
+  SearchBox,
+  SelectCheckbox,
+  SkeletonRows,
+  pluralize,
+  useSelection,
+  useUndoNotice,
+} from "@/components/admin/admin-bulk";
 import {
   CURATED_DYNAMIC_INTENTS,
   CURATED_TOPICS,
@@ -31,6 +45,7 @@ import {
   type CuratedDynamicIntent,
   type CuratedSuggestionStatus,
 } from "@/components/admin/admin-knowledge-types";
+import { cn } from "@/lib/utils";
 
 type StatusFilter = CuratedSuggestionStatus | "all";
 
@@ -48,9 +63,6 @@ const LOCALE_LABELS: Record<string, string> = {
   it: "Italian",
   hi: "Hindi",
 };
-
-const textareaClass =
-  "min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
 
 function label(value: string) {
   return value.replace(/_/g, " ");
@@ -172,18 +184,9 @@ export function SuggestionsPanel() {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <div className="relative min-w-[14rem] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search suggestions"
-            aria-label="Search suggestions"
-            className="pl-9"
-          />
-        </div>
+        <SearchBox value={search} onChange={setSearch} label="Search suggestions" />
         <Select value={status} onValueChange={(value) => setStatus(value as StatusFilter)}>
-          <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Suggestion status">
+          <SelectTrigger className="h-9 w-[10rem] rounded-lg" aria-label="Suggestion status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -192,23 +195,38 @@ export function SuggestionsPanel() {
             <SelectItem value="all">All</SelectItem>
           </SelectContent>
         </Select>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={translateProgress !== null || (status !== "archived" && missingCount === 0)}
-          onClick={() => void translateAllMissing()}
-          title="Translate every active suggestion that is missing a language"
-        >
-          {translateProgress ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
-          {translateProgress
-            ? `Translating… ${translateProgress.done} done, ${translateProgress.left} left`
-            : `Translate all missing${missingCount ? ` (${missingCount})` : ""}`}
-        </Button>
-        <Button type="button" size="sm" onClick={() => setEditing("new")}>
-          <Plus className="h-4 w-4" />
-          Add suggestion
-        </Button>
+        <div className="flex flex-wrap gap-2 sm:ml-auto">
+          <DisabledReason
+            reason={
+              translateProgress === null &&
+              status !== "archived" &&
+              missingCount === 0 &&
+              "Every active suggestion is already translated"
+            }
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={translateProgress !== null || (status !== "archived" && missingCount === 0)}
+              onClick={() => void translateAllMissing()}
+              title="Translate every active suggestion that is missing a language"
+            >
+              {translateProgress ? (
+                <Spinner label="Translating" className="text-current" />
+              ) : (
+                <Languages aria-hidden="true" className="h-4 w-4" />
+              )}
+              {translateProgress
+                ? `Translating… ${translateProgress.done} done, ${translateProgress.left} left`
+                : `Translate all missing${missingCount ? ` (${missingCount})` : ""}`}
+            </Button>
+          </DisabledReason>
+          <Button type="button" size="sm" onClick={() => setEditing("new")}>
+            <Plus aria-hidden="true" className="h-4 w-4" />
+            Add suggestion
+          </Button>
+        </div>
       </div>
 
       {actionError ? (
@@ -230,7 +248,7 @@ export function SuggestionsPanel() {
             disabled={pendingAction.startsWith("bulk:")}
             onClick={() => void setSelectedStatus("archived")}
           >
-            <Archive className="h-4 w-4" />
+            <Archive aria-hidden="true" className="h-4 w-4" />
             Archive
           </Button>
         ) : null}
@@ -242,33 +260,55 @@ export function SuggestionsPanel() {
             disabled={pendingAction.startsWith("bulk:")}
             onClick={() => void setSelectedStatus("active")}
           >
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw aria-hidden="true" className="h-4 w-4" />
             Restore
           </Button>
         ) : null}
       </BulkActionBar>
 
       {!suggestions ? (
-        <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading suggestions
-        </div>
+        <SkeletonRows label="Loading suggestions" />
       ) : rows.length === 0 ? (
-        <div className="p-5 text-sm leading-6 text-muted-foreground">
-          {query
-            ? "No suggestions match your search."
-            : status === "archived"
-              ? "No archived suggestions."
-              : status === "active"
-                ? "No active suggestions yet. Add the questions guests can tap in chat."
-                : "No suggestions yet."}
-        </div>
+        query ? (
+          <EmptyState
+            action={
+              <Button type="button" size="sm" onClick={() => setSearch("")}>
+                Clear search
+              </Button>
+            }
+          >
+            No suggestions match &quot;{search.trim()}&quot;.
+          </EmptyState>
+        ) : status === "archived" ? (
+          <EmptyState
+            action={
+              <Button type="button" size="sm" variant="outline" onClick={() => setStatus("active")}>
+                Show active suggestions
+              </Button>
+            }
+          >
+            No archived suggestions.
+          </EmptyState>
+        ) : (
+          <EmptyState
+            action={
+              <Button type="button" size="sm" onClick={() => setEditing("new")}>
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                Add suggestion
+              </Button>
+            }
+          >
+            {status === "active"
+              ? "No active suggestions yet. Add the questions guests can tap in chat."
+              : "No suggestions yet. Add the questions guests can tap in chat."}
+          </EmptyState>
+        )
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="lg:overflow-x-auto">
+          <table className={STACKED_TABLE.table}>
+            <thead className={STACKED_TABLE.head}>
               <tr>
-                <th className="w-10 px-4 py-3">
+                <th className={cn(STACKED_TABLE.th, "w-10")}>
                   <SelectCheckbox
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
@@ -276,35 +316,38 @@ export function SuggestionsPanel() {
                     label="Select all suggestions"
                   />
                 </th>
-                <th className="px-4 py-3 font-semibold">Suggestion</th>
-                <th className="px-4 py-3 font-semibold">Reply</th>
-                <th className="px-4 py-3 font-semibold">Topic</th>
-                <th className="px-4 py-3 font-semibold">Score</th>
-                <th className="px-4 py-3 font-semibold">Scope</th>
-                <th className="px-4 py-3 font-semibold">Actions</th>
+                <th className={STACKED_TABLE.th}>Suggestion</th>
+                <th className={STACKED_TABLE.th}>Reply</th>
+                <th className={STACKED_TABLE.th}>Topic</th>
+                <th className={STACKED_TABLE.th}>Score</th>
+                <th className={STACKED_TABLE.th}>Scope</th>
+                <th className={STACKED_TABLE.th}>Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={STACKED_TABLE.body}>
               {rows.map((row) => {
                 const mode = row.answerMode ?? (row.answer ? "static" : "dynamic");
                 const translationCount = Object.keys(row.translations ?? {}).filter((locale) => locale !== "en").length;
                 return (
-                  <tr key={row._id} className="border-b border-border last:border-b-0">
-                    <td className="px-4 py-3">
+                  <tr key={row._id} className={cn(STACKED_TABLE.row, STACKED_TABLE.selectableRow)}>
+                    <td className={STACKED_TABLE.cell}>
                       <SelectCheckbox
                         checked={selection.isSelected(row._id)}
                         onChange={() => selection.toggle(row._id)}
                         label={`Select "${row.question}"`}
                       />
                     </td>
-                    <td className="max-w-[340px] px-4 py-3">
+                    <td className={cn(STACKED_TABLE.cell, "lg:max-w-[340px]")}>
                       <p className="font-medium text-foreground">{row.question}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         {translationCount}/{TRANSLATION_LOCALES.length} translations
-                        {row.status === "archived" ? " · archived" : ""}
+                        {row.status === "archived" ? <StatusBadge tone="muted" label="Archived" /> : null}
                       </p>
                     </td>
-                    <td className="max-w-[320px] px-4 py-3 text-muted-foreground">
+                    <td
+                      data-label="Reply"
+                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground lg:max-w-[320px]")}
+                    >
                       {mode === "static" ? (
                         <p className="line-clamp-2 text-xs leading-5">{row.answer}</p>
                       ) : (
@@ -313,15 +356,28 @@ export function SuggestionsPanel() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 capitalize text-muted-foreground">{label(row.topic)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.score}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {row.propertySlug ? (propertyNames.get(row.propertySlug) ?? row.propertySlug) : "Global"}
+                    <td
+                      data-label="Topic"
+                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "capitalize text-muted-foreground")}
+                    >
+                      {label(row.topic)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td
+                      data-label="Score"
+                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground")}
+                    >
+                      {row.score}
+                    </td>
+                    <td
+                      data-label="Scope"
+                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground")}
+                    >
+                      {row.propertySlug ? (propertyNames.get(row.propertySlug) ?? row.propertySlug) : "All properties"}
+                    </td>
+                    <td className={STACKED_TABLE.cell}>
                       <div className="flex flex-wrap gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setEditing(row)}>
-                          <Edit3 className="h-4 w-4" />
+                          <Edit3 aria-hidden="true" className="h-4 w-4" />
                           Edit
                         </Button>
                         {row.status === "active" ? (
@@ -334,7 +390,7 @@ export function SuggestionsPanel() {
                               void runAction(`archive:${row._id}`, () => archiveCurated({ questionId: row._id }))
                             }
                           >
-                            <Archive className="h-4 w-4" />
+                            <Archive aria-hidden="true" className="h-4 w-4" />
                             Archive
                           </Button>
                         ) : (
@@ -348,7 +404,7 @@ export function SuggestionsPanel() {
                                 void runAction(`restore:${row._id}`, () => restoreCurated({ questionId: row._id }))
                               }
                             >
-                              <RotateCcw className="h-4 w-4" />
+                              <RotateCcw aria-hidden="true" className="h-4 w-4" />
                               Restore
                             </Button>
                             <Button
@@ -359,7 +415,7 @@ export function SuggestionsPanel() {
                               onClick={() => void deleteSuggestion(row)}
                               className="text-destructive"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 aria-hidden="true" className="h-4 w-4" />
                               Delete
                             </Button>
                           </>
@@ -375,7 +431,7 @@ export function SuggestionsPanel() {
       )}
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto">
           {editing ? (
             <SuggestionForm
               suggestion={editing === "new" ? null : editing}
@@ -502,7 +558,7 @@ function SuggestionForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{suggestion ? "Edit Suggestion" : "Add Suggestion"}</DialogTitle>
+        <DialogTitle>{suggestion ? "Edit suggestion" : "Add suggestion"}</DialogTitle>
         <DialogDescription>
           Suggestions are the question chips guests can tap in chat. Higher scores show first.
         </DialogDescription>
@@ -519,23 +575,22 @@ function SuggestionForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label>Reply</Label>
+          <Label id="suggestion-reply-type">Reply</Label>
           <ToggleGroup
             value={form.answerMode}
             onValueChange={(value) => update("answerMode", value as CuratedAnswerMode)}
-            aria-label="Reply type"
+            aria-labelledby="suggestion-reply-type"
             className="w-fit"
           >
             <ToggleGroupItem value="static" className="px-4">Fixed answer</ToggleGroupItem>
             <ToggleGroupItem value="dynamic" className="px-4">Live answer</ToggleGroupItem>
           </ToggleGroup>
           {isStatic ? (
-            <textarea
+            <Textarea
               aria-label="Answer"
               value={form.answer}
               maxLength={1200}
               onChange={(event) => update("answer", event.target.value)}
-              className={textareaClass}
               placeholder="Breakfast is included with every stay."
             />
           ) : (
@@ -610,7 +665,7 @@ function SuggestionForm({
           </div>
         </div>
         <details className="rounded-lg border border-border">
-          <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+          <summary className="cursor-pointer rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             Translations ({translatedCount}/{TRANSLATION_LOCALES.length})
           </summary>
           <div className="grid gap-3 border-t border-border p-3">
@@ -623,7 +678,11 @@ function SuggestionForm({
                 disabled={pending === "translate"}
                 onClick={() => void translate()}
               >
-                {pending === "translate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
+                {pending === "translate" ? (
+                  <Spinner label="Translating" className="text-current" />
+                ) : (
+                  <Languages aria-hidden="true" className="h-4 w-4" />
+                )}
                 Translate with AI
               </Button>
             </div>
@@ -640,12 +699,12 @@ function SuggestionForm({
                     onChange={(event) => updateTranslation("translations", locale, event.target.value)}
                   />
                   {isStatic ? (
-                    <textarea
+                    <Textarea
                       aria-label={`${LOCALE_LABELS[locale] ?? locale} answer`}
                       value={form.answerTranslations[locale] ?? ""}
                       maxLength={1200}
                       onChange={(event) => updateTranslation("answerTranslations", locale, event.target.value)}
-                      className={`${textareaClass} min-h-14`}
+                      className="min-h-14"
                     />
                   ) : null}
                 </div>
@@ -653,13 +712,17 @@ function SuggestionForm({
             ))}
           </div>
         </details>
-        {formError ? <p className="text-sm font-medium text-destructive">{formError}</p> : null}
+        {formError ? (
+          <p role="alert" className="text-sm font-medium text-destructive">
+            {formError}
+          </p>
+        ) : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" disabled={pending === "save"}>
-            {pending === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {pending === "save" ? <Spinner label="Saving" className="text-current" /> : null}
             Save suggestion
           </Button>
         </DialogFooter>

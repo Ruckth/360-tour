@@ -2,63 +2,55 @@
 
 import { api } from "convex/_generated/api";
 import { useAction, useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { Archive, Edit3, HelpCircle, ListChecks, Loader2, Plus, RotateCcw, Search, Star, Trash2, X } from "lucide-react";
+import { Archive, Edit3, ListChecks, Plus, RotateCcw, Sparkles, Star, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Spinner } from "@/components/ui/spinner";
 import { AnswerFormDialog, type AnswerFormTarget } from "@/components/admin/AnswerFormDialog";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { PendingVariantsPanel } from "@/components/admin/PendingVariantsPanel";
+import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
+import { StatusBadge } from "@/components/admin/StatusBadge";
 import { SuggestionsPanel } from "@/components/admin/SuggestionsPanel";
 import { UnknownQuestionsPanel } from "@/components/admin/UnknownQuestionsPanel";
 import {
   BulkActionBar,
+  EmptyState,
+  STACKED_TABLE,
+  SearchBox,
   SelectCheckbox,
+  SkeletonRows,
   pluralize,
   useDebounced,
   useSelection,
   useUndoNotice,
 } from "@/components/admin/admin-bulk";
 import {
-  KNOWLEDGE_VIEW_MODES,
   type AdminKnowledgeAnswer,
   type AdminKnowledgePropertyScope,
   type AdminKnowledgeQuestion,
   type AdminPendingVariant,
   type KnowledgeAnswerFilter,
-  type KnowledgeAnswerStatus,
   type KnowledgeViewMode,
+  KNOWLEDGE_VIEW_MODES,
 } from "@/components/admin/admin-knowledge-types";
+import { STATUS_LABELS } from "@/components/admin/labels";
+import { statusMeta } from "@/components/admin/status-tones";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 25;
+const TAB_LABELS: Record<KnowledgeViewMode, string> = {
+  answers: "Answers",
+  unknown: "Unknown questions",
+  variants: "Variants",
+  suggestions: "Suggestions",
+};
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
-}
-
-function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function answersEmptyText(status: KnowledgeAnswerFilter, search: string) {
-  if (search) return `No answers match "${search}".`;
-  if (status === "all") return "No answers yet. Add one so the chatbot can reply on its own.";
-  if (status === "approved") return "No approved answers yet. Add one so the chatbot can reply on its own.";
-  return `No ${status} answers.`;
-}
-
-function SearchBox({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
-  return (
-    <div className="relative min-w-[14rem] flex-1">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={label} aria-label={label} className="pl-9" />
-    </div>
-  );
 }
 
 function LoadMore({ status, onLoadMore }: { status: string; onLoadMore: () => void }) {
@@ -66,7 +58,7 @@ function LoadMore({ status, onLoadMore }: { status: string; onLoadMore: () => vo
   return (
     <div className="border-t border-border p-3 text-center">
       <Button size="sm" variant="outline" disabled={status === "LoadingMore"} onClick={onLoadMore}>
-        {status === "LoadingMore" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+        {status === "LoadingMore" ? <Spinner label="Loading more answers" className="text-current" /> : null}
         Load more
       </Button>
     </div>
@@ -117,6 +109,18 @@ export function QuestionsView() {
   const variantCount = pendingVariants
     ? `${pendingVariants.variants.length}${pendingVariants.truncated ? "+" : ""}`
     : "";
+  const tabs = KNOWLEDGE_VIEW_MODES.map((value) => ({
+    value,
+    label:
+      value === "variants" && pendingVariants?.variants.length ? (
+        <>
+          {TAB_LABELS[value]}
+          <span className="rounded-full bg-muted px-1.5 text-xs font-semibold text-foreground">{variantCount}</span>
+        </>
+      ) : (
+        TAB_LABELS[value]
+      ),
+  }));
 
   function setMode(next: KnowledgeViewMode) {
     const params = new URLSearchParams(searchParams.toString());
@@ -195,10 +199,46 @@ export function QuestionsView() {
     });
   }
 
-  function answerStatusTone(status: KnowledgeAnswerStatus) {
-    if (status === "approved") return "bg-emerald-600 text-white";
-    if (status === "archived") return "bg-muted text-foreground";
-    return "bg-amber-600 text-white";
+  function answersEmpty() {
+    if (answerSearch) {
+      return (
+        <EmptyState
+          action={
+            <Button type="button" size="sm" onClick={() => setAnswerSearchInput("")}>
+              Clear search
+            </Button>
+          }
+        >
+          No {answerStatus === "all" ? "" : `${STATUS_LABELS.answer[answerStatus].toLowerCase()} `}answers match &quot;
+          {answerSearch}&quot;.
+        </EmptyState>
+      );
+    }
+    if (answerStatus === "draft" || answerStatus === "archived") {
+      return (
+        <EmptyState
+          action={
+            <Button type="button" size="sm" onClick={() => setAnswerStatus("all")}>
+              Show all answers
+            </Button>
+          }
+        >
+          No {answerStatus} answers.
+        </EmptyState>
+      );
+    }
+    return (
+      <EmptyState
+        action={
+          <Button type="button" size="sm" onClick={() => setAnswerTarget({})}>
+            <Plus aria-hidden="true" className="h-4 w-4" />
+            Add answer
+          </Button>
+        }
+      >
+        No {answerStatus === "approved" ? "approved " : ""}answers yet. Add one so the chatbot can reply on its own.
+      </EmptyState>
+    );
   }
 
   function iconAction(
@@ -212,35 +252,22 @@ export function QuestionsView() {
         type="button"
         variant="ghost"
         size="icon"
-        className="h-6 w-6 shrink-0"
+        className="size-7 shrink-0"
         aria-label={`${labelText}: ${question.questionText}`}
         title={labelText}
         disabled={pendingAction === `${action}:${question._id}`}
         onClick={() => void runQuestionAction(action, question)}
       >
-        <Icon className="h-3.5 w-3.5" />
+        <Icon aria-hidden="true" className="h-3.5 w-3.5" />
       </Button>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
-      <section className="border border-border bg-card">
-        <div className="border-b border-border p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
-            <HelpCircle className="h-4 w-4" />
-            Approved knowledge
-          </div>
-          <h2 className="mt-2 font-serif text-3xl font-semibold text-foreground">Chatbot Knowledge</h2>
-          <ToggleGroup value={mode} onValueChange={setMode} aria-label="Knowledge view" className="mt-4 w-fit">
-            {KNOWLEDGE_VIEW_MODES.map((option) => (
-              <ToggleGroupItem key={option} value={option} className="px-4 capitalize">
-                {option === "variants" && variantCount ? `Variants (${variantCount})` : option}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
+    <div className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-4 sm:px-6">
+      <SegmentedTabs id="knowledge" tabs={tabs} value={mode} onValueChange={setMode} label="Knowledge sections" />
 
+      <section {...tabPanelProps("knowledge", mode)} className="min-w-0 border border-border bg-card">
         {mode === "answers" && actionError ? (
           <p role="alert" className="border-b border-border px-4 py-3 text-sm font-medium text-destructive">
             {actionError}
@@ -253,27 +280,30 @@ export function QuestionsView() {
             <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
               <SearchBox value={answerSearchInput} onChange={setAnswerSearchInput} label="Search answers" />
               <Select value={answerStatus} onValueChange={(value) => setAnswerStatus(value as KnowledgeAnswerFilter)}>
-                <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Answer status">
+                <SelectTrigger className="h-9 w-[10rem] rounded-lg" aria-label="Answer status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(["approved", "draft", "archived", "all"] satisfies KnowledgeAnswerFilter[]).map((status) => (
+                  {(["approved", "draft", "archived"] as const).map((status) => (
                     <SelectItem key={status} value={status}>
-                      {capitalize(status)}
+                      {STATUS_LABELS.answer[status]}
                     </SelectItem>
                   ))}
+                  <SelectItem value="all">All</SelectItem>
                 </SelectContent>
               </Select>
-              {pendingVariants && pendingVariants.variants.length > 0 ? (
-                <Button type="button" size="sm" variant="outline" onClick={() => setMode("variants")}>
-                  <ListChecks className="h-4 w-4" />
-                  Review variants ({variantCount})
+              <div className="flex flex-wrap gap-2 sm:ml-auto">
+                {pendingVariants && pendingVariants.variants.length > 0 ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => setMode("variants")}>
+                    <ListChecks aria-hidden="true" className="h-4 w-4" />
+                    Review variants ({variantCount})
+                  </Button>
+                ) : null}
+                <Button type="button" onClick={() => setAnswerTarget({})} size="sm">
+                  <Plus aria-hidden="true" className="h-4 w-4" />
+                  Add answer
                 </Button>
-              ) : null}
-              <Button type="button" onClick={() => setAnswerTarget({})} size="sm">
-                <Plus className="h-4 w-4" />
-                Add answer
-              </Button>
+              </div>
             </div>
             <BulkActionBar
               count={selectedAnswers.length}
@@ -288,7 +318,7 @@ export function QuestionsView() {
                   disabled={pendingAction.startsWith("bulk:")}
                   onClick={() => void setSelectedAnswersStatus("archived")}
                 >
-                  <Archive className="h-4 w-4" />
+                  <Archive aria-hidden="true" className="h-4 w-4" />
                   Archive
                 </Button>
               ) : null}
@@ -300,26 +330,21 @@ export function QuestionsView() {
                   disabled={pendingAction.startsWith("bulk:")}
                   onClick={() => void setSelectedAnswersStatus("approved")}
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <RotateCcw aria-hidden="true" className="h-4 w-4" />
                   Restore
                 </Button>
               ) : null}
             </BulkActionBar>
             {answers.status === "LoadingFirstPage" ? (
-              <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading answers
-              </div>
+              <SkeletonRows label="Loading answers" />
             ) : answerRows.length === 0 ? (
-              <div className="p-5 text-sm leading-6 text-muted-foreground">
-                {answersEmptyText(answerStatus, answerSearch)}
-              </div>
+              answersEmpty()
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] text-left text-sm">
-                  <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              <div className="lg:overflow-x-auto">
+                <table className={STACKED_TABLE.table}>
+                  <thead className={STACKED_TABLE.head}>
                     <tr>
-                      <th className="w-10 px-4 py-3">
+                      <th className={cn(STACKED_TABLE.th, "w-10")}>
                         <SelectCheckbox
                           checked={answerSelection.allSelected}
                           indeterminate={answerSelection.someSelected}
@@ -327,15 +352,15 @@ export function QuestionsView() {
                           label="Select all answers"
                         />
                       </th>
-                      <th className="px-4 py-3 font-semibold">Answer</th>
-                      <th className="px-4 py-3 font-semibold">Questions</th>
-                      <th className="px-4 py-3 font-semibold">Suggested</th>
-                      <th className="px-4 py-3 font-semibold">Scope</th>
-                      <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Actions</th>
+                      <th className={STACKED_TABLE.th}>Answer</th>
+                      <th className={STACKED_TABLE.th}>Questions</th>
+                      <th className={STACKED_TABLE.th}>Suggested</th>
+                      <th className={STACKED_TABLE.th}>Scope</th>
+                      <th className={STACKED_TABLE.th}>Status</th>
+                      <th className={STACKED_TABLE.th}>Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={STACKED_TABLE.body}>
                     {answerRows.map((answer) => {
                       const approvedQuestions = answer.questions
                         .filter((question) => question.status === "approved")
@@ -343,16 +368,17 @@ export function QuestionsView() {
                       const suggestedQuestions = answer.questions.filter((question) => question.status === "suggested");
                       const rejectedQuestions = answer.questions.filter((question) => question.status === "rejected");
                       const archived = answer.status === "archived";
+                      const generating = pendingAction === `generate:${answer._id}`;
                       return (
-                        <tr key={answer._id} className="border-b border-border align-top last:border-b-0">
-                          <td className="px-4 py-3">
+                        <tr key={answer._id} className={cn(STACKED_TABLE.row, STACKED_TABLE.selectableRow)}>
+                          <td className={STACKED_TABLE.cell}>
                             <SelectCheckbox
                               checked={answerSelection.isSelected(answer._id)}
                               onChange={() => answerSelection.toggle(answer._id)}
                               label={`Select "${answer.title}"`}
                             />
                           </td>
-                          <td className="max-w-[360px] px-4 py-3">
+                          <td className={cn(STACKED_TABLE.cell, "lg:max-w-[360px]")}>
                             <p className="font-medium text-foreground">{answer.title}</p>
                             <p className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">{answer.answer}</p>
                             {answer.topics.length > 0 ? (
@@ -365,7 +391,10 @@ export function QuestionsView() {
                               </div>
                             ) : null}
                           </td>
-                          <td className="max-w-[320px] px-4 py-3 text-muted-foreground">
+                          <td
+                            data-label="Questions"
+                            className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground lg:max-w-[320px]")}
+                          >
                             {approvedQuestions.length > 0 ? (
                               <div className="space-y-1">
                                 {approvedQuestions.map((question) => (
@@ -390,7 +419,9 @@ export function QuestionsView() {
                             )}
                             {rejectedQuestions.length > 0 ? (
                               <details className="mt-2 text-xs">
-                                <summary className="cursor-pointer">{rejectedQuestions.length} rejected</summary>
+                                <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                  {rejectedQuestions.length} rejected
+                                </summary>
                                 <div className="mt-1 space-y-1">
                                   {rejectedQuestions.map((question) => (
                                     <div key={question._id} className="flex items-center gap-1">
@@ -403,7 +434,10 @@ export function QuestionsView() {
                               </details>
                             ) : null}
                           </td>
-                          <td className="max-w-[300px] px-4 py-3">
+                          <td
+                            data-label="Suggested questions"
+                            className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "lg:max-w-[300px]")}
+                          >
                             {suggestedQuestions.length > 0 ? (
                               <div className="space-y-2">
                                 {suggestedQuestions.slice(0, 3).map((question) => (
@@ -434,7 +468,7 @@ export function QuestionsView() {
                                 {suggestedQuestions.length > 3 ? (
                                   <button
                                     type="button"
-                                    className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                                    className="rounded text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     onClick={() => setMode("variants")}
                                   >
                                     +{suggestedQuestions.length - 3} more in Variants
@@ -445,7 +479,10 @@ export function QuestionsView() {
                               <span className="text-muted-foreground">No pending suggestions</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">
+                          <td
+                            data-label="Scope"
+                            className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground")}
+                          >
                             {answer.propertyScopes && answer.propertyScopes.length > 0 ? (
                               <div className="flex max-w-[220px] flex-wrap gap-1">
                                 {answer.propertyScopes.slice(0, 3).map((scope) => (
@@ -458,16 +495,16 @@ export function QuestionsView() {
                                 ) : null}
                               </div>
                             ) : (
-                              "Global"
+                              "All properties"
                             )}
                           </td>
-                          <td className="px-4 py-3">
-                            <Badge className={cn("rounded-full", answerStatusTone(answer.status))}>{answer.status}</Badge>
+                          <td className={STACKED_TABLE.cell}>
+                            <StatusBadge {...statusMeta("answer", answer.status)} />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className={STACKED_TABLE.cell}>
                             <div className="flex flex-wrap gap-2">
                               <Button type="button" variant="outline" size="sm" onClick={() => setAnswerTarget({ answer })}>
-                                <Edit3 className="h-4 w-4" />
+                                <Edit3 aria-hidden="true" className="h-4 w-4" />
                                 Edit
                               </Button>
                               {archived ? (
@@ -479,7 +516,7 @@ export function QuestionsView() {
                                   disabled={pendingAction === `delete-answer:${answer._id}`}
                                   onClick={() => void removeAnswer(answer)}
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Trash2 aria-hidden="true" className="h-4 w-4" />
                                   Delete
                                 </Button>
                               ) : (
@@ -487,15 +524,16 @@ export function QuestionsView() {
                                   type="button"
                                   variant="secondary"
                                   size="sm"
-                                  disabled={pendingAction === `generate:${answer._id}`}
+                                  disabled={generating}
+                                  title="Ask the AI for more ways guests might ask this"
                                   onClick={() => void generateForAnswer(answer)}
                                 >
-                                  {pendingAction === `generate:${answer._id}` ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  {generating ? (
+                                    <Spinner label="Generating questions" className="text-current" />
                                   ) : (
-                                    <Plus className="h-4 w-4" />
+                                    <Sparkles aria-hidden="true" className="h-4 w-4" />
                                   )}
-                                  Generate
+                                  Suggest questions
                                 </Button>
                               )}
                             </div>
@@ -513,7 +551,9 @@ export function QuestionsView() {
 
         {mode === "unknown" ? <UnknownQuestionsPanel onCreateAnswer={(unknown) => setAnswerTarget({ unknown })} /> : null}
 
-        {mode === "variants" ? <PendingVariantsPanel variants={pendingVariants?.variants} /> : null}
+        {mode === "variants" ? (
+          <PendingVariantsPanel variants={pendingVariants?.variants} onOpenAnswers={() => setMode("answers")} />
+        ) : null}
 
         {mode === "suggestions" ? <SuggestionsPanel /> : null}
       </section>
