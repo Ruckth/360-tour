@@ -10,7 +10,9 @@
 
 import type * as adminBookings from "../adminBookings.js";
 import type * as adminChat from "../adminChat.js";
+import type * as adminProperties from "../adminProperties.js";
 import type * as adminReply from "../adminReply.js";
+import type * as adminReviews from "../adminReviews.js";
 import type * as adminServices from "../adminServices.js";
 import type * as aiEval from "../aiEval.js";
 import type * as availability from "../availability.js";
@@ -39,11 +41,14 @@ import type * as lib_chatSuggestions from "../lib/chatSuggestions.js";
 import type * as lib_chatTools from "../lib/chatTools.js";
 import type * as lib_codes from "../lib/codes.js";
 import type * as lib_dates from "../lib/dates.js";
+import type * as lib_imageUploads from "../lib/imageUploads.js";
 import type * as lib_ical from "../lib/ical.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_serviceSlots from "../lib/serviceSlots.js";
 import type * as lib_serverSecret from "../lib/serverSecret.js";
+import type * as lib_slug from "../lib/slug.js";
+import type * as lib_socialProof from "../lib/socialProof.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
@@ -72,7 +77,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   adminBookings: typeof adminBookings;
   adminChat: typeof adminChat;
+  adminProperties: typeof adminProperties;
   adminReply: typeof adminReply;
+  adminReviews: typeof adminReviews;
   adminServices: typeof adminServices;
   aiEval: typeof aiEval;
   availability: typeof availability;
@@ -101,11 +108,14 @@ declare const fullApi: ApiFromModules<{
   "lib/chatTools": typeof lib_chatTools;
   "lib/codes": typeof lib_codes;
   "lib/dates": typeof lib_dates;
+  "lib/imageUploads": typeof lib_imageUploads;
   "lib/ical": typeof lib_ical;
   "lib/pricing": typeof lib_pricing;
   "lib/rateLimit": typeof lib_rateLimit;
   "lib/serviceSlots": typeof lib_serviceSlots;
   "lib/serverSecret": typeof lib_serverSecret;
+  "lib/slug": typeof lib_slug;
+  "lib/socialProof": typeof lib_socialProof;
   "lib/validation": typeof lib_validation;
   line: typeof line;
   migrations: typeof migrations;
