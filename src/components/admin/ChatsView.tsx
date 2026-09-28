@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { ChevronLeft, ChevronRight, Filter, Loader2, Search, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, Hand, Loader2, Search, TriangleAlert } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
@@ -15,7 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AdminDateTimeFilterField } from "@/components/admin/AdminDateTimeFilterField";
+import { AdminSessionActions } from "@/components/admin/AdminSessionActions";
 import { AdminSessionDetail, chronologicalTranscriptMessages } from "@/components/admin/AdminSessionDetail";
+import { AnswerFormDialog, type AnswerFormTarget } from "@/components/admin/AnswerFormDialog";
+import type { AdminKnowledgePropertyScope } from "@/components/admin/admin-knowledge-types";
 import {
   ChannelIcon,
   channelLabel,
@@ -25,7 +28,9 @@ import {
   visitorLabel,
 } from "@/components/admin/admin-chat-format";
 import type {
+  AdminMessage,
   AdminSession,
+  AdminSessionStatus,
   SessionChannelFilter,
   SessionDetailResult,
   SessionListResult,
@@ -33,11 +38,34 @@ import type {
 } from "@/components/admin/admin-chat-types";
 import { cn } from "@/lib/utils";
 
-type SessionStatus = "all" | "active" | "inactive";
+type SessionStatus = "needs_reply" | "active" | "all" | "inactive";
 type EmptyChatFilter = "non_empty" | "empty";
 
-const statusOptions: SessionStatus[] = ["active", "all", "inactive"];
+const statusOptions = ["needs_reply", "active", "all", "inactive"] satisfies SessionStatus[];
+const statusLabels: Record<SessionStatus, string> = {
+  needs_reply: "Needs reply",
+  active: "Live",
+  all: "All",
+  inactive: "Inactive",
+};
+const adminStatusOptions = ["open", "resolved", "archived"] satisfies AdminSessionStatus[];
+const emptyFilterOptions = ["non_empty", "empty"] satisfies EmptyChatFilter[];
 const channelFilterOptions = ["all", "web", "line", "facebook", "whatsapp", "instagram"] satisfies SessionChannelFilter[];
+// URL param defaults; a param equal to its default is left out of the URL.
+const FILTER_DEFAULTS = {
+  view: "needs_reply",
+  state: "open",
+  empty: "non_empty",
+  channel: "all",
+  q: "",
+  from: "",
+  to: "",
+} as const;
+type FilterParam = keyof typeof FILTER_DEFAULTS;
+
+function readOption<T extends string>(value: string | null, options: readonly T[], fallback: T): T {
+  return options.includes(value as T) ? (value as T) : fallback;
+}
 const PRESENCE_CLOCK_MS = 10_000;
 
 function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
@@ -115,23 +143,46 @@ export function ChatsView() {
   const { getToken } = useAuth();
   const now = usePresenceClock();
   const isLargeViewport = useMediaQuery("(min-width: 1024px)");
-  const [status, setStatus] = useState<SessionStatus>("active");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [emptyFilter, setEmptyFilter] = useState<EmptyChatFilter>("non_empty");
-  const [channelFilter, setChannelFilter] = useState<SessionChannelFilter>("all");
-  const [messageStartAt, setMessageStartAt] = useState("");
-  const [messageEndAt, setMessageEndAt] = useState("");
+  // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
+  const updateParams = useCallback(
+    (patch: Partial<Record<FilterParam | "session", string | null>>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(patch)) {
+        const fallback = key in FILTER_DEFAULTS ? FILTER_DEFAULTS[key as FilterParam] : "";
+        if (!value || value === fallback) params.delete(key);
+        else params.set(key, value);
+      }
+      const query = params.toString();
+      router.replace(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+  const status = readOption(searchParams.get("view"), statusOptions, FILTER_DEFAULTS.view);
+  const adminStatus = readOption(searchParams.get("state"), adminStatusOptions, FILTER_DEFAULTS.state);
+  const emptyFilter = readOption(searchParams.get("empty"), emptyFilterOptions, FILTER_DEFAULTS.empty);
+  const channelFilter = readOption(searchParams.get("channel"), channelFilterOptions, FILTER_DEFAULTS.channel);
+  const messageStartAt = searchParams.get("from") ?? "";
+  const messageEndAt = searchParams.get("to") ?? "";
+  const setStatus = (value: SessionStatus) => updateParams({ view: value });
+  const setAdminStatus = (value: AdminSessionStatus) => updateParams({ state: value });
+  const setEmptyFilter = (value: EmptyChatFilter) => updateParams({ empty: value });
+  const setChannelFilter = (value: SessionChannelFilter) => updateParams({ channel: value });
+  const setMessageStartAt = (value: string) => updateParams({ from: value });
+  const setMessageEndAt = (value: string) => updateParams({ to: value });
+  // Typing stays local; the URL follows after a short pause.
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const selectedSessionId = searchParams.get("session") as Id<"chatSessions"> | null;
   function selectSession(sessionId: Id<"chatSessions"> | null) {
     if (sessionId === selectedSessionId) return;
-    const params = new URLSearchParams(searchParams.toString());
-    if (sessionId) params.set("session", sessionId);
-    else params.delete("session");
-    const query = params.toString();
-    router.replace(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
+    updateParams({ session: sessionId });
   }
+  const [answerTarget, setAnswerTarget] = useState<AnswerFormTarget | null>(null);
+  const propertyScopes = useQuery(
+    api.chatKnowledge.adminListPropertyScopes,
+    answerTarget ? {} : "skip",
+  ) as AdminKnowledgePropertyScope[] | undefined;
   const selectedSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [replyPending, setReplyPending] = useState(false);
@@ -150,6 +201,7 @@ export function ChatsView() {
   const currentCursor = pageCursors[pageIndex] ?? null;
   const filterResetKey = [
     status,
+    adminStatus,
     trimmedSearchQuery,
     emptyFilter,
     channelFilter,
@@ -164,6 +216,7 @@ export function ChatsView() {
       : {
           paginationOpts: { numItems: 10, cursor: currentCursor },
           status,
+          adminStatus,
           empty: emptyFilter,
           channel: channelFilter,
           searchQuery: trimmedSearchQuery || undefined,
@@ -180,7 +233,7 @@ export function ChatsView() {
   const liveSessionDetail = useQuery(
     api.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId, now } : "skip",
-  ) as SessionDetailResult | undefined;
+  ) as SessionDetailResult | null | undefined;
   const transcriptPagination = usePaginatedQuery(
     api.adminChat.listTranscriptMessages,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
@@ -288,24 +341,65 @@ export function ChatsView() {
     selectSession(null);
   }
 
+  const detailProps = {
+    canLoadOlderMessages: transcriptPagination.status === "CanLoadMore",
+    facebookEvents: sessionDetail?.facebookEvents,
+    instagramEvents: sessionDetail?.instagramEvents,
+    lineEvents: sessionDetail?.lineEvents,
+    whatsappEvents: sessionDetail?.whatsappEvents,
+    loadOlderMessages: () => transcriptPagination.loadMore(20),
+    loadingTranscript,
+    loadingOlderMessages: transcriptPagination.status === "LoadingMore",
+    messages: transcriptMessages,
+    now,
+    selectedSession,
+    replyDraft,
+    onReplyDraftChange: setReplyDraft,
+    onSendReply: sendAdminReply,
+    replyPending,
+    replyError,
+    replyStatus,
+    replyWindow: sessionDetail?.replyWindow,
+    onSaveAsAnswer: (message: AdminMessage) => setAnswerTarget({ question: message.content }),
+    actions: selectedSession ? (
+      <AdminSessionActions session={selectedSession} onDeleted={() => selectSession(null)} />
+    ) : null,
+  };
+
   useEffect(() => {
     if (!isLargeViewport || selectedSessionId || !sessionsResult?.sessions.length) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("session", sessionsResult.sessions[0]._id);
-    router.replace(`/admin/chats?${params}`, { scroll: false });
-  }, [isLargeViewport, router, searchParams, selectedSessionId, sessionsResult]);
+    updateParams({ session: sessionsResult.sessions[0]._id });
+  }, [isLargeViewport, selectedSessionId, sessionsResult, updateParams]);
 
   useEffect(() => {
     resetSessionPaging();
   }, [filterResetKey, resetSessionPaging]);
+
+  useEffect(() => {
+    if ((searchParams.get("q") ?? "") === trimmedSearchQuery) return;
+    const timeout = window.setTimeout(() => updateParams({ q: trimmedSearchQuery }), 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchParams, trimmedSearchQuery, updateParams]);
 
   return (
     <>
       <div className="grid min-h-0 w-full flex-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)]">
         <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
           <div className="border-b border-border p-3">
-            <ToggleGroup value={status} onValueChange={setStatus} aria-label="Chat status">
+            <ToggleGroup value={status} onValueChange={setStatus} aria-label="Chat activity">
               {statusOptions.map((option) => (
+                <ToggleGroupItem key={option} value={option} className="flex-1 px-2">
+                  {statusLabels[option]}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            <ToggleGroup
+              value={adminStatus}
+              onValueChange={setAdminStatus}
+              aria-label="Chat status"
+              className="mt-2"
+            >
+              {adminStatusOptions.map((option) => (
                 <ToggleGroupItem key={option} value={option} className="flex-1 capitalize">
                   {option}
                 </ToggleGroupItem>
@@ -408,10 +502,7 @@ export function ChatsView() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setEmptyFilter("non_empty");
-                        setChannelFilter("all");
-                        setMessageStartAt("");
-                        setMessageEndAt("");
+                        updateParams({ empty: null, channel: null, from: null, to: null });
                       }}
                     >
                       Clear filters
@@ -471,7 +562,9 @@ export function ChatsView() {
             ) : null}
             {!invalidMessageDateRange && !loadingSessions && sessions.length === 0 ? (
               <div className="p-5 text-sm leading-6 text-muted-foreground">
-                No chat sessions match this filter yet.
+                {status === "needs_reply" && adminStatus === "open"
+                  ? "No open chats are waiting for a reply."
+                  : "No chat sessions match this filter yet."}
               </div>
             ) : null}
             {sessions.map((session) => {
@@ -497,6 +590,12 @@ export function ChatsView() {
                         {session.isActive ? (
                           <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Active now">
                             <span className="sr-only">Active now</span>
+                          </span>
+                        ) : null}
+                        {session.aiPaused ? (
+                          <span className="shrink-0 text-muted-foreground" title="AI paused: staff is replying">
+                            <Hand className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span className="sr-only">AI paused</span>
                           </span>
                         ) : null}
                       </div>
@@ -562,25 +661,7 @@ export function ChatsView() {
         </aside>
 
         <section className="hidden min-h-0 border border-border bg-card lg:block">
-          <AdminSessionDetail
-            canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
-            facebookEvents={sessionDetail?.facebookEvents}
-            instagramEvents={sessionDetail?.instagramEvents}
-            lineEvents={sessionDetail?.lineEvents}
-            whatsappEvents={sessionDetail?.whatsappEvents}
-            loadOlderMessages={() => transcriptPagination.loadMore(20)}
-            loadingTranscript={loadingTranscript}
-            loadingOlderMessages={transcriptPagination.status === "LoadingMore"}
-            messages={transcriptMessages}
-            now={now}
-            selectedSession={selectedSession}
-            replyDraft={replyDraft}
-            onReplyDraftChange={setReplyDraft}
-            onSendReply={sendAdminReply}
-            replyPending={replyPending}
-            replyError={replyError}
-            replyStatus={replyStatus}
-          />
+          <AdminSessionDetail key={selectedSession?._id ?? "none"} {...detailProps} />
         </section>
       </div>
       <Dialog
@@ -599,28 +680,14 @@ export function ChatsView() {
           <DialogDescription className="sr-only">
             Visitor context and transcript for the selected chat session.
           </DialogDescription>
-          <AdminSessionDetail
-            compact
-            canLoadOlderMessages={transcriptPagination.status === "CanLoadMore"}
-            facebookEvents={sessionDetail?.facebookEvents}
-            instagramEvents={sessionDetail?.instagramEvents}
-            lineEvents={sessionDetail?.lineEvents}
-            whatsappEvents={sessionDetail?.whatsappEvents}
-            loadOlderMessages={() => transcriptPagination.loadMore(20)}
-            loadingTranscript={loadingTranscript}
-            loadingOlderMessages={transcriptPagination.status === "LoadingMore"}
-            messages={transcriptMessages}
-            now={now}
-            selectedSession={selectedSession}
-            replyDraft={replyDraft}
-            onReplyDraftChange={setReplyDraft}
-            onSendReply={sendAdminReply}
-            replyPending={replyPending}
-            replyError={replyError}
-            replyStatus={replyStatus}
-          />
+          <AdminSessionDetail key={selectedSession?._id ?? "none"} compact {...detailProps} />
         </DialogContent>
       </Dialog>
+      <AnswerFormDialog
+        target={answerTarget}
+        propertyScopes={propertyScopes ?? []}
+        onClose={() => setAnswerTarget(null)}
+      />
     </>
   );
 }

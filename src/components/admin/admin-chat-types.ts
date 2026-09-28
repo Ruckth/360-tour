@@ -1,5 +1,7 @@
 import type { Id } from "convex/_generated/dataModel";
 
+export type AdminSessionStatus = "open" | "resolved" | "archived";
+
 export type SessionChannelFilter = "all" | "web" | "line" | "facebook" | "whatsapp" | "instagram";
 
 export type AdminMessage = {
@@ -105,6 +107,11 @@ export type AdminSession = {
   latestMessageAt?: number;
   adminSortAt?: number;
   isActive: boolean;
+  adminStatus?: AdminSessionStatus;
+  resolvedAt?: number;
+  archivedAt?: number;
+  aiPaused?: boolean;
+  assignedAdminEmail?: string;
   latestMessage?: AdminMessage;
   needsReply?: boolean;
   latestLineEvent?: AdminLineEvent | null;
@@ -120,8 +127,14 @@ export type SessionListResult = {
   isDone: boolean;
 };
 
+/** 24-hour free-text window on WhatsApp, Messenger and Instagram. */
+export type ChannelReplyWindow =
+  | { applies: false }
+  | { applies: true; lastGuestMessageAt?: number; closesAt?: number };
+
 export type SessionDetailResult = {
   session: AdminSession;
+  replyWindow: ChannelReplyWindow;
   lineEvents?: AdminLineEvent[];
   facebookEvents?: AdminFacebookEvent[];
   whatsappEvents?: AdminWhatsAppEvent[];

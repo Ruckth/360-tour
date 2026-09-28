@@ -2,14 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("admin chat dashboard source", () => {
-  it("defaults the admin chat filters to not-empty latest-message mode", () => {
+  it("defaults the admin chat filters to open, needs-reply, not-empty chats", () => {
     const dashboardSource = readFileSync(
       new URL("../../src/components/admin/ChatsView.tsx", import.meta.url),
       "utf8",
     );
 
     expect(dashboardSource).toContain('type EmptyChatFilter = "non_empty" | "empty"');
-    expect(dashboardSource).toContain('useState<EmptyChatFilter>("non_empty")');
+    expect(dashboardSource).toContain('view: "needs_reply"');
+    expect(dashboardSource).toContain('state: "open"');
+    expect(dashboardSource).toContain('empty: "non_empty"');
     expect(dashboardSource).toContain("Message status");
     expect(dashboardSource).toContain("Not empty");
     expect(dashboardSource).toContain("Latest message start");

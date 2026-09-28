@@ -504,6 +504,15 @@ async function handleWhatsAppMessage({
       return;
     }
 
+    // Staff took over this chat: the guest message is recorded, no automatic reply.
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.whatsapp.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+      } as never);
+      return;
+    }
+
     if (eventType === "unsupported" || !messageText) {
       await client.mutation(api.whatsapp.markEventIgnored, {
         eventId: claimed.eventId,

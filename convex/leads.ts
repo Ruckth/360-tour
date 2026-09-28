@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from 'convex/server';
-import { mutation, query } from './_generated/server';
+import { mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import type { Doc, Id } from './_generated/dataModel';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 import { requireAdmin } from './lib/adminAuth';
 import { enforceRateLimit } from './lib/rateLimit';
@@ -10,6 +11,33 @@ const leadSource = v.union(
 	v.literal('chat'),
 	v.literal('booking_abandonment')
 );
+
+const EXPORT_LIMIT = 5000;
+
+/**
+ * One row per email + source + villa: a repeat sign-up from somewhere new gets its own row,
+ * an identical repeat returns the existing one.
+ */
+export async function recordLead(
+	ctx: MutationCtx,
+	lead: { email: string; source: Doc<'leads'>['source']; propertyId?: Id<'properties'> }
+) {
+	const existing = await ctx.db
+		.query('leads')
+		.withIndex('by_email', (q) => q.eq('email', lead.email))
+		.take(50);
+	const duplicate = existing.find(
+		(row) => row.source === lead.source && row.propertyId === lead.propertyId
+	);
+	if (duplicate) return duplicate._id;
+
+	return await ctx.db.insert('leads', {
+		...(lead.propertyId ? { propertyId: lead.propertyId } : {}),
+		email: lead.email,
+		source: lead.source,
+		createdAt: Date.now()
+	});
+}
 
 export const save = mutation({
 	args: {
@@ -33,22 +61,7 @@ export const save = mutation({
 			propertyId = property?._id;
 		}
 
-		// Check for duplicate email + property combination
-		const existing = await ctx.db
-			.query('leads')
-			.withIndex('by_email', (q) => q.eq('email', email))
-			.first();
-
-		if (existing) {
-			return existing._id;
-		}
-
-		return await ctx.db.insert('leads', {
-			propertyId,
-			email,
-			source: args.source,
-			createdAt: Date.now()
-		});
+		return await recordLead(ctx, { email, source: args.source, propertyId });
 	}
 });
 
@@ -61,5 +74,28 @@ export const list = query({
 			? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
 			: ctx.db.query('leads');
 		return await leads.order('desc').paginate(args.paginationOpts);
+	}
+});
+
+/** Every lead for the source filter (newest first, capped) for the CSV export. */
+export const exportRows = query({
+	args: { source: v.optional(leadSource) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const { source } = args;
+		const leads = source
+			? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
+			: ctx.db.query('leads');
+		const rows = await leads.order('desc').take(EXPORT_LIMIT + 1);
+		return { rows: rows.slice(0, EXPORT_LIMIT), truncated: rows.length > EXPORT_LIMIT };
+	}
+});
+
+export const remove = mutation({
+	args: { leadId: v.id('leads') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (await ctx.db.get(args.leadId)) await ctx.db.delete(args.leadId);
+		return null;
 	}
 });

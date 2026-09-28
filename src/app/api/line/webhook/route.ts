@@ -338,6 +338,15 @@ async function handleLineEvent({
       return;
     }
 
+    // Staff took over this chat: the guest message is recorded, no automatic reply.
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.line.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+      } as never);
+      return;
+    }
+
     const siteUrl = getSiteUrl(request);
     const locale =
       eventType === "postback"

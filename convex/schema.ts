@@ -374,6 +374,15 @@ export default defineSchema({
 		adminSearchText: v.optional(v.string()),
 		// Guest message an admin marked as settled; clears the unanswered warning.
 		settledGuestMessageId: v.optional(v.id('chatMessages')),
+		// Inbox lifecycle set by admins; undefined = open. A new guest message reopens it.
+		adminStatus: v.optional(
+			v.union(v.literal('open'), v.literal('resolved'), v.literal('archived'))
+		),
+		resolvedAt: v.optional(v.number()),
+		archivedAt: v.optional(v.number()),
+		// Staff took over: no AI/automatic replies on any channel until resumed.
+		aiPaused: v.optional(v.boolean()),
+		assignedAdminEmail: v.optional(v.string()),
 		// AI booking flow: last time the guest was in a booking conversation,
 		// and the quote awaiting their "yes" (bookingId is set once confirmed).
 		bookingFlowAt: v.optional(v.number()),
@@ -465,7 +474,9 @@ export default defineSchema({
 		createdAt: v.number(),
 		completedAt: v.optional(v.number()),
 		error: v.optional(v.string())
-	}).index('by_requestId', ['requestId']),
+	})
+		.index('by_requestId', ['requestId'])
+		.index('by_sessionId', ['sessionId']),
 
 	chatBrowserHandoffs: defineTable({
 		token: v.string(),
@@ -475,7 +486,8 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_token', ['token'])
-		.index('by_expires_at', ['expiresAt']),
+		.index('by_expires_at', ['expiresAt'])
+		.index('by_sessionId', ['sessionId']),
 
 	lineWebhookEvents: defineTable({
 		eventKey: v.string(),

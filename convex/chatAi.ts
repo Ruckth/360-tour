@@ -626,6 +626,7 @@ export const generateReply = action({
 			sessionId: args.sessionId
 		});
 		if (!session) throw new Error('Session not found');
+		if (session.aiPaused) throw new Error('AI replies are paused: staff took over this chat');
 
 		// Booking tools depend on the channel, so trust the stored session, not the caller.
 		return await generateConciergeReply(ctx, { ...args, channel: session.channel }, session);
@@ -663,6 +664,8 @@ export const respond = action({
 			role: 'user',
 			content: args.userMessage
 		});
+		// Staff took over: keep the guest message for them, but the AI stays quiet.
+		if (session.aiPaused) return { response: '', model: 'ai_paused', aiPaused: true };
 
 		const guardrailReply = getResortRealityDisclosure(args.userMessage);
 		let approvedKnowledgeMatch: ApprovedKnowledgeMatch | null = null;
