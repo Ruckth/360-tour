@@ -41,6 +41,7 @@ function toAdminBooking(booking: Doc<'bookings'>) {
 		status: booking.status,
 		paymentStatus: booking.paymentStatus,
 		paymentMethod: booking.paymentMethod,
+		amountPaid: booking.paymentStatus === 'paid' ? (booking.amountPaid ?? booking.total) : undefined,
 		source: booking.source ?? 'web',
 		chatSessionId: booking.chatSessionId,
 		confirmationCode: booking.confirmationCode,
@@ -123,7 +124,6 @@ export const getForAdmin = query({
 			propertyName: property?.name ?? 'Unknown villa',
 			subtotal: booking.subtotal,
 			discountAmount: booking.discountAmount,
-			amountPaid: booking.paymentStatus === 'paid' ? (booking.amountPaid ?? booking.total) : undefined,
 			paidAt: booking.paidAt,
 			refundedAt: booking.refundedAt,
 			hasStripePayment: Boolean(booking.stripePaymentIntentId),
@@ -153,6 +153,61 @@ export const searchBookings = query({
 			)
 			.slice(0, 20)
 			.map(toAdminBooking);
+	}
+});
+
+const MAX_GUEST_SUGGESTIONS = 5;
+
+type GuestSuggestion = { guestName: string; guestPhone: string; guestEmail?: string; stays: number; lastCheckIn: string };
+
+/**
+ * Previous guests whose phone or email matches what the host is typing in the new-booking form.
+ * Exact phone matches come from the by_guestPhone index; partial ones from the most recent bookings.
+ */
+export const findGuests = query({
+	args: { phone: v.optional(v.string()), email: v.optional(v.string()) },
+	handler: async (ctx, args): Promise<GuestSuggestion[]> => {
+		await requireAdmin(ctx);
+		const phone = (args.phone ?? '').trim();
+		const digits = phone.replace(/\D/g, '');
+		const email = (args.email ?? '').trim().toLowerCase();
+		if (digits.length < 4 && email.length < 3) return [];
+
+		const exact = phone
+			? await ctx.db
+					.query('bookings')
+					.withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone))
+					.order('desc')
+					.take(50)
+			: [];
+		const recent = await ctx.db.query('bookings').order('desc').take(SEARCH_SCAN_LIMIT);
+		const seen = new Set<string>();
+		const guests = new Map<string, GuestSuggestion>();
+		for (const booking of [...exact, ...recent]) {
+			if (seen.has(booking._id)) continue;
+			seen.add(booking._id);
+			const bookingDigits = booking.guestPhone.replace(/\D/g, '');
+			const bookingEmail = (booking.guestEmail ?? '').toLowerCase();
+			const matches =
+				(digits.length >= 4 && bookingDigits.includes(digits)) || (email.length >= 3 && bookingEmail.includes(email));
+			if (!matches) continue;
+			const key = bookingDigits || bookingEmail;
+			const guest = guests.get(key);
+			if (guest) {
+				guest.stays++;
+				if (booking.checkIn > guest.lastCheckIn) guest.lastCheckIn = booking.checkIn;
+				guest.guestEmail ??= booking.guestEmail;
+			} else {
+				guests.set(key, {
+					guestName: booking.guestName,
+					guestPhone: booking.guestPhone,
+					guestEmail: booking.guestEmail,
+					stays: 1,
+					lastCheckIn: booking.checkIn
+				});
+			}
+		}
+		return [...guests.values()].slice(0, MAX_GUEST_SUGGESTIONS);
 	}
 });
 
@@ -305,6 +360,39 @@ export const editBooking = mutation({
 	}
 });
 
+/** Why a booking can't be deleted, or null. Anything that involved money must be cancelled instead. */
+function deleteBlocker(booking: Doc<'bookings'>, now: number): string | null {
+	const touchedMoney =
+		booking.paymentStatus === 'paid' ||
+		booking.paymentStatus === 'refunded' ||
+		booking.paidAt !== undefined ||
+		booking.stripePaymentIntentId !== undefined;
+	if ((booking.status !== 'pending' && booking.status !== 'cancelled') || touchedMoney) {
+		return 'Only unpaid pending or cancelled bookings can be deleted.';
+	}
+	if ((booking.stripeCheckoutExpiresAt ?? 0) > now) {
+		return 'The guest has a Stripe checkout open. Wait for it to expire before deleting.';
+	}
+	return null;
+}
+
+async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>) {
+	await releaseBookingDates(ctx, booking);
+	const session = booking.chatSessionId ? await ctx.db.get(booking.chatSessionId) : null;
+	if (session?.pendingBookingQuote?.bookingId === booking._id) {
+		await ctx.db.patch(session._id, { pendingBookingQuote: undefined });
+	}
+	if (session?.pendingCancellation?.bookingId === booking._id) {
+		await ctx.db.patch(session._id, { pendingCancellation: undefined });
+	}
+	const appointments = await ctx.db
+		.query('serviceAppointments')
+		.withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
+		.take(50);
+	for (const appointment of appointments) await ctx.db.patch(appointment._id, { bookingId: undefined });
+	await ctx.db.delete(booking._id);
+}
+
 /** Removes a test or mistaken booking. Anything that involved money must be cancelled instead. */
 export const deleteBooking = mutation({
 	args: { bookingId: v.id('bookings') },
@@ -312,32 +400,63 @@ export const deleteBooking = mutation({
 		await requireAdmin(ctx);
 		const booking = await ctx.db.get(args.bookingId);
 		if (!booking) throw new Error('Booking not found');
-		const touchedMoney =
-			booking.paymentStatus === 'paid' ||
-			booking.paymentStatus === 'refunded' ||
-			booking.paidAt !== undefined ||
-			booking.stripePaymentIntentId !== undefined;
-		if ((booking.status !== 'pending' && booking.status !== 'cancelled') || touchedMoney) {
-			throw new Error('Only unpaid pending or cancelled bookings can be deleted.');
-		}
-		if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
-			throw new Error('The guest has a Stripe checkout open. Wait for it to expire before deleting.');
-		}
+		const blocker = deleteBlocker(booking, Date.now());
+		if (blocker) throw new Error(blocker);
+		await deleteBookingRecord(ctx, booking);
+	}
+});
 
-		await releaseBookingDates(ctx, booking);
-		const session = booking.chatSessionId ? await ctx.db.get(booking.chatSessionId) : null;
-		if (session?.pendingBookingQuote?.bookingId === booking._id) {
-			await ctx.db.patch(session._id, { pendingBookingQuote: undefined });
+const DAY_MS = 86_400_000;
+const CLEANUP_SCAN_LIMIT = 500;
+const MAX_BATCH_DELETE = 100;
+
+/**
+ * Bookings the "Clean up" dialog offers to delete: deletable (unpaid pending or cancelled) and either
+ * entered by hand in admin or created more than `olderThanDays` ago. Newest first.
+ */
+export const listCleanupCandidates = query({
+	args: { olderThanDays: v.number() },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (!Number.isFinite(args.olderThanDays) || args.olderThanDays < 0) throw new Error('Enter a number of days.');
+		const now = Date.now();
+		const cutoff = now - args.olderThanDays * DAY_MS;
+		const byStatus = (status: 'pending' | 'cancelled') =>
+			ctx.db
+				.query('bookings')
+				.withIndex('by_status', (q) => q.eq('status', status))
+				.order('desc')
+				.take(CLEANUP_SCAN_LIMIT);
+		const rows = [...(await byStatus('pending')), ...(await byStatus('cancelled'))];
+		return rows
+			.filter((b) => deleteBlocker(b, now) === null && (b.source === 'admin' || b.createdAt < cutoff))
+			.sort((a, b) => b.createdAt - a.createdAt)
+			.map(toAdminBooking);
+	}
+});
+
+/** Batch delete with the same rules as `deleteBooking`; bookings that can't go are skipped with a reason. */
+export const deleteBookings = mutation({
+	args: { bookingIds: v.array(v.id('bookings')) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (args.bookingIds.length > MAX_BATCH_DELETE) {
+			throw new Error(`Delete at most ${MAX_BATCH_DELETE} bookings at a time.`);
 		}
-		if (session?.pendingCancellation?.bookingId === booking._id) {
-			await ctx.db.patch(session._id, { pendingCancellation: undefined });
+		const now = Date.now();
+		let deleted = 0;
+		const skipped: Array<{ bookingId: Id<'bookings'>; reason: string }> = [];
+		for (const bookingId of new Set(args.bookingIds)) {
+			const booking = await ctx.db.get(bookingId);
+			const blocker = booking ? deleteBlocker(booking, now) : 'Booking not found';
+			if (!booking || blocker) {
+				skipped.push({ bookingId, reason: blocker ?? 'Booking not found' });
+				continue;
+			}
+			await deleteBookingRecord(ctx, booking);
+			deleted++;
 		}
-		const appointments = await ctx.db
-			.query('serviceAppointments')
-			.withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
-			.take(50);
-		for (const appointment of appointments) await ctx.db.patch(appointment._id, { bookingId: undefined });
-		await ctx.db.delete(booking._id);
+		return { deleted, skipped };
 	}
 });
 
@@ -361,18 +480,51 @@ const dateBlockArgs = {
 	reason: v.string()
 };
 
+function blockReason(value: string) {
+	const reason = value.trim();
+	if (!reason) throw new Error('Add a reason for the block.');
+	if (reason.length > 200) throw new Error('Keep the reason under 200 characters.');
+	return reason;
+}
+
 async function validateDateBlock(
 	ctx: MutationCtx,
 	args: { propertyId: Id<'properties'>; start: string; end: string; reason: string }
 ) {
 	if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
 	assertStayDates(args.start, args.end, { allowPastCheckIn: true });
-	const reason = args.reason.trim();
-	if (!reason) throw new Error('Add a reason for the block.');
-	if (reason.length > 200) throw new Error('Keep the reason under 200 characters.');
+	const reason = blockReason(args.reason);
 	await assertStayFree(ctx, args.propertyId, args.start, args.end);
 	return reason;
 }
+
+/** One block per villa over the same nights. Villas with a conflict are reported and skipped; the rest are blocked. */
+export const addDateBlocks = mutation({
+	args: { propertyIds: v.array(v.id('properties')), start: v.string(), end: v.string(), reason: v.string() },
+	handler: async (ctx, { propertyIds, start, end, ...args }) => {
+		await requireAdmin(ctx);
+		if (propertyIds.length === 0) throw new Error('Pick at least one villa.');
+		if (propertyIds.length > 100) throw new Error('Pick at most 100 villas.');
+		// Date and reason problems apply to every villa, so they fail the whole request.
+		assertStayDates(start, end, { allowPastCheckIn: true });
+		const reason = blockReason(args.reason);
+		const results: Array<{ propertyId: Id<'properties'>; blockId: Id<'dateBlocks'> | null; error: string | null }> = [];
+		for (const propertyId of new Set(propertyIds)) {
+			try {
+				// Reads only, so a conflict leaves nothing half-written for this villa.
+				if (!(await ctx.db.get(propertyId))) throw new Error('Property not found');
+				await assertStayFree(ctx, propertyId, start, end);
+			} catch (err) {
+				results.push({ propertyId, blockId: null, error: err instanceof Error ? err.message : 'Could not block these dates.' });
+				continue;
+			}
+			const blockId = await ctx.db.insert('dateBlocks', { propertyId, start, end, reason, createdAt: Date.now() });
+			await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!);
+			results.push({ propertyId, blockId, error: null });
+		}
+		return results;
+	}
+});
 
 export const addDateBlock = mutation({
 	args: dateBlockArgs,

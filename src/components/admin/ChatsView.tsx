@@ -18,6 +18,7 @@ import { AdminDateTimeFilterField } from "@/components/admin/AdminDateTimeFilter
 import { AdminSessionActions } from "@/components/admin/AdminSessionActions";
 import { AdminSessionDetail, chronologicalTranscriptMessages } from "@/components/admin/AdminSessionDetail";
 import { AnswerFormDialog, type AnswerFormTarget } from "@/components/admin/AnswerFormDialog";
+import { SetupBanner } from "@/components/admin/SetupChecklist";
 import type { AdminKnowledgePropertyScope } from "@/components/admin/admin-knowledge-types";
 import {
   ChannelIcon,
@@ -431,6 +432,7 @@ export function ChatsView() {
 
   return (
     <>
+      <SetupBanner className="mx-4 mt-4 shrink-0 sm:mx-6" />
       <div className="grid min-h-0 w-full flex-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)]">
         <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-card">
           <div className="border-b border-border p-3">

@@ -152,6 +152,55 @@ describe('settings.channelHealth', () => {
 	});
 });
 
+describe('setup checklist', () => {
+	it('reports env keys, villa readiness, iCal sync, saved profile and replied channels', async () => {
+		const { t, admin } = setup();
+		expect(await admin.query(api.settings.setupChecklist, {})).toEqual({
+			aiKey: false, email: false, stripe: false, serverSecret: false, villaReady: false, icalSynced: false, profileSaved: false,
+			channelsReplied: { line: false, facebook: false, instagram: false, whatsapp: false }
+		});
+
+		vi.stubEnv('AI_API_KEY', 'k');
+		vi.stubEnv('RESEND_API_KEY', 'k');
+		vi.stubEnv('STRIPE_SECRET_KEY', 'k');
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			const propertyId = await ctx.db.insert('properties', {
+				slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB',
+				maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: ['https://example.com/a.webp'], amenities: [], tourRoomIds: [],
+				directDiscountPercent: 0, status: 'active'
+			});
+			await ctx.db.insert('icalSources', { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics', lastSyncedAt: now });
+			await ctx.db.insert('lineWebhookEvents', {
+				eventKey: 'e1', eventType: 'message', status: 'replied', createdAt: now, updatedAt: now, processingStartedAt: now
+			});
+		});
+		await admin.mutation(api.settings.update, { business: { businessName: 'Sea Breeze' } });
+		expect(await admin.query(api.settings.setupChecklist, {})).toMatchObject({
+			aiKey: true, email: false, stripe: false, villaReady: true, icalSynced: true, profileSaved: true,
+			channelsReplied: { line: true, facebook: false }
+		});
+		await expect(t.query(api.settings.setupChecklist, {})).rejects.toThrow();
+	});
+
+	it('sends a test email to the owner address, or explains what is missing', async () => {
+		const { t, admin } = setup();
+		expect(await admin.action(api.emails.sendTestEmail, {})).toMatchObject({ ok: false, to: 'admin@example.com' });
+
+		vi.stubEnv('RESEND_API_KEY', 're_test');
+		vi.stubEnv('EMAIL_FROM', 'bookings@example.com');
+		vi.stubEnv('OWNER_NOTIFICATION_EMAIL', 'owner@example.com');
+		const sent: Array<{ to: string; subject: string }> = [];
+		vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+			sent.push(JSON.parse(String(init?.body ?? '{}')));
+			return new Response(JSON.stringify({ id: 'email_1' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+		}));
+		expect(await admin.action(api.emails.sendTestEmail, {})).toMatchObject({ ok: true, to: 'owner@example.com' });
+		expect(sent).toEqual([expect.objectContaining({ to: 'owner@example.com' })]);
+		await expect(t.action(api.emails.sendTestEmail, {})).rejects.toThrow();
+	});
+});
+
 describe('settings in the AI prompt', () => {
 	it('uses saved business name, policy, times, tone and word limit, and per-villa discounts', async () => {
 		const { t, admin } = setup();

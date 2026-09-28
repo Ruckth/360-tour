@@ -127,6 +127,67 @@ export const create = mutation({
 	}
 });
 
+/**
+ * New draft with the villa's details, photos, 360 rooms and OTA rates. Room slugs are per villa, so the copies
+ * keep theirs and every hotspot still points at the matching copied room. Bookings, calendars, reviews and the
+ * iCal export token are not copied.
+ */
+export const duplicate = mutation({
+	args: { propertyId: v.id('properties') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const source = await getProperty(ctx, args.propertyId);
+		const name = `${source.name} (copy)`;
+		const slug = await pickSlug(undefined, name, 'villa', 'Slug', (s) => propertySlugTaken(ctx, s));
+		const propertyId = await ctx.db.insert('properties', {
+			tenantId: source.tenantId,
+			slug,
+			name,
+			tagline: source.tagline,
+			description: source.description,
+			pricePerNight: source.pricePerNight,
+			currency: source.currency,
+			maxGuests: source.maxGuests,
+			bedrooms: source.bedrooms,
+			bathrooms: source.bathrooms,
+			area: source.area,
+			images: source.images,
+			amenities: source.amenities,
+			tourRoomIds: [],
+			directDiscountPercent: source.directDiscountPercent,
+			status: 'draft'
+		});
+
+		const rooms = await propertyRooms(ctx, source._id);
+		const roomSlugs = new Set(rooms.map((room) => room.slug));
+		for (const room of rooms) {
+			await ctx.db.insert('rooms', {
+				propertyId,
+				slug: room.slug,
+				name: room.name,
+				imagePath: room.imagePath,
+				hotspots: room.hotspots.filter((hotspot) => roomSlugs.has(hotspot.targetRoomSlug))
+			});
+		}
+		await ctx.db.patch(propertyId, { tourRoomIds: source.tourRoomIds.filter((roomSlug) => roomSlugs.has(roomSlug)) });
+
+		const rates = await ctx.db
+			.query('otaRates')
+			.withIndex('by_property_platform', (q) => q.eq('propertyId', source._id))
+			.take(20);
+		for (const rate of rates) {
+			await ctx.db.insert('otaRates', {
+				propertyId,
+				platform: rate.platform,
+				nightlyRate: rate.nightlyRate,
+				url: rate.url,
+				updatedAt: Date.now()
+			});
+		}
+		return propertyId;
+	}
+});
+
 export const setSlug = mutation({
 	args: { propertyId: v.id('properties'), slug: v.string() },
 	handler: async (ctx, args) => {

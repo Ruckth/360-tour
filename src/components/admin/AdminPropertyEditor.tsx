@@ -99,6 +99,7 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
 function PropertyHeader({ property, deleteBlocker }: { property: Property; deleteBlocker: string | null }) {
   const setStatus = useMutation(api.adminProperties.setStatus);
   const deleteDraft = useMutation(api.adminProperties.deleteDraft);
+  const duplicate = useMutation(api.adminProperties.duplicate);
   const confirm = useConfirm();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -152,6 +153,20 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
         </p>
         {error ? <p role="alert" className="mt-1 text-sm text-destructive">{error}</p> : null}
       </div>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busy}
+        title="New draft with these details, photos, 360 rooms and OTA rates"
+        onClick={() =>
+          act(async () => {
+            const copyId = await duplicate({ propertyId: property._id });
+            router.push(`/admin/properties/${copyId}`);
+          })
+        }
+      >
+        Duplicate
+      </Button>
       {property.status === "draft" ? (
         <>
           <Button

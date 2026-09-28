@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import {
@@ -11,15 +10,18 @@ import {
 } from "convex/lib/siteSettings";
 import { format } from "date-fns";
 import { Check, Loader2 } from "lucide-react";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { ChannelConfigStatus, ChannelKey } from "@/lib/admin/channel-config";
+import { CHANNEL_LABELS } from "@/lib/admin/channel-config";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import { SetupChecklistCard } from "./SetupChecklist";
+import { useChannelConfig } from "./useChannelConfig";
 
 const TABS = [
   { id: "business", label: "Business" },
@@ -34,11 +36,16 @@ const TEXTAREA =
   "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
 
 export function AdminSettingsView() {
-  const [tab, setTab] = useState<Tab>("business");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
+  const tab: Tab = TABS.find(({ id }) => id === searchParams.get("tab"))?.id ?? "business";
+  const setTab = (next: Tab) => router.replace(next === "business" ? "/admin/settings" : `/admin/settings?tab=${next}`, { scroll: false });
   const settings = useQuery(api.settings.get, {});
 
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-4 sm:px-6">
+      <SetupChecklistCard />
       <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-1 border border-border bg-card p-1">
         {TABS.map(({ id, label }) => (
           <button
@@ -300,47 +307,6 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
 }
 
 // ---------- Read-only sections ----------
-
-const CHANNEL_LABELS: Record<ChannelKey, string> = {
-  line: "LINE",
-  facebook: "Facebook Messenger",
-  instagram: "Instagram",
-  whatsapp: "WhatsApp",
-};
-
-type ConfigStatus = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; channels: ChannelConfigStatus };
-
-function useChannelConfig(): ConfigStatus {
-  const { getToken } = useAuth();
-  const [status, setStatus] = useState<ConfigStatus>({ state: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = await getToken({ template: "convex" });
-        const response = await fetch("/api/admin/config-status", {
-          headers: token ? { authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
-        const body = (await response.json().catch(() => ({}))) as { channels?: ChannelConfigStatus; error?: string };
-        if (cancelled) return;
-        if (!response.ok || !body.channels) {
-          setStatus({ state: "error", message: body.error ?? `Request failed (${response.status})` });
-        } else {
-          setStatus({ state: "ready", channels: body.channels });
-        }
-      } catch (err) {
-        if (!cancelled) setStatus({ state: "error", message: errorText(err, "Could not check the website configuration.") });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [getToken]);
-
-  return status;
-}
 
 function ChannelsPanel() {
   const health = useQuery(api.settings.channelHealth, {});
