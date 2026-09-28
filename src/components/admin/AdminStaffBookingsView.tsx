@@ -35,7 +35,6 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { WheelPicker, WheelPickerWrapper } from "@/components/ui/wheel-picker";
 import {
   APPOINTMENT_STATUS,
   DAY_MS,
@@ -49,6 +48,7 @@ import {
   money,
   resortIsoDate,
   resortMidnight,
+  resortTime24,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
@@ -832,6 +832,30 @@ function AppointmentEditForm({
   );
 }
 
+const LAST_SERVICE_KEY = "admin.staff.lastServiceId";
+const DAY_PARTS = [
+  { label: "Morning", before: "12:00" },
+  { label: "Afternoon", before: "17:00" },
+  { label: "Evening", before: "24:00" },
+] as const;
+
+function readLastService() {
+  try {
+    return window.localStorage.getItem(LAST_SERVICE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberService(serviceId: string) {
+  try {
+    window.localStorage.setItem(LAST_SERVICE_KEY, serviceId);
+  } catch {
+    // Private mode or full storage: remembering is only a convenience.
+  }
+}
+
+/** Service → date → time; the least-busy qualified staff member is pre-assigned and can be changed. */
 function NewAppointmentDialog({
   draft,
   services,
@@ -846,13 +870,17 @@ function NewAppointmentDialog({
   onCreated: (id: Id<"serviceAppointments">, start: number) => void;
 }) {
   const createAppointment = useMutation(api.adminServices.createAppointment);
-  const [serviceId, setServiceId] = useState<Id<"services">>(
-    () => (services.find((s) => !draft.staffId || s.staffIds.includes(draft.staffId)) ?? services[0])._id,
-  );
+  const [serviceId, setServiceId] = useState<Id<"services">>(() => {
+    // The last used service, as long as the staff member picked on the calendar performs it.
+    const fits = (s: Service) => !draft.staffId || s.staffIds.includes(draft.staffId);
+    const last = readLastService();
+    return (services.find((s) => s._id === last && fits(s)) ?? services.find(fits) ?? services[0])._id;
+  });
   const service = services.find((s) => s._id === serviceId);
   const qualified = staff.filter((person) => service?.staffIds.includes(person._id));
-  const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "any");
+  const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "auto");
   const staffId = qualified.some((person) => person._id === staffChoice) ? (staffChoice as Id<"staff">) : undefined;
+  const [changingStaff, setChangingStaff] = useState(false);
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
   const [dateOpen, setDateOpen] = useState(false);
@@ -861,8 +889,17 @@ function NewAppointmentDialog({
   const today = resortIsoDate(useNow());
 
   const slots = useQuery(api.adminServices.findOpenSlots, date >= today ? { serviceId, date, staffId } : "skip");
-  // The wheel always shows a time, so fall back to the first open slot.
+  // Fall back to the first open time, so the form is always one click from booking.
   const selectedSlot = slots?.find((slot) => slot.start === start) ?? slots?.[0];
+  const assignedId = staffId ?? selectedSlot?.autoStaffId;
+  const assigned = staff.find((person) => person._id === assignedId);
+  const parts = DAY_PARTS.map((part, i) => ({
+    label: part.label,
+    slots: (slots ?? []).filter((slot) => {
+      const time = resortTime24(slot.start);
+      return time < part.before && (i === 0 || time >= DAY_PARTS[i - 1].before);
+    }),
+  })).filter((part) => part.slots.length);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -875,11 +912,13 @@ function NewAppointmentDialog({
       const result = await createAppointment({
         serviceId,
         start: selectedSlot.start,
-        staffId,
+        // Book exactly who the preview showed.
+        staffId: assignedId,
         guestName: text("guestName"),
         guestPhone: text("guestPhone"),
         guestEmail: text("guestEmail") || undefined,
       });
+      rememberService(serviceId);
       onCreated(result.appointmentId, selectedSlot.start);
     } catch (err) {
       setError(errorText(err, "Could not create the appointment."));
@@ -895,7 +934,7 @@ function NewAppointmentDialog({
         if (!next) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New appointment</DialogTitle>
           <DialogDescription>Only open times are shown. Booking blocks the staff member&apos;s time.</DialogDescription>
@@ -924,26 +963,29 @@ function NewAppointmentDialog({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>Staff</Label>
-              <Select
-                value={staffId ?? "any"}
-                onValueChange={(value) => {
-                  setStaffChoice(value);
-                  setStart(null);
-                }}
-              >
-                <SelectTrigger className="rounded-lg" aria-label="Staff">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any available</SelectItem>
-                  {qualified.map((person) => (
-                    <SelectItem key={person._id} value={person._id}>
-                      {person.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="na-date">Date</Label>
+              <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                <PopoverTrigger asChild>
+                  <Button id="na-date" type="button" variant="outline" className="justify-start font-normal">
+                    <CalendarDays aria-hidden className="size-4 text-muted-foreground" />
+                    {formatResortDate(resortMidnight(date))}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-3">
+                  <Calendar
+                    mode="single"
+                    selected={isoToLocalDate(date)}
+                    defaultMonth={isoToLocalDate(date)}
+                    disabled={{ before: isoToLocalDate(today) }}
+                    onSelect={(day) => {
+                      if (!day) return;
+                      setDate(format(day, "yyyy-MM-dd"));
+                      setStart(null);
+                      setDateOpen(false);
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
           {service ? (
@@ -952,31 +994,6 @@ function NewAppointmentDialog({
               {service.bufferMin ? ` · ${service.bufferMin} min turnaround` : ""}
             </p>
           ) : null}
-          <div className="grid gap-2">
-            <Label htmlFor="na-date">Date</Label>
-            <Popover open={dateOpen} onOpenChange={setDateOpen}>
-              <PopoverTrigger asChild>
-                <Button id="na-date" type="button" variant="outline" className="justify-start font-normal">
-                  <CalendarDays aria-hidden className="size-4 text-muted-foreground" />
-                  {formatResortDate(resortMidnight(date))}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-3">
-                <Calendar
-                  mode="single"
-                  selected={isoToLocalDate(date)}
-                  defaultMonth={isoToLocalDate(date)}
-                  disabled={{ before: isoToLocalDate(today) }}
-                  onSelect={(day) => {
-                    if (!day) return;
-                    setDate(format(day, "yyyy-MM-dd"));
-                    setStart(null);
-                    setDateOpen(false);
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
           <div className="grid gap-2">
             <Label>Time</Label>
             {slots === undefined ? (
@@ -994,18 +1011,85 @@ function NewAppointmentDialog({
                 </Button>
               </p>
             ) : (
-              <WheelPickerWrapper className="w-full">
-                <WheelPicker
-                  value={String(selectedSlot?.start ?? slots[0].start)}
-                  onValueChange={(value) => setStart(Number(value))}
-                  options={slots.map((slot) => ({ value: String(slot.start), label: formatResortTime(slot.start) }))}
-                  visibleCount={12}
-                />
-              </WheelPickerWrapper>
+              <div className="grid max-h-64 gap-3 overflow-y-auto rounded-lg border border-border p-3">
+                {parts.map((part) => (
+                  <fieldset key={part.label}>
+                    <legend className="mb-1.5 text-xs font-medium text-muted-foreground">{part.label}</legend>
+                    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+                      {part.slots.map((slot) => {
+                        const active = slot.start === selectedSlot?.start;
+                        return (
+                          <Button
+                            key={slot.start}
+                            type="button"
+                            size="sm"
+                            variant={active ? "default" : "outline"}
+                            aria-pressed={active}
+                            aria-label={formatResortTime(slot.start)}
+                            className="h-8 px-0 tabular-nums"
+                            onClick={() => setStart(slot.start)}
+                          >
+                            {/* The section heading says morning/afternoon/evening. */}
+                            {formatResortTime(slot.start).replace(/\s?[AP]M$/, "")}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                ))}
+              </div>
             )}
             {start !== null && slots?.length && !slots.some((slot) => slot.start === start) ? (
               <p className="text-sm text-destructive">That time isn&apos;t open. Showing the next open time.</p>
             ) : null}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="na-staff">Staff</Label>
+            {changingStaff ? (
+              <Select
+                value={staffId ?? "auto"}
+                onValueChange={(value) => {
+                  setStaffChoice(value);
+                  setChangingStaff(false);
+                }}
+              >
+                <SelectTrigger id="na-staff" className="rounded-lg">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto (least busy that day)</SelectItem>
+                  {qualified.map((person) => (
+                    <SelectItem key={person._id} value={person._id}>
+                      {person.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="flex min-h-9 flex-wrap items-center gap-x-2 text-sm">
+                {assigned ? (
+                  <>
+                    <StaffAvatar staff={assigned} className="size-6 text-[10px]" />
+                    <span>
+                      Assigned to <span className="font-semibold">{assigned.name}</span>
+                      {staffId ? null : <span className="text-muted-foreground"> · least busy</span>}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">Picked automatically once there&apos;s an open time.</span>
+                )}
+                <Button
+                  id="na-staff"
+                  type="button"
+                  size="sm"
+                  variant="link"
+                  className="h-auto px-1"
+                  onClick={() => setChangingStaff(true)}
+                >
+                  Change
+                </Button>
+              </p>
+            )}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="na-name">Guest name</Label>

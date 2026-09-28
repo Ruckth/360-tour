@@ -4,8 +4,10 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { Archive, ArchiveRestore, Loader2, Pencil, PlusIcon, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarOff, Loader2, Pencil, PlusIcon, Trash2 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { ServiceStaffMatrix } from "@/components/admin/AdminServiceStaffMatrix";
+import { BulkTimeOffDialog, TimeOffFields, conflictText, readTimeOff } from "@/components/admin/AdminStaffTimeOff";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
@@ -30,7 +32,6 @@ import {
   timeOffInput,
   timeOffRange,
   useNow,
-  type TimeOffInput,
 } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,9 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const services = useQuery(api.adminServices.listServices, { includeArchived: true });
   const [editing, setEditing] = useState<{ kind: "staff"; staff?: Staff } | { kind: "service"; service?: Service } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [view, setView] = useState<"list" | "matrix">("list");
+  const [matrixDirty, setMatrixDirty] = useState(false);
+  const [bulkTimeOff, setBulkTimeOff] = useState(false);
   const archiveStaff = useMutation(api.adminServices.archiveStaff);
   const archiveService = useMutation(api.adminServices.archiveService);
   const updateStaff = useMutation(api.adminServices.updateStaff);
@@ -75,6 +79,18 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const router = useRouter();
   const [error, setError] = useState("");
   const confirm = useConfirm();
+
+  async function switchView(next: "list" | "matrix") {
+    if (next === view) return;
+    if (
+      matrixDirty &&
+      !(await confirm({ title: "Discard unsaved changes?", confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
+    ) {
+      return;
+    }
+    setMatrixDirty(false);
+    setView(next);
+  }
 
   if (!staff || !services) {
     return <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />;
@@ -141,9 +157,31 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
             ? "Who performs services, and when they work. Breaks show as blocked time on the calendar."
             : "What guests can book, how long it takes, and who can do it."}
         </p>
-        {archivedCount ? (
+        {section === "services" ? (
+          <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Services view">
+            {([["list", "List"], ["matrix", "Who does what"]] as const).map(([key, label]) => (
+              <Button
+                key={key}
+                size="sm"
+                variant={view === key ? "secondary" : "ghost"}
+                aria-pressed={view === key}
+                className="h-7"
+                onClick={() => switchView(key)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        ) : null}
+        {archivedCount && !(section === "services" && view === "matrix") ? (
           <Button size="sm" variant={showArchived ? "secondary" : "outline"} onClick={() => setShowArchived((v) => !v)}>
             Show archived ({archivedCount})
+          </Button>
+        ) : null}
+        {section === "staff" ? (
+          <Button size="sm" variant="outline" disabled={!staff.some((s) => s.status === "active")} onClick={() => setBulkTimeOff(true)}>
+            <CalendarOff aria-hidden className="size-4" />
+            Add time off
           </Button>
         ) : null}
         <Button
@@ -157,47 +195,58 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
       </div>
       {error ? <p className="border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</p> : null}
 
-      <ul className="divide-y divide-border">
-        {section === "staff"
-          ? staff
-              .filter((s) => showArchived || s.status === "active")
-              .map((s) => (
-                <Row
-                  key={s._id}
-                  archived={s.status === "archived"}
-                  leading={<StaffAvatar staff={s} className="size-10" />}
-                  title={s.name}
-                  subtitle={`${s.role} · ${hoursSummary(s)}`}
-                  onEdit={() => setEditing({ kind: "staff", staff: s })}
-                  onArchive={() => archivePerson(s)}
-                  onRestore={() => run(() => updateStaff({ staffId: s._id, status: "active" }), "Could not restore.")}
-                />
-              ))
-          : services
-              .filter((s) => showArchived || s.status === "active")
-              .map((s) => (
-                <Row
-                  key={s._id}
-                  archived={s.status === "archived"}
-                  leading={
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold text-muted-foreground">
-                      {s.durationMin}′
-                    </span>
-                  }
-                  title={s.name}
-                  subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${money(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
-                  onEdit={() => setEditing({ kind: "service", service: s })}
-                  onArchive={() => archiveOffering(s)}
-                  onRestore={() => run(() => updateService({ serviceId: s._id, status: "active" }), "Could not restore.")}
-                />
-              ))}
-        {rows.length === 0 ? (
-          <li className="px-4 py-10 text-center text-sm text-muted-foreground">
-            {section === "staff" ? "No staff yet." : "No services yet."}
-          </li>
-        ) : null}
-      </ul>
+      {section === "services" && view === "matrix" ? (
+        <ServiceStaffMatrix
+          services={services.filter((s) => s.status === "active")}
+          staff={staff.filter((s) => s.status === "active")}
+          onDirtyChange={setMatrixDirty}
+        />
+      ) : (
+        <ul className="divide-y divide-border">
+          {section === "staff"
+            ? staff
+                .filter((s) => showArchived || s.status === "active")
+                .map((s) => (
+                  <Row
+                    key={s._id}
+                    archived={s.status === "archived"}
+                    leading={<StaffAvatar staff={s} className="size-10" />}
+                    title={s.name}
+                    subtitle={`${s.role} · ${hoursSummary(s)}`}
+                    onEdit={() => setEditing({ kind: "staff", staff: s })}
+                    onArchive={() => archivePerson(s)}
+                    onRestore={() => run(() => updateStaff({ staffId: s._id, status: "active" }), "Could not restore.")}
+                  />
+                ))
+            : services
+                .filter((s) => showArchived || s.status === "active")
+                .map((s) => (
+                  <Row
+                    key={s._id}
+                    archived={s.status === "archived"}
+                    leading={
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold text-muted-foreground">
+                        {s.durationMin}′
+                      </span>
+                    }
+                    title={s.name}
+                    subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${money(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
+                    onEdit={() => setEditing({ kind: "service", service: s })}
+                    onArchive={() => archiveOffering(s)}
+                    onRestore={() => run(() => updateService({ serviceId: s._id, status: "active" }), "Could not restore.")}
+                  />
+                ))}
+          {rows.length === 0 ? (
+            <li className="px-4 py-10 text-center text-sm text-muted-foreground">
+              {section === "staff" ? "No staff yet." : "No services yet."}
+            </li>
+          ) : null}
+        </ul>
+      )}
 
+      {bulkTimeOff ? (
+        <BulkTimeOffDialog staff={staff.filter((s) => s.status === "active")} onClose={() => setBulkTimeOff(false)} />
+      ) : null}
       {editing?.kind === "staff" ? (
         <StaffDialog key={editing.staff?._id ?? "new"} staff={editing.staff} onClose={() => setEditing(null)} />
       ) : null}
@@ -315,8 +364,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     };
     const off = readTimeOff(form);
     const offFrom = off.from;
-    const timeOff = (staffId: Id<"staff">) =>
-      addTimeOff({ staffId, ...timeOffRange(off), label: off.label || "Time off" });
+    const timeOff = async (staffId: Id<"staff">) => {
+      const [result] = await addTimeOff({ staffIds: [staffId], ...timeOffRange(off), label: off.label || "Time off" });
+      if (result && !result.timeOffId) throw new Error(conflictText(result.conflicts));
+    };
     setSaving(true);
     setError("");
     try {
@@ -547,51 +598,6 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
   );
 }
 
-function readTimeOff(form: FormData): TimeOffInput & { label: string } {
-  const text = (name: string) => String(form.get(name) ?? "").trim();
-  return {
-    from: text("offFrom"),
-    to: text("offTo"),
-    startTime: text("offStartTime"),
-    endTime: text("offEndTime"),
-    label: text("offLabel"),
-  };
-}
-
-/** Dates plus optional times; blank times mean whole days. Read back with `readTimeOff`. */
-function TimeOffFields({
-  idPrefix,
-  min,
-  defaults,
-}: {
-  idPrefix: string;
-  min?: string;
-  defaults?: TimeOffInput & { label: string };
-}) {
-  return (
-    <>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="From" htmlFor={`${idPrefix}-from`}>
-          <Input id={`${idPrefix}-from`} name="offFrom" type="date" min={min} defaultValue={defaults?.from} required={Boolean(defaults)} />
-        </Field>
-        <Field label="Start time (optional)" htmlFor={`${idPrefix}-start`}>
-          <Input id={`${idPrefix}-start`} name="offStartTime" type="time" step={900} defaultValue={defaults?.startTime} />
-        </Field>
-        <Field label="To" htmlFor={`${idPrefix}-to`}>
-          <Input id={`${idPrefix}-to`} name="offTo" type="date" min={min} defaultValue={defaults?.to} />
-        </Field>
-        <Field label="End time (optional)" htmlFor={`${idPrefix}-end`}>
-          <Input id={`${idPrefix}-end`} name="offEndTime" type="time" step={900} defaultValue={defaults?.endTime} />
-        </Field>
-      </div>
-      <Field label="Label" htmlFor={`${idPrefix}-label`}>
-        <Input id={`${idPrefix}-label`} name="offLabel" placeholder="Day off" defaultValue={defaults?.label} />
-      </Field>
-      <p className="text-xs text-muted-foreground">Leave the times blank for whole days. Resort time (Bangkok).</p>
-    </>
-  );
-}
-
 function TimeOffList({ staff }: { staff: Staff }) {
   const rows = useQuery(api.adminServices.listTimeOff, { staffId: staff._id });
   const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
@@ -681,7 +687,7 @@ export function TimeOffDialog({ timeOff, staffName, onClose }: { timeOff: TimeOf
           <DialogDescription>{formatTimeOff(timeOff)}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <TimeOffFields idPrefix="to-edit" defaults={{ ...timeOffInput(timeOff), label: timeOff.label }} />
+          <TimeOffFields idPrefix="to-edit" defaults={{ ...timeOffInput(timeOff), label: timeOff.label }} required />
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter className="sm:justify-between">
             <Button type="button" variant="outline" onClick={remove} disabled={pending !== null}>
