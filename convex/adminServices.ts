@@ -12,6 +12,7 @@ import {
 	assertValidTime,
 	createAppointmentRecord,
 	findOpenSlots as openSlots,
+	localDayRange,
 	recurringBlocks,
 	staffBusyRanges
 } from './lib/serviceSlots';
@@ -89,15 +90,24 @@ async function archiveStaffRecord(ctx: MutationCtx, staff: Doc<'staff'>) {
 	return { servicesUpdated };
 }
 
-async function assertTimeOffFits(ctx: MutationCtx, staffId: Id<'staff'>, start: number, end: number) {
+function assertTimeOffRange(start: number, end: number) {
 	if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end <= start || end - start > TIME_OFF_LOOKBACK) throw new Error('Time off must be positive and at most 60 days');
+}
+
+/** Booked appointments that would fall inside the time off. */
+async function timeOffConflicts(ctx: MutationCtx, staffId: Id<'staff'>, start: number, end: number) {
+	const conflicts: Array<{ appointmentId: Id<'serviceAppointments'>; start: number }> = [];
 	for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staffId).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', end)
 	)) {
-		if (appointment.blockedUntil > start && appointment.status === 'booked') {
-			throw new Error('Reassign or cancel the appointments during this time off first');
-		}
+		if (appointment.blockedUntil > start && appointment.status === 'booked') conflicts.push({ appointmentId: appointment._id, start: appointment.start });
 	}
+	return conflicts;
+}
+
+async function assertTimeOffFits(ctx: MutationCtx, staffId: Id<'staff'>, start: number, end: number) {
+	assertTimeOffRange(start, end);
+	if ((await timeOffConflicts(ctx, staffId, start, end)).length) throw new Error('Reassign or cancel the appointments during this time off first');
 }
 
 export const listStaff = query({
@@ -244,6 +254,41 @@ export const archiveService = mutation({
 	}
 });
 
+/** Saves the services × staff matrix in one go. Refuses if an active service would be left with no one. */
+export const setServiceStaffMatrix = mutation({
+	args: { assignments: v.array(v.object({ serviceId: v.id('services'), staffIds: v.array(v.id('staff')) })) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (args.assignments.length > 200) throw new Error('Save at most 200 services at once');
+		if (new Set(args.assignments.map((row) => row.serviceId)).size !== args.assignments.length) throw new Error('Each service can appear only once');
+		const staffCache = new Map<Id<'staff'>, Doc<'staff'> | null>();
+		const services: Array<{ service: Doc<'services'>; staffIds: Id<'staff'>[] }> = [];
+		const unstaffed: string[] = [];
+		for (const row of args.assignments) {
+			const service = await ctx.db.get(row.serviceId);
+			if (!service) throw new Error('Service not found');
+			if (new Set(row.staffIds).size !== row.staffIds.length) throw new Error(`Choose distinct staff members for ${service.name}`);
+			for (const id of row.staffIds) {
+				if (!staffCache.has(id)) staffCache.set(id, await ctx.db.get(id));
+				const person = staffCache.get(id);
+				if (!person) throw new Error('Staff member not found');
+				if (person.status !== 'active') throw new Error(`${person.name} is archived. Restore them first or choose someone else`);
+			}
+			if (service.status === 'active' && !row.staffIds.length) unstaffed.push(service.name);
+			services.push({ service, staffIds: row.staffIds });
+		}
+		if (unstaffed.length) throw new Error(`${unstaffed.join(', ')} would have no staff. Assign at least one person to each active service`);
+		let updated = 0;
+		for (const { service, staffIds } of services) {
+			const same = staffIds.length === service.staffIds.length && staffIds.every((id) => service.staffIds.includes(id));
+			if (same) continue;
+			await ctx.db.patch(service._id, { staffIds, updatedAt: Date.now() });
+			updated++;
+		}
+		return { updated };
+	}
+});
+
 /** Time off that hasn't ended yet, soonest first. */
 export const listTimeOff = query({
 	args: { staffId: v.id('staff') },
@@ -261,13 +306,30 @@ export const listTimeOff = query({
 	}
 });
 
+/**
+ * Adds the same time off for one or more staff. People with booked appointments in the way
+ * are skipped and reported with those appointments; everyone else is saved.
+ */
 export const addTimeOff = mutation({
-	args: { staffId: v.id('staff'), start: v.number(), end: v.number(), label: v.string() },
+	args: { staffId: v.optional(v.id('staff')), staffIds: v.optional(v.array(v.id('staff'))), start: v.number(), end: v.number(), label: v.string() },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		if (!(await ctx.db.get(args.staffId))) throw new Error('Staff member not found');
-		await assertTimeOffFits(ctx, args.staffId, args.start, args.end);
-		return await ctx.db.insert('staffTimeOff', { ...args, label: required(args.label, 'Label'), createdByAdminEmail: admin.email });
+		const staffIds = [...new Set([...(args.staffId ? [args.staffId] : []), ...(args.staffIds ?? [])])];
+		if (!staffIds.length) throw new Error('Choose at least one staff member');
+		if (staffIds.length > 200) throw new Error('Choose at most 200 staff members');
+		assertTimeOffRange(args.start, args.end);
+		const label = required(args.label, 'Label');
+		const people = await Promise.all(staffIds.map((id) => ctx.db.get(id)));
+		if (people.some((person) => !person)) throw new Error('Staff member not found');
+		const results: Array<{ staffId: Id<'staff'>; name: string; timeOffId?: Id<'staffTimeOff'>; conflicts: Array<{ appointmentId: Id<'serviceAppointments'>; start: number }> }> = [];
+		for (const person of people as Doc<'staff'>[]) {
+			const conflicts = await timeOffConflicts(ctx, person._id, args.start, args.end);
+			const timeOffId = conflicts.length
+				? undefined
+				: await ctx.db.insert('staffTimeOff', { staffId: person._id, start: args.start, end: args.end, label, createdByAdminEmail: admin.email });
+			results.push({ staffId: person._id, name: person.name, ...(timeOffId ? { timeOffId } : {}), conflicts });
+		}
+		return results;
 	}
 });
 
@@ -328,11 +390,33 @@ export const listSchedule = query({
 	}
 });
 
+/**
+ * Open times, each with `autoStaffId`: who `createAppointment` picks when no staff is given
+ * (least appointments that day, then by name), so the dialog can preview the assignment.
+ */
 export const findOpenSlots = query({
 	args: { serviceId: v.id('services'), date: v.string(), staffId: v.optional(v.id('staff')) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		return await openSlots(ctx, args);
+		const slots = await openSlots(ctx, args);
+		const [dayStart, dayEnd] = localDayRange(args.date);
+		const ranked = new Map<Id<'staff'>, { name: string; count: number }>();
+		for (const id of new Set(slots.flatMap((slot) => slot.staffIds))) {
+			const person = await ctx.db.get(id);
+			let count = 0;
+			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+				q.eq('staffId', id).gte('start', dayStart).lt('start', dayEnd)
+			)) {
+				if (blocksTime(appointment)) count++;
+			}
+			ranked.set(id, { name: person?.name ?? '', count });
+		}
+		const order = (a: Id<'staff'>, b: Id<'staff'>) => {
+			const x = ranked.get(a)!;
+			const y = ranked.get(b)!;
+			return x.count - y.count || x.name.localeCompare(y.name) || a.localeCompare(b);
+		};
+		return slots.map((slot) => ({ ...slot, autoStaffId: [...slot.staffIds].sort(order)[0] }));
 	}
 });
 

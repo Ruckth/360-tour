@@ -60,7 +60,7 @@ describe('admin services', () => {
 
 	it('lists appointments and concrete break/time-off blocks', async () => {
 		const { admin, staffId, booking } = await setup();
-		const timeOffId = await admin.mutation(api.adminServices.addTimeOff, {
+		const [{ timeOffId }] = await admin.mutation(api.adminServices.addTimeOff, {
 			staffId, start: at('09:00') - 2 * 86_400_000, end: at('10:00'), label: 'Training'
 		});
 		await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('14:00') });
@@ -71,7 +71,7 @@ describe('admin services', () => {
 		expect(schedule.appointments).toHaveLength(1);
 		expect(schedule.blocks).toContainEqual({ staffId, start: at('12:00'), end: at('13:00'), label: 'Lunch', kind: 'break' });
 		expect(schedule.blocks).toContainEqual({ staffId, start: at('09:00'), end: at('10:00'), label: 'Training', kind: 'time_off', timeOff: expect.objectContaining({ _id: timeOffId, start: at('09:00') - 2 * 86_400_000 }) });
-		await admin.mutation(api.adminServices.removeTimeOff, { timeOffId });
+		await admin.mutation(api.adminServices.removeTimeOff, { timeOffId: timeOffId! });
 		expect((await admin.query(api.adminServices.listSchedule, { from: at('09:00'), to: at('17:00') })).blocks.some((block) => block.kind === 'time_off')).toBe(false);
 	});
 
@@ -112,7 +112,8 @@ describe('admin services', () => {
 		expect(appointment).toMatchObject({ end: at('10:30'), blockedUntil: at('10:45') });
 		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId, start: at('11:00'), durationMin: 90 })).rejects.toThrow('That time was just taken'); // lunch
 		await expect(admin.mutation(api.adminServices.archiveStaff, { staffId })).rejects.toThrow("Reassign or cancel Mali's 1 upcoming appointment first");
-		await expect(admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('10:00'), end: at('11:00'), label: 'Leave' })).rejects.toThrow('during this time off');
+		expect(await admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('10:00'), end: at('11:00'), label: 'Leave' }))
+			.toEqual([{ staffId, name: 'Mali', conflicts: [{ appointmentId, start: at('09:00') }] }]);
 		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId, status: 'no_show' })).rejects.toThrow('after the start time');
 		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId });
 		await admin.mutation(api.adminServices.archiveStaff, { staffId });
@@ -176,7 +177,7 @@ describe('admin services', () => {
 
 	it('edits time off with the same checks as adding it', async () => {
 		const { admin, booking, staffId } = await setup();
-		const timeOffId = await admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('09:00'), end: at('11:00'), label: 'Doctor' });
+		const timeOffId = (await admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('09:00'), end: at('11:00'), label: 'Doctor' }))[0].timeOffId!;
 		await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('14:00') });
 		await admin.mutation(api.adminServices.updateTimeOff, { timeOffId, start: at('10:00'), end: at('12:00'), label: ' Dentist ' });
 		expect(await admin.query(api.adminServices.listTimeOff, { staffId })).toMatchObject([{ _id: timeOffId, start: at('10:00'), end: at('12:00'), label: 'Dentist' }]);
@@ -232,12 +233,90 @@ describe('admin services', () => {
 	it('requires an admin for the new appointment and time-off mutations', async () => {
 		const { t, admin, booking, staffId } = await setup();
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('10:00') });
-		const timeOffId = await admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('15:00'), end: at('16:00'), label: 'Off' });
+		const timeOffId = (await admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('15:00'), end: at('16:00'), label: 'Off' }))[0].timeOffId!;
 		await expect(t.mutation(api.adminServices.updateTimeOff, { timeOffId, start: at('15:00'), end: at('17:00'), label: 'Off' })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, guestName: 'X', guestPhone: '1' })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.adminServices.changeAppointmentService, { appointmentId, serviceId: booking.serviceId })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.adminServices.refundAppointment, { appointmentId })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.adminServices.listTimeOff, { staffId })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.adminServices.countUpcomingAppointments, { staffId })).rejects.toThrow('Not authenticated');
+	});
+
+	it('adds time off for several staff, skipping those with booked appointments in the way', async () => {
+		const { t, admin, booking, staffId } = await setup();
+		const hours = weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' }));
+		const nokId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#def', workingHours: hours, breaks: [] });
+		const pimId = await admin.mutation(api.adminServices.createStaff, { name: 'Pim', role: 'Therapist', color: '#fed', workingHours: hours, breaks: [] });
+		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('10:00') });
+		const range = { start: at('00:00'), end: at('00:00') + 86_400_000, label: ' Training ' };
+
+		const results = await admin.mutation(api.adminServices.addTimeOff, { ...range, staffIds: [staffId, nokId, pimId, nokId] });
+		expect(results).toMatchObject([
+			{ staffId, name: 'Mali', conflicts: [{ appointmentId, start: at('10:00') }] },
+			{ staffId: nokId, name: 'Nok', timeOffId: expect.any(String), conflicts: [] },
+			{ staffId: pimId, name: 'Pim', timeOffId: expect.any(String), conflicts: [] }
+		]);
+		expect(results[0].timeOffId).toBeUndefined();
+		expect(await admin.query(api.adminServices.listTimeOff, { staffId })).toEqual([]);
+		expect(await admin.query(api.adminServices.listTimeOff, { staffId: nokId })).toMatchObject([{ label: 'Training', start: range.start, end: range.end }]);
+		expect(await admin.query(api.adminServices.listTimeOff, { staffId: pimId })).toHaveLength(1);
+
+		// Whole-batch validation still throws and saves nothing.
+		await expect(admin.mutation(api.adminServices.addTimeOff, { ...range, staffIds: [] })).rejects.toThrow('at least one staff member');
+		await expect(admin.mutation(api.adminServices.addTimeOff, { ...range, staffIds: [pimId], label: ' ' })).rejects.toThrow('Label is required');
+		await expect(admin.mutation(api.adminServices.addTimeOff, { ...range, staffIds: [pimId], end: range.start })).rejects.toThrow('60 days');
+		expect(await admin.query(api.adminServices.listTimeOff, { staffId: pimId })).toHaveLength(1);
+		await expect(t.mutation(api.adminServices.addTimeOff, { ...range, staffIds: [pimId] })).rejects.toThrow('Not authenticated');
+	});
+
+	it('saves the services × staff matrix in one batch', async () => {
+		const { t, admin, staffId, serviceId } = await setup();
+		const hours = weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' }));
+		const nokId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#def', workingHours: hours, breaks: [] });
+		const nailsId = await admin.mutation(api.adminServices.createService, {
+			slug: 'nails', name: 'Nails', description: '', category: 'Beauty', durationMin: 30, bufferMin: 0, price: 500, currency: 'THB', staffIds: [staffId]
+		});
+		const staffOf = async () => Object.fromEntries((await admin.query(api.adminServices.listServices, { includeArchived: true })).map((s) => [s.name, s.staffIds]));
+
+		expect(await admin.mutation(api.adminServices.setServiceStaffMatrix, { assignments: [
+			{ serviceId, staffIds: [staffId, nokId] },
+			{ serviceId: nailsId, staffIds: [staffId] } // unchanged
+		] })).toEqual({ updated: 1 });
+		expect(await staffOf()).toEqual({ 'Thai massage': [staffId, nokId], Nails: [staffId] });
+
+		// Leaving an active service with no one refuses the whole batch.
+		await expect(admin.mutation(api.adminServices.setServiceStaffMatrix, { assignments: [
+			{ serviceId, staffIds: [nokId] },
+			{ serviceId: nailsId, staffIds: [] }
+		] })).rejects.toThrow('Nails would have no staff');
+		expect(await staffOf()).toEqual({ 'Thai massage': [staffId, nokId], Nails: [staffId] });
+
+		await expect(admin.mutation(api.adminServices.setServiceStaffMatrix, { assignments: [{ serviceId, staffIds: [nokId, nokId] }] })).rejects.toThrow('distinct');
+		await expect(admin.mutation(api.adminServices.setServiceStaffMatrix, { assignments: [{ serviceId, staffIds: [nokId] }, { serviceId, staffIds: [staffId] }] })).rejects.toThrow('only once');
+		await admin.mutation(api.adminServices.archiveStaff, { staffId: nokId });
+		await expect(admin.mutation(api.adminServices.setServiceStaffMatrix, { assignments: [{ serviceId, staffIds: [nokId] }] })).rejects.toThrow('Nok is archived');
+
+		// Archived services may be emptied.
+		await admin.mutation(api.adminServices.archiveService, { serviceId: nailsId });
+		expect(await admin.mutation(api.adminServices.setServiceStaffMatrix, { assignments: [{ serviceId: nailsId, staffIds: [] }] })).toEqual({ updated: 1 });
+		await expect(t.mutation(api.adminServices.setServiceStaffMatrix, { assignments: [] })).rejects.toThrow('Not authenticated');
+	});
+
+	it('previews the least-busy staff member for each open slot, matching auto-assignment', async () => {
+		const { admin, booking, staffId, serviceId } = await setup();
+		const hours = weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' }));
+		const nokId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#def', workingHours: hours, breaks: [] });
+		await admin.mutation(api.adminServices.updateService, { serviceId, staffIds: [staffId, nokId] });
+		const slotAt = async (time: string) => (await admin.query(api.adminServices.findOpenSlots, { serviceId, date })).find((slot) => slot.start === at(time));
+
+		// Tie on load: alphabetical, so Mali.
+		expect(await slotAt('15:00')).toMatchObject({ autoStaffId: staffId });
+		await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
+		// Mali now has one appointment that day, so Nok is previewed and actually assigned.
+		expect(await slotAt('15:00')).toMatchObject({ autoStaffId: nokId });
+		const { staffId: assigned } = await admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: undefined, start: at('15:00') });
+		expect(assigned).toBe(nokId);
+		// Only Nok is free at 12:00 (Mali's lunch).
+		expect(await slotAt('12:00')).toMatchObject({ staffIds: [nokId], autoStaffId: nokId });
 	});
 });
