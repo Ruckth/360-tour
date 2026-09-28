@@ -4,46 +4,49 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from "convex/adminBookings";
+import { calculateDirectQuote } from "convex/lib/pricing";
 import { addDays, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from "date-fns";
 import { Loader2, PlusIcon, SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
 import type {
   CalendarEvent,
+  CalendarView,
+  EventCalendarProposedUpdate,
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
-import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { addDaysIso, dateToIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
+import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
 import { errorText, money } from "@/lib/staff-bookings";
+import { useStoredState } from "@/lib/use-stored-state";
+import { BookingCleanupDialog } from "./BookingCleanupDialog";
+import { BookingQuickActions, type QuickTarget } from "./BookingQuickActions";
 import { BookingSheet } from "./BookingSheet";
 import { DateBlockDialog, type BlockTarget } from "./DateBlockDialog";
 import { IcalSourcesDialog } from "./IcalSourcesDialog";
+import { NewBookingDialog, type NewBookingPrefill } from "./NewBookingDialog";
 import { OtaRatesDialog } from "./OtaRatesDialog";
 import {
   STATUS,
   SOURCE_LABELS,
+  balanceText,
+  canEditBooking,
   displayDate,
   statusKey,
+  stayConflicts,
   type AdminProperty,
   type DateBlock,
 } from "./admin-bookings-shared";
 
 // Stable reference: the calendar rebuilds its settings when this object changes.
 const CALENDAR_I18N = { viewNames: { resource: "Villas", agenda: "List" } };
+const VIEWS = ["month", "resource", "agenda"] as const satisfies CalendarView[];
+type HotelView = (typeof VIEWS)[number];
 
 // Until Settings load, fall back to the defaults (afternoon check-in, late-morning check-out).
 const DEFAULT_CHECK_IN = "14:00";
@@ -53,6 +56,8 @@ type EventData =
   | { kind: "booking"; booking: AdminBooking }
   | { kind: "hostBlock"; block: DateBlock }
   | { kind: "otaBlock"; propertyId: string; start: string; end: string; source: string };
+
+type Move = { booking: AdminBooking; propertyId: string; checkIn: string; checkOut: string };
 
 function isoDate(date: Date) {
   return format(date, "yyyy-MM-dd");
@@ -84,20 +89,55 @@ function initialRange() {
   };
 }
 
+/** A dragged or resized booking chip as new villa + dates; null when it isn't a valid stay. */
+function proposedMove(update: EventCalendarProposedUpdate<EventData>): Move | null {
+  const eventData = update.event.data;
+  if (eventData?.kind !== "booking") return null;
+  const move = {
+    booking: eventData.booking,
+    propertyId: update.resourceId ?? eventData.booking.propertyId,
+    checkIn: isoDate(update.start),
+    checkOut: isoDate(update.end),
+  };
+  return move.checkOut > move.checkIn ? move : null;
+}
+
+function isUnchanged({ booking, propertyId, checkIn, checkOut }: Move) {
+  return propertyId === booking.propertyId && checkIn === booking.checkIn && checkOut === booking.checkOut;
+}
+
 export function AdminBookingsView() {
   const [range, setRange] = useState(initialRange);
-  const [villa, setVilla] = useState("all");
+  const [storedView, setView] = useStoredState("admin.hotel.view", "month");
+  const [storedVilla, setVilla] = useStoredState("admin.hotel.villa", "all");
   const [showCancelled, setShowCancelled] = useState(false);
   const [selectedId, setSelectedId] = useState<Id<"bookings"> | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [quick, setQuick] = useState<QuickTarget | null>(null);
+  const [creating, setCreating] = useState<NewBookingPrefill | null>(null);
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
   const [managingCalendars, setManagingCalendars] = useState(false);
   const [managingRates, setManagingRates] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
 
   const data = useQuery(api.adminBookings.listForAdmin, range);
   const profile = useQuery(api.settings.publicProfile, {});
+  const editBooking = useMutation(api.adminBookings.editBooking);
+  const confirm = useConfirm();
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
+  const today = todayIsoLocal();
+
+  const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : "month";
+  // A remembered villa that no longer exists falls back to all villas.
+  const villa = storedVilla === "all" || !data || data.properties.some((p) => p._id === storedVilla) ? storedVilla : "all";
+  const villaName = (id: string) => data?.properties.find((p) => p._id === id)?.name ?? "Villa";
+
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(id);
+  }, [notice]);
 
   const resources = useMemo<EventCalendarResource[]>(
     () =>
@@ -126,7 +166,8 @@ export function AdminBookingsView() {
         end: new Date(`${booking.checkOut}T${checkOutTime}:00`),
         resourceId: booking.propertyId,
         color: STATUS[statusKey(booking)].color,
-        readOnly: true,
+        // Drag to move, drag an edge to change dates. Cancelled and refunded bookings stay put.
+        readOnly: !canEditBooking(booking),
         data: { kind: "booking", booking },
       }));
 
@@ -163,24 +204,143 @@ export function AdminBookingsView() {
     setSelectedId(booking._id);
   }
 
+  /** Where a drag may drop: an active villa, no past check-in (unless unchanged), no overlap with held dates. */
+  function canMove(move: Move) {
+    if (!data || isUnchanged(move)) return true;
+    const property = data.properties.find((p) => p._id === move.propertyId);
+    if (!property || property.status !== "active") return false;
+    if (move.checkIn !== move.booking.checkIn && move.checkIn < today) return false;
+    return !stayConflicts(data, move.propertyId, move.checkIn, move.checkOut, move.booking._id);
+  }
+
+  async function confirmMove(move: Move) {
+    const { booking, propertyId, checkIn, checkOut } = move;
+    const property = data?.properties.find((p) => p._id === propertyId);
+    if (!property) return;
+    const nights = nightsBetweenIso(checkIn, checkOut);
+    const newTotal = calculateDirectQuote(property, nights).directTotal;
+    const difference = newTotal - booking.total;
+    const balance = booking.amountPaid !== undefined ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
+    const ok = await confirm({
+      title: `Move ${booking.guestName}'s booking?`,
+      description: (
+        <>
+          <span className="block text-foreground">
+            {propertyId !== booking.propertyId ? `${villaName(booking.propertyId)} → ${property.name}` : property.name}
+          </span>
+          <span className="block">
+            {displayDate(checkIn)} → {displayDate(checkOut)} · {nights} {nights === 1 ? "night" : "nights"}
+          </span>
+          <span className="mt-2 block text-foreground">
+            New total {money(newTotal, booking.currency)}{" "}
+            <span className="text-muted-foreground">
+              (was {money(booking.total, booking.currency)},{" "}
+              {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${money(Math.abs(difference), booking.currency)}`})
+            </span>
+          </span>
+          {booking.amountPaid !== undefined ? (
+            <span className="block">
+              Guest paid {money(booking.amountPaid, booking.currency)}.{" "}
+              {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
+            </span>
+          ) : null}
+          {booking.guestEmail ? <span className="mt-2 block">The guest is emailed about the change.</span> : null}
+        </>
+      ),
+      confirmLabel: "Move booking",
+      cancelLabel: "Keep dates",
+    });
+    if (!ok) return;
+    try {
+      await editBooking({
+        bookingId: booking._id,
+        propertyId: propertyId as Id<"properties">,
+        checkIn,
+        checkOut,
+        guests: booking.guests,
+        guestName: booking.guestName,
+        guestPhone: booking.guestPhone,
+        guestEmail: booking.guestEmail,
+      });
+      setNotice({ text: `${booking.guestName}: moved to ${displayDate(checkIn)} → ${displayDate(checkOut)}.` });
+    } catch (err) {
+      setNotice({ text: errorText(err, "Could not move the booking."), error: true });
+    }
+  }
+
+  /** Villa for a drag-selected range: the filtered villa, else the first active villa free on those nights. */
+  function villaFor(checkIn: string, checkOut: string) {
+    if (villa !== "all") return villa;
+    const active = (data?.properties ?? []).filter((p) => p.status === "active");
+    return (active.find((p) => data && !stayConflicts(data, p._id, checkIn, checkOut)) ?? active[0])?._id;
+  }
+
+  function openNew(checkIn: string, checkOut: string, propertyId?: string) {
+    setQuick(null);
+    setCreating({ propertyId: propertyId ?? villaFor(checkIn, checkOut), checkIn, checkOut });
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
       <div className="border border-border bg-card [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
-          defaultView="month"
-          views={["month", "resource", "agenda"]}
+          view={view}
+          onViewChange={setView}
+          views={[...VIEWS]}
           resources={resources}
           dayStartHour={8}
           dayEndHour={20}
           interval={60}
           i18n={CALENDAR_I18N}
-          interactions={{ drag: false, resize: false, selectSlot: false }}
-          onEventClick={(occurrence) => {
+          interactions={{ drag: true, resize: true, selectSlot: true }}
+          canSelectSlot={(slot) => isoDate(slot.start) >= today}
+          onSelectSlot={(slot) => {
+            const checkIn = isoDate(slot.start);
+            const end = slot.allDay ? isoDate(slot.end) : "";
+            openNew(checkIn, end > checkIn ? end : addDaysIso(checkIn, 1), slot.resourceId);
+          }}
+          onSlotClick={(slot) => {
+            // In the Villas view a click on a villa's all-day cell starts a one-night booking there.
+            const checkIn = isoDate(slot.date);
+            if (slot.view === "resource" && slot.allDay && slot.resourceId && checkIn >= today) {
+              openNew(checkIn, addDaysIso(checkIn, 1), slot.resourceId);
+            }
+          }}
+          canDropEvent={(update) => {
+            const move = proposedMove(update);
+            return move !== null && canMove(move);
+          }}
+          onEventUpdate={(update) => {
+            // Never apply locally: confirm first, then the server result flows back through the query.
+            const move = proposedMove(update);
+            if (move && !isUnchanged(move) && canMove(move)) void confirmMove(move);
+            return false;
+          }}
+          onDragBlocked={(occurrence) =>
+            setNotice({
+              text:
+                occurrence.event.data?.kind === "booking"
+                  ? "Cancelled and refunded bookings can't be moved."
+                  : "Blocks can't be dragged. Click one to edit it.",
+            })
+          }
+          onEventClick={(occurrence, event) => {
             const eventData = occurrence.event.data;
-            if (eventData?.kind === "booking") setSelectedId(eventData.booking._id);
-            else if (eventData?.kind === "hostBlock") setBlockTarget({ kind: "host", block: eventData.block });
+            if (eventData?.kind === "booking") {
+              const chip =
+                (event.target as HTMLElement).closest("[data-slot=event-calendar-event]") ?? (event.currentTarget as HTMLElement);
+              const { left, top, width, height } = chip.getBoundingClientRect();
+              setQuick({ booking: eventData.booking, rect: { left, top, width, height } });
+            } else if (eventData?.kind === "hostBlock") setBlockTarget({ kind: "host", block: eventData.block });
             else if (eventData?.kind === "otaBlock") setBlockTarget({ ...eventData, kind: "ota" });
+          }}
+          onEventDoubleClick={(occurrence) => {
+            const eventData = occurrence.event.data;
+            if (eventData?.kind === "booking") {
+              setQuick(null);
+              setSelectedId(eventData.booking._id);
+            }
           }}
           onRangeChange={({ range: visible }) =>
             setRange({ from: isoDate(visible.start), to: isoDate(addDays(visible.end, 1)) })
@@ -220,10 +380,22 @@ export function AdminBookingsView() {
               <Button size="sm" variant="outline" onClick={() => setManagingRates(true)} disabled={!data}>
                 OTA rates
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setBlockTarget({ kind: "new" })} disabled={!data}>
+              <Button size="sm" variant="outline" onClick={() => setCleaningUp(true)} disabled={!data}>
+                Clean up
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined })}
+                disabled={!data}
+              >
                 Block dates
               </Button>
-              <Button size="sm" onClick={() => setCreating(true)} disabled={!data}>
+              <Button
+                size="sm"
+                onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}
+                disabled={!data}
+              >
                 <PlusIcon aria-hidden="true" className="size-4" />
                 New booking
               </Button>
@@ -238,10 +410,23 @@ export function AdminBookingsView() {
               {status.label}
             </span>
           ))}
+          <span role="status" className={notice?.error ? "text-destructive sm:ms-auto" : "sm:ms-auto"}>
+            {notice?.text ?? "Drag across days to book or block · drag a booking to move it, or its edge to change dates"}
+          </span>
         </div>
       </div>
 
       <BookingSheet bookingId={selectedId} properties={data?.properties ?? []} onClose={() => setSelectedId(null)} />
+      {quick ? (
+        <BookingQuickActions
+          key={quick.booking._id}
+          target={quick}
+          villaName={villaName(quick.booking.propertyId)}
+          onClose={() => setQuick(null)}
+          onOpenDetails={() => setSelectedId(quick.booking._id)}
+          onNotice={setNotice}
+        />
+      ) : null}
       {data && blockTarget ? (
         <DateBlockDialog target={blockTarget} properties={data.properties} onClose={() => setBlockTarget(null)} />
       ) : null}
@@ -251,13 +436,19 @@ export function AdminBookingsView() {
       {data ? (
         <OtaRatesDialog open={managingRates} onClose={() => setManagingRates(false)} properties={data.properties} />
       ) : null}
+      {data && cleaningUp ? <BookingCleanupDialog properties={data.properties} onClose={() => setCleaningUp(false)} /> : null}
       {data && creating ? (
         <NewBookingDialog
           properties={data.properties.filter((p) => p.status === "active")}
-          onClose={() => setCreating(false)}
+          prefill={creating}
+          onClose={() => setCreating(null)}
           onCreated={(id) => {
-            setCreating(false);
+            setCreating(null);
             setSelectedId(id);
+          }}
+          onBlockInstead={(target) => {
+            setCreating(null);
+            setBlockTarget({ kind: "new", ...target });
           }}
         />
       ) : null}
@@ -330,143 +521,5 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
         </div>
       ) : null}
     </div>
-  );
-}
-
-function NewBookingDialog({
-  properties,
-  onClose,
-  onCreated,
-}: {
-  properties: AdminProperty[];
-  onClose: () => void;
-  onCreated: (id: Id<"bookings">) => void;
-}) {
-  const createBooking = useMutation(api.adminBookings.createBooking);
-  const [propertySlug, setPropertySlug] = useState(properties[0]?.slug ?? "");
-  const [dates, setDates] = useState({ checkIn: "", checkOut: "" });
-  const [confirmed, setConfirmed] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  // Same date rules as the public booking flow: no past dates, no blocked nights.
-  const today = todayIsoLocal();
-  const property = properties.find((p) => p.slug === propertySlug);
-  const blockedDates =
-    useQuery(
-      api.availability.getBlockedDates,
-      property ? { propertyId: property._id, startDate: today, endDate: addDaysIso(today, 365) } : "skip",
-    ) ?? [];
-  const blockedDateSet = new Set(blockedDates);
-  const conflicts = rangeIntersectsDates(blockedDates, dates.checkIn, dates.checkOut);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const text = (name: string) => String(form.get(name) ?? "").trim();
-    setSaving(true);
-    setError("");
-    try {
-      const id = await createBooking({
-        propertySlug,
-        guestName: text("guestName"),
-        guestPhone: text("guestPhone"),
-        guestEmail: text("guestEmail") || undefined,
-        checkIn: dates.checkIn,
-        checkOut: dates.checkOut,
-        guests: Number(text("guests")),
-        confirmed,
-      });
-      onCreated(id);
-    } catch (err) {
-      setError(errorText(err, "Could not create the booking."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>New booking</DialogTitle>
-          <DialogDescription>For phone or walk-in guests. Manual bookings never expire automatically.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4">
-          <div className="grid gap-2">
-            <Label>Villa</Label>
-            <Select value={propertySlug} onValueChange={setPropertySlug}>
-              <SelectTrigger className="rounded-lg" aria-label="Villa">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {properties.map((p) => (
-                  <SelectItem key={p._id} value={p.slug}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <BookingRangePicker
-            checkIn={dates.checkIn}
-            checkOut={dates.checkOut}
-            onChange={setDates}
-            isDateDisabled={(date) => dateToIso(date) < today || isDateInIsoList(date, blockedDateSet)}
-            unavailableDates={blockedDates}
-          />
-          {conflicts ? (
-            <p className="text-sm text-destructive">These dates overlap an existing booking or block.</p>
-          ) : null}
-          <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="nb-name">Guest name</Label>
-              <Input id="nb-name" name="guestName" required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="nb-guests">Guests</Label>
-              <Input id="nb-guests" name="guests" type="number" min={1} max={property?.maxGuests} defaultValue={2} required />
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="nb-phone">Phone</Label>
-            <Input id="nb-phone" name="guestPhone" type="tel" required />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="nb-email">Email (optional)</Label>
-            <Input id="nb-email" name="guestEmail" type="email" />
-          </div>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 accent-foreground"
-              checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
-            />
-            <span>
-              Create as confirmed
-              <span className="block text-muted-foreground">
-                Holds the dates now and emails the guest. Unticked, it stays pending and the dates stay open until you confirm.
-              </span>
-            </span>
-          </label>
-          {property && dates.checkIn && dates.checkOut && !conflicts ? (
-            <p className="text-sm text-muted-foreground">
-              {money(property.pricePerNight, property.currency)} per night
-              {property.directDiscountPercent ? `, ${property.directDiscountPercent}% direct discount` : ""}
-            </p>
-          ) : null}
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Close
-            </Button>
-            <Button type="submit" disabled={saving || !propertySlug || !dates.checkIn || !dates.checkOut || conflicts}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-              Create booking
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

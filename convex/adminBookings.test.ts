@@ -433,3 +433,67 @@ describe("search, notes and pay link", () => {
     await expect(t.query(api.adminBookings.getForAdmin, { bookingId })).rejects.toThrow();
   });
 });
+
+describe("returning guests", () => {
+  it("suggests previous guests by phone or email, one entry per guest", async () => {
+    const { t, admin } = await setup();
+    await admin.mutation(api.adminBookings.createBooking, { ...stay, guestName: "Somchai", guestPhone: "+66 81 234 5678", guestEmail: "som@example.com" });
+    await admin.mutation(api.adminBookings.createBooking, { ...stay, checkIn: isoInDays(40), checkOut: isoInDays(42), guestName: "Somchai", guestPhone: "+66 81 234 5678" });
+    await admin.mutation(api.adminBookings.createBooking, { ...stay, guestName: "Other", guestPhone: "+44 20 0000 0000" });
+
+    expect(await admin.query(api.adminBookings.findGuests, { phone: "812345678" })).toEqual([
+      { guestName: "Somchai", guestPhone: "+66 81 234 5678", guestEmail: "som@example.com", stays: 2, lastCheckIn: isoInDays(40) },
+    ]);
+    expect(await admin.query(api.adminBookings.findGuests, { phone: "+66 81 234 5678" })).toHaveLength(1);
+    expect((await admin.query(api.adminBookings.findGuests, { email: "SOM@exa" }))[0]?.guestName).toBe("Somchai");
+    expect(await admin.query(api.adminBookings.findGuests, { phone: "12", email: "so" })).toEqual([]);
+    await expect(t.query(api.adminBookings.findGuests, { phone: "81234" })).rejects.toThrow();
+  });
+});
+
+describe("clean up test bookings", () => {
+  it("lists unpaid admin or old bookings and batch deletes them with the delete rules", async () => {
+    const { t, admin } = await setup();
+    const manual = await admin.mutation(api.adminBookings.createBooking, stay);
+    const confirmed = await admin.mutation(api.adminBookings.createBooking, { ...stay, checkIn: isoInDays(50), checkOut: isoInDays(52), confirmed: true });
+    const { bookingId: fresh } = await t.mutation(api.bookings.create, { ...stay, guestEmail: "g@example.com", checkIn: isoInDays(60), checkOut: isoInDays(62) });
+    const { bookingId: old } = await t.mutation(api.bookings.create, { ...stay, guestEmail: "g@example.com", checkIn: isoInDays(70), checkOut: isoInDays(72) });
+    await t.run((ctx) => ctx.db.patch(old, { status: "cancelled", createdAt: Date.now() - 40 * 86_400_000 }));
+
+    const candidates = await admin.query(api.adminBookings.listCleanupCandidates, { olderThanDays: 30 });
+    expect(candidates.map((b) => b._id).sort()).toEqual([manual, old].sort());
+    expect((await admin.query(api.adminBookings.listCleanupCandidates, { olderThanDays: 0 })).map((b) => b._id)).toContain(fresh);
+
+    const result = await admin.mutation(api.adminBookings.deleteBookings, { bookingIds: [manual, old, confirmed] });
+    expect(result.deleted).toBe(2);
+    expect(result.skipped).toEqual([{ bookingId: confirmed, reason: "Only unpaid pending or cancelled bookings can be deleted." }]);
+    expect(await t.run((ctx) => Promise.all([ctx.db.get(manual), ctx.db.get(old), ctx.db.get(confirmed)]))).toEqual([
+      null,
+      null,
+      expect.objectContaining({ _id: confirmed }),
+    ]);
+    await expect(t.mutation(api.adminBookings.deleteBookings, { bookingIds: [fresh] })).rejects.toThrow();
+    await expect(t.query(api.adminBookings.listCleanupCandidates, { olderThanDays: 30 })).rejects.toThrow();
+  });
+});
+
+describe("block dates across villas", () => {
+  it("blocks every free villa and reports conflicts per villa", async () => {
+    const { t, admin } = await setup();
+    const pool = await propertyIdOf(t);
+    const garden = await addVilla(t, "garden-villa", 5000);
+    await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
+
+    const results = await admin.mutation(api.adminBookings.addDateBlocks, { propertyIds: [pool, garden], start: checkIn, end: checkOut, reason: " Festival " });
+    expect(results).toEqual([
+      { propertyId: pool, blockId: null, error: "These dates are no longer available. Please choose different dates." },
+      { propertyId: garden, blockId: expect.anything(), error: null },
+    ]);
+    const blocks = await t.run((ctx) => ctx.db.query("dateBlocks").collect());
+    expect(blocks).toEqual([expect.objectContaining({ propertyId: garden, reason: "Festival", start: checkIn, end: checkOut })]);
+
+    await expect(admin.mutation(api.adminBookings.addDateBlocks, { propertyIds: [garden], start: isoInDays(40), end: isoInDays(41), reason: " " })).rejects.toThrow("reason");
+    await expect(admin.mutation(api.adminBookings.addDateBlocks, { propertyIds: [], start: isoInDays(40), end: isoInDays(41), reason: "x" })).rejects.toThrow("villa");
+    await expect(t.mutation(api.adminBookings.addDateBlocks, { propertyIds: [garden], start: isoInDays(40), end: isoInDays(41), reason: "x" })).rejects.toThrow();
+  });
+});

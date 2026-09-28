@@ -268,6 +268,54 @@ describe('360 rooms', () => {
 		expect(state.property?.tourRoomIds).toEqual(['living-room', 'bedroom']);
 	});
 
+	it('duplicates a villa as a draft with photos, rooms, hotspots and OTA rates', async () => {
+		const { t, admin, stranger, propertyId, living } = await villaWithRooms();
+		await admin.mutation(api.adminProperties.setHotspots, {
+			roomId: living,
+			hotspots: [{ label: 'Pool', targetRoomSlug: 'pool', position: [1, 2, 3] }]
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(propertyId, {
+				pricePerNight: 9000,
+				images: ['https://example.com/a.webp'],
+				status: 'active',
+				icalExportToken: 'secret'
+			});
+			await ctx.db.insert('otaRates', { propertyId, platform: 'agoda', nightlyRate: 9900, updatedAt: 0 });
+			await ctx.db.insert('reviews', {
+				propertyId, authorName: 'G', authorCity: '', authorCountry: '', authorAvatarUrl: '', rating: 5,
+				title: 'Nice', body: 'Nice', date: '2026-01-01', verified: true
+			});
+		});
+		await insertBooking(t, propertyId);
+
+		const copyId = await admin.mutation(api.adminProperties.duplicate, { propertyId });
+		const copy = await admin.query(api.adminProperties.get, { propertyId: copyId });
+		expect(copy?.property).toMatchObject({
+			name: 'Villa (copy)',
+			slug: 'villa-copy',
+			status: 'draft',
+			pricePerNight: 9000,
+			images: ['https://example.com/a.webp'],
+			tourRoomIds: ['living-room', 'pool', 'bedroom']
+		});
+		expect(copy?.property.icalExportToken).toBeUndefined();
+		expect(copy?.slugLocked).toBe(false);
+		expect(copy?.rooms.map((room) => room.slug)).toEqual(['living-room', 'pool', 'bedroom']);
+		const copiedLiving = copy?.rooms.find((room) => room.slug === 'living-room');
+		expect(copiedLiving?._id).not.toBe(living);
+		expect(copiedLiving?.hotspots).toEqual([{ id: 'living-room-to-pool', label: 'Pool', targetRoomSlug: 'pool', position: [1, 2, 3] }]);
+		const children = await t.run(async (ctx) => ({
+			rates: await ctx.db.query('otaRates').withIndex('by_property_platform', (q) => q.eq('propertyId', copyId)).collect(),
+			reviews: await ctx.db.query('reviews').withIndex('by_property', (q) => q.eq('propertyId', copyId)).collect()
+		}));
+		expect(children.rates).toEqual([expect.objectContaining({ platform: 'agoda', nightlyRate: 9900 })]);
+		expect(children.reviews).toEqual([]);
+
+		expect((await admin.query(api.adminProperties.get, { propertyId: await admin.mutation(api.adminProperties.duplicate, { propertyId }) }))?.property.slug).toBe('villa-copy-2');
+		await expect(stranger.mutation(api.adminProperties.duplicate, { propertyId })).rejects.toThrow('Not authorized');
+	});
+
 	it('requires an admin for room changes', async () => {
 		const { stranger, propertyId, living } = await villaWithRooms();
 		await expect(stranger.mutation(api.adminProperties.deleteRoom, { roomId: living })).rejects.toThrow('Not authorized');

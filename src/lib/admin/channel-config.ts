@@ -1,5 +1,20 @@
 export type ChannelKey = "line" | "facebook" | "instagram" | "whatsapp";
 
+export const CHANNEL_LABELS: Record<ChannelKey, string> = {
+  line: "LINE",
+  facebook: "Facebook Messenger",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+};
+
+/** Webhook routes on the website (see DEPLOYMENT.md); paste `<site origin><path>` into each platform's console. */
+export const CHANNEL_WEBHOOK_PATH: Record<ChannelKey, string> = {
+  line: "/api/line/webhook",
+  facebook: "/api/facebook/webhook",
+  instagram: "/api/instagram/webhook",
+  whatsapp: "/api/whatsapp/webhook",
+};
+
 /** Vercel env vars each channel webhook needs (see src/app/api/<channel>/webhook/route.ts). "A|B" = either. */
 const CHANNEL_ENV: Record<ChannelKey, string[]> = {
   line: ["LINE_CHANNEL_SECRET", "LINE_CHANNEL_ACCESS_TOKEN"],

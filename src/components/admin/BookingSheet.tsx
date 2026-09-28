@@ -36,9 +36,12 @@ import { errorText, money } from "@/lib/staff-bookings";
 import {
   STATUS,
   SOURCE_LABELS,
+  balanceText,
   canEditBooking,
+  cancelConfirmOptions,
   displayDate,
   isoNights,
+  payLink,
   paymentText,
   statusKey,
   type AdminProperty,
@@ -53,14 +56,6 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
-}
-
-/** Amount still owed (positive) or owed back to the guest (negative) after an edit. */
-function balanceText(total: number, paid: number, currency: string) {
-  const balance = total - paid;
-  if (balance > 0) return { text: `Balance due ${money(balance, currency)}`, tone: "text-amber-700 dark:text-amber-400" };
-  if (balance < 0) return { text: `Credit ${money(-balance, currency)}`, tone: "text-emerald-700 dark:text-emerald-400" };
-  return null;
 }
 
 export function BookingSheet({
@@ -143,27 +138,7 @@ function BookingDetails({
   }
 
   async function cancel() {
-    const refund = money(booking.amountPaid ?? booking.total, booking.currency);
-    const ok = await confirm(
-      isPaid
-        ? {
-            title: "Cancel and record a refund?",
-            description: booking.hasStripePayment
-              ? `Issue the ${refund} refund in the Stripe dashboard first. This only records it: the booking is cancelled, marked refunded and its dates are released.`
-              : `Refund ${refund} to the guest yourself (bank transfer or cash). This records the refund, cancels the booking and releases its dates.`,
-            confirmLabel: "Cancel & record refund",
-            cancelLabel: "Keep booking",
-            destructive: true,
-          }
-        : {
-            title: "Cancel this booking?",
-            description: "The booking is cancelled and its dates are released.",
-            confirmLabel: "Cancel booking",
-            cancelLabel: "Keep booking",
-            destructive: true,
-          },
-    );
-    if (!ok) return;
+    if (!(await confirm(cancelConfirmOptions(booking)))) return;
     await act("cancel", () =>
       updateBooking({ bookingId: booking._id, action: "cancel", ...(isPaid ? { refundRecorded: true } : {}) }),
     );
@@ -190,7 +165,7 @@ function BookingDetails({
 
   async function copyPayLink() {
     if (!booking.accessToken) return;
-    const link = `${window.location.origin}/booking/pay?bookingId=${booking._id}&token=${booking.accessToken}`;
+    const link = payLink(booking._id, booking.accessToken);
     await act("copy", () => navigator.clipboard.writeText(link), "Pay link copied.");
   }
 

@@ -167,6 +167,42 @@ export const serverConfig = query({
 	}
 });
 
+/**
+ * Convex-side facts for the setup checklist. Channel env vars live on Vercel, so the UI combines
+ * `channelsReplied` with /api/admin/config-status.
+ */
+export const setupChecklist = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+		const set = (name: string) => Boolean(process.env[name]?.trim());
+		const active = await ctx.db
+			.query('properties')
+			.withIndex('by_status', (q) => q.eq('status', 'active'))
+			.take(100);
+		const sources = await ctx.db.query('icalSources').take(100);
+		const replied = async (table: (typeof CHANNEL_TABLES)[ChannelKey]) =>
+			(await ctx.db
+				.query(table)
+				.withIndex('by_status_and_created_at', (q) => q.eq('status', 'replied'))
+				.first()) !== null;
+		const channelsReplied = {} as Record<ChannelKey, boolean>;
+		for (const channel of Object.keys(CHANNEL_TABLES) as ChannelKey[]) {
+			channelsReplied[channel] = await replied(CHANNEL_TABLES[channel]);
+		}
+		return {
+			aiKey: set('AI_API_KEY'),
+			email: set('RESEND_API_KEY') && set('EMAIL_FROM'),
+			stripe: set('STRIPE_SECRET_KEY') && set('STRIPE_WEBHOOK_SECRET'),
+			serverSecret: set('CONVEX_SERVER_SECRET'),
+			villaReady: active.some((p) => p.images.length > 0 && p.pricePerNight > 0),
+			icalSynced: sources.some((s) => s.lastSyncedAt !== undefined && !s.lastSyncError),
+			profileSaved: (await getSiteSettingsRow(ctx)) !== null,
+			channelsReplied
+		};
+	}
+});
+
 export const admins = query({
 	args: {},
 	handler: async (ctx) => {
