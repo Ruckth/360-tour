@@ -55,7 +55,7 @@ export const getRooms = query({
 	}
 });
 
-/** Public room content for the guest tour. */
+/** Public 360 rooms of an active villa, in tour order (`tourRoomIds`, then any others by creation). */
 export const getTourRooms = query({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
@@ -64,7 +64,14 @@ export const getTourRooms = query({
 		if (!property || property.status !== 'active') return null;
 		const rooms = await ctx.db.query('rooms')
 			.withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(50);
-		return rooms.map(({ slug, name, imagePath }) => ({ slug, name, imagePath }));
+		const rank = (slug: string) => {
+			const index = property.tourRoomIds.indexOf(slug);
+			return index === -1 ? Infinity : index;
+		};
+		// Stable sort: unlisted rooms keep the index's creation order.
+		return rooms
+			.sort((a, b) => rank(a.slug) - rank(b.slug) || 0)
+			.map(({ slug, name, imagePath, hotspots }) => ({ slug, name, imagePath, hotspots }));
 	}
 });
 

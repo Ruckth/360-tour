@@ -2,7 +2,6 @@
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { api } from "convex/_generated/api";
-import type { FunctionReturnType } from "convex/server";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -12,14 +11,14 @@ import { TourConclusion } from "@/components/tour/TourConclusion";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
-import { rooms as allRooms } from "@/lib/data/rooms";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
-import { localizeRooms } from "@/lib/i18n/public-content";
 import { useConvexQuery } from "@/lib/react/convex";
+import { resolveTourRooms, type DbTourRooms } from "@/lib/tour/rooms";
 import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
 const tourRoomsQuery = api.properties.getTourRooms;
+const ROOMS_TIMEOUT_MS = 3_000;
 
 export function TourViewer({
   property,
@@ -31,32 +30,20 @@ export function TourViewer({
   const locale = useLocale();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
-  const liveRooms = useConvexQuery<FunctionReturnType<typeof tourRoomsQuery>>(
-    tourRoomsQuery, { slug: property.id }, null,
-  ).data;
-  const localizedRooms = useMemo(() => {
-    const translated = localizeRooms(allRooms, locale);
-    if (!liveRooms) return translated;
-    const savedBySlug = new Map(liveRooms.map((room) => [room.slug, room]));
-    return translated.map((room, index) => {
-      const saved = savedBySlug.get(room.id);
-      if (!saved) return room;
-      return {
-        ...room,
-        name: saved.name === allRooms[index].name ? room.name : saved.name,
-        imagePath: saved.imagePath,
-      };
-    });
-  }, [locale, liveRooms]);
+  const liveRooms = useConvexQuery<DbTourRooms>(tourRoomsQuery, { slug: property.id }, null);
+  const [timedOut, setTimedOut] = useState(false);
+  // Wait for the DB rooms so the tour never starts on bundled rooms and then swaps;
+  // if Convex does not answer in time, fall back to the bundled rooms.
+  const roomsReady = !liveRooms.loading || timedOut;
   const activeRooms = useMemo(
-    () =>
-      property.tourRoomIds
-        .map((roomId) => localizedRooms.find((room) => room.id === roomId))
-        .filter((room): room is (typeof localizedRooms)[number] => Boolean(room)),
-    [localizedRooms, property.tourRoomIds],
+    () => (roomsReady ? resolveTourRooms(property.tourRoomIds, liveRooms.data, locale) : []),
+    [liveRooms.data, locale, property.tourRoomIds, roomsReady],
   );
   const [phase, setPhase] = useState<Phase>("intro");
-  const [currentRoomId, setCurrentRoomId] = useState(activeRooms[0]?.id ?? "");
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  // The first room in tour order until the guest moves (or the selected room disappears).
+  const currentRoomId =
+    activeRooms.find((room) => room.id === selectedRoomId)?.id ?? activeRooms[0]?.id ?? "";
   const [previousRoomId, setPreviousRoomId] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const [texturesLoaded, setTexturesLoaded] = useState(false);
@@ -68,8 +55,10 @@ export function TourViewer({
 
   useEffect(() => {
     const timer = window.setTimeout(() => setMinimumReached(true), 1100);
+    const roomsTimer = window.setTimeout(() => setTimedOut(true), ROOMS_TIMEOUT_MS);
     return () => {
       window.clearTimeout(timer);
+      window.clearTimeout(roomsTimer);
     };
   }, []);
 
@@ -106,7 +95,7 @@ export function TourViewer({
     if (!activeRoomIds.has(roomId)) return;
     if (transitioning || roomId === currentRoomId) return;
     setPreviousRoomId(currentRoomId);
-    setCurrentRoomId(roomId);
+    setSelectedRoomId(roomId);
     setTransitioning(true);
   }
 
@@ -119,7 +108,7 @@ export function TourViewer({
   const previousRoom = activeRooms[(currentRoomIndex - 1 + activeRooms.length) % activeRooms.length];
   const nextRoom = activeRooms[(currentRoomIndex + 1) % activeRooms.length];
 
-  if (!activeRooms.length) return null;
+  if (roomsReady && !activeRooms.length) return null;
 
   const viewer = (
     <div data-testid="tour-viewer" className="fixed inset-0 z-[70] bg-black" style={{ touchAction: "none" }}>
@@ -130,15 +119,17 @@ export function TourViewer({
           (phase === "conclusion" || phase === "leadCapture") && "blur-md",
         )}
       >
-        <TourCanvas
-          rooms={activeRooms}
-          currentRoomId={currentRoomId}
-          previousRoomId={previousRoomId}
-          transitioning={transitioning}
-          onTransitionComplete={completeTransition}
-          onLoaded={handleLoaded}
-          onNavigate={navigateTo}
-        />
+        {activeRooms.length ? (
+          <TourCanvas
+            rooms={activeRooms}
+            currentRoomId={currentRoomId}
+            previousRoomId={previousRoomId}
+            transitioning={transitioning}
+            onTransitionComplete={completeTransition}
+            onLoaded={handleLoaded}
+            onNavigate={navigateTo}
+          />
+        ) : null}
       </div>
 
       {phase === "intro" ? (
