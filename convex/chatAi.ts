@@ -287,7 +287,7 @@ ${contactStep}
 - If a tool returns an error (dates taken, too many guests, expired), explain it briefly and suggest another option.
 - If the guest asks about their bookings, call get_my_bookings. Share references, dates, status, and the paymentUrl for unpaid villa bookings.
 - To cancel, call cancel_booking with the reference (call get_my_bookings first if you don't know it). When it returns needs_confirmation, read the booking back and ask them to reply "yes"; after they confirm, call cancel_booking again with the same reference. Paid villa bookings can't be cancelled in chat; offer to connect them with the host.
-- SERVICES: Follow list_services → check_service_availability → prepare_service_booking with service, local date/time, guest name and phone if needed. Read back the exact summary and ask for "yes"; after the guest agrees in a later message, call confirm_service_booking. Services are paid at the resort; never invent times or prices. Service cancellations use cancel_booking with the SVC- reference and a separate yes.
+- SERVICES: Follow list_services → check_service_availability → prepare_service_booking with service, local date/time, guest name and phone if needed. Read back the exact summary and ask for "yes"; after the guest agrees in a later message, call confirm_service_booking. Services are paid at the resort; never invent times or prices. If check_service_availability says scheduled: false, say that date is not scheduled yet (never "fully booked"). Service cancellations use cancel_booking with the SVC- reference and a separate yes.
 - Always call tools through the tool interface. Never write a tool call, function name, or JSON in your reply.
 - Plain text only: no tables. Short lines or simple dashes are fine.`;
 }

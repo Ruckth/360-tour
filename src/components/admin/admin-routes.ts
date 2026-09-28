@@ -23,7 +23,7 @@ export function adminNavItem(pathname: string): AdminNavItem | undefined {
   return ADMIN_NAV.find((item) => adminSection(item.href) === section);
 }
 
-export const ADMIN_STAFF_TABS = ["calendar", "staff", "services"] as const;
+export const ADMIN_STAFF_TABS = ["calendar", "roster", "staff", "services"] as const;
 export type AdminStaffTab = (typeof ADMIN_STAFF_TABS)[number];
 
 export function isAdminStaffTab(value: string): value is AdminStaffTab {

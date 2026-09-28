@@ -13,7 +13,9 @@ import {
 	createAppointmentRecord,
 	findOpenSlots as openSlots,
 	localDayRange,
-	recurringBlocks,
+	localDateTimeUtc,
+	planWorking,
+	scheduleDays,
 	staffBusyRanges
 } from './lib/serviceSlots';
 import { assertValidEmail } from './lib/validation';
@@ -376,9 +378,19 @@ export const listSchedule = query({
 		const appointments = inRange.filter((appointment) => staffSet.has(appointment.staffId));
 		const services = await ctx.db.query('services').take(200);
 		const blocks: Array<{ staffId: Id<'staff'>; start: number; end: number; label: string; kind: 'break' | 'time_off'; timeOff?: Doc<'staffTimeOff'> }> = [];
+		// Working time from the roster (override or weekly pattern), so calendars can shade off-hours.
+		const shifts: Array<{ staffId: Id<'staff'>; start: number; end: number }> = [];
+		const clip = (start: number, end: number) => (start < args.to && end > args.from ? { start: Math.max(start, args.from), end: Math.min(end, args.to) } : null);
 		for (const person of staff) {
-			for (const block of recurringBlocks(person.breaks, args.from, args.to)) {
-				blocks.push({ staffId: person._id, start: block.start, end: block.end, label: block.label ?? '', kind: 'break' });
+			for (const { date, plan } of await scheduleDays(ctx, person, args.from, args.to)) {
+				for (const [start, end] of planWorking(date, plan)) {
+					const range = clip(start, end);
+					if (range) shifts.push({ staffId: person._id, ...range });
+				}
+				for (const block of plan.breaks) {
+					const range = clip(localDateTimeUtc(date, block.start), localDateTimeUtc(date, block.end));
+					if (range) blocks.push({ staffId: person._id, ...range, label: block.label, kind: 'break' });
+				}
 			}
 			for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', args.from - TIME_OFF_LOOKBACK).lt('start', args.to)
@@ -386,7 +398,7 @@ export const listSchedule = query({
 				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off', timeOff: row });
 			}
 		}
-		return { staff, services, appointments, blocks };
+		return { staff, services, appointments, blocks, shifts };
 	}
 });
 

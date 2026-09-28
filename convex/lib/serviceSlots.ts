@@ -14,7 +14,6 @@ export const SLOT_CONFLICT = 'That time was just taken. Please choose another ti
 export type Range = [start: number, end: number];
 export type Slot = { start: number; staffIds: Id<'staff'>[] };
 type ReadCtx = QueryCtx | MutationCtx;
-type LocalBlock = { weekday: number; start: string; end: string; label?: string };
 
 /** Local "HH:mm"; "24:00" is allowed so shifts and breaks can end at midnight. */
 export function assertValidTime(time: string): void {
@@ -65,28 +64,85 @@ export function mergeRanges(ranges: Range[]): Range[] {
 	return merged;
 }
 
-export function recurringBlocks(
-		blocks: LocalBlock[],
-		from: number,
-		to: number
-): Array<{ start: number; end: number; label?: string }> {
-	const result: Array<{ start: number; end: number; label?: string }> = [];
-	if (to <= from) return result;
-	let date = resortLocalParts(from).date;
-	const lastDate = resortLocalParts(to - 1).date;
-	while (date <= lastDate) {
-		const weekday = resortLocalParts(localDateTimeUtc(date, '00:00')).weekday;
-		for (const block of blocks) {
-			if (block.weekday !== weekday) continue;
-			const start = localDateTimeUtc(date, block.start);
-			const end = localDateTimeUtc(date, block.end);
-			if (start < to && end > from) {
-				result.push({ start: Math.max(start, from), end: Math.min(end, to), label: block.label });
-			}
-		}
-		date = nextLocalDate(date);
+export type Shift = { start: string; end: string };
+export type RosterBreak = { start: string; end: string; label: string };
+/** One person's working day: shifts minus breaks. No shifts = off. */
+export type DayPlan = { shifts: Shift[]; breaks: RosterBreak[]; note?: string };
+type Pattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;
+
+/** 0 = Sunday, for a "YYYY-MM-DD" date. */
+export function weekdayOf(date: string): number {
+	return new Date(`${date}T00:00:00Z`).getUTCDay();
+}
+
+export function addDays(date: string, days: number): string {
+	const [year, month, day] = date.split('-').map(Number);
+	return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+const byStart = (a: { start: string }, b: { start: string }) => a.start.localeCompare(b.start);
+
+/** The weekly pattern's plan for a date. */
+export function patternDay(staff: Pattern, date: string): DayPlan {
+	const weekday = weekdayOf(date);
+	return {
+		shifts: staff.workingHours.filter((h) => h.weekday === weekday).map(({ start, end }) => ({ start, end })).sort(byStart),
+		breaks: staff.breaks.filter((b) => b.weekday === weekday).map(({ start, end, label }) => ({ start, end, label })).sort(byStart)
+	};
+}
+
+/** Roster overrides for one person, keyed by date, in [firstDate, lastDate]. */
+export async function staffDayOverrides(ctx: ReadCtx, staffId: Id<'staff'>, firstDate: string, lastDate: string) {
+	const rows = new Map<string, Doc<'staffDays'>>();
+	for await (const row of ctx.db.query('staffDays').withIndex('by_staff_date', (q) =>
+		q.eq('staffId', staffId).gte('date', firstDate).lte('date', lastDate)
+	)) {
+		rows.set(row.date, row);
 	}
-	return result;
+	return rows;
+}
+
+/** The plan in force on a date: the override row if there is one, otherwise the weekly pattern. */
+export function effectivePlan(staff: Pattern, date: string, override: Doc<'staffDays'> | null | undefined): DayPlan {
+	if (!override) return patternDay(staff, date);
+	return { shifts: override.shifts, breaks: override.breaks, ...(override.note ? { note: override.note } : {}) };
+}
+
+/** Working time for a plan on a date, as absolute ranges. */
+export function planWorking(date: string, plan: DayPlan): Range[] {
+	return mergeRanges(plan.shifts.map((s): Range => [localDateTimeUtc(date, s.start), localDateTimeUtc(date, s.end)]));
+}
+
+/** Unavailable time within a date's local day: the gaps around shifts, plus breaks. */
+export function planBusy(date: string, plan: DayPlan): Range[] {
+	const [dayStart, dayEnd] = localDayRange(date);
+	const busy: Range[] = [];
+	let cursor = dayStart;
+	for (const [start, end] of planWorking(date, plan)) {
+		if (start > cursor) busy.push([cursor, start]);
+		cursor = Math.max(cursor, end);
+	}
+	if (cursor < dayEnd) busy.push([cursor, dayEnd]);
+	busy.push(...plan.breaks.map((b): Range => [localDateTimeUtc(date, b.start), localDateTimeUtc(date, b.end)]));
+	return mergeRanges(busy);
+}
+
+/** True when part of [start, end) on this date falls outside the plan's working time. */
+export function planUncovers(date: string, plan: DayPlan, start: number, end: number): boolean {
+	return planBusy(date, plan).some(([a, b]) => start < b && end > a);
+}
+
+/** Each local date touched by [from, to), with the plan in force. */
+export async function scheduleDays(ctx: ReadCtx, staff: Doc<'staff'>, from: number, to: number) {
+	const days: Array<{ date: string; plan: DayPlan; override: boolean }> = [];
+	if (to <= from) return days;
+	const first = resortLocalParts(from).date;
+	const last = resortLocalParts(to - 1).date;
+	const overrides = await staffDayOverrides(ctx, staff._id, first, last);
+	for (let date = first; date <= last; date = nextLocalDate(date)) {
+		days.push({ date, plan: effectivePlan(staff, date, overrides.get(date)), override: overrides.has(date) });
+	}
+	return days;
 }
 
 export function blocksTime(appointment: Doc<'serviceAppointments'>): boolean {
@@ -102,15 +158,13 @@ export async function staffBusyRanges(
 		ignoreAppointmentId?: Id<'serviceAppointments'>
 ): Promise<Range[]> {
 	if (to <= from) return [];
-	const working = mergeRanges(recurringBlocks(staff.workingHours, from, to).map((b) => [b.start, b.end]));
 	const busy: Range[] = [];
-	let cursor = from;
-	for (const [start, end] of working) {
-		if (start > cursor) busy.push([cursor, start]);
-		cursor = Math.max(cursor, end);
+	// A roster override replaces the weekly pattern for its date.
+	for (const { date, plan } of await scheduleDays(ctx, staff, from, to)) {
+		for (const [start, end] of planBusy(date, plan)) {
+			if (start < to && end > from) busy.push([Math.max(start, from), Math.min(end, to)]);
+		}
 	}
-	if (cursor < to) busy.push([cursor, to]);
-	busy.push(...recurringBlocks(staff.breaks, from, to).map((b): Range => [b.start, b.end]));
 
 	for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staff._id).gte('start', from - TIME_OFF_LOOKBACK).lt('start', to)
@@ -157,6 +211,19 @@ export async function findOpenSlots(
 		if (staffIds.length) slots.push({ start, staffIds });
 	}
 	return slots;
+}
+
+/** Whether anyone active who offers the service has shifts on this date. No open slots then means "fully booked", not "not scheduled yet". */
+export async function serviceRostered(ctx: ReadCtx, serviceId: Id<'services'>, date: string): Promise<boolean> {
+	const service = await ctx.db.get(serviceId);
+	if (!service) return false;
+	for (const id of service.staffIds) {
+		const person = await ctx.db.get(id);
+		if (!person || person.status !== 'active') continue;
+		const override = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', id).eq('date', date)).unique();
+		if (effectivePlan(person, date, override).shifts.length) return true;
+	}
+	return false;
 }
 
 export type AppointmentInput = {

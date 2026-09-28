@@ -19,6 +19,7 @@ import { AdminStaffServicesManager, TimeOffDialog } from "@/components/admin/Adm
 import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
+import { StaffRosterView } from "@/components/admin/StaffRosterView";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -62,7 +63,7 @@ type Block = {
   start: number;
   end: number;
   label: string;
-  kind: "break" | "time_off" | "turnaround";
+  kind: "break" | "time_off" | "turnaround" | "off";
   timeOff?: Doc<"staffTimeOff">;
 };
 type EventData = { kind: "appointment"; appointment: Appointment } | { kind: "block"; block: Block };
@@ -100,7 +101,7 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
       <nav className="mb-4 flex gap-6 border-b border-border" aria-label="Staff bookings sections">
-        {([["calendar", "Calendar"], ["staff", "Staff"], ["services", "Services"]] as const).map(([key, label]) => (
+        {([["calendar", "Calendar"], ["roster", "Roster"], ["staff", "Staff"], ["services", "Services"]] as const).map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -117,7 +118,7 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
           </button>
         ))}
       </nav>
-      {tab === "calendar" ? <StaffCalendar /> : <AdminStaffServicesManager section={tab} />}
+      {tab === "calendar" ? <StaffCalendar /> : tab === "roster" ? <StaffRosterView /> : <AdminStaffServicesManager section={tab} />}
     </div>
   );
 }
@@ -202,6 +203,28 @@ function StaffCalendar() {
         readOnly: true,
         data: { kind: "block", block },
       }));
+    // Shade time outside each person's rostered shifts.
+    const offEvents = view === "resource"
+      ? visibleStaff.flatMap((person) => {
+          const gaps: Block[] = [];
+          let cursor = range.from;
+          for (const shift of data.shifts.filter((s) => s.staffId === person._id).sort((a, b) => a.start - b.start)) {
+            if (shift.start > cursor) gaps.push({ staffId: person._id, start: cursor, end: shift.start, label: "Not working", kind: "off" });
+            cursor = Math.max(cursor, shift.end);
+          }
+          if (cursor < range.to) gaps.push({ staffId: person._id, start: cursor, end: range.to, label: "Not working", kind: "off" });
+          return gaps.map((block): CalendarEvent<EventData> => ({
+            id: `off-${block.staffId}-${block.start}`,
+            title: `Not working · ${person.name}`,
+            start: new Date(block.start),
+            end: new Date(block.end),
+            resourceId: block.staffId,
+            color: BLOCK_COLOR,
+            readOnly: true,
+            data: { kind: "block", block },
+          }));
+        })
+      : [];
     // Cleanup/travel after a service blocks the staff member too, so show it.
     const turnaroundEvents = view === "resource"
       ? appointments
@@ -228,14 +251,17 @@ function StaffCalendar() {
             };
           })
       : [];
-    return [...blockEvents, ...turnaroundEvents, ...appointmentEvents];
-  }, [data, appointments, moves, serviceById, staffById, hiddenStaff, now, view]);
+    return [...offEvents, ...blockEvents, ...turnaroundEvents, ...appointmentEvents];
+  }, [data, appointments, moves, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range]);
 
   const renderEvent = useCallback(
     ({ occurrence, view: currentView }: { occurrence: { event: CalendarEvent<EventData> }; view: CalendarView }) => {
       const eventData = occurrence.event.data;
       if (!eventData) return null;
       if (eventData.kind === "block") {
+        if (eventData.block.kind === "off") {
+          return <span aria-label="Not working" className="absolute inset-0 rounded-[inherit] bg-muted" />;
+        }
         return (
           <span className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)] text-xs font-medium text-muted-foreground">
             <Clock aria-hidden className="size-3.5 shrink-0" />

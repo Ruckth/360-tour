@@ -30,6 +30,7 @@ describe("admin routes", () => {
     ["/admin/chats", null],
     ["/admin/hotel", null],
     ["/admin/staff/services", null],
+    ["/admin/staff/roster", null],
     ["/admin/properties", null],
     ["/admin/properties/abc123", null],
   ] as const)("redirects %s to %s", (path, target) => {
@@ -39,6 +40,7 @@ describe("admin routes", () => {
   it("validates staff tabs and builds their paths", () => {
     expect(isAdminStaffTab("calendar")).toBe(true);
     expect(isAdminStaffTab("services")).toBe(true);
+    expect(isAdminStaffTab("roster")).toBe(true);
     expect(isAdminStaffTab("other")).toBe(false);
     expect(adminStaffTabPath("calendar")).toBe("/admin/staff/calendar");
     expect(adminStaffTabPath("staff")).toBe("/admin/staff/staff");
