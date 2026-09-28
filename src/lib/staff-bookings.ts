@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Doc } from "convex/_generated/dataModel";
+import { STATUS_LABELS, formatMoney } from "@/components/admin/labels";
 
 /** Staff schedules run on resort time, whatever the admin's browser zone. */
 export const RESORT_ZONE = "Asia/Bangkok";
@@ -59,17 +60,18 @@ export function formatTimeOff(range: { start: number; end: number }) {
 export type AppointmentStatus = Doc<"serviceAppointments">["status"];
 export type PaymentStatus = Doc<"serviceAppointments">["paymentStatus"];
 
-export const PAYMENT_LABELS: Record<PaymentStatus, string> = { unpaid: "Unpaid", paid: "Paid", refunded: "Refunded" };
+const { unpaid, paid, refunded } = STATUS_LABELS.payment;
+export const PAYMENT_LABELS: Record<PaymentStatus, string> = { unpaid, paid, refunded };
 
 /** One source of truth for appointment state: chip colours, labels and the legend. */
 export const APPOINTMENT_STATUS: Record<AppointmentStatus | "unpaid", { label: string; color: string }> = {
-  booked: { label: "Booked", color: "var(--color-zinc-400)" },
-  arrived: { label: "Arrived", color: "var(--color-violet-500)" },
-  in_service: { label: "In service", color: "var(--color-blue-500)" },
-  completed: { label: "Completed", color: "var(--color-emerald-500)" },
-  unpaid: { label: "Unpaid", color: "var(--color-amber-500)" },
-  no_show: { label: "No-show", color: "var(--color-orange-500)" },
-  cancelled: { label: "Cancelled", color: "var(--color-rose-500)" },
+  booked: { label: STATUS_LABELS.appointment.booked, color: "var(--color-zinc-400)" },
+  arrived: { label: STATUS_LABELS.appointment.arrived, color: "var(--color-violet-500)" },
+  in_service: { label: STATUS_LABELS.appointment.in_service, color: "var(--color-blue-500)" },
+  completed: { label: STATUS_LABELS.appointment.completed, color: "var(--color-emerald-500)" },
+  unpaid: { label: STATUS_LABELS.appointment.unpaid, color: "var(--color-amber-500)" },
+  no_show: { label: STATUS_LABELS.appointment.no_show, color: "var(--color-orange-500)" },
+  cancelled: { label: STATUS_LABELS.appointment.cancelled, color: "var(--color-rose-500)" },
 };
 
 /** Completed but unpaid needs the desk's attention, so it gets its own chip. */
@@ -89,9 +91,8 @@ export function initials(name: string) {
     .join("");
 }
 
-export function money(amount: number, currency: string) {
-  return currency === "THB" ? `฿${amount.toLocaleString("en-US")}` : `${currency} ${amount.toLocaleString("en-US")}`;
-}
+/** @deprecated Use `formatMoney` from `@/components/admin/labels`. */
+export const money = formatMoney;
 
 /** Convex prefixes server errors with request metadata; keep the readable part. */
 export function errorText(err: unknown, fallback: string) {

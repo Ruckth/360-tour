@@ -107,7 +107,7 @@ export function SwipeRail({
                 aria-current={activeIndex === index ? "true" : undefined}
                 onClick={() => goTo(index)}
                 className={cn(
-                  "h-2 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                  "h-2 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   activeIndex === index
                     ? "w-7 bg-gold"
                     : "w-2 bg-muted-foreground/35 hover:bg-muted-foreground/60",

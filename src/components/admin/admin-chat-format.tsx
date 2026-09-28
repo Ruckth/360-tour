@@ -1,6 +1,7 @@
 import { Globe2, MessageCircle } from "lucide-react";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
+import { sourceLabel } from "@/components/admin/labels";
 import type { AdminSession, SessionChannelFilter } from "@/components/admin/admin-chat-types";
 import { cn } from "@/lib/utils";
 
@@ -33,12 +34,7 @@ export function truncate(value?: string, max = 96) {
 }
 
 export function channelLabel(channel: AdminSession["channel"] | SessionChannelFilter) {
-  if (channel === "line") return "LINE";
-  if (channel === "facebook") return "Facebook";
-  if (channel === "web") return "Web";
-  if (channel === "whatsapp") return "WhatsApp";
-  if (channel === "instagram") return "Instagram";
-  return "All";
+  return channel === "all" ? "All" : sourceLabel(channel);
 }
 
 export function ChannelIcon({

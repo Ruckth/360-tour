@@ -1,3 +1,5 @@
+import { guestLabel } from "./labels";
+
 type AdminChatChannel = "web" | "whatsapp" | "line" | "facebook" | "instagram";
 
 type AdminChatLabelSession = {
@@ -5,14 +7,6 @@ type AdminChatLabelSession = {
   visitorName?: string;
   visitorEmail?: string;
   visitorContactHandle?: string;
-};
-
-const guestLabels: Record<AdminChatChannel, string> = {
-  web: "Web guest",
-  whatsapp: "WhatsApp guest",
-  line: "LINE guest",
-  facebook: "Facebook guest",
-  instagram: "Instagram guest",
 };
 
 function cleanValue(value?: string) {
@@ -29,6 +23,6 @@ export function adminChatVisitorLabel(session?: AdminChatLabelSession | null) {
     cleanValue(session.visitorEmail) ??
     // Web visitors type their own contact handle; other channels store the raw platform ID there.
     (channel === "web" ? cleanValue(session.visitorContactHandle) : undefined) ??
-    guestLabels[channel]
+    guestLabel(channel)
   );
 }
