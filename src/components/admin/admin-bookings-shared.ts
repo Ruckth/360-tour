@@ -3,29 +3,27 @@ import type { api } from "convex/_generated/api";
 import type { AdminBooking } from "convex/adminBookings";
 import { format } from "date-fns";
 import { addDaysIso, isoToDate } from "@/lib/booking/dates";
-import { money } from "@/lib/staff-bookings";
 import type { ConfirmOptions } from "./ConfirmDialog";
-import { STATUS_LABELS, paymentLabel } from "./labels";
-
-export { SOURCE_LABELS } from "./labels";
+import { formatMoney, paymentLabel } from "./labels";
+import { CALENDAR_TONE_COLORS, STATUS_TONES, TONES, statusMeta } from "./status-tones";
 
 type ListData = FunctionReturnType<typeof api.adminBookings.listForAdmin>;
 export type AdminProperty = ListData["properties"][number];
 export type DateBlock = ListData["dateBlocks"][number];
 
-/** One source of truth for booking and block state: drives chip colours and the legend. */
-export const STATUS = {
-  pending: { label: STATUS_LABELS.hotelBooking.pending, color: "var(--color-amber-500)" },
-  confirmed: { label: STATUS_LABELS.hotelBooking.confirmed, color: "var(--color-blue-500)" },
-  paid: { label: STATUS_LABELS.hotelBooking.paid, color: "var(--color-emerald-500)" },
-  cancelled: { label: STATUS_LABELS.hotelBooking.cancelled, color: "var(--color-zinc-400)" },
-  hostBlock: { label: STATUS_LABELS.hotelBooking.hostBlock, color: "var(--color-rose-500)" },
-  otaBlock: { label: STATUS_LABELS.hotelBooking.otaBlock, color: "var(--color-violet-500)" },
-} as const;
+/** What the hotel calendar shows for a booking or block; labels and tones come from `labels.ts` / `status-tones.ts`. */
+export type HotelStatus = "pending" | "confirmed" | "paid" | "cancelled" | "hostBlock" | "otaBlock";
 
-export type StatusKey = keyof typeof STATUS;
+/** Legend order. */
+export const HOTEL_STATUSES: HotelStatus[] = ["pending", "confirmed", "paid", "cancelled", "hostBlock", "otaBlock"];
 
-export function statusKey(booking: Pick<AdminBooking, "status" | "paymentStatus">): StatusKey {
+/** Label and tone, for `<StatusBadge {...hotelStatus(key)} />`. */
+export const hotelStatus = (key: HotelStatus) => statusMeta("hotelBooking", key);
+
+/** Calendar chip colour, the same hue as the badge. */
+export const hotelStatusColor = (key: HotelStatus) => CALENDAR_TONE_COLORS[STATUS_TONES.hotelBooking[key]];
+
+export function statusKey(booking: Pick<AdminBooking, "status" | "paymentStatus">): HotelStatus {
   if (booking.status === "cancelled") return "cancelled";
   if (booking.paymentStatus === "paid") return "paid";
   if (booking.status === "confirmed" || booking.status === "completed") return "confirmed";
@@ -55,8 +53,8 @@ export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentSt
 /** Amount still owed (positive) or owed back to the guest (negative) after an edit. */
 export function balanceText(total: number, paid: number, currency: string) {
   const balance = total - paid;
-  if (balance > 0) return { text: `Balance due ${money(balance, currency)}`, tone: "text-amber-700 dark:text-amber-400" };
-  if (balance < 0) return { text: `Credit ${money(-balance, currency)}`, tone: "text-emerald-700 dark:text-emerald-400" };
+  if (balance > 0) return { text: `Balance due ${formatMoney(balance, currency)}`, tone: TONES.warning.text };
+  if (balance < 0) return { text: `Credit ${formatMoney(-balance, currency)}`, tone: TONES.success.text };
   return null;
 }
 
@@ -77,7 +75,7 @@ export function cancelConfirmOptions(booking: {
       destructive: true,
     };
   }
-  const refund = money(booking.amountPaid ?? booking.total, booking.currency);
+  const refund = formatMoney(booking.amountPaid ?? booking.total, booking.currency);
   return {
     title: "Cancel and record a refund?",
     description: booking.hasStripePayment

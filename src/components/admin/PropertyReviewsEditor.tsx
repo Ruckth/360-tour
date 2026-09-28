@@ -4,15 +4,18 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { format } from "date-fns";
-import { BadgeCheck, Loader2, Pencil, Plus, Star, Trash2, Upload } from "lucide-react";
+import { BadgeCheck, Pencil, Plus, Star, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
-import { Field, IMAGE_ACCEPT, NATIVE_SELECT, SaveBar, Section, TEXTAREA, Thumb, useImageUpload, useSaver } from "./property-form";
+import { Field, IMAGE_ACCEPT, NATIVE_SELECT, SaveBar, Section, Thumb, useImageUpload, useSaver } from "./property-form";
 
 type Review = Doc<"reviews">;
 
@@ -51,7 +54,15 @@ export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properti
     >
       {error ? <p role="alert" className="mb-3 text-sm text-destructive">{error}</p> : null}
       {!data ? (
-        <Loader2 className="mx-auto my-8 size-5 animate-spin text-gold" />
+        <ul role="status" aria-label="Loading reviews" className="grid gap-4">
+          {Array.from({ length: 3 }, (_, i) => (
+            <li key={i} className="grid gap-1.5">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-40" />
+            </li>
+          ))}
+        </ul>
       ) : data.reviews.length ? (
         <ul className="divide-y divide-border">
           {data.reviews.map((review) => (
@@ -60,7 +71,7 @@ export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properti
                 <p className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-foreground">
                   <Stars rating={review.rating} />
                   {review.title || "Untitled"}
-                  {review.verified ? <BadgeCheck aria-label="Verified stay" className="size-4 text-gold" /> : null}
+                  {review.verified ? <BadgeCheck aria-label="Verified stay" className="size-4 text-gold-text" /> : null}
                 </p>
                 <p className="line-clamp-2 text-sm text-muted-foreground">{review.body}</p>
                 <p className="text-xs text-muted-foreground">
@@ -72,20 +83,26 @@ export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properti
                   {review.photos?.length ? ` · ${review.photos.length} photo${review.photos.length === 1 ? "" : "s"}` : ""}
                 </p>
               </div>
-              <Button size="icon" variant="ghost" className="size-8" onClick={() => setEditing(review)} aria-label={`Edit ${review.authorName}'s review`}>
+              <Button size="icon" variant="ghost" className="size-9" onClick={() => setEditing(review)} aria-label={`Edit ${review.authorName}'s review`}>
                 <Pencil aria-hidden className="size-4" />
               </Button>
-              <Button size="icon" variant="ghost" className="size-8" onClick={() => void deleteReview(review)} aria-label={`Delete ${review.authorName}'s review`}>
+              <Button size="icon" variant="ghost" className="size-9" onClick={() => void deleteReview(review)} aria-label={`Delete ${review.authorName}'s review`}>
                 <Trash2 aria-hidden className="size-4" />
               </Button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">No reviews yet. Villas without reviews show no rating.</p>
+        <div className="grid justify-items-start gap-3">
+          <p className="text-sm text-muted-foreground">No reviews yet. Villas without reviews show no rating.</p>
+          <Button size="sm" variant="outline" onClick={() => setEditing("new")}>
+            <Plus aria-hidden className="size-4" />
+            Add the first review
+          </Button>
+        </div>
       )}
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{editing === "new" ? "Add review" : "Edit review"}</DialogTitle>
             <DialogDescription>Only enter reviews a guest really wrote.</DialogDescription>
@@ -174,7 +191,7 @@ function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties
           <Input id="rv-date" name="date" type="date" defaultValue={review?.date ?? format(new Date(), "yyyy-MM-dd")} required />
         </Field>
         <label className="flex items-center gap-2 self-end pb-2.5 text-sm">
-          <input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} className="size-4" />
+          <input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} className="size-4 accent-foreground" />
           Verified stay
         </label>
       </div>
@@ -182,7 +199,7 @@ function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties
         <Input id="rv-title" name="title" defaultValue={review?.title} />
       </Field>
       <Field label="Review" htmlFor="rv-body">
-        <textarea id="rv-body" name="body" defaultValue={review?.body} required className={cn(TEXTAREA, "min-h-32")} />
+        <Textarea id="rv-body" name="body" defaultValue={review?.body} required className="min-h-32" />
       </Field>
       <div className="grid gap-2">
         <p className="text-sm font-medium">Photos (optional)</p>
@@ -194,7 +211,7 @@ function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties
                 <button
                   type="button"
                   onClick={() => setPhotos((current) => current.filter((item) => item !== photo))}
-                  className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5"
+                  className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label="Remove photo"
                 >
                   <Trash2 aria-hidden className="size-3" />
@@ -215,7 +232,7 @@ function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties
           }}
         />
         <Button type="button" size="sm" variant="outline" className="w-fit" disabled={uploading} onClick={() => fileInput.current?.click()}>
-          {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload aria-hidden className="size-4" />}
+          {uploading ? <Spinner className="text-current" /> : <Upload aria-hidden className="size-4" />}
           Upload photos
         </Button>
         {uploadError ? <p role="alert" className="text-sm text-destructive">{uploadError}</p> : null}
@@ -229,7 +246,7 @@ function Stars({ rating }: { rating: number }) {
   return (
     <span className="flex" aria-label={`${rating} out of 5`}>
       {[1, 2, 3, 4, 5].map((value) => (
-        <Star key={value} aria-hidden className={cn("size-3.5", value <= rating ? "fill-gold text-gold" : "text-muted-foreground/40")} />
+        <Star key={value} aria-hidden className={cn("size-3.5", value <= rating ? "fill-gold text-gold-text" : "text-muted-foreground/40")} />
       ))}
     </span>
   );

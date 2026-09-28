@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -18,8 +17,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
-import { SOURCE_LABELS, STATUS, displayDate, statusKey, type AdminProperty } from "./admin-bookings-shared";
+import { StatusBadge } from "./StatusBadge";
+import { displayDate, hotelStatus, statusKey, type AdminProperty } from "./admin-bookings-shared";
+import { sourceLabel } from "./labels";
 
 const BATCH = 100;
 
@@ -113,9 +116,18 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
           ) : null}
         </div>
         {candidates === undefined ? (
-          <Loader2 role="status" aria-label="Loading" className="mx-auto my-6 size-5 animate-spin text-gold" />
+          <ul role="status" aria-label="Loading bookings" className="grid gap-1 rounded-lg border border-border p-1">
+            {Array.from({ length: 4 }, (_, i) => (
+              <li key={i} className="grid gap-1.5 px-2 py-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-2/3" />
+              </li>
+            ))}
+          </ul>
         ) : rows.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Nothing to clean up.</p>
+          <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+            Nothing to clean up{olderThanDays > 0 ? `. Lower "Older than" to include newer bookings.` : "."}
+          </p>
         ) : (
           <ul className="grid max-h-[45dvh] gap-1 overflow-y-auto rounded-lg border border-border p-1">
             {rows.map((b) => (
@@ -128,12 +140,10 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
                     onChange={(event) => toggle(b._id, event.target.checked)}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-center gap-x-2 font-medium">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
                       {b.guestName}
-                      <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
-                        <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: STATUS[statusKey(b)].color }} />
-                        {STATUS[statusKey(b)].label} · {SOURCE_LABELS[b.source] ?? b.source}
-                      </span>
+                      <StatusBadge {...hotelStatus(statusKey(b))} />
+                      <span className="text-xs font-normal text-muted-foreground">{sourceLabel(b.source)}</span>
                     </span>
                     <span className="block text-xs text-muted-foreground">
                       {villaName(b.propertyId)} · {displayDate(b.checkIn)} → {displayDate(b.checkOut)} · created{" "}
@@ -155,7 +165,7 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
             Close
           </Button>
           <Button variant="destructive" onClick={remove} disabled={busy || chosen.length === 0}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+            {busy ? <Spinner className="text-current" /> : null}
             Delete {chosen.length || ""} selected
           </Button>
         </DialogFooter>

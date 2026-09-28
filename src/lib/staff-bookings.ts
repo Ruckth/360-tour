@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Doc } from "convex/_generated/dataModel";
-import { STATUS_LABELS, formatMoney } from "@/components/admin/labels";
+import { STATUS_LABELS } from "@/components/admin/labels";
+import { CALENDAR_TONE_COLORS, STATUS_TONES, statusMeta } from "@/components/admin/status-tones";
 
 /** Staff schedules run on resort time, whatever the admin's browser zone. */
 export const RESORT_ZONE = "Asia/Bangkok";
@@ -63,19 +64,30 @@ export type PaymentStatus = Doc<"serviceAppointments">["paymentStatus"];
 const { unpaid, paid, refunded } = STATUS_LABELS.payment;
 export const PAYMENT_LABELS: Record<PaymentStatus, string> = { unpaid, paid, refunded };
 
-/** One source of truth for appointment state: chip colours, labels and the legend. */
-export const APPOINTMENT_STATUS: Record<AppointmentStatus | "unpaid", { label: string; color: string }> = {
-  booked: { label: STATUS_LABELS.appointment.booked, color: "var(--color-zinc-400)" },
-  arrived: { label: STATUS_LABELS.appointment.arrived, color: "var(--color-violet-500)" },
-  in_service: { label: STATUS_LABELS.appointment.in_service, color: "var(--color-blue-500)" },
-  completed: { label: STATUS_LABELS.appointment.completed, color: "var(--color-emerald-500)" },
-  unpaid: { label: STATUS_LABELS.appointment.unpaid, color: "var(--color-amber-500)" },
-  no_show: { label: STATUS_LABELS.appointment.no_show, color: "var(--color-orange-500)" },
-  cancelled: { label: STATUS_LABELS.appointment.cancelled, color: "var(--color-rose-500)" },
-};
+/** What the staff calendar shows for an appointment; labels and tones come from `labels.ts` / `status-tones.ts`. */
+export type AppointmentDisplayStatus = AppointmentStatus | "unpaid";
+
+/** Legend order. */
+export const APPOINTMENT_STATUSES: AppointmentDisplayStatus[] = [
+  "booked",
+  "arrived",
+  "in_service",
+  "completed",
+  "unpaid",
+  "no_show",
+  "cancelled",
+];
+
+/** Label and tone, for `<StatusBadge {...appointmentStatus(key)} />`. */
+export const appointmentStatus = (key: AppointmentDisplayStatus) => statusMeta("appointment", key);
+
+/** Calendar chip colour, the same hue as the badge. */
+export const appointmentStatusColor = (key: AppointmentDisplayStatus) => CALENDAR_TONE_COLORS[STATUS_TONES.appointment[key]];
 
 /** Completed but unpaid needs the desk's attention, so it gets its own chip. */
-export function displayStatus(appointment: Pick<Doc<"serviceAppointments">, "status" | "paymentStatus">) {
+export function displayStatus(
+  appointment: Pick<Doc<"serviceAppointments">, "status" | "paymentStatus">,
+): AppointmentDisplayStatus {
   return appointment.status === "completed" && appointment.paymentStatus === "unpaid" ? "unpaid" : appointment.status;
 }
 
@@ -90,9 +102,6 @@ export function initials(name: string) {
     .map((part) => part[0].toUpperCase())
     .join("");
 }
-
-/** @deprecated Use `formatMoney` from `@/components/admin/labels`. */
-export const money = formatMoney;
 
 /** Convex prefixes server errors with request metadata; keep the readable part. */
 export function errorText(err: unknown, fallback: string) {

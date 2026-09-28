@@ -3,7 +3,6 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { Loader2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -19,9 +18,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
 import { errorText } from "@/lib/staff-bookings";
-import { SOURCE_LABELS, displayDate, isoNights, type AdminProperty, type DateBlock } from "./admin-bookings-shared";
+import { displayDate, isoNights, type AdminProperty, type DateBlock } from "./admin-bookings-shared";
+import { sourceLabel } from "./labels";
 
 export type BlockTarget =
   | { kind: "new"; propertyId?: string; start?: string; end?: string }
@@ -41,7 +42,7 @@ export function DateBlockDialog({
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
 
   if (target.kind === "ota") {
-    const source = SOURCE_LABELS[target.source] ?? target.source;
+    const source = sourceLabel(target.source);
     return (
       <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
         <DialogContent className="sm:max-w-md">
@@ -225,13 +226,15 @@ function HostBlockForm({
               </Select>
             </div>
           ) : (
-            <fieldset className="grid gap-2">
+            <div role="group" aria-labelledby="block-villas" className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
-                <legend className="text-sm font-medium">Villas</legend>
+                <span id="block-villas" className="text-sm font-medium">
+                  Villas
+                </span>
                 {properties.length > 1 ? (
                   <button
                     type="button"
-                    className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    className="rounded-sm text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => setPropertyIds(allSelected ? [] : properties.map((p) => p._id))}
                   >
                     {allSelected ? "Clear" : "Select all"}
@@ -251,7 +254,8 @@ function HostBlockForm({
                   </label>
                 ))}
               </div>
-            </fieldset>
+              {propertyIds.length === 0 ? <p className="text-xs text-muted-foreground">Pick at least one villa.</p> : null}
+            </div>
           )}
           <BookingRangePicker
             checkIn={dates.checkIn}
@@ -266,7 +270,7 @@ function HostBlockForm({
             }
           />
           {conflicts ? (
-            <p className="text-sm text-destructive">These dates overlap a booking or another block.</p>
+            <p role="alert" className="text-sm text-destructive">These dates overlap a booking or another block.</p>
           ) : null}
           <div className="grid gap-2">
             <Label htmlFor="block-reason">Reason</Label>
@@ -293,7 +297,7 @@ function HostBlockForm({
               type="submit"
               disabled={busy || propertyIds.length === 0 || !dates.checkIn || !dates.checkOut || !reason.trim() || conflicts}
             >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+              {busy ? <Spinner className="text-current" /> : null}
               {block ? "Save block" : propertyIds.length > 1 ? `Block ${propertyIds.length} villas` : "Block dates"}
             </Button>
           </DialogFooter>

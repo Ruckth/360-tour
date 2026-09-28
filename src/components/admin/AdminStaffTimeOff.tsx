@@ -4,9 +4,10 @@ import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { CircleAlert, CircleCheck, Loader2 } from "lucide-react";
+import { CircleAlert, CircleCheck } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
+import { TONES } from "@/components/admin/status-tones";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import {
   errorText,
   formatResortDate,
@@ -160,7 +162,7 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add time off</DialogTitle>
           <DialogDescription>
@@ -176,7 +178,7 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
                 const person = staff.find((s) => s._id === result.staffId);
                 return (
                   <li key={result.staffId} className="flex items-start gap-3 px-3 py-2.5">
-                    {person ? <StaffAvatar staff={person} className="size-7 text-[10px]" /> : null}
+                    {person ? <StaffAvatar staff={person} className="size-7" /> : null}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{result.name}</p>
                       <p className={cn("text-xs", result.timeOffId ? "text-muted-foreground" : "text-destructive")}>
@@ -184,7 +186,7 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
                       </p>
                     </div>
                     {result.timeOffId ? (
-                      <CircleCheck aria-label="Saved" className="size-4 shrink-0 text-emerald-600" />
+                      <CircleCheck aria-label="Saved" className={cn("size-4 shrink-0", TONES.success.text)} />
                     ) : (
                       <CircleAlert aria-label="Not saved" className="size-4 shrink-0 text-destructive" />
                     )}
@@ -200,9 +202,11 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
           </div>
         ) : (
           <form onSubmit={submit} className="grid gap-4">
-            <fieldset className="grid gap-1">
+            <div role="group" aria-labelledby="bulk-off-staff" className="grid gap-1">
               <div className="mb-1 flex items-center justify-between">
-                <legend className="text-sm font-medium">Staff</legend>
+                <span id="bulk-off-staff" className="text-sm font-medium">
+                  Staff
+                </span>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -225,20 +229,21 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
                       checked={selected.has(person._id)}
                       onChange={(event) => toggle(person._id, event.target.checked)}
                     />
-                    <StaffAvatar staff={person} className="size-6 text-[10px]" />
+                    <StaffAvatar staff={person} className="size-6" />
                     <span className="truncate">{person.name}</span>
                   </label>
                 ))}
               </div>
-            </fieldset>
+            </div>
             <TimeOffFields idPrefix="bulk-off" min={today} defaults={{ from: today }} required />
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {selected.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one person.</p> : null}
+            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button type="submit" disabled={saving || selected.size === 0}>
-                {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+                {saving ? <Spinner className="text-current" /> : null}
                 {selected.size > 1 ? `Add for ${selected.size} people` : "Add time off"}
               </Button>
             </DialogFooter>

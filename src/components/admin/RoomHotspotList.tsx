@@ -98,7 +98,7 @@ export function RoomHotspotList({ room, rooms }: { room: Room; rooms: Room[] }) 
             type="button"
             size="icon"
             variant="ghost"
-            className="size-8"
+            className="size-9"
             onClick={() => setDrafts((current) => current.filter((_, i) => i !== index))}
             aria-label={`Remove hotspot ${draft.label}`}
           >

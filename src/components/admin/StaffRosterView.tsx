@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
-  Loader2,
   Moon,
   RotateCcw,
   Settings2,
@@ -24,7 +23,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
-import { Button } from "@/components/ui/button";
+import { TONES } from "@/components/admin/status-tones";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
@@ -37,6 +37,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText, formatResortDate, formatResortTime, resortIsoDate } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
@@ -367,7 +369,6 @@ export function StaffRosterView() {
               />
             </PopoverContent>
           </Popover>
-          {data === undefined ? <Loader2 aria-label="Loading" className="size-4 animate-spin text-gold" /> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:ms-auto">
           <Button size="sm" variant="outline" disabled={!data || busy || !staff.length} onClick={onMakeDefault}>
@@ -383,7 +384,7 @@ export function StaffRosterView() {
       <div
         role="toolbar"
         aria-label="Change selected cells"
-        className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-4 py-2.5"
+        className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-4 py-3"
       >
         <span className="min-w-24 text-sm font-medium" aria-live="polite">
           {selectedKeys.length ? `${plural(selectedKeys.length, "cell")} selected` : "Select cells"}
@@ -436,7 +437,7 @@ export function StaffRosterView() {
           <div className="min-w-0 flex-1">
             <p>{notice?.text ?? `Last change: ${lastBatch?.label}.`}</p>
             {notice?.details?.map((detail) => (
-              <p key={detail} className="text-xs text-amber-700 dark:text-amber-400">
+              <p key={detail} className={cn("text-xs", TONES.warning.text)}>
                 {detail}
               </p>
             ))}
@@ -466,6 +467,7 @@ export function StaffRosterView() {
           ref={gridRef}
           role="grid"
           aria-multiselectable="true"
+          aria-busy={data === undefined}
           aria-label={`Roster for ${weekRange(weekStart, weekEnd)}`}
           className="w-full min-w-[56rem] table-fixed border-collapse text-sm"
           onPointerMove={onGridPointerMove}
@@ -498,7 +500,7 @@ export function StaffRosterView() {
                       aria-label={`Select ${fullDay.format(utcDay(date))}`}
                       className={cn(
                         "flex h-12 w-full flex-col items-center justify-center text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                        full && "bg-navy/10",
+                        full && "bg-primary/10",
                       )}
                       onClick={(event) => {
                         if (event.shiftKey && anchor) {
@@ -514,7 +516,7 @@ export function StaffRosterView() {
                       <span
                         className={cn(
                           "mt-0.5 flex size-6 items-center justify-center rounded-full text-sm font-semibold",
-                          date === today && "bg-navy text-white",
+                          date === today && "bg-primary text-primary-foreground",
                         )}
                       >
                         {new Date(utcDay(date)).getUTCDate()}
@@ -526,6 +528,23 @@ export function StaffRosterView() {
             </tr>
           </thead>
           <tbody>
+            {data === undefined
+              ? Array.from({ length: 4 }, (_, row) => (
+                  <tr key={row} aria-hidden>
+                    <th scope="row" className="h-20 border-t border-border px-4">
+                      <span className="flex items-center gap-2.5">
+                        <Skeleton className="size-8 rounded-full" />
+                        <Skeleton className="h-4 w-24" />
+                      </span>
+                    </th>
+                    {Array.from({ length: 7 }, (_, col) => (
+                      <td key={col} className="border-t border-l border-border px-2.5 py-2 align-top">
+                        <Skeleton className="h-4 w-20" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              : null}
             {staff.map((person, row) => {
               const rowKeys = dates.map((date) => cellKey(person._id, date));
               const full = rowKeys.every((key) => selected.has(key));
@@ -538,7 +557,7 @@ export function StaffRosterView() {
                       aria-label={`Select ${person.name}'s week`}
                       className={cn(
                         "flex h-20 w-full items-center gap-2.5 px-4 text-start hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                        full && "bg-navy/10",
+                        full && "bg-primary/10",
                       )}
                       onClick={(event) => {
                         if (event.shiftKey && anchor) {
@@ -577,7 +596,7 @@ export function StaffRosterView() {
                         className={cn(
                           "relative h-20 cursor-pointer border-t border-l border-border p-0 align-top select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                           date === today && "bg-muted/40",
-                          isSelected && "bg-navy/10 shadow-[inset_0_0_0_2px_var(--color-navy)]",
+                          isSelected && "bg-primary/10 shadow-[inset_0_0_0_2px_var(--color-primary)]",
                         )}
                       >
                         <CellContent cell={cell} />
@@ -590,19 +609,18 @@ export function StaffRosterView() {
           </tbody>
         </table>
         {data && !staff.length ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-            No active staff yet. Add people on the{" "}
-            <Link href={adminStaffTabPath("staff")} className="underline underline-offset-4">
-              Staff
-            </Link>{" "}
-            tab.
-          </p>
+          <div className="grid justify-items-center gap-3 px-4 py-10 text-center">
+            <p className="text-sm text-muted-foreground">No active staff yet. Add the people who work shifts first.</p>
+            <ButtonLink href={adminStaffTabPath("staff")} size="sm">
+              Add staff
+            </ButtonLink>
+          </div>
         ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="h-3.5 w-1 rounded-full bg-gold" />
+          <span aria-hidden className="h-3.5 w-1 rounded-full bg-gold-text" />
           Changed from the weekly default
         </span>
         <span className="flex items-center gap-1.5">
@@ -610,7 +628,7 @@ export function StaffRosterView() {
           Weekly default
         </span>
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="rounded bg-amber-100 px-1 text-[11px] text-amber-900 dark:bg-amber-400/15 dark:text-amber-300">
+          <span aria-hidden className={cn("rounded px-1", TONES.warning.bg, TONES.warning.text)}>
             Leave
           </span>
           Time off
@@ -659,7 +677,7 @@ function CellContent({ cell }: { cell: Cell }) {
     <div className="flex h-full flex-col gap-0.5 px-2.5 py-2 text-xs">
       <span
         aria-hidden
-        className={cn("absolute inset-y-1.5 start-0 w-1 rounded-e-full", cell.override ? "bg-gold" : "bg-transparent")}
+        className={cn("absolute inset-y-1.5 start-0 w-1 rounded-e-full", cell.override ? "bg-gold-text" : "bg-transparent")}
       />
       {cell.shifts.length ? (
         cell.shifts.map((shift) => (
@@ -671,7 +689,7 @@ function CellContent({ cell }: { cell: Cell }) {
         <span className="font-medium text-muted-foreground">Off</span>
       )}
       {cell.breaks.length ? (
-        <span className="truncate text-[11px] text-muted-foreground tabular-nums">
+        <span className="truncate text-muted-foreground tabular-nums">
           {cell.breaks[0].label} {cell.breaks[0].start}–{cell.breaks[0].end}
           {cell.breaks.length > 1 ? ` +${cell.breaks.length - 1}` : ""}
         </span>
@@ -680,13 +698,13 @@ function CellContent({ cell }: { cell: Cell }) {
         {cell.timeOff.map((label, i) => (
           <span
             key={`${label}-${i}`}
-            className="max-w-full truncate rounded bg-amber-100 px-1 text-[11px] text-amber-900 dark:bg-amber-400/15 dark:text-amber-300"
+            className={cn("max-w-full truncate rounded px-1", TONES.warning.bg, TONES.warning.text)}
           >
             {label}
           </span>
         ))}
         {cell.appointments ? (
-          <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1 text-[11px] font-medium text-foreground">
+          <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1 font-medium text-foreground">
             <CalendarDays aria-hidden className="size-3" />
             {cell.appointments}
           </span>
@@ -733,9 +751,7 @@ function CustomShiftDialog({ count, onClose, onApply }: { count: number; onClose
               <TimeField name="breakStart" label="From" />
               <TimeField name="breakEnd" label="To" />
               <div className="space-y-1.5">
-                <Label htmlFor="roster-break-label" className="text-xs text-muted-foreground">
-                  Label
-                </Label>
+                <Label htmlFor="roster-break-label">Label</Label>
                 <Input id="roster-break-label" name="breakLabel" placeholder="Lunch" />
               </div>
             </div>
@@ -761,9 +777,7 @@ function TimeField({ name, label, defaultValue, required }: { name: string; labe
   const id = `roster-${name}`;
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">
-        {label}
-      </Label>
+      <Label htmlFor={id}>{label}</Label>
       <Input id={id} name={name} type="time" step={900} defaultValue={defaultValue} required={required} />
     </div>
   );
@@ -869,7 +883,7 @@ function CopyWeekDialog({
               <span className="text-destructive">{current.error}</span>
             ) : !result ? (
               <span className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 aria-hidden className="size-4 animate-spin" /> Checking…
+                <Spinner className="text-current" /> Checking…
               </span>
             ) : (
               <>
@@ -911,7 +925,7 @@ function CopyWeekDialog({
             Cancel
           </Button>
           <Button type="button" disabled={!valid || saving || !result} onClick={submit}>
-            {saving ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <Copy aria-hidden className="size-4" />}
+            {saving ? <Spinner className="text-current" /> : <Copy aria-hidden className="size-4" />}
             Copy to {valid ? plural(weeks, "week") : "weeks"}
           </Button>
         </DialogFooter>

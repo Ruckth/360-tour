@@ -3,18 +3,20 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { slugify } from "convex/lib/slug";
-import { ChevronRight, Loader2, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { money } from "@/lib/staff-bookings";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { Field, SaveStatus, STATUS_LABELS, Thumb, useSaver, type PropertyStatus } from "./property-form";
+import { StatusBadge } from "./StatusBadge";
+import { formatMoney } from "./labels";
+import { Field, PROPERTY_STATUS, SaveStatus, Thumb, useSaver, type PropertyStatus } from "./property-form";
 
 export function propertyPath(propertyId: string) {
   return `/admin/properties/${propertyId}`;
@@ -39,7 +41,7 @@ export function AdminPropertiesView() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All villas</SelectItem>
-              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              {Object.entries(PROPERTY_STATUS).map(([value, { label }]) => (
                 <SelectItem key={value} value={value}>
                   {label}
                 </SelectItem>
@@ -52,23 +54,34 @@ export function AdminPropertiesView() {
           </Button>
         </div>
         {!shown ? (
-          <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />
+          <ul role="status" aria-label="Loading villas" className="divide-y divide-border">
+            {Array.from({ length: 3 }, (_, i) => (
+              <li key={i} className="flex items-center gap-3 px-4 py-3">
+                <Skeleton className="size-10" />
+                <div className="grid flex-1 gap-1.5">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-72 max-w-full" />
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : (
           <ul className="divide-y divide-border">
             {shown.map((property) => (
               <li key={property._id}>
                 <Link
                   href={propertyPath(property._id)}
-                  className={cn("flex items-center gap-3 px-4 py-3 hover:bg-muted/50", property.status === "archived" && "opacity-60")}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
-                  <Thumb src={property.images[0]} className="size-10" />
+                  {/* Only the picture fades for archived villas: faded text would fail contrast. */}
+                  <Thumb src={property.images[0]} className={cn("size-10", property.status === "archived" && "opacity-50 grayscale")} />
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
                       {property.name}
-                      {property.status !== "active" ? <Badge variant="outline">{STATUS_LABELS[property.status]}</Badge> : null}
+                      {property.status !== "active" ? <StatusBadge {...PROPERTY_STATUS[property.status]} /> : null}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {money(property.pricePerNight, property.currency)} / night · {property.maxGuests} guests ·{" "}
+                      {formatMoney(property.pricePerNight, property.currency)} / night · {property.maxGuests} guests ·{" "}
                       {property.bedrooms} bedrooms · /{property.slug}
                     </p>
                   </div>
@@ -77,8 +90,18 @@ export function AdminPropertiesView() {
               </li>
             ))}
             {shown.length === 0 ? (
-              <li className="px-4 py-10 text-center text-sm text-muted-foreground">
-                {status === "all" ? "No villas yet. Create the first one." : `No ${STATUS_LABELS[status].toLowerCase()} villas.`}
+              <li className="grid justify-items-center gap-3 px-4 py-10 text-center text-sm text-muted-foreground">
+                {status === "all" ? (
+                  <>
+                    No villas yet. Create the first one.
+                    <Button size="sm" onClick={() => setCreating(true)}>
+                      <Plus aria-hidden className="size-4" />
+                      New villa
+                    </Button>
+                  </>
+                ) : (
+                  `No ${PROPERTY_STATUS[status].label.toLowerCase()} villas.`
+                )}
               </li>
             ) : null}
           </ul>
@@ -133,7 +156,7 @@ function NewVillaDialog({ open, onClose }: { open: boolean; onClose: () => void 
               Cancel
             </Button>
             <Button type="submit" disabled={save.saving}>
-              {save.saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              {save.saving ? <Spinner className="text-current" /> : null}
               Create draft
             </Button>
           </DialogFooter>

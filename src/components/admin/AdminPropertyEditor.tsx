@@ -3,13 +3,14 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
-import { ChevronLeft, ExternalLink, Loader2, Lock } from "lucide-react";
+import { ChevronLeft, ExternalLink, Lock } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
@@ -18,7 +19,8 @@ import { OtaRatesPanel } from "./OtaRatesDialog";
 import { PropertyPhotosEditor } from "./PropertyPhotosEditor";
 import { PropertyReviewsEditor } from "./PropertyReviewsEditor";
 import { PropertyRoomsEditor } from "./PropertyRoomsEditor";
-import { Field, SaveBar, Section, STATUS_LABELS, TEXTAREA, useSaver, type PropertyStatus } from "./property-form";
+import { StatusBadge } from "./StatusBadge";
+import { Field, PROPERTY_STATUS, SaveBar, Section, useSaver, type PropertyStatus } from "./property-form";
 
 type Property = Doc<"properties">;
 
@@ -35,6 +37,16 @@ type Tab = (typeof TABS)[number][0];
 export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
   const data = useQuery(api.adminProperties.get, { propertyId });
   const [tab, setTab] = useState<Tab>("details");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
+    if (!(event.key in moves)) return;
+    event.preventDefault();
+    const next = (moves[event.key] + TABS.length) % TABS.length;
+    setTab(TABS[next][0]);
+    tabRefs.current[next]?.focus();
+  }
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-4 sm:px-6">
@@ -45,51 +57,65 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
         </Link>
       </Button>
       {data === undefined ? (
-        <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />
+        <div role="status" aria-label="Loading villa" className="grid gap-4">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-8 w-96 max-w-full" />
+          <Skeleton className="h-96 w-full" />
+        </div>
       ) : data === null ? (
         <p className="text-sm text-muted-foreground">This villa doesn&apos;t exist (it may have been deleted).</p>
       ) : (
         <>
           <PropertyHeader property={data.property} deleteBlocker={data.deleteBlocker} />
-          <nav className="flex gap-6 overflow-x-auto border-b border-border" aria-label="Villa sections">
-            {TABS.map(([key, label]) => (
+          <div role="tablist" aria-label="Villa sections" className="flex gap-6 overflow-x-auto border-b border-border">
+            {TABS.map(([key, label], index) => (
               <button
                 key={key}
+                ref={(el) => {
+                  tabRefs.current[index] = el;
+                }}
+                id={`villa-tab-${key}`}
                 type="button"
+                role="tab"
+                aria-selected={tab === key}
+                aria-controls="villa-tabpanel"
+                tabIndex={tab === key ? 0 : -1}
                 onClick={() => setTab(key)}
-                aria-current={tab === key ? "page" : undefined}
+                onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={cn(
-                  "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors",
+                  "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   tab === key ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
                 {label}
               </button>
             ))}
-          </nav>
-          {tab === "details" ? (
-            <>
-              <DetailsForm key={data.property._id} property={data.property} />
-              <SlugForm property={data.property} locked={data.slugLocked} />
-            </>
-          ) : tab === "photos" ? (
-            <PropertyPhotosEditor property={data.property} />
-          ) : tab === "rooms" ? (
-            <PropertyRoomsEditor propertyId={data.property._id} rooms={data.rooms} />
-          ) : tab === "pricing" ? (
-            <Section
-              title="OTA rates"
-              description="Nightly prices on Booking.com, Agoda, Airbnb and Expedia, shown to guests next to the direct price. The direct price and discount are under Details."
-            >
-              <OtaRatesPanel propertyId={data.property._id} />
-            </Section>
-          ) : tab === "reviews" ? (
-            <PropertyReviewsEditor propertyId={data.property._id} />
-          ) : (
-            <Section title="Calendar sync" description="Import iCal feeds every 30 minutes and export confirmed bookings to other platforms.">
-              <IcalSourcesPanel propertyId={data.property._id} />
-            </Section>
-          )}
+          </div>
+          <div role="tabpanel" id="villa-tabpanel" aria-labelledby={`villa-tab-${tab}`} className="grid gap-4">
+            {tab === "details" ? (
+              <>
+                <DetailsForm key={data.property._id} property={data.property} />
+                <SlugForm property={data.property} locked={data.slugLocked} />
+              </>
+            ) : tab === "photos" ? (
+              <PropertyPhotosEditor property={data.property} />
+            ) : tab === "rooms" ? (
+              <PropertyRoomsEditor propertyId={data.property._id} rooms={data.rooms} />
+            ) : tab === "pricing" ? (
+              <Section
+                title="OTA rates"
+                description="Nightly prices on Booking.com, Agoda, Airbnb and Expedia, shown to guests next to the direct price. The direct price and discount are under Details."
+              >
+                <OtaRatesPanel propertyId={data.property._id} />
+              </Section>
+            ) : tab === "reviews" ? (
+              <PropertyReviewsEditor propertyId={data.property._id} />
+            ) : (
+              <Section title="Calendar sync" description="Import iCal feeds every 30 minutes and export confirmed bookings to other platforms.">
+                <IcalSourcesPanel propertyId={data.property._id} />
+              </Section>
+            )}
+          </div>
         </>
       )}
     </div>
@@ -139,14 +165,15 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
   return (
     <section className="flex flex-wrap items-center gap-3 border border-border bg-card px-4 py-3">
       <div className="min-w-0 flex-1">
-        <h1 className="flex items-center gap-2 truncate text-lg font-semibold text-foreground">
+        {/* The admin header already has the page's h1 ("Villas"). */}
+        <h2 className="flex items-center gap-2 truncate text-lg font-semibold text-foreground">
           {property.name}
-          <Badge variant={property.status === "active" ? "secondary" : "outline"}>{STATUS_LABELS[property.status]}</Badge>
-        </h1>
+          <StatusBadge {...PROPERTY_STATUS[property.status]} />
+        </h2>
         <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
           /rooms/{property.slug}
           {property.status === "active" ? (
-            <a href={`/rooms/${property.slug}`} target="_blank" rel="noreferrer" aria-label="Open the villa page" className="hover:text-foreground">
+            <a href={`/rooms/${property.slug}`} target="_blank" rel="noreferrer" aria-label="Open the villa page" className="rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <ExternalLink aria-hidden className="size-3" />
             </a>
           ) : null}
@@ -173,7 +200,7 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
             variant="outline"
             size="sm"
             disabled={busy || deleteBlocker !== null}
-            title={deleteBlocker ?? undefined}
+            aria-describedby={deleteBlocker ? "delete-blocker" : undefined}
             onClick={remove}
           >
             Delete draft
@@ -209,7 +236,9 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
         </Button>
       )}
       {property.status === "draft" && deleteBlocker ? (
-        <p className="w-full text-xs text-muted-foreground">{deleteBlocker}</p>
+        <p id="delete-blocker" className="w-full text-xs text-muted-foreground">
+          {deleteBlocker}
+        </p>
       ) : null}
     </section>
   );
@@ -252,7 +281,7 @@ function DetailsForm({ property }: { property: Property }) {
           <Input id="pr-tagline" name="tagline" defaultValue={property.tagline} />
         </Field>
         <Field label="Description" htmlFor="pr-description">
-          <textarea id="pr-description" name="description" defaultValue={property.description} className={TEXTAREA} />
+          <Textarea id="pr-description" name="description" defaultValue={property.description} className="min-h-24" />
         </Field>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Price per night" htmlFor="pr-price">
@@ -278,7 +307,7 @@ function DetailsForm({ property }: { property: Property }) {
           </Field>
         </div>
         <Field label="Amenities (one per line)" htmlFor="pr-amenities">
-          <textarea id="pr-amenities" name="amenities" defaultValue={property.amenities.join("\n")} className={cn(TEXTAREA, "min-h-40")} />
+          <Textarea id="pr-amenities" name="amenities" defaultValue={property.amenities.join("\n")} className="min-h-40" />
         </Field>
         <SaveBar save={save} />
       </form>

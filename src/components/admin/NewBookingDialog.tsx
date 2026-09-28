@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { Loader2, UserRound } from "lucide-react";
+import { UserRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, dateToIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
-import { errorText, money } from "@/lib/staff-bookings";
+import { errorText } from "@/lib/staff-bookings";
 import { displayDate, type AdminProperty } from "./admin-bookings-shared";
+import { formatMoney } from "./labels";
 
 export type NewBookingPrefill = { propertyId?: string; checkIn?: string; checkOut?: string };
 
@@ -136,7 +138,7 @@ export function NewBookingDialog({
             unavailableDates={blockedDates}
           />
           {conflicts ? (
-            <p className="text-sm text-destructive">These dates overlap an existing booking or block.</p>
+            <p role="alert" className="text-sm text-destructive">These dates overlap an existing booking or block.</p>
           ) : null}
           <div className="grid gap-2">
             <Label htmlFor="nb-phone">Phone</Label>
@@ -148,7 +150,7 @@ export function NewBookingDialog({
           </div>
           {suggestions.length ? (
             <div className="grid gap-1 rounded-lg border border-border bg-muted/40 p-1" aria-label="Previous guests">
-              <p className="px-2 pt-1 text-xs font-medium text-muted-foreground">Returning guest?</p>
+              <p className="admin-eyebrow px-2 pt-1">Returning guest?</p>
               {suggestions.map((s) => (
                 <button
                   key={`${s.guestPhone}|${s.guestEmail ?? ""}`}
@@ -205,7 +207,7 @@ export function NewBookingDialog({
           </label>
           {property && dates.checkIn && dates.checkOut && !conflicts ? (
             <p className="text-sm text-muted-foreground">
-              {money(property.pricePerNight, property.currency)} per night
+              {formatMoney(property.pricePerNight, property.currency)} per night
               {property.directDiscountPercent ? `, ${property.directDiscountPercent}% direct discount` : ""}
             </p>
           ) : null}
@@ -225,7 +227,7 @@ export function NewBookingDialog({
               Close
             </Button>
             <Button type="submit" disabled={saving || !propertySlug || !dates.checkIn || !dates.checkOut || conflicts}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              {saving ? <Spinner className="text-current" /> : null}
               Create booking
             </Button>
           </DialogFooter>
