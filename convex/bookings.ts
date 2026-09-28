@@ -142,6 +142,7 @@ export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'
 		paymentStatus: 'paid',
 		status: 'confirmed',
 		paidAt: booking.paidAt ?? Date.now(),
+		amountPaid: booking.amountPaid ?? booking.total,
 		paymentMethod: booking.paymentMethod ?? paymentMethod,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
@@ -191,7 +192,7 @@ export async function queueCancellationEmail(ctx: MutationCtx, booking: Doc<'boo
 export const getLifecycleEmailDetails = internalQuery({
 	args: {
 		bookingId: v.id('bookings'),
-		kind: v.union(v.literal('cancellation'), v.literal('preArrival'), v.literal('review'))
+		kind: v.union(v.literal('cancellation'), v.literal('preArrival'), v.literal('review'), v.literal('updated'))
 	},
 	handler: async (ctx, args) => {
 		const booking = await ctx.db.get(args.bookingId);
@@ -199,13 +200,17 @@ export const getLifecycleEmailDetails = internalQuery({
 		if (args.kind === 'cancellation' && (booking.status !== 'cancelled' || !booking.cancellationEmailQueuedAt)) return null;
 		if (args.kind === 'preArrival' && (booking.status !== 'confirmed' || !booking.preArrivalEmailQueuedAt)) return null;
 		if (args.kind === 'review' && (booking.status !== 'confirmed' || !booking.reviewEmailQueuedAt)) return null;
+		if (args.kind === 'updated' && booking.status === 'cancelled') return null;
 		const property = await ctx.db.get(booking.propertyId);
 		return {
 			guestName: booking.guestName,
 			guestEmail: booking.guestEmail,
 			propertyName: property?.name ?? 'Your stay',
 			checkIn: booking.checkIn,
-			checkOut: booking.checkOut
+			checkOut: booking.checkOut,
+			guests: booking.guests,
+			total: booking.total,
+			currency: booking.currency
 		};
 	}
 });

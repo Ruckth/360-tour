@@ -36,3 +36,27 @@ it('requires the booking token before creating a Stripe session', async () => {
   expect(await t.run(async ctx => (await ctx.db.query('availability').collect()).length)).toBe(0);
   expect(await t.run(async ctx => (await ctx.db.get(bookingId))?.status)).toBe('cancelled');
 });
+
+it('lets host-confirmed unpaid bookings pay online with an amount-versioned idempotency key', async () => {
+  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
+  const t = convexTest(schema, modules);
+  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  await t.run(async ctx => {
+    await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
+  });
+  const bookingId = await admin.mutation(api.adminBookings.createBooking, { propertySlug: 'villa', guestName: 'Guest', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2, confirmed: true });
+  // Older than the 24h guest expiry: admin bookings stay payable.
+  await t.run(async ctx => await ctx.db.patch(bookingId, { createdAt: Date.now() - 2 * 86_400_000 }));
+  const accessToken = (await t.run(async ctx => await ctx.db.get(bookingId)))!.accessToken!;
+  vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_test');
+  vi.stubEnv('SITE_URL', 'https://example.com');
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    expect((init?.headers as Record<string, string>)['Idempotency-Key']).toBe(`booking-${bookingId}-20000`);
+    return new Response(JSON.stringify({ id: 'cs_test_admin', url: 'https://checkout.stripe.com/pay/admin', expires_at: Math.floor(Date.now() / 1000) + 1800 }), { status: 200 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  expect((await t.action(api.payments.createCheckout, { bookingId, accessToken })).url).toBe('https://checkout.stripe.com/pay/admin');
+  const amountTotal = 20000;
+  await t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: 'cs_test_admin', amountTotal, currency: 'thb', paymentIntentId: 'pi_admin' });
+  expect(await t.run(async ctx => await ctx.db.get(bookingId))).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', amountPaid: 200 });
+});

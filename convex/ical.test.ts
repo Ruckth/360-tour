@@ -38,3 +38,39 @@ it('exports future bookings even when more than 500 past bookings exist', async 
   const exported = await t.query(internal.ical.getExport, { token: 'export-token' });
   expect(exported?.bookings).toEqual([{ id: futureId, start: futureCheckIn, end: futureCheckOut }]);
 });
+
+async function sourceSetup() {
+  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
+  const t = convexTest(schema, modules);
+  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
+  const sourceId = await admin.mutation(api.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
+  return { t, admin, sourceId };
+}
+
+it('edits a source and relabels its imported nights', async () => {
+  const { t, admin, sourceId } = await sourceSetup();
+  await t.mutation(internal.ical.applySource, { sourceId, dates: ['2030-01-01'] });
+  await admin.mutation(api.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'https://example.com/agoda.ics' });
+  const source = await t.run(async ctx => await ctx.db.get(sourceId));
+  expect(source).toMatchObject({ platform: 'agoda', icalUrl: 'https://example.com/agoda.ics' });
+  expect(source?.lastSyncedAt).toBeUndefined();
+  expect((await t.run(async ctx => await ctx.db.query('availability').collect())).map(row => row.source)).toEqual(['agoda']);
+  await expect(admin.mutation(api.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'http://127.0.0.1/x.ics' })).rejects.toThrow();
+  await expect(t.mutation(api.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics' })).rejects.toThrow();
+});
+
+it('syncs one source on demand and reports the result', async () => {
+  const { t, admin, sourceId } = await sourceSetup();
+  const start = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10).replaceAll('-', '');
+  const end = new Date(Date.now() + 12 * 86_400_000).toISOString().slice(0, 10).replaceAll('-', '');
+  const feed = `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:${start}\r\nDTEND;VALUE=DATE:${end}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(feed, { status: 200 })));
+  expect(await admin.action(api.ical.syncSource, { sourceId })).toEqual({ ok: true, blockedNights: 2, conflicts: 0 });
+  expect(await t.run(async ctx => (await ctx.db.query('availability').collect()).length)).toBe(2);
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })));
+  expect(await admin.action(api.ical.syncSource, { sourceId })).toEqual({ ok: false, error: 'Feed returned 500' });
+  expect((await t.run(async ctx => await ctx.db.get(sourceId)))?.lastSyncError).toBe('Feed returned 500');
+  await expect(t.action(api.ical.syncSource, { sourceId })).rejects.toThrow();
+  vi.unstubAllGlobals();
+});
