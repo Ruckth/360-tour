@@ -29,6 +29,7 @@ import type {
   AdminWhatsAppEvent,
   ChannelReplyWindow,
 } from "@/components/admin/admin-chat-types";
+import { sourceLabel } from "@/components/admin/labels";
 import { cn } from "@/lib/utils";
 
 export function chronologicalTranscriptMessages<T>(newestFirst: readonly T[]): T[] {
@@ -36,15 +37,7 @@ export function chronologicalTranscriptMessages<T>(newestFirst: readonly T[]): T
 }
 
 function contactLabel(session: AdminSession) {
-  const app = session.visitorContactApp
-    ? session.visitorContactApp === "line"
-      ? "LINE"
-      : session.visitorContactApp === "facebook"
-        ? "Facebook"
-        : session.visitorContactApp === "instagram"
-          ? "Instagram"
-          : "WhatsApp"
-    : "Contact";
+  const app = session.visitorContactApp ? sourceLabel(session.visitorContactApp) : "Contact";
   return session.visitorContactHandle
     ? `${app}: ${session.visitorContactHandle}`
     : session.visitorPhone

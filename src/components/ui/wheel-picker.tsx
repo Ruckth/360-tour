@@ -42,7 +42,7 @@ function WheelPicker<T extends WheelPickerValue = string>({
         ),
         highlightWrapper: cn(
           "bg-muted font-medium text-foreground",
-          "data-rwp-focused:inset-ring-2 data-rwp-focused:inset-ring-ring/50",
+          "data-rwp-focused:inset-ring-2 data-rwp-focused:inset-ring-ring",
           classNames?.highlightWrapper
         ),
         highlightItem: cn(

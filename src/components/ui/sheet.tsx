@@ -9,8 +9,6 @@ export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
 export const SheetPortal = DialogPrimitive.Portal;
-export const SheetTitle = DialogPrimitive.Title;
-export const SheetDescription = DialogPrimitive.Description;
 
 export function SheetOverlay({
   className,
@@ -42,7 +40,7 @@ export function SheetContent({
       <SheetOverlay />
       <DialogPrimitive.Content
         className={cn(
-          "fixed z-50 flex flex-col gap-4 border-border bg-card text-card-foreground shadow-2xl outline-none transition ease-out data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
+          "fixed z-50 flex flex-col gap-4 border-border bg-card p-6 text-card-foreground shadow-2xl outline-none transition ease-out data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
           side === "right" && "inset-y-0 right-0 h-full w-80 max-w-[calc(100vw-2rem)] border-l data-[state=closed]:translate-x-full data-[state=open]:translate-x-0",
           side === "left" && "inset-y-0 left-0 h-full w-80 max-w-[calc(100vw-2rem)] border-r data-[state=closed]:-translate-x-full data-[state=open]:translate-x-0",
           side === "top" && "inset-x-0 top-0 border-b data-[state=closed]:-translate-y-full data-[state=open]:translate-y-0",
@@ -63,10 +61,25 @@ export function SheetContent({
   );
 }
 
+// SheetContent carries the padding, so header and footer only add spacing.
 export function SheetHeader({ className, ...props }: ComponentPropsWithoutRef<"div">) {
-  return <div className={cn("flex flex-col gap-1.5 p-5 text-left", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-1.5 pe-8 text-left", className)} {...props} />;
 }
 
 export function SheetFooter({ className, ...props }: ComponentPropsWithoutRef<"div">) {
-  return <div className={cn("mt-auto flex flex-col gap-2 p-5", className)} {...props} />;
+  return <div className={cn("mt-auto flex flex-col gap-2", className)} {...props} />;
+}
+
+export function SheetTitle({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof DialogPrimitive.Title>) {
+  return <DialogPrimitive.Title className={cn("text-lg font-semibold leading-tight text-foreground", className)} {...props} />;
+}
+
+export function SheetDescription({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof DialogPrimitive.Description>) {
+  return <DialogPrimitive.Description className={cn("text-sm text-muted-foreground", className)} {...props} />;
 }

@@ -54,6 +54,7 @@ import {
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import { sourceLabel } from "./labels";
 
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
@@ -70,14 +71,6 @@ type EventData = { kind: "appointment"; appointment: Appointment } | { kind: "bl
 type Move = { start: number; end: number; staffId: Id<"staff"> };
 type Draft = { date: string; staffId?: Id<"staff">; start?: number };
 
-const SOURCE_LABELS: Record<Appointment["source"], string> = {
-  web: "Website",
-  whatsapp: "WhatsApp",
-  messenger: "Messenger",
-  line: "LINE",
-  instagram: "Instagram",
-  admin: "Manual",
-};
 const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", "completed", "no_show", "cancelled"];
 const BLOCK_COLOR = "var(--color-zinc-500)";
 const MINUTE = 60_000;
@@ -714,7 +707,7 @@ function AppointmentSheet({
                   </Detail>
                   <Detail label="Villa stay">{appointment.bookingId ? "Linked to a villa booking" : "—"}</Detail>
                   <Detail label="Source">
-                    <Badge variant="outline">{SOURCE_LABELS[appointment.source]}</Badge>
+                    <Badge variant="outline">{sourceLabel(appointment.source)}</Badge>
                   </Detail>
                 </dl>
                 {error ? <p className="text-sm text-destructive">{error}</p> : null}
