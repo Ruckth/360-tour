@@ -164,6 +164,8 @@ export const updateStaff = mutation({
 			...(changes.name !== undefined ? { name: required(changes.name, 'Name') } : {}),
 			...(changes.role !== undefined ? { role: required(changes.role, 'Role') } : {}),
 			...(changes.color !== undefined ? { color: required(changes.color, 'Color') } : {}),
+			// A blank photo URL clears the photo; omitting it keeps the current one.
+			...(changes.avatarUrl !== undefined ? { avatarUrl: changes.avatarUrl.trim() || undefined } : {}),
 			updatedAt: Date.now()
 		});
 	}

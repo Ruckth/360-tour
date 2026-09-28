@@ -34,8 +34,10 @@ import {
   resortIsoDate,
   timeOffInput,
   timeOffRange,
+  timeOffRangeProblem,
   useNow,
 } from "@/lib/staff-bookings";
+import { UNSAVED_CHANGES_MESSAGE, useUnsavedChangesGuard } from "@/lib/react/use-unsaved-changes";
 import { cn } from "@/lib/utils";
 
 type Staff = Doc<"staff">;
@@ -82,12 +84,14 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const router = useRouter();
   const [error, setError] = useState("");
   const confirm = useConfirm();
+  // Staff tabs ask via hasUnsavedChanges(); reloads and sidebar links are guarded here.
+  useUnsavedChangesGuard(matrixDirty && section === "services" && view === "matrix");
 
   async function switchView(next: "list" | "matrix") {
     if (next === view) return;
     if (
       matrixDirty &&
-      !(await confirm({ title: "Discard unsaved changes?", confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
+      !(await confirm({ title: UNSAVED_CHANGES_MESSAGE, confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
     ) {
       return;
     }
@@ -388,6 +392,8 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
   const simpleSchedule = isSimpleSchedule(staff);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Set once a new person is saved, so retrying a failed time off updates them instead of adding them again.
+  const [createdId, setCreatedId] = useState<Id<"staff"> | null>(null);
   const today = resortIsoDate(useNow());
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -398,7 +404,7 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     const profile = {
       name: text("name"),
       role: text("role"),
-      avatarUrl: text("avatarUrl") || undefined,
+      avatarUrl: text("avatarUrl"),
       color: text("color"),
     };
     const schedule = {
@@ -409,20 +415,29 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     };
     const off = readTimeOff(form);
     const offFrom = off.from;
+    const offRange = timeOffRange(off);
+    // Check before saving anything, so a bad range can't leave a half-saved new person behind.
+    const offProblem = offFrom ? timeOffRangeProblem(offRange) : null;
+    if (offProblem) {
+      setError(offProblem);
+      return;
+    }
     const timeOff = async (staffId: Id<"staff">) => {
-      const [result] = await addTimeOff({ staffIds: [staffId], ...timeOffRange(off), label: off.label || "Time off" });
+      const [result] = await addTimeOff({ staffIds: [staffId], ...offRange, label: off.label || "Time off" });
       if (result && !result.timeOffId) throw new Error(conflictText(result.conflicts));
     };
     setSaving(true);
     setError("");
     try {
-      if (staff) {
+      const existingId = staff?._id ?? createdId;
+      if (existingId) {
         // Profile and hours first: saving them again is harmless, so a retry after a
         // failed time-off insert (e.g. a clash with a booking) can't duplicate the time off.
-        await updateStaff({ staffId: staff._id, ...profile, ...(simpleSchedule ? schedule : {}) });
-        if (offFrom) await timeOff(staff._id);
+        await updateStaff({ staffId: existingId, ...profile, ...(simpleSchedule ? schedule : {}) });
+        if (offFrom) await timeOff(existingId);
       } else {
-        const staffId = await createStaff({ ...profile, ...schedule });
+        const staffId = await createStaff({ ...profile, avatarUrl: profile.avatarUrl || undefined, ...schedule });
+        setCreatedId(staffId);
         if (offFrom) await timeOff(staffId);
       }
       onClose();
@@ -518,6 +533,9 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
             <TimeOffFields idPrefix="st-off" min={today} />
           </fieldset>
           {simpleSchedule && days.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one working day to save.</p> : null}
+          {createdId ? (
+            <p className="text-sm text-muted-foreground">Staff member added. Fix the time off and save again, or cancel to skip it.</p>
+          ) : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

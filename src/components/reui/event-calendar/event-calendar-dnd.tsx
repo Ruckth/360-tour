@@ -45,6 +45,8 @@ interface TimeColumnRect {
 interface DayCellRect {
   day: Date
   rect: DOMRect
+  /** Set on the resource view's all-day cells, so bars can move between resources. */
+  resourceId?: string
 }
 
 interface Surface {
@@ -163,7 +165,11 @@ function collectSurface(
           resourceId: el.dataset.ecResource,
         })
       } else {
-        cells.push({ day, rect: el.getBoundingClientRect() })
+        cells.push({
+          day,
+          rect: el.getBoundingClientRect(),
+          resourceId: el.dataset.ecResource,
+        })
       }
     }
   }
@@ -555,6 +561,7 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
           end: new Date(start.getTime() + durationMs),
           allDay: occurrence.allDay,
           dayGranular: true,
+          resourceId: cell.resourceId,
         }
       }
       // bar edge resize: day granularity
