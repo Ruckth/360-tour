@@ -33,6 +33,24 @@ export function timeOffRange(input: TimeOffInput) {
   };
 }
 
+/** Longest time off the server accepts (`assertTimeOffRange`). */
+export const MAX_TIME_OFF_DAYS = 60;
+
+/** Why the server would reject this time off range, or null when it's fine. */
+export function timeOffRangeProblem(range: { start: number; end: number }) {
+  if (!Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end)) return "Enter a valid time off date and time.";
+  if (range.end <= range.start) return "Time off must end after it starts.";
+  if (range.end - range.start > MAX_TIME_OFF_DAYS * DAY_MS) return `Time off can be at most ${MAX_TIME_OFF_DAYS} days.`;
+  return null;
+}
+
+/** The wanted open time, else the next open time after it, else the first open time of the day. */
+export function pickSlot<T extends { start: number }>(slots: readonly T[] | undefined, wanted: number | null): T | undefined {
+  if (!slots?.length) return undefined;
+  const earliest = (list: readonly T[]) => list.reduce<T | undefined>((best, slot) => (!best || slot.start < best.start ? slot : best), undefined);
+  return (wanted === null ? undefined : earliest(slots.filter((slot) => slot.start >= wanted))) ?? earliest(slots);
+}
+
 /** The inverse of `timeOffRange`, for editing. */
 export function timeOffInput(range: { start: number; end: number }): TimeOffInput {
   const startTime = resortTime24(range.start);

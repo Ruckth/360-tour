@@ -25,6 +25,8 @@ export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properti
   const remove = useMutation(api.adminReviews.remove);
   const confirm = useConfirm();
   const [editing, setEditing] = useState<Review | "new" | null>(null);
+  // Photos still uploading would be left out of the review (and orphaned), so the dialog stays open.
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
   async function deleteReview(review: Review) {
@@ -101,7 +103,7 @@ export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properti
           </Button>
         </div>
       )}
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+      <Dialog open={editing !== null} onOpenChange={(open) => !open && !uploading && setEditing(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{editing === "new" ? "Add review" : "Edit review"}</DialogTitle>
@@ -112,6 +114,8 @@ export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properti
               key={editing === "new" ? "new" : editing._id}
               propertyId={propertyId}
               review={editing === "new" ? null : editing}
+              uploading={uploading}
+              onUploadingChange={setUploading}
               onDone={() => setEditing(null)}
             />
           ) : null}
@@ -121,7 +125,19 @@ export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properti
   );
 }
 
-function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties">; review: Review | null; onDone: () => void }) {
+function ReviewForm({
+  propertyId,
+  review,
+  uploading,
+  onUploadingChange: setUploading,
+  onDone,
+}: {
+  propertyId: Id<"properties">;
+  review: Review | null;
+  uploading: boolean;
+  onUploadingChange: (uploading: boolean) => void;
+  onDone: () => void;
+}) {
   const create = useMutation(api.adminReviews.create);
   const update = useMutation(api.adminReviews.update);
   const upload = useImageUpload();
@@ -129,7 +145,6 @@ function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties
   const fileInput = useRef<HTMLInputElement>(null);
   const [photos, setPhotos] = useState(review?.photos ?? []);
   const [verified, setVerified] = useState(review?.verified ?? true);
-  const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
   async function addPhotos(files: File[]) {
@@ -149,6 +164,7 @@ function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (uploading) return;
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "");
     const fields = {
@@ -237,7 +253,9 @@ function ReviewForm({ propertyId, review, onDone }: { propertyId: Id<"properties
         </Button>
         {uploadError ? <p role="alert" className="text-sm text-destructive">{uploadError}</p> : null}
       </div>
-      <SaveBar save={save} label={review ? "Save review" : "Add review"} />
+      <SaveBar save={save} disabled={uploading} label={review ? "Save review" : "Add review"}>
+        {uploading ? <span className="text-sm text-muted-foreground">Uploading photos…</span> : null}
+      </SaveBar>
     </form>
   );
 }

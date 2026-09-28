@@ -98,8 +98,9 @@ function RoomCard({
     setWarning(await panoramaWarning(file));
     await save.run(async () => {
       const url = await upload(file, "panorama");
-      await updateRoom({ roomId: room._id, imagePath: url });
+      // Put the upload in the field first: if saving the room fails, Save retries with it instead of re-uploading.
       setImagePath(url);
+      await updateRoom({ roomId: room._id, imagePath: url });
     });
   }
 
@@ -182,6 +183,8 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  // The picked file once uploaded, so retrying a failed createRoom doesn't upload (and orphan) it again.
+  const [uploaded, setUploaded] = useState<{ file: File; url: string } | null>(null);
   const [url, setUrl] = useState("");
   const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -202,8 +205,13 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
     setSaving(true);
     setError("");
     try {
-      const imagePath = file ? await upload(file, "panorama") : url.trim();
+      let imagePath = url.trim();
+      if (file) {
+        imagePath = uploaded?.file === file ? uploaded.url : await upload(file, "panorama");
+        setUploaded({ file, url: imagePath });
+      }
       await createRoom({ propertyId, name, slug: slug.trim() || undefined, imagePath });
+      setUploaded(null);
       setName("");
       setSlug("");
       setUrl("");

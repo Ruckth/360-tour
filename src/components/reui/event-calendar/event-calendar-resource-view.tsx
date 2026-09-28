@@ -369,6 +369,10 @@ function EventCalendarResourceAllDayCell({
   >((state) => {
     const drag = state.drag
     if (!drag || !drag.proposedDayGranular) return null
+    // Moves carry the resource under the pointer; resizes stay on their own.
+    const target =
+      drag.proposedResourceId ?? drag.occurrence.event.resourceId
+    if (target !== undefined && target !== resource.id) return null
     const covered = drag.proposedStart < dayEnd && drag.proposedEnd > dayStart
     if (!covered) return null
     return drag.valid ? "valid" : "invalid"
@@ -388,6 +392,8 @@ function EventCalendarResourceAllDayCell({
       // finds no cells and dragging an all-day chip silently converts it to
       // a timed event via the column branch
       data-ec-day={dayStart.getTime()}
+      // lets a bar dropped here move to this resource
+      data-ec-resource={resource.id}
       data-drop-target={isDropTarget ?? undefined}
       data-off={isOff || undefined}
       className={cn(

@@ -44,6 +44,17 @@ describe('admin services', () => {
 		await expect(stranger.query(api.adminServices.listServices, {})).rejects.toThrow('Not authorized');
 	});
 
+	it('clears the staff photo when the URL is blank', async () => {
+		const { t, admin, staffId } = await setup();
+		const avatar = async () => (await t.run((ctx) => ctx.db.get(staffId)))?.avatarUrl;
+		await admin.mutation(api.adminServices.updateStaff, { staffId, avatarUrl: 'https://example.com/mali.jpg' });
+		expect(await avatar()).toBe('https://example.com/mali.jpg');
+		await admin.mutation(api.adminServices.updateStaff, { staffId, name: 'Mali K' }); // omitted: kept
+		expect(await avatar()).toBe('https://example.com/mali.jpg');
+		await admin.mutation(api.adminServices.updateStaff, { staffId, avatarUrl: ' ' });
+		expect(await avatar()).toBeUndefined();
+	});
+
 	it('validates staff hours, services and time off', async () => {
 		const { admin, staffId, serviceId } = await setup();
 		await expect(admin.mutation(api.adminServices.updateStaff, { staffId, workingHours: [{ weekday: 7, start: '09:00', end: '17:00' }] })).rejects.toThrow('Weekday');

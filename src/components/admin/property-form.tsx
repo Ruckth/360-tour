@@ -77,12 +77,25 @@ export function SaveStatus({ save }: { save: Saver }) {
   return null;
 }
 
-export function SaveBar({ save, compact, label = "Save", children }: { save: Saver; compact?: boolean; label?: string; children?: ReactNode }) {
+export function SaveBar({
+  save,
+  compact,
+  label = "Save",
+  disabled,
+  children,
+}: {
+  save: Saver;
+  compact?: boolean;
+  label?: string;
+  /** Extra reason to hold the save, e.g. an upload still running. */
+  disabled?: boolean;
+  children?: ReactNode;
+}) {
   return (
     <div className={cn("flex items-center justify-end gap-3", !compact && "border-t border-border pt-4")}>
       {children}
       <SaveStatus save={save} />
-      <Button type="submit" size={compact ? "sm" : "default"} disabled={save.saving} className={cn(compact && "h-10")}>
+      <Button type="submit" size={compact ? "sm" : "default"} disabled={save.saving || disabled} className={cn(compact && "h-10")}>
         {save.saving ? <Spinner className="text-current" /> : null}
         {label}
       </Button>

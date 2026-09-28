@@ -117,6 +117,8 @@ export function StaffRosterView() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const gridRef = useRef<HTMLTableElement>(null);
   const drag = useRef<{ start: Pos; last: Pos; mode: "add" | "remove"; base: Set<string> } | null>(null);
+  // The selection when the anchor was set: Shift extends from it, so the range can shrink as well as grow.
+  const anchorBase = useRef<Set<string>>(new Set());
   const confirm = useConfirm();
 
   const data = useQuery(api.roster.getWeek, { weekStart });
@@ -145,10 +147,27 @@ export function StaffRosterView() {
     };
   }, []);
 
+  /** Starts a new Shift range at `pos`, on top of the current selection. */
+  function placeAnchor(pos: Pos) {
+    setAnchor(pos);
+    anchorBase.current = new Set(selected);
+  }
+
+  /** Replaces the whole selection; the next Shift range starts fresh. */
+  function replaceSelection(next: Set<string>) {
+    setSelected(next);
+    setAnchor(null);
+    anchorBase.current = new Set();
+  }
+
+  /** The selection when the anchor was set, plus these keys. */
+  function extendSelection(keys: string[]) {
+    setSelected(new Set([...anchorBase.current, ...keys]));
+  }
+
   function goToWeek(next: string) {
     setWeekStart(next);
-    setSelected(new Set());
-    setAnchor(null);
+    replaceSelection(new Set());
     setNotice(null);
     setError("");
   }
@@ -196,11 +215,10 @@ export function StaffRosterView() {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setFocus(pos);
     if (event.shiftKey && anchor) {
-      const keys = rect(anchor, pos);
-      setSelected((current) => new Set([...current, ...keys]));
+      extendSelection(rect(anchor, pos));
       return;
     }
-    setAnchor(pos);
+    placeAnchor(pos);
     drag.current = { start: pos, last: pos, mode: selected.has(keyAt(pos)) ? "remove" : "add", base: new Set(selected) };
     paint(pos);
   }
@@ -231,20 +249,18 @@ export function StaffRosterView() {
       event.preventDefault();
       moveFocus(next);
       if (event.shiftKey) {
-        const from = anchor ?? pos;
-        if (!anchor) setAnchor(pos);
-        const keys = rect(from, next);
-        setSelected((current) => new Set([...current, ...keys]));
+        if (!anchor) placeAnchor(pos);
+        extendSelection(rect(anchor ?? pos, next));
       }
     } else if (event.key === " " || event.key === "Enter") {
       event.preventDefault();
-      setAnchor(pos);
+      placeAnchor(pos);
       toggleKeys([keyAt(pos)]);
     } else if (event.key === "Escape") {
-      setSelected(new Set());
+      replaceSelection(new Set());
     } else if (event.key.toLowerCase() === "a" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
-      setSelected(new Set(allKeys));
+      replaceSelection(new Set(allKeys));
     }
   }
 
@@ -289,7 +305,7 @@ export function StaffRosterView() {
       return;
     }
     setConflicts(null);
-    setSelected(new Set());
+    replaceSelection(new Set());
     const details = [
       ...result.warnings.map((w) => `${w.staffName} has time off on ${fullDay.format(utcDay(w.date))} (${w.label}). Scheduled anyway.`),
       ...(result.skipped.length ? [`Skipped ${plural(new Set(result.skipped.map((c) => cellKey(c.staffId, c.date))).size, "cell")} with appointments.`] : []),
@@ -420,7 +436,7 @@ export function StaffRosterView() {
           Reset to default
         </Button>
         {selectedKeys.length ? (
-          <Button size="sm" variant="ghost" className="ms-auto" onClick={() => setSelected(new Set())}>
+          <Button size="sm" variant="ghost" className="ms-auto" onClick={() => replaceSelection(new Set())}>
             <X aria-hidden className="size-4" />
             Clear selection
           </Button>
@@ -484,7 +500,7 @@ export function StaffRosterView() {
                 <button
                   type="button"
                   className="flex h-12 w-full items-center px-4 text-xs font-semibold text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  onClick={() => setSelected(allSelected ? new Set() : new Set(allKeys))}
+                  onClick={() => replaceSelection(allSelected ? new Set() : new Set(allKeys))}
                 >
                   {allSelected ? "Clear all" : "Select all"}
                 </button>
@@ -505,9 +521,9 @@ export function StaffRosterView() {
                       onClick={(event) => {
                         if (event.shiftKey && anchor) {
                           const keys = rect({ row: 0, col: anchor.col }, { row: staff.length - 1, col });
-                          setSelected((current) => new Set([...current, ...keys]));
+                          extendSelection(keys);
                         } else {
-                          setAnchor({ row: 0, col });
+                          placeAnchor({ row: 0, col });
                           toggleKeys(columnKeys);
                         }
                       }}
@@ -562,9 +578,9 @@ export function StaffRosterView() {
                       onClick={(event) => {
                         if (event.shiftKey && anchor) {
                           const keys = rect({ row: anchor.row, col: 0 }, { row, col: dates.length - 1 });
-                          setSelected((current) => new Set([...current, ...keys]));
+                          extendSelection(keys);
                         } else {
-                          setAnchor({ row, col: 0 });
+                          placeAnchor({ row, col: 0 });
                           toggleKeys(rowKeys);
                         }
                       }}

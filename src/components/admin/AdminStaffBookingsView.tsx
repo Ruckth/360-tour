@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { CalendarDays, Clock, Filter, Pencil, PlusIcon, Users } from "lucide-react";
@@ -16,7 +16,7 @@ import type {
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { AdminStaffServicesManager, TimeOffDialog } from "@/components/admin/AdminStaffServicesManager";
-import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
+import { adminStaffTabPath, isAdminStaffTab, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
@@ -54,12 +54,14 @@ import {
   errorText,
   formatResortDate,
   formatResortTime,
+  pickSlot,
   resortIsoDate,
   resortMidnight,
   resortTime24,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
+import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
 import { cn } from "@/lib/utils";
 
 type Staff = Doc<"staff">;
@@ -80,6 +82,8 @@ type Draft = { date: string; staffId?: Id<"staff">; start?: number };
 const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", "completed", "no_show", "cancelled"];
 const BLOCK_COLOR = CALENDAR_TONE_COLORS.muted;
 const MINUTE = 60_000;
+/** listSchedule's limit. */
+const MAX_SCHEDULE_DAYS = 14;
 // Stable reference: the calendar rebuilds its settings when this object changes.
 const CALENDAR_I18N = { viewNames: { resource: "Day" } };
 
@@ -101,21 +105,36 @@ const TABS = [
   ["services", "Services"],
 ] as const satisfies ReadonlyArray<readonly [AdminStaffTab, string]>;
 
-export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
+/**
+ * The Staff bookings tab strip and panel. It lives in the staff layout, so it stays mounted
+ * (and keeps keyboard focus) while each tab is its own route.
+ */
+export function AdminStaffTabs({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const segment = useSelectedLayoutSegment();
+  const tab = segment && isAdminStaffTab(segment) ? segment : null;
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const confirm = useConfirm();
 
-  function openTab(index: number) {
+  async function openTab(index: number) {
     const target = (index + TABS.length) % TABS.length;
+    const key = TABS[target][0];
+    if (key === tab) return;
+    if (
+      hasUnsavedChanges() &&
+      !(await confirm({ title: UNSAVED_CHANGES_MESSAGE, confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
+    ) {
+      return;
+    }
     tabRefs.current[target]?.focus();
-    router.push(adminStaffTabPath(TABS[target][0]));
+    router.push(adminStaffTabPath(key));
   }
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
     if (!(event.key in moves)) return;
     event.preventDefault();
-    openTab(moves[event.key]);
+    void openTab(moves[event.key]);
   }
 
   return (
@@ -139,7 +158,7 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
             aria-selected={tab === key}
             aria-controls="staff-tabpanel"
             tabIndex={tab === key ? 0 : -1}
-            onClick={() => router.push(adminStaffTabPath(key))}
+            onClick={() => void openTab(index)}
             onKeyDown={(event) => onTabKeyDown(event, index)}
             className={cn(
               "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -152,11 +171,21 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
           </button>
         ))}
       </div>
-      <div role="tabpanel" id="staff-tabpanel" aria-labelledby={`staff-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
-        {tab === "calendar" ? <StaffCalendar /> : tab === "roster" ? <StaffRosterView /> : <AdminStaffServicesManager section={tab} />}
+      <div
+        role="tabpanel"
+        id="staff-tabpanel"
+        aria-labelledby={tab ? `staff-tab-${tab}` : undefined}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {children}
       </div>
     </div>
   );
+}
+
+/** One Staff bookings tab's content; the page for each [tab] route. */
+export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
+  return tab === "calendar" ? <StaffCalendar /> : tab === "roster" ? <StaffRosterView /> : <AdminStaffServicesManager section={tab} />;
 }
 
 function StaffCalendar() {
@@ -358,6 +387,8 @@ function StaffCalendar() {
           date={date}
           onDateChange={setDate}
           views={["resource", "week", "agenda"]}
+          // listSchedule serves at most 14 days; the list defaults to 30.
+          agendaDayCount={7}
           resources={resources}
           timeZone={RESORT_ZONE}
           dayStartHour={6}
@@ -378,7 +409,8 @@ function StaffCalendar() {
             if (slot.allDay || !data || activeServices.length === 0) return;
             const start = slot.date.getTime();
             setDraft({
-              date: resortIsoDate(start),
+              // A click on a past day books from today: open times are only searched from today on.
+              date: resortIsoDate(Math.max(start, Date.now())),
               staffId: slot.resourceId as Id<"staff"> | undefined,
               start: start > Date.now() ? start : undefined,
             });
@@ -412,7 +444,8 @@ function StaffCalendar() {
           }}
           onRangeChange={({ range: visible }) => {
             const from = visible.start.getTime();
-            const to = visible.end.getTime();
+            // Never ask for more than listSchedule serves, whatever the view.
+            const to = Math.min(visible.end.getTime(), from + MAX_SCHEDULE_DAYS * DAY_MS);
             setRange((current) => (current.from === from && current.to === to ? current : { from, to }));
           }}
           loading={data === undefined}
@@ -956,8 +989,8 @@ function NewAppointmentDialog({
   const today = resortIsoDate(useNow());
 
   const slots = useQuery(api.adminServices.findOpenSlots, date >= today ? { serviceId, date, staffId } : "skip");
-  // Fall back to the first open time, so the form is always one click from booking.
-  const selectedSlot = slots?.find((slot) => slot.start === start) ?? slots?.[0];
+  // Fall back to the next open time (or the first), so the form is always one click from booking.
+  const selectedSlot = pickSlot(slots, start);
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
   const assigned = staff.find((person) => person._id === assignedId);
   const parts = DAY_PARTS.map((part, i) => ({
@@ -1063,7 +1096,9 @@ function NewAppointmentDialog({
           ) : null}
           <div className="grid gap-2">
             <Label>Time</Label>
-            {slots === undefined ? (
+            {date < today ? (
+              <p className="text-sm text-muted-foreground">Pick today or a future date.</p>
+            ) : slots === undefined ? (
               <div role="status" aria-label="Finding open times" className="grid grid-cols-4 gap-1.5 rounded-lg border border-border p-3 sm:grid-cols-6">
                 {Array.from({ length: 12 }, (_, i) => (
                   <Skeleton key={i} className="h-9" />
@@ -1110,8 +1145,12 @@ function NewAppointmentDialog({
                 ))}
               </div>
             )}
-            {start !== null && slots?.length && !slots.some((slot) => slot.start === start) ? (
-              <p className="text-sm text-destructive">That time isn&apos;t open. Showing the next open time.</p>
+            {start !== null && selectedSlot && selectedSlot.start !== start ? (
+              <p className="text-sm text-destructive">
+                {selectedSlot.start > start
+                  ? "That time isn't open. Showing the next open time."
+                  : "No open times after that. Showing the first open time."}
+              </p>
             ) : null}
           </div>
           <div className="grid gap-2">

@@ -6,7 +6,7 @@ import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
 import { Eye, Trash2 } from "lucide-react";
-import { Suspense, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Raycaster, SRGBColorSpace, TextureLoader, Vector2, type Mesh } from "three";
 import { Hotspot } from "@/components/tour/Hotspot";
 import { RoomSphere } from "@/components/tour/RoomSphere";
@@ -218,6 +218,9 @@ function PanoramaScene({
   const { camera, gl } = useThree();
   const sphere = useRef<Mesh>(null);
   const raycaster = useMemo(() => new Raycaster(), []);
+  // The marker drag in progress, so unmounting mid-drag removes its window listeners.
+  const endDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDrag.current?.(), []);
 
   // Clicks on hotspots and the form bubble here too; only bare-panorama clicks (not drags) count.
   function clickPanorama(event: ThreeEvent<MouseEvent>) {
@@ -240,13 +243,21 @@ function PanoramaScene({
       const hit = raycaster.intersectObject(sphere.current)[0];
       if (hit) onMove(key, toHotspotPosition(hit.point.toArray()));
     };
-    const up = () => {
+    const stop = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", stop);
+      endDrag.current = null;
+    };
+    const up = () => {
+      stop();
       if (!dragging) onSelect(key);
     };
+    endDrag.current?.();
+    endDrag.current = stop;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", stop);
   }
 
   return (
