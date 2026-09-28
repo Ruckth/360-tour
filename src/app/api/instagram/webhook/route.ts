@@ -539,6 +539,7 @@ async function handleInstagramEvent({
       await client.mutation(api.instagram.markEventIgnored, {
         eventId: claimed.eventId,
         reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       } as never);
       return;
     }

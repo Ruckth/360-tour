@@ -535,6 +535,7 @@ async function handleFacebookEvent({
       await client.mutation(api.facebook.markEventIgnored, {
         eventId: claimed.eventId,
         reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       } as never);
       return;
     }

@@ -512,6 +512,7 @@ async function handleWhatsAppMessage({
       await client.mutation(api.whatsapp.markEventIgnored, {
         eventId: claimed.eventId,
         reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       } as never);
       return;
     }
