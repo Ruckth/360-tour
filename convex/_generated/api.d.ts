@@ -43,6 +43,7 @@ import type * as lib_chatTools from "../lib/chatTools.js";
 import type * as lib_codes from "../lib/codes.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_imageUploads from "../lib/imageUploads.js";
+import type * as lib_imageUrls from "../lib/imageUrls.js";
 import type * as lib_ical from "../lib/ical.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
@@ -115,6 +116,7 @@ declare const fullApi: ApiFromModules<{
   "lib/codes": typeof lib_codes;
   "lib/dates": typeof lib_dates;
   "lib/imageUploads": typeof lib_imageUploads;
+  "lib/imageUrls": typeof lib_imageUrls;
   "lib/ical": typeof lib_ical;
   "lib/pricing": typeof lib_pricing;
   "lib/rateLimit": typeof lib_rateLimit;

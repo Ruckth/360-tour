@@ -4,6 +4,7 @@ import {
 	buildAdminChatMetadataPatch,
 	getAdminChatMessageCount
 } from './lib/adminChatMetadata';
+import { recomputeSocialProof } from './lib/socialProof';
 
 // One-shot backfill: copies legacy chatSessions.messages arrays into the
 // dedicated chatMessages table, then clears the legacy field on each session.
@@ -106,5 +107,17 @@ export const backfillChatSessionAdminMetadata = internalMutation({
 			continueCursor: page.isDone ? null : page.continueCursor,
 			isDone: page.isDone
 		};
+	}
+});
+
+// One-shot: rebuild every villa's rating summary from its real reviews, dropping the
+// invented seed figures (e.g. "127 reviews"). Safe to re-run.
+// Run via `npx convex run migrations:recomputeAllSocialProof` once after deploy.
+export const recomputeAllSocialProof = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const properties = await ctx.db.query('properties').take(200);
+		for (const property of properties) await recomputeSocialProof(ctx, property._id);
+		return { villas: properties.length };
 	}
 });

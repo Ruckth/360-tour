@@ -2,7 +2,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from './_generated/api';
+import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 
@@ -80,5 +80,21 @@ describe('admin reviews', () => {
 			admin.mutation(api.adminReviews.create, { ...review(propertyId, 5), photos: ['http://example.com/x.jpg'] })
 		).rejects.toThrow('Images must be');
 		await expect(admin.mutation(api.adminReviews.create, { ...review(propertyId, 5), photos: ['https://example.com/x.jpg'] })).rejects.toThrow('uploaded photo');
+	});
+});
+
+describe('recomputeAllSocialProof migration', () => {
+	it('replaces invented seed figures with numbers from real reviews', async () => {
+		const { t, admin, propertyId } = await setup();
+		const empty = await admin.mutation(api.adminProperties.create, { name: 'Empty villa' });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('socialProof', { propertyId, overallRating: 4.9, totalReviews: 127 });
+			await ctx.db.insert('socialProof', { propertyId: empty, overallRating: 4.8, totalReviews: 88 });
+			await ctx.db.insert('reviews', { ...review(propertyId, 4), authorAvatarUrl: '' });
+		});
+
+		expect(await t.mutation(internal.migrations.recomputeAllSocialProof, {})).toEqual({ villas: 2 });
+		expect(await socialProof(t, propertyId)).toMatchObject({ overallRating: 4, totalReviews: 1 });
+		expect(await socialProof(t, empty)).toBeNull();
 	});
 });
