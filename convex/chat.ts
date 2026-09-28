@@ -351,6 +351,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		if (session.aiPaused) return { stored: false as const, messageId: null };
 
 		const timestamp = Date.now();
 		const messageId = await ctx.db.insert('chatMessages', {
@@ -366,15 +367,32 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 			lastSeenAt: timestamp,
 		});
 
-		return messageId;
+		return { stored: true as const, messageId };
 	}
 });
 
+/** Public view of a chat session: no admin-only or visitor-contact fields. */
 export const getSession = query({
 	args: { sessionId: v.id('chatSessions') },
 	handler: async (ctx, args) => {
-		return await ctx.db.get(args.sessionId);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) return null;
+		return {
+			_id: session._id,
+			_creationTime: session._creationTime,
+			propertySlug: session.propertySlug,
+			channel: session.channel,
+			messageCount: session.messageCount,
+			latestMessageAt: session.latestMessageAt,
+			createdAt: session.createdAt,
+			aiPaused: Boolean(session.aiPaused)
+		};
 	}
+});
+
+export const getSessionInternal = internalQuery({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => await ctx.db.get(args.sessionId)
 });
 
 /** Webhooks check this before any automatic reply: staff took over the chat. */
@@ -392,11 +410,12 @@ export const getMessages = query({
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db
+		const recent = await ctx.db
 			.query('chatMessages')
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-			.order('asc')
+			.order('desc')
 			.take(args.limit ?? 100);
+		return recent.reverse();
 	}
 });
 

@@ -210,16 +210,32 @@ describe('staff roster', () => {
 		expect(await rows()).toHaveLength(2);
 	});
 
-	it('copies large rosters in chunks and blocks undo until done', async () => {
-		const { t, admin, staffIds, rows, cell } = await setup(['A', 'B', 'C', 'D', 'E', 'F']);
+	it('copies and undoes large rosters in chunks, blocking roster writes meanwhile', async () => {
+		const { t, admin, staffIds, rows, cell, book } = await setup(['A', 'B', 'C', 'D', 'E', 'F']);
 		const week = staffIds.flatMap((id) => weekdays.map((i) => cell(id, addDays(MON, i))));
 		await admin.mutation(api.roster.applyCells, { cells: week, ...evening });
 		const copy = await admin.mutation(api.roster.copyWeek, { sourceWeekStart: MON, weeks: 52, conflict: 'skip' });
 		expect(copy).toMatchObject({ created: 52 * 42, running: true });
 		if (!copy.batchId) throw new Error('expected batch');
-		await expect(admin.mutation(api.roster.undo, { batchId: copy.batchId })).rejects.toThrow('Still copying');
+		await expect(admin.mutation(api.roster.undo, { batchId: copy.batchId })).rejects.toThrow('A roster copy is still running');
+		await expect(admin.mutation(api.roster.applyCells, { cells: [cell(staffIds[0], MON)], ...evening }))
+			.rejects.toThrow('A roster copy is still running');
+		await expect(admin.mutation(api.roster.copyWeek, { sourceWeekStart: MON, weeks: 1, conflict: 'skip' }))
+			.rejects.toThrow('A roster copy is still running');
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 		expect(await rows()).toHaveLength(53 * 42);
 		expect((await admin.query(api.roster.getWeek, { weekStart: MON })).lastBatch).toMatchObject({ batchId: copy.batchId, running: false });
+		// Booked in the evening on a copied week the first undo chunk doesn't reach: that cell keeps its copy.
+		const lateDate = addDays(MON, 7 * 50);
+		await book(staffIds[0], lateDate, '20:00');
+		expect(await admin.mutation(api.roster.undo, { batchId: copy.batchId })).toMatchObject({ ok: true, restored: 2000, running: true });
+		expect((await admin.query(api.roster.getWeek, { weekStart: MON })).lastBatch).toMatchObject({ status: 'undoing', undoing: true });
+		await expect(admin.mutation(api.roster.resetCells, { cells: [cell(staffIds[0], MON)] }))
+			.rejects.toThrow('A roster copy is still running');
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		const left = await rows();
+		expect(left).toHaveLength(43);
+		expect(left.some((row) => row.staffId === staffIds[0] && row.date === lateDate)).toBe(true);
+		expect((await admin.query(api.roster.getWeek, { weekStart: MON })).lastBatch).toBeNull();
 	}, 60_000);
 });

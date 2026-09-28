@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -67,7 +67,7 @@ describe("chat browser handoffs", () => {
       t.mutation(api.chat.claimBrowserHandoff, { token: "not-real" }),
     ).resolves.toBeNull();
 
-    const session = await t.query(api.chat.getSession, { sessionId });
+    const session = await t.query(internal.chat.getSessionInternal, { sessionId });
     expect(session?.visitorId).toBe("visitor-expired");
   });
 });

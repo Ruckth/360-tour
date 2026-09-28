@@ -625,7 +625,7 @@ export const generateReply = action({
 	handler: async (ctx, args): Promise<{ response: string; model: string }> => {
 		if (args.userMessage.length > 2000) throw new Error('Message is too long');
 		await ctx.runMutation(internal.chatAi.consumeChatLimit, { sessionId: args.sessionId });
-		const session: Doc<'chatSessions'> | null = await ctx.runQuery(api.chat.getSession, {
+		const session: Doc<'chatSessions'> | null = await ctx.runQuery(internal.chat.getSessionInternal, {
 			sessionId: args.sessionId
 		});
 		if (!session) throw new Error('Session not found');
@@ -657,7 +657,7 @@ export const respond = action({
 	handler: async (ctx, args) => {
 		if (args.userMessage.length > 2000) throw new Error('Message is too long');
 		await ctx.runMutation(internal.chatAi.consumeChatLimit, { sessionId: args.sessionId });
-		const session = await ctx.runQuery(api.chat.getSession, {
+		const session = await ctx.runQuery(internal.chat.getSessionInternal, {
 			sessionId: args.sessionId
 		});
 		if (!session) throw new Error('Session not found');
@@ -707,7 +707,7 @@ export const respond = action({
 			}
 		}
 
-		await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
+		const stored: { stored: boolean; messageId: Id<'chatMessages'> | null } = await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 			sessionId: args.sessionId,
 			content: result.response,
 			...(args.actionHint ? { action: args.actionHint } : {}),
@@ -716,6 +716,7 @@ export const respond = action({
 			replyToMessageId: userMessageId,
 			...(result.model === 'unknown_fallback' ? { skipSuggestions: true } : {})
 		});
+		if (!stored.stored) return { response: '', model: 'ai_paused', aiPaused: true };
 
 		await markQuestionBankMatchClicked(ctx, args.sessionId, questionBankMatch);
 

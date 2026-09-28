@@ -533,6 +533,15 @@ async function handleWhatsAppMessage({
       siteUrl: getSiteUrl(request),
     });
 
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.whatsapp.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
+      } as never);
+      return;
+    }
+
     whatsappReplyStatus = await sendWhatsAppTextMessage({
       accessToken,
       phoneNumberId: phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() ?? "",

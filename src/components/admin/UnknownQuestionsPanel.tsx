@@ -67,6 +67,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
   const ignoreGroups = useMutation(api.chatKnowledge.adminIgnoreUnknownGroups);
   const reopenGroups = useMutation(api.chatKnowledge.adminReopenUnknownGroups);
   const linkGroups = useMutation(api.chatKnowledge.adminLinkUnknownGroups);
+  const undoLinkGroups = useMutation(api.chatKnowledge.adminUndoLinkUnknownGroups);
   const undo = useUndoNotice();
   const groups = result?.groups ?? [];
   const selection = useSelection(groups.map((group) => group.normalizedQuestion));
@@ -119,7 +120,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
       selection.clear();
       undo.show(
         `Linked ${pluralize(done.linked, "question")} to "${answerTitle(answerId)}".`,
-        reopenIds(done.unknownQuestionIds),
+        () => undoLinkGroups(done.undo),
       );
     });
   }

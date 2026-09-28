@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -60,7 +60,7 @@ describe("Instagram webhook events", () => {
     const messages = await t.query(api.chat.getMessages, {
       sessionId: firstClaim.sessionId!,
     });
-    const session = await t.query(api.chat.getSession, {
+    const session = await t.query(internal.chat.getSessionInternal, {
       sessionId: firstClaim.sessionId!,
     });
     const event = await t.run(async (ctx) => await ctx.db.get(firstClaim.eventId));

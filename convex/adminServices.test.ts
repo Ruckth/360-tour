@@ -128,6 +128,18 @@ describe('admin services', () => {
 		await admin.mutation(api.adminServices.updateStaff, { staffId, workingHours: weekdays.map((weekday) => ({ weekday, start: '10:00', end: '18:00' })) });
 	});
 
+	it.each(['arrived', 'in_service'] as const)('protects %s appointments from time off and shorter hours', async (status) => {
+		const { t, admin, booking, staffId } = await setup();
+		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('16:00') });
+		await t.run((ctx) => ctx.db.patch(appointmentId, { status }));
+		expect(await admin.mutation(api.adminServices.addTimeOff, {
+			staffId, start: at('16:00'), end: at('17:00'), label: 'Leave'
+		})).toMatchObject([{ conflicts: [{ appointmentId }] }]);
+		await expect(admin.mutation(api.adminServices.updateStaff, {
+			staffId, workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '15:00' }))
+		})).rejects.toThrow('outside the new hours');
+	});
+
 	it('archives staff out of services, rejects them on services and restores', async () => {
 		const { admin, staffId, serviceId } = await setup();
 		const nokId = await admin.mutation(api.adminServices.createStaff, {

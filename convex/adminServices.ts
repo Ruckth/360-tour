@@ -102,7 +102,7 @@ async function timeOffConflicts(ctx: MutationCtx, staffId: Id<'staff'>, start: n
 	for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staffId).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', end)
 	)) {
-		if (appointment.blockedUntil > start && appointment.status === 'booked') conflicts.push({ appointmentId: appointment._id, start: appointment.start });
+		if (appointment.blockedUntil > start && blocksTime(appointment) && appointment.status !== 'completed') conflicts.push({ appointmentId: appointment._id, start: appointment.start });
 	}
 	return conflicts;
 }
@@ -153,7 +153,7 @@ export const updateStaff = mutation({
 			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK)
 			)) {
-				if (appointment.blockedUntil <= now || appointment.status !== 'booked') continue;
+				if (appointment.blockedUntil <= now || !blocksTime(appointment) || appointment.status === 'completed') continue;
 				if ((await staffBusyRanges(ctx, next, appointment.start, appointment.blockedUntil, appointment._id)).length) {
 					throw new Error('Reassign or cancel the appointments outside the new hours first');
 				}

@@ -477,6 +477,9 @@ async function insertApprovedQuestion(
 	});
 }
 
+const APPROVED_QUESTIONS_LIMIT = 1000;
+const OTHER_QUESTIONS_LIMIT = 100;
+
 async function syncApprovedQuestions(
 	ctx: MutationCtx,
 	args: {
@@ -491,8 +494,9 @@ async function syncApprovedQuestions(
 
 	const existing = await ctx.db
 		.query('chatQuestions')
-		.withIndex('by_answerId', (q) => q.eq('answerId', args.answerId))
-		.take(200);
+		.withIndex('by_answerId_and_status', (q) => q.eq('answerId', args.answerId).eq('status', 'approved'))
+		.take(APPROVED_QUESTIONS_LIMIT + 1);
+	if (existing.length > APPROVED_QUESTIONS_LIMIT) throw new Error('This answer has too many approved questions to edit at once');
 	const approvedByNormalized = new Map<string, Doc<'chatQuestions'>>();
 	for (const question of existing) {
 		if (question.status !== 'approved') continue;
@@ -537,16 +541,40 @@ async function syncApprovedQuestions(
 
 	for (const question of existing) {
 		if (question.status === 'approved' && !keptQuestionIds.has(question._id)) {
-			const references = await ctx.db.query('chatUnknownQuestions')
-				.withIndex('by_resolvedQuestionId', (q) => q.eq('resolvedQuestionId', question._id))
-				.collect();
-			for (const reference of references) {
-				await ctx.db.patch(reference._id, { resolvedQuestionId: undefined });
+			if (!(await clearQuestionReferences(ctx, question._id))) {
+				await ctx.scheduler.runAfter(0, internal.chatKnowledge.clearDeletedQuestionReferences, { questionId: question._id });
 			}
 			await ctx.db.delete(question._id);
 		}
 	}
 }
+
+const QUESTION_REFERENCE_BATCH = 100;
+
+/**
+ * Unlinks one batch of unknown questions from a variant (they stay resolved to its answer).
+ * Returns true once none are left.
+ */
+async function clearQuestionReferences(ctx: MutationCtx, questionId: Id<'chatQuestions'>) {
+	const refs = await ctx.db
+		.query('chatUnknownQuestions')
+		.withIndex('by_resolvedQuestionId', (q) => q.eq('resolvedQuestionId', questionId))
+		.take(QUESTION_REFERENCE_BATCH + 1);
+	for (const ref of refs.slice(0, QUESTION_REFERENCE_BATCH)) {
+		await ctx.db.patch(ref._id, { resolvedQuestionId: undefined, updatedAt: Date.now() });
+	}
+	return refs.length <= QUESTION_REFERENCE_BATCH;
+}
+
+/** Continues unlinking unknown questions from a variant that was already deleted. */
+export const clearDeletedQuestionReferences = internalMutation({
+	args: { questionId: v.id('chatQuestions') },
+	handler: async (ctx, args) => {
+		if (!(await clearQuestionReferences(ctx, args.questionId))) {
+			await ctx.scheduler.runAfter(0, internal.chatKnowledge.clearDeletedQuestionReferences, args);
+		}
+	}
+});
 
 async function getExactCandidates(
 	ctx: QueryCtx,
@@ -789,13 +817,25 @@ export const adminDeletePropertyScope = mutation({
 
 const SEARCH_RESULT_LIMIT = 50;
 
-async function withAnswerDetails(ctx: QueryCtx, answer: Doc<'chatAnswers'>) {
-	const [questions, topics, property] = await Promise.all([
+/** Every approved question (the edit form round-trips them) plus the newest suggested/rejected ones. */
+async function answerQuestions(ctx: QueryCtx, answerId: Id<'chatAnswers'>) {
+	const byStatus = (status: 'approved' | 'suggested' | 'rejected', limit: number) =>
 		ctx.db
 			.query('chatQuestions')
-			.withIndex('by_answerId', (q) => q.eq('answerId', answer._id))
+			.withIndex('by_answerId_and_status', (q) => q.eq('answerId', answerId).eq('status', status))
 			.order('desc')
-			.take(100),
+			.take(limit);
+	const groups = await Promise.all([
+		byStatus('approved', APPROVED_QUESTIONS_LIMIT),
+		byStatus('suggested', OTHER_QUESTIONS_LIMIT),
+		byStatus('rejected', OTHER_QUESTIONS_LIMIT)
+	]);
+	return groups.flat();
+}
+
+async function withAnswerDetails(ctx: QueryCtx, answer: Doc<'chatAnswers'>) {
+	const [questions, topics, property] = await Promise.all([
+		answerQuestions(ctx, answer._id),
 		getAnswerTopics(ctx, answer._id),
 		answer.propertyId ? ctx.db.get(answer.propertyId) : Promise.resolve(null)
 	]);
@@ -982,6 +1022,13 @@ export const adminUpdateAnswer = mutation({
 				),
 				adminEmail: admin.email
 			});
+		} else if (propertyId !== existing.propertyId) {
+			// Questions weren't edited, but they still follow the answer's property for matching.
+			const approved = await ctx.db
+				.query('chatQuestions')
+				.withIndex('by_answerId_and_status', (q) => q.eq('answerId', args.answerId).eq('status', 'approved'))
+				.take(APPROVED_QUESTIONS_LIMIT);
+			for (const question of approved) await ctx.db.patch(question._id, { propertyId, updatedAt: now });
 		}
 		await syncAnswerTopics(ctx, args.answerId, propertyId, args.topicNames);
 		return { updated: true };
@@ -1062,9 +1109,15 @@ export const storeSuggestedQuestions = internalMutation({
 	args: {
 		answerId: v.id('chatAnswers'),
 		questions: v.array(v.string()),
-		adminEmail: v.string()
+		adminEmail: v.string(),
+		linkUnknownQuestionId: v.optional(v.id('chatUnknownQuestions')),
+		linkQuestionId: v.optional(v.id('chatQuestions'))
 	},
 	handler: async (ctx, args) => {
+		if (args.linkUnknownQuestionId && args.linkQuestionId &&
+			!(await isLinkActive(ctx, args.linkUnknownQuestionId, args.linkQuestionId))) {
+			return { insertedQuestionIds: [] };
+		}
 		const answer = await ctx.db.get(args.answerId);
 		if (!answer) throw new Error('Answer not found');
 
@@ -1425,6 +1478,59 @@ export const adminReopenUnknown = mutation({
 	}
 });
 
+const DELETE_CASCADE_BATCH = 100;
+
+/** Unlinks one batch of unknown questions, deleting the variant once none point at it. */
+async function deleteQuestionBatch(ctx: MutationCtx, questionId: Id<'chatQuestions'>) {
+	if (!(await clearQuestionReferences(ctx, questionId))) return false;
+	if (await ctx.db.get(questionId)) await ctx.db.delete(questionId);
+	return true;
+}
+
+export const continueDeleteQuestion = internalMutation({
+	args: { questionId: v.id('chatQuestions') },
+	handler: async (ctx, args) => {
+		if (!(await deleteQuestionBatch(ctx, args.questionId))) {
+			await ctx.scheduler.runAfter(0, internal.chatKnowledge.continueDeleteQuestion, args);
+		}
+	}
+});
+
+async function deleteAnswerBatch(ctx: MutationCtx, answerId: Id<'chatAnswers'>) {
+	const answer = await ctx.db.get(answerId);
+	if (!answer || answer.status !== 'archived') return { done: true, reopened: 0 };
+	let reopened = 0;
+	const unknowns = await ctx.db.query('chatUnknownQuestions')
+		.withIndex('by_resolvedAnswerId', (q) => q.eq('resolvedAnswerId', answerId)).take(DELETE_CASCADE_BATCH);
+	for (const unknown of unknowns) { await reopenUnknownQuestion(ctx, unknown._id); reopened++; }
+	if (await ctx.db.query('chatUnknownQuestions')
+		.withIndex('by_resolvedAnswerId', (q) => q.eq('resolvedAnswerId', answerId)).first()) return { done: false, reopened };
+	const questions = await ctx.db.query('chatQuestions')
+		.withIndex('by_answerId', (q) => q.eq('answerId', answerId)).take(50);
+	for (const question of questions) {
+		const done = await deleteQuestionBatch(ctx, question._id);
+		if (!done) return { done: false, reopened };
+	}
+	if (await ctx.db.query('chatQuestions').withIndex('by_answerId', (q) => q.eq('answerId', answerId)).first()) return { done: false, reopened };
+	const scopes = await ctx.db.query('chatAnswerPropertyScopes')
+		.withIndex('by_answerId', (q) => q.eq('answerId', answerId)).take(DELETE_CASCADE_BATCH);
+	for (const scope of scopes) await ctx.db.delete(scope._id);
+	if (await ctx.db.query('chatAnswerPropertyScopes').withIndex('by_answerId', (q) => q.eq('answerId', answerId)).first()) return { done: false, reopened };
+	await deleteOrphanTopics(ctx, await deleteAnswerTopicLinks(ctx, answerId));
+	if (await ctx.db.query('chatAnswerTopics').withIndex('by_answerId', (q) => q.eq('answerId', answerId)).first()) return { done: false, reopened };
+	await ctx.db.delete(answerId);
+	return { done: true, reopened };
+}
+
+export const continueDeleteAnswer = internalMutation({
+	args: { answerId: v.id('chatAnswers') },
+	handler: async (ctx, args) => {
+		if (!(await deleteAnswerBatch(ctx, args.answerId)).done) {
+			await ctx.scheduler.runAfter(0, internal.chatKnowledge.continueDeleteAnswer, args);
+		}
+	}
+});
+
 /** Permanently deletes an archived answer with its questions, scopes and topic links. */
 export const adminDeleteAnswer = mutation({
 	args: { answerId: v.id('chatAnswers') },
@@ -1434,26 +1540,9 @@ export const adminDeleteAnswer = mutation({
 		if (!answer) throw new Error('Answer not found');
 		if (answer.status !== 'archived') throw new Error('Archive the answer before deleting it');
 
-		const [questions, scopes, unknowns] = await Promise.all([
-			ctx.db
-				.query('chatQuestions')
-				.withIndex('by_answerId', (q) => q.eq('answerId', args.answerId))
-				.take(500),
-			ctx.db
-				.query('chatAnswerPropertyScopes')
-				.withIndex('by_answerId', (q) => q.eq('answerId', args.answerId))
-				.take(100),
-			ctx.db
-				.query('chatUnknownQuestions')
-				.withIndex('by_resolvedAnswerId', (q) => q.eq('resolvedAnswerId', args.answerId))
-				.take(500)
-		]);
-		for (const unknown of unknowns) await reopenUnknownQuestion(ctx, unknown._id);
-		for (const question of questions) await ctx.db.delete(question._id);
-		for (const scope of scopes) await ctx.db.delete(scope._id);
-		await deleteOrphanTopics(ctx, await deleteAnswerTopicLinks(ctx, args.answerId));
-		await ctx.db.delete(args.answerId);
-		return { deleted: true, reopenedUnknownQuestions: unknowns.length };
+		const result = await deleteAnswerBatch(ctx, args.answerId);
+		if (!result.done) await ctx.scheduler.runAfter(0, internal.chatKnowledge.continueDeleteAnswer, args);
+		return { deleted: true, reopenedUnknownQuestions: result.reopened };
 	}
 });
 
@@ -1467,14 +1556,9 @@ export const adminDeleteQuestion = mutation({
 		if (question.status === 'approved' && question.isPrimary) {
 			throw new Error('Make another question primary before deleting this one');
 		}
-		const unknowns = await ctx.db
-			.query('chatUnknownQuestions')
-			.withIndex('by_resolvedQuestionId', (q) => q.eq('resolvedQuestionId', args.questionId))
-			.take(100);
-		for (const unknown of unknowns) {
-			await ctx.db.patch(unknown._id, { resolvedQuestionId: undefined, updatedAt: Date.now() });
+		if (!(await deleteQuestionBatch(ctx, args.questionId))) {
+			await ctx.scheduler.runAfter(0, internal.chatKnowledge.continueDeleteQuestion, args);
 		}
-		await ctx.db.delete(args.questionId);
 		return { deleted: true };
 	}
 });
@@ -1570,6 +1654,24 @@ async function unknownsInGroup(ctx: QueryCtx, status: UnknownStatus, normalizedQ
 			q.eq('status', status).eq('normalizedQuestion', normalizedQuestion)
 		)
 		.take(BULK_GROUP_ROW_LIMIT);
+}
+
+const REMAINING_COUNT_LIMIT = 1000;
+
+/** Rows still matching the groups after a bulk action (capped), so the UI can offer to repeat it. */
+async function remainingInGroups(ctx: QueryCtx, keys: string[], statuses: UnknownStatus[]) {
+	let remaining = 0;
+	for (const key of keys) {
+		for (const status of statuses) {
+			if (remaining >= REMAINING_COUNT_LIMIT) return remaining;
+			const rows = await ctx.db
+				.query('chatUnknownQuestions')
+				.withIndex('by_status_and_normalizedQuestion', (q) => q.eq('status', status).eq('normalizedQuestion', key))
+				.take(REMAINING_COUNT_LIMIT - remaining);
+			remaining += rows.length;
+		}
+	}
+	return remaining;
 }
 
 async function newUnknownsByNormalizedQuestion(ctx: QueryCtx, normalizedQuestion: string) {
@@ -1687,13 +1789,14 @@ export const adminIgnoreUnknownGroups = mutation({
 		await requireAdmin(ctx);
 		const now = Date.now();
 		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
-		for (const key of groupKeys(args.normalizedQuestions)) {
+		const keys = groupKeys(args.normalizedQuestions);
+		for (const key of keys) {
 			for (const row of await unknownsInGroup(ctx, 'new', key)) {
 				await ctx.db.patch(row._id, { status: 'ignored', ignoredAt: now, updatedAt: now });
 				unknownQuestionIds.push(row._id);
 			}
 		}
-		return { ignored: unknownQuestionIds.length, unknownQuestionIds };
+		return { ignored: unknownQuestionIds.length, unknownQuestionIds, remaining: await remainingInGroups(ctx, keys, ['new']) };
 	}
 });
 
@@ -1705,12 +1808,13 @@ export const adminReopenUnknownGroups = mutation({
 	},
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
+		const keys = groupKeys(args.normalizedQuestions ?? []);
 		const rows: Doc<'chatUnknownQuestions'>[] = [];
 		for (const id of bulkIds(args.unknownQuestionIds ?? [], BULK_GROUP_LIMIT * BULK_GROUP_ROW_LIMIT)) {
 			const row = await ctx.db.get(id);
 			if (row) rows.push(row);
 		}
-		for (const key of groupKeys(args.normalizedQuestions ?? [])) {
+		for (const key of keys) {
 			rows.push(...(await unknownsInGroup(ctx, 'resolved', key)), ...(await unknownsInGroup(ctx, 'ignored', key)));
 		}
 		const reopenedIds = new Set<Id<'chatUnknownQuestions'>>();
@@ -1719,7 +1823,7 @@ export const adminReopenUnknownGroups = mutation({
 			await reopenUnknownQuestion(ctx, row._id);
 			reopenedIds.add(row._id);
 		}
-		return { reopened: reopenedIds.size };
+		return { reopened: reopenedIds.size, remaining: await remainingInGroups(ctx, keys, ['resolved', 'ignored']) };
 	}
 });
 
@@ -1741,7 +1845,9 @@ export const adminLinkUnknownGroups = mutation({
 
 		const now = Date.now();
 		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
-		for (const key of groupKeys(args.normalizedQuestions)) {
+		const questionChanges: Array<{ questionId: Id<'chatQuestions'>; previousStatus: 'approved' | 'suggested' | 'rejected' | null }> = [];
+		const keys = groupKeys(args.normalizedQuestions);
+		for (const key of keys) {
 			const rows = await unknownsInGroup(ctx, 'new', key);
 			if (rows.length === 0) continue;
 			const questionText = rows[0].userQuestion.slice(0, 240);
@@ -1772,6 +1878,7 @@ export const adminLinkUnknownGroups = mutation({
 					isAiTrigger: false,
 					adminEmail: admin.email
 				}));
+			questionChanges.push({ questionId, previousStatus: reusable?.status ?? null });
 			for (const row of rows) {
 				await ctx.db.patch(row._id, {
 					status: 'resolved',
@@ -1784,19 +1891,80 @@ export const adminLinkUnknownGroups = mutation({
 			}
 		}
 		if (args.generateSimilar && unknownQuestionIds.length > 0) {
-			await ctx.scheduler.runAfter(0, internal.chatKnowledge.generateSuggestedVariants, {
+			await ctx.scheduler.runAfter(60_000, internal.chatKnowledge.generateSuggestedVariants, {
 				answerId: args.answerId,
-				adminEmail: admin.email
+				adminEmail: admin.email,
+				linkUnknownQuestionId: unknownQuestionIds[0],
+				linkQuestionId: questionChanges[0].questionId
 			});
 		}
-		return { linked: unknownQuestionIds.length, unknownQuestionIds };
+		return { linked: unknownQuestionIds.length, remaining: await remainingInGroups(ctx, keys, ['new']), undo: { unknownQuestionIds, questionChanges } };
 	}
+});
+
+/**
+ * Undo for adminLinkUnknownGroups: reopens the linked questions and reverts each variant it
+ * created (deleted unless something else now points at it) or re-approved (previous status back).
+ */
+export const adminUndoLinkUnknownGroups = mutation({
+	args: {
+		unknownQuestionIds: v.array(v.id('chatUnknownQuestions')),
+		questionChanges: v.array(
+			v.object({
+				questionId: v.id('chatQuestions'),
+				previousStatus: v.union(v.literal('approved'), v.literal('suggested'), v.literal('rejected'), v.null())
+			})
+		)
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const changes = new Map(args.questionChanges.map((change) => [change.questionId, change.previousStatus]));
+		bulkIds([...changes.keys()], BULK_GROUP_LIMIT);
+		let reopened = 0;
+		for (const id of bulkIds(args.unknownQuestionIds, BULK_GROUP_LIMIT * BULK_GROUP_ROW_LIMIT)) {
+			const row = await ctx.db.get(id);
+			if (row?.status !== 'resolved' || !row.resolvedQuestionId || !changes.has(row.resolvedQuestionId)) continue;
+			await reopenUnknownQuestion(ctx, id);
+			reopened++;
+		}
+		const now = Date.now();
+		for (const [questionId, previousStatus] of changes) {
+			const question = await ctx.db.get(questionId);
+			if (!question || question.status !== 'approved' || previousStatus === 'approved') continue;
+			if (previousStatus === null) {
+				const stillUsed = await ctx.db
+					.query('chatUnknownQuestions')
+					.withIndex('by_resolvedQuestionId', (q) => q.eq('resolvedQuestionId', questionId))
+					.first();
+				if (!stillUsed && !question.isPrimary) await ctx.db.delete(questionId);
+			} else {
+				await ctx.db.patch(questionId, {
+					status: previousStatus,
+					approvedAt: undefined,
+					rejectedAt: previousStatus === 'rejected' ? now : undefined,
+					updatedAt: now
+				});
+			}
+		}
+		return { reopened };
+	}
+});
+
+async function isLinkActive(ctx: QueryCtx | MutationCtx, unknownQuestionId: Id<'chatUnknownQuestions'>, questionId: Id<'chatQuestions'>) {
+	const [unknown, question] = await Promise.all([ctx.db.get(unknownQuestionId), ctx.db.get(questionId)]);
+	return unknown?.status === 'resolved' && unknown.resolvedQuestionId === questionId && question?.status === 'approved';
+}
+
+export const isLinkActiveForGeneration = internalQuery({
+	args: { unknownQuestionId: v.id('chatUnknownQuestions'), questionId: v.id('chatQuestions') },
+	handler: async (ctx, args) => await isLinkActive(ctx, args.unknownQuestionId, args.questionId)
 });
 
 /** Background "suggest more ways to ask" after linking; reviewed in the pending variants queue. */
 export const generateSuggestedVariants = internalAction({
-	args: { answerId: v.id('chatAnswers'), adminEmail: v.string() },
+	args: { answerId: v.id('chatAnswers'), adminEmail: v.string(), linkUnknownQuestionId: v.id('chatUnknownQuestions'), linkQuestionId: v.id('chatQuestions') },
 	handler: async (ctx, args) => {
+		if (!(await ctx.runQuery(internal.chatKnowledge.isLinkActiveForGeneration, { unknownQuestionId: args.linkUnknownQuestionId, questionId: args.linkQuestionId }))) return null;
 		const context: AnswerGenerationContext | null = await ctx.runQuery(
 			internal.chatKnowledge.getAnswerGenerationContext,
 			{ answerId: args.answerId }
@@ -1806,7 +1974,9 @@ export const generateSuggestedVariants = internalAction({
 		await ctx.runMutation(internal.chatKnowledge.storeSuggestedQuestions, {
 			answerId: args.answerId,
 			questions,
-			adminEmail: args.adminEmail
+			adminEmail: args.adminEmail,
+			linkUnknownQuestionId: args.linkUnknownQuestionId,
+			linkQuestionId: args.linkQuestionId
 		});
 		return null;
 	}
