@@ -5,15 +5,11 @@ import { useMutation } from "convex/react";
 import { Archive, Bot, CheckCircle2, Hand, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import type { AdminSession, AdminSessionStatus } from "@/components/admin/admin-chat-types";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import type { AdminSession } from "@/components/admin/admin-chat-types";
+import { TONES, statusMeta } from "@/components/admin/status-tones";
 import { Button } from "@/components/ui/button";
-
-const STATUS_LABELS: Record<AdminSessionStatus, string> = {
-  open: "Open",
-  resolved: "Resolved",
-  archived: "Archived",
-};
+import { cn } from "@/lib/utils";
 
 /** Inbox status (open / resolved / archived / delete) and AI takeover controls for one chat. */
 export function AdminSessionActions({
@@ -61,9 +57,7 @@ export function AdminSessionActions({
   return (
     <>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Badge variant={status === "open" ? "secondary" : "outline"} className="rounded-full">
-          {STATUS_LABELS[status]}
-        </Badge>
+        <StatusBadge {...statusMeta("chatSession", status)} />
         {status === "open" ? (
           <Button
             type="button"
@@ -72,7 +66,7 @@ export function AdminSessionActions({
             disabled={pending}
             onClick={() => run(() => setSessionStatus({ sessionId, status: "resolved" }))}
           >
-            <CheckCircle2 className="h-4 w-4" />
+            <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
             Resolve
           </Button>
         ) : (
@@ -83,13 +77,13 @@ export function AdminSessionActions({
             disabled={pending}
             onClick={() => run(() => setSessionStatus({ sessionId, status: "open" }))}
           >
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw aria-hidden="true" className="h-4 w-4" />
             Reopen
           </Button>
         )}
         {status === "archived" ? (
           <Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void deleteChat()}>
-            <Trash2 className="h-4 w-4" />
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
             Delete
           </Button>
         ) : (
@@ -100,7 +94,7 @@ export function AdminSessionActions({
             disabled={pending}
             onClick={() => run(() => setSessionStatus({ sessionId, status: "archived" }))}
           >
-            <Archive className="h-4 w-4" />
+            <Archive aria-hidden="true" className="h-4 w-4" />
             Archive
           </Button>
         )}
@@ -113,7 +107,7 @@ export function AdminSessionActions({
             onClick={() => run(() => setAiPaused({ sessionId, paused: true }))}
             title="Stop automatic replies on every channel so you can reply yourself"
           >
-            <Hand className="h-4 w-4" />
+            <Hand aria-hidden="true" className="h-4 w-4" />
             Take over
           </Button>
         ) : null}
@@ -121,9 +115,13 @@ export function AdminSessionActions({
       {session.aiPaused ? (
         <div
           role="status"
-          className="mt-3 flex flex-wrap items-center gap-2 border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-foreground"
+          className={cn(
+            "mt-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm text-foreground",
+            TONES.accent.bg,
+            TONES.accent.border,
+          )}
         >
-          <Hand className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+          <Hand className={cn("h-4 w-4 shrink-0", TONES.accent.text)} aria-hidden="true" />
           <span className="min-w-0 flex-1">
             AI paused: {session.assignedAdminEmail ?? "staff"} is replying. The guest gets no automatic replies.
           </span>
@@ -134,7 +132,7 @@ export function AdminSessionActions({
             disabled={pending}
             onClick={() => run(() => setAiPaused({ sessionId, paused: false }))}
           >
-            <Bot className="h-4 w-4" />
+            <Bot aria-hidden="true" className="h-4 w-4" />
             Resume AI
           </Button>
         </div>

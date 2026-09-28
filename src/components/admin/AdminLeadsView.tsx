@@ -4,12 +4,15 @@ import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/reac
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
 import { format } from "date-fns";
-import { Download, Loader2, Trash2 } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { DisabledReason } from "@/components/admin/DisabledReason";
+import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 
 const SOURCES = {
   tour_completion: "Tour completed",
@@ -96,7 +99,7 @@ export function AdminLeadsView() {
     <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
       <section className="border border-border bg-card">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-          <p className="flex-1 text-sm text-muted-foreground">
+          <p className="min-w-60 flex-1 text-sm text-muted-foreground">
             Guests who left an email after a tour, in chat, or on an unfinished booking. Newest first.
           </p>
           <Select value={source} onValueChange={(value) => setSource(value as Source | "all")}>
@@ -112,15 +115,21 @@ export function AdminLeadsView() {
               ))}
             </SelectContent>
           </Select>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending === "export" || results.length === 0}
-            onClick={() => void exportCsv()}
-          >
-            {pending === "export" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-            Export CSV
-          </Button>
+          <DisabledReason reason={status !== "LoadingFirstPage" && results.length === 0 && "No leads to export"}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending === "export" || results.length === 0}
+              onClick={() => void exportCsv()}
+            >
+              {pending === "export" ? (
+                <Spinner label="Exporting" className="text-current" />
+              ) : (
+                <Download aria-hidden="true" className="size-4" />
+              )}
+              Export CSV
+            </Button>
+          </DisabledReason>
         </div>
         {error ? (
           <p role="alert" className="border-b border-border px-4 py-3 text-sm font-medium text-destructive">
@@ -134,18 +143,32 @@ export function AdminLeadsView() {
         ) : null}
 
         {status === "LoadingFirstPage" ? (
-          <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />
+          <SkeletonRows label="Loading leads" />
         ) : results.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">No leads yet.</p>
+          source === "all" ? (
+            <EmptyState>
+              No leads yet. Guests appear here when they leave an email after a tour, in chat, or on an unfinished booking.
+            </EmptyState>
+          ) : (
+            <EmptyState
+              action={
+                <Button type="button" size="sm" onClick={() => setSource("all")}>
+                  Show all sources
+                </Button>
+              }
+            >
+              No leads from &quot;{SOURCES[source]}&quot; yet.
+            </EmptyState>
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              <thead className="admin-eyebrow border-b border-border bg-muted/40">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Email</th>
-                  <th className="px-4 py-3 font-semibold">Source</th>
-                  <th className="px-4 py-3 font-semibold">Villa</th>
-                  <th className="px-4 py-3 font-semibold">Created</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3">Villa</th>
+                  <th className="px-4 py-3">Created</th>
                   <th className="px-4 py-3">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -155,7 +178,10 @@ export function AdminLeadsView() {
                 {results.map((lead) => (
                   <tr key={lead._id} className="border-b border-border last:border-b-0">
                     <td className="px-4 py-3 font-medium text-foreground">
-                      <a href={`mailto:${lead.email}`} className="hover:underline">
+                      <a
+                        href={`mailto:${lead.email}`}
+                        className="rounded hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
                         {lead.email}
                       </a>
                     </td>
@@ -174,7 +200,11 @@ export function AdminLeadsView() {
                         aria-label={`Delete lead ${lead.email}`}
                         onClick={() => void deleteLead(lead)}
                       >
-                        {pending === lead._id ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                        {pending === lead._id ? (
+                          <Spinner label="Deleting" />
+                        ) : (
+                          <Trash2 aria-hidden="true" className="size-4" />
+                        )}
                       </Button>
                     </td>
                   </tr>
@@ -187,7 +217,7 @@ export function AdminLeadsView() {
         {status === "CanLoadMore" || status === "LoadingMore" ? (
           <div className="border-t border-border p-3 text-center">
             <Button size="sm" variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(PAGE_SIZE)}>
-              {status === "LoadingMore" ? <Loader2 className="size-4 animate-spin" /> : null}
+              {status === "LoadingMore" ? <Spinner label="Loading more leads" className="text-current" /> : null}
               Load more
             </Button>
           </div>

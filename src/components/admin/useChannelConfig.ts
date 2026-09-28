@@ -1,19 +1,26 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ChannelConfigStatus } from "@/lib/admin/channel-config";
 import { errorText } from "@/lib/staff-bookings";
 
-export type ChannelConfig =
+type ChannelConfigState =
   | { state: "loading" }
   | { state: "error"; message: string }
   | { state: "ready"; channels: ChannelConfigStatus };
 
+export type ChannelConfig = ChannelConfigState & { retry: () => void };
+
 /** Which channel env vars are set on the website (Vercel) deployment, via /api/admin/config-status. */
 export function useChannelConfig(): ChannelConfig {
   const { getToken } = useAuth();
-  const [status, setStatus] = useState<ChannelConfig>({ state: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  const [status, setStatus] = useState<ChannelConfigState>({ state: "loading" });
+  const retry = useCallback(() => {
+    setStatus({ state: "loading" });
+    setAttempt((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +45,7 @@ export function useChannelConfig(): ChannelConfig {
     return () => {
       cancelled = true;
     };
-  }, [getToken]);
+  }, [getToken, attempt]);
 
-  return status;
+  return { ...status, retry };
 }

@@ -1,7 +1,6 @@
 import { Globe2, MessageCircle } from "lucide-react";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
-import { sourceLabel } from "@/components/admin/labels";
 import type { AdminSession, SessionChannelFilter } from "@/components/admin/admin-chat-types";
 import { cn } from "@/lib/utils";
 
@@ -31,10 +30,6 @@ export function formatDateTime(timestamp?: number) {
 export function truncate(value?: string, max = 96) {
   if (!value) return "";
   return value.length > max ? `${value.slice(0, max - 1)}...` : value;
-}
-
-export function channelLabel(channel: AdminSession["channel"] | SessionChannelFilter) {
-  return channel === "all" ? "All" : sourceLabel(channel);
 }
 
 export function ChannelIcon({

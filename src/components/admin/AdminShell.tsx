@@ -1,13 +1,14 @@
 "use client";
 
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { Loader2, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { adminNavItem } from "@/components/admin/admin-routes";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (!isLoaded) {
     return (
       <div className="grid min-h-screen place-items-center">
-        <Loader2 className="h-6 w-6 animate-spin text-gold" />
+        <Spinner label="Loading admin" className="size-6" />
       </div>
     );
   }
@@ -29,8 +30,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (!isSignedIn) {
     return (
       <div className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,var(--background),var(--secondary))] px-5">
-        <section className="w-full max-w-md border border-border bg-card p-7 shadow-xl">
-          <Shield className="mb-5 h-8 w-8 text-gold" />
+        <section className="w-full max-w-md border border-border bg-card p-6 shadow-xl">
+          <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
           <h1 className="font-serif text-4xl font-semibold text-foreground">Admin</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Sign in with an allowlisted admin account to view visitor chat activity and
@@ -47,7 +48,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (!convex) {
     return (
       <div className="grid min-h-screen place-items-center px-5">
-        <section className="max-w-lg border border-border bg-card p-7 shadow-xl">
+        <section className="max-w-lg border border-border bg-card p-6 shadow-xl">
           <h1 className="font-serif text-3xl font-semibold">Convex is not configured</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Add `NEXT_PUBLIC_CONVEX_URL` so the admin dashboard can query chat sessions.
@@ -61,7 +62,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     return (
       <div className="grid min-h-screen place-items-center">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin text-gold" />
+          <Spinner label="Connecting" className="size-5" />
           Connecting secure admin session
         </div>
       </div>
@@ -71,8 +72,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (convexAuth.isAuthEnabled && !convexAuth.isAuthenticated) {
     return (
       <div className="grid min-h-screen place-items-center px-5">
-        <section className="max-w-lg border border-border bg-card p-7 shadow-xl">
-          <Shield className="mb-5 h-8 w-8 text-gold" />
+        <section className="max-w-lg border border-border bg-card p-6 shadow-xl">
+          <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
           <h1 className="font-serif text-3xl font-semibold">
             Convex auth is not connected
           </h1>
@@ -103,10 +104,8 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
           <SidebarTrigger className="-ml-1" />
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gold">
-              Concierge operations
-            </p>
-            <h1 className="truncate font-serif text-2xl font-semibold text-foreground">
+            <p className="admin-eyebrow">Concierge operations</p>
+            <h1 className="truncate font-serif text-2xl font-semibold tracking-tight text-foreground">
               {adminNavItem(pathname)?.label ?? "Admin"}
             </h1>
           </div>

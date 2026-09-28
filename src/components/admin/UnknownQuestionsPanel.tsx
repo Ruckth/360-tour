@@ -3,40 +3,49 @@
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
-import { Link2, Loader2, MessageSquare, Plus, RotateCcw, Search, Sparkles } from "lucide-react";
+import { Link2, MessageSquare, Plus, RotateCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DisabledReason } from "@/components/admin/DisabledReason";
+import { StatusBadge } from "@/components/admin/StatusBadge";
 import {
   BulkActionBar,
+  EmptyState,
+  STACKED_TABLE,
+  SearchBox,
   SelectCheckbox,
+  SkeletonRows,
   pluralize,
   useDebounced,
   useSelection,
   useUndoNotice,
 } from "@/components/admin/admin-bulk";
-import { ChannelIcon, channelLabel, formatDateTime, truncate } from "@/components/admin/admin-chat-format";
+import { ChannelIcon, formatDateTime, truncate } from "@/components/admin/admin-chat-format";
 import type {
   AdminUnknownGroup,
   AdminUnknownQuestion,
   UnknownQuestionFilter,
 } from "@/components/admin/admin-knowledge-types";
+import { STATUS_LABELS, sourceLabel } from "@/components/admin/labels";
+import type { Tone } from "@/components/admin/status-tones";
+import { cn } from "@/lib/utils";
 
-function emptyText(status: UnknownQuestionFilter, search: string) {
-  if (search) return `No unknown questions match "${search}".`;
-  if (status === "new") return "No new unknown questions. The chatbot answered everything it was asked.";
-  if (status === "all") return "No unknown questions yet.";
-  return `No ${status} unknown questions.`;
-}
+const UNKNOWN_STATUSES = ["new", "resolved", "ignored"] as const;
 
-function statusSummary(group: AdminUnknownGroup) {
-  return (["new", "resolved", "ignored"] as const)
-    .filter((status) => group.counts[status] > 0)
-    .map((status) => (group.counts[status] === group.count ? status : `${group.counts[status]} ${status}`))
+/** "New", or "2 New · 1 Resolved" for groups whose questions are in different states. */
+function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } {
+  const label = UNKNOWN_STATUSES.filter((status) => group.counts[status] > 0)
+    .map((status) =>
+      group.counts[status] === group.count
+        ? STATUS_LABELS.unknownQuestion[status]
+        : `${group.counts[status]} ${STATUS_LABELS.unknownQuestion[status]}`,
+    )
     .join(" · ");
+  const tone = group.counts.new > 0 ? "warning" : group.counts.resolved > 0 ? "success" : "muted";
+  return { label, tone };
 }
 
 /**
@@ -120,30 +129,65 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
       {answer.title}
     </SelectItem>
   ));
+  const noAnswersHint = answersLoading ? "Loading answers" : hasAnswers ? undefined : "Add an approved answer first";
+  const linkHint = (answerId: string) => (answerId ? undefined : (noAnswersHint ?? "Choose an answer to link first"));
+
+  function emptyState() {
+    if (search) {
+      return (
+        <EmptyState
+          action={
+            <Button type="button" size="sm" onClick={() => setSearchInput("")}>
+              Clear search
+            </Button>
+          }
+        >
+          No unknown questions match &quot;{search}&quot;.
+        </EmptyState>
+      );
+    }
+    if (status === "new") {
+      return (
+        <EmptyState
+          action={
+            <Button type="button" size="sm" variant="outline" onClick={() => setStatus("all")}>
+              Show handled questions
+            </Button>
+          }
+        >
+          No new unknown questions. The chatbot answered everything it was asked.
+        </EmptyState>
+      );
+    }
+    if (status === "all") return <EmptyState>No unknown questions yet.</EmptyState>;
+    return (
+      <EmptyState
+        action={
+          <Button type="button" size="sm" variant="outline" onClick={() => setStatus("new")}>
+            Show new questions
+          </Button>
+        }
+      >
+        No {STATUS_LABELS.unknownQuestion[status].toLowerCase()} unknown questions.
+      </EmptyState>
+    );
+  }
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <div className="relative min-w-[14rem] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search unknown questions"
-            aria-label="Search unknown questions"
-            className="pl-9"
-          />
-        </div>
+        <SearchBox value={searchInput} onChange={setSearchInput} label="Search unknown questions" />
         <Select value={status} onValueChange={(value) => setStatus(value as UnknownQuestionFilter)}>
-          <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Unknown status">
+          <SelectTrigger className="h-9 w-[10rem] rounded-lg" aria-label="Unknown status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {(["new", "resolved", "ignored", "all"] satisfies UnknownQuestionFilter[]).map((option) => (
-              <SelectItem key={option} value={option} className="capitalize">
-                {option.charAt(0).toUpperCase() + option.slice(1)}
+            {UNKNOWN_STATUSES.map((option) => (
+              <SelectItem key={option} value={option}>
+                {STATUS_LABELS.unknownQuestion[option]}
               </SelectItem>
             ))}
+            <SelectItem value="all">All</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -159,21 +203,27 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
         {selectedNew.length > 0 ? (
           <>
             <Select value={bulkAnswerId} onValueChange={setBulkAnswerId} disabled={answersLoading || !hasAnswers}>
-              <SelectTrigger className="h-9 w-[14rem] rounded-lg bg-background" aria-label="Link selected to answer">
-                <SelectValue placeholder="Link to answer…" />
+              <SelectTrigger
+                className="h-9 w-[14rem] rounded-lg bg-background"
+                aria-label="Link selected to answer"
+                title={noAnswersHint}
+              >
+                <SelectValue placeholder={hasAnswers || answersLoading ? "Link to answer…" : "No approved answers"} />
               </SelectTrigger>
               {hasAnswers ? <SelectContent>{answerSelectItems}</SelectContent> : null}
             </Select>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={!bulkAnswerId || pendingAction.startsWith("link:")}
-              onClick={() => void link(selectedNew.map((group) => group.normalizedQuestion), bulkAnswerId)}
-            >
-              <Link2 className="h-4 w-4" />
-              Link
-            </Button>
+            <DisabledReason reason={linkHint(bulkAnswerId)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!bulkAnswerId || pendingAction.startsWith("link:")}
+                onClick={() => void link(selectedNew.map((group) => group.normalizedQuestion), bulkAnswerId)}
+              >
+                <Link2 aria-hidden="true" className="h-4 w-4" />
+                Link
+              </Button>
+            </DisabledReason>
             <Button
               type="button"
               size="sm"
@@ -193,25 +243,22 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
             disabled={pendingAction.startsWith("reopen:")}
             onClick={() => void reopen(selectedClosed.map((group) => group.normalizedQuestion))}
           >
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw aria-hidden="true" className="h-4 w-4" />
             Reopen
           </Button>
         ) : null}
       </BulkActionBar>
 
       {result === undefined ? (
-        <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading unknown questions
-        </div>
+        <SkeletonRows label="Loading unknown questions" />
       ) : groups.length === 0 ? (
-        <div className="p-5 text-sm leading-6 text-muted-foreground">{emptyText(status, search)}</div>
+        emptyState()
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="lg:overflow-x-auto">
+          <table className={STACKED_TABLE.table}>
+            <thead className={STACKED_TABLE.head}>
               <tr>
-                <th className="w-10 px-4 py-3">
+                <th className={cn(STACKED_TABLE.th, "w-10")}>
                   <SelectCheckbox
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
@@ -219,14 +266,14 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                     label="Select all questions"
                   />
                 </th>
-                <th className="px-4 py-3 font-semibold">Question</th>
-                <th className="px-4 py-3 font-semibold">Context</th>
-                <th className="px-4 py-3 font-semibold">Answer</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Actions</th>
+                <th className={STACKED_TABLE.th}>Question</th>
+                <th className={STACKED_TABLE.th}>Context</th>
+                <th className={STACKED_TABLE.th}>Answer</th>
+                <th className={STACKED_TABLE.th}>Status</th>
+                <th className={STACKED_TABLE.th}>Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={STACKED_TABLE.body}>
               {groups.map((group) => {
                 const key = group.normalizedQuestion;
                 const question = group.latest;
@@ -234,49 +281,55 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                 const rowAnswerId = rowAnswerIds[key] ?? group.suggestion?.answerId ?? "";
                 const suggested = group.suggestion && rowAnswerId === group.suggestion.answerId;
                 return (
-                  <tr key={key} className="border-b border-border align-top last:border-b-0">
-                    <td className="px-4 py-3">
+                  <tr key={key} className={cn(STACKED_TABLE.row, STACKED_TABLE.selectableRow)}>
+                    <td className={STACKED_TABLE.cell}>
                       <SelectCheckbox
                         checked={selection.isSelected(key)}
                         onChange={() => selection.toggle(key)}
                         label={`Select "${question.userQuestion}"`}
                       />
                     </td>
-                    <td className="max-w-[360px] px-4 py-3">
+                    <td className={cn(STACKED_TABLE.cell, "lg:max-w-[360px]")}>
                       <p className="font-medium text-foreground">
                         {question.userQuestion}
                         {group.count > 1 ? (
-                          <Badge variant="secondary" className="ml-2 rounded-full align-middle" title="Times asked">
-                            ×{group.count}
+                          <Badge variant="secondary" className="ml-2 rounded-full align-middle">
+                            Asked {group.count}×
                           </Badge>
                         ) : null}
                       </p>
                       <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         {formatDateTime(group.latestAt)}
                         {group.channels.map((channel) => (
-                          <span key={channel} title={channelLabel(channel)} className="inline-flex">
+                          <span key={channel} title={sourceLabel(channel)} className="inline-flex">
                             <ChannelIcon channel={channel} className="h-3.5 w-3.5" />
-                            <span className="sr-only">{channelLabel(channel)}</span>
+                            <span className="sr-only">{sourceLabel(channel)}</span>
                           </span>
                         ))}
                         {question.sessionId ? (
                           <Link
                             href={`/admin/chats?session=${question.sessionId}`}
-                            className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
+                            className="inline-flex items-center gap-1 rounded font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            <MessageSquare className="h-3.5 w-3.5" />
+                            <MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />
                             Open chat
                           </Link>
                         ) : null}
                       </p>
                     </td>
-                    <td className="max-w-[260px] px-4 py-3 text-muted-foreground">
+                    <td
+                      data-label="Context"
+                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground lg:max-w-[260px]")}
+                    >
                       <p>{question.propertyName ?? question.propertySlug ?? "General"}</p>
                       <p className="mt-1 line-clamp-1 text-xs">
                         {question.detectedTopic ?? "No topic"} · {truncate(question.pageUrl, 60) || "No page"}
                       </p>
                     </td>
-                    <td className="min-w-[280px] px-4 py-3">
+                    <td
+                      data-label="Answer"
+                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "lg:min-w-[280px]")}
+                    >
                       {hasNew ? (
                         <div className="grid gap-1">
                           <div className="flex gap-2">
@@ -285,7 +338,11 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                               disabled={answersLoading || !hasAnswers}
                               onValueChange={(value) => setRowAnswerIds((current) => ({ ...current, [key]: value }))}
                             >
-                              <SelectTrigger className="h-9 min-w-[180px] rounded-lg" aria-label="Answer to link">
+                              <SelectTrigger
+                                className="h-9 min-w-0 flex-1 rounded-lg lg:min-w-[180px]"
+                                aria-label="Answer to link"
+                                title={noAnswersHint}
+                              >
                                 <SelectValue
                                   placeholder={
                                     answersLoading
@@ -298,15 +355,17 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                               </SelectTrigger>
                               {hasAnswers ? <SelectContent>{answerSelectItems}</SelectContent> : null}
                             </Select>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={suggested ? "default" : "secondary"}
-                              disabled={!rowAnswerId || pendingAction === `link:${key}`}
-                              onClick={() => void link([key], rowAnswerId)}
-                            >
-                              Link
-                            </Button>
+                            <DisabledReason reason={linkHint(rowAnswerId)}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={suggested ? "default" : "secondary"}
+                                disabled={!rowAnswerId || pendingAction === `link:${key}`}
+                                onClick={() => void link([key], rowAnswerId)}
+                              >
+                                Link
+                              </Button>
+                            </DisabledReason>
                           </div>
                           {suggested && group.suggestion ? (
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -321,17 +380,15 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={hasNew ? "default" : "secondary"} className="rounded-full">
-                        {statusSummary(group)}
-                      </Badge>
+                    <td className={STACKED_TABLE.cell}>
+                      <StatusBadge {...statusSummary(group)} className="whitespace-normal" />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className={STACKED_TABLE.cell}>
                       <div className="flex flex-wrap items-center gap-2">
                         {hasNew ? (
                           <>
                             <Button type="button" size="sm" onClick={() => onCreateAnswer(question)}>
-                              <Plus className="h-4 w-4" />
+                              <Plus aria-hidden="true" className="h-4 w-4" />
                               Create answer
                             </Button>
                             <Button
@@ -353,7 +410,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                             disabled={pendingAction === `reopen:${key}`}
                             onClick={() => void reopen([key])}
                           >
-                            <RotateCcw className="h-4 w-4" />
+                            <RotateCcw aria-hidden="true" className="h-4 w-4" />
                             Reopen
                           </Button>
                         ) : null}

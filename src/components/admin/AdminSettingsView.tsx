@@ -9,19 +9,23 @@ import {
   type SettingsInput,
 } from "convex/lib/siteSettings";
 import { format } from "date-fns";
-import { Check, Loader2 } from "lucide-react";
+import { Check, RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CHANNEL_LABELS } from "@/lib/admin/channel-config";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
 import { SetupChecklistCard } from "./SetupChecklist";
-import { useChannelConfig } from "./useChannelConfig";
+import { StatusBadge } from "./StatusBadge";
+import { sourceLabel } from "./labels";
+import { TONES, statusMeta, type StatusMeta } from "./status-tones";
+import { useChannelConfig, type ChannelConfig } from "./useChannelConfig";
 
 const TABS = [
   { id: "business", label: "Business" },
@@ -32,8 +36,13 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-const TEXTAREA =
-  "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
+function PanelSpinner({ label }: { label: string }) {
+  return (
+    <div className="grid place-items-center py-10">
+      <Spinner label={label} className="size-5" />
+    </div>
+  );
+}
 
 export function AdminSettingsView() {
   const router = useRouter();
@@ -46,33 +55,21 @@ export function AdminSettingsView() {
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-4 sm:px-6">
       <SetupChecklistCard />
-      <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-1 border border-border bg-card p-1">
-        {TABS.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`settings-tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`settings-panel-${id}`}
-            onClick={() => setTab(id)}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              tab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        id="settings"
+        tabs={TABS.map(({ id, label }) => ({ value: id, label }))}
+        value={tab}
+        onValueChange={setTab}
+        label="Settings sections"
+      />
 
-      <div role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`} className="grid gap-4">
+      <div {...tabPanelProps("settings", tab)} className="grid gap-4">
         {tab === "channels" ? (
           <ChannelsPanel />
         ) : tab === "admins" ? (
           <AdminsPanel />
         ) : settings === undefined ? (
-          <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />
+          <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
           <SettingsForm section="business" settings={settings} />
         ) : tab === "ai" ? (
@@ -253,7 +250,7 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
                   {field.required ? <span className="text-muted-foreground"> (required)</span> : null}
                 </Label>
                 {field.type === "textarea" ? (
-                  <textarea {...common} className={cn(TEXTAREA, error && "border-destructive")} />
+                  <Textarea {...common} className={cn("min-h-24", error && "border-destructive")} />
                 ) : (
                   <Input
                     {...common}
@@ -285,12 +282,12 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <Button type="submit" disabled={state.saving}>
-            {state.saving ? <Loader2 aria-hidden className="size-4 animate-spin" /> : null}
+            {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
             Save {config.title.toLowerCase()}
           </Button>
           <span role="status" className="text-sm text-muted-foreground">
             {state.saved ? (
-              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+              <span className={cn("inline-flex items-center gap-1", TONES.success.text)}>
                 <Check aria-hidden className="size-4" />
                 Saved
               </span>
@@ -318,11 +315,17 @@ function ChannelsPanel() {
       <Panel title="Messaging channels" description="Webhook activity from the last events received. Failure counts cover the last 24 hours and 7 days.">
         {config.state === "error" ? (
           <Alert variant="warning" className="mb-4">
-            <AlertDescription>Could not check website environment variables: {config.message}</AlertDescription>
+            <AlertDescription className="flex flex-wrap items-center gap-3">
+              <span className="min-w-0 flex-1">Could not check website environment variables: {config.message}</span>
+              <Button type="button" size="sm" variant="outline" onClick={config.retry}>
+                <RotateCw aria-hidden="true" className="size-4" />
+                Retry
+              </Button>
+            </AlertDescription>
           </Alert>
         ) : null}
         {health === undefined ? (
-          <Loader2 className="mx-auto my-8 size-5 animate-spin text-gold" />
+          <PanelSpinner label="Loading channel health" />
         ) : (
           <ul className="grid gap-3">
             {health.channels.map((channel) => {
@@ -331,14 +334,8 @@ function ChannelsPanel() {
               return (
                 <li key={channel.channel} className="rounded-lg border border-border p-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="flex-1 text-sm font-semibold text-foreground">{CHANNEL_LABELS[channel.channel]}</h3>
-                    {config.state === "loading" ? (
-                      <Badge variant="muted">Checking…</Badge>
-                    ) : env ? (
-                      <Badge variant={env.configured ? "secondary" : "outline"}>{env.configured ? "Configured" : "Not configured"}</Badge>
-                    ) : (
-                      <Badge variant="muted">Unknown</Badge>
-                    )}
+                    <h3 className="flex-1 text-sm font-semibold text-foreground">{sourceLabel(channel.channel)}</h3>
+                    <StatusBadge {...channelHealthMeta(config, env?.configured, channel)} />
                   </div>
                   {missing.length ? (
                     <p className="mt-1 text-xs text-muted-foreground">Missing: {missing.join(", ")}</p>
@@ -368,13 +365,13 @@ function ChannelsPanel() {
 
       <Panel title="Backend services" description="Convex environment variables. Values are never shown, only whether they are set.">
         {server === undefined ? (
-          <Loader2 className="mx-auto my-8 size-5 animate-spin text-gold" />
+          <PanelSpinner label="Loading backend services" />
         ) : (
           <ul className="grid gap-2 sm:grid-cols-2">
             {Object.entries(server).map(([name, set]) => (
               <li key={name} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
                 <code className="truncate text-xs">{name}</code>
-                <Badge variant={set ? "secondary" : "outline"}>{set ? "Set" : "Missing"}</Badge>
+                <StatusBadge tone={set ? "success" : "muted"} label={set ? "Set" : "Not set"} />
               </li>
             ))}
           </ul>
@@ -383,7 +380,7 @@ function ChannelsPanel() {
 
       <Panel title="iCal calendars" description="OTA calendars imported into villa availability. Manage them from Hotel bookings.">
         {health === undefined ? (
-          <Loader2 className="mx-auto my-8 size-5 animate-spin text-gold" />
+          <PanelSpinner label="Loading iCal calendars" />
         ) : health.ical.length === 0 ? (
           <p className="text-sm text-muted-foreground">No iCal calendars connected.</p>
         ) : (
@@ -392,11 +389,12 @@ function ChannelsPanel() {
               <li key={source._id} className="grid gap-1 py-3 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="flex-1 text-sm font-medium text-foreground">
-                    {source.propertyName} · {source.platform}
+                    {source.propertyName} · {sourceLabel(source.platform)}
                   </span>
-                  <Badge variant={source.lastSyncError ? "outline" : "secondary"}>
-                    {source.lastSyncError ? "Sync failed" : source.lastSyncedAt ? "OK" : "Not synced yet"}
-                  </Badge>
+                  <StatusBadge
+                    tone={source.lastSyncError ? "danger" : source.lastSyncedAt ? "success" : "muted"}
+                    label={source.lastSyncError ? "Sync failed" : source.lastSyncedAt ? "Synced" : "Not synced yet"}
+                  />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Last synced: {source.lastSyncedAt ? formatTime(source.lastSyncedAt) : "never"}
@@ -416,7 +414,7 @@ function AdminsPanel() {
   return (
     <Panel title="Admins" description="People who can sign in to this dashboard.">
       {admins === undefined ? (
-        <Loader2 className="mx-auto my-8 size-5 animate-spin text-gold" />
+        <PanelSpinner label="Loading admins" />
       ) : (
         <ul className="divide-y divide-border">
           {admins.map((email) => (
@@ -439,7 +437,7 @@ function Panel({ title, description, children }: { title: string; description: s
   return (
     <section className="border border-border bg-card">
       <header className="border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         <p className="text-xs text-muted-foreground">{description}</p>
       </header>
       <div className="p-4">{children}</div>
@@ -454,6 +452,21 @@ function Stat({ label, value, alert }: { label: string; value: string; alert?: b
       <dd className={cn("font-medium", alert ? "text-destructive" : "text-foreground")}>{value}</dd>
     </div>
   );
+}
+
+/** Channel status from the website env check plus recent webhook failures. */
+function channelHealthMeta(
+  config: ChannelConfig,
+  configured: boolean | undefined,
+  channel: { failed24h: number; failed7d: number; lastEventAt?: number | null },
+): StatusMeta {
+  if (config.state === "loading") return { tone: "muted", label: "Checking…" };
+  if (configured === undefined) return { tone: "muted", label: "Unknown" };
+  if (!configured) return statusMeta("channelHealth", "not_configured");
+  if (channel.failed24h > 0) return statusMeta("channelHealth", "failing");
+  if (channel.failed7d > 0) return statusMeta("channelHealth", "warning");
+  if (!channel.lastEventAt) return { tone: "neutral", label: "No messages yet" };
+  return statusMeta("channelHealth", "ok");
 }
 
 function formatTime(timestamp: number) {

@@ -59,9 +59,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       <Dialog open={pending !== null} onOpenChange={(open) => !open && settle(false)}>
         <DialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">{pending?.title}</DialogTitle>
+            <DialogTitle>{pending?.title}</DialogTitle>
             {pending?.description ? (
-              <DialogDescription className="text-sm text-muted-foreground">{pending.description}</DialogDescription>
+              <DialogDescription>{pending.description}</DialogDescription>
             ) : (
               <DialogDescription className="sr-only">Confirm this action.</DialogDescription>
             )}

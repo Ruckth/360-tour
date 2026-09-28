@@ -79,7 +79,7 @@ function DeferredAIChatWidget() {
   );
 }
 
-export function SiteShell({ children }: { children: ReactNode }) {
+export function SiteShell({ children, hasReviews }: { children: ReactNode; hasReviews?: boolean }) {
   const pathname = usePathname();
   const normalizedPath = stripLocalePrefix(pathname);
 
@@ -99,7 +99,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <DeferredDemoDisclaimer />
-      <SiteHeader />
+      <SiteHeader hasReviews={hasReviews} />
       <ChatContextProvider>
         <main className="flex-1">{children}</main>
         <SiteFooter />
