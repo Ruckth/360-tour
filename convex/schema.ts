@@ -208,7 +208,7 @@ export default defineSchema({
 	/** One bulk roster action, kept so the latest one can be undone. */
 	rosterBatches: defineTable({
 		label: v.string(),
-		status: v.union(v.literal('running'), v.literal('done'), v.literal('undone')),
+		status: v.union(v.literal('running'), v.literal('undoing'), v.literal('done'), v.literal('undone')),
 		createdByAdminEmail: v.string(),
 		createdAt: v.number(),
 		// makeDefault only: each person's weekly pattern before the change.
@@ -953,6 +953,7 @@ export default defineSchema({
 		.index('by_propertySlug', ['propertySlug'])
 		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
 		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion'])
+		.index('by_sessionId', ['sessionId'])
 		.index('by_resolvedAnswerId', ['resolvedAnswerId'])
 		.index('by_resolvedQuestionId', ['resolvedQuestionId'])
 		.searchIndex('search_userQuestion', { searchField: 'userQuestion', filterFields: ['status'] }),

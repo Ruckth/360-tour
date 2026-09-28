@@ -489,6 +489,15 @@ async function handleLineEvent({
       }
     }
 
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.line.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
+      } as never);
+      return;
+    }
+
     lineReplyStatus = await replyToLine({
       accessToken,
       replyToken: event.replyToken,

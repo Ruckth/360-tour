@@ -60,6 +60,143 @@ async function archive(admin: ReturnType<typeof setup>["admin"], answerId: Id<"c
 }
 
 describe("unknown questions", () => {
+  it("reports remaining group rows and undoes both links and newly created variants", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-28T00:00:00Z"));
+    try {
+      const { t, admin } = setup();
+      const answerId = await createAnswer(admin, { title: "Pets" });
+      const ids = await t.run(async (ctx) => {
+        const inserted: Id<"chatUnknownQuestions">[] = [];
+        for (let i = 0; i < 101; i++) inserted.push(await ctx.db.insert("chatUnknownQuestions", {
+          userQuestion: "Can I bring my dog?", normalizedQuestion: "can i bring my dog",
+          status: "new", adminNotified: false, createdAt: i, updatedAt: i,
+        }));
+        return inserted;
+      });
+      const linked = await admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, {
+        normalizedQuestions: ["can i bring my dog"], answerId, generateSimilar: true,
+      });
+      expect(linked).toMatchObject({ linked: 100, remaining: 1 });
+      expect(linked.undo.unknownQuestionIds).toHaveLength(100);
+      expect(linked.undo.questionChanges).toMatchObject([{ previousStatus: null }]);
+      await admin.mutation(api.chatKnowledge.adminUndoLinkUnknownGroups, linked.undo);
+      expect(await t.run((ctx) => ctx.db.get(ids[0]))).toMatchObject({ status: "new" });
+      expect(await t.run((ctx) => ctx.db.get(linked.undo.questionChanges[0].questionId))).toBeNull();
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const suggested = await t.run((ctx) => ctx.db.query("chatQuestions")
+        .withIndex("by_answerId_and_status", (q) => q.eq("answerId", answerId).eq("status", "suggested")).take(10));
+      expect(suggested).toHaveLength(0);
+      const ignored = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, { normalizedQuestions: ["can i bring my dog"] });
+      expect(ignored).toMatchObject({ ignored: 100, remaining: 1 });
+      expect(await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, { normalizedQuestions: ["can i bring my dog"] }))
+        .toMatchObject({ ignored: 1, remaining: 0 });
+      const reopened = await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, { normalizedQuestions: ["can i bring my dog"] });
+      expect(reopened).toEqual({ reopened: 100, remaining: 1 });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("restores a reused variant's previous status on link undo", async () => {
+    const { t, admin } = setup();
+    const answerId = await createAnswer(admin, { title: "Pets" });
+    const questionId = await t.run((ctx) => ctx.db.insert("chatQuestions", {
+      answerId, questionText: "Can I bring my dog?", normalizedQuestion: "can i bring my dog",
+      isPrimary: false, isAiTrigger: false, createdBy: "admin", status: "rejected",
+      createdAt: 1, updatedAt: 1,
+    }));
+    const unknownId = await t.run((ctx) => ctx.db.insert("chatUnknownQuestions", {
+      userQuestion: "Can I bring my dog?", normalizedQuestion: "can i bring my dog",
+      status: "new", adminNotified: false, createdAt: 1, updatedAt: 1,
+    }));
+    const linked = await admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, {
+      normalizedQuestions: ["can i bring my dog"], answerId,
+    });
+    expect(linked.undo.questionChanges).toEqual([{ questionId, previousStatus: "rejected" }]);
+    await admin.mutation(api.chatKnowledge.adminUndoLinkUnknownGroups, linked.undo);
+    expect((await t.run((ctx) => ctx.db.get(questionId)))?.status).toBe("rejected");
+    expect((await t.run((ctx) => ctx.db.get(unknownId)))?.status).toBe("new");
+  });
+
+  it("returns every approved variant and deletes a large answer cascade before its parent", async () => {
+    vi.useFakeTimers();
+    try {
+      const { t, admin } = setup();
+      const answerId = await createAnswer(admin, { title: "Large answer" });
+      await t.run(async (ctx) => {
+        const questionId = await ctx.db.insert("chatQuestions", {
+          answerId, questionText: "Another phrasing", normalizedQuestion: "another phrasing",
+          isPrimary: false, isAiTrigger: false, createdBy: "admin", status: "approved",
+          createdAt: 1, updatedAt: 1,
+        });
+        for (let i = 0; i < 120; i++) {
+          await ctx.db.insert("chatQuestions", {
+            answerId, questionText: `Variant ${i}`, normalizedQuestion: `variant ${i}`,
+            isPrimary: false, isAiTrigger: false, createdBy: "admin", status: "approved",
+            createdAt: i + 2, updatedAt: i + 2,
+          });
+          await ctx.db.insert("chatUnknownQuestions", {
+            userQuestion: `Unknown ${i}`, normalizedQuestion: `unknown ${i}`,
+            status: "resolved", adminNotified: false, resolvedAnswerId: answerId,
+            resolvedQuestionId: questionId, createdAt: i, updatedAt: i,
+          });
+        }
+      });
+      const list = await admin.query(api.chatKnowledge.adminListAnswers, { paginationOpts: firstPage() });
+      const detail = list.page.find((row) => row._id === answerId)!;
+      expect(detail.questions).toHaveLength(122);
+      await admin.mutation(api.chatKnowledge.adminUpdateAnswer, {
+        answerId, title: "Large answer", answer: "Updated", status: "approved",
+      });
+      expect((await admin.query(api.chatKnowledge.adminListAnswers, { paginationOpts: firstPage() }))
+        .page.find((row) => row._id === answerId)?.questions).toHaveLength(122);
+      await admin.mutation(api.chatKnowledge.adminUpdateAnswer, {
+        answerId, title: "Large answer", answer: "Updated again", status: "approved",
+        questions: detail.questions.filter((question) => question.questionText !== "Another phrasing")
+          .map((question) => question.questionText),
+      });
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      expect((await t.run((ctx) => ctx.db.query("chatUnknownQuestions")
+        .withIndex("by_resolvedAnswerId", (q) => q.eq("resolvedAnswerId", answerId)).take(200)))
+        .every((row) => row.resolvedQuestionId === undefined)).toBe(true);
+      await archive(admin, answerId, "Large answer");
+      await admin.mutation(api.chatKnowledge.adminDeleteAnswer, { answerId });
+      expect(await t.run((ctx) => ctx.db.get(answerId))).not.toBeNull();
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      expect(await t.run((ctx) => ctx.db.get(answerId))).toBeNull();
+      const unknowns = await t.run((ctx) => ctx.db.query("chatUnknownQuestions").take(200));
+      expect(unknowns).toHaveLength(120);
+      expect(unknowns.every((row) => row.status === "new" && !row.resolvedAnswerId && !row.resolvedQuestionId)).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("deletes a question only after unlinking every unknown that points at it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { t, admin } = setup();
+      const answerId = await createAnswer(admin, { title: "Parking" });
+      const questionId = await t.run(async (ctx) => {
+        const id = await ctx.db.insert("chatQuestions", {
+          answerId, questionText: "Is parking free?", normalizedQuestion: "is parking free",
+          isPrimary: false, isAiTrigger: false, createdBy: "admin", status: "approved",
+          createdAt: 1, updatedAt: 1,
+        });
+        for (let i = 0; i < 120; i++) await ctx.db.insert("chatUnknownQuestions", {
+          userQuestion: "Is parking free?", normalizedQuestion: "is parking free",
+          status: "resolved", adminNotified: false, resolvedAnswerId: answerId,
+          resolvedQuestionId: id, createdAt: i, updatedAt: i,
+        });
+        return id;
+      });
+      await admin.mutation(api.chatKnowledge.adminDeleteQuestion, { questionId });
+      expect(await t.run((ctx) => ctx.db.get(questionId))).not.toBeNull();
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      expect(await t.run((ctx) => ctx.db.get(questionId))).toBeNull();
+      const unknowns = await t.run((ctx) => ctx.db.query("chatUnknownQuestions").take(200));
+      expect(unknowns).toHaveLength(120);
+      expect(unknowns.every((row) => row.status === "resolved" && row.resolvedAnswerId === answerId && !row.resolvedQuestionId)).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("reopens ignored and resolved questions and clears the resolved links", async () => {
     const { t, admin } = setup();
     const sessionId = await createSession(t);
@@ -413,7 +550,7 @@ describe("grouped unknown questions", () => {
       await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, {
         unknownQuestionIds: ignored.unknownQuestionIds,
       }),
-    ).toEqual({ reopened: 3 });
+    ).toEqual({ reopened: 3, remaining: 0 });
 
     const linked = await admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, {
       normalizedQuestions: keys,
@@ -443,7 +580,7 @@ describe("grouped unknown questions", () => {
     expect(relinked.linked).toBe(0);
     expect(
       await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, { normalizedQuestions: ["can i bring my dog"] }),
-    ).toEqual({ reopened: 2 });
+    ).toEqual({ reopened: 2, remaining: 0 });
 
     await archive(admin, petsId, "Pets");
     await expect(

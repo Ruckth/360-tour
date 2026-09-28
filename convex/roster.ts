@@ -178,6 +178,13 @@ async function newBatch(ctx: MutationCtx, email: string, label: string, extra: P
 	return batchId;
 }
 
+async function assertRosterIdle(ctx: MutationCtx) {
+	const latest = await ctx.db.query('rosterBatches').order('desc').first();
+	if (latest?.status === 'running' || latest?.status === 'undoing') {
+		throw new Error('A roster copy is still running — try again in a moment');
+	}
+}
+
 /** Sets a cell to a plan (null = back to the weekly pattern), recording its previous state for undo. */
 async function writeCell(
 	ctx: MutationCtx,
@@ -226,6 +233,7 @@ async function setCells(
 	plan: DayPlan | null,
 	skipConflicts = false
 ) {
+	await assertRosterIdle(ctx);
 	const staff = await cellStaff(ctx, cells);
 	const dates = cells.map((c) => c.date).sort();
 	const [first, last] = [dates[0], dates[dates.length - 1]];
@@ -291,7 +299,7 @@ export const getWeek = query({
 			staff: staff.map(({ _id, name, role, color, avatarUrl }) => ({ _id, name, role, color, avatarUrl })),
 			cells,
 			lastBatch: latest && latest.status !== 'undone'
-				? { batchId: latest._id, label: latest.label, createdAt: latest.createdAt, running: latest.status === 'running' }
+				? { batchId: latest._id, label: latest.label, createdAt: latest.createdAt, status: latest.status, running: latest.status === 'running', undoing: latest.status === 'undoing' }
 				: null
 		};
 	}
@@ -380,6 +388,7 @@ export const copyWeek = mutation({
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
+		await assertRosterIdle(ctx);
 		assertWeekStart(args.sourceWeekStart);
 		if (!Number.isInteger(args.weeks) || args.weeks < 1 || args.weeks > MAX_WEEKS) throw new Error(`Weeks must be 1–${MAX_WEEKS}`);
 		const plan = await planCopy(ctx, args.sourceWeekStart, 1, args.weeks, args.conflict);
@@ -469,6 +478,7 @@ export const makeDefault = mutation({
 	args: { weekStart: v.string() },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
+		await assertRosterIdle(ctx);
 		assertWeekStart(args.weekStart);
 		const dates = Array.from({ length: 7 }, (_, i) => addDays(args.weekStart, i));
 		const staff = await activeStaff(ctx);
@@ -512,11 +522,10 @@ export const undo = mutation({
 		const batch = await ctx.db.get(args.batchId);
 		if (!batch) throw new Error('Nothing to undo');
 		const latest = await ctx.db.query('rosterBatches').order('desc').first();
+		if (latest?.status === 'running' || latest?.status === 'undoing') throw new Error('A roster copy is still running — try again in a moment');
 		if (latest?._id !== batch._id) throw new Error('Only the most recent roster change can be undone');
-		if (batch.status === 'running') throw new Error('Still copying. Try again in a moment');
 		if (batch.status === 'undone') throw new Error('Already undone');
-		// Bounded by the batch size: at most MAX_CELLS, or 52 weeks of the roster for a copy.
-		const items = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', batch._id)).take(20_000);
+		const items = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', batch._id)).take(CELLS_PER_TX);
 		const staff = new Map<Id<'staff'>, Staff>();
 		for (const id of new Set([...items.map((i) => i.staffId), ...(batch.patterns ?? []).map((p) => p.staffId)])) {
 			const person = await ctx.db.get(id);
@@ -553,18 +562,59 @@ export const undo = mutation({
 		for (const saved of batch.patterns ?? []) {
 			if (staff.has(saved.staffId)) await ctx.db.patch(saved.staffId, { workingHours: saved.workingHours, breaks: saved.breaks, updatedAt: Date.now() });
 		}
-		for (const item of items) {
-			const existing = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', item.staffId).eq('date', item.date)).unique();
-			if (!item.previous) {
-				if (existing) await ctx.db.delete(existing._id);
-				continue;
-			}
+		await restoreBatchItems(ctx, items);
+		const more = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', batch._id)).first();
+		if (more) {
+			await ctx.db.patch(batch._id, { status: 'undoing' });
+			await ctx.scheduler.runAfter(0, internal.roster.continueUndo, { batchId: batch._id });
+		} else await ctx.db.patch(batch._id, { status: 'undone' });
+		return { ok: true as const, restored: items.length, running: Boolean(more) };
+	}
+});
+
+async function restoreBatchItems(ctx: MutationCtx, items: Doc<'rosterBatchItems'>[]) {
+	for (const item of items) {
+		const existing = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', item.staffId).eq('date', item.date)).unique();
+		if (!item.previous) {
+			if (existing) await ctx.db.delete(existing._id);
+		} else {
 			const fields = { shifts: item.previous.shifts, breaks: item.previous.breaks, note: item.previous.note, updatedAt: Date.now() };
 			if (existing) await ctx.db.patch(existing._id, fields);
 			else await ctx.db.insert('staffDays', { staffId: item.staffId, date: item.date, ...fields });
 		}
-		await ctx.db.patch(batch._id, { status: 'undone' });
-		return { ok: true as const, restored: items.length };
+		await ctx.db.delete(item._id);
+	}
+}
+
+/**
+ * The next chunk of a large undo. A cell that would now orphan an appointment (booked while the
+ * undo ran) keeps its current plan; the rest are restored.
+ */
+export const continueUndo = internalMutation({
+	args: { batchId: v.id('rosterBatches') },
+	handler: async (ctx, args) => {
+		const batch = await ctx.db.get(args.batchId);
+		if (!batch || batch.status !== 'undoing') return;
+		const items = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', args.batchId)).take(CELLS_PER_TX);
+		const restorable: Doc<'rosterBatchItems'>[] = [];
+		if (items.length) {
+			const dates = items.map((item) => item.date).sort();
+			const appointments = await appointmentsByCell(ctx, dates[0], dates[dates.length - 1]);
+			const now = Date.now();
+			const staffById = new Map<Id<'staff'>, Staff | null>();
+			for (const item of items) {
+				if (!staffById.has(item.staffId)) staffById.set(item.staffId, await ctx.db.get(item.staffId));
+				const staff = staffById.get(item.staffId);
+				const target = staff ? (item.previous ?? patternDay(staff, item.date)) : null;
+				if (target && uncovered(item.date, target, appointments.get(cellKey(item.staffId, item.date)), now).length) {
+					await ctx.db.delete(item._id);
+				} else restorable.push(item);
+			}
+		}
+		await restoreBatchItems(ctx, restorable);
+		if (await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', args.batchId)).first()) {
+			await ctx.scheduler.runAfter(0, internal.roster.continueUndo, args);
+		} else await ctx.db.patch(args.batchId, { status: 'undone' });
 	}
 });
 
@@ -577,7 +627,7 @@ export const pruneBatches = internalMutation({
 		const older = await ctx.db.query('rosterBatches').withIndex('by_creation_time', (q) => q.lt('_creationTime', keep._creationTime)).take(50);
 		let budget = 2000;
 		for (const batch of older) {
-			if (batch.status === 'running') continue;
+			if (batch.status === 'running' || batch.status === 'undoing') continue;
 			const items = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', batch._id)).take(budget);
 			for (const item of items) await ctx.db.delete(item._id);
 			budget -= items.length;

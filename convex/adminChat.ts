@@ -749,6 +749,13 @@ const DELETE_BATCH_SIZE = 200;
 /** Deletes up to one batch of a session's child rows. Returns true once nothing is left. */
 async function deleteSessionChildrenBatch(ctx: MutationCtx, sessionId: Id<'chatSessions'>) {
 	let budget = DELETE_BATCH_SIZE;
+	const unknowns = await ctx.db.query('chatUnknownQuestions')
+		.withIndex('by_sessionId', (q) => q.eq('sessionId', sessionId)).take(budget);
+	for (const row of unknowns) {
+		await ctx.db.patch(row._id, { sessionId: undefined, userId: undefined, updatedAt: Date.now() });
+	}
+	budget -= unknowns.length;
+	if (budget <= 0) return false;
 	const batches = [
 		(limit: number) =>
 			ctx.db.query('chatMessages').withIndex('by_session', (q) => q.eq('sessionId', sessionId)).take(limit),

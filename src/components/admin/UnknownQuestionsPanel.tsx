@@ -2,7 +2,6 @@
 
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { FunctionReference } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import { Link2, MessageSquare, Plus, RotateCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -37,14 +36,6 @@ import { cn } from "@/lib/utils";
 const UNKNOWN_STATUSES = ["new", "resolved", "ignored"] as const;
 
 /** What adminUndoLinkUnknownGroups needs to restore the questions and the answer's question list. */
-type LinkUndo = {
-  unknownQuestionIds: Id<"chatUnknownQuestions">[];
-  questionChanges: { questionId: Id<"chatQuestions">; previousStatus: "approved" | "suggested" | "rejected" | null }[];
-};
-
-// TODO(merge): the bulk mutations will return `remaining` (and link returns `undo`); drop the optional widening then.
-type WithRemaining<T> = T & { remaining?: number };
-
 /** "New", or "2 New · 1 Resolved" for groups whose questions are in different states. */
 function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } {
   const label = UNKNOWN_STATUSES.filter((status) => group.counts[status] > 0)
@@ -77,11 +68,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
   const ignoreGroups = useMutation(api.chatKnowledge.adminIgnoreUnknownGroups);
   const reopenGroups = useMutation(api.chatKnowledge.adminReopenUnknownGroups);
   const linkGroups = useMutation(api.chatKnowledge.adminLinkUnknownGroups);
-  // TODO(merge): typed after backend merge; use api.chatKnowledge.adminUndoLinkUnknownGroups directly.
-  const undoLinkGroups = useMutation(
-    (api.chatKnowledge as unknown as { adminUndoLinkUnknownGroups: FunctionReference<"mutation", "public", LinkUndo> })
-      .adminUndoLinkUnknownGroups,
-  );
+  const undoLinkGroups = useMutation(api.chatKnowledge.adminUndoLinkUnknownGroups);
   const undo = useUndoNotice();
   const [leftover, setLeftover] = useState<{ remaining: number; rerun: () => void } | null>(null);
   const groups = result?.groups ?? [];
@@ -116,8 +103,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
 
   async function ignore(keys: string[]) {
     await run(`ignore:${keys.join("|")}`, "Unable to ignore the questions.", async () => {
-      const done: WithRemaining<{ ignored: number; unknownQuestionIds: Id<"chatUnknownQuestions">[] }> =
-        await ignoreGroups({ normalizedQuestions: keys });
+      const done = await ignoreGroups({ normalizedQuestions: keys });
       selection.clear();
       undo.show(`Ignored ${pluralize(done.ignored, "question")}.`, reopenIds(done.unknownQuestionIds));
       offerRerun(done.remaining, () => void ignore(keys));
@@ -126,7 +112,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
 
   async function reopen(keys: string[]) {
     await run(`reopen:${keys.join("|")}`, "Unable to reopen the questions.", async () => {
-      const done: WithRemaining<{ reopened: number }> = await reopenGroups({ normalizedQuestions: keys });
+      const done = await reopenGroups({ normalizedQuestions: keys });
       selection.clear();
       undo.show(`Reopened ${pluralize(done.reopened, "question")}.`);
       offerRerun(done.remaining, () => void reopen(keys));
@@ -136,21 +122,15 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
   async function link(keys: string[], answerId: string) {
     if (!answerId) return;
     await run(`link:${keys.join("|")}`, "Unable to link the answer.", async () => {
-      const done: WithRemaining<{
-        linked: number;
-        unknownQuestionIds: Id<"chatUnknownQuestions">[];
-        undo?: LinkUndo;
-      }> = await linkGroups({
+      const done = await linkGroups({
         normalizedQuestions: keys,
         answerId: answerId as Id<"chatAnswers">,
         generateSimilar: true,
       });
       selection.clear();
-      const undoPayload = done.undo;
       undo.show(
         `Linked ${pluralize(done.linked, "question")} to "${answerTitle(answerId)}".`,
-        // Undo removes the questions the link added to the answer, not just the resolved status.
-        undoPayload ? () => undoLinkGroups(undoPayload) : reopenIds(done.unknownQuestionIds),
+        () => undoLinkGroups(done.undo),
       );
       offerRerun(done.remaining, () => void link(keys, answerId));
     });

@@ -789,7 +789,7 @@ describe("adminChat.listSessions", () => {
       dryRun: false,
     });
 
-    const session = await t.query(api.chat.getSession, { sessionId });
+    const session = await t.query(internal.chat.getSessionInternal, { sessionId });
     const filtered = await admin.query(api.adminChat.listSessions, {
       status: "all",
       messageStartAt: 2_500,
@@ -817,13 +817,13 @@ describe("admin chat metadata writes", () => {
       role: "user",
       content: "Hello",
     });
-    const afterFirst = await t.query(api.chat.getSession, { sessionId });
+    const afterFirst = await t.query(internal.chat.getSessionInternal, { sessionId });
     await t.mutation(api.chat.addMessage, {
       sessionId,
       role: "assistant",
       content: "Hi there",
     });
-    const afterSecond = await t.query(api.chat.getSession, { sessionId });
+    const afterSecond = await t.query(internal.chat.getSessionInternal, { sessionId });
 
     expect(afterFirst?.messageCount).toBe(1);
     expect(afterFirst?.latestMessageAt).toEqual(expect.any(Number));
@@ -848,7 +848,7 @@ describe("admin chat metadata writes", () => {
       contactApp: "whatsapp",
     });
 
-    const session = await t.query(api.chat.getSession, { sessionId });
+    const session = await t.query(internal.chat.getSessionInternal, { sessionId });
     expect(session?.adminSearchText).toContain("nina contact");
     expect(session?.adminSearchText).toContain("nina@example.com");
     expect(session?.adminSearchText).toContain("+66111111111");
@@ -874,7 +874,7 @@ describe("admin chat metadata writes", () => {
       sessionId,
       userContent: "Can I check in late?",
     });
-    const afterInbound = await t.query(api.chat.getSession, { sessionId });
+    const afterInbound = await t.query(internal.chat.getSessionInternal, { sessionId });
 
     await t.mutation(api.line.completeEvent, {
       serverSecret: "",
@@ -884,7 +884,7 @@ describe("admin chat metadata writes", () => {
       replyMode: "unknown_fallback",
       lineReplyStatus: 200,
     });
-    const afterReply = await t.query(api.chat.getSession, { sessionId });
+    const afterReply = await t.query(internal.chat.getSessionInternal, { sessionId });
 
     expect(afterInbound?.messageCount).toBe(1);
     expect(afterInbound?.latestMessageAt).toBe(1_700_000_000_000);
@@ -916,7 +916,7 @@ describe("admin chat metadata writes", () => {
       sessionId,
       userContent: "Can I check in late?",
     });
-    const afterInbound = await t.query(api.chat.getSession, { sessionId });
+    const afterInbound = await t.query(internal.chat.getSessionInternal, { sessionId });
 
     await t.mutation(api.whatsapp.completeEvent, {
       serverSecret: "",
@@ -926,7 +926,7 @@ describe("admin chat metadata writes", () => {
       replyMode: "unknown_fallback",
       whatsappReplyStatus: 200,
     });
-    const afterReply = await t.query(api.chat.getSession, { sessionId });
+    const afterReply = await t.query(internal.chat.getSessionInternal, { sessionId });
 
     expect(afterInbound?.messageCount).toBe(1);
     expect(afterInbound?.latestMessageAt).toBe(1_700_000_000_000);
@@ -1205,6 +1205,11 @@ describe("adminChat inbox lifecycle", () => {
           createdAt: 1,
         });
       });
+      const unknownId = await t.run((ctx) => ctx.db.insert("chatUnknownQuestions", {
+        sessionId, userId: "visitor-secret", userQuestion: "Is there a pool?",
+        normalizedQuestion: "is there a pool", status: "new", adminNotified: false,
+        createdAt: 1, updatedAt: 1,
+      }));
 
       await expect(admin.mutation(api.adminChat.deleteArchivedSession, { sessionId })).rejects.toThrow(
         "Archive the chat before deleting it",
@@ -1213,6 +1218,11 @@ describe("adminChat inbox lifecycle", () => {
       await admin.mutation(api.adminChat.deleteArchivedSession, { sessionId });
       expect(await t.run((ctx) => ctx.db.get(sessionId))).toBeNull();
       await t.finishAllScheduledFunctions(vi.runAllTimers);
+      expect(await t.run((ctx) => ctx.db.get(unknownId))).toMatchObject({
+        userQuestion: "Is there a pool?", status: "new",
+      });
+      expect((await t.run((ctx) => ctx.db.get(unknownId)))?.sessionId).toBeUndefined();
+      expect((await t.run((ctx) => ctx.db.get(unknownId)))?.userId).toBeUndefined();
 
       const remaining = await t.run(async (ctx) => ({
         messages: await ctx.db.query("chatMessages").collect(),

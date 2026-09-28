@@ -1,6 +1,6 @@
 import { internalAction, internalMutation } from './_generated/server';
 import { v } from 'convex/values';
-import { api } from './_generated/api';
+import { api, internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import { generateConciergeReply, type GenerateConciergeReplyArgs } from './chatAi';
 
@@ -26,7 +26,7 @@ export const createSession = internalMutation({
 export const messagingTurn = internalAction({
 	args: { sessionId: v.id('chatSessions'), userMessage: v.string(), siteUrl: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const session: Doc<'chatSessions'> | null = await ctx.runQuery(api.chat.getSession, {
+		const session: Doc<'chatSessions'> | null = await ctx.runQuery(internal.chat.getSessionInternal, {
 			sessionId: args.sessionId
 		});
 		if (!session) throw new Error('Session not found');

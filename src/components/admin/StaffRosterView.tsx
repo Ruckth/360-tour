@@ -336,7 +336,7 @@ export function StaffRosterView() {
       setConflicts({ title: "Undo would leave appointments booked since outside working hours", conflicts: result.conflicts });
       return;
     }
-    setNotice({ text: "Undone." });
+    setNotice({ text: result.running ? "Undoing in the background…" : "Undone." });
   }
 
   function onCopied(result: CopyResult, weeks: number) {
@@ -462,12 +462,12 @@ export function StaffRosterView() {
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || lastBatch.running}
+              disabled={busy || lastBatch.running || lastBatch.undoing}
               title={lastBatch.label}
               onClick={() => onUndo(lastBatch.batchId)}
             >
               <Undo2 aria-hidden className="size-4" />
-              {lastBatch.running ? "Copying…" : "Undo"}
+              {lastBatch.running ? "Copying…" : lastBatch.undoing ? "Undoing…" : "Undo"}
             </Button>
           ) : null}
           {notice ? (

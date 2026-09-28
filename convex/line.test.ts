@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -80,7 +80,7 @@ describe("LINE webhook events", () => {
     const messages = await t.query(api.chat.getMessages, {
       sessionId: firstClaim.sessionId!,
     });
-    const session = await t.query(api.chat.getSession, {
+    const session = await t.query(internal.chat.getSessionInternal, {
       sessionId: firstClaim.sessionId!,
     });
 
