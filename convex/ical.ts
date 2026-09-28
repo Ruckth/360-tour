@@ -100,10 +100,10 @@ export const pageSources = internalQuery({
 });
 
 export const applySource = internalMutation({
-  args: { sourceId: v.id('icalSources'), dates: v.array(v.string()) },
+  args: { sourceId: v.id('icalSources'), icalUrl: v.string(), dates: v.array(v.string()) },
   handler: async (ctx, args) => {
     const source = await ctx.db.get(args.sourceId);
-    if (!source) return null;
+    if (!source || source.icalUrl !== args.icalUrl) return null;
     const old = await ctx.db.query('availability').withIndex('by_icalSourceId', q => q.eq('icalSourceId', args.sourceId)).take(500);
     const wanted = new Set(args.dates);
     for (const row of old) if (!wanted.has(row.date)) await ctx.db.delete(row._id);
@@ -146,7 +146,7 @@ async function syncSourceFeed(ctx: ActionCtx, source: Doc<'icalSources'>): Promi
     const from = todayIso();
     const to = new Date(Date.parse(`${from}T00:00:00Z`) + 366 * DAY_MS).toISOString().slice(0, 10);
     const dates = blockedDatesFromIcal(text, from, to);
-    const applied: { blockedNights: number; conflicts: number } | null = await ctx.runMutation(internal.ical.applySource, { sourceId: source._id, dates });
+    const applied: { blockedNights: number; conflicts: number } | null = await ctx.runMutation(internal.ical.applySource, { sourceId: source._id, icalUrl: source.icalUrl, dates });
     return { ok: true, blockedNights: applied?.blockedNights ?? 0, conflicts: applied?.conflicts ?? 0 };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Calendar sync failed';

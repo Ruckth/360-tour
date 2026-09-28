@@ -15,8 +15,8 @@ it('keeps OTA sources separate and preserves other blocked dates when one is rem
   const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const airbnb = await admin.mutation(api.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   const booking = await admin.mutation(api.ical.addSource, { propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
-  await t.mutation(internal.ical.applySource, { sourceId: airbnb, dates: ['2030-01-01', '2030-01-02'] });
-  await t.mutation(internal.ical.applySource, { sourceId: booking, dates: ['2030-01-02', '2030-01-03'] });
+  await t.mutation(internal.ical.applySource, { sourceId: airbnb, icalUrl: 'https://example.com/airbnb.ics', dates: ['2030-01-01', '2030-01-02'] });
+  await t.mutation(internal.ical.applySource, { sourceId: booking, icalUrl: 'https://example.com/booking.ics', dates: ['2030-01-02', '2030-01-03'] });
   expect(await t.query(api.availability.getBlockedDates, { propertyId, startDate: '2030-01-01', endDate: '2030-01-03' })).toContain('2030-01-02');
   await admin.mutation(api.ical.removeSource, { sourceId: airbnb });
   const remaining = await t.run(async ctx => await ctx.db.query('availability').collect());
@@ -50,7 +50,7 @@ async function sourceSetup() {
 
 it('edits a source and relabels its imported nights', async () => {
   const { t, admin, sourceId } = await sourceSetup();
-  await t.mutation(internal.ical.applySource, { sourceId, dates: ['2030-01-01'] });
+  await t.mutation(internal.ical.applySource, { sourceId, icalUrl: 'https://example.com/airbnb.ics', dates: ['2030-01-01'] });
   await admin.mutation(api.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'https://example.com/agoda.ics' });
   const source = await t.run(async ctx => await ctx.db.get(sourceId));
   expect(source).toMatchObject({ platform: 'agoda', icalUrl: 'https://example.com/agoda.ics' });
@@ -58,6 +58,15 @@ it('edits a source and relabels its imported nights', async () => {
   expect((await t.run(async ctx => await ctx.db.query('availability').collect())).map(row => row.source)).toEqual(['agoda']);
   await expect(admin.mutation(api.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'http://127.0.0.1/x.ics' })).rejects.toThrow();
   await expect(t.mutation(api.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics' })).rejects.toThrow();
+});
+
+it('ignores a fetched feed after its source URL changes', async () => {
+  const { t, admin, sourceId } = await sourceSetup();
+  await t.mutation(internal.ical.applySource, { sourceId, icalUrl: 'https://example.com/airbnb.ics', dates: ['2030-01-01'] });
+  await admin.mutation(api.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: 'https://example.com/new.ics' });
+  expect(await t.mutation(internal.ical.applySource, { sourceId, icalUrl: 'https://example.com/airbnb.ics', dates: ['2030-01-02'] })).toBeNull();
+  expect((await t.run(ctx => ctx.db.get(sourceId)))?.lastSyncedAt).toBeUndefined();
+  expect((await t.run(ctx => ctx.db.query('availability').collect())).map(row => row.date)).toEqual(['2030-01-01']);
 });
 
 it('syncs one source on demand and reports the result', async () => {

@@ -324,6 +324,10 @@ export const editBooking = mutation({
 		if (!property) throw new Error('Property not found');
 		const stayChanged =
 			args.propertyId !== booking.propertyId || args.checkIn !== booking.checkIn || args.checkOut !== booking.checkOut;
+		// A stay change re-quotes in the villa's currency, which would leave amountPaid in the old one.
+		if (stayChanged && property.currency !== booking.currency && (booking.paymentStatus === 'paid' || (booking.amountPaid ?? 0) > 0)) {
+			throw new Error('Paid bookings cannot move to a villa with a different currency.');
+		}
 		if (stayChanged && property.status !== 'active') throw new Error('Property is not available for booking');
 		assertCapacity(property, args.guests);
 		// An in-house guest can still extend or shorten their stay.
@@ -351,7 +355,7 @@ export const editBooking = mutation({
 			// Paid: freeze what was paid. Unpaid: drop the expired checkout so a new amount can be charged.
 			...(booking.paymentStatus === 'paid'
 				? { amountPaid: booking.amountPaid ?? booking.total }
-				: { stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined })
+				: { stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined, checkoutRequest: undefined })
 		});
 
 		if (guest.guestEmail && (stayChanged || args.guests !== booking.guests)) {
@@ -388,7 +392,8 @@ async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>) {
 	const appointments = await ctx.db
 		.query('serviceAppointments')
 		.withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
-		.take(50);
+		.take(51);
+	if (appointments.length > 50) throw new Error('This booking has more than 50 service appointments. Remove some before deleting it.');
 	for (const appointment of appointments) await ctx.db.patch(appointment._id, { bookingId: undefined });
 	await ctx.db.delete(booking._id);
 }
@@ -480,6 +485,8 @@ const dateBlockArgs = {
 	reason: v.string()
 };
 
+const MAX_BLOCKED_NIGHTS_PER_CALL = 1500;
+
 function blockReason(value: string) {
 	const reason = value.trim();
 	if (!reason) throw new Error('Add a reason for the block.');
@@ -506,7 +513,10 @@ export const addDateBlocks = mutation({
 		if (propertyIds.length === 0) throw new Error('Pick at least one villa.');
 		if (propertyIds.length > 100) throw new Error('Pick at most 100 villas.');
 		// Date and reason problems apply to every villa, so they fail the whole request.
-		assertStayDates(start, end, { allowPastCheckIn: true });
+		const nights = assertStayDates(start, end, { allowPastCheckIn: true });
+		if (new Set(propertyIds).size * nights > MAX_BLOCKED_NIGHTS_PER_CALL) {
+			throw new Error(`Block at most ${MAX_BLOCKED_NIGHTS_PER_CALL} villa nights at a time. Pick fewer villas or a shorter range.`);
+		}
 		const reason = blockReason(args.reason);
 		const results: Array<{ propertyId: Id<'properties'>; blockId: Id<'dateBlocks'> | null; error: string | null }> = [];
 		for (const propertyId of new Set(propertyIds)) {

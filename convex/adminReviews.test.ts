@@ -39,7 +39,7 @@ describe('admin reviews', () => {
 	it('keeps social proof in sync with real reviews', async () => {
 		const { t, admin, propertyId } = await setup();
 		const first = await admin.mutation(api.adminReviews.create, review(propertyId, 5, '2026-08-01'));
-		const second = await admin.mutation(api.adminReviews.create, { ...review(propertyId, 4, '2026-09-10'), photos: ['https://example.com/p.jpg'] });
+		const second = await admin.mutation(api.adminReviews.create, { ...review(propertyId, 4, '2026-09-10'), photos: ['https://images.unsplash.com/p.jpg'] });
 		expect(await socialProof(t, propertyId)).toMatchObject({ overallRating: 4.5, totalReviews: 2 });
 
 		const listed = await admin.query(api.adminReviews.list, { propertyId });
@@ -79,5 +79,6 @@ describe('admin reviews', () => {
 		await expect(
 			admin.mutation(api.adminReviews.create, { ...review(propertyId, 5), photos: ['http://example.com/x.jpg'] })
 		).rejects.toThrow('Images must be');
+		await expect(admin.mutation(api.adminReviews.create, { ...review(propertyId, 5), photos: ['https://example.com/x.jpg'] })).rejects.toThrow('uploaded photo');
 	});
 });

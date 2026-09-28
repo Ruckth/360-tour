@@ -39,11 +39,11 @@ describe('admin property editing', () => {
 		const { t, admin, propertyId } = await setup();
 		await admin.mutation(api.properties.update, {
 			propertyId, name: '  Tideglass Residence ', currency: 'usd', pricePerNight: 300, directDiscountPercent: 15,
-			amenities: ['Pool', ' ', 'Wi-Fi'], images: ['https://example.com/a.jpg', '/b.webp'], status: 'draft'
+			amenities: ['Pool', ' ', 'Wi-Fi'], images: ['https://images.unsplash.com/a.jpg', '/b.webp'], status: 'draft'
 		});
 		expect(await t.run((ctx) => ctx.db.get(propertyId))).toMatchObject({
 			name: 'Tideglass Residence', currency: 'USD', pricePerNight: 300, directDiscountPercent: 15,
-			amenities: ['Pool', 'Wi-Fi'], images: ['https://example.com/a.jpg', '/b.webp'], status: 'draft', tagline: 'Sea views'
+			amenities: ['Pool', 'Wi-Fi'], images: ['https://images.unsplash.com/a.jpg', '/b.webp'], status: 'draft', tagline: 'Sea views'
 		});
 		expect(await t.query(api.properties.list, {})).toHaveLength(0);
 		expect(await admin.query(api.properties.adminList, {})).toHaveLength(1);
@@ -59,6 +59,10 @@ describe('admin property editing', () => {
 		await expect(admin.mutation(api.properties.update, { propertyId, currency: 'baht' })).rejects.toThrow('3-letter');
 		await expect(admin.mutation(api.properties.update, { propertyId, images: ['javascript:alert(1)'] })).rejects.toThrow('Images must be');
 		await expect(admin.mutation(api.properties.update, { propertyId, images: ['//evil.com/x.jpg'] })).rejects.toThrow('Images must be');
+		await expect(admin.mutation(api.properties.update, { propertyId, images: ['https://example.com/x.jpg'] })).rejects.toThrow('uploaded photo');
+		await expect(admin.mutation(api.properties.update, { propertyId, images: ['https://evil.convex.cloud.example.com/x.jpg'] })).rejects.toThrow('uploaded photo');
+		await expect(admin.mutation(api.properties.update, { propertyId, images: ['https://nested.demo.convex.cloud/x.jpg'] })).rejects.toThrow('uploaded photo');
+		await admin.mutation(api.properties.update, { propertyId, images: ['https://demo.convex.cloud/x.jpg', 'https://qr-official.line.me/x.jpg'] });
 	});
 
 	it('updates rooms', async () => {

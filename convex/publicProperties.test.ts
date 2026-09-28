@@ -33,6 +33,7 @@ async function setup() {
 		const archived = await ctx.db.insert('properties', villa('archived-villa', 'archived'));
 		await ctx.db.insert('reviews', review(active, 5, '2026-01-01'));
 		await ctx.db.insert('reviews', review(active, 4, '2026-03-01'));
+		await ctx.db.insert('socialProof', { propertyId: active, overallRating: 4.5, totalReviews: 2 });
 		await ctx.db.insert('reviews', review(draft, 5, '2026-02-01'));
 		return { active, draft, archived };
 	});
@@ -74,6 +75,31 @@ describe('public villa queries', () => {
 			['active-villa', 5],
 			['active-villa', 4]
 		]);
+	});
+
+	it('uses the full social proof count and shows only the newest 20 reviews', async () => {
+		const { t, active } = await setup();
+		await t.run(async ctx => {
+			for (let i = 0; i < 205; i++) {
+				await ctx.db.insert('reviews', review(active, 3, `2027-${String(Math.floor(i / 28) + 1).padStart(2, '0')}-${String(i % 28 + 1).padStart(2, '0')}`));
+			}
+			const proof = await ctx.db.query('socialProof').withIndex('by_property', q => q.eq('propertyId', active)).first();
+			await ctx.db.patch(proof!._id, { totalReviews: 207, overallRating: 3.01 });
+		});
+		const detail = await t.query(api.publicProperties.getBySlug, { slug: 'active-villa' });
+		expect(detail?.villa).toMatchObject({ reviewCount: 207, averageRating: 3.01 });
+		expect(detail?.reviews).toHaveLength(20);
+		expect(detail?.reviews[0].date).toBe('2027-08-09');
+		const listed = await t.query(api.publicProperties.list, {});
+		expect(listed.villas[0].reviewCount).toBe(207);
+	});
+
+	it('bounds the featured review scan before inactive villas are filtered', async () => {
+		const { t, draft } = await setup();
+		await t.run(async ctx => {
+			for (let i = 0; i < 201; i++) await ctx.db.insert('reviews', review(draft, 5, `2028-01-${String(i % 28 + 1).padStart(2, '0')}`));
+		});
+		expect(await t.query(api.publicProperties.featuredReviews, { limit: 6 })).toEqual([]);
 	});
 
 	it('marks content as edited only when guest-facing copy changes', async () => {

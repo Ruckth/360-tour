@@ -131,6 +131,34 @@ describe('villa create, slug and delete', () => {
 		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId: chatted })).rejects.toThrow('chatted');
 		expect(await t.run((ctx) => ctx.db.get(chatted))).not.toBeNull();
 	});
+
+	it('lists chat and lead references that block draft deletion', async () => {
+		const { t, admin } = setup();
+		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Referenced Villa' });
+		const slug = (await t.run(ctx => ctx.db.get(propertyId)))!.slug;
+		await t.run(async ctx => {
+			const answerId = await ctx.db.insert('chatAnswers', { propertyId, title: 'Title', answer: 'Answer', status: 'approved', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
+			await ctx.db.insert('chatAnswerPropertyScopes', { propertyId, answerId, propertySlug: slug, normalizedSlug: slug, source: 'property', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
+			await ctx.db.insert('chatKnowledgeScopes', { slug, normalizedSlug: slug, label: 'Villa', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
+			await ctx.db.insert('chatTopics', { propertyId, name: 'Pool', normalizedName: 'pool', description: '', createdAt: 0, updatedAt: 0 });
+			await ctx.db.insert('chatUnknownQuestions', { propertyId, propertySlug: slug, userQuestion: 'Pool?', normalizedQuestion: 'pool', status: 'new', adminNotified: false, createdAt: 0, updatedAt: 0 });
+			await ctx.db.insert('curatedChatQuestions', { question: 'Pool?', normalizedQuestion: 'pool', propertySlug: slug, topic: 'pool', score: 1, status: 'active', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
+			await ctx.db.insert('leads', { propertyId, email: 'guest@example.com', source: 'chat', createdAt: 0 });
+		});
+		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId })).rejects.toThrow(/chat answers.*chat answer property scopes.*chat knowledge scopes.*chat topics.*unknown chat questions.*curated chat questions.*leads/);
+		expect(await t.run(ctx => ctx.db.get(propertyId))).not.toBeNull();
+	});
+
+	it('refuses draft deletion when a child table exceeds its deletion batch', async () => {
+		const { t, admin } = setup();
+		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Many Reviews' });
+		await t.run(async ctx => {
+			for (let i = 0; i < 501; i++) await ctx.db.insert('reviews', { propertyId, authorName: 'Guest', authorCity: '', authorCountry: '', authorAvatarUrl: '', rating: 5, title: '', body: 'Good', date: '2026-01-01', verified: true });
+		});
+		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId })).rejects.toThrow('more than 500 child records');
+		expect(await t.run(ctx => ctx.db.get(propertyId))).not.toBeNull();
+		expect((await t.run(ctx => ctx.db.query('reviews').withIndex('by_property', q => q.eq('propertyId', propertyId)).collect())).length).toBe(501);
+	});
 });
 
 describe('image uploads', () => {
@@ -184,7 +212,7 @@ describe('360 rooms', () => {
 		const env = setup();
 		const propertyId = await env.admin.mutation(api.adminProperties.create, { name: 'Villa' });
 		const add = (name: string, slug?: string) =>
-			env.admin.mutation(api.adminProperties.createRoom, { propertyId, name, slug, imagePath: 'https://example.com/pano.webp' });
+			env.admin.mutation(api.adminProperties.createRoom, { propertyId, name, slug, imagePath: 'https://images.unsplash.com/pano.webp' });
 		const living = await add('Living Room');
 		const pool = await add('Pool');
 		const bedroom = await add('Bedroom');
@@ -200,6 +228,9 @@ describe('360 rooms', () => {
 		await expect(
 			admin.mutation(api.adminProperties.createRoom, { propertyId, name: 'X', imagePath: 'javascript:alert(1)' })
 		).rejects.toThrow('Images must be');
+		await expect(
+			admin.mutation(api.adminProperties.createRoom, { propertyId, name: 'X', imagePath: 'https://example.com/pano.webp' })
+		).rejects.toThrow('uploaded photo');
 		expect((await t.run((ctx) => ctx.db.get(propertyId)))?.tourRoomIds).toEqual(['living-room', 'pool', 'bedroom', 'pool-2']);
 
 		// Room slugs only need to be unique within a villa.
@@ -277,7 +308,7 @@ describe('360 rooms', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.patch(propertyId, {
 				pricePerNight: 9000,
-				images: ['https://example.com/a.webp'],
+				images: ['https://images.unsplash.com/a.webp'],
 				status: 'active',
 				icalExportToken: 'secret'
 			});
@@ -296,7 +327,7 @@ describe('360 rooms', () => {
 			slug: 'villa-copy',
 			status: 'draft',
 			pricePerNight: 9000,
-			images: ['https://example.com/a.webp'],
+			images: ['https://images.unsplash.com/a.webp'],
 			tourRoomIds: ['living-room', 'pool', 'bedroom']
 		});
 		expect(copy?.property.icalExportToken).toBeUndefined();
