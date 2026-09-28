@@ -43,6 +43,7 @@ import type * as lib_ical from "../lib/ical.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_serviceSlots from "../lib/serviceSlots.js";
+import type * as lib_siteSettings from "../lib/siteSettings.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
@@ -59,6 +60,7 @@ import type * as seeds_socialProof from "../seeds/socialProof.js";
 import type * as seeds_staffServices from "../seeds/staffServices.js";
 import type * as seeds_tourSnippets from "../seeds/tourSnippets.js";
 import type * as serviceBookings from "../serviceBookings.js";
+import type * as settings from "../settings.js";
 import type * as users from "../users.js";
 import type * as whatsapp from "../whatsapp.js";
 
@@ -104,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   "lib/pricing": typeof lib_pricing;
   "lib/rateLimit": typeof lib_rateLimit;
   "lib/serviceSlots": typeof lib_serviceSlots;
+  "lib/siteSettings": typeof lib_siteSettings;
   "lib/validation": typeof lib_validation;
   line: typeof line;
   migrations: typeof migrations;
@@ -120,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   "seeds/staffServices": typeof seeds_staffServices;
   "seeds/tourSnippets": typeof seeds_tourSnippets;
   serviceBookings: typeof serviceBookings;
+  settings: typeof settings;
   users: typeof users;
   whatsapp: typeof whatsapp;
 }>;

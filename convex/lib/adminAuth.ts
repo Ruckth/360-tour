@@ -1,6 +1,6 @@
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
 
-function adminEmails() {
+export function adminEmails() {
 	return new Set(
 		(process.env.ADMIN_EMAILS ?? '')
 			.split(',')

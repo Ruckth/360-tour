@@ -4,9 +4,31 @@ import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { Resend } from 'resend';
+import type { EffectiveSettings } from './lib/siteSettings';
 
 function escapeHtml(value: string) {
 	return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+}
+
+async function loadSettings(ctx: ActionCtx): Promise<EffectiveSettings> {
+	return await ctx.runQuery(internal.settings.effective, {});
+}
+
+/** Display name from Settings; the address itself always comes from the EMAIL_FROM env var. */
+function fromHeader(emailFrom: string, settings: EffectiveSettings) {
+	const address = emailFrom.match(/<([^>]+)>/)?.[1]?.trim() ?? emailFrom.trim();
+	const name = (settings.email.fromName || settings.businessName).replace(/[<>"\r\n]/g, '').trim();
+	return name ? `"${name}" <${address}>` : address;
+}
+
+function ownerNotificationEmail(settings: EffectiveSettings) {
+	return settings.email.ownerNotificationEmail || process.env.OWNER_NOTIFICATION_EMAIL;
+}
+
+function footerHtml(settings: EffectiveSettings) {
+	return settings.email.footer
+		? `<p style="color: #999; font-size: 12px; margin-top: 32px;">${escapeHtml(settings.email.footer)}</p>`
+		: '';
 }
 
 function escapedFields<T extends { guestName: string; propertyName: string; checkIn: string; checkOut: string; currency: string }>(args: T) {
@@ -25,7 +47,7 @@ export const sendBookingConfirmation = internalAction({
 		total: v.number(),
 		currency: v.string()
 	},
-	handler: async (_ctx, args) => {
+	handler: async (ctx, args) => {
 		const apiKey = process.env.RESEND_API_KEY;
 		const emailFrom = process.env.EMAIL_FROM;
 		if (!apiKey || !emailFrom) {
@@ -33,17 +55,18 @@ export const sendBookingConfirmation = internalAction({
 			return { sent: false, reason: 'no_api_key' };
 		}
 
+		const settings = await loadSettings(ctx);
 		const resend = new Resend(apiKey);
 		const safe = escapedFields(args);
 
 		const { error } = await resend.emails.send({
-			from: emailFrom,
+			from: fromHeader(emailFrom, settings),
 			to: args.guestEmail,
 			subject: `Booking Confirmed: ${args.propertyName} (${args.checkIn} - ${args.checkOut})`,
 			html: `
 				<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">
 					<h1 style="font-size: 24px; color: #111; margin-bottom: 8px;">Booking Confirmed!</h1>
-					<p style="color: #666; font-size: 16px;">Thank you, ${safe.guestName}. Your stay is confirmed.</p>
+					<p style="color: #666; font-size: 16px;">Thank you, ${safe.guestName}. Your stay at ${escapeHtml(settings.businessName)} is confirmed.</p>
 
 					<div style="background: #f8f9fa; border-radius: 12px; padding: 24px; margin: 24px 0;">
 						<h2 style="font-size: 18px; color: #111; margin: 0 0 16px;">${safe.propertyName}</h2>
@@ -78,9 +101,7 @@ export const sendBookingConfirmation = internalAction({
 						If you have any questions, reply to this email or message us on WhatsApp.
 					</p>
 
-					<p style="color: #999; font-size: 12px; margin-top: 32px;">
-						Spin & Stay — Spin around every room. Then book your stay.
-					</p>
+					${footerHtml(settings)}
 				</div>
 			`
 		});
@@ -107,9 +128,10 @@ export const sendOwnerNotification = internalAction({
 		total: v.number(),
 		currency: v.string()
 	},
-	handler: async (_ctx, args) => {
+	handler: async (ctx, args) => {
+		const settings = await loadSettings(ctx);
 		const apiKey = process.env.RESEND_API_KEY;
-		const ownerEmail = process.env.OWNER_NOTIFICATION_EMAIL;
+		const ownerEmail = ownerNotificationEmail(settings);
 		const emailFrom = process.env.EMAIL_FROM;
 
 		if (!apiKey || !ownerEmail || !emailFrom) {
@@ -121,7 +143,7 @@ export const sendOwnerNotification = internalAction({
 		const safe = escapedFields(args);
 
 		const { error } = await resend.emails.send({
-			from: emailFrom,
+			from: fromHeader(emailFrom, settings),
 			to: ownerEmail,
 			subject: `New Booking: ${args.propertyName} (${args.checkIn} - ${args.checkOut})`,
 			html: `
@@ -193,6 +215,8 @@ async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kin
 		console.warn('RESEND_API_KEY or EMAIL_FROM not configured, skipping lifecycle email');
 		return { sent: false, reason: 'missing_config' };
 	}
+	const settings = await loadSettings(ctx);
+	const signOff = `<p>${escapeHtml(settings.businessName)}</p>${footerHtml(settings)}`;
 	const name = escapeHtml(details.guestName);
 	const property = escapeHtml(details.propertyName);
 	const checkIn = escapeHtml(details.checkIn);
@@ -200,20 +224,20 @@ async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kin
 	const content = {
 		cancellation: {
 			subject: `Booking Cancelled: ${details.propertyName}`,
-			html: `<p>Hi ${name},</p><p>Your booking at ${property} for ${checkIn} to ${checkOut} has been cancelled.</p><p>If you have questions about payment or a refund, please reply to this email.</p>`
+			html: `<p>Hi ${name},</p><p>Your booking at ${property} for ${checkIn} to ${checkOut} has been cancelled.</p><p>If you have questions about payment or a refund, please reply to this email.</p>${signOff}`
 		},
 		preArrival: {
 			subject: `Your stay at ${details.propertyName} is coming up`,
-			html: `<p>Hi ${name},</p><p>We look forward to welcoming you to ${property} on ${checkIn}. Your check-out is ${checkOut}.</p><p>Reply to this email if you need help before arrival.</p>`
+			html: `<p>Hi ${name},</p><p>We look forward to welcoming you to ${property} on ${checkIn}. Your check-out is ${checkOut}.</p><p>Reply to this email if you need help before arrival.</p>${signOff}`
 		},
 		review: {
 			subject: `How was your stay at ${details.propertyName}?`,
-			html: `<p>Hi ${name},</p><p>Thank you for staying at ${property}. We hope you enjoyed your visit. Please reply and let us know how it went.</p>`
+			html: `<p>Hi ${name},</p><p>Thank you for staying at ${property}. We hope you enjoyed your visit. Please reply and let us know how it went.</p>${signOff}`
 		}
 	}[kind];
 	let failureReason = 'send_failed';
 	try {
-		const { error } = await new Resend(apiKey).emails.send({ from, to: details.guestEmail, ...content });
+		const { error } = await new Resend(apiKey).emails.send({ from: fromHeader(from, settings), to: details.guestEmail, ...content });
 		if (error) {
 			console.error(`Failed to send ${kind} email:`, error);
 			failureReason = error.message;
@@ -249,19 +273,20 @@ export const sendStaffAlert = internalAction({
 		guestName: v.string(),
 		lastMessage: v.string()
 	},
-	handler: async (_ctx, args) => {
+	handler: async (ctx, args) => {
+		const settings = await loadSettings(ctx);
 		const siteUrl = process.env.SITE_URL?.replace(/\/+$/, '');
 		const link = siteUrl ? `${siteUrl}/admin/chats?session=${encodeURIComponent(args.sessionId)}` : undefined;
 		const apiKey = process.env.RESEND_API_KEY;
 		const from = process.env.EMAIL_FROM;
-		const owner = process.env.OWNER_NOTIFICATION_EMAIL;
+		const owner = ownerNotificationEmail(settings);
 		if (!link) console.warn('SITE_URL not configured, staff alert will not include an admin link');
 		if (!apiKey || !from || !owner) {
 			console.warn('RESEND_API_KEY, EMAIL_FROM, or OWNER_NOTIFICATION_EMAIL not configured, skipping staff alert email');
 		} else {
 			try {
 				const { error } = await new Resend(apiKey).emails.send({
-					from, to: owner,
+					from: fromHeader(from, settings), to: owner,
 					subject: `Guest needs help on ${args.channel}`,
 					html: `<p><strong>Channel:</strong> ${escapeHtml(args.channel)}</p><p><strong>Guest:</strong> ${escapeHtml(args.guestName)}</p><p><strong>Last message:</strong></p><p style="white-space: pre-wrap;">${escapeHtml(args.lastMessage)}</p>${link ? `<p><a href="${escapeHtml(link)}">Open this chat in admin</a></p>` : ''}`
 				});
