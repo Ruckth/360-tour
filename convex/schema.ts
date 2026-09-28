@@ -934,6 +934,7 @@ export default defineSchema({
 	})
 		.index('by_createdAt', ['createdAt'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
+		.index('by_status_and_normalizedQuestion', ['status', 'normalizedQuestion'])
 		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
 		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion'])
 		.index('by_resolvedAnswerId', ['resolvedAnswerId'])

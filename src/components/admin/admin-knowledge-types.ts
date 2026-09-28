@@ -1,10 +1,11 @@
 import type { Id } from "convex/_generated/dataModel";
+import type { SessionChannelFilter } from "@/components/admin/admin-chat-types";
 
 export type KnowledgeAnswerStatus = "draft" | "approved" | "archived";
 export type KnowledgeAnswerFilter = KnowledgeAnswerStatus | "all";
 export type UnknownQuestionStatus = "new" | "resolved" | "ignored";
 export type UnknownQuestionFilter = UnknownQuestionStatus | "all";
-export const KNOWLEDGE_VIEW_MODES = ["answers", "unknown", "suggestions"] as const;
+export const KNOWLEDGE_VIEW_MODES = ["answers", "unknown", "variants", "suggestions"] as const;
 export type KnowledgeViewMode = (typeof KNOWLEDGE_VIEW_MODES)[number];
 
 export type AdminKnowledgeQuestion = {
@@ -65,6 +66,25 @@ export type AdminUnknownQuestion = {
   resolvedAnswerTitle?: string;
   createdAt: number;
   updatedAt: number;
+};
+
+/** Identical unknown questions (same normalized text) shown as one row. */
+export type AdminUnknownGroup = {
+  normalizedQuestion: string;
+  count: number;
+  counts: Record<UnknownQuestionStatus, number>;
+  latestAt: number;
+  channels: Exclude<SessionChannelFilter, "all">[];
+  latest: AdminUnknownQuestion;
+  suggestion: { answerId: Id<"chatAnswers">; title: string; score: number } | null;
+};
+
+export type AdminPendingVariant = {
+  _id: Id<"chatQuestions">;
+  questionText: string;
+  createdAt: number;
+  answerId: Id<"chatAnswers">;
+  answerTitle: string;
 };
 
 export type CuratedSuggestionStatus = "active" | "archived";

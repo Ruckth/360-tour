@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
@@ -349,5 +349,272 @@ describe("curated suggestions", () => {
 
     const interactions = await t.run(async (ctx) => ctx.db.query("chatQuestionInteractions").collect());
     expect(interactions.map((interaction) => interaction.questionId)).toEqual([keptId]);
+  });
+});
+
+async function createChannelSession(t: ReturnType<typeof convexTest>, channel: "web" | "line") {
+  return await t.run(async (ctx) =>
+    ctx.db.insert("chatSessions", {
+      channel,
+      visitorId: `${channel}-${Math.random()}`,
+      currentPath: "/",
+      lastSeenAt: 1_700_000_000_000,
+      createdAt: 1_700_000_000_000,
+    }),
+  );
+}
+
+async function askUnknown(t: ReturnType<typeof convexTest>, channel: "web" | "line", userQuestion: string) {
+  const sessionId = await createChannelSession(t, channel);
+  return await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion });
+}
+
+describe("grouped unknown questions", () => {
+  it("groups identical questions with count, channels and a lexical best-match answer", async () => {
+    const { t, admin } = setup();
+    const petsId = await createAnswer(admin, { title: "Pets", questions: ["Are dogs allowed?"] });
+    await askUnknown(t, "web", "Can I bring my dog?");
+    await askUnknown(t, "line", "can i bring my DOG");
+    await askUnknown(t, "web", "Is there a gym?");
+
+    await expect(t.query(api.chatKnowledge.adminListUnknownGroups, {})).rejects.toThrow();
+    const { groups, truncated } = await admin.query(api.chatKnowledge.adminListUnknownGroups, { status: "new" });
+    expect(truncated).toBe(false);
+    expect(groups).toHaveLength(2);
+    const [dog, gym] = groups;
+    expect(dog.normalizedQuestion).toBe("can i bring my dog");
+    expect(dog.count).toBe(2);
+    expect(dog.counts).toEqual({ new: 2, resolved: 0, ignored: 0 });
+    expect([...dog.channels].sort()).toEqual(["line", "web"]);
+    expect(dog.suggestion).toMatchObject({ answerId: petsId, title: "Pets" });
+    expect(gym.count).toBe(1);
+    expect(gym.suggestion).toBeNull();
+  });
+
+  it("ignores, undoes and links whole groups in one call", async () => {
+    const { t, admin } = setup();
+    const petsId = await createAnswer(admin, { title: "Pets" });
+    const dogIds = [
+      await askUnknown(t, "web", "Can I bring my dog?"),
+      await askUnknown(t, "line", "Can I bring my dog"),
+    ];
+    const gymId = await askUnknown(t, "web", "Is there a gym?");
+    const keys = ["can i bring my dog", "is there a gym"];
+
+    await expect(
+      t.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, { normalizedQuestions: keys }),
+    ).rejects.toThrow();
+    const ignored = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, { normalizedQuestions: keys });
+    expect(ignored.ignored).toBe(3);
+    expect(new Set(ignored.unknownQuestionIds)).toEqual(new Set([...dogIds, gymId]));
+
+    // Undo: reopen exactly the rows that were ignored.
+    expect(
+      await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, {
+        unknownQuestionIds: ignored.unknownQuestionIds,
+      }),
+    ).toEqual({ reopened: 3 });
+
+    const linked = await admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, {
+      normalizedQuestions: keys,
+      answerId: petsId,
+    });
+    expect(linked.linked).toBe(3);
+    const rows = await t.run(async (ctx) => Promise.all([...dogIds, gymId].map((id) => ctx.db.get(id))));
+    expect(rows.every((row) => row?.status === "resolved" && row.resolvedAnswerId === petsId)).toBe(true);
+    const questions = await t.run(async (ctx) =>
+      ctx.db
+        .query("chatQuestions")
+        .withIndex("by_answerId", (q) => q.eq("answerId", petsId))
+        .collect(),
+    );
+    // The primary question plus one approved question per group, not per row.
+    expect(questions.map((question) => question.normalizedQuestion).sort()).toEqual([
+      "can i bring my dog",
+      "is there a gym",
+      "what about pets",
+    ]);
+
+    // Linking again finds no "new" rows; reopening by group brings its rows back.
+    const relinked = await admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, {
+      normalizedQuestions: keys,
+      answerId: petsId,
+    });
+    expect(relinked.linked).toBe(0);
+    expect(
+      await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, { normalizedQuestions: ["can i bring my dog"] }),
+    ).toEqual({ reopened: 2 });
+
+    await archive(admin, petsId, "Pets");
+    await expect(
+      admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, { normalizedQuestions: keys, answerId: petsId }),
+    ).rejects.toThrow("archived");
+  });
+
+  it("resolves identical new questions when an answer is created from one of them", async () => {
+    const { t, admin } = setup();
+    const firstId = await askUnknown(t, "web", "Do you have a sauna?");
+    const secondId = await askUnknown(t, "line", "do you have a sauna");
+    const otherId = await askUnknown(t, "web", "Is there a spa?");
+
+    const created = await admin.action(api.chatKnowledge.adminCreateAnswerFromUnknown, {
+      unknownQuestionId: firstId,
+      title: "Sauna",
+      answer: "Yes, there is a sauna.",
+      generateSimilar: false,
+    });
+
+    const [first, second, other] = await t.run(async (ctx) =>
+      Promise.all([ctx.db.get(firstId), ctx.db.get(secondId), ctx.db.get(otherId)]),
+    );
+    expect(first?.resolvedAnswerId).toBe(created.answerId);
+    expect(second?.status).toBe("resolved");
+    expect(second?.resolvedAnswerId).toBe(created.answerId);
+    expect(other?.status).toBe("new");
+  });
+});
+
+describe("pending variants queue", () => {
+  it("lists suggested variants across live answers and approves or rejects them in bulk", async () => {
+    const { t, admin } = setup();
+    const poolId = await createAnswer(admin, { title: "Pool" });
+    const wifiId = await createAnswer(admin, { title: "Wifi" });
+    const oldId = await createAnswer(admin, { title: "Old" });
+    const suggestions: Array<[Id<"chatAnswers">, string[]]> = [
+      [poolId, ["Is the pool heated?", "When does the pool open?"]],
+      [wifiId, ["Is wifi free?"]],
+      [oldId, ["Old question?"]],
+    ];
+    for (const [answerId, questions] of suggestions) {
+      await t.mutation(internal.chatKnowledge.storeSuggestedQuestions, { answerId, questions, adminEmail });
+    }
+    await archive(admin, oldId, "Old");
+
+    await expect(t.query(api.chatKnowledge.adminListPendingVariants, {})).rejects.toThrow();
+    const { variants } = await admin.query(api.chatKnowledge.adminListPendingVariants, {});
+    expect(variants.map((variant) => variant.answerTitle).sort()).toEqual(["Pool", "Pool", "Wifi"]);
+
+    const [first, ...rest] = variants;
+    expect(await admin.mutation(api.chatKnowledge.adminApproveQuestions, { questionIds: [first._id] })).toEqual({
+      approved: 1,
+    });
+    expect(
+      await admin.mutation(api.chatKnowledge.adminRejectQuestions, { questionIds: rest.map((variant) => variant._id) }),
+    ).toEqual({ rejected: 2 });
+    expect((await admin.query(api.chatKnowledge.adminListPendingVariants, {})).variants).toEqual([]);
+
+    // Undo puts them back in the queue.
+    const restIds = rest.map((variant) => variant._id);
+    expect(await admin.mutation(api.chatKnowledge.adminUnreviewQuestions, { questionIds: restIds })).toEqual({ reset: 2 });
+    expect((await admin.query(api.chatKnowledge.adminListPendingVariants, {})).variants).toHaveLength(2);
+    expect(await t.run(async (ctx) => ctx.db.get(first._id))).toMatchObject({ status: "approved", isPrimary: false });
+  });
+});
+
+describe("bulk answer and suggestion status", () => {
+  it("archives answers in bulk and undoes back to each previous status", async () => {
+    const { t, admin } = setup();
+    const approvedId = await createAnswer(admin, { title: "Parking" });
+    const draftId = await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+      title: "Draft",
+      answer: "Draft answer",
+      status: "draft",
+      primaryQuestion: "Draft?",
+    });
+
+    await expect(
+      t.mutation(api.chatKnowledge.adminSetAnswersStatus, { answerIds: [approvedId], status: "archived" }),
+    ).rejects.toThrow();
+    const { changed } = await admin.mutation(api.chatKnowledge.adminSetAnswersStatus, {
+      answerIds: [approvedId, draftId],
+      status: "archived",
+    });
+    expect(changed).toEqual([
+      { answerId: approvedId, previousStatus: "approved" },
+      { answerId: draftId, previousStatus: "draft" },
+    ]);
+    for (const { answerId, previousStatus } of changed) {
+      await admin.mutation(api.chatKnowledge.adminSetAnswersStatus, { answerIds: [answerId], status: previousStatus });
+    }
+    const [approved, draft] = await t.run(async (ctx) => Promise.all([ctx.db.get(approvedId), ctx.db.get(draftId)]));
+    expect(approved?.status).toBe("approved");
+    expect(approved?.archivedAt).toBeUndefined();
+    expect(draft?.status).toBe("draft");
+  });
+
+  it("archives and restores curated suggestions in bulk", async () => {
+    const { t, admin } = setup();
+    const ids = [
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, { question: "Is breakfast included?", topic: "amenities" }),
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, { question: "Can I see the tour?", topic: "tour" }),
+    ];
+    await expect(
+      t.mutation(api.chatSuggestions.adminSetCuratedStatus, { questionIds: ids, status: "archived" }),
+    ).rejects.toThrow();
+    const archived = await admin.mutation(api.chatSuggestions.adminSetCuratedStatus, {
+      questionIds: ids,
+      status: "archived",
+    });
+    expect(archived.changedIds).toEqual(ids);
+    expect(await admin.query(api.chatSuggestions.adminListCurated, { status: "active" })).toEqual([]);
+    await admin.mutation(api.chatSuggestions.adminSetCuratedStatus, { questionIds: ids, status: "active" });
+    expect(await admin.query(api.chatSuggestions.adminListCurated, { status: "archived" })).toEqual([]);
+  });
+
+  it("translates only missing languages in bounded batches", async () => {
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    const allLocales = ["th", "zh-CN", "ja", "ko", "fr", "de", "es", "ru", "it", "hi"];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const prompt = String(JSON.parse(String(init.body)).messages[1].content);
+      const locales = prompt.match(/Target locales: (.*)/)?.[1].split(", ") ?? [];
+      const translate = (prefix: string) => Object.fromEntries(locales.map((locale) => [locale, `${prefix} ${locale}`]));
+      const content = JSON.stringify({ questionTranslations: translate("Q"), answerTranslations: translate("A") });
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const { t, admin } = setup();
+      const handWritten = { th: "มีอาหารเช้าไหม" };
+      const staticId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Is breakfast included?",
+        answer: "Yes.",
+        answerMode: "static",
+        translations: handWritten,
+        topic: "amenities",
+      });
+      const liveId = await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Is it free?",
+        topic: "availability",
+      });
+      await admin.mutation(api.chatSuggestions.adminCreateCurated, {
+        question: "Complete?",
+        topic: "tour",
+        translations: Object.fromEntries(allLocales.map((locale) => [locale, `done ${locale}`])),
+      });
+
+      await expect(t.action(api.chatSuggestions.adminTranslateMissingCurated, {})).rejects.toThrow();
+      const first = await admin.action(api.chatSuggestions.adminTranslateMissingCurated, { batchSize: 1 });
+      expect(first).toMatchObject({ translated: 1, failed: 0, remaining: 1 });
+      const second = await admin.action(api.chatSuggestions.adminTranslateMissingCurated, {
+        batchSize: 1,
+        skipIds: first.processedIds,
+      });
+      expect(second).toMatchObject({ translated: 1, remaining: 0 });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      const [staticRow, liveRow] = await t.run(async (ctx) => Promise.all([ctx.db.get(staticId), ctx.db.get(liveId)]));
+      expect(staticRow?.translations?.th).toBe(handWritten.th);
+      expect(staticRow?.translations?.de).toBe("Q de");
+      expect(staticRow?.answerTranslations?.th).toBe("A th");
+      expect(Object.keys(liveRow?.translations ?? {})).toHaveLength(allLocales.length + 1);
+      expect(liveRow?.answerTranslations).toBeUndefined();
+      expect((await admin.action(api.chatSuggestions.adminTranslateMissingCurated, {})).remaining).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

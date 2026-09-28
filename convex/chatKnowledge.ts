@@ -2,6 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	action,
+	internalAction,
 	internalMutation,
 	internalQuery,
 	mutation,
@@ -14,6 +15,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { callAI, type ChatMessage } from './lib/chatLlm';
 import { requireAdmin } from './lib/adminAuth';
 import { normalizeSuggestedQuestion } from './lib/chatSuggestions';
+import { createAnswerMatcher, groupUnknownQuestions } from './lib/knowledgeGrouping';
 
 const answerStatusValidator = v.union(
 	v.literal('draft'),
@@ -1137,13 +1139,17 @@ export const createAnswerFromUnknown = internalMutation({
 		});
 		await syncAnswerPropertyScopes(ctx, answerId, propertyScopes, args.adminEmail);
 		await syncAnswerTopics(ctx, answerId, propertyId, args.topicNames);
-		await ctx.db.patch(args.unknownQuestionId, {
-			status: 'resolved',
-			resolvedAnswerId: answerId,
-			resolvedQuestionId: questionId,
-			resolvedAt: now,
-			updatedAt: now
-		});
+		// Identical questions from other guests are answered by the same answer.
+		const identical = await newUnknownsByNormalizedQuestion(ctx, unknown.normalizedQuestion);
+		for (const row of [unknown, ...identical.filter((row) => row._id !== unknown._id)]) {
+			await ctx.db.patch(row._id, {
+				status: 'resolved',
+				resolvedAnswerId: answerId,
+				resolvedQuestionId: questionId,
+				resolvedAt: now,
+				updatedAt: now
+			});
+		}
 		return { answerId, questionId };
 	}
 });
@@ -1532,5 +1538,378 @@ export const adminRejectQuestion = mutation({
 			updatedByAdminEmail: admin.email
 		});
 		return { rejected: true };
+	}
+});
+
+// ---------------------------------------------------------------------------
+// Bulk review: grouped unknown questions, pending variant queue, answer status.
+// ---------------------------------------------------------------------------
+
+const UNKNOWN_GROUP_SCAN_LIMIT = 500;
+const BULK_GROUP_LIMIT = 100;
+const BULK_GROUP_ROW_LIMIT = 100;
+const BULK_ID_LIMIT = 200;
+const PENDING_VARIANT_LIMIT = 200;
+
+type UnknownStatus = 'new' | 'resolved' | 'ignored';
+
+function bulkIds<T>(ids: T[], limit = BULK_ID_LIMIT) {
+	const unique = [...new Set(ids)];
+	if (unique.length > limit) throw new Error(`Select ${limit} or fewer at a time`);
+	return unique;
+}
+
+function groupKeys(normalizedQuestions: string[]) {
+	return bulkIds(normalizedQuestions.map((key) => key.trim()).filter(Boolean), BULK_GROUP_LIMIT);
+}
+
+async function unknownsInGroup(ctx: QueryCtx, status: UnknownStatus, normalizedQuestion: string) {
+	return await ctx.db
+		.query('chatUnknownQuestions')
+		.withIndex('by_status_and_normalizedQuestion', (q) =>
+			q.eq('status', status).eq('normalizedQuestion', normalizedQuestion)
+		)
+		.take(BULK_GROUP_ROW_LIMIT);
+}
+
+async function newUnknownsByNormalizedQuestion(ctx: QueryCtx, normalizedQuestion: string) {
+	return await unknownsInGroup(ctx, 'new', normalizedQuestion);
+}
+
+/** Approved answers plus their approved questions, for the lexical "best match" suggestion. */
+async function answerMatchCandidates(ctx: QueryCtx) {
+	const [answers, questions] = await Promise.all([
+		ctx.db
+			.query('chatAnswers')
+			.withIndex('by_status_and_updatedAt', (q) => q.eq('status', 'approved'))
+			.order('desc')
+			.take(300),
+		ctx.db
+			.query('chatQuestions')
+			.withIndex('by_status_and_createdAt', (q) => q.eq('status', 'approved'))
+			.order('desc')
+			.take(1000)
+	]);
+	const titles = new Map(answers.map((answer) => [answer._id, answer.title]));
+	return [
+		...answers.map((answer) => ({ answerId: answer._id, title: answer.title, text: answer.title })),
+		...questions.flatMap((question) => {
+			const title = titles.get(question.answerId);
+			return title ? [{ answerId: question.answerId, title, text: question.questionText }] : [];
+		})
+	];
+}
+
+/**
+ * Unknown questions grouped by identical (normalized) text, most-asked first. Scans the newest
+ * rows for the filter; `truncated` says older rows were left out.
+ */
+export const adminListUnknownGroups = query({
+	args: {
+		status: v.optional(unknownQuestionStatusValidator),
+		search: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const status = args.status ?? 'new';
+		const search = args.search?.trim();
+		const rows = search
+			? await ctx.db
+					.query('chatUnknownQuestions')
+					.withSearchIndex('search_userQuestion', (q) =>
+						status === 'all'
+							? q.search('userQuestion', search)
+							: q.search('userQuestion', search).eq('status', status)
+					)
+					.take(UNKNOWN_GROUP_SCAN_LIMIT)
+			: status === 'all'
+				? await ctx.db
+						.query('chatUnknownQuestions')
+						.withIndex('by_createdAt')
+						.order('desc')
+						.take(UNKNOWN_GROUP_SCAN_LIMIT)
+				: await ctx.db
+						.query('chatUnknownQuestions')
+						.withIndex('by_status_and_createdAt', (q) => q.eq('status', status))
+						.order('desc')
+						.take(UNKNOWN_GROUP_SCAN_LIMIT);
+
+		const matchAnswer = createAnswerMatcher(await answerMatchCandidates(ctx));
+		const channels = new Map<Id<'chatSessions'>, Promise<string | undefined>>();
+		const channelFor = (sessionId: Id<'chatSessions'>) => {
+			let channel = channels.get(sessionId);
+			if (!channel) {
+				channel = ctx.db.get(sessionId).then((session) => session?.channel);
+				channels.set(sessionId, channel);
+			}
+			return channel;
+		};
+
+		const groups = await Promise.all(
+			groupUnknownQuestions(rows).map(async (group) => {
+				const latest = group.latest;
+				const [groupChannels, property, resolvedAnswer] = await Promise.all([
+					Promise.all(group.rows.map((row) => (row.sessionId ? channelFor(row.sessionId) : undefined))),
+					latest.propertyId ? ctx.db.get(latest.propertyId) : Promise.resolve(null),
+					latest.resolvedAnswerId ? ctx.db.get(latest.resolvedAnswerId) : Promise.resolve(null)
+				]);
+				const match = group.counts.new > 0 ? matchAnswer(latest.userQuestion) : null;
+				return {
+					normalizedQuestion: group.normalizedQuestion,
+					count: group.count,
+					counts: group.counts,
+					latestAt: group.latestAt,
+					channels: [...new Set(groupChannels.filter((channel): channel is string => Boolean(channel)))],
+					latest: {
+						...latest,
+						propertyName: property?.name,
+						propertySlug: latest.propertySlug ?? property?.slug,
+						resolvedAnswerTitle: resolvedAnswer?.title
+					},
+					suggestion: match
+						? {
+								answerId: match.candidate.answerId,
+								title: match.candidate.title,
+								score: Math.round(match.score * 100)
+							}
+						: null
+				};
+			})
+		);
+		return { groups, truncated: rows.length === UNKNOWN_GROUP_SCAN_LIMIT };
+	}
+});
+
+/** Ignores every "new" question in the given groups. Returns the ids so the UI can undo. */
+export const adminIgnoreUnknownGroups = mutation({
+	args: { normalizedQuestions: v.array(v.string()) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const now = Date.now();
+		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
+		for (const key of groupKeys(args.normalizedQuestions)) {
+			for (const row of await unknownsInGroup(ctx, 'new', key)) {
+				await ctx.db.patch(row._id, { status: 'ignored', ignoredAt: now, updatedAt: now });
+				unknownQuestionIds.push(row._id);
+			}
+		}
+		return { ignored: unknownQuestionIds.length, unknownQuestionIds };
+	}
+});
+
+/** Reopens resolved/ignored questions, either whole groups or specific rows (used by Undo). */
+export const adminReopenUnknownGroups = mutation({
+	args: {
+		normalizedQuestions: v.optional(v.array(v.string())),
+		unknownQuestionIds: v.optional(v.array(v.id('chatUnknownQuestions')))
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const rows: Doc<'chatUnknownQuestions'>[] = [];
+		for (const id of bulkIds(args.unknownQuestionIds ?? [], BULK_GROUP_LIMIT * BULK_GROUP_ROW_LIMIT)) {
+			const row = await ctx.db.get(id);
+			if (row) rows.push(row);
+		}
+		for (const key of groupKeys(args.normalizedQuestions ?? [])) {
+			rows.push(...(await unknownsInGroup(ctx, 'resolved', key)), ...(await unknownsInGroup(ctx, 'ignored', key)));
+		}
+		const reopenedIds = new Set<Id<'chatUnknownQuestions'>>();
+		for (const row of rows) {
+			if (row.status === 'new' || reopenedIds.has(row._id)) continue;
+			await reopenUnknownQuestion(ctx, row._id);
+			reopenedIds.add(row._id);
+		}
+		return { reopened: reopenedIds.size };
+	}
+});
+
+/**
+ * Answers every "new" question in the given groups with one existing answer. Each group's text
+ * becomes an approved question on the answer so the chatbot matches it next time.
+ */
+export const adminLinkUnknownGroups = mutation({
+	args: {
+		normalizedQuestions: v.array(v.string()),
+		answerId: v.id('chatAnswers'),
+		generateSimilar: v.optional(v.boolean())
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const answer = await ctx.db.get(args.answerId);
+		if (!answer) throw new Error('Answer not found');
+		if (answer.status === 'archived') throw new Error('Cannot link to an archived answer');
+
+		const now = Date.now();
+		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
+		for (const key of groupKeys(args.normalizedQuestions)) {
+			const rows = await unknownsInGroup(ctx, 'new', key);
+			if (rows.length === 0) continue;
+			const questionText = rows[0].userQuestion.slice(0, 240);
+			const normalizedQuestion = normalizeQuestion(questionText);
+			const existing = await ctx.db
+				.query('chatQuestions')
+				.withIndex('by_answerId_and_normalizedQuestion', (q) =>
+					q.eq('answerId', args.answerId).eq('normalizedQuestion', normalizedQuestion)
+				)
+				.take(20);
+			const reusable = existing.find((question) => question.status === 'approved') ?? existing[0];
+			if (reusable && reusable.status !== 'approved') {
+				await ctx.db.patch(reusable._id, {
+					status: 'approved',
+					approvedAt: now,
+					rejectedAt: undefined,
+					updatedAt: now,
+					updatedByAdminEmail: admin.email
+				});
+			}
+			const questionId =
+				reusable?._id ??
+				(await insertApprovedQuestion(ctx, {
+					answerId: args.answerId,
+					propertyId: answer.propertyId,
+					questionText,
+					isPrimary: false,
+					isAiTrigger: false,
+					adminEmail: admin.email
+				}));
+			for (const row of rows) {
+				await ctx.db.patch(row._id, {
+					status: 'resolved',
+					resolvedAnswerId: args.answerId,
+					resolvedQuestionId: questionId,
+					resolvedAt: now,
+					updatedAt: now
+				});
+				unknownQuestionIds.push(row._id);
+			}
+		}
+		if (args.generateSimilar && unknownQuestionIds.length > 0) {
+			await ctx.scheduler.runAfter(0, internal.chatKnowledge.generateSuggestedVariants, {
+				answerId: args.answerId,
+				adminEmail: admin.email
+			});
+		}
+		return { linked: unknownQuestionIds.length, unknownQuestionIds };
+	}
+});
+
+/** Background "suggest more ways to ask" after linking; reviewed in the pending variants queue. */
+export const generateSuggestedVariants = internalAction({
+	args: { answerId: v.id('chatAnswers'), adminEmail: v.string() },
+	handler: async (ctx, args) => {
+		const context: AnswerGenerationContext | null = await ctx.runQuery(
+			internal.chatKnowledge.getAnswerGenerationContext,
+			{ answerId: args.answerId }
+		);
+		if (!context) return null;
+		const questions = await generateSimilarQuestionTexts(context, context.primaryQuestion?.questionText);
+		await ctx.runMutation(internal.chatKnowledge.storeSuggestedQuestions, {
+			answerId: args.answerId,
+			questions,
+			adminEmail: args.adminEmail
+		});
+		return null;
+	}
+});
+
+/** Every AI-suggested question variant still waiting for review, across all live answers. */
+export const adminListPendingVariants = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+		const suggested = await ctx.db
+			.query('chatQuestions')
+			.withIndex('by_status_and_createdAt', (q) => q.eq('status', 'suggested'))
+			.order('desc')
+			.take(PENDING_VARIANT_LIMIT);
+		const answers = new Map<Id<'chatAnswers'>, Doc<'chatAnswers'> | null>();
+		const variants = [];
+		for (const question of suggested) {
+			if (!answers.has(question.answerId)) answers.set(question.answerId, await ctx.db.get(question.answerId));
+			const answer = answers.get(question.answerId);
+			if (!answer || answer.status === 'archived') continue;
+			variants.push({
+				_id: question._id,
+				questionText: question.questionText,
+				createdAt: question.createdAt,
+				answerId: answer._id,
+				answerTitle: answer.title
+			});
+		}
+		return { variants, truncated: suggested.length === PENDING_VARIANT_LIMIT };
+	}
+});
+
+async function setQuestionsStatus(
+	ctx: MutationCtx,
+	questionIds: Id<'chatQuestions'>[],
+	status: Doc<'chatQuestions'>['status'],
+	adminEmail: string
+) {
+	const now = Date.now();
+	let changed = 0;
+	for (const questionId of bulkIds(questionIds)) {
+		const question = await ctx.db.get(questionId);
+		// The primary question is what the answer is "for"; it is never reviewed in bulk.
+		if (!question || question.status === status || question.isPrimary) continue;
+		await ctx.db.patch(questionId, {
+			status,
+			isAiTrigger: false,
+			approvedAt: status === 'approved' ? now : undefined,
+			rejectedAt: status === 'rejected' ? now : undefined,
+			updatedAt: now,
+			updatedByAdminEmail: adminEmail
+		});
+		changed++;
+	}
+	return changed;
+}
+
+export const adminApproveQuestions = mutation({
+	args: { questionIds: v.array(v.id('chatQuestions')) },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		return { approved: await setQuestionsStatus(ctx, args.questionIds, 'approved', admin.email) };
+	}
+});
+
+export const adminRejectQuestions = mutation({
+	args: { questionIds: v.array(v.id('chatQuestions')) },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		return { rejected: await setQuestionsStatus(ctx, args.questionIds, 'rejected', admin.email) };
+	}
+});
+
+/** Puts reviewed variants back in the pending queue (Undo for bulk approve/reject). */
+export const adminUnreviewQuestions = mutation({
+	args: { questionIds: v.array(v.id('chatQuestions')) },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		return { reset: await setQuestionsStatus(ctx, args.questionIds, 'suggested', admin.email) };
+	}
+});
+
+/** Archive or restore many answers. Returns the previous statuses so the UI can undo. */
+export const adminSetAnswersStatus = mutation({
+	args: { answerIds: v.array(v.id('chatAnswers')), status: answerStatusValidator },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const now = Date.now();
+		const changed: { answerId: Id<'chatAnswers'>; previousStatus: AnswerStatus }[] = [];
+		for (const answerId of bulkIds(args.answerIds)) {
+			const answer = await ctx.db.get(answerId);
+			if (!answer || answer.status === args.status) continue;
+			const archived = args.status === 'archived';
+			await ctx.db.patch(answerId, {
+				status: args.status,
+				archivedAt: archived ? now : undefined,
+				archivedByAdminEmail: archived ? admin.email : undefined,
+				updatedAt: now,
+				updatedByAdminEmail: admin.email
+			});
+			changed.push({ answerId, previousStatus: answer.status });
+		}
+		return { changed };
 	}
 });

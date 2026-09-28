@@ -490,6 +490,8 @@ export function AdminSessionDetail({
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 event.currentTarget.form?.requestSubmit();
+              } else if (event.key === "Escape") {
+                event.currentTarget.blur();
               }
             }}
             maxLength={1000}

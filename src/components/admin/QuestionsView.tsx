@@ -1,12 +1,10 @@
 "use client";
 
 import { api } from "convex/_generated/api";
-import type { Id } from "convex/_generated/dataModel";
 import { useAction, useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { Edit3, HelpCircle, Loader2, MessageSquare, Plus, RotateCcw, Search, Star, Trash2, X } from "lucide-react";
-import Link from "next/link";
+import { Archive, Edit3, HelpCircle, ListChecks, Loader2, Plus, RotateCcw, Search, Star, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,18 +12,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AnswerFormDialog, type AnswerFormTarget } from "@/components/admin/AnswerFormDialog";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { PendingVariantsPanel } from "@/components/admin/PendingVariantsPanel";
 import { SuggestionsPanel } from "@/components/admin/SuggestionsPanel";
-import { formatDateTime, truncate } from "@/components/admin/admin-chat-format";
+import { UnknownQuestionsPanel } from "@/components/admin/UnknownQuestionsPanel";
+import {
+  BulkActionBar,
+  SelectCheckbox,
+  pluralize,
+  useDebounced,
+  useSelection,
+  useUndoNotice,
+} from "@/components/admin/admin-bulk";
 import {
   KNOWLEDGE_VIEW_MODES,
   type AdminKnowledgeAnswer,
   type AdminKnowledgePropertyScope,
   type AdminKnowledgeQuestion,
-  type AdminUnknownQuestion,
+  type AdminPendingVariant,
   type KnowledgeAnswerFilter,
   type KnowledgeAnswerStatus,
   type KnowledgeViewMode,
-  type UnknownQuestionFilter,
 } from "@/components/admin/admin-knowledge-types";
 import { cn } from "@/lib/utils";
 
@@ -39,27 +45,11 @@ function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function useDebounced<T>(value: T, delay = 250) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timeout);
-  }, [value, delay]);
-  return debounced;
-}
-
 function answersEmptyText(status: KnowledgeAnswerFilter, search: string) {
   if (search) return `No answers match "${search}".`;
   if (status === "all") return "No answers yet. Add one so the chatbot can reply on its own.";
   if (status === "approved") return "No approved answers yet. Add one so the chatbot can reply on its own.";
   return `No ${status} answers.`;
-}
-
-function unknownEmptyText(status: UnknownQuestionFilter, search: string) {
-  if (search) return `No unknown questions match "${search}".`;
-  if (status === "new") return "No new unknown questions. The chatbot answered everything it was asked.";
-  if (status === "all") return "No unknown questions yet.";
-  return `No ${status} unknown questions.`;
 }
 
 function SearchBox({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
@@ -92,15 +82,11 @@ export function QuestionsView() {
     ? (tab as KnowledgeViewMode)
     : "answers";
   const [answerStatus, setAnswerStatus] = useState<KnowledgeAnswerFilter>("approved");
-  const [unknownStatus, setUnknownStatus] = useState<UnknownQuestionFilter>("new");
   const [answerSearchInput, setAnswerSearchInput] = useState("");
-  const [unknownSearchInput, setUnknownSearchInput] = useState("");
   const answerSearch = useDebounced(answerSearchInput.trim());
-  const unknownSearch = useDebounced(unknownSearchInput.trim());
   const [answerTarget, setAnswerTarget] = useState<AnswerFormTarget | null>(null);
   const [pendingAction, setPendingAction] = useState("");
   const [actionError, setActionError] = useState("");
-  const [linkAnswerIds, setLinkAnswerIds] = useState<Record<string, string>>({});
   const answers = usePaginatedQuery(
     api.chatKnowledge.adminListAnswers,
     mode === "answers"
@@ -111,12 +97,9 @@ export function QuestionsView() {
       : "skip",
     { initialNumItems: PAGE_SIZE },
   );
-  const unknownQuestions = usePaginatedQuery(
-    api.chatKnowledge.adminListUnknownQuestions,
-    mode === "unknown" ? { status: unknownStatus, search: unknownSearch || undefined } : "skip",
-    { initialNumItems: PAGE_SIZE },
-  );
-  const answerOptions = useQuery(api.chatKnowledge.adminListAnswerOptions, mode === "unknown" ? {} : "skip");
+  const pendingVariants = useQuery(api.chatKnowledge.adminListPendingVariants, {}) as
+    | { variants: AdminPendingVariant[]; truncated: boolean }
+    | undefined;
   const propertyScopes = useQuery(
     api.chatKnowledge.adminListPropertyScopes,
     mode === "answers" || answerTarget !== null ? {} : "skip",
@@ -125,15 +108,15 @@ export function QuestionsView() {
   const rejectQuestion = useMutation(api.chatKnowledge.adminRejectQuestion);
   const deleteQuestion = useMutation(api.chatKnowledge.adminDeleteQuestion);
   const deleteAnswer = useMutation(api.chatKnowledge.adminDeleteAnswer);
-  const ignoreUnknown = useMutation(api.chatKnowledge.adminIgnoreUnknown);
-  const reopenUnknown = useMutation(api.chatKnowledge.adminReopenUnknown);
-  const resolveUnknownWithAnswer = useAction(api.chatKnowledge.adminResolveUnknownWithAnswer);
+  const setAnswersStatus = useMutation(api.chatKnowledge.adminSetAnswersStatus);
   const generateSimilarQuestions = useAction(api.chatKnowledge.adminGenerateSimilarQuestions);
   const answerRows = answers.results as AdminKnowledgeAnswer[];
-  const unknownRows = unknownQuestions.results as AdminUnknownQuestion[];
-  const linkableAnswers = answerOptions ?? [];
-  const linkableAnswersLoading = mode === "unknown" && answerOptions === undefined;
-  const hasLinkableAnswers = linkableAnswers.length > 0;
+  const answerSelection = useSelection(answerRows.map((answer) => answer._id));
+  const selectedAnswers = answerRows.filter((answer) => answerSelection.isSelected(answer._id));
+  const undo = useUndoNotice();
+  const variantCount = pendingVariants
+    ? `${pendingVariants.variants.length}${pendingVariants.truncated ? "+" : ""}`
+    : "";
 
   function setMode(next: KnowledgeViewMode) {
     const params = new URLSearchParams(searchParams.toString());
@@ -194,16 +177,22 @@ export function QuestionsView() {
     });
   }
 
-  async function linkUnknownQuestion(question: AdminUnknownQuestion) {
-    const answerId = linkAnswerIds[question._id];
-    if (!answerId) return;
-    await runAction(`link:${question._id}`, "Unable to link the answer.", () =>
-      resolveUnknownWithAnswer({
-        unknownQuestionId: question._id,
-        answerId: answerId as Id<"chatAnswers">,
-        generateSimilar: true,
-      }),
-    );
+  /** Archive or restore the selected answers; Undo puts each back to its previous status. */
+  async function setSelectedAnswersStatus(status: "archived" | "approved") {
+    const answerIds = selectedAnswers
+      .filter((answer) => (status === "archived" ? answer.status !== "archived" : answer.status === "archived"))
+      .map((answer) => answer._id);
+    if (answerIds.length === 0) return;
+    await runAction(`bulk:${status}`, "Unable to update the answers.", async () => {
+      const { changed } = await setAnswersStatus({ answerIds, status });
+      answerSelection.clear();
+      undo.show(`${status === "archived" ? "Archived" : "Restored"} ${pluralize(changed.length, "answer")}.`, async () => {
+        for (const previous of ["draft", "approved", "archived"] as const) {
+          const ids = changed.filter((row) => row.previousStatus === previous).map((row) => row.answerId);
+          if (ids.length) await setAnswersStatus({ answerIds: ids, status: previous });
+        }
+      });
+    });
   }
 
   function answerStatusTone(status: KnowledgeAnswerStatus) {
@@ -246,17 +235,18 @@ export function QuestionsView() {
           <ToggleGroup value={mode} onValueChange={setMode} aria-label="Knowledge view" className="mt-4 w-fit">
             {KNOWLEDGE_VIEW_MODES.map((option) => (
               <ToggleGroupItem key={option} value={option} className="px-4 capitalize">
-                {option}
+                {option === "variants" && variantCount ? `Variants (${variantCount})` : option}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
         </div>
 
-        {mode !== "suggestions" && actionError ? (
+        {mode === "answers" && actionError ? (
           <p role="alert" className="border-b border-border px-4 py-3 text-sm font-medium text-destructive">
             {actionError}
           </p>
         ) : null}
+        {mode === "answers" ? undo.element : null}
 
         {mode === "answers" ? (
           <div>
@@ -274,11 +264,47 @@ export function QuestionsView() {
                   ))}
                 </SelectContent>
               </Select>
+              {pendingVariants && pendingVariants.variants.length > 0 ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => setMode("variants")}>
+                  <ListChecks className="h-4 w-4" />
+                  Review variants ({variantCount})
+                </Button>
+              ) : null}
               <Button type="button" onClick={() => setAnswerTarget({})} size="sm">
                 <Plus className="h-4 w-4" />
                 Add answer
               </Button>
             </div>
+            <BulkActionBar
+              count={selectedAnswers.length}
+              noun={selectedAnswers.length === 1 ? "answer" : "answers"}
+              onClear={answerSelection.clear}
+            >
+              {selectedAnswers.some((answer) => answer.status !== "archived") ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pendingAction.startsWith("bulk:")}
+                  onClick={() => void setSelectedAnswersStatus("archived")}
+                >
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              ) : null}
+              {selectedAnswers.some((answer) => answer.status === "archived") ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pendingAction.startsWith("bulk:")}
+                  onClick={() => void setSelectedAnswersStatus("approved")}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Restore
+                </Button>
+              ) : null}
+            </BulkActionBar>
             {answers.status === "LoadingFirstPage" ? (
               <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -293,6 +319,14 @@ export function QuestionsView() {
                 <table className="w-full min-w-[1100px] text-left text-sm">
                   <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
                     <tr>
+                      <th className="w-10 px-4 py-3">
+                        <SelectCheckbox
+                          checked={answerSelection.allSelected}
+                          indeterminate={answerSelection.someSelected}
+                          onChange={answerSelection.toggleAll}
+                          label="Select all answers"
+                        />
+                      </th>
                       <th className="px-4 py-3 font-semibold">Answer</th>
                       <th className="px-4 py-3 font-semibold">Questions</th>
                       <th className="px-4 py-3 font-semibold">Suggested</th>
@@ -311,6 +345,13 @@ export function QuestionsView() {
                       const archived = answer.status === "archived";
                       return (
                         <tr key={answer._id} className="border-b border-border align-top last:border-b-0">
+                          <td className="px-4 py-3">
+                            <SelectCheckbox
+                              checked={answerSelection.isSelected(answer._id)}
+                              onChange={() => answerSelection.toggle(answer._id)}
+                              label={`Select "${answer.title}"`}
+                            />
+                          </td>
                           <td className="max-w-[360px] px-4 py-3">
                             <p className="font-medium text-foreground">{answer.title}</p>
                             <p className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">{answer.answer}</p>
@@ -391,7 +432,13 @@ export function QuestionsView() {
                                   </div>
                                 ))}
                                 {suggestedQuestions.length > 3 ? (
-                                  <p className="text-xs text-muted-foreground">+{suggestedQuestions.length - 3} more</p>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                                    onClick={() => setMode("variants")}
+                                  >
+                                    +{suggestedQuestions.length - 3} more in Variants
+                                  </button>
                                 ) : null}
                               </div>
                             ) : (
@@ -464,174 +511,9 @@ export function QuestionsView() {
           </div>
         ) : null}
 
-        {mode === "unknown" ? (
-          <div>
-            <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-              <SearchBox value={unknownSearchInput} onChange={setUnknownSearchInput} label="Search unknown questions" />
-              <Select value={unknownStatus} onValueChange={(value) => setUnknownStatus(value as UnknownQuestionFilter)}>
-                <SelectTrigger className="h-10 w-[10rem] rounded-lg" aria-label="Unknown status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(["new", "resolved", "ignored", "all"] satisfies UnknownQuestionFilter[]).map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {capitalize(status)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {unknownQuestions.status === "LoadingFirstPage" ? (
-              <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading unknown questions
-              </div>
-            ) : unknownRows.length === 0 ? (
-              <div className="p-5 text-sm leading-6 text-muted-foreground">
-                {unknownEmptyText(unknownStatus, unknownSearch)}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] text-left text-sm">
-                  <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Question</th>
-                      <th className="px-4 py-3 font-semibold">Context</th>
-                      <th className="px-4 py-3 font-semibold">Link Existing</th>
-                      <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {unknownRows.map((question) => (
-                      <tr key={question._id} className="border-b border-border last:border-b-0">
-                        <td className="max-w-[360px] px-4 py-3">
-                          <p className="font-medium text-foreground">{question.userQuestion}</p>
-                          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            {formatDateTime(question.createdAt)}
-                            {question.sessionId ? (
-                              <Link
-                                href={`/admin/chats?session=${question.sessionId}`}
-                                className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
-                              >
-                                <MessageSquare className="h-3.5 w-3.5" />
-                                Open chat
-                              </Link>
-                            ) : null}
-                          </p>
-                        </td>
-                        <td className="max-w-[280px] px-4 py-3 text-muted-foreground">
-                          <p>{question.propertyName ?? question.propertySlug ?? "General"}</p>
-                          <p className="mt-1 line-clamp-1 text-xs">
-                            {question.detectedTopic ?? "No topic"} · {truncate(question.pageUrl, 72) || "No page"}
-                          </p>
-                        </td>
-                        <td className="min-w-[260px] px-4 py-3">
-                          {question.status === "new" ? (
-                            <div className="flex gap-2">
-                              <Select
-                                value={linkAnswerIds[question._id] ?? ""}
-                                disabled={linkableAnswersLoading || !hasLinkableAnswers}
-                                onValueChange={(value) =>
-                                  setLinkAnswerIds((current) => ({ ...current, [question._id]: value }))
-                                }
-                              >
-                                <SelectTrigger className="h-9 min-w-[180px] rounded-lg" aria-label="Link answer">
-                                  <SelectValue
-                                    placeholder={
-                                      linkableAnswersLoading
-                                        ? "Loading answers"
-                                        : hasLinkableAnswers
-                                          ? "Select answer"
-                                          : "No approved answers"
-                                    }
-                                  />
-                                </SelectTrigger>
-                                {hasLinkableAnswers ? (
-                                  <SelectContent>
-                                    {linkableAnswers.map((answer) => (
-                                      <SelectItem key={answer._id} value={answer._id}>
-                                        {answer.title}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                ) : null}
-                              </Select>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                disabled={
-                                  !hasLinkableAnswers ||
-                                  !linkAnswerIds[question._id] ||
-                                  pendingAction === `link:${question._id}`
-                                }
-                                onClick={() => void linkUnknownQuestion(question)}
-                              >
-                                Link
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">
-                              {question.resolvedAnswerTitle ?? "No linked answer"}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={question.status === "new" ? "default" : "secondary"} className="rounded-full">
-                            {question.status}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          {question.status === "new" ? (
-                            <div className="flex flex-wrap gap-2">
-                              <Button type="button" size="sm" onClick={() => setAnswerTarget({ unknown: question })}>
-                                <Plus className="h-4 w-4" />
-                                Create answer
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={pendingAction === `ignore:${question._id}`}
-                                onClick={() =>
-                                  void runAction(`ignore:${question._id}`, "Unable to ignore the question.", () =>
-                                    ignoreUnknown({ unknownQuestionId: question._id }),
-                                  )
-                                }
-                              >
-                                Ignore
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={pendingAction === `reopen:${question._id}`}
-                                onClick={() =>
-                                  void runAction(`reopen:${question._id}`, "Unable to reopen the question.", () =>
-                                    reopenUnknown({ unknownQuestionId: question._id }),
-                                  )
-                                }
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                                Reopen
-                              </Button>
-                              <span className="text-xs text-muted-foreground">{formatDateTime(question.updatedAt)}</span>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <LoadMore status={unknownQuestions.status} onLoadMore={() => unknownQuestions.loadMore(PAGE_SIZE)} />
-          </div>
-        ) : null}
+        {mode === "unknown" ? <UnknownQuestionsPanel onCreateAnswer={(unknown) => setAnswerTarget({ unknown })} /> : null}
+
+        {mode === "variants" ? <PendingVariantsPanel variants={pendingVariants?.variants} /> : null}
 
         {mode === "suggestions" ? <SuggestionsPanel /> : null}
       </section>

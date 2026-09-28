@@ -41,7 +41,7 @@ describe("admin chat dashboard source", () => {
 
   it("does not show an empty link-answer select when no approved answers exist", () => {
     const dashboardSource = readFileSync(
-      new URL("../../src/components/admin/QuestionsView.tsx", import.meta.url),
+      new URL("../../src/components/admin/UnknownQuestionsPanel.tsx", import.meta.url),
       "utf8",
     );
     const selectSource = readFileSync(
@@ -50,8 +50,8 @@ describe("admin chat dashboard source", () => {
     );
 
     expect(dashboardSource).toContain("No approved answers");
-    expect(dashboardSource).toContain("disabled={linkableAnswersLoading || !hasLinkableAnswers}");
-    expect(dashboardSource).toContain("{hasLinkableAnswers ? (");
+    expect(dashboardSource).toContain("disabled={answersLoading || !hasAnswers}");
+    expect(dashboardSource).toContain("{hasAnswers ? <SelectContent>");
     expect(selectSource).not.toContain("h-[var(--radix-select-trigger-height)]");
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "convex/_generated/api";
+import type { Id } from "convex/_generated/dataModel";
 import { supportedSuggestionLocales } from "convex/lib/chatSuggestions";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Archive, Edit3, Languages, Loader2, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
@@ -20,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { BulkActionBar, SelectCheckbox, pluralize, useSelection, useUndoNotice } from "@/components/admin/admin-bulk";
 import {
   CURATED_DYNAMIC_INTENTS,
   CURATED_TOPICS,
@@ -58,6 +60,14 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+/** Languages still missing for the question or, for fixed replies, the answer (mirrors the server check). */
+function missingLocaleCount(row: AdminCuratedSuggestion) {
+  const needsAnswer = (row.answerMode ?? (row.answer ? "static" : "dynamic")) === "static" && Boolean(row.answer);
+  return TRANSLATION_LOCALES.filter(
+    (locale) => !row.translations?.[locale]?.trim() || (needsAnswer && !row.answerTranslations?.[locale]?.trim()),
+  ).length;
+}
+
 /** Curated chat chips: the question bank guests can tap, with fixed or live answers. */
 export function SuggestionsPanel() {
   const confirm = useConfirm();
@@ -75,6 +85,12 @@ export function SuggestionsPanel() {
   const archiveCurated = useMutation(api.chatSuggestions.adminArchiveCurated);
   const restoreCurated = useMutation(api.chatSuggestions.adminRestoreCurated);
   const deleteCurated = useMutation(api.chatSuggestions.adminDeleteArchivedCurated);
+  const setCuratedStatus = useMutation(api.chatSuggestions.adminSetCuratedStatus);
+  const translateMissing = useAction(api.chatSuggestions.adminTranslateMissingCurated);
+  const [translateProgress, setTranslateProgress] = useState<{ done: number; failed: number; left: number } | null>(
+    null,
+  );
+  const undo = useUndoNotice();
   const properties = (propertyScopes ?? []).filter((scope) => scope.source === "property");
   const propertyNames = new Map(properties.map((property) => [property.slug, property.label]));
   const query = search.trim().toLowerCase();
@@ -86,6 +102,50 @@ export function SuggestionsPanel() {
         .toLowerCase()
         .includes(query),
   );
+  const selection = useSelection(rows.map((row) => row._id));
+  const selectedRows = rows.filter((row) => selection.isSelected(row._id));
+  const missingCount = (suggestions ?? []).filter(
+    (row) => row.status === "active" && missingLocaleCount(row) > 0,
+  ).length;
+
+  async function setSelectedStatus(next: CuratedSuggestionStatus) {
+    const questionIds = selectedRows.filter((row) => row.status !== next).map((row) => row._id);
+    if (questionIds.length === 0) return;
+    await runAction(`bulk:${next}`, async () => {
+      const { changedIds } = await setCuratedStatus({ questionIds, status: next });
+      selection.clear();
+      undo.show(
+        `${next === "archived" ? "Archived" : "Restored"} ${pluralize(changedIds.length, "suggestion")}.`,
+        () => setCuratedStatus({ questionIds: changedIds, status: next === "archived" ? "active" : "archived" }),
+      );
+    });
+  }
+
+  /** Translates every active suggestion missing a language, a few per server call, with live progress. */
+  async function translateAllMissing() {
+    setActionError("");
+    const skipIds: Id<"curatedChatQuestions">[] = [];
+    const progress = { done: 0, failed: 0, left: missingCount };
+    setTranslateProgress({ ...progress });
+    try {
+      for (;;) {
+        const batch = await translateMissing({ skipIds });
+        skipIds.push(...batch.processedIds);
+        progress.done += batch.translated;
+        progress.failed += batch.failed;
+        progress.left = batch.remaining;
+        setTranslateProgress({ ...progress });
+        if (batch.processedIds.length === 0 || batch.remaining === 0) break;
+      }
+      undo.show(
+        `Translated ${pluralize(progress.done, "suggestion")}${progress.failed ? `, ${progress.failed} failed` : ""}.`,
+      );
+    } catch (error) {
+      setActionError(errorMessage(error, "Unable to translate suggestions."));
+    } finally {
+      setTranslateProgress(null);
+    }
+  }
 
   async function runAction(key: string, action: () => Promise<unknown>) {
     setPendingAction(key);
@@ -132,6 +192,19 @@ export function SuggestionsPanel() {
             <SelectItem value="all">All</SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={translateProgress !== null || (status !== "archived" && missingCount === 0)}
+          onClick={() => void translateAllMissing()}
+          title="Translate every active suggestion that is missing a language"
+        >
+          {translateProgress ? <Loader2 className="h-4 w-4 animate-spin" /> : <Languages className="h-4 w-4" />}
+          {translateProgress
+            ? `Translating… ${translateProgress.done} done, ${translateProgress.left} left`
+            : `Translate all missing${missingCount ? ` (${missingCount})` : ""}`}
+        </Button>
         <Button type="button" size="sm" onClick={() => setEditing("new")}>
           <Plus className="h-4 w-4" />
           Add suggestion
@@ -143,6 +216,37 @@ export function SuggestionsPanel() {
           {actionError}
         </p>
       ) : null}
+      {undo.element}
+      <BulkActionBar
+        count={selectedRows.length}
+        noun={selectedRows.length === 1 ? "suggestion" : "suggestions"}
+        onClear={selection.clear}
+      >
+        {selectedRows.some((row) => row.status === "active") ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pendingAction.startsWith("bulk:")}
+            onClick={() => void setSelectedStatus("archived")}
+          >
+            <Archive className="h-4 w-4" />
+            Archive
+          </Button>
+        ) : null}
+        {selectedRows.some((row) => row.status === "archived") ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pendingAction.startsWith("bulk:")}
+            onClick={() => void setSelectedStatus("active")}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Restore
+          </Button>
+        ) : null}
+      </BulkActionBar>
 
       {!suggestions ? (
         <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
@@ -164,6 +268,14 @@ export function SuggestionsPanel() {
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="border-b border-border bg-background/70 text-xs uppercase tracking-[0.14em] text-muted-foreground">
               <tr>
+                <th className="w-10 px-4 py-3">
+                  <SelectCheckbox
+                    checked={selection.allSelected}
+                    indeterminate={selection.someSelected}
+                    onChange={selection.toggleAll}
+                    label="Select all suggestions"
+                  />
+                </th>
                 <th className="px-4 py-3 font-semibold">Suggestion</th>
                 <th className="px-4 py-3 font-semibold">Reply</th>
                 <th className="px-4 py-3 font-semibold">Topic</th>
@@ -178,6 +290,13 @@ export function SuggestionsPanel() {
                 const translationCount = Object.keys(row.translations ?? {}).filter((locale) => locale !== "en").length;
                 return (
                   <tr key={row._id} className="border-b border-border last:border-b-0">
+                    <td className="px-4 py-3">
+                      <SelectCheckbox
+                        checked={selection.isSelected(row._id)}
+                        onChange={() => selection.toggle(row._id)}
+                        label={`Select "${row.question}"`}
+                      />
+                    </td>
                     <td className="max-w-[340px] px-4 py-3">
                       <p className="font-medium text-foreground">{row.question}</p>
                       <p className="mt-1 text-xs text-muted-foreground">

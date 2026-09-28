@@ -1,12 +1,12 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { ChevronLeft, ChevronRight, Filter, Hand, Loader2, Search, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, Hand, Keyboard, Loader2, Search, TriangleAlert } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -36,6 +36,7 @@ import type {
   SessionListResult,
   TranscriptPaginationResult,
 } from "@/components/admin/admin-chat-types";
+import { shortcutKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
 type SessionStatus = "needs_reply" | "active" | "all" | "inactive";
@@ -381,6 +382,53 @@ export function ChatsView() {
     return () => window.clearTimeout(timeout);
   }, [searchParams, trimmedSearchQuery, updateParams]);
 
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const selectedIndex = sessions.findIndex((session) => session._id === selectedSessionId);
+
+  function moveSelection(step: 1 | -1) {
+    if (sessions.length === 0) return;
+    const next = selectedIndex === -1 ? 0 : Math.min(Math.max(selectedIndex + step, 0), sessions.length - 1);
+    selectSession(sessions[next]._id);
+    document.querySelector(`[data-session-id="${sessions[next]._id}"]`)?.scrollIntoView({ block: "nearest" });
+  }
+
+  const onShortcut = useEffectEvent((key: string) => {
+    if (key === "?") setShortcutsOpen(true);
+    else if (key === "/") document.getElementById("admin-chat-search")?.focus();
+    else if (key === "j") moveSelection(1);
+    else if (key === "k") moveSelection(-1);
+    else if (key === "r") document.getElementById(isLargeViewport ? "admin-reply-desktop" : "admin-reply-mobile")?.focus();
+    else if (key === "e") {
+      const session = sessions[selectedIndex];
+      if (!session?.needsReply || !session.latestMessage) return;
+      // Settled chats leave the "Needs reply" list, so move on to the next one.
+      if (status === "needs_reply") moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
+      void settleGuestMessage(session._id, session.latestMessage._id);
+    }
+  });
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const key = shortcutKey(
+        {
+          key: event.key,
+          target: event.target instanceof HTMLElement ? event.target : null,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          defaultPrevented: event.defaultPrevented,
+        },
+        CHAT_SHORTCUT_KEYS,
+      );
+      // Open dialogs and popovers own the keyboard.
+      if (!key || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      event.preventDefault();
+      onShortcut(key);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <>
       <div className="grid min-h-0 w-full flex-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(300px,24rem)_minmax(0,1fr)]">
@@ -409,10 +457,16 @@ export function ChatsView() {
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  id="admin-chat-search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") event.currentTarget.blur();
+                  }}
                   className="h-10 rounded-lg pl-9"
                   placeholder="Search contacts or messages"
+                  aria-label="Search contacts or messages"
+                  aria-keyshortcuts="/"
                 />
               </div>
               <Popover>
@@ -541,6 +595,16 @@ export function ChatsView() {
                 ) : null}
               </div>
             ) : null}
+            <button
+              type="button"
+              onClick={() => setShortcutsOpen(true)}
+              className="mt-2 hidden items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground lg:inline-flex"
+            >
+              <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>
+                <Kbd>j</Kbd>/<Kbd>k</Kbd> move · <Kbd>r</Kbd> reply · <Kbd>e</Kbd> settle · <Kbd>?</Kbd> all shortcuts
+              </span>
+            </button>
           </div>
 
           <div className="min-h-0 overflow-y-auto">
@@ -572,6 +636,7 @@ export function ChatsView() {
               return (
                 <div
                   key={session._id}
+                  data-session-id={session._id}
                   className={cn(
                     "flex items-center border-b border-border transition hover:bg-muted/60",
                     selectedSessionId === session._id && "bg-gold/10",
@@ -688,6 +753,43 @@ export function ChatsView() {
         propertyScopes={propertyScopes ?? []}
         onClose={() => setAnswerTarget(null)}
       />
+      <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogTitle>Keyboard shortcuts</DialogTitle>
+          <DialogDescription>Work when the cursor is not in a text box.</DialogDescription>
+          <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
+            {CHAT_SHORTCUTS.map(([keys, label]) => (
+              <div key={label} className="contents">
+                <dt className="flex gap-1">
+                  {keys.map((key) => (
+                    <Kbd key={key}>{key}</Kbd>
+                  ))}
+                </dt>
+                <dd className="text-muted-foreground">{label}</dd>
+              </div>
+            ))}
+          </dl>
+        </DialogContent>
+      </Dialog>
     </>
+  );
+}
+
+const CHAT_SHORTCUT_KEYS = ["j", "k", "r", "e", "/", "?"] as const;
+const CHAT_SHORTCUTS: Array<[string[], string]> = [
+  [["j"], "Next chat"],
+  [["k"], "Previous chat"],
+  [["r"], "Reply to this chat"],
+  [["e"], "Mark the guest's message settled and move on"],
+  [["/"], "Search chats"],
+  [["?"], "Show these shortcuts"],
+  [["Esc"], "Leave a text box"],
+];
+
+function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="rounded border border-border bg-muted px-1.5 font-mono text-[0.7rem] leading-5 text-foreground">
+      {children}
+    </kbd>
   );
 }
