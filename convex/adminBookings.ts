@@ -429,7 +429,7 @@ export const listCleanupCandidates = query({
 				.take(CLEANUP_SCAN_LIMIT);
 		const rows = [...(await byStatus('pending')), ...(await byStatus('cancelled'))];
 		return rows
-			.filter((b) => deleteBlocker(b, now) === null && (b.source === 'admin' || b.createdAt < cutoff))
+			.filter((b) => deleteBlocker(b, now) === null && (b.source === 'admin' || b.createdAt <= cutoff))
 			.sort((a, b) => b.createdAt - a.createdAt)
 			.map(toAdminBooking);
 	}
