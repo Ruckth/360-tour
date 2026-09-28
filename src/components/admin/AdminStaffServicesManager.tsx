@@ -1,10 +1,12 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { Archive, Loader2, Pencil, PlusIcon } from "lucide-react";
+import { Archive, ArchiveRestore, Loader2, Pencil, PlusIcon, Trash2 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { Badge } from "@/components/ui/badge";
@@ -19,11 +21,24 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DAY_MS, WEEKDAYS, errorText, money, resortIsoDate, resortMidnight, useNow } from "@/lib/staff-bookings";
+import {
+  WEEKDAYS,
+  errorText,
+  formatTimeOff,
+  money,
+  resortIsoDate,
+  timeOffInput,
+  timeOffRange,
+  useNow,
+  type TimeOffInput,
+} from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
+type TimeOff = Doc<"staffTimeOff">;
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 function slugify(value: string) {
   const slug = value
@@ -54,6 +69,10 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const [showArchived, setShowArchived] = useState(false);
   const archiveStaff = useMutation(api.adminServices.archiveStaff);
   const archiveService = useMutation(api.adminServices.archiveService);
+  const updateStaff = useMutation(api.adminServices.updateStaff);
+  const updateService = useMutation(api.adminServices.updateService);
+  const convex = useConvex();
+  const router = useRouter();
   const [error, setError] = useState("");
   const confirm = useConfirm();
 
@@ -65,20 +84,53 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const rows = section === "staff" ? staff : services;
   const archivedCount = rows.filter((row) => row.status === "archived").length;
 
-  async function archive(action: () => Promise<unknown>, what: string) {
-    const confirmed = await confirm({
-      title: `Archive ${what}?`,
-      description: "It will no longer be bookable.",
-      confirmLabel: "Archive",
-      destructive: true,
-    });
-    if (!confirmed) return;
+  async function run(action: () => Promise<unknown>, fallback: string) {
     setError("");
     try {
       await action();
     } catch (err) {
-      setError(errorText(err, "Could not archive."));
+      setError(errorText(err, fallback));
     }
+  }
+
+  async function archivePerson(person: Staff) {
+    const upcoming = await convex.query(api.adminServices.countUpcomingAppointments, { staffId: person._id });
+    if (upcoming) {
+      if (
+        await confirm({
+          title: `${person.name} has ${plural(upcoming, "upcoming appointment")}`,
+          description: "Reassign or cancel them on the calendar before archiving.",
+          confirmLabel: "Open calendar",
+        })
+      ) {
+        router.push(adminStaffTabPath("calendar"));
+      }
+      return;
+    }
+    const theirServices = services!.filter((s) => s.status === "active" && s.staffIds.includes(person._id));
+    const orphaned = theirServices.filter((s) => s.staffIds.length === 1);
+    const confirmed = await confirm({
+      title: `Archive ${person.name}?`,
+      description: [
+        "They can no longer be booked. Past appointments stay on the calendar.",
+        theirServices.length ? `They'll be removed from ${plural(theirServices.length, "service")}.` : "",
+        orphaned.length ? `${orphaned.map((s) => s.name).join(", ")} will have no staff until you assign someone.` : "",
+      ].join(" "),
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (confirmed) await run(() => archiveStaff({ staffId: person._id }), "Could not archive.");
+  }
+
+  async function archiveOffering(service: Service) {
+    const upcoming = await convex.query(api.adminServices.countUpcomingAppointments, { serviceId: service._id });
+    const confirmed = await confirm({
+      title: `Archive ${service.name}?`,
+      description: `It will no longer be bookable.${upcoming ? ` ${plural(upcoming, "upcoming appointment")} stay booked.` : ""}`,
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (confirmed) await run(() => archiveService({ serviceId: service._id }), "Could not archive.");
   }
 
   return (
@@ -117,7 +169,8 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                   title={s.name}
                   subtitle={`${s.role} · ${hoursSummary(s)}`}
                   onEdit={() => setEditing({ kind: "staff", staff: s })}
-                  onArchive={() => archive(() => archiveStaff({ staffId: s._id }), s.name)}
+                  onArchive={() => archivePerson(s)}
+                  onRestore={() => run(() => updateStaff({ staffId: s._id, status: "active" }), "Could not restore.")}
                 />
               ))
           : services
@@ -132,9 +185,10 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                     </span>
                   }
                   title={s.name}
-                  subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${money(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ")}`}
+                  subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${money(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
                   onEdit={() => setEditing({ kind: "service", service: s })}
-                  onArchive={() => archive(() => archiveService({ serviceId: s._id }), s.name)}
+                  onArchive={() => archiveOffering(s)}
+                  onRestore={() => run(() => updateService({ serviceId: s._id, status: "active" }), "Could not restore.")}
                 />
               ))}
         {rows.length === 0 ? (
@@ -151,7 +205,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
         <ServiceDialog
           key={editing.service?._id ?? "new"}
           service={editing.service}
-          staff={staff.filter((s) => s.status === "active" || editing.service?.staffIds.includes(s._id))}
+          staff={staff.filter((s) => s.status === "active")}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -166,6 +220,7 @@ function Row({
   archived,
   onEdit,
   onArchive,
+  onRestore,
 }: {
   leading: ReactNode;
   title: string;
@@ -173,6 +228,7 @@ function Row({
   archived: boolean;
   onEdit: () => void;
   onArchive: () => void;
+  onRestore: () => void;
 }) {
   return (
     <li className={cn("flex items-center gap-3 px-4 py-3", archived && "opacity-60")}>
@@ -187,11 +243,16 @@ function Row({
       <Button size="sm" variant="ghost" onClick={onEdit} aria-label={`Edit ${title}`}>
         <Pencil aria-hidden className="size-4" />
       </Button>
-      {!archived ? (
+      {archived ? (
+        <Button size="sm" variant="outline" onClick={onRestore}>
+          <ArchiveRestore aria-hidden className="size-4" />
+          Restore
+        </Button>
+      ) : (
         <Button size="sm" variant="ghost" onClick={onArchive} aria-label={`Archive ${title}`}>
           <Archive aria-hidden className="size-4" />
         </Button>
-      ) : null}
+      )}
     </li>
   );
 }
@@ -252,14 +313,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
         ? weekdays.map((weekday) => ({ weekday, start: text("breakStart"), end: text("breakEnd"), label: text("breakLabel") }))
         : [],
     };
-    const offFrom = text("offFrom");
+    const off = readTimeOff(form);
+    const offFrom = off.from;
     const timeOff = (staffId: Id<"staff">) =>
-      addTimeOff({
-        staffId,
-        start: resortMidnight(offFrom),
-        end: resortMidnight(text("offTo") || offFrom) + DAY_MS,
-        label: text("offLabel") || "Time off",
-      });
+      addTimeOff({ staffId, ...timeOffRange(off), label: off.label || "Time off" });
     setSaving(true);
     setError("");
     try {
@@ -359,20 +416,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
               {hoursSummary(staff!)}. This custom schedule is kept as-is; it can&apos;t be edited in this form.
             </p>
           )}
+          {staff ? <TimeOffList staff={staff} /> : null}
           <fieldset className="grid gap-3 border-t border-border pt-4">
             <legend className="text-sm font-medium">Add time off (optional)</legend>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="From" htmlFor="st-off-from">
-                <Input id="st-off-from" name="offFrom" type="date" min={today} />
-              </Field>
-              <Field label="To" htmlFor="st-off-to">
-                <Input id="st-off-to" name="offTo" type="date" min={today} />
-              </Field>
-              <Field label="Label" htmlFor="st-off-label">
-                <Input id="st-off-label" name="offLabel" placeholder="Day off" />
-              </Field>
-            </div>
-            <p className="text-xs text-muted-foreground">Whole days. Remove time off by clicking it on the calendar.</p>
+            <TimeOffFields idPrefix="st-off" min={today} />
           </fieldset>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
@@ -393,7 +440,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
 function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: Staff[]; onClose: () => void }) {
   const createService = useMutation(api.adminServices.createService);
   const updateService = useMutation(api.adminServices.updateService);
-  const [staffIds, setStaffIds] = useState<Set<Id<"staff">>>(() => new Set(service?.staffIds ?? []));
+  // Only active staff can be assigned; archived ones already left the service.
+  const [staffIds, setStaffIds] = useState<Set<Id<"staff">>>(
+    () => new Set(service?.staffIds.filter((id) => staff.some((person) => person._id === id)) ?? []),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -490,6 +540,163 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
               {saving ? <Loader2 className="size-4 animate-spin" /> : null}
               Save
             </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function readTimeOff(form: FormData): TimeOffInput & { label: string } {
+  const text = (name: string) => String(form.get(name) ?? "").trim();
+  return {
+    from: text("offFrom"),
+    to: text("offTo"),
+    startTime: text("offStartTime"),
+    endTime: text("offEndTime"),
+    label: text("offLabel"),
+  };
+}
+
+/** Dates plus optional times; blank times mean whole days. Read back with `readTimeOff`. */
+function TimeOffFields({
+  idPrefix,
+  min,
+  defaults,
+}: {
+  idPrefix: string;
+  min?: string;
+  defaults?: TimeOffInput & { label: string };
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="From" htmlFor={`${idPrefix}-from`}>
+          <Input id={`${idPrefix}-from`} name="offFrom" type="date" min={min} defaultValue={defaults?.from} required={Boolean(defaults)} />
+        </Field>
+        <Field label="Start time (optional)" htmlFor={`${idPrefix}-start`}>
+          <Input id={`${idPrefix}-start`} name="offStartTime" type="time" step={900} defaultValue={defaults?.startTime} />
+        </Field>
+        <Field label="To" htmlFor={`${idPrefix}-to`}>
+          <Input id={`${idPrefix}-to`} name="offTo" type="date" min={min} defaultValue={defaults?.to} />
+        </Field>
+        <Field label="End time (optional)" htmlFor={`${idPrefix}-end`}>
+          <Input id={`${idPrefix}-end`} name="offEndTime" type="time" step={900} defaultValue={defaults?.endTime} />
+        </Field>
+      </div>
+      <Field label="Label" htmlFor={`${idPrefix}-label`}>
+        <Input id={`${idPrefix}-label`} name="offLabel" placeholder="Day off" defaultValue={defaults?.label} />
+      </Field>
+      <p className="text-xs text-muted-foreground">Leave the times blank for whole days. Resort time (Bangkok).</p>
+    </>
+  );
+}
+
+function TimeOffList({ staff }: { staff: Staff }) {
+  const rows = useQuery(api.adminServices.listTimeOff, { staffId: staff._id });
+  const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
+  const [editing, setEditing] = useState<TimeOff | null>(null);
+  const [error, setError] = useState("");
+  const confirm = useConfirm();
+
+  async function remove(row: TimeOff) {
+    if (!(await confirm({ title: `Remove "${row.label}" time off?`, confirmLabel: "Remove", destructive: true }))) return;
+    setError("");
+    try {
+      await removeTimeOff({ timeOffId: row._id });
+    } catch (err) {
+      setError(errorText(err, "Could not remove time off."));
+    }
+  }
+
+  return (
+    <section className="grid gap-2 border-t border-border pt-4">
+      <h3 className="text-sm font-medium">Upcoming time off</h3>
+      {rows === undefined ? (
+        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">None scheduled.</p>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {rows.map((row) => (
+            <li key={row._id} className="flex items-center gap-2 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{row.label}</p>
+                <p className="truncate text-xs text-muted-foreground">{formatTimeOff(row)}</p>
+              </div>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(row)} aria-label={`Edit ${row.label}`}>
+                <Pencil aria-hidden className="size-4" />
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => remove(row)} aria-label={`Remove ${row.label}`}>
+                <Trash2 aria-hidden className="size-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {editing ? <TimeOffDialog key={editing._id} timeOff={editing} staffName={staff.name} onClose={() => setEditing(null)} /> : null}
+    </section>
+  );
+}
+
+export function TimeOffDialog({ timeOff, staffName, onClose }: { timeOff: TimeOff; staffName?: string; onClose: () => void }) {
+  const updateTimeOff = useMutation(api.adminServices.updateTimeOff);
+  const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
+  const [pending, setPending] = useState<"save" | "remove" | null>(null);
+  const [error, setError] = useState("");
+  const confirm = useConfirm();
+
+  async function act(kind: "save" | "remove", action: () => Promise<unknown>) {
+    setPending(kind);
+    setError("");
+    try {
+      await action();
+      onClose();
+    } catch (err) {
+      setError(errorText(err, kind === "save" ? "Could not save." : "Could not remove time off."));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    // This dialog can open from inside the staff form; React events bubble through portals.
+    event.stopPropagation();
+    const input = readTimeOff(new FormData(event.currentTarget));
+    void act("save", () => updateTimeOff({ timeOffId: timeOff._id, ...timeOffRange(input), label: input.label || "Time off" }));
+  }
+
+  async function remove() {
+    if (!(await confirm({ title: `Remove "${timeOff.label}" time off?`, confirmLabel: "Remove", destructive: true }))) return;
+    await act("remove", () => removeTimeOff({ timeOffId: timeOff._id }));
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit time off{staffName ? ` · ${staffName}` : ""}</DialogTitle>
+          <DialogDescription>{formatTimeOff(timeOff)}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-4">
+          <TimeOffFields idPrefix="to-edit" defaults={{ ...timeOffInput(timeOff), label: timeOff.label }} />
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter className="sm:justify-between">
+            <Button type="button" variant="outline" onClick={remove} disabled={pending !== null}>
+              {pending === "remove" ? <Loader2 className="size-4 animate-spin" /> : <Trash2 aria-hidden className="size-4" />}
+              Remove
+            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending !== null}>
+                {pending === "save" ? <Loader2 className="size-4 animate-spin" /> : null}
+                Save
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

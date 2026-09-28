@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { CalendarDays, Clock, Filter, Loader2, PlusIcon, Users } from "lucide-react";
+import { CalendarDays, Clock, Filter, Loader2, Pencil, PlusIcon, Users } from "lucide-react";
 import { format } from "date-fns";
 import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
@@ -15,7 +15,7 @@ import type {
   CalendarView,
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
-import { AdminStaffServicesManager } from "@/components/admin/AdminStaffServicesManager";
+import { AdminStaffServicesManager, TimeOffDialog } from "@/components/admin/AdminStaffServicesManager";
 import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
@@ -39,6 +39,7 @@ import { WheelPicker, WheelPickerWrapper } from "@/components/ui/wheel-picker";
 import {
   APPOINTMENT_STATUS,
   DAY_MS,
+  PAYMENT_LABELS,
   RESORT_ZONE,
   displayStatus,
   errorText,
@@ -62,7 +63,7 @@ type Block = {
   end: number;
   label: string;
   kind: "break" | "time_off" | "turnaround";
-  timeOffId?: Id<"staffTimeOff">;
+  timeOff?: Doc<"staffTimeOff">;
 };
 type EventData = { kind: "appointment"; appointment: Appointment } | { kind: "block"; block: Block };
 type Move = { start: number; end: number; staffId: Id<"staff"> };
@@ -131,13 +132,12 @@ function StaffCalendar() {
   const [moves, setMoves] = useState<Map<string, Move>>(() => new Map());
   const [selectedId, setSelectedId] = useState<Id<"serviceAppointments"> | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [editingTimeOff, setEditingTimeOff] = useState<Doc<"staffTimeOff"> | null>(null);
   const [error, setError] = useState("");
   const now = useNow();
 
   const data = useQuery(api.adminServices.listSchedule, range);
   const reschedule = useMutation(api.adminServices.rescheduleAppointment);
-  const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
-  const confirm = useConfirm();
 
   const staffById = useMemo(() => new Map((data?.staff ?? []).map((s) => [s._id as string, s])), [data?.staff]);
   const serviceById = useMemo(() => new Map((data?.services ?? []).map((s) => [s._id as string, s])), [data?.services]);
@@ -282,6 +282,7 @@ function StaffCalendar() {
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-foreground">{person.name}</span>
             <span className="block truncate text-xs font-normal text-muted-foreground">
+              {person.status === "archived" ? "Archived · " : ""}
               {count === 1 ? "1 appointment" : `${count} appointments`}
             </span>
           </span>
@@ -318,17 +319,7 @@ function StaffCalendar() {
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "appointment") setSelectedId(eventData.appointment._id);
-            if (eventData?.kind === "block" && eventData.block.timeOffId) {
-              const { timeOffId, label } = eventData.block;
-              void confirm({ title: `Remove "${label}" time off?`, confirmLabel: "Remove", destructive: true }).then(
-                (confirmed) => {
-                  if (!confirmed) return;
-                  removeTimeOff({ timeOffId }).catch((err: unknown) =>
-                    setError(errorText(err, "Could not remove time off.")),
-                  );
-                },
-              );
-            }
+            if (eventData?.kind === "block" && eventData.block.timeOff) setEditingTimeOff(eventData.block.timeOff);
           }}
           onSlotClick={(slot) => {
             if (slot.allDay || !data || activeServices.length === 0) return;
@@ -446,8 +437,17 @@ function StaffCalendar() {
         appointment={selected}
         service={selected ? serviceById.get(selected.serviceId) : undefined}
         staff={selected ? staffById.get(selected.staffId) : undefined}
+        services={activeServices}
         onClose={() => setSelectedId(null)}
       />
+      {editingTimeOff ? (
+        <TimeOffDialog
+          key={editingTimeOff._id}
+          timeOff={editingTimeOff}
+          staffName={staffById.get(editingTimeOff.staffId)?.name}
+          onClose={() => setEditingTimeOff(null)}
+        />
+      ) : null}
       {data && draft ? (
         <NewAppointmentDialog
           key={`${draft.date}-${draft.staffId ?? ""}-${draft.start ?? ""}`}
@@ -533,7 +533,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type SheetAction = "arrived" | "in_service" | "completed" | "no_show" | "cancel" | "paid";
+type SheetAction = "arrived" | "in_service" | "completed" | "no_show" | "cancel" | "paid" | "refund";
 
 const NEXT_ACTIONS: Record<AppointmentStatus, SheetAction[]> = {
   booked: ["arrived", "in_service", "completed", "no_show", "cancel"],
@@ -551,23 +551,32 @@ const ACTION_LABELS: Record<SheetAction, string> = {
   no_show: "No-show",
   cancel: "Cancel appointment",
   paid: "Mark paid",
+  refund: "Record refund",
 };
+
+const TEXTAREA =
+  "min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
 
 function AppointmentSheet({
   appointment,
   service,
   staff,
+  services,
   onClose,
 }: {
   appointment: Appointment | null;
   service?: Service;
   staff?: Staff;
+  /** Active services, for changing the service. */
+  services: Service[];
   onClose: () => void;
 }) {
   const updateStatus = useMutation(api.adminServices.updateAppointmentStatus);
   const markPaid = useMutation(api.adminServices.markAppointmentPaid);
+  const refund = useMutation(api.adminServices.refundAppointment);
   const cancel = useMutation(api.adminServices.cancelAppointment);
   const [pending, setPending] = useState<SheetAction | null>(null);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const now = useNow();
   const confirm = useConfirm();
@@ -586,11 +595,23 @@ function AppointmentSheet({
     ) {
       return;
     }
+    if (
+      action === "refund" &&
+      !(await confirm({
+        title: `Record a ${money(appointment.price, appointment.currency)} refund?`,
+        description: "Marks the payment as refunded. Give the money back at the desk; nothing is charged or sent from here.",
+        confirmLabel: "Record refund",
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     setPending(action);
     setError("");
     try {
       if (action === "cancel") await cancel({ appointmentId: appointment._id });
       else if (action === "paid") await markPaid({ appointmentId: appointment._id });
+      else if (action === "refund") await refund({ appointmentId: appointment._id });
       else await updateStatus({ appointmentId: appointment._id, status: action });
     } catch (err) {
       setError(errorText(err, "Could not update the appointment."));
@@ -603,6 +624,7 @@ function AppointmentSheet({
     ? [
         ...NEXT_ACTIONS[appointment.status].filter((action) => action !== "no_show" || appointment.start <= now),
         ...(appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (["paid"] as const) : []),
+        ...(appointment.paymentStatus === "paid" ? (["refund"] as const) : []),
       ]
     : [];
   const status = appointment ? APPOINTMENT_STATUS[displayStatus(appointment)] : null;
@@ -613,6 +635,7 @@ function AppointmentSheet({
       onOpenChange={(open) => {
         if (!open) {
           setError("");
+          setEditing(false);
           onClose();
         }
       }}
@@ -627,51 +650,185 @@ function AppointmentSheet({
                 {status.label} · {appointment.confirmationCode}
               </SheetDescription>
             </div>
-            <dl className="divide-y divide-border border-y border-border">
-              <Detail label="Service">{service?.name ?? "—"}</Detail>
-              <Detail label="Staff">
-                {staff ? (
-                  <span className="flex items-center gap-2">
-                    <StaffAvatar staff={staff} className="size-6 text-[10px]" />
-                    {staff.name} <span className="text-muted-foreground">· {staff.role}</span>
-                  </span>
-                ) : (
-                  "—"
-                )}
-              </Detail>
-              <Detail label="When">
-                {formatResortDate(appointment.start)}, {formatResortTime(appointment.start)} –{" "}
-                {formatResortTime(appointment.end)}
-              </Detail>
-              <Detail label="Price">{money(appointment.price, appointment.currency)}</Detail>
-              <Detail label="Payment">{appointment.paymentStatus}</Detail>
-              <Detail label="Phone">{appointment.guestPhone}</Detail>
-              <Detail label="Email">{appointment.guestEmail ?? "—"}</Detail>
-              <Detail label="Villa stay">{appointment.bookingId ? "Linked to a villa booking" : "—"}</Detail>
-              <Detail label="Source">
-                <Badge variant="outline">{SOURCE_LABELS[appointment.source]}</Badge>
-              </Detail>
-            </dl>
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            {actions.length ? (
-              <div className="flex flex-wrap gap-2">
-                {actions.map((action) => (
-                  <Button
-                    key={action}
-                    variant={action === "cancel" || action === "no_show" ? "outline" : action === "paid" ? "secondary" : "default"}
-                    onClick={() => run(action)}
-                    disabled={pending !== null}
-                  >
-                    {pending === action ? <Loader2 className="size-4 animate-spin" /> : null}
-                    {ACTION_LABELS[action]}
+            {editing ? (
+              <AppointmentEditForm
+                key={appointment._id}
+                appointment={appointment}
+                service={service}
+                services={services}
+                onDone={() => setEditing(false)}
+              />
+            ) : (
+              <>
+                <dl className="divide-y divide-border border-y border-border">
+                  <Detail label="Service">{service?.name ?? "—"}</Detail>
+                  <Detail label="Staff">
+                    {staff ? (
+                      <span className="flex items-center gap-2">
+                        <StaffAvatar staff={staff} className="size-6 text-[10px]" />
+                        {staff.name} <span className="text-muted-foreground">· {staff.role}</span>
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </Detail>
+                  <Detail label="When">
+                    {formatResortDate(appointment.start)}, {formatResortTime(appointment.start)} –{" "}
+                    {formatResortTime(appointment.end)}
+                  </Detail>
+                  <Detail label="Price">{money(appointment.price, appointment.currency)}</Detail>
+                  <Detail label="Payment">
+                    {PAYMENT_LABELS[appointment.paymentStatus]}
+                    {appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : ""}
+                  </Detail>
+                  <Detail label="Phone">{appointment.guestPhone}</Detail>
+                  <Detail label="Email">{appointment.guestEmail ?? "—"}</Detail>
+                  <Detail label="Notes">
+                    <span className="whitespace-pre-wrap">{appointment.notes ?? "—"}</span>
+                  </Detail>
+                  <Detail label="Villa stay">{appointment.bookingId ? "Linked to a villa booking" : "—"}</Detail>
+                  <Detail label="Source">
+                    <Badge variant="outline">{SOURCE_LABELS[appointment.source]}</Badge>
+                  </Detail>
+                </dl>
+                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                <div className="flex flex-wrap gap-2">
+                  {actions.map((action) => (
+                    <Button
+                      key={action}
+                      variant={
+                        action === "cancel" || action === "no_show" || action === "refund"
+                          ? "outline"
+                          : action === "paid"
+                            ? "secondary"
+                            : "default"
+                      }
+                      onClick={() => run(action)}
+                      disabled={pending !== null}
+                    >
+                      {pending === action ? <Loader2 className="size-4 animate-spin" /> : null}
+                      {ACTION_LABELS[action]}
+                    </Button>
+                  ))}
+                  <Button variant="ghost" onClick={() => setEditing(true)} disabled={pending !== null}>
+                    <Pencil aria-hidden className="size-4" />
+                    Edit details
                   </Button>
-                ))}
-              </div>
-            ) : null}
+                </div>
+              </>
+            )}
           </div>
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** Guest details and notes can always be edited; the service only while booked or arrived and unpaid. */
+function AppointmentEditForm({
+  appointment,
+  service,
+  services,
+  onDone,
+}: {
+  appointment: Appointment;
+  service?: Service;
+  services: Service[];
+  onDone: () => void;
+}) {
+  const updateDetails = useMutation(api.adminServices.updateAppointmentDetails);
+  const changeService = useMutation(api.adminServices.changeAppointmentService);
+  const [serviceId, setServiceId] = useState<Id<"services">>(appointment.serviceId);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const canChangeService =
+    (appointment.status === "booked" || appointment.status === "arrived") && appointment.paymentStatus === "unpaid";
+  // Services this staff member performs, plus the current one so the select shows it.
+  const options = services.filter((s) => s.staffIds.includes(appointment.staffId) && s._id !== appointment.serviceId);
+  if (service) options.unshift(service);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const text = (name: string) => String(form.get(name) ?? "").trim();
+    setSaving(true);
+    setError("");
+    try {
+      // The service change is the step that can clash, so it goes first.
+      if (serviceId !== appointment.serviceId) await changeService({ appointmentId: appointment._id, serviceId });
+      await updateDetails({
+        appointmentId: appointment._id,
+        guestName: text("guestName"),
+        guestPhone: text("guestPhone"),
+        guestEmail: text("guestEmail"),
+        notes: text("notes"),
+      });
+      onDone();
+    } catch (err) {
+      setError(errorText(err, "Could not save."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="grid gap-4">
+      <div className="grid gap-2">
+        <Label>Service</Label>
+        <Select value={serviceId} onValueChange={(value) => setServiceId(value as Id<"services">)} disabled={!canChangeService}>
+          <SelectTrigger className="rounded-lg" aria-label="Service">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((s) => (
+              <SelectItem key={s._id} value={s._id}>
+                {s.name} · {s.durationMin} min · {money(s.price, s.currency)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {canChangeService
+            ? "Same staff member and start time. The length and price follow the new service."
+            : "The service can only change while the appointment is booked or arrived and unpaid."}
+        </p>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="ap-name">Guest name</Label>
+        <Input id="ap-name" name="guestName" defaultValue={appointment.guestName} required />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-2">
+          <Label htmlFor="ap-phone">Phone</Label>
+          <Input id="ap-phone" name="guestPhone" type="tel" defaultValue={appointment.guestPhone} required />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="ap-email">Email (optional)</Label>
+          <Input id="ap-email" name="guestEmail" type="email" defaultValue={appointment.guestEmail} />
+        </div>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="ap-notes">Notes (optional)</Label>
+        <textarea
+          id="ap-notes"
+          name="notes"
+          maxLength={2000}
+          defaultValue={appointment.notes}
+          placeholder="Allergies, pressure preference, room number…"
+          className={TEXTAREA}
+        />
+      </div>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+          Save
+        </Button>
+      </div>
+    </form>
   );
 }
 
