@@ -10,6 +10,7 @@ describe("admin routes", () => {
     ["/admin/staff/services", "Staff bookings"],
     ["/admin/questions", "Questions"],
     ["/admin/properties", "Properties"],
+    ["/admin/properties/abc123", "Properties"],
     ["/admin/leads", "Leads"],
     ["/admin/settings", "Settings"],
   ] as const)("maps %s to the %s sidebar item", (path, label) => {
@@ -30,6 +31,7 @@ describe("admin routes", () => {
     ["/admin/hotel", null],
     ["/admin/staff/services", null],
     ["/admin/properties", null],
+    ["/admin/properties/abc123", null],
   ] as const)("redirects %s to %s", (path, target) => {
     expect(adminRedirectPath(path)).toBe(target);
   });

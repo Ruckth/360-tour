@@ -228,15 +228,18 @@ export default defineSchema({
 		propertyId: v.id('properties'),
 		overallRating: v.number(),
 		totalReviews: v.number(),
-		isSuperhost: v.boolean(),
-		breakdown: v.object({
-			cleanliness: v.number(),
-			accuracy: v.number(),
-			communication: v.number(),
-			location: v.number(),
-			checkIn: v.number(),
-			value: v.number()
-		})
+		// Derived from real reviews by lib/socialProof.ts; the two fields below only exist on legacy seeded rows.
+		isSuperhost: v.optional(v.boolean()),
+		breakdown: v.optional(
+			v.object({
+				cleanliness: v.number(),
+				accuracy: v.number(),
+				communication: v.number(),
+				location: v.number(),
+				checkIn: v.number(),
+				value: v.number()
+			})
+		)
 	}).index('by_property', ['propertyId']),
 
 	tourSnippets: defineTable({

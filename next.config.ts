@@ -52,6 +52,11 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "qr-official.line.me",
       },
+      {
+        // Photos and panoramas uploaded from the villa admin (Convex file storage).
+        protocol: "https",
+        hostname: "*.convex.cloud",
+      },
     ],
   },
 };

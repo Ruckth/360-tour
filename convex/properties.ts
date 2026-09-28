@@ -186,13 +186,13 @@ export const getTourSnippets = query({
 // them. Draft and archived villas are excluded from live booking and chat queries.
 
 const propertyStatus = v.union(v.literal('active'), v.literal('draft'), v.literal('archived'));
-function required(value: string, label: string): string {
+export function required(value: string, label: string): string {
 	const trimmed = value.trim();
 	if (!trimmed) throw new Error(`${label} is required`);
 	return trimmed;
 }
 
-function amount(value: number, label: string, { integer = false, min = 0, max = Infinity } = {}): number {
+export function amount(value: number, label: string, { integer = false, min = 0, max = Infinity } = {}): number {
 	if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
 		const range = max === Infinity ? `at least ${min}` : `between ${min} and ${max}`;
 		throw new Error(`${label} must be ${integer ? 'a whole number ' : ''}${range}`);
@@ -206,7 +206,7 @@ function textList(values: string[], label: string, maxItems: number): string[] {
 	return trimmed;
 }
 
-function imageUrl(value: string): string {
+export function imageUrl(value: string): string {
 	if (!/^(https:\/\/|\/(?!\/))\S+$/.test(value)) throw new Error('Images must be https:// URLs or /public paths');
 	return value;
 }
