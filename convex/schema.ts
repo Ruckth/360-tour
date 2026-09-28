@@ -733,7 +733,8 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_session', ['sessionId'])
-		.index('by_session_and_question', ['sessionId', 'questionId']),
+		.index('by_session_and_question', ['sessionId', 'questionId'])
+		.index('by_questionId', ['questionId']),
 
 	chatAnswers: defineTable({
 		propertyId: v.optional(v.id('properties')),
@@ -749,7 +750,9 @@ export default defineSchema({
 	})
 		.index('by_createdAt', ['createdAt'])
 		.index('by_status_and_updatedAt', ['status', 'updatedAt'])
-		.index('by_propertyId_and_status_and_updatedAt', ['propertyId', 'status', 'updatedAt']),
+		.index('by_propertyId_and_status_and_updatedAt', ['propertyId', 'status', 'updatedAt'])
+		.searchIndex('search_title', { searchField: 'title', filterFields: ['status'] })
+		.searchIndex('search_answer', { searchField: 'answer', filterFields: ['status'] }),
 
 	chatQuestions: defineTable({
 		propertyId: v.optional(v.id('properties')),
@@ -815,7 +818,8 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_propertyId', ['propertyId'])
-		.index('by_propertyId_and_normalizedName', ['propertyId', 'normalizedName']),
+		.index('by_propertyId_and_normalizedName', ['propertyId', 'normalizedName'])
+		.index('by_normalizedName', ['normalizedName']),
 
 	chatAnswerTopics: defineTable({
 		propertyId: v.optional(v.id('properties')),
@@ -848,8 +852,10 @@ export default defineSchema({
 		.index('by_createdAt', ['createdAt'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
 		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
+		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion'])
+		.index('by_resolvedAnswerId', ['resolvedAnswerId'])
 		.index('by_resolvedQuestionId', ['resolvedQuestionId'])
-		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion']),
+		.searchIndex('search_userQuestion', { searchField: 'userQuestion', filterFields: ['status'] }),
 
 	// Admin-editable business profile; a single row with key 'default'. Missing fields fall back to lib/siteSettings defaults.
 	siteSettings: defineTable({

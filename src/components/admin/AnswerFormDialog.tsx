@@ -1,10 +1,10 @@
 "use client";
 
 import { api } from "convex/_generated/api";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Loader2, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { RemovableBadge } from "@/components/ui/badge";
+import { Badge, RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,7 +38,7 @@ type AnswerKnowledgeForm = {
   primaryQuestion: string;
   questions: string[];
   additionalQuestionInput: string;
-  topicNames: string;
+  topicNames: string[];
   propertySlugs: string[];
 };
 
@@ -50,7 +50,7 @@ function emptyKnowledgeForm(): AnswerKnowledgeForm {
     primaryQuestion: "",
     questions: [],
     additionalQuestionInput: "",
-    topicNames: "",
+    topicNames: [],
     propertySlugs: [],
   };
 }
@@ -70,10 +70,10 @@ function formForKnowledgeAnswer(answer: AdminKnowledgeAnswer): AnswerKnowledgeFo
       .filter((question) => question._id !== primaryQuestion?._id)
       .map((question) => question.questionText),
     additionalQuestionInput: "",
-    topicNames: answer.topics.map((topic) => topic.name).join(", "),
+    topicNames: answer.topics.map((topic) => topic.name),
     propertySlugs:
       answer.propertySlugs ??
-      answer.propertyScopes?.map((scope) => scope.slug) ??
+      answer.propertyScopes?.map((scope) => scope.propertySlug) ??
       (answer.propertySlug ? [answer.propertySlug] : []),
   };
 }
@@ -83,16 +83,81 @@ function formForUnknownQuestion(question: AdminUnknownQuestion): AnswerKnowledge
     ...emptyKnowledgeForm(),
     title: question.detectedTopic ? `${question.detectedTopic}: ${question.userQuestion}` : question.userQuestion,
     primaryQuestion: question.userQuestion,
-    topicNames: question.detectedTopic ?? "",
+    topicNames: question.detectedTopic ? [question.detectedTopic] : [],
     propertySlugs: question.propertySlug ? [question.propertySlug] : [],
   };
 }
 
-function splitList(value: string) {
-  return value
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+function topicKey(value: string) {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+}
+
+/** Pick existing topics or type a new one and press Enter. */
+function TopicPicker({ value, onChange }: { value: string[]; onChange: (topics: string[]) => void }) {
+  const [query, setQuery] = useState("");
+  const topics = useQuery(api.chatKnowledge.adminListTopics, {}) ?? [];
+  const selected = new Set(value.map(topicKey));
+  const search = topicKey(query);
+  const options = topics
+    .filter((topic) => !selected.has(topicKey(topic)) && topicKey(topic).includes(search))
+    .slice(0, 12);
+  const canCreate = Boolean(search) && !selected.has(search) && !topics.some((topic) => topicKey(topic) === search);
+
+  function add(topic: string) {
+    const name = topic.trim();
+    if (name && !selected.has(topicKey(name))) onChange([...value, name]);
+    setQuery("");
+  }
+
+  return (
+    <div className="grid gap-2">
+      {value.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {value.map((topic) => (
+            <RemovableBadge
+              key={topic}
+              removeLabel={`Remove ${topic}`}
+              onRemove={() => onChange(value.filter((item) => item !== topic))}
+            >
+              {topic}
+            </RemovableBadge>
+          ))}
+        </div>
+      ) : null}
+      <Input
+        id="knowledge-topics"
+        value={query}
+        maxLength={80}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          const exact = topics.find((topic) => topicKey(topic) === search);
+          add(exact ?? options[0] ?? query);
+        }}
+        placeholder="Search or add a topic"
+      />
+      {options.length > 0 || canCreate ? (
+        <div className="flex flex-wrap gap-1">
+          {options.map((topic) => (
+            <button key={topic} type="button" onClick={() => add(topic)}>
+              <Badge variant="outline" className="cursor-pointer rounded-full hover:bg-muted">
+                {topic}
+              </Badge>
+            </button>
+          ))}
+          {canCreate ? (
+            <button type="button" onClick={() => add(query)}>
+              <Badge variant="secondary" className="cursor-pointer rounded-full">
+                <Plus className="h-3 w-3" />
+                Add &quot;{query.trim()}&quot;
+              </Badge>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function AnswerFormDialog({
@@ -220,7 +285,7 @@ function AnswerForm({
 
     setPendingAction("save-answer");
     try {
-      const topicNames = splitList(form.topicNames);
+      const topicNames = form.topicNames;
       if (sourceUnknown) {
         await createAnswerFromUnknown({
           unknownQuestionId: sourceUnknown._id,
@@ -378,11 +443,9 @@ function AnswerForm({
         ) : null}
         <div className="grid gap-2">
           <Label htmlFor="knowledge-topics">Topics</Label>
-          <Input
-            id="knowledge-topics"
+          <TopicPicker
             value={form.topicNames}
-            onChange={(event) => setForm((current) => ({ ...current, topicNames: event.target.value }))}
-            placeholder="house_rules, check_in"
+            onChange={(topicNames) => setForm((current) => ({ ...current, topicNames }))}
           />
         </div>
         {formError ? <p className="text-sm font-medium text-destructive">{formError}</p> : null}

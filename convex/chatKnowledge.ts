@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	action,
@@ -391,14 +392,7 @@ async function syncAnswerTopics(
 ) {
 	if (!topicNames) return;
 
-	const existing = await ctx.db
-		.query('chatAnswerTopics')
-		.withIndex('by_answerId', (q) => q.eq('answerId', answerId))
-		.take(100);
-	for (const row of existing) {
-		await ctx.db.delete(row._id);
-	}
-
+	const previousTopicIds = await deleteAnswerTopicLinks(ctx, answerId);
 	for (const topicName of uniqueTopicNames(topicNames)) {
 		const topicId = await getOrCreateTopic(ctx, propertyId, topicName);
 		await ctx.db.insert('chatAnswerTopics', {
@@ -408,6 +402,38 @@ async function syncAnswerTopics(
 			createdAt: Date.now()
 		});
 	}
+	await deleteOrphanTopics(ctx, previousTopicIds);
+}
+
+async function deleteAnswerTopicLinks(ctx: MutationCtx, answerId: Id<'chatAnswers'>) {
+	const links = await ctx.db
+		.query('chatAnswerTopics')
+		.withIndex('by_answerId', (q) => q.eq('answerId', answerId))
+		.take(100);
+	for (const link of links) await ctx.db.delete(link._id);
+	return links.map((link) => link.topicId);
+}
+
+/** Topics only exist to label answers, so drop any that no answer links to anymore. */
+async function deleteOrphanTopics(ctx: MutationCtx, topicIds: Id<'chatTopics'>[]) {
+	for (const topicId of new Set(topicIds)) {
+		const stillLinked = await ctx.db
+			.query('chatAnswerTopics')
+			.withIndex('by_topicId', (q) => q.eq('topicId', topicId))
+			.first();
+		if (!stillLinked && (await ctx.db.get(topicId))) await ctx.db.delete(topicId);
+	}
+}
+
+async function reopenUnknownQuestion(ctx: MutationCtx, unknownQuestionId: Id<'chatUnknownQuestions'>) {
+	await ctx.db.patch(unknownQuestionId, {
+		status: 'new',
+		resolvedAnswerId: undefined,
+		resolvedQuestionId: undefined,
+		resolvedAt: undefined,
+		ignoredAt: undefined,
+		updatedAt: Date.now()
+	});
 }
 
 async function getAnswerTopics(ctx: QueryCtx, answerId: Id<'chatAnswers'>) {
@@ -759,46 +785,110 @@ export const adminDeletePropertyScope = mutation({
 	}
 });
 
+const SEARCH_RESULT_LIMIT = 50;
+
+async function withAnswerDetails(ctx: QueryCtx, answer: Doc<'chatAnswers'>) {
+	const [questions, topics, property] = await Promise.all([
+		ctx.db
+			.query('chatQuestions')
+			.withIndex('by_answerId', (q) => q.eq('answerId', answer._id))
+			.order('desc')
+			.take(100),
+		getAnswerTopics(ctx, answer._id),
+		answer.propertyId ? ctx.db.get(answer.propertyId) : Promise.resolve(null)
+	]);
+	const propertyScopes = await getAnswerPropertyScopes(ctx, answer);
+	return {
+		...answer,
+		propertyName: property?.name,
+		propertySlug: property?.slug,
+		propertyScopes,
+		propertySlugs: propertyScopes.map((scope) => scope.propertySlug),
+		questions,
+		topics
+	};
+}
+
+/** Title matches first, then answer-body matches. Search results are one relevance-ranked page. */
+async function searchAnswers(ctx: QueryCtx, search: string, status?: AnswerStatus) {
+	const [byTitle, byAnswer] = await Promise.all([
+		ctx.db
+			.query('chatAnswers')
+			.withSearchIndex('search_title', (q) =>
+				status ? q.search('title', search).eq('status', status) : q.search('title', search)
+			)
+			.take(SEARCH_RESULT_LIMIT),
+		ctx.db
+			.query('chatAnswers')
+			.withSearchIndex('search_answer', (q) =>
+				status ? q.search('answer', search).eq('status', status) : q.search('answer', search)
+			)
+			.take(SEARCH_RESULT_LIMIT)
+	]);
+	const seen = new Set<Id<'chatAnswers'>>();
+	const merged: Doc<'chatAnswers'>[] = [];
+	for (const answer of [...byTitle, ...byAnswer]) {
+		if (seen.has(answer._id)) continue;
+		seen.add(answer._id);
+		merged.push(answer);
+	}
+	return merged.slice(0, SEARCH_RESULT_LIMIT);
+}
+
 export const adminListAnswers = query({
 	args: {
+		paginationOpts: paginationOptsValidator,
 		status: v.optional(answerStatusValidator),
-		limit: v.optional(v.number())
+		search: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
-		const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
-		const answers = args.status
-			? await ctx.db
-					.query('chatAnswers')
-					.withIndex('by_status_and_updatedAt', (q) => q.eq('status', args.status as AnswerStatus))
-					.order('desc')
-					.take(limit)
-			: await ctx.db.query('chatAnswers').withIndex('by_createdAt').order('desc').take(limit);
-
-		return await Promise.all(
-			answers.map(async (answer) => {
-				const [questions, topics, property] = await Promise.all([
-					ctx.db
-						.query('chatQuestions')
-						.withIndex('by_answerId', (q) => q.eq('answerId', answer._id))
+		const search = args.search?.trim();
+		const result = search
+			? { page: await searchAnswers(ctx, search, args.status), isDone: true, continueCursor: '' }
+			: args.status
+				? await ctx.db
+						.query('chatAnswers')
+						.withIndex('by_status_and_updatedAt', (q) => q.eq('status', args.status as AnswerStatus))
 						.order('desc')
-						.take(100),
-					getAnswerTopics(ctx, answer._id),
-					answer.propertyId ? ctx.db.get(answer.propertyId) : Promise.resolve(null)
-				]);
-				const propertyScopes = await getAnswerPropertyScopes(ctx, answer);
-				return {
-					...answer,
-					propertyName: property?.name,
-					propertySlug: property?.slug,
-					propertyScopes,
-					propertySlugs: propertyScopes.map((scope) => scope.propertySlug),
-					questions,
-					topics
-				};
-			})
-		);
+						.paginate(args.paginationOpts)
+				: await ctx.db.query('chatAnswers').withIndex('by_createdAt').order('desc').paginate(args.paginationOpts);
+
+		return {
+			...result,
+			page: await Promise.all(result.page.map((answer) => withAnswerDetails(ctx, answer)))
+		};
+	}
+});
+
+/** Approved answers for the "link existing answer" picker. */
+export const adminListAnswerOptions = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+		const answers = await ctx.db
+			.query('chatAnswers')
+			.withIndex('by_status_and_updatedAt', (q) => q.eq('status', 'approved'))
+			.order('desc')
+			.take(300);
+		return answers
+			.map((answer) => ({ _id: answer._id, title: answer.title }))
+			.sort((left, right) => left.title.localeCompare(right.title));
+	}
+});
+
+/** Distinct topic names for the topic picker. */
+export const adminListTopics = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+		const topics = await ctx.db.query('chatTopics').withIndex('by_normalizedName').take(500);
+		const names = new Map<string, string>();
+		for (const topic of topics) {
+			if (!names.has(topic.normalizedName)) names.set(topic.normalizedName, topic.name);
+		}
+		return [...names.values()];
 	}
 });
 
@@ -898,36 +988,53 @@ export const adminUpdateAnswer = mutation({
 
 export const adminListUnknownQuestions = query({
 	args: {
+		paginationOpts: paginationOptsValidator,
 		status: v.optional(unknownQuestionStatusValidator),
-		limit: v.optional(v.number())
+		search: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
-		const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
 		const status = args.status ?? 'new';
-		const rows = status === 'all'
-			? await ctx.db.query('chatUnknownQuestions').withIndex('by_createdAt').order('desc').take(limit)
-			: await ctx.db
+		const search = args.search?.trim();
+		const result = search
+			? await ctx.db
 					.query('chatUnknownQuestions')
-					.withIndex('by_status_and_createdAt', (q) => q.eq('status', status))
-					.order('desc')
-					.take(limit);
+					.withSearchIndex('search_userQuestion', (q) =>
+						status === 'all'
+							? q.search('userQuestion', search)
+							: q.search('userQuestion', search).eq('status', status)
+					)
+					.paginate(args.paginationOpts)
+			: status === 'all'
+				? await ctx.db
+						.query('chatUnknownQuestions')
+						.withIndex('by_createdAt')
+						.order('desc')
+						.paginate(args.paginationOpts)
+				: await ctx.db
+						.query('chatUnknownQuestions')
+						.withIndex('by_status_and_createdAt', (q) => q.eq('status', status))
+						.order('desc')
+						.paginate(args.paginationOpts);
 
-		return await Promise.all(
-			rows.map(async (row) => {
-				const [property, answer] = await Promise.all([
-					row.propertyId ? ctx.db.get(row.propertyId) : Promise.resolve(null),
-					row.resolvedAnswerId ? ctx.db.get(row.resolvedAnswerId) : Promise.resolve(null)
-				]);
-				return {
-					...row,
-					propertyName: property?.name,
-					propertySlug: row.propertySlug ?? property?.slug,
-					resolvedAnswerTitle: answer?.title
-				};
-			})
-		);
+		return {
+			...result,
+			page: await Promise.all(
+				result.page.map(async (row) => {
+					const [property, answer] = await Promise.all([
+						row.propertyId ? ctx.db.get(row.propertyId) : Promise.resolve(null),
+						row.resolvedAnswerId ? ctx.db.get(row.resolvedAnswerId) : Promise.resolve(null)
+					]);
+					return {
+						...row,
+						propertyName: property?.name,
+						propertySlug: row.propertySlug ?? property?.slug,
+						resolvedAnswerTitle: answer?.title
+					};
+				})
+			)
+		};
 	}
 });
 
@@ -1297,6 +1404,72 @@ export const adminIgnoreUnknown = mutation({
 			updatedAt: now
 		});
 		return { ignored: true };
+	}
+});
+
+export const adminReopenUnknown = mutation({
+	args: { unknownQuestionId: v.id('chatUnknownQuestions') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const unknown = await ctx.db.get(args.unknownQuestionId);
+		if (!unknown) throw new Error('Unknown question not found');
+		if (unknown.status === 'new') return { reopened: false };
+		await reopenUnknownQuestion(ctx, args.unknownQuestionId);
+		return { reopened: true };
+	}
+});
+
+/** Permanently deletes an archived answer with its questions, scopes and topic links. */
+export const adminDeleteAnswer = mutation({
+	args: { answerId: v.id('chatAnswers') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const answer = await ctx.db.get(args.answerId);
+		if (!answer) throw new Error('Answer not found');
+		if (answer.status !== 'archived') throw new Error('Archive the answer before deleting it');
+
+		const [questions, scopes, unknowns] = await Promise.all([
+			ctx.db
+				.query('chatQuestions')
+				.withIndex('by_answerId', (q) => q.eq('answerId', args.answerId))
+				.take(500),
+			ctx.db
+				.query('chatAnswerPropertyScopes')
+				.withIndex('by_answerId', (q) => q.eq('answerId', args.answerId))
+				.take(100),
+			ctx.db
+				.query('chatUnknownQuestions')
+				.withIndex('by_resolvedAnswerId', (q) => q.eq('resolvedAnswerId', args.answerId))
+				.take(500)
+		]);
+		for (const unknown of unknowns) await reopenUnknownQuestion(ctx, unknown._id);
+		for (const question of questions) await ctx.db.delete(question._id);
+		for (const scope of scopes) await ctx.db.delete(scope._id);
+		await deleteOrphanTopics(ctx, await deleteAnswerTopicLinks(ctx, args.answerId));
+		await ctx.db.delete(args.answerId);
+		return { deleted: true, reopenedUnknownQuestions: unknowns.length };
+	}
+});
+
+/** Deletes one question variant. The primary question stays until another one is made primary. */
+export const adminDeleteQuestion = mutation({
+	args: { questionId: v.id('chatQuestions') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const question = await ctx.db.get(args.questionId);
+		if (!question) throw new Error('Question not found');
+		if (question.status === 'approved' && question.isPrimary) {
+			throw new Error('Make another question primary before deleting this one');
+		}
+		const unknowns = await ctx.db
+			.query('chatUnknownQuestions')
+			.withIndex('by_resolvedQuestionId', (q) => q.eq('resolvedQuestionId', args.questionId))
+			.take(100);
+		for (const unknown of unknowns) {
+			await ctx.db.patch(unknown._id, { resolvedQuestionId: undefined, updatedAt: Date.now() });
+		}
+		await ctx.db.delete(args.questionId);
+		return { deleted: true };
 	}
 });
 

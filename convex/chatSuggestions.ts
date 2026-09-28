@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, internalQuery, mutation, query, type QueryCtx } from './_generated/server';
+import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { callAI, type ChatMessage } from './lib/chatLlm';
 import { requireAdmin } from './lib/adminAuth';
@@ -667,7 +667,30 @@ export const adminDeleteArchivedCurated = mutation({
 		}
 
 		await ctx.db.delete(args.questionId);
+		await deleteCuratedInteractionBatch(ctx, args.questionId);
 		return { deleted: true };
+	}
+});
+
+const INTERACTION_DELETE_BATCH = 500;
+
+/** Deletes one batch of a curated question's interactions and schedules the rest. */
+async function deleteCuratedInteractionBatch(ctx: MutationCtx, questionId: Id<'curatedChatQuestions'>) {
+	const interactions = await ctx.db
+		.query('chatQuestionInteractions')
+		.withIndex('by_questionId', (q) => q.eq('questionId', questionId))
+		.take(INTERACTION_DELETE_BATCH);
+	for (const interaction of interactions) await ctx.db.delete(interaction._id);
+	if (interactions.length === INTERACTION_DELETE_BATCH) {
+		await ctx.scheduler.runAfter(0, internal.chatSuggestions.deleteCuratedInteractions, { questionId });
+	}
+}
+
+export const deleteCuratedInteractions = internalMutation({
+	args: { questionId: v.id('curatedChatQuestions') },
+	handler: async (ctx, args) => {
+		await deleteCuratedInteractionBatch(ctx, args.questionId);
+		return null;
 	}
 });
 
