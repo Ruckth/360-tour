@@ -11,6 +11,7 @@ describe("admin routes", () => {
     ["/admin/questions", "Questions"],
     ["/admin/properties", "Properties"],
     ["/admin/leads", "Leads"],
+    ["/admin/settings", "Settings"],
   ] as const)("maps %s to the %s sidebar item", (path, label) => {
     expect(adminNavItem(path)?.label).toBe(label);
   });

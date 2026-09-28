@@ -57,9 +57,9 @@ const SOURCE_LABELS: Record<string, string> = {
   admin: "Manual",
 };
 
-// Villa stays: afternoon check-in, late-morning check-out.
-const CHECK_IN_TIME = "T14:00:00";
-const CHECK_OUT_TIME = "T11:00:00";
+// Until Settings load, fall back to the defaults (afternoon check-in, late-morning check-out).
+const DEFAULT_CHECK_IN = "14:00";
+const DEFAULT_CHECK_OUT = "11:00";
 
 type EventData = { kind: "booking"; booking: AdminBooking } | { kind: "block"; source: string };
 
@@ -120,6 +120,9 @@ export function AdminBookingsView() {
   const [managingRates, setManagingRates] = useState(false);
 
   const data = useQuery(api.adminBookings.listForAdmin, range);
+  const profile = useQuery(api.settings.publicProfile, {});
+  const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
+  const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
 
   const resources = useMemo<EventCalendarResource[]>(
     () =>
@@ -139,8 +142,8 @@ export function AdminBookingsView() {
       .map((booking): CalendarEvent<EventData> => ({
         id: booking._id,
         title: `${booking.guestName} · ${names.get(booking.propertyId) ?? "Villa"}`,
-        start: new Date(`${booking.checkIn}${CHECK_IN_TIME}`),
-        end: new Date(`${booking.checkOut}${CHECK_OUT_TIME}`),
+        start: new Date(`${booking.checkIn}T${checkInTime}:00`),
+        end: new Date(`${booking.checkOut}T${checkOutTime}:00`),
         resourceId: booking.propertyId,
         color: STATUS[statusKey(booking)].color,
         readOnly: true,
@@ -162,7 +165,7 @@ export function AdminBookingsView() {
       }));
 
     return [...bookingEvents, ...blockEvents];
-  }, [data, villa, showCancelled]);
+  }, [data, villa, showCancelled, checkInTime, checkOutTime]);
 
   const selected = data?.bookings.find((b) => b._id === selectedId) ?? null;
   const selectedVilla = data?.properties.find((p) => p._id === selected?.propertyId);

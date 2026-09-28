@@ -1,4 +1,4 @@
-import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, type LucideIcon } from "lucide-react";
+import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, Settings, type LucideIcon } from "lucide-react";
 
 export type AdminNavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -10,6 +10,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/questions", label: "Questions", icon: HelpCircle },
   { href: "/admin/properties", label: "Properties", icon: Building2 },
   { href: "/admin/leads", label: "Leads", icon: Mail },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 /** "/admin/staff/services" -> "/admin/staff": the part of a path that picks the sidebar section. */

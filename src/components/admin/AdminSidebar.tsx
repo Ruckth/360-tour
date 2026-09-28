@@ -1,6 +1,8 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
+import { useQuery } from "convex/react";
+import { api } from "convex/_generated/api";
 import { Shield } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -24,6 +26,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const activeHref = adminNavItem(pathname)?.href;
   const { isMobile, setOpenMobile } = useSidebar();
+  const profile = useQuery(api.settings.publicProfile, {});
 
   return (
     <Sidebar variant="inset" collapsible="icon">
@@ -33,7 +36,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
             <Shield aria-hidden="true" className="size-4" />
           </span>
           <span className="min-w-0 leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="block truncate text-sm font-semibold">Auralis Cove</span>
+            <span className="block truncate text-sm font-semibold">{profile?.businessName ?? "\u00a0"}</span>
             <span className="block truncate text-xs text-sidebar-foreground/70">Concierge operations</span>
           </span>
         </div>

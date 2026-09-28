@@ -2,6 +2,7 @@ import { action, internalMutation, type ActionCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
+import type { EffectiveSettings } from './lib/siteSettings';
 import { callAI, classifyComplexity } from './lib/chatLlm';
 import type { ChatMessage } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
@@ -434,10 +435,11 @@ export async function generateConciergeReply(
 ): Promise<{ response: string; model: string }> {
 	const properties: Doc<'properties'>[] = await ctx.runQuery(api.properties.list, {});
 
+	const settings: EffectiveSettings = await ctx.runQuery(internal.settings.effective, {});
 	const propertyContext = properties
 		.map(
 			(p) =>
-				`- ${p.name} (slug: ${p.slug}): ${p.tagline}. ฿${p.pricePerNight}/night, ${p.maxGuests} guests max, ${p.bedrooms} bed, ${p.bathrooms} bath, ${p.area}m². Amenities: ${p.amenities.join(', ')}`
+				`- ${p.name} (slug: ${p.slug}): ${p.tagline}. ฿${p.pricePerNight}/night${p.directDiscountPercent > 0 ? ` (${p.directDiscountPercent}% off when booked direct)` : ''}, ${p.maxGuests} guests max, ${p.bedrooms} bed, ${p.bathrooms} bath, ${p.area}m². Amenities: ${p.amenities.join(', ')}`
 		)
 		.join('\n');
 
@@ -456,7 +458,7 @@ export async function generateConciergeReply(
 		return { response: realityDisclosure, model: 'guardrail' };
 	}
 
-	const systemPrompt = `You are a helpful, friendly AI concierge for the Auralis Cove Retreat demo/preview experience, a boutique luxury villa booking and 360° tour concept set in Koh Samui, Thailand. You help guests find the perfect demo villa and answer questions about pricing and availability.
+	const systemPrompt = `You are a helpful, friendly AI concierge for the ${settings.businessName} demo/preview experience, a boutique luxury villa booking and 360° tour concept set in Koh Samui, Thailand. You help guests find the perfect demo villa and answer questions about pricing and availability.
 
 PROPERTIES:
 ${propertyContext}
@@ -465,17 +467,17 @@ ${currentProperty ? `The guest is currently viewing: ${currentProperty.name} (${
 
 PRICING:
 - All prices are in Thai Baht (฿ / THB)
-- Direct booking gives 15% discount off the listed price
+- Direct bookings get the per-villa direct discount shown above (if any) off the listed price
 - No service fees, no cleaning fees for direct bookings
-- Free cancellation up to 48 hours before check-in
+${settings.cancellationPolicy ? `- Cancellation policy: ${settings.cancellationPolicy}\n` : ''}- Check-in from ${settings.checkInTime}, check-out by ${settings.checkOutTime} (${settings.timezone} time)
 
 STYLE:
-- Be warm, concise, and helpful
+- Tone: ${settings.ai.tone}
 - Detect the language of the latest visitor message and reply in that same language
 - If the latest visitor message language is unclear, reply in English
 - Keep resort facts, prices, villa names, cancellation rules, discounts, and booking rules exactly consistent with the data above
 - Do not translate villa names, price amounts, currency symbols, or booking rules into different facts
-- Do not claim that Auralis Cove Retreat is a real-world verified resort or independently verified business. If asked whether it is real, say it is presented here as a demo/preview experience and offer to help with the demo villas, pricing, availability, or 360° tour.
+- Do not claim that ${settings.businessName} is a real-world verified resort or independently verified business. If asked whether it is real, say it is presented here as a demo/preview experience and offer to help with the demo villas, pricing, availability, or 360° tour.
 - Use ฿ symbol for prices
 - Suggest the 360° virtual tour when relevant
 ${isMessaging ? '' : `- If the guest seems ready to book or asks about availability, point them to the booking card below the chat
@@ -483,7 +485,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 - Do not ask guests to type villa/date fields that the booking card can collect for them
 - Services can be booked via LINE, WhatsApp, Messenger, or at reception
 `}- If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under 150 words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${isMessaging ? messagingStateGuidance(session, properties) : ''}${questionBankHintPrompt(args.questionBankHint)}`;
+- Keep responses under ${settings.ai.maxWords} words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${isMessaging ? messagingStateGuidance(session, properties) : ''}${questionBankHintPrompt(args.questionBankHint)}${settings.ai.extraInstructions ? `\n\nOWNER INSTRUCTIONS:\n${settings.ai.extraInstructions}` : ''}`;
 
 	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
