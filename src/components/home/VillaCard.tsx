@@ -10,8 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { resort } from "@/lib/data/resort-config";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
-import type { Property } from "@/lib/data/properties";
-import type { PropertySocialProof } from "@/lib/data/reviews";
+import { currencyPrefix, type PublicVilla } from "@/lib/villas";
 import { clampIndex, isHorizontalSwipe, swipeDirection, type SwipePoint } from "@/lib/interaction/swipe";
 import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
 import { cn } from "@/lib/utils";
@@ -27,11 +26,9 @@ function shouldRenderGalleryImage(imageIndex: number, activeIndex: number, total
 
 export function VillaCard({
   property,
-  socialProof,
   storyTagline,
 }: {
-  property: Property;
-  socialProof?: PropertySocialProof;
+  property: PublicVilla;
   storyTagline?: string;
 }) {
   const t = useTranslations("Villa");
@@ -83,7 +80,7 @@ export function VillaCard({
         </div>
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
         <div className="absolute bottom-3 right-3 rounded-full bg-navy/90 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm md:text-sm">
-          {resort.currencySymbol}
+          {currencyPrefix(property.currency)}
           {property.pricePerNight.toLocaleString()}
           <span className="text-[10px] font-normal text-white/60 md:text-xs">
             {t("perNight")}
@@ -131,13 +128,13 @@ export function VillaCard({
         <h3 className="font-serif text-xl font-semibold text-card-foreground md:text-2xl">
           {property.name}
         </h3>
-        {socialProof ? (
+        {property.rating ? (
           <div className="mt-1.5">
             <StarRating
-              rating={socialProof.overallRating}
+              rating={property.rating.average}
               size="sm"
               showValue
-              reviewCount={socialProof.totalReviews}
+              reviewCount={property.rating.count}
             />
           </div>
         ) : null}

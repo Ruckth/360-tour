@@ -37,7 +37,20 @@ export default defineSchema({
 		amenities: v.array(v.string()),
 		tourRoomIds: v.array(v.string()),
 		directDiscountPercent: v.number(),
-		status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived'))
+		status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived')),
+		// Optional per-locale copy; the public site falls back to English (see src/lib/i18n/public-content.ts).
+		translations: v.optional(
+			v.array(
+				v.object({
+					locale: v.string(),
+					tagline: v.optional(v.string()),
+					description: v.optional(v.string()),
+					amenities: v.optional(v.array(v.string()))
+				})
+			)
+		),
+		// Set when an admin edits name/tagline/description/amenities, so edited English beats bundled i18n copy.
+		contentEditedAt: v.optional(v.number())
 	})
 		.index('by_slug', ['slug'])
 		.index('by_icalExportToken', ['icalExportToken'])

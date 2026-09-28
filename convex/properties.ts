@@ -211,6 +211,14 @@ export function imageUrl(value: string): string {
 	return value;
 }
 
+/** True when guest-facing English copy changed, so the public site stops showing bundled i18n text. */
+function contentChanged(existing: Doc<'properties'>, changes: Partial<Doc<'properties'>>): boolean {
+	const textChanged = (['name', 'tagline', 'description'] as const).some(
+		(field) => changes[field] !== undefined && changes[field] !== existing[field]
+	);
+	return textChanged || (changes.amenities !== undefined && changes.amenities.join('\n') !== existing.amenities.join('\n'));
+}
+
 export const adminList = query({
 	args: {},
 	handler: async (ctx) => {
@@ -249,7 +257,8 @@ export const update = mutation({
 	},
 	handler: async (ctx, { propertyId, ...args }) => {
 		await requireAdmin(ctx);
-		if (!(await ctx.db.get(propertyId))) throw new Error('Property not found');
+		const existing = await ctx.db.get(propertyId);
+		if (!existing) throw new Error('Property not found');
 		const changes: Partial<Doc<'properties'>> = {};
 		if (args.name !== undefined) changes.name = required(args.name, 'Name');
 		if (args.tagline !== undefined) changes.tagline = args.tagline.trim();
@@ -269,6 +278,7 @@ export const update = mutation({
 			changes.directDiscountPercent = amount(args.directDiscountPercent, 'Direct discount', { max: 100 });
 		}
 		if (args.status !== undefined) changes.status = args.status;
+		if (contentChanged(existing, changes)) changes.contentEditedAt = Date.now();
 		await ctx.db.patch(propertyId, changes);
 	}
 });

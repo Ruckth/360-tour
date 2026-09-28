@@ -208,6 +208,8 @@ export function BookingFunnel({
                 tourRoomIds: row.tourRoomIds,
                 currency: row.currency,
                 directDiscountPercent: row.directDiscountPercent,
+                translations: row.translations,
+                contentEditedAt: row.contentEditedAt,
                 source: "live" as const,
               },
               locale,

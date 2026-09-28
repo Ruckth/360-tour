@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
 import { AIChatPage } from "@/components/chat/AIChatWidget";
-import { getLocalizedPropertyById, getPublicMessages } from "@/lib/i18n/public-content";
+import { getPublicMessages } from "@/lib/i18n/public-content";
+import { getVillaCatalog } from "@/lib/server/villas";
 import { resort } from "@/lib/data/resort-config";
 
 type ChatSearchParams = Record<string, string | string[] | undefined>;
@@ -28,7 +29,9 @@ export default async function ChatPage({
   const locale = await getLocale();
   const params = await searchParams;
   const propertyId = getParam(params, "property");
-  const property = propertyId ? getLocalizedPropertyById(propertyId, locale) : undefined;
+  const property = propertyId
+    ? (await getVillaCatalog(locale)).villas.find((villa) => villa.id === propertyId)
+    : undefined;
 
   return (
     <AIChatPage
