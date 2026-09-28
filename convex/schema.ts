@@ -193,13 +193,16 @@ export default defineSchema({
 			v.literal('no_show')
 		),
 		paymentStatus: v.union(v.literal('unpaid'), v.literal('paid'), v.literal('refunded')),
+		refundedAt: v.optional(v.number()),
 		price: v.number(),
 		currency: v.string(),
+		notes: v.optional(v.string()),
 		confirmationCode: v.string(),
 		accessToken: v.string(),
 		createdAt: v.number()
 	})
 		.index('by_staff_start', ['staffId', 'start'])
+		.index('by_service_start', ['serviceId', 'start'])
 		.index('by_start', ['start'])
 		.index('by_booking', ['bookingId'])
 		.index('by_chatSession', ['chatSessionId'])
