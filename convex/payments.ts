@@ -6,6 +6,11 @@ import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites
 
 const CHECKOUT_LIFETIME_SECONDS = 31 * 60;
 
+/** Pending bookings, and confirmed-but-unpaid ones (e.g. host-confirmed, pay later), can be paid online. */
+function isPayable(booking: { status: string; paymentStatus: string }) {
+  return (booking.status === 'pending' || booking.status === 'confirmed') && booking.paymentStatus === 'pending';
+}
+
 export const getCheckoutBooking = internalQuery({
   args: { bookingId: v.id('bookings'), accessToken: v.string() },
   handler: async (ctx, args) => {
@@ -28,6 +33,7 @@ export const getCheckoutBooking = internalQuery({
       checkOut: booking.checkOut,
       checkoutUrl: booking.stripeCheckoutUrl,
       checkoutExpiresAt: booking.stripeCheckoutExpiresAt,
+      source: booking.source,
     };
   },
 });
@@ -42,7 +48,7 @@ export const saveCheckoutSession = internalMutation({
   },
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
-    if (!booking || booking.accessToken !== args.accessToken || booking.status !== 'pending' || booking.paymentStatus !== 'pending') {
+    if (!booking || booking.accessToken !== args.accessToken || !isPayable(booking)) {
       throw new Error('Booking is no longer payable');
     }
     if (booking.stripeCheckoutSessionId && booking.stripeCheckoutSessionId !== args.sessionId) {
@@ -76,10 +82,11 @@ export const createCheckout = action({
   args: { bookingId: v.id('bookings'), accessToken: v.string() },
   handler: async (ctx, args): Promise<{ url: string }> => {
     const booking = await ctx.runQuery(internal.payments.getCheckoutBooking, args);
-    if (booking.status !== 'pending' || booking.paymentStatus !== 'pending') {
+    if (!isPayable(booking)) {
       throw new Error('Booking is no longer payable');
     }
-    if (Date.now() - booking.createdAt >= 24 * 60 * 60 * 1000) {
+    // Guest pending bookings expire after 24h; host-created or confirmed ones stay payable.
+    if (booking.status === 'pending' && booking.source !== 'admin' && Date.now() - booking.createdAt >= 24 * 60 * 60 * 1000) {
       throw new Error('Booking expired. Please create a new booking.');
     }
     if (booking.checkoutUrl) {
@@ -120,7 +127,8 @@ export const createCheckout = action({
       headers: {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Idempotency-Key': `booking-${args.bookingId}`,
+        // Includes the amount so an admin price edit starts a fresh checkout instead of replaying the old one.
+        'Idempotency-Key': `booking-${args.bookingId}-${amount}`,
       },
       body,
     });
@@ -166,11 +174,8 @@ export const recordRefund = internalMutation({
     const booking = await ctx.db.query('bookings').withIndex('by_stripePaymentIntentId', q => q.eq('stripePaymentIntentId', args.paymentIntentId)).unique();
     if (!booking || booking.paymentStatus === 'refunded') return;
     if (booking.paymentStatus !== 'paid') throw new Error('Refunded booking is not marked paid');
-    const blocks = await ctx.db.query('availability').withIndex('by_property_date', q =>
-      q.eq('propertyId', booking.propertyId).gte('date', booking.checkIn).lt('date', booking.checkOut)
-    ).take(366);
-    for (const block of blocks) if (block.bookingId === booking._id) await ctx.db.delete(block._id);
-    await ctx.db.patch(booking._id, { paymentStatus: 'refunded', status: 'cancelled' });
+    await releaseBookingDates(ctx, booking);
+    await ctx.db.patch(booking._id, { paymentStatus: 'refunded', status: 'cancelled', refundedAt: Date.now() });
     await queueCancellationEmail(ctx, booking);
   },
 });

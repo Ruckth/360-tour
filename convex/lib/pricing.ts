@@ -10,7 +10,10 @@ export type PriceQuote = {
 	currency: string;
 };
 
-export function calculateDirectQuote(property: Doc<'properties'>, nights: number): PriceQuote {
+export function calculateDirectQuote(
+	property: Pick<Doc<'properties'>, 'pricePerNight' | 'directDiscountPercent' | 'currency'>,
+	nights: number
+): PriceQuote {
 	const subtotal = property.pricePerNight * nights;
 	const discountPercent = property.directDiscountPercent;
 	const discountAmount = Math.round(subtotal * (discountPercent / 100));

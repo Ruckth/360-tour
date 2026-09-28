@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { internalAction, internalMutation, internalQuery, mutation, query } from './_generated/server';
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from './_generated/server';
+import type { ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { requireAdmin } from './lib/adminAuth';
 import { assertSafeIcalUrl, blockedDatesFromIcal } from './lib/ical';
@@ -9,9 +10,10 @@ import type { Doc } from './_generated/dataModel';
 
 const DAY_MS = 86_400_000;
 const MAX_FEED_BYTES = 1_000_000;
+const platformValidator = v.union(v.literal('airbnb'), v.literal('booking_com'), v.literal('agoda'));
 
 export const addSource = mutation({
-  args: { propertyId: v.id('properties'), platform: v.union(v.literal('airbnb'), v.literal('booking_com'), v.literal('agoda')), icalUrl: v.string() },
+  args: { propertyId: v.id('properties'), platform: platformValidator, icalUrl: v.string() },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     if (!await ctx.db.get(args.propertyId)) throw new Error('Property not found');
@@ -24,6 +26,25 @@ export const listSources = query({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     return await ctx.db.query('icalSources').withIndex('by_property', q => q.eq('propertyId', args.propertyId)).take(50);
+  },
+});
+
+export const updateSource = mutation({
+  args: { sourceId: v.id('icalSources'), platform: platformValidator, icalUrl: v.string() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const source = await ctx.db.get(args.sourceId);
+    if (!source) throw new Error('Calendar not found');
+    const icalUrl = assertSafeIcalUrl(args.icalUrl);
+    await ctx.db.patch(args.sourceId, {
+      platform: args.platform,
+      icalUrl,
+      ...(icalUrl !== source.icalUrl ? { lastSyncedAt: undefined, lastSyncError: undefined } : {}),
+    });
+    if (args.platform !== source.platform) {
+      const rows = await ctx.db.query('availability').withIndex('by_icalSourceId', q => q.eq('icalSourceId', args.sourceId)).take(500);
+      for (const row of rows) await ctx.db.patch(row._id, { source: args.platform });
+    }
   },
 });
 
@@ -82,7 +103,7 @@ export const applySource = internalMutation({
   args: { sourceId: v.id('icalSources'), dates: v.array(v.string()) },
   handler: async (ctx, args) => {
     const source = await ctx.db.get(args.sourceId);
-    if (!source) return;
+    if (!source) return null;
     const old = await ctx.db.query('availability').withIndex('by_icalSourceId', q => q.eq('icalSourceId', args.sourceId)).take(500);
     const wanted = new Set(args.dates);
     for (const row of old) if (!wanted.has(row.date)) await ctx.db.delete(row._id);
@@ -100,6 +121,7 @@ export const applySource = internalMutation({
       else await ctx.db.insert('availability', { propertyId: source.propertyId, date, status: 'blocked', source: source.platform as 'airbnb' | 'booking_com' | 'agoda', icalSourceId: args.sourceId });
     }
     await ctx.db.patch(args.sourceId, { lastSyncedAt: Date.now(), lastSyncError: conflicts ? `${conflicts} date(s) overlap another source or booking` : undefined });
+    return { blockedNights: wanted.size, conflicts };
   },
 });
 
@@ -108,26 +130,49 @@ export const recordSyncError = internalMutation({
   handler: async (ctx, args) => { if (await ctx.db.get(args.sourceId)) await ctx.db.patch(args.sourceId, { lastSyncError: args.message.slice(0, 200) }); },
 });
 
+export const getSource = internalQuery({
+  args: { sourceId: v.id('icalSources') },
+  handler: async (ctx, args) => await ctx.db.get(args.sourceId),
+});
+
+type SyncResult = { ok: true; blockedNights: number; conflicts: number } | { ok: false; error: string };
+
+async function syncSourceFeed(ctx: ActionCtx, source: Doc<'icalSources'>): Promise<SyncResult> {
+  try {
+    const response = await fetch(assertSafeIcalUrl(source.icalUrl), { redirect: 'error', headers: { Accept: 'text/calendar' }, signal: AbortSignal.timeout(10_000) });
+    if (!response.ok || Number(response.headers.get('content-length')) > MAX_FEED_BYTES) throw new Error(`Feed returned ${response.status}`);
+    const text = await response.text();
+    if (text.length > MAX_FEED_BYTES || !text.includes('BEGIN:VCALENDAR')) throw new Error('Invalid or oversized calendar');
+    const from = todayIso();
+    const to = new Date(Date.parse(`${from}T00:00:00Z`) + 366 * DAY_MS).toISOString().slice(0, 10);
+    const dates = blockedDatesFromIcal(text, from, to);
+    const applied: { blockedNights: number; conflicts: number } | null = await ctx.runMutation(internal.ical.applySource, { sourceId: source._id, dates });
+    return { ok: true, blockedNights: applied?.blockedNights ?? 0, conflicts: applied?.conflicts ?? 0 };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Calendar sync failed';
+    await ctx.runMutation(internal.ical.recordSyncError, { sourceId: source._id, message });
+    return { ok: false, error: message };
+  }
+}
+
+/** Admin "Sync now" for one feed. */
+export const syncSource = action({
+  args: { sourceId: v.id('icalSources') },
+  handler: async (ctx, args): Promise<SyncResult> => {
+    await requireAdmin(ctx);
+    const source: Doc<'icalSources'> | null = await ctx.runQuery(internal.ical.getSource, args);
+    if (!source) throw new Error('Calendar not found');
+    return await syncSourceFeed(ctx, source);
+  },
+});
+
 export const syncAll = internalAction({
   args: {},
   handler: async (ctx) => {
     let cursor: string | null = null;
     do {
       const page: { page: Doc<'icalSources'>[]; isDone: boolean; continueCursor: string } = await ctx.runQuery(internal.ical.pageSources, { paginationOpts: { numItems: 20, cursor } });
-      for (const source of page.page) {
-        try {
-          const response = await fetch(assertSafeIcalUrl(source.icalUrl), { redirect: 'error', headers: { Accept: 'text/calendar' }, signal: AbortSignal.timeout(10_000) });
-          if (!response.ok || Number(response.headers.get('content-length')) > MAX_FEED_BYTES) throw new Error(`Feed returned ${response.status}`);
-          const text = await response.text();
-          if (text.length > MAX_FEED_BYTES || !text.includes('BEGIN:VCALENDAR')) throw new Error('Invalid or oversized calendar');
-          const from = todayIso();
-          const to = new Date(Date.parse(`${from}T00:00:00Z`) + 366 * DAY_MS).toISOString().slice(0, 10);
-          const dates = blockedDatesFromIcal(text, from, to);
-          await ctx.runMutation(internal.ical.applySource, { sourceId: source._id, dates });
-        } catch (error) {
-          await ctx.runMutation(internal.ical.recordSyncError, { sourceId: source._id, message: error instanceof Error ? error.message : 'Calendar sync failed' });
-        }
-      }
+      for (const source of page.page) await syncSourceFeed(ctx, source);
       cursor = page.isDone ? null : page.continueCursor;
     } while (cursor);
   },

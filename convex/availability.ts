@@ -1,8 +1,7 @@
-import { mutation, query } from './_generated/server';
+import { query } from './_generated/server';
 import { v } from 'convex/values';
 import { assertValidIsoDate } from './lib/validation';
 import type { Doc } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
 
 function blocksNewBookings(booking: Doc<'bookings'>): boolean {
 	return booking.status === 'confirmed' || booking.status === 'completed';
@@ -75,50 +74,6 @@ export const getBlockedDatesByProperty = query({
 			}
 		}
 		return map;
-	}
-});
-
-export const seedBlockedRange = mutation({
-	args: {
-		propertySlug: v.string(),
-		startDate: v.string(),
-		endDate: v.string()
-	},
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		assertValidIsoDate(args.startDate, 'Start date');
-		assertValidIsoDate(args.endDate, 'End date');
-		const property = await ctx.db
-			.query('properties')
-			.withIndex('by_slug', (q) => q.eq('slug', args.propertySlug))
-			.first();
-		if (!property) throw new Error(`Property not found: ${args.propertySlug}`);
-
-		const start = new Date(args.startDate);
-		const end = new Date(args.endDate);
-		let inserted = 0;
-		for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
-			const d = new Date(t);
-			const date = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-			const existing = await ctx.db
-				.query('availability')
-				.withIndex('by_property_date', (q) =>
-					q.eq('propertyId', property._id).eq('date', date)
-				)
-				.first();
-			if (existing) {
-				await ctx.db.patch(existing._id, { status: 'booked', source: 'manual' });
-			} else {
-				await ctx.db.insert('availability', {
-					propertyId: property._id,
-					date,
-					status: 'booked',
-					source: 'manual'
-				});
-			}
-			inserted++;
-		}
-		return { propertyId: property._id, inserted };
 	}
 });
 

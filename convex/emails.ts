@@ -194,7 +194,11 @@ export const sendOwnerNotification = internalAction({
 	}
 });
 
-type LifecycleKind = 'cancellation' | 'preArrival' | 'review';
+function formatMoney(amount: number, currency: string) {
+	return `${currency === 'THB' ? '฿' : `${currency} `}${amount.toLocaleString('en-US')}`;
+}
+
+type LifecycleKind = 'cancellation' | 'preArrival' | 'review' | 'updated';
 
 async function retryLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kind: LifecycleKind, attempt: number) {
 	if (attempt >= 3) return;
@@ -202,11 +206,12 @@ async function retryLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, ki
 	const args = { bookingId, attempt: attempt + 1 };
 	if (kind === 'cancellation') await ctx.scheduler.runAfter(delay, internal.emails.sendCancellation, args);
 	else if (kind === 'preArrival') await ctx.scheduler.runAfter(delay, internal.emails.sendPreArrival, args);
+	else if (kind === 'updated') await ctx.scheduler.runAfter(delay, internal.emails.sendBookingUpdated, args);
 	else await ctx.scheduler.runAfter(delay, internal.emails.sendReviewRequest, args);
 }
 
 async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kind: LifecycleKind, attempt = 0) {
-	const details: { guestName: string; guestEmail: string; propertyName: string; checkIn: string; checkOut: string } | null =
+	const details: { guestName: string; guestEmail: string; propertyName: string; checkIn: string; checkOut: string; guests: number; total: number; currency: string } | null =
 		await ctx.runQuery(internal.bookings.getLifecycleEmailDetails, { bookingId, kind });
 	if (!details) return { sent: false, reason: 'booking_not_eligible' };
 	const apiKey = process.env.RESEND_API_KEY;
@@ -229,6 +234,10 @@ async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kin
 		preArrival: {
 			subject: `Your stay at ${details.propertyName} is coming up`,
 			html: `<p>Hi ${name},</p><p>We look forward to welcoming you to ${property} on ${checkIn}. Your check-out is ${checkOut}.</p><p>Reply to this email if you need help before arrival.</p>${signOff}`
+		},
+		updated: {
+			subject: `Booking Updated: ${details.propertyName} (${details.checkIn} - ${details.checkOut})`,
+			html: `<p>Hi ${name},</p><p>Your booking has been updated. Here are the current details:</p><ul><li>Villa: ${property}</li><li>Check-in: ${checkIn}</li><li>Check-out: ${checkOut}</li><li>Guests: ${details.guests}</li><li>Total: ${escapeHtml(formatMoney(details.total, details.currency))}</li></ul><p>If anything looks wrong, please reply to this email.</p>`
 		},
 		review: {
 			subject: `How was your stay at ${details.propertyName}?`,
@@ -259,6 +268,11 @@ export const sendCancellation = internalAction({
 export const sendPreArrival = internalAction({
 	args: { bookingId: v.id('bookings'), attempt: v.optional(v.number()) },
 	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'preArrival', args.attempt)
+});
+
+export const sendBookingUpdated = internalAction({
+	args: { bookingId: v.id('bookings'), attempt: v.optional(v.number()) },
+	handler: async (ctx, args) => await sendLifecycleEmail(ctx, args.bookingId, 'updated', args.attempt)
 });
 
 export const sendReviewRequest = internalAction({

@@ -87,6 +87,8 @@ export default defineSchema({
 		total: v.number(),
 		currency: v.string(),
 		paidAt: v.optional(v.number()),
+		// What the guest actually paid; the total can change later if an admin edits the stay.
+		amountPaid: v.optional(v.number()),
 		refundedAt: v.optional(v.number()),
 		paymentMethod: v.optional(v.string()),
 		confirmationCode: v.optional(v.string()),
@@ -101,6 +103,7 @@ export default defineSchema({
 		cancellationEmailQueuedAt: v.optional(v.number()),
 		preArrivalEmailQueuedAt: v.optional(v.number()),
 		reviewEmailQueuedAt: v.optional(v.number()),
+		adminNotes: v.optional(v.string()),
 		paymentStatus: v.union(
 			v.literal('pending'),
 			v.literal('paid'),
@@ -322,6 +325,15 @@ export default defineSchema({
 		lastSyncError: v.optional(v.string())
 	}).index('by_property', ['propertyId']),
 
+	// Host date blocks (owner stay, maintenance); each night is mirrored as an availability row.
+	dateBlocks: defineTable({
+		propertyId: v.id('properties'),
+		start: v.string(),
+		end: v.string(),
+		reason: v.string(),
+		createdAt: v.number()
+	}).index('by_property_start', ['propertyId', 'start']),
+
 	availability: defineTable({
 		propertyId: v.id('properties'),
 		date: v.string(),
@@ -334,10 +346,12 @@ export default defineSchema({
 			v.literal('manual')
 		),
 		bookingId: v.optional(v.id('bookings')),
-		icalSourceId: v.optional(v.id('icalSources'))
+		icalSourceId: v.optional(v.id('icalSources')),
+		dateBlockId: v.optional(v.id('dateBlocks'))
 	})
 		.index('by_property', ['propertyId'])
 		.index('by_icalSourceId', ['icalSourceId'])
+		.index('by_dateBlockId', ['dateBlockId'])
 		.index('by_property_date', ['propertyId', 'date']),
 
 	// Phase 3: AI Chat
