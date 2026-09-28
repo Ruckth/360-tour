@@ -4,14 +4,18 @@ import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { slugify } from "convex/lib/slug";
-import { ArrowDown, ArrowUp, Loader2, MapPin, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, MapPin, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
+import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
+import { DisabledReason } from "./DisabledReason";
 import { HotspotEditorDialog } from "./HotspotEditorDialog";
 import { RoomHotspotList } from "./RoomHotspotList";
+import { TONES } from "./status-tones";
 import { Field, IMAGE_ACCEPT, panoramaWarning, SaveBar, SaveStatus, Section, Thumb, useImageUpload, useSaver } from "./property-form";
 
 type Room = Doc<"rooms">;
@@ -49,7 +53,7 @@ export function PropertyRoomsEditor({ propertyId, rooms }: { propertyId: Id<"pro
             ))}
           </ol>
         ) : (
-          <p className="text-sm text-muted-foreground">No rooms yet. Add the first panorama below.</p>
+          <p className="text-sm text-muted-foreground">No rooms yet. Add the first panorama under “Add a room” below.</p>
         )}
       </Section>
       <AddRoomForm propertyId={propertyId} />
@@ -126,7 +130,7 @@ function RoomCard({
           <SaveBar save={save} compact />
         </form>
       </div>
-      {warning ? <p className="text-xs text-amber-600">{warning}</p> : null}
+      {warning ? <p className={cn("text-xs", TONES.warning.text)}>{warning}</p> : null}
       <div className="flex flex-wrap items-center gap-1">
         <input
           ref={fileInput}
@@ -142,30 +146,26 @@ function RoomCard({
           <Upload aria-hidden className="size-4" />
           Replace panorama
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={rooms.length < 2}
-          title={rooms.length < 2 ? "Add another room first; hotspots move guests between rooms." : undefined}
-          onClick={() => setEditingHotspots(true)}
-        >
-          <MapPin aria-hidden className="size-4" />
-          Edit hotspots ({room.hotspots.length})
-        </Button>
+        <DisabledReason reason={rooms.length < 2 && "Add another room first: hotspots move guests between rooms."}>
+          <Button size="sm" variant="outline" disabled={rooms.length < 2} onClick={() => setEditingHotspots(true)}>
+            <MapPin aria-hidden className="size-4" />
+            Edit hotspots ({room.hotspots.length})
+          </Button>
+        </DisabledReason>
         <span className="flex-1" />
-        <Button size="icon" variant="ghost" className="size-8" disabled={!onMoveUp || reordering} onClick={onMoveUp} aria-label={`Move ${room.name} earlier in the tour`}>
+        <Button size="icon" variant="ghost" className="size-9" disabled={!onMoveUp || reordering} onClick={onMoveUp} aria-label={`Move ${room.name} earlier in the tour`}>
           <ArrowUp aria-hidden className="size-4" />
         </Button>
-        <Button size="icon" variant="ghost" className="size-8" disabled={!onMoveDown || reordering} onClick={onMoveDown} aria-label={`Move ${room.name} later in the tour`}>
+        <Button size="icon" variant="ghost" className="size-9" disabled={!onMoveDown || reordering} onClick={onMoveDown} aria-label={`Move ${room.name} later in the tour`}>
           <ArrowDown aria-hidden className="size-4" />
         </Button>
-        <Button size="icon" variant="ghost" className="size-8" disabled={save.saving} onClick={() => void remove()} aria-label={`Delete ${room.name}`}>
+        <Button size="icon" variant="ghost" className="size-9" disabled={save.saving} onClick={() => void remove()} aria-label={`Delete ${room.name}`}>
           <Trash2 aria-hidden className="size-4" />
         </Button>
       </div>
       {rooms.length > 1 ? (
         <details>
-          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Advanced: exact hotspot positions</summary>
+          <summary className="cursor-pointer rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Advanced: exact hotspot positions</summary>
           <div className="mt-2">
             <RoomHotspotList key={JSON.stringify(room.hotspots)} room={room} rooms={rooms} />
           </div>
@@ -241,11 +241,11 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
             <Input id="new-room-url" value={url} onChange={(event) => setUrl(event.target.value)} disabled={Boolean(file)} placeholder="https://… or /public-path.webp" />
           </Field>
         </div>
-        {warning ? <p className="text-xs text-amber-600">{warning}</p> : null}
+        {warning ? <p className={cn("text-xs", TONES.warning.text)}>{warning}</p> : null}
         <div className="flex items-center justify-end gap-3">
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <Button type="submit" disabled={saving}>
-            {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+            {saving ? <Spinner className="text-current" /> : null}
             Add room
           </Button>
         </div>

@@ -6,7 +6,6 @@ import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { calculateDirectQuote } from "convex/lib/pricing";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -24,6 +23,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import {
   addDaysIso,
   dateToIso,
@@ -32,14 +34,16 @@ import {
   rangeIntersectsDates,
   todayIsoLocal,
 } from "@/lib/booking/dates";
-import { errorText, money } from "@/lib/staff-bookings";
+import { errorText } from "@/lib/staff-bookings";
+import { DisabledReason } from "./DisabledReason";
+import { StatusBadge } from "./StatusBadge";
+import { formatMoney, sourceLabel } from "./labels";
 import {
-  STATUS,
-  SOURCE_LABELS,
   balanceText,
   canEditBooking,
   cancelConfirmOptions,
   displayDate,
+  hotelStatus,
   isoNights,
   payLink,
   paymentText,
@@ -73,10 +77,18 @@ export function BookingSheet({
     <Sheet open={Boolean(bookingId)} onOpenChange={(open) => (open ? undefined : onClose())}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-md">
         {booking === undefined ? (
-          <>
+          <div role="status" aria-label="Loading booking" className="grid gap-5">
             <SheetTitle className="sr-only">Booking</SheetTitle>
-            <Loader2 role="status" aria-label="Loading booking" className="m-auto size-5 animate-spin text-gold" />
-          </>
+            <div className="grid gap-2">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-5 w-28" />
+            </div>
+            <div className="grid gap-3 border-y border-border py-3">
+              {Array.from({ length: 6 }, (_, i) => (
+                <Skeleton key={i} className="h-5 w-full" />
+              ))}
+            </div>
+          </div>
         ) : booking === null ? (
           <>
             <SheetTitle>Booking not found</SheetTitle>
@@ -110,7 +122,7 @@ function BookingDetails({
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState(booking.adminNotes ?? "");
 
-  const status = STATUS[statusKey(booking)];
+  const status = hotelStatus(statusKey(booking));
   const isPaid = booking.paymentStatus === "paid";
   const editable = canEditBooking(booking);
   const deletable =
@@ -172,11 +184,10 @@ function BookingDetails({
   return (
     <div className="grid gap-5">
       <div>
-        <SheetTitle className="font-serif text-2xl font-semibold">{booking.guestName}</SheetTitle>
-        <SheetDescription className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
-          {status.label}
-          {booking.confirmationCode ? <span className="font-mono text-xs">· {booking.confirmationCode}</span> : null}
+        <SheetTitle className="pe-8">{booking.guestName}</SheetTitle>
+        <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
+          <StatusBadge {...status} />
+          {booking.confirmationCode ? <span className="font-mono text-xs">{booking.confirmationCode}</span> : null}
         </SheetDescription>
       </div>
 
@@ -191,16 +202,16 @@ function BookingDetails({
         </Detail>
         <Detail label="Price">
           <span className="block text-muted-foreground">
-            {money(nightly, booking.currency)} × {booking.nights} = {money(booking.subtotal, booking.currency)}
+            {formatMoney(nightly, booking.currency)} × {booking.nights} = {formatMoney(booking.subtotal, booking.currency)}
           </span>
           {booking.discountAmount > 0 ? (
             <span className="block text-muted-foreground">
-              Direct discount −{money(booking.discountAmount, booking.currency)}
+              Direct discount −{formatMoney(booking.discountAmount, booking.currency)}
             </span>
           ) : null}
-          <span className="block font-medium">Total {money(booking.total, booking.currency)}</span>
+          <span className="block font-medium">Total {formatMoney(booking.total, booking.currency)}</span>
           {booking.amountPaid !== undefined ? (
-            <span className="block text-muted-foreground">Paid {money(booking.amountPaid, booking.currency)}</span>
+            <span className="block text-muted-foreground">Paid {formatMoney(booking.amountPaid, booking.currency)}</span>
           ) : null}
           {balance ? <span className={`block font-medium ${balance.tone}`}>{balance.text}</span> : null}
         </Detail>
@@ -214,20 +225,19 @@ function BookingDetails({
         <Detail label="Phone">{booking.guestPhone}</Detail>
         <Detail label="Email">{booking.guestEmail ?? "—"}</Detail>
         <Detail label="Source">
-          <Badge variant="outline">{SOURCE_LABELS[booking.source] ?? booking.source}</Badge>
+          <Badge variant="outline">{sourceLabel(booking.source)}</Badge>
         </Detail>
         <Detail label="Created">{format(new Date(booking.createdAt), "d MMM yyyy, HH:mm")}</Detail>
       </dl>
 
       <div className="grid gap-2">
         <Label htmlFor="booking-notes">Notes (staff only)</Label>
-        <textarea
+        <Textarea
           id="booking-notes"
           value={notes}
           maxLength={2000}
           onChange={(event) => setNotes(event.target.value)}
           placeholder="Arrival time, special requests, deposit details…"
-          className="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
         />
         {notesChanged ? (
           <Button
@@ -237,7 +247,7 @@ function BookingDetails({
             disabled={pending !== null}
             onClick={() => act("notes", () => updateNotes({ bookingId: booking._id, notes }), "Notes saved.")}
           >
-            {pending === "notes" ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending === "notes" ? <Spinner className="text-current" /> : null}
             Save notes
           </Button>
         ) : null}
@@ -249,25 +259,22 @@ function BookingDetails({
       <div className="flex flex-wrap gap-2">
         {editable && booking.status === "pending" ? (
           <Button onClick={() => act("confirm", () => updateBooking({ bookingId: booking._id, action: "confirm" }))} disabled={pending !== null}>
-            {pending === "confirm" ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending === "confirm" ? <Spinner className="text-current" /> : null}
             Confirm
           </Button>
         ) : null}
         {editable && !isPaid ? (
           <Button variant="secondary" onClick={() => act("markPaid", () => updateBooking({ bookingId: booking._id, action: "markPaid" }))} disabled={pending !== null}>
-            {pending === "markPaid" ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending === "markPaid" ? <Spinner className="text-current" /> : null}
             Mark paid
           </Button>
         ) : null}
         {editable ? (
-          <Button
-            variant="outline"
-            onClick={() => setEditing(true)}
-            disabled={pending !== null || booking.checkoutLive}
-            title={booking.checkoutLive ? "Wait for the guest's Stripe checkout to finish or expire" : undefined}
-          >
-            Edit
-          </Button>
+          <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
+            <Button variant="outline" onClick={() => setEditing(true)} disabled={pending !== null || booking.checkoutLive}>
+              Edit
+            </Button>
+          </DisabledReason>
         ) : null}
         {booking.accessToken ? (
           <Button variant="outline" onClick={copyPayLink} disabled={pending !== null}>
@@ -280,19 +287,19 @@ function BookingDetails({
             onClick={() => act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued.")}
             disabled={pending !== null}
           >
-            {pending === "resend" ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending === "resend" ? <Spinner className="text-current" /> : null}
             Resend emails
           </Button>
         ) : null}
         {editable ? (
           <Button variant="outline" onClick={cancel} disabled={pending !== null}>
-            {pending === "cancel" ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending === "cancel" ? <Spinner className="text-current" /> : null}
             {isPaid ? "Cancel & record refund" : "Cancel booking"}
           </Button>
         ) : null}
         {deletable ? (
           <Button variant="ghost" className="text-destructive" onClick={remove} disabled={pending !== null}>
-            {pending === "delete" ? <Loader2 className="size-4 animate-spin" /> : null}
+            {pending === "delete" ? <Spinner className="text-current" /> : null}
             Delete
           </Button>
         ) : null}
@@ -438,10 +445,10 @@ function EditBookingDialog({
             {stayChanged && nights > 0 ? (
               <>
                 <p className="font-medium">
-                  New total {money(newTotal, booking.currency)}{" "}
+                  New total {formatMoney(newTotal, booking.currency)}{" "}
                   <span className="font-normal text-muted-foreground">
-                    (was {money(booking.total, booking.currency)},{" "}
-                    {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${money(Math.abs(difference), booking.currency)}`})
+                    (was {formatMoney(booking.total, booking.currency)},{" "}
+                    {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${formatMoney(Math.abs(difference), booking.currency)}`})
                   </span>
                 </p>
                 <p className="text-muted-foreground">
@@ -449,11 +456,11 @@ function EditBookingDialog({
                 </p>
               </>
             ) : (
-              <p className="text-muted-foreground">Price unchanged: {money(booking.total, booking.currency)}</p>
+              <p className="text-muted-foreground">Price unchanged: {formatMoney(booking.total, booking.currency)}</p>
             )}
             {booking.amountPaid !== undefined ? (
               <p className="mt-1 text-muted-foreground">
-                Guest paid {money(booking.amountPaid, booking.currency)}.{" "}
+                Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
                 {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
               </p>
             ) : null}
@@ -465,7 +472,7 @@ function EditBookingDialog({
               Close
             </Button>
             <Button type="submit" disabled={saving || !dates.checkIn || !dates.checkOut || conflicts}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              {saving ? <Spinner className="text-current" /> : null}
               Save changes
             </Button>
           </DialogFooter>

@@ -3,11 +3,12 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
-import { ArrowDown, ArrowUp, Loader2, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "./ConfirmDialog";
 import { IMAGE_ACCEPT, SaveStatus, Section, Thumb, useImageUpload, useSaver } from "./property-form";
 
@@ -75,7 +76,7 @@ export function PropertyPhotosEditor({ property }: { property: Doc<"properties">
             }}
           />
           <Button size="sm" disabled={save.saving} onClick={() => fileInput.current?.click()}>
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload aria-hidden className="size-4" />}
+            {uploading ? <Spinner className="text-current" /> : <Upload aria-hidden className="size-4" />}
             {uploading || "Upload photos"}
           </Button>
         </>
@@ -94,13 +95,13 @@ export function PropertyPhotosEditor({ property }: { property: Doc<"properties">
                   <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={image}>
                     {index + 1}. {image.split("/").pop()}
                   </p>
-                  <Button size="icon" variant="ghost" className="size-8" disabled={save.saving || index === 0} onClick={() => move(index, -1)} aria-label="Move earlier">
+                  <Button size="icon" variant="ghost" className="size-9" disabled={save.saving || index === 0} onClick={() => move(index, -1)} aria-label={`Move photo ${index + 1} earlier`}>
                     <ArrowUp aria-hidden className="size-4" />
                   </Button>
-                  <Button size="icon" variant="ghost" className="size-8" disabled={save.saving || index === images.length - 1} onClick={() => move(index, 1)} aria-label="Move later">
+                  <Button size="icon" variant="ghost" className="size-9" disabled={save.saving || index === images.length - 1} onClick={() => move(index, 1)} aria-label={`Move photo ${index + 1} later`}>
                     <ArrowDown aria-hidden className="size-4" />
                   </Button>
-                  <Button size="icon" variant="ghost" className="size-8" disabled={save.saving} onClick={() => void remove(index)} aria-label="Remove photo">
+                  <Button size="icon" variant="ghost" className="size-9" disabled={save.saving} onClick={() => void remove(index)} aria-label={`Remove photo ${index + 1}`}>
                     <Trash2 aria-hidden className="size-4" />
                   </Button>
                 </div>
@@ -108,7 +109,13 @@ export function PropertyPhotosEditor({ property }: { property: Doc<"properties">
             ))}
           </ol>
         ) : (
-          <p className="text-sm text-muted-foreground">No photos yet. Upload some or add one by URL.</p>
+          <div className="grid justify-items-start gap-3">
+            <p className="text-sm text-muted-foreground">No photos yet. Upload some or add one by URL below.</p>
+            <Button size="sm" variant="outline" disabled={save.saving} onClick={() => fileInput.current?.click()}>
+              <Upload aria-hidden className="size-4" />
+              Upload photos
+            </Button>
+          </div>
         )}
         <form onSubmit={addUrl} className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
           <Input

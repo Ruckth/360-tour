@@ -5,7 +5,7 @@ import { Canvas, useLoader, useThree, type ThreeEvent } from "@react-three/fiber
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
-import { Eye, Loader2, Trash2 } from "lucide-react";
+import { Eye, Trash2 } from "lucide-react";
 import { Suspense, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Raycaster, SRGBColorSpace, TextureLoader, Vector2, type Mesh } from "three";
 import { Hotspot } from "@/components/tour/Hotspot";
@@ -14,6 +14,7 @@ import { TourCamera } from "@/components/tour/TourCanvas";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { toHotspotPosition, type HotspotPosition } from "@/lib/tour-geometry";
 import { useConfirm } from "./ConfirmDialog";
 import { NATIVE_SELECT, SaveStatus, useSaver } from "./property-form";
@@ -128,7 +129,7 @@ export function HotspotEditorDialog({ room, rooms, onClose }: { room: Room; room
   return (
     <Dialog open onOpenChange={(open) => !open && void requestClose()}>
       <DialogContent
-        className="flex h-[90vh] max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        className="flex h-[90dvh] max-w-6xl flex-col gap-0 overflow-hidden p-0"
         onEscapeKeyDown={(event) => {
           if (selectedKey === null) return;
           event.preventDefault(); // Escape closes the hotspot form first
@@ -137,8 +138,8 @@ export function HotspotEditorDialog({ room, rooms, onClose }: { room: Room; room
       >
         <div className="flex flex-wrap items-center gap-3 border-b border-border py-3 pl-4 pr-12">
           <div className="min-w-0 flex-1">
-            <DialogTitle className="text-sm font-semibold">Hotspots · {room.name}</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">{hint}</DialogDescription>
+            <DialogTitle className="text-base">Hotspots · {room.name}</DialogTitle>
+            <DialogDescription className="text-xs">{hint}</DialogDescription>
           </div>
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : <SaveStatus save={save} />}
           <Button size="sm" variant={preview ? "secondary" : "outline"} onClick={togglePreview} aria-pressed={preview}>
@@ -149,7 +150,7 @@ export function HotspotEditorDialog({ room, rooms, onClose }: { room: Room; room
             Cancel
           </Button>
           <Button size="sm" onClick={() => void submit()} disabled={save.saving || !dirty}>
-            {save.saving ? <Loader2 className="size-4 animate-spin" /> : null}
+            {save.saving ? <Spinner className="text-current" /> : null}
             Save hotspots
           </Button>
         </div>

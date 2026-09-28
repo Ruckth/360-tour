@@ -3,27 +3,32 @@
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
-import { Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { useConfirm } from '@/components/admin/ConfirmDialog';
+import { StatusBadge } from '@/components/admin/StatusBadge';
+import { sourceLabel } from '@/components/admin/labels';
+import { statusMeta } from '@/components/admin/status-tones';
 import { errorText } from '@/lib/staff-bookings';
 
 type Property = { _id: Id<'properties'>; name: string };
 type Platform = 'airbnb' | 'booking_com' | 'agoda';
 
-const PLATFORMS: Record<Platform, string> = { airbnb: 'Airbnb', booking_com: 'Booking.com', agoda: 'Agoda' };
+const PLATFORMS: Platform[] = ['airbnb', 'booking_com', 'agoda'];
 
 function PlatformSelect({ value, onChange, id }: { value: Platform; onChange: (value: Platform) => void; id?: string }) {
   return (
     <Select value={value} onValueChange={(next) => onChange(next as Platform)}>
       <SelectTrigger id={id} className="rounded-lg" aria-label="Platform"><SelectValue /></SelectTrigger>
       <SelectContent>
-        {Object.entries(PLATFORMS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
+        {PLATFORMS.map(key => <SelectItem key={key} value={key}>{sourceLabel(key)}</SelectItem>)}
       </SelectContent>
     </Select>
   );
@@ -34,7 +39,7 @@ export function IcalSourcesDialog({ open, onClose, properties }: { open: boolean
   const selected = propertyId || properties[0]?._id;
 
   return <Dialog open={open} onOpenChange={value => { if (!value) onClose(); }}>
-    <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader><DialogTitle>OTA calendars</DialogTitle><DialogDescription>Import iCal feeds every 30 minutes and export confirmed bookings to other platforms.</DialogDescription></DialogHeader>
       <div className="grid gap-4 text-sm">
         <div className="grid gap-2">
@@ -80,20 +85,20 @@ export function IcalSourcesPanel({ propertyId }: { propertyId: Id<'properties'> 
       <PlatformSelect id="ical-platform" value={platform} onChange={setPlatform} />
       <Label htmlFor="ical-url">HTTPS iCal URL</Label>
       <Input id="ical-url" type="url" required placeholder="https://.../calendar.ics" value={icalUrl} onChange={event => setIcalUrl(event.target.value)} />
-      <Button type="submit" disabled={busy}>Add calendar</Button>
+      <Button type="submit" className="mt-1 justify-self-start" disabled={busy}>{busy ? <Spinner className="text-current" /> : null}Add calendar</Button>
     </form>
     <div className="grid gap-2">
-      <h3 className="font-semibold">Imported feeds</h3>
+      <h3 className="text-sm font-semibold">Imported feeds</h3>
       {sources === undefined
-        ? <Loader2 role="status" aria-label="Loading calendars" className="size-4 animate-spin text-gold" />
+        ? <div role="status" aria-label="Loading calendars" className="grid gap-2">{[0, 1].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
         : sources.length
           ? sources.map(source => <SourceRow key={source._id} source={source} />)
-          : <p className="text-muted-foreground">No imported calendars yet.</p>}
+          : <p className="text-muted-foreground">No imported calendars yet. Add an Airbnb, Booking.com or Agoda iCal link above.</p>}
     </div>
     <div className="grid gap-2 border-t border-border pt-4">
-      <h3 className="font-semibold">Export to OTAs</h3>
+      <h3 className="text-sm font-semibold">Export to OTAs</h3>
       {exportUrl ? <Input readOnly aria-label="iCal export URL" value={exportUrl} onFocus={event => event.currentTarget.select()} /> : <p className="text-muted-foreground">Generate a private feed URL for this villa.</p>}
-      <Button variant="outline" disabled={busy} onClick={async () => {
+      <Button variant="outline" className="justify-self-start" disabled={busy} onClick={async () => {
         if (token && !(await confirm({ title: 'Rotate the export URL?', description: 'Existing OTA subscriptions will stop updating.', confirmLabel: 'Rotate URL', destructive: true }))) return;
         setBusy(true); setError('');
         try { await rotateToken({ propertyId }); } catch (err) { setError(errorText(err, 'Could not generate export URL.')); } finally { setBusy(false); }
@@ -132,22 +137,26 @@ function SourceRow({ source }: { source: Doc<'icalSources'> }) {
       <Input id={`url-${source._id}`} type="url" required value={icalUrl} onChange={event => setIcalUrl(event.target.value)} />
       {message?.error ? <p role="alert" className="text-xs text-destructive">{message.text}</p> : null}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={busy !== null}>{busy === 'save' ? <Loader2 className="size-4 animate-spin" /> : null}Save</Button>
+        <Button type="submit" size="sm" disabled={busy !== null}>{busy === 'save' ? <Spinner className="text-current" /> : null}Save</Button>
         <Button type="button" size="sm" variant="outline" onClick={() => { setEditing(false); setPlatform(source.platform as Platform); setIcalUrl(source.icalUrl); setMessage(null); }}>Cancel</Button>
       </div>
     </form>;
   }
 
-  return <div className="rounded-lg border border-border p-3">
+  const health = statusMeta('channelHealth', source.lastSyncError ? 'warning' : source.lastSyncedAt ? 'ok' : 'not_configured');
+  return <div className="grid gap-1 rounded-lg border border-border p-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <strong>{PLATFORMS[source.platform as Platform] ?? source.platform}</strong>
+      <span className="flex items-center gap-2">
+        <strong>{sourceLabel(source.platform)}</strong>
+        <StatusBadge tone={health.tone} label={source.lastSyncError || source.lastSyncedAt ? health.label : 'Not synced yet'} />
+      </span>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => run('sync', async () => {
           const result = await syncSource({ sourceId: source._id });
           if (!result.ok) throw new Error(`Sync failed: ${result.error}`);
           const nights = `${result.blockedNights} imported ${result.blockedNights === 1 ? 'night' : 'nights'}`;
           return result.conflicts ? `Synced: ${nights}, ${result.conflicts} overlapping another booking or block.` : `Synced: ${nights}.`;
-        })}>{busy === 'sync' ? <Loader2 className="size-4 animate-spin" /> : null}Sync now</Button>
+        })}>{busy === 'sync' ? <Spinner className="text-current" /> : null}Sync now</Button>
         <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setEditing(true)}>Edit</Button>
         <Button size="sm" variant="outline" disabled={busy !== null} onClick={async () => {
           if (!(await confirm({ title: 'Remove this calendar?', description: 'Its imported blocks are removed too.', confirmLabel: 'Remove', destructive: true }))) return;
@@ -156,7 +165,7 @@ function SourceRow({ source }: { source: Doc<'icalSources'> }) {
       </div>
     </div>
     <p className="break-all text-xs text-muted-foreground">{source.icalUrl}</p>
-    <p className="text-xs text-muted-foreground">Last sync: {source.lastSyncedAt ? new Date(source.lastSyncedAt).toLocaleString() : 'Waiting for first sync'}</p>
+    <p className="text-xs text-muted-foreground">Last sync: {source.lastSyncedAt ? format(source.lastSyncedAt, 'd MMM yyyy, HH:mm') : 'Waiting for first sync'}</p>
     {source.lastSyncError ? <p className="text-xs text-destructive">{source.lastSyncError}</p> : null}
     {message ? <p role={message.error ? 'alert' : 'status'} className={message.error ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>{message.text}</p> : null}
   </div>;

@@ -3,10 +3,11 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
-import { Button } from "@/components/ui/button";
+import { adminStaffTabPath } from "@/components/admin/admin-routes";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
@@ -93,9 +94,14 @@ export function ServiceStaffMatrix({
 
   if (!services.length || !staff.length) {
     return (
-      <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-        {services.length ? "No active staff yet." : "No active services yet."}
-      </p>
+      <div className="grid justify-items-center gap-3 px-4 py-10 text-center">
+        <p className="text-sm text-muted-foreground">{services.length ? "No active staff yet." : "No active services yet."}</p>
+        {services.length ? (
+          <ButtonLink href={adminStaffTabPath("staff")} size="sm">
+            Add staff
+          </ButtonLink>
+        ) : null}
+      </div>
     );
   }
 
@@ -105,7 +111,7 @@ export function ServiceStaffMatrix({
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th scope="col" className="sticky start-0 z-10 bg-card px-4 py-2 text-start text-xs font-medium text-muted-foreground">
+              <th scope="col" className="admin-eyebrow sticky start-0 z-10 bg-card px-4 py-2 text-start">
                 Service
               </th>
               {staff.map((person) => (
@@ -114,9 +120,9 @@ export function ServiceStaffMatrix({
                     type="button"
                     onClick={() => toggleColumn(person._id)}
                     title={`Toggle ${person.name} for every service`}
-                    className="mx-auto flex w-16 flex-col items-center gap-1 rounded-md px-1 py-1 hover:bg-muted"
+                    className="mx-auto flex w-16 flex-col items-center gap-1 rounded-md px-1 py-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <StaffAvatar staff={person} className="size-7 text-[10px]" />
+                    <StaffAvatar staff={person} className="size-7" />
                     <span className="w-full truncate text-xs">{person.name}</span>
                   </button>
                 </th>
@@ -134,7 +140,7 @@ export function ServiceStaffMatrix({
                       type="button"
                       onClick={() => toggleRow(service)}
                       title={`Toggle everyone for ${service.name}`}
-                      className="-mx-2 flex max-w-56 flex-col rounded-md px-2 py-1 text-start hover:bg-muted"
+                      className="-mx-2 flex max-w-56 flex-col rounded-md px-2 py-1 text-start hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span className="truncate font-medium">{service.name}</span>
                       <span className={cn("text-xs", isEmpty ? "text-destructive" : "text-muted-foreground")}>
@@ -177,7 +183,7 @@ export function ServiceStaffMatrix({
           Reset
         </Button>
         <Button size="sm" disabled={!dirty || empty.length > 0 || saving} onClick={submit}>
-          {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+          {saving ? <Spinner className="text-current" /> : null}
           Save
         </Button>
       </div>

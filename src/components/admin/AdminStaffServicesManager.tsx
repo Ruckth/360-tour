@@ -4,14 +4,16 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { Archive, ArchiveRestore, CalendarOff, Loader2, Pencil, PlusIcon, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarOff, Pencil, PlusIcon, Trash2 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { ServiceStaffMatrix } from "@/components/admin/AdminServiceStaffMatrix";
 import { BulkTimeOffDialog, TimeOffFields, conflictText, readTimeOff } from "@/components/admin/AdminStaffTimeOff";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { DisabledReason } from "@/components/admin/DisabledReason";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,11 +25,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   WEEKDAYS,
   errorText,
   formatTimeOff,
-  money,
   resortIsoDate,
   timeOffInput,
   timeOffRange,
@@ -93,12 +96,31 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   }
 
   if (!staff || !services) {
-    return <Loader2 className="mx-auto my-16 size-5 animate-spin text-gold" />;
+    return (
+      <section role="status" aria-label={`Loading ${section}`} className="border border-border bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <Skeleton className="h-4 w-72 max-w-full" />
+        </div>
+        <ul className="divide-y divide-border">
+          {Array.from({ length: 4 }, (_, i) => (
+            <li key={i} className="flex items-center gap-3 px-4 py-3">
+              <Skeleton className="size-10 rounded-full" />
+              <div className="grid flex-1 gap-1.5">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-64 max-w-full" />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
   }
 
   const staffNames = new Map(staff.map((s) => [s._id as string, s.name]));
   const rows = section === "staff" ? staff : services;
   const archivedCount = rows.filter((row) => row.status === "archived").length;
+  const visibleCount = showArchived ? rows.length : rows.length - archivedCount;
+  const hasActiveStaff = staff.some((s) => s.status === "active");
 
   async function run(action: () => Promise<unknown>, fallback: string) {
     setError("");
@@ -152,20 +174,23 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   return (
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <p className="flex-1 text-sm text-muted-foreground">
+        <p className="min-w-60 flex-1 text-sm text-muted-foreground">
           {section === "staff"
             ? "Who performs services, and when they work. Breaks show as blocked time on the calendar."
             : "What guests can book, how long it takes, and who can do it."}
         </p>
         {section === "services" ? (
-          <div className="flex rounded-md border border-border p-0.5" role="group" aria-label="Services view">
+          <div className="flex h-9 rounded-lg border border-border bg-muted/40 p-0.5" role="group" aria-label="Services view">
             {([["list", "List"], ["matrix", "Who does what"]] as const).map(([key, label]) => (
               <Button
                 key={key}
                 size="sm"
-                variant={view === key ? "secondary" : "ghost"}
+                variant="ghost"
                 aria-pressed={view === key}
-                className="h-7"
+                className={cn(
+                  "h-full rounded-md",
+                  view === key ? "bg-background text-foreground shadow-sm hover:bg-background" : "text-muted-foreground",
+                )}
                 onClick={() => switchView(key)}
               >
                 {label}
@@ -174,26 +199,39 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
           </div>
         ) : null}
         {archivedCount && !(section === "services" && view === "matrix") ? (
-          <Button size="sm" variant={showArchived ? "secondary" : "outline"} onClick={() => setShowArchived((v) => !v)}>
+          <Button
+            size="sm"
+            variant={showArchived ? "secondary" : "outline"}
+            aria-pressed={showArchived}
+            onClick={() => setShowArchived((v) => !v)}
+          >
             Show archived ({archivedCount})
           </Button>
         ) : null}
         {section === "staff" ? (
-          <Button size="sm" variant="outline" disabled={!staff.some((s) => s.status === "active")} onClick={() => setBulkTimeOff(true)}>
-            <CalendarOff aria-hidden className="size-4" />
-            Add time off
-          </Button>
+          <DisabledReason reason={!hasActiveStaff && "Add staff first."}>
+            <Button size="sm" variant="outline" disabled={!hasActiveStaff} onClick={() => setBulkTimeOff(true)}>
+              <CalendarOff aria-hidden className="size-4" />
+              Add time off
+            </Button>
+          </DisabledReason>
         ) : null}
-        <Button
-          size="sm"
-          disabled={section === "services" && !staff.some((s) => s.status === "active")}
-          onClick={() => setEditing(section === "staff" ? { kind: "staff" } : { kind: "service" })}
-        >
-          <PlusIcon aria-hidden className="size-4" />
-          {section === "staff" ? "Add staff" : "Add service"}
-        </Button>
+        <DisabledReason reason={section === "services" && !hasActiveStaff && "Add staff first: every service needs someone to perform it."}>
+          <Button
+            size="sm"
+            disabled={section === "services" && !hasActiveStaff}
+            onClick={() => setEditing(section === "staff" ? { kind: "staff" } : { kind: "service" })}
+          >
+            <PlusIcon aria-hidden className="size-4" />
+            {section === "staff" ? "Add staff" : "Add service"}
+          </Button>
+        </DisabledReason>
       </div>
-      {error ? <p className="border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
 
       {section === "services" && view === "matrix" ? (
         <ServiceStaffMatrix
@@ -230,15 +268,21 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                       </span>
                     }
                     title={s.name}
-                    subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${money(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
+                    subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${formatMoney(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
                     onEdit={() => setEditing({ kind: "service", service: s })}
                     onArchive={() => archiveOffering(s)}
                     onRestore={() => run(() => updateService({ serviceId: s._id, status: "active" }), "Could not restore.")}
                   />
                 ))}
-          {rows.length === 0 ? (
-            <li className="px-4 py-10 text-center text-sm text-muted-foreground">
-              {section === "staff" ? "No staff yet." : "No services yet."}
+          {visibleCount === 0 ? (
+            <li className="grid justify-items-center gap-3 px-4 py-10 text-center text-sm text-muted-foreground">
+              {rows.length
+                ? `Every ${section === "staff" ? "staff member" : "service"} is archived.`
+                : section === "staff"
+                  ? "No staff yet. Add the people who perform services."
+                  : hasActiveStaff
+                    ? "No services yet. Add what guests can book."
+                    : "No services yet. Add staff first, then the services they perform."}
             </li>
           ) : null}
         </ul>
@@ -280,16 +324,17 @@ function Row({
   onRestore: () => void;
 }) {
   return (
-    <li className={cn("flex items-center gap-3 px-4 py-3", archived && "opacity-60")}>
-      {leading}
+    <li className="flex items-center gap-3 px-4 py-3">
+      {/* Only the picture fades: faded text would fail contrast. The badge says it's archived. */}
+      <span className={cn("shrink-0", archived && "opacity-50 grayscale")}>{leading}</span>
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
           {title}
-          {archived ? <Badge variant="outline">Archived</Badge> : null}
+          {archived ? <StatusBadge tone="muted" label="Archived" /> : null}
         </p>
         <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
       </div>
-      <Button size="sm" variant="ghost" onClick={onEdit} aria-label={`Edit ${title}`}>
+      <Button size="icon" variant="ghost" className="size-9" onClick={onEdit} aria-label={`Edit ${title}`}>
         <Pencil aria-hidden className="size-4" />
       </Button>
       {archived ? (
@@ -298,7 +343,7 @@ function Row({
           Restore
         </Button>
       ) : (
-        <Button size="sm" variant="ghost" onClick={onArchive} aria-label={`Archive ${title}`}>
+        <Button size="icon" variant="ghost" className="size-9" onClick={onArchive} aria-label={`Archive ${title}`}>
           <Archive aria-hidden className="size-4" />
         </Button>
       )}
@@ -390,7 +435,7 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{staff ? `Edit ${staff.name}` : "Add staff"}</DialogTitle>
           <DialogDescription>Resort time (Bangkok). Breaks and time off block bookings automatically.</DialogDescription>
@@ -472,13 +517,14 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
             <legend className="text-sm font-medium">Add time off (optional)</legend>
             <TimeOffFields idPrefix="st-off" min={today} />
           </fieldset>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {simpleSchedule && days.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one working day to save.</p> : null}
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving || (simpleSchedule && days.size === 0)}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              {saving ? <Spinner className="text-current" /> : null}
               Save
             </Button>
           </DialogFooter>
@@ -529,7 +575,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{service ? `Edit ${service.name}` : "Add service"}</DialogTitle>
           <DialogDescription>Turnaround is cleanup or travel time after the service. The staff member stays blocked for it.</DialogDescription>
@@ -575,20 +621,21 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
                       })
                     }
                   />
-                  <StaffAvatar staff={person} className="size-6 text-[10px]" />
+                  <StaffAvatar staff={person} className="size-6" />
                   <span className="truncate">{person.name}</span>
                   <span className="truncate text-xs text-muted-foreground">{person.role}</span>
                 </label>
               ))}
             </div>
           </fieldset>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {staffIds.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one person to save.</p> : null}
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving || staffIds.size === 0}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              {saving ? <Spinner className="text-current" /> : null}
               Save
             </Button>
           </DialogFooter>
@@ -617,9 +664,11 @@ function TimeOffList({ staff }: { staff: Staff }) {
 
   return (
     <section className="grid gap-2 border-t border-border pt-4">
-      <h3 className="text-sm font-medium">Upcoming time off</h3>
+      <h3 className="text-sm font-semibold">Upcoming time off</h3>
       {rows === undefined ? (
-        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+        <div role="status" aria-label="Loading time off">
+          <Skeleton className="h-12 w-full" />
+        </div>
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">None scheduled.</p>
       ) : (
@@ -630,17 +679,17 @@ function TimeOffList({ staff }: { staff: Staff }) {
                 <p className="truncate text-sm font-medium">{row.label}</p>
                 <p className="truncate text-xs text-muted-foreground">{formatTimeOff(row)}</p>
               </div>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(row)} aria-label={`Edit ${row.label}`}>
+              <Button type="button" size="icon" variant="ghost" className="size-9" onClick={() => setEditing(row)} aria-label={`Edit ${row.label}`}>
                 <Pencil aria-hidden className="size-4" />
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => remove(row)} aria-label={`Remove ${row.label}`}>
+              <Button type="button" size="icon" variant="ghost" className="size-9" onClick={() => remove(row)} aria-label={`Remove ${row.label}`}>
                 <Trash2 aria-hidden className="size-4" />
               </Button>
             </li>
           ))}
         </ul>
       )}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {editing ? <TimeOffDialog key={editing._id} timeOff={editing} staffName={staff.name} onClose={() => setEditing(null)} /> : null}
     </section>
   );
@@ -688,10 +737,10 @@ export function TimeOffDialog({ timeOff, staffName, onClose }: { timeOff: TimeOf
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
           <TimeOffFields idPrefix="to-edit" defaults={{ ...timeOffInput(timeOff), label: timeOff.label }} required />
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter className="sm:justify-between">
             <Button type="button" variant="outline" onClick={remove} disabled={pending !== null}>
-              {pending === "remove" ? <Loader2 className="size-4 animate-spin" /> : <Trash2 aria-hidden className="size-4" />}
+              {pending === "remove" ? <Spinner className="text-current" /> : <Trash2 aria-hidden className="size-4" />}
               Remove
             </Button>
             <div className="flex gap-2">
@@ -699,7 +748,7 @@ export function TimeOffDialog({ timeOff, staffName, onClose }: { timeOff: TimeOf
                 Cancel
               </Button>
               <Button type="submit" disabled={pending !== null}>
-                {pending === "save" ? <Loader2 className="size-4 animate-spin" /> : null}
+                {pending === "save" ? <Spinner className="text-current" /> : null}
                 Save
               </Button>
             </div>

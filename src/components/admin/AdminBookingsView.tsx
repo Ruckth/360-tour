@@ -6,7 +6,7 @@ import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from "convex/adminBookings";
 import { calculateDirectQuote } from "convex/lib/pricing";
 import { addDays, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from "date-fns";
-import { Loader2, PlusIcon, SearchIcon } from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
@@ -18,11 +18,12 @@ import type {
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
-import { errorText, money } from "@/lib/staff-bookings";
+import { errorText } from "@/lib/staff-bookings";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { BookingQuickActions, type QuickTarget } from "./BookingQuickActions";
@@ -31,12 +32,15 @@ import { DateBlockDialog, type BlockTarget } from "./DateBlockDialog";
 import { IcalSourcesDialog } from "./IcalSourcesDialog";
 import { NewBookingDialog, type NewBookingPrefill } from "./NewBookingDialog";
 import { OtaRatesDialog } from "./OtaRatesDialog";
+import { StatusBadge } from "./StatusBadge";
+import { formatMoney, sourceLabel } from "./labels";
 import {
-  STATUS,
-  SOURCE_LABELS,
+  HOTEL_STATUSES,
   balanceText,
   canEditBooking,
   displayDate,
+  hotelStatus,
+  hotelStatusColor,
   statusKey,
   stayConflicts,
   type AdminProperty,
@@ -165,7 +169,7 @@ export function AdminBookingsView() {
         start: new Date(`${booking.checkIn}T${checkInTime}:00`),
         end: new Date(`${booking.checkOut}T${checkOutTime}:00`),
         resourceId: booking.propertyId,
-        color: STATUS[statusKey(booking)].color,
+        color: hotelStatusColor(statusKey(booking)),
         // Drag to move, drag an edge to change dates. Cancelled and refunded bookings stay put.
         readOnly: !canEditBooking(booking),
         data: { kind: "booking", booking },
@@ -178,7 +182,7 @@ export function AdminBookingsView() {
         title: `Blocked: ${block.reason} · ${names.get(block.propertyId) ?? "Villa"}`,
         ...allDay(block.start, block.end),
         resourceId: block.propertyId,
-        color: STATUS.hostBlock.color,
+        color: hotelStatusColor("hostBlock"),
         readOnly: true,
         data: { kind: "hostBlock", block },
       }));
@@ -187,10 +191,10 @@ export function AdminBookingsView() {
       .filter((block) => visible(block.propertyId))
       .map((block): CalendarEvent<EventData> => ({
         id: `ota-block-${block.propertyId}-${block.source}-${block.start}`,
-        title: `${SOURCE_LABELS[block.source] ?? block.source} · ${names.get(block.propertyId) ?? "Villa"}`,
+        title: `${sourceLabel(block.source)} · ${names.get(block.propertyId) ?? "Villa"}`,
         ...allDay(block.start, block.end),
         resourceId: block.propertyId,
-        color: STATUS.otaBlock.color,
+        color: hotelStatusColor("otaBlock"),
         readOnly: true,
         data: { kind: "otaBlock", ...block },
       }));
@@ -232,15 +236,15 @@ export function AdminBookingsView() {
             {displayDate(checkIn)} → {displayDate(checkOut)} · {nights} {nights === 1 ? "night" : "nights"}
           </span>
           <span className="mt-2 block text-foreground">
-            New total {money(newTotal, booking.currency)}{" "}
+            New total {formatMoney(newTotal, booking.currency)}{" "}
             <span className="text-muted-foreground">
-              (was {money(booking.total, booking.currency)},{" "}
-              {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${money(Math.abs(difference), booking.currency)}`})
+              (was {formatMoney(booking.total, booking.currency)},{" "}
+              {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${formatMoney(Math.abs(difference), booking.currency)}`})
             </span>
           </span>
           {booking.amountPaid !== undefined ? (
             <span className="block">
-              Guest paid {money(booking.amountPaid, booking.currency)}.{" "}
+              Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
               {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
             </span>
           ) : null}
@@ -281,8 +285,9 @@ export function AdminBookingsView() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
-      <div className="border border-border bg-card [&_*]:border-border">
+    // From tablet up it fills the viewport under the 4rem admin header: the calendar scrolls inside, the legend stays in view.
+    <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
+      <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
@@ -345,7 +350,8 @@ export function AdminBookingsView() {
           onRangeChange={({ range: visible }) =>
             setRange({ from: isoDate(visible.start), to: isoDate(addDays(visible.end, 1)) })
           }
-          className="h-[calc(100dvh-190px)] min-h-[560px] w-full"
+          loading={data === undefined}
+          className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
         >
           <AdminCalendarHeader>
             <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />
@@ -370,9 +376,7 @@ export function AdminBookingsView() {
             >
               Show cancelled
             </Button>
-            {data === undefined ? (
-              <Loader2 role="status" aria-label="Loading" className="size-4 animate-spin text-gold" />
-            ) : null}
+            {data === undefined ? <Spinner label="Loading bookings" /> : null}
             <div className="flex flex-wrap items-center gap-2 sm:ms-auto">
               <Button size="sm" variant="outline" onClick={() => setManagingCalendars(true)} disabled={!data}>
                 OTA calendars
@@ -401,13 +405,21 @@ export function AdminBookingsView() {
               </Button>
             </div>
           </AdminCalendarHeader>
+          {data && data.properties.length === 0 ? (
+            <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-sm">
+              <p className="min-w-0 flex-1 text-muted-foreground">No villas yet. Add one to start taking bookings.</p>
+              <ButtonLink href="/admin/properties" size="sm">
+                Add a villa
+              </ButtonLink>
+            </div>
+          ) : null}
           <EventCalendarContent />
         </EventCalendar>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          {Object.values(STATUS).map((status) => (
-            <span key={status.label} className="flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
-              {status.label}
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          {HOTEL_STATUSES.map((key) => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: hotelStatusColor(key) }} />
+              {hotelStatus(key).label}
             </span>
           ))}
           <span role="status" className={notice?.error ? "text-destructive sm:ms-auto" : "sm:ms-auto"}>
@@ -502,10 +514,9 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
                       setText("");
                     }}
                   >
-                    <span className="flex items-center gap-2 font-medium">
-                      <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ backgroundColor: STATUS[statusKey(booking)].color }} />
-                      {booking.guestName}
-                      <span className="font-normal text-muted-foreground">· {STATUS[statusKey(booking)].label}</span>
+                    <span className="flex items-center justify-between gap-2 font-medium">
+                      <span className="min-w-0 truncate">{booking.guestName}</span>
+                      <StatusBadge {...hotelStatus(statusKey(booking))} />
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {villaName(booking.propertyId)} · {displayDate(booking.checkIn)} → {displayDate(booking.checkOut)}

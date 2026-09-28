@@ -4,9 +4,9 @@ import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { CalendarDays, Clock, Filter, Loader2, Pencil, PlusIcon, Users } from "lucide-react";
+import { CalendarDays, Clock, Filter, Pencil, PlusIcon, Users } from "lucide-react";
 import { format } from "date-fns";
-import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
 import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
@@ -18,10 +18,14 @@ import type {
 import { AdminStaffServicesManager, TimeOffDialog } from "@/components/admin/AdminStaffServicesManager";
 import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { DisabledReason } from "@/components/admin/DisabledReason";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { StaffRosterView } from "@/components/admin/StaffRosterView";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import { formatMoney, sourceLabel } from "@/components/admin/labels";
+import { CALENDAR_TONE_COLORS } from "@/components/admin/status-tones";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
@@ -36,17 +40,20 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  APPOINTMENT_STATUS,
+  APPOINTMENT_STATUSES,
   DAY_MS,
   PAYMENT_LABELS,
   RESORT_ZONE,
+  appointmentStatus,
+  appointmentStatusColor,
   displayStatus,
   errorText,
   formatResortDate,
   formatResortTime,
-  initials,
-  money,
   resortIsoDate,
   resortMidnight,
   resortTime24,
@@ -54,7 +61,6 @@ import {
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
-import { sourceLabel } from "./labels";
 
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
@@ -72,7 +78,7 @@ type Move = { start: number; end: number; staffId: Id<"staff"> };
 type Draft = { date: string; staffId?: Id<"staff">; start?: number };
 
 const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", "completed", "no_show", "cancelled"];
-const BLOCK_COLOR = "var(--color-zinc-500)";
+const BLOCK_COLOR = CALENDAR_TONE_COLORS.muted;
 const MINUTE = 60_000;
 // Stable reference: the calendar rebuilds its settings when this object changes.
 const CALENDAR_I18N = { viewNames: { resource: "Day" } };
@@ -88,20 +94,55 @@ function todayRange() {
   return { from, to: from + DAY_MS };
 }
 
+const TABS = [
+  ["calendar", "Calendar"],
+  ["roster", "Roster"],
+  ["staff", "Staff"],
+  ["services", "Services"],
+] as const satisfies ReadonlyArray<readonly [AdminStaffTab, string]>;
+
 export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
   const router = useRouter();
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function openTab(index: number) {
+    const target = (index + TABS.length) % TABS.length;
+    tabRefs.current[target]?.focus();
+    router.push(adminStaffTabPath(TABS[target][0]));
+  }
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
+    if (!(event.key in moves)) return;
+    event.preventDefault();
+    openTab(moves[event.key]);
+  }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
-      <nav className="mb-4 flex gap-6 border-b border-border" aria-label="Staff bookings sections">
-        {([["calendar", "Calendar"], ["roster", "Roster"], ["staff", "Staff"], ["services", "Services"]] as const).map(([key, label]) => (
+    // The calendar fills the viewport under the 4rem admin header from tablet up; the other tabs scroll the page.
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6",
+        tab === "calendar" && "md:h-[calc(100dvh-4rem)] md:min-h-[40rem]",
+      )}
+    >
+      <div role="tablist" aria-label="Staff bookings sections" className="mb-4 flex shrink-0 gap-6 overflow-x-auto border-b border-border">
+        {TABS.map(([key, label], index) => (
           <button
             key={key}
+            ref={(el) => {
+              tabRefs.current[index] = el;
+            }}
+            id={`staff-tab-${key}`}
             type="button"
+            role="tab"
+            aria-selected={tab === key}
+            aria-controls="staff-tabpanel"
+            tabIndex={tab === key ? 0 : -1}
             onClick={() => router.push(adminStaffTabPath(key))}
-            aria-current={tab === key ? "page" : undefined}
+            onKeyDown={(event) => onTabKeyDown(event, index)}
             className={cn(
-              "-mb-px border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors",
+              "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               tab === key
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -110,8 +151,10 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
             {label}
           </button>
         ))}
-      </nav>
-      {tab === "calendar" ? <StaffCalendar /> : tab === "roster" ? <StaffRosterView /> : <AdminStaffServicesManager section={tab} />}
+      </div>
+      <div role="tabpanel" id="staff-tabpanel" aria-labelledby={`staff-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
+        {tab === "calendar" ? <StaffCalendar /> : tab === "roster" ? <StaffRosterView /> : <AdminStaffServicesManager section={tab} />}
+      </div>
     </div>
   );
 }
@@ -177,7 +220,7 @@ function StaffCalendar() {
         start: new Date(move?.start ?? appointment.start),
         end: new Date(move?.end ?? appointment.end),
         resourceId: move?.staffId ?? appointment.staffId,
-        color: APPOINTMENT_STATUS[displayStatus(appointment)].color,
+        color: appointmentStatusColor(displayStatus(appointment)),
         readOnly: !editable,
         priority: 1,
         data: { kind: "appointment", appointment },
@@ -263,22 +306,13 @@ function StaffCalendar() {
         );
       }
       const { appointment } = eventData;
-      const status = APPOINTMENT_STATUS[displayStatus(appointment)];
       const service = serviceById.get(appointment.serviceId);
       const staffName = currentView === "resource" ? null : staffById.get(appointment.staffId)?.name;
       return (
         <span className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-background/80 text-[9px] font-semibold text-foreground">
-              {initials(appointment.guestName)}
-            </span>
-            <span className="truncate text-[13px] font-semibold">{appointment.guestName}</span>
-            <span
-              className="hidden shrink-0 rounded-md border px-1.5 text-[11px] leading-5 font-medium @[12rem]:inline"
-              style={{ color: status.color, borderColor: `color-mix(in oklab, ${status.color} 45%, transparent)` }}
-            >
-              {status.label}
-            </span>
+            <span className="truncate text-sm font-semibold">{appointment.guestName}</span>
+            <StatusBadge {...appointmentStatus(displayStatus(appointment))} className="hidden @[12rem]:inline-flex" />
           </span>
           <span className="truncate text-xs text-muted-foreground">
             {formatResortTime(appointment.start)} • {service?.name ?? "Service"}
@@ -316,7 +350,7 @@ function StaffCalendar() {
 
   return (
     <>
-      <div className="border border-border bg-card [&_*]:border-border">
+      <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
@@ -381,10 +415,10 @@ function StaffCalendar() {
             const to = visible.end.getTime();
             setRange((current) => (current.from === from && current.to === to ? current : { from, to }));
           }}
-          className="h-[calc(100vh-230px)] min-h-[600px] w-full"
+          loading={data === undefined}
+          className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
         >
           <AdminCalendarHeader>
-            {data === undefined ? <Loader2 aria-label="Loading" className="size-4 animate-spin text-gold" /> : null}
             <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
               <CalendarDays aria-hidden className="size-3.5" />
               {bookedCount} booked in view
@@ -414,22 +448,38 @@ function StaffCalendar() {
                 },
                 {
                   title: "Status",
-                  items: STATUS_FILTERS.map((status) => ({ id: status, label: APPOINTMENT_STATUS[status].label })),
+                  items: STATUS_FILTERS.map((status) => ({ id: status, label: appointmentStatus(status).label })),
                   hidden: hiddenStatuses,
                   onChange: setHiddenStatuses,
                 },
               ]}
             />
-            <Button
-              size="sm"
-              className="sm:ms-auto"
-              disabled={!data || activeServices.length === 0}
-              onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
-            >
-              <PlusIcon aria-hidden className="size-4" />
-              New appointment
-            </Button>
+            {data === undefined ? <Spinner label="Loading appointments" /> : null}
+            <div className="sm:ms-auto">
+              <DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
+                <Button
+                  size="sm"
+                  disabled={!data || activeServices.length === 0}
+                  onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
+                >
+                  <PlusIcon aria-hidden className="size-4" />
+                  New appointment
+                </Button>
+              </DisabledReason>
+            </div>
           </AdminCalendarHeader>
+          {data && (data.staff.length === 0 || activeServices.length === 0) ? (
+            <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-sm">
+              <p className="min-w-0 flex-1 text-muted-foreground">
+                {data.staff.length === 0
+                  ? "No staff yet. Add the people who perform services, then the services guests can book."
+                  : "No services yet. Add what guests can book and who performs it."}
+              </p>
+              <ButtonLink href={adminStaffTabPath(data.staff.length === 0 ? "staff" : "services")} size="sm">
+                {data.staff.length === 0 ? "Add staff" : "Add a service"}
+              </ButtonLink>
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">
               {error}
@@ -437,11 +487,11 @@ function StaffCalendar() {
           ) : null}
           <EventCalendarContent />
         </EventCalendar>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          {Object.values(APPOINTMENT_STATUS).map((status) => (
-            <span key={status.label} className="flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
-              {status.label}
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          {APPOINTMENT_STATUSES.map((key) => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: appointmentStatusColor(key) }} />
+              {appointmentStatus(key).label}
             </span>
           ))}
           <span className="flex items-center gap-1.5">
@@ -508,12 +558,14 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-0">
         {groups.map((group) => (
-          <fieldset key={group.title} className="border-b border-border p-2 last:border-b-0">
+          <div key={group.title} role="group" aria-label={group.title} className="border-b border-border p-2 last:border-b-0">
             <div className="flex items-center justify-between px-2 pb-1">
-              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</legend>
+              <span aria-hidden className="admin-eyebrow">
+                {group.title}
+              </span>
               <button
                 type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => group.onChange(new Set())}
               >
                 Show all
@@ -536,7 +588,7 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
                 {item.detail ? <span className="truncate text-xs text-muted-foreground">{item.detail}</span> : null}
               </label>
             ))}
-          </fieldset>
+          </div>
         ))}
       </PopoverContent>
     </Popover>
@@ -572,9 +624,6 @@ const ACTION_LABELS: Record<SheetAction, string> = {
   paid: "Mark paid",
   refund: "Record refund",
 };
-
-const TEXTAREA =
-  "min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
 
 function AppointmentSheet({
   appointment,
@@ -617,7 +666,7 @@ function AppointmentSheet({
     if (
       action === "refund" &&
       !(await confirm({
-        title: `Record a ${money(appointment.price, appointment.currency)} refund?`,
+        title: `Record a ${formatMoney(appointment.price, appointment.currency)} refund?`,
         description: "Marks the payment as refunded. Give the money back at the desk; nothing is charged or sent from here.",
         confirmLabel: "Record refund",
         destructive: true,
@@ -646,7 +695,7 @@ function AppointmentSheet({
         ...(appointment.paymentStatus === "paid" ? (["refund"] as const) : []),
       ]
     : [];
-  const status = appointment ? APPOINTMENT_STATUS[displayStatus(appointment)] : null;
+  const status = appointment ? appointmentStatus(displayStatus(appointment)) : null;
 
   return (
     <Sheet
@@ -663,10 +712,10 @@ function AppointmentSheet({
         {appointment && status ? (
           <div className="grid gap-5">
             <div>
-              <SheetTitle className="font-serif text-2xl font-semibold">{appointment.guestName}</SheetTitle>
-              <SheetDescription className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                <span className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
-                {status.label} · {appointment.confirmationCode}
+              <SheetTitle className="pe-8">{appointment.guestName}</SheetTitle>
+              <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
+                <StatusBadge {...status} />
+                <span className="font-mono text-xs">{appointment.confirmationCode}</span>
               </SheetDescription>
             </div>
             {editing ? (
@@ -684,7 +733,7 @@ function AppointmentSheet({
                   <Detail label="Staff">
                     {staff ? (
                       <span className="flex items-center gap-2">
-                        <StaffAvatar staff={staff} className="size-6 text-[10px]" />
+                        <StaffAvatar staff={staff} className="size-6" />
                         {staff.name} <span className="text-muted-foreground">· {staff.role}</span>
                       </span>
                     ) : (
@@ -695,7 +744,7 @@ function AppointmentSheet({
                     {formatResortDate(appointment.start)}, {formatResortTime(appointment.start)} –{" "}
                     {formatResortTime(appointment.end)}
                   </Detail>
-                  <Detail label="Price">{money(appointment.price, appointment.currency)}</Detail>
+                  <Detail label="Price">{formatMoney(appointment.price, appointment.currency)}</Detail>
                   <Detail label="Payment">
                     {PAYMENT_LABELS[appointment.paymentStatus]}
                     {appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : ""}
@@ -710,7 +759,7 @@ function AppointmentSheet({
                     <Badge variant="outline">{sourceLabel(appointment.source)}</Badge>
                   </Detail>
                 </dl>
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
                 <div className="flex flex-wrap gap-2">
                   {actions.map((action) => (
                     <Button
@@ -725,7 +774,7 @@ function AppointmentSheet({
                       onClick={() => run(action)}
                       disabled={pending !== null}
                     >
-                      {pending === action ? <Loader2 className="size-4 animate-spin" /> : null}
+                      {pending === action ? <Spinner className="text-current" /> : null}
                       {ACTION_LABELS[action]}
                     </Button>
                   ))}
@@ -801,7 +850,7 @@ function AppointmentEditForm({
           <SelectContent>
             {options.map((s) => (
               <SelectItem key={s._id} value={s._id}>
-                {s.name} · {s.durationMin} min · {money(s.price, s.currency)}
+                {s.name} · {s.durationMin} min · {formatMoney(s.price, s.currency)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -828,22 +877,21 @@ function AppointmentEditForm({
       </div>
       <div className="grid gap-2">
         <Label htmlFor="ap-notes">Notes (optional)</Label>
-        <textarea
+        <Textarea
           id="ap-notes"
           name="notes"
           maxLength={2000}
           defaultValue={appointment.notes}
           placeholder="Allergies, pressure preference, room number…"
-          className={TEXTAREA}
         />
       </div>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+          {saving ? <Spinner className="text-current" /> : null}
           Save
         </Button>
       </div>
@@ -953,7 +1001,7 @@ function NewAppointmentDialog({
         if (!next) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New appointment</DialogTitle>
           <DialogDescription>Only open times are shown. Booking blocks the staff member&apos;s time.</DialogDescription>
@@ -1009,14 +1057,18 @@ function NewAppointmentDialog({
           </div>
           {service ? (
             <p className="-mt-2 text-xs text-muted-foreground">
-              {service.durationMin} min · {money(service.price, service.currency)}
+              {service.durationMin} min · {formatMoney(service.price, service.currency)}
               {service.bufferMin ? ` · ${service.bufferMin} min turnaround` : ""}
             </p>
           ) : null}
           <div className="grid gap-2">
             <Label>Time</Label>
             {slots === undefined ? (
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              <div role="status" aria-label="Finding open times" className="grid grid-cols-4 gap-1.5 rounded-lg border border-border p-3 sm:grid-cols-6">
+                {Array.from({ length: 12 }, (_, i) => (
+                  <Skeleton key={i} className="h-9" />
+                ))}
+              </div>
             ) : slots.length === 0 ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 No open times on this date.
@@ -1033,7 +1085,7 @@ function NewAppointmentDialog({
               <div className="grid max-h-64 gap-3 overflow-y-auto rounded-lg border border-border p-3">
                 {parts.map((part) => (
                   <fieldset key={part.label}>
-                    <legend className="mb-1.5 text-xs font-medium text-muted-foreground">{part.label}</legend>
+                    <legend className="admin-eyebrow mb-1.5">{part.label}</legend>
                     <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
                       {part.slots.map((slot) => {
                         const active = slot.start === selectedSlot?.start;
@@ -1045,7 +1097,7 @@ function NewAppointmentDialog({
                             variant={active ? "default" : "outline"}
                             aria-pressed={active}
                             aria-label={formatResortTime(slot.start)}
-                            className="h-8 px-0 tabular-nums"
+                            className="px-0 tabular-nums"
                             onClick={() => setStart(slot.start)}
                           >
                             {/* The section heading says morning/afternoon/evening. */}
@@ -1088,7 +1140,7 @@ function NewAppointmentDialog({
               <p className="flex min-h-9 flex-wrap items-center gap-x-2 text-sm">
                 {assigned ? (
                   <>
-                    <StaffAvatar staff={assigned} className="size-6 text-[10px]" />
+                    <StaffAvatar staff={assigned} className="size-6" />
                     <span>
                       Assigned to <span className="font-semibold">{assigned.name}</span>
                       {staffId ? null : <span className="text-muted-foreground"> · least busy</span>}
@@ -1124,13 +1176,13 @@ function NewAppointmentDialog({
               <Input id="na-email" name="guestEmail" type="email" />
             </div>
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving || !selectedSlot}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+              {saving ? <Spinner className="text-current" /> : null}
               Book appointment
             </Button>
           </DialogFooter>

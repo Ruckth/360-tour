@@ -3,16 +3,18 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { AdminBooking } from "convex/adminBookings";
-import { Loader2 } from "lucide-react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import { errorText, money } from "@/lib/staff-bookings";
+import { Spinner } from "@/components/ui/spinner";
+import { errorText } from "@/lib/staff-bookings";
+import { StatusBadge } from "./StatusBadge";
+import { formatMoney } from "./labels";
 import {
-  STATUS,
   canEditBooking,
   cancelConfirmOptions,
   displayDate,
+  hotelStatus,
   payLink,
   paymentText,
   statusKey,
@@ -41,7 +43,7 @@ export function BookingQuickActions({
   const detail = useQuery(api.adminBookings.getForAdmin, { bookingId: booking._id });
   const updateBooking = useMutation(api.adminBookings.updateBooking);
   const confirm = useConfirm();
-  const status = STATUS[statusKey(booking)];
+  const status = hotelStatus(statusKey(booking));
   const editable = canEditBooking(booking);
   const isPaid = booking.paymentStatus === "paid";
 
@@ -72,16 +74,16 @@ export function BookingQuickActions({
       </PopoverAnchor>
       <PopoverContent align="start" className="grid w-80 gap-3 p-3" aria-label={`Booking for ${booking.guestName}`}>
         <div>
-          <p className="font-medium text-foreground">{booking.guestName}</p>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
-            {status.label} · {paymentText(booking)}
+          <p className="font-semibold text-foreground">{booking.guestName}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <StatusBadge {...status} />
+            {paymentText(booking)}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {villaName} · {displayDate(booking.checkIn)} → {displayDate(booking.checkOut)}
           </p>
           <p className="text-sm text-muted-foreground">
-            {booking.nights} {booking.nights === 1 ? "night" : "nights"} · {money(booking.total, booking.currency)}
+            {booking.nights} {booking.nights === 1 ? "night" : "nights"} · {formatMoney(booking.total, booking.currency)}
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -117,7 +119,7 @@ export function BookingQuickActions({
           ) : null}
           {editable ? (
             <Button size="sm" variant="outline" onClick={cancel} disabled={!detail}>
-              {detail ? null : <Loader2 className="size-3.5 animate-spin" />}
+              {detail ? null : <Spinner className="text-current" />}
               {isPaid ? "Cancel & refund" : "Cancel"}
             </Button>
           ) : null}

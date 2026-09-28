@@ -4,33 +4,41 @@ import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { IMAGE_TYPES, uploadProblem, type UploadKind } from "convex/lib/imageUploads";
-import { Loader2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import type { StatusMeta } from "./status-tones";
 
 // Small building blocks shared by the villa admin screens.
 
 export type PropertyStatus = Doc<"properties">["status"];
-export const STATUS_LABELS: Record<PropertyStatus, string> = { active: "Active", draft: "Draft", archived: "Archived" };
 
-export const TEXTAREA =
-  "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40";
-export const NATIVE_SELECT = "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm";
+/** Villa status label and tone, for `<StatusBadge {...PROPERTY_STATUS[status]} />`. */
+export const PROPERTY_STATUS: Record<PropertyStatus, StatusMeta> = {
+  active: { label: "Active", tone: "success" },
+  draft: { label: "Draft", tone: "neutral" },
+  archived: { label: "Archived", tone: "muted" },
+};
 
+/** Native select styled like `Input`, for places a Radix Select can't go (e.g. inside the 3D canvas). */
+export const NATIVE_SELECT =
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
+/** The one admin panel: square card, header row with the section title and actions, padded body. */
 export function Section({ title, description, actions, children }: { title: string; description?: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return (
     <section className="border border-border bg-card">
-      <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+      <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
+          <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
         </div>
         {actions}
       </header>
-      <div className="p-4">{children}</div>
+      <div className="p-4 sm:p-5">{children}</div>
     </section>
   );
 }
@@ -65,7 +73,7 @@ export function useSaver() {
 
 export function SaveStatus({ save }: { save: Saver }) {
   if (save.error) return <p role="alert" className="text-sm text-destructive">{save.error}</p>;
-  if (save.saved) return <p className="text-sm text-muted-foreground">Saved</p>;
+  if (save.saved) return <p role="status" className="text-sm text-muted-foreground">Saved</p>;
   return null;
 }
 
@@ -75,7 +83,7 @@ export function SaveBar({ save, compact, label = "Save", children }: { save: Sav
       {children}
       <SaveStatus save={save} />
       <Button type="submit" size={compact ? "sm" : "default"} disabled={save.saving} className={cn(compact && "h-10")}>
-        {save.saving ? <Loader2 className="size-4 animate-spin" /> : null}
+        {save.saving ? <Spinner className="text-current" /> : null}
         {label}
       </Button>
     </div>
