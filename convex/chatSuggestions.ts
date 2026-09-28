@@ -184,7 +184,7 @@ function detectMessageLocale(message: string, locale?: string) {
 	return /[\u0E00-\u0E7F]/u.test(message) ? normalizeSuggestionLocale('th') : normalizeSuggestionLocale('en');
 }
 
-function curatedQuestionAnswerMode(question: Doc<'curatedChatQuestions'>): CuratedAnswerMode {
+function curatedQuestionAnswerMode(question: Pick<Doc<'curatedChatQuestions'>, 'answerMode' | 'answer'>): CuratedAnswerMode {
 	return question.answerMode ?? (question.answer ? 'static' : 'dynamic');
 }
 
@@ -569,33 +569,38 @@ export const adminTranslateCuratedDraft = action({
 	},
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		const question = sanitizeQuestionText(args.question);
-		const answer = sanitizeAnswerText(args.answer);
-		const requestedLocales = args.targetLocales?.length
-			? args.targetLocales
-			: supportedSuggestionLocales.filter((locale) => locale !== 'en');
-		const targetLocales = requestedLocales
-			.map((locale) => normalizeSuggestionLocale(locale))
-			.filter((locale) => locale !== 'en');
-		const uniqueTargetLocales = Array.from(new Set(targetLocales));
-		if (uniqueTargetLocales.length === 0) {
-			return { questionTranslations: {}, answerTranslations: {} };
-		}
+		return await translateCuratedContent(
+			sanitizeQuestionText(args.question),
+			sanitizeAnswerText(args.answer),
+			args.targetLocales
+		);
+	}
+});
 
-		const apiKey = process.env.AI_API_KEY;
-		if (!apiKey) throw new Error('AI_API_KEY is required to translate question bank content');
+/** One LLM call that translates a question (and its fixed answer) into the target locales. */
+async function translateCuratedContent(question: string, answer: string | undefined, locales?: string[]) {
+	const requestedLocales = locales?.length ? locales : supportedSuggestionLocales.filter((locale) => locale !== 'en');
+	const uniqueTargetLocales = Array.from(
+		new Set(requestedLocales.map((locale) => normalizeSuggestionLocale(locale)).filter((locale) => locale !== 'en'))
+	);
+	if (uniqueTargetLocales.length === 0) {
+		return { questionTranslations: {}, answerTranslations: {} };
+	}
 
-		const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-		const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
-		const messages: ChatMessage[] = [
-			{
-				role: 'system',
-				content:
-					'You translate admin-authored concierge question bank content. Return compact JSON only.'
-			},
-			{
-				role: 'user',
-				content: `Source language: English
+	const apiKey = process.env.AI_API_KEY;
+	if (!apiKey) throw new Error('AI_API_KEY is required to translate question bank content');
+
+	const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
+	const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+	const messages: ChatMessage[] = [
+		{
+			role: 'system',
+			content:
+				'You translate admin-authored concierge question bank content. Return compact JSON only.'
+		},
+		{
+			role: 'user',
+			content: `Source language: English
 Target locales: ${uniqueTargetLocales.join(', ')}
 Question: ${question}
 ${answer ? `Answer: ${answer}` : 'Answer: '}
@@ -611,11 +616,157 @@ Rules:
 - Keep villa names, property slugs, prices, dates, currency symbols, URLs, emails, phone numbers, WhatsApp, LINE, and booking rules factually unchanged.
 - Translate only human-readable prose.
 - If the answer is empty, return an empty answerTranslations object.`
-			}
-		];
+		}
+	];
 
-		const response = await callAI(apiBase, apiKey, model, messages, []);
-		return parseDraftTranslations(response.content);
+	const response = await callAI(apiBase, apiKey, model, messages, []);
+	return parseDraftTranslations(response.content);
+}
+
+const TRANSLATION_SCAN_LIMIT = 500;
+const TRANSLATION_BATCH_DEFAULT = 5;
+const TRANSLATION_BATCH_MAX = 10;
+const TRANSLATION_LOCALES = supportedSuggestionLocales.filter((locale) => locale !== 'en');
+
+/** Locales a curated item still lacks, for its question and (fixed) answer. */
+function missingCuratedLocales(
+	row: Pick<Doc<'curatedChatQuestions'>, 'answer' | 'answerMode' | 'translations' | 'answerTranslations'>
+) {
+	const needsAnswer = curatedQuestionAnswerMode(row) === 'static' && Boolean(row.answer);
+	return TRANSLATION_LOCALES.filter(
+		(locale) =>
+			!row.translations?.[locale]?.trim() || (needsAnswer && !row.answerTranslations?.[locale]?.trim())
+	);
+}
+
+export const listCuratedMissingTranslations = internalQuery({
+	args: { limit: v.number(), skipIds: v.array(v.id('curatedChatQuestions')) },
+	handler: async (ctx, args) => {
+		const skip = new Set(args.skipIds);
+		const rows = await ctx.db
+			.query('curatedChatQuestions')
+			.withIndex('by_status_and_created_at', (q) => q.eq('status', 'active'))
+			.order('desc')
+			.take(TRANSLATION_SCAN_LIMIT);
+		const missing = rows.filter((row) => !skip.has(row._id) && missingCuratedLocales(row).length > 0);
+		return {
+			total: missing.length,
+			batch: missing.slice(0, args.limit).map((row) => ({
+				_id: row._id,
+				question: row.question,
+				answer: curatedQuestionAnswerMode(row) === 'static' ? row.answer : undefined,
+				locales: missingCuratedLocales(row)
+			}))
+		};
+	}
+});
+
+/** Fills only empty locales, so translations an admin wrote by hand are never overwritten. */
+export const applyCuratedTranslations = internalMutation({
+	args: {
+		questionId: v.id('curatedChatQuestions'),
+		questionTranslations: v.record(v.string(), v.string()),
+		answerTranslations: v.record(v.string(), v.string()),
+		adminEmail: v.string()
+	},
+	handler: async (ctx, args) => {
+		const row = await ctx.db.get(args.questionId);
+		if (!row) return { filled: 0 };
+		const translations: Record<string, string> = { ...row.translations };
+		const answerTranslations: Record<string, string> = { ...row.answerTranslations };
+		let filled = 0;
+		for (const locale of TRANSLATION_LOCALES) {
+			if (!translations[locale]?.trim() && args.questionTranslations[locale]) {
+				translations[locale] = args.questionTranslations[locale];
+				filled++;
+			}
+			if (row.answer && !answerTranslations[locale]?.trim() && args.answerTranslations[locale]) {
+				answerTranslations[locale] = args.answerTranslations[locale];
+				filled++;
+			}
+		}
+		if (filled === 0) return { filled };
+		await ctx.db.patch(args.questionId, {
+			translations: sanitizeTranslations(row.question, translations),
+			...(row.answer ? { answerTranslations: sanitizeAnswerTranslations(row.answer, answerTranslations) } : {}),
+			updatedAt: Date.now(),
+			updatedByAdminEmail: args.adminEmail
+		});
+		return { filled };
+	}
+});
+
+/**
+ * Translates one bounded batch of active suggestions that are missing languages. The UI calls it
+ * repeatedly, passing back `processedIds` as `skipIds`, until `remaining` is 0.
+ */
+export const adminTranslateMissingCurated = action({
+	args: {
+		batchSize: v.optional(v.number()),
+		skipIds: v.optional(v.array(v.id('curatedChatQuestions')))
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		translated: number;
+		failed: number;
+		processedIds: Id<'curatedChatQuestions'>[];
+		remaining: number;
+	}> => {
+		const admin = await requireAdmin(ctx);
+		const limit = Math.min(Math.max(Math.round(args.batchSize ?? TRANSLATION_BATCH_DEFAULT), 1), TRANSLATION_BATCH_MAX);
+		const { total, batch } = await ctx.runQuery(internal.chatSuggestions.listCuratedMissingTranslations, {
+			limit,
+			skipIds: args.skipIds ?? []
+		});
+		const results = await Promise.allSettled(
+			batch.map(async (row) => {
+				const translated = await translateCuratedContent(row.question, row.answer, row.locales);
+				const { filled } = await ctx.runMutation(internal.chatSuggestions.applyCuratedTranslations, {
+					questionId: row._id,
+					...translated,
+					adminEmail: admin.email
+				});
+				if (filled === 0) throw new Error('No translations returned');
+			})
+		);
+		const failed = results.filter((result) => result.status === 'rejected').length;
+		return {
+			translated: batch.length - failed,
+			failed,
+			processedIds: batch.map((row) => row._id),
+			remaining: Math.max(total - batch.length, 0)
+		};
+	}
+});
+
+/** Archive or restore many curated suggestions at once. Returns changed ids so the UI can undo. */
+export const adminSetCuratedStatus = mutation({
+	args: {
+		questionIds: v.array(v.id('curatedChatQuestions')),
+		status: v.union(v.literal('active'), v.literal('archived'))
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const questionIds = [...new Set(args.questionIds)];
+		if (questionIds.length > 200) throw new Error('Select 200 or fewer at a time');
+		const now = Date.now();
+		const changedIds: Id<'curatedChatQuestions'>[] = [];
+		for (const questionId of questionIds) {
+			const row = await ctx.db.get(questionId);
+			if (!row || row.status === args.status) continue;
+			const archived = args.status === 'archived';
+			await ctx.db.patch(questionId, {
+				status: args.status,
+				archivedAt: archived ? now : undefined,
+				archivedByAdminEmail: archived ? admin.email : undefined,
+				updatedAt: now,
+				updatedByAdminEmail: admin.email
+			});
+			changedIds.push(questionId);
+		}
+		return { changedIds };
 	}
 });
 
