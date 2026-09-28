@@ -56,6 +56,7 @@ import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
 import type * as payments from "../payments.js";
 import type * as properties from "../properties.js";
+import type * as roster from "../roster.js";
 import type * as seed from "../seed.js";
 import type * as seeds_aiEvalData from "../seeds/aiEvalData.js";
 import type * as seeds_curatedQuestions from "../seeds/curatedQuestions.js";
@@ -126,6 +127,7 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   payments: typeof payments;
   properties: typeof properties;
+  roster: typeof roster;
   seed: typeof seed;
   "seeds/aiEvalData": typeof seeds_aiEvalData;
   "seeds/curatedQuestions": typeof seeds_curatedQuestions;

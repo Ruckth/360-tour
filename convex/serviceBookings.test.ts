@@ -80,6 +80,31 @@ describe('AI service booking', () => {
 		expect(await appointments(s.t)).toHaveLength(0);
 	});
 
+	it('says "not scheduled yet" rather than fully booked when nobody is rostered', async () => {
+		const s = await setup();
+		await s.t.run(async (ctx) => {
+			await ctx.db.insert('staffDays', { staffId: s.staffId, date, shifts: [], breaks: [], updatedAt: Date.now() });
+		});
+		const unscheduled = await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
+		expect(unscheduled).toMatchObject({ available: false, openTimes: [], scheduled: false, note: expect.stringContaining('not set yet') });
+		expect(await prepare(s)).toMatchObject({ error: expect.stringContaining('not fully booked') });
+		// Rostered but every slot taken is still "fully booked": no scheduled flag.
+		await s.t.run(async (ctx) => {
+			const row = await ctx.db.query('staffDays').first();
+			await ctx.db.patch(row!._id, { shifts: [{ start: '09:00', end: '10:00' }] });
+		});
+		await s.t.run(async (ctx) => {
+			await ctx.db.insert('serviceAppointments', {
+				serviceId: s.serviceId, staffId: s.staffId, start: at('09:00'), end: at('10:00'), blockedUntil: at('10:00'),
+				guestName: 'A', guestPhone: '1', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1, currency: 'THB',
+				confirmationCode: 'SVC-1', accessToken: 'x', createdAt: Date.now()
+			});
+		});
+		const full = await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date });
+		expect(full).toEqual({ service: 'Thai massage', date, openTimes: [] });
+		expect(await prepare(s)).toMatchObject({ error: expect.stringContaining('just taken') });
+	});
+
 	it('requires a fresh quote and confirms idempotently', async () => {
 		const s = await setup();
 		await expect(s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow('No prepared service booking');

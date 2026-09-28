@@ -165,6 +165,44 @@ export default defineSchema({
 		createdByAdminEmail: v.optional(v.string())
 	}).index('by_staff_start', ['staffId', 'start']),
 
+	/** Roster override for one person on one resort-local date; replaces the weekly pattern. No shifts = off. */
+	staffDays: defineTable({
+		staffId: v.id('staff'),
+		date: v.string(),
+		shifts: v.array(v.object({ start: v.string(), end: v.string() })),
+		breaks: v.array(v.object({ start: v.string(), end: v.string(), label: v.string() })),
+		note: v.optional(v.string()),
+		updatedAt: v.number()
+	})
+		.index('by_staff_date', ['staffId', 'date'])
+		.index('by_date', ['date']),
+
+	/** One bulk roster action, kept so the latest one can be undone. */
+	rosterBatches: defineTable({
+		label: v.string(),
+		status: v.union(v.literal('running'), v.literal('done'), v.literal('undone')),
+		createdByAdminEmail: v.string(),
+		createdAt: v.number(),
+		// makeDefault only: each person's weekly pattern before the change.
+		patterns: v.optional(v.array(v.object({
+			staffId: v.id('staff'),
+			workingHours: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string() })),
+			breaks: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string(), label: v.string() }))
+		})))
+	}),
+
+	/** A cell's state before a batch changed it; null = no override (the pattern applied). */
+	rosterBatchItems: defineTable({
+		batchId: v.id('rosterBatches'),
+		staffId: v.id('staff'),
+		date: v.string(),
+		previous: v.union(v.null(), v.object({
+			shifts: v.array(v.object({ start: v.string(), end: v.string() })),
+			breaks: v.array(v.object({ start: v.string(), end: v.string(), label: v.string() })),
+			note: v.optional(v.string())
+		}))
+	}).index('by_batch', ['batchId']),
+
 	serviceAppointments: defineTable({
 		serviceId: v.id('services'),
 		staffId: v.id('staff'),
