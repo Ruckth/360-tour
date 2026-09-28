@@ -7,6 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HOTSPOT_RADIUS, SPHERE_RADIUS } from "@/lib/tour-geometry";
 import { NATIVE_SELECT, SaveBar, useSaver } from "./property-form";
 
 type Room = Doc<"rooms">;
@@ -14,10 +15,7 @@ type Draft = { id?: string; label: string; targetRoomSlug: string; position: [st
 
 const AXES = ["x", "y", "z"] as const;
 
-/**
- * Hotspots as an editable list: label, target room and sphere position.
- * Kept separate so the visual panorama editor can replace it later.
- */
+/** Hotspots as an editable list with exact positions; the visual editor is `HotspotEditorDialog`. */
 export function RoomHotspotList({ room, rooms }: { room: Room; rooms: Room[] }) {
   const setHotspots = useMutation(api.adminProperties.setHotspots);
   const save = useSaver();
@@ -56,7 +54,8 @@ export function RoomHotspotList({ room, rooms }: { room: Room; rooms: Room[] }) 
   return (
     <form onSubmit={submit} className="grid gap-3 rounded-lg bg-muted/40 p-3">
       <p className="text-xs text-muted-foreground">
-        Position is a point on the panorama sphere (radius 500) as x, y, z, with y pointing up. A visual editor is coming.
+        Position is x, y, z from the viewer, with y pointing up; hotspots placed visually sit {HOTSPOT_RADIUS} away, inside the
+        panorama sphere (radius {SPHERE_RADIUS}).
       </p>
       {drafts.map((draft, index) => (
         <div key={index} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_repeat(3,5rem)_auto] sm:items-center">
@@ -113,7 +112,7 @@ export function RoomHotspotList({ room, rooms }: { room: Room; rooms: Room[] }) 
           size="sm"
           variant="outline"
           className="mr-auto h-10"
-          onClick={() => setDrafts((current) => [...current, { label: "", targetRoomSlug: "", position: ["0", "0", "-400"] }])}
+          onClick={() => setDrafts((current) => [...current, { label: "", targetRoomSlug: "", position: ["0", "0", String(-HOTSPOT_RADIUS)] }])}
         >
           <Plus aria-hidden className="size-4" />
           Add hotspot
