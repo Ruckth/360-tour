@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { CheckCheck, ChevronLeft, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
+import { isChatSessionActive } from "convex/lib/chatPresence";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
@@ -33,6 +34,7 @@ import {
 } from "@/components/admin/admin-chat-format";
 import type {
   AdminMessage,
+  AdminSession,
   AdminSessionStatus,
   SessionChannelFilter,
   SessionDetailResult,
@@ -94,6 +96,12 @@ function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
   return now;
 }
 
+/** "Live now" follows the local clock, so the queries don't resubscribe on every presence tick. */
+function withLivePresence<T extends AdminSession>(session: T, now: number): T {
+  const isActive = isChatSessionActive(session, now);
+  return session.isActive === isActive ? session : { ...session, isActive };
+}
+
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
 
@@ -151,6 +159,7 @@ export function ChatsView() {
   const searchParams = useSearchParams();
   const { getToken } = useAuth();
   const now = usePresenceClock();
+  const presenceMinute = Math.floor(now / 60_000) * 60_000;
   const isLargeViewport = useMediaQuery("(min-width: 1024px)");
   // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
   const updateParams = useCallback(
@@ -179,7 +188,9 @@ export function ChatsView() {
   const setMessageStartAt = (value: string) => updateParams({ from: value });
   const setMessageEndAt = (value: string) => updateParams({ to: value });
   // Typing stays local; the URL follows after a short pause.
-  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
+  const urlSearchQuery = searchParams.get("q") ?? "";
+  const [searchQuery, setSearchQuery] = useState(urlSearchQuery);
+  const lastWrittenSearchQuery = useRef(urlSearchQuery);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const selectedSessionId = searchParams.get("session") as Id<"chatSessions"> | null;
@@ -231,17 +242,18 @@ export function ChatsView() {
           searchQuery: trimmedSearchQuery || undefined,
           messageStartAt: parsedMessageStartAt,
           messageEndAt: parsedMessageEndAt,
-          now,
+          // Only the Live/Inactive filters need the server's clock; a coarse minute keeps the subscription stable.
+          now: status === "active" || status === "inactive" ? presenceMinute : undefined,
         },
   ) as SessionListResult | undefined;
   const sessionsResult = useLatestDefined(liveSessionsResult, sessionsResetKey);
   const sessions = useMemo(
-    () => (invalidMessageDateRange ? [] : sessionsResult?.sessions ?? []),
-    [invalidMessageDateRange, sessionsResult],
+    () => (invalidMessageDateRange ? [] : (sessionsResult?.sessions ?? []).map((session) => withLivePresence(session, now))),
+    [invalidMessageDateRange, sessionsResult, now],
   );
   const liveSessionDetail = useQuery(
     api.adminChat.getSessionDetail,
-    selectedSessionId ? { sessionId: selectedSessionId, now } : "skip",
+    selectedSessionId ? { sessionId: selectedSessionId } : "skip",
   ) as SessionDetailResult | null | undefined;
   const transcriptPagination = usePaginatedQuery(
     api.adminChat.listTranscriptMessages,
@@ -263,9 +275,8 @@ export function ChatsView() {
   const selectedSession = useMemo(
     () =>
       sessions.find((session) => session._id === selectedSessionId) ??
-      sessionDetail?.session ??
-      null,
-    [selectedSessionId, sessions, sessionDetail],
+      (sessionDetail?.session ? withLivePresence(sessionDetail.session, now) : null),
+    [selectedSessionId, sessions, sessionDetail, now],
   );
 
   useEffect(() => {
@@ -381,11 +392,22 @@ export function ChatsView() {
     setPageCursors([null]);
   }, [filterResetKey]);
 
+  // When ?q changes from outside (back/forward, a link, clearing filters), adopt it instead of
+  // writing the old text back. Our own writes are recognised by the last value we sent.
   useEffect(() => {
-    if ((searchParams.get("q") ?? "") === trimmedSearchQuery) return;
-    const timeout = window.setTimeout(() => updateParams({ q: trimmedSearchQuery }), 300);
+    if (urlSearchQuery === lastWrittenSearchQuery.current) return;
+    lastWrittenSearchQuery.current = urlSearchQuery;
+    setSearchQuery(urlSearchQuery);
+  }, [urlSearchQuery]);
+
+  useEffect(() => {
+    if (urlSearchQuery === trimmedSearchQuery) return;
+    const timeout = window.setTimeout(() => {
+      lastWrittenSearchQuery.current = trimmedSearchQuery;
+      updateParams({ q: trimmedSearchQuery });
+    }, 300);
     return () => window.clearTimeout(timeout);
-  }, [searchParams, trimmedSearchQuery, updateParams]);
+  }, [urlSearchQuery, trimmedSearchQuery, updateParams]);
 
   const activeFilterCount = [emptyFilter !== "non_empty", channelFilter !== "all", messageStartAt, messageEndAt].filter(
     Boolean,

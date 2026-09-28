@@ -275,6 +275,7 @@
     "noConvex": "我可以在这里帮您比较别墅；配置 Convex 后会连接实时聊天。",
     "fallback": "请重试，或通过下方方式联系我们。",
     "sent": "我已发送给礼宾。如需即时回复，请使用 WhatsApp。",
+    "staffWillReply": "工作人员会尽快在这里回复您。",
     "browserGateTitle": "正在用 Chrome 打开聊天",
     "browserGateTitleSafari": "正在用 Safari 打开聊天",
     "browserGateDescription": "当前应用内浏览器可能会遮挡键盘或丢失聊天状态。我们会在 Chrome 中打开同一段聊天，体验更稳定。",

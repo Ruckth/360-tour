@@ -275,6 +275,7 @@
     "noConvex": "Ich kann hier Villen vergleichen; der Live-Chat verbindet sich, sobald Convex für diese Next.js-App konfiguriert ist.",
     "fallback": "Bitte versuchen Sie es erneut oder kontaktieren Sie uns unten.",
     "sent": "Ich habe das an den Concierge gesendet. Nutzen Sie WhatsApp, wenn Sie sofort eine Antwort brauchen.",
+    "staffWillReply": "Ein Teammitglied antwortet Ihnen hier in Kürze.",
     "browserGateTitle": "Chat wird in Chrome geöffnet",
     "browserGateTitleSafari": "Chat wird in Safari geöffnet",
     "browserGateDescription": "Der In-App-Browser kann die Tastatur verdecken oder den Chatstatus verlieren. Wir öffnen denselben Chat in Chrome für eine stabilere Nutzung.",

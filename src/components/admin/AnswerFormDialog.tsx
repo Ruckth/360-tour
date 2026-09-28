@@ -219,6 +219,7 @@ function AnswerForm({
             primaryQuestion: target.question?.slice(0, 240) ?? "",
           },
   );
+  const [initialQuestions] = useState(() => ({ primaryQuestion: form.primaryQuestion, questions: form.questions }));
   const [formError, setFormError] = useState("");
   const [pendingAction, setPendingAction] = useState("");
   const createAnswer = useMutation(api.chatKnowledge.adminCreateAnswer);
@@ -313,6 +314,12 @@ function AnswerForm({
           generateSimilar: true,
         });
       } else if (editingAnswer) {
+        const primaryQuestion = form.primaryQuestion.trim();
+        // Only resync the question list when it was edited, so a plain text edit can't touch
+        // questions another admin approved (or suggested) while this dialog was open.
+        const questionsChanged =
+          primaryQuestion !== initialQuestions.primaryQuestion.trim() ||
+          form.questions.join("\n") !== initialQuestions.questions.join("\n");
         await updateAnswer({
           answerId: editingAnswer._id,
           title,
@@ -320,8 +327,7 @@ function AnswerForm({
           status: form.status,
           topicNames,
           propertySlugs: form.propertySlugs,
-          primaryQuestion: form.primaryQuestion.trim(),
-          questions: form.questions,
+          ...(questionsChanged ? { primaryQuestion, questions: form.questions } : {}),
         });
       } else {
         await createAnswer({
