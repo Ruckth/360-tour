@@ -11,8 +11,10 @@ export type PublicProperty = Omit<Doc<'properties'>, 'icalExportToken' | 'tenant
 /** Public queries never expose the private iCal export token or tenant link. */
 function toPublic(property: Doc<'properties'> | null): PublicProperty | null {
 	if (!property || property.status !== 'active') return null;
-	const { icalExportToken: _token, tenantId: _tenant, ...rest } = property;
-	return rest;
+	const rest: Partial<Doc<'properties'>> = { ...property };
+	delete rest.icalExportToken;
+	delete rest.tenantId;
+	return rest as PublicProperty;
 }
 
 export const list = query({
