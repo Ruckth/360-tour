@@ -71,6 +71,11 @@ interface Surface {
    * DOM `scrollTop` property every move (another forced reflow).
    */
   scrollTop: number
+  /** The contained resource view scrolls its columns outside the time track. */
+  horizontalViewport: HTMLElement | null
+  horizontalViewportRect: DOMRect | null
+  viewportStartScrollLeft: number
+  scrollLeft: number
 }
 
 /** Module flag so chip onClick can ignore the click that ends a drag. */
@@ -176,6 +181,12 @@ function collectSurface(
   const viewport =
     root?.querySelector<HTMLElement>("[data-slot=scroll-area-viewport]") ?? null
   const viewportStartScrollTop = viewport?.scrollTop ?? 0
+  const content = root?.matches("[data-slot=event-calendar-resource-view]")
+    ? root.closest<HTMLElement>("[data-slot=event-calendar-content]")
+    : null
+  const horizontalViewport =
+    content && content.scrollWidth > content.clientWidth ? content : null
+  const viewportStartScrollLeft = horizontalViewport?.scrollLeft ?? 0
   return {
     columns,
     cells,
@@ -183,6 +194,10 @@ function collectSurface(
     viewportRect: viewport?.getBoundingClientRect() ?? null,
     viewportStartScrollTop,
     scrollTop: viewportStartScrollTop,
+    horizontalViewport,
+    horizontalViewportRect: horizontalViewport?.getBoundingClientRect() ?? null,
+    viewportStartScrollLeft,
+    scrollLeft: viewportStartScrollLeft,
   }
 }
 
@@ -190,19 +205,19 @@ function findColumn(
   surface: Surface,
   clientX: number
 ): TimeColumnRect | undefined {
-  const scrollAdjusted = surface.columns
+  const x = clientX + surface.scrollLeft - surface.viewportStartScrollLeft
   let best: TimeColumnRect | undefined
-  for (const col of scrollAdjusted) {
-    if (clientX >= col.rect.left && clientX < col.rect.right) return col
+  for (const col of surface.columns) {
+    if (x >= col.rect.left && x < col.rect.right) return col
     if (!best) best = col
     // clamp to nearest horizontal column
     const bestDist = Math.min(
-      Math.abs(clientX - best.rect.left),
-      Math.abs(clientX - best.rect.right)
+      Math.abs(x - best.rect.left),
+      Math.abs(x - best.rect.right)
     )
     const dist = Math.min(
-      Math.abs(clientX - col.rect.left),
-      Math.abs(clientX - col.rect.right)
+      Math.abs(x - col.rect.left),
+      Math.abs(x - col.rect.right)
     )
     if (dist < bestDist) best = col
   }
@@ -214,10 +229,11 @@ function findCell(
   x: number,
   y: number
 ): DayCellRect | undefined {
+  const adjustedX = x + surface.scrollLeft - surface.viewportStartScrollLeft
   return surface.cells.find(
     (cell) =>
-      x >= cell.rect.left &&
-      x < cell.rect.right &&
+      adjustedX >= cell.rect.left &&
+      adjustedX < cell.rect.right &&
       y >= cell.rect.top &&
       y < cell.rect.bottom
   )
@@ -425,6 +441,9 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
     // holds no drag state, no overlay and no body class to strand
     window.addEventListener("blur", onWindowBlur)
     surface = collectSurface(origin, internals.getRootEl())
+    surface.horizontalViewport?.addEventListener("scroll", onHorizontalScroll, {
+      passive: true,
+    })
     if (kind === "move" && occurrence) {
       const grabCell = findCell(surface, startX, startY)
       if (grabCell) {
@@ -685,6 +704,12 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
     })
   }
 
+  const onHorizontalScroll = () => {
+    if (!surface?.horizontalViewport) return
+    surface.scrollLeft = surface.horizontalViewport.scrollLeft
+    if (active) applyProposal(lastPointer)
+  }
+
   // Cursor-attached carry clone for MOVE gestures: the event travels freely
   // with the pointer, like an absolutely positioned overlay, while the
   // in-grid ghost renders only a faint dashed placeholder at the snapped
@@ -762,11 +787,13 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
   const autoScroll = (e: PointerEvent) => {
     // Cached rect (see Surface.viewportRect) - never getBoundingClientRect per
     // move; the box is stable while the pointer is captured.
-    const rect = surface?.viewportRect
-    if (!surface?.viewport || !rect) return
+    if (!surface) return
+    const rect = surface.viewportRect
+    const horizontalRect = surface.horizontalViewportRect
     const edge = activation.autoScrollEdgePx
     const step = activation.autoScrollMaxStepPx
-    let delta = 0
+    let deltaY = 0
+    let deltaX = 0
     /**
      * The scroller wraps the time track ONLY - the day headers and the all-day
      * row sit above it, outside the box - so its top edge is a hard floor. A
@@ -783,15 +810,29 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
      * scrolling - that is how a grid is normally asked to keep going - but the
      * eased speed is capped at one step per frame for the same reason.
      */
-    if (e.clientY >= rect.top) {
+    if (surface.viewport && rect && e.clientY >= rect.top) {
       if (e.clientY < rect.top + edge) {
-        delta = -step * ((rect.top + edge - e.clientY) / edge)
+        deltaY = -step * ((rect.top + edge - e.clientY) / edge)
       } else if (e.clientY > rect.bottom - edge) {
-        delta = step * Math.min(1, (e.clientY - (rect.bottom - edge)) / edge)
+        deltaY = step * Math.min(1, (e.clientY - (rect.bottom - edge)) / edge)
+      }
+    }
+    if (
+      surface.horizontalViewport &&
+      horizontalRect &&
+      e.clientY >= horizontalRect.top &&
+      e.clientY <= horizontalRect.bottom
+    ) {
+      if (e.clientX < horizontalRect.left + edge) {
+        deltaX =
+          -step * Math.min(1, (horizontalRect.left + edge - e.clientX) / edge)
+      } else if (e.clientX > horizontalRect.right - edge) {
+        deltaX =
+          step * Math.min(1, (e.clientX - (horizontalRect.right - edge)) / edge)
       }
     }
     if (rafScroll) cancelAnimationFrame(rafScroll)
-    if (delta !== 0) {
+    if (deltaY !== 0 || deltaX !== 0) {
       const tick = () => {
         // Write-then-readback: the browser clamps scrollTop at the scroll
         // extent, so mirror only the APPLIED delta - otherwise parking the
@@ -799,13 +840,23 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
         // value past reality and poisons every later minute mapping. When
         // parked (nothing applied), stop the loop; the next pointermove
         // restarts it.
-        const before = surface!.viewport!.scrollTop
-        surface!.viewport!.scrollTop = before + delta
-        const applied = surface!.viewport!.scrollTop - before
-        if (applied === 0) return
+        let appliedY = 0
+        let appliedX = 0
+        if (surface!.viewport && deltaY !== 0) {
+          const before = surface!.viewport.scrollTop
+          surface!.viewport.scrollTop = before + deltaY
+          appliedY = surface!.viewport.scrollTop - before
+        }
+        if (surface!.horizontalViewport && deltaX !== 0) {
+          const before = surface!.horizontalViewport.scrollLeft
+          surface!.horizontalViewport.scrollLeft = before + deltaX
+          appliedX = surface!.horizontalViewport.scrollLeft - before
+        }
+        if (appliedY === 0 && appliedX === 0) return
         // keep the tracked scrollTop in step so pointerMinutes stays a pure
         // number read (no DOM scrollTop, no forced reflow)
-        surface!.scrollTop += applied
+        surface!.scrollTop += appliedY
+        surface!.scrollLeft += appliedX
         applyProposal(e)
         rafScroll = requestAnimationFrame(tick)
       }
@@ -825,6 +876,10 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
     window.removeEventListener("pointercancel", onCancel)
     window.removeEventListener("blur", onWindowBlur)
     window.removeEventListener("keydown", onKeyDown, true)
+    surface?.horizontalViewport?.removeEventListener(
+      "scroll",
+      onHorizontalScroll
+    )
     if (rafScroll) cancelAnimationFrame(rafScroll)
     if (touchTimer) clearTimeout(touchTimer)
     hintEl?.remove()
@@ -937,7 +992,16 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
   window.addEventListener("pointercancel", onCancel)
   // a resize on a precise pointer is live from the first frame, so it never
   // reaches activate() to arm its own blur cancel
-  if (active) window.addEventListener("blur", onWindowBlur)
+  if (active) {
+    window.addEventListener("blur", onWindowBlur)
+    surface?.horizontalViewport?.addEventListener(
+      "scroll",
+      onHorizontalScroll,
+      {
+        passive: true,
+      }
+    )
+  }
   window.addEventListener("keydown", onKeyDown, true)
   activeGestureCancels.add(cancel)
 

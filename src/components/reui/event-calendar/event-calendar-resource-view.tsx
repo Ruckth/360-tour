@@ -48,6 +48,8 @@ import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 const EMPTY_ALL_DAY_SEGMENTS: EventCalendarSegment[] = []
+const PINNED_GUTTER =
+  "relative z-50 bg-background [transform:translateX(var(--ec-scroll-x,0px))]"
 
 interface EventCalendarResourceViewProps extends useRender.ComponentProps<"div"> {
   dayStartHour?: number
@@ -156,6 +158,26 @@ function EventCalendarResourceView({
     viewConfig.scrollbars,
   ])
 
+  useEffect(() => {
+    if (!contained) return
+    const view = scrollRef.current?.closest<HTMLElement>(
+      "[data-slot=event-calendar-resource-view]"
+    )
+    const content = view?.closest<HTMLElement>(
+      "[data-slot=event-calendar-content]"
+    )
+    if (!view || !content) return
+    const syncGutter = () => {
+      view.style.setProperty("--ec-scroll-x", `${content.scrollLeft}px`)
+    }
+    syncGutter()
+    content.addEventListener("scroll", syncGutter, { passive: true })
+    return () => {
+      content.removeEventListener("scroll", syncGutter)
+      view.style.removeProperty("--ec-scroll-x")
+    }
+  }, [contained])
+
   const slots = useMemo(() => {
     const result: number[] = []
     for (let m = startHour * 60; m < endHour * 60; m += interval) {
@@ -196,6 +218,7 @@ function EventCalendarResourceView({
         slots={slots}
         startHour={startHour}
         interval={interval}
+        className={contained ? PINNED_GUTTER : undefined}
       />
       <div className="grid min-w-0 flex-1" style={{ gridTemplateColumns }}>
         {resources.map((resource) => (
@@ -224,7 +247,7 @@ function EventCalendarResourceView({
     "data-view": "resource",
     className: cn(
       "flex flex-col border-t",
-      contained && "min-h-0 flex-1 overflow-hidden",
+      contained && "min-h-0 min-w-max flex-1 overflow-hidden",
       viewConfig.classNames?.timeGrid,
       className
     ),
@@ -240,7 +263,12 @@ function EventCalendarResourceView({
             viewConfig.classNames?.timeGridHeader
           )}
         >
-          <div className="w-(--ec-gutter-width,4.5rem) shrink-0 border-e" />
+          <div
+            className={cn(
+              "w-(--ec-gutter-width,4.5rem) shrink-0 border-e",
+              contained && PINNED_GUTTER
+            )}
+          />
           <div className="grid min-w-0 flex-1" style={{ gridTemplateColumns }}>
             {resources.map((resource) => (
               <div
@@ -278,6 +306,7 @@ function EventCalendarResourceView({
                     // baseline as the first all-day chip and stays top-aligned when
                     // the chips wrap onto more lanes (mirrors the time-grid label)
                     "text-muted-foreground w-(--ec-gutter-width,4.5rem) shrink-0 border-e ps-2 pe-2.5 pt-1.5",
+                    contained && PINNED_GUTTER,
                     viewConfig.classNames?.allDayLabel
                   )}
                 >

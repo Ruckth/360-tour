@@ -64,6 +64,8 @@ function EventCalendarContent({
     "data-loading": loading || undefined,
     className: cn(
       "relative flex min-h-0 min-w-0 flex-1 flex-col",
+      view === "resource" && viewConfig.scrollMode === "contained" &&
+        "overflow-x-auto overflow-y-hidden",
       "data-loading:pointer-events-none data-loading:opacity-60",
       viewConfig.classNames?.content,
       className
