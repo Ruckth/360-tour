@@ -107,10 +107,104 @@ describe("chat AI guardrails", () => {
   it("does not intercept ordinary villa questions", () => {
     expect(getResortRealityDisclosure("Which villa is best for 4 adults?")).toBeNull();
     expect(getResortRealityDisclosure("Can I book the Pool Villa tomorrow?")).toBeNull();
+    expect(getResortRealityDisclosure("마사지 예약할 수 있나요?")).toBeNull();
   });
 });
 
 describe("chatAi.respond question-bank matching", () => {
+  it("answers the latest production service question using live services when no curated question matches", async () => {
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    try {
+      const t = convexTest(schema, modules);
+      await t.run(async (ctx) => {
+        await ctx.db.insert("services", {
+          slug: "thai-massage", name: "Traditional Thai Massage", description: "Thai massage",
+          category: "Wellness", durationMin: 60, bufferMin: 15, price: 1500,
+          currency: "THB", staffIds: [], status: "active", createdAt: Date.now(), updatedAt: Date.now(),
+        });
+      });
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        const messages = JSON.parse(String(init?.body ?? "{}")).messages ?? [];
+        if (JSON.stringify(messages).includes("Candidate question-bank items")) {
+          return new Response(JSON.stringify({ choices: [{ message: { content: '{"matched":false}' } }] }), { status: 200 });
+        }
+        const toolResult = messages.find((message: { role: string }) => message.role === "tool");
+        const message = toolResult
+          ? { content: "มีบริการ Traditional Thai Massage ราคา ฿1,500 ครับ" }
+          : { content: null, tool_calls: [{ id: "service-list", type: "function", function: { name: "list_services", arguments: "{}" } }] };
+        return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const sessionId = await createWebSession(t);
+
+      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "มีบริการอะไรบ้าง", locale: "th" });
+
+      expect(result.response).toContain("Traditional Thai Massage");
+      expect(result.response).toContain("฿1,500");
+      expect(fetchMock.mock.calls.some(([, init]) => String((init as RequestInit)?.body).includes("list_services"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("includes approved owner answers in AI context for paraphrased questions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        title: "Assistance animals", answer: "Registered assistance animals are allowed if the team is told in advance.",
+        primaryQuestion: "Are pets allowed?",
+      });
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        const prompt = String(body.messages?.[0]?.content ?? "");
+        const content = prompt.includes("Registered assistance animals are allowed")
+          ? "Registered assistance animals are allowed with advance notice."
+          : "[[UNKNOWN]]";
+        return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const sessionId = await createWebSession(t);
+
+      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Can my guide dog stay with me?" });
+
+      expect(result.response).toContain("Registered assistance animals");
+      expect(fetchMock.mock.calls.some(([, init]) => String((init as RequestInit)?.body).includes("OWNER-APPROVED KNOWLEDGE"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("records a question when the concierge has no supporting facts", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    try {
+      const t = convexTest(schema, modules);
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+        choices: [{ message: { content: "[[UNKNOWN]]" } }],
+      }), { status: 200 })));
+      const sessionId = await createWebSession(t);
+
+      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Is helicopter transfer included?" });
+      const unknownRows = await adminTest(t).query(api.chatKnowledge.adminListUnknownQuestions, {
+        status: "new", paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.model).toBe("unknown_fallback");
+      expect(unknownRows.page[0]?.userQuestion).toBe("Is helicopter transfer included?");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("returns a static exact question-bank answer for typed website messages", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {
@@ -226,7 +320,7 @@ describe("chatAi.respond question-bank matching", () => {
     }
   });
 
-  it("records an unknown fallback when semantic confidence is low", async () => {
+  it("uses the concierge when semantic confidence is low", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     vi.stubEnv("AI_API_KEY", "test-key");
     vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
@@ -267,13 +361,8 @@ describe("chatAi.respond question-bank matching", () => {
         paginationOpts: { numItems: 50, cursor: null },
       }).then((result) => result.page);
 
-      expect(result).toMatchObject({
-        response: "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
-        model: "unknown_fallback",
-      });
-      expect(unknownRows[0]).toMatchObject({
-        userQuestion: "Can you help with late checkout?",
-      });
+      expect(result).toMatchObject({ response: "The host can help with late checkout.", model: "grok-4.3" });
+      expect(unknownRows).toHaveLength(0);
       expect(fetchMock).toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();

@@ -5,7 +5,6 @@ import { verifyMetaSignature } from "@/lib/meta/signature";
 import {
   detectQuickAnswerLocale,
   localizedTimeoutFallbackReply,
-  localizedUnknownFallbackReply,
   resolveLineQuickAnswer,
   type LinePropertySummary,
 } from "@/lib/line/quick-answers";
@@ -287,7 +286,7 @@ async function sendWhatsAppTextMessage({
   return response.status;
 }
 
-async function resolveWhatsAppReply({
+export async function resolveWhatsAppReply({
   client,
   messageText,
   sessionId,
@@ -426,14 +425,20 @@ async function resolveWhatsAppReply({
     };
   }
 
-  await client.mutation(api.chatKnowledge.recordUnknownQuestion, {
-    sessionId,
-    userQuestion: messageText,
-  } as never);
-
+  const generated = await timeout(
+    client.action(api.chatAi.generateReply, {
+      sessionId,
+      userMessage: messageText,
+      channel: "whatsapp",
+      siteUrl,
+      ...(locale ? { locale } : {}),
+    } as never) as Promise<GeneratedReply>,
+    AI_REPLY_TIMEOUT_MS,
+    () => timeoutFallbackReply(locale),
+  );
   return {
-    responseText: localizedUnknownFallbackReply(locale),
-    replyMode: "unknown_fallback",
+    responseText: generated.response ?? timeoutFallbackReply(locale).response,
+    replyMode: generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai",
     questionBankMatch: null,
   };
 }

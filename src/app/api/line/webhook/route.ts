@@ -477,13 +477,23 @@ async function handleLineEvent({
                 : questionBankReplyMode(questionBankMatch);
           } else {
             if (eventType === "message" && messageText) {
-              await client.mutation(api.chatKnowledge.recordUnknownQuestion, {
-                sessionId: claimed.sessionId,
-                userQuestion: messageText,
-              } as never);
+              generated = await timeout(
+                client.action(api.chatAi.generateReply, {
+                  sessionId: claimed.sessionId,
+                  userMessage: messageText,
+                  channel: "line",
+                  siteUrl,
+                  ...(locale ? { locale } : {}),
+                } as never) as Promise<GeneratedReply>,
+                AI_REPLY_TIMEOUT_MS,
+                () => timeoutFallbackReply(locale),
+              );
+              responseText = generated.response ?? timeoutFallbackReply(locale).response;
+              replyMode = generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai";
+            } else {
+              responseText = localizedUnknownFallbackReply(locale);
+              replyMode = "unknown_fallback";
             }
-            responseText = localizedUnknownFallbackReply(locale);
-            replyMode = "unknown_fallback";
           }
         }
       }

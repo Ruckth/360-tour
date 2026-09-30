@@ -120,7 +120,7 @@ const realityGuardrailPatterns: Array<{
 	},
 	{
 		locale: 'ko',
-		patterns: [/(진짜|실제|실존|존재|있나요|사기|가짜|정말 있는)/u]
+		patterns: [/(진짜|실제|실존|존재|사기|가짜|정말 있는)/u]
 	},
 	{
 		locale: 'hi',
@@ -437,6 +437,12 @@ export async function generateConciergeReply(
 	const properties: PublicProperty[] = await ctx.runQuery(api.properties.list, {});
 
 	const settings: EffectiveSettings = await ctx.runQuery(internal.settings.effective, {});
+	const approvedContext: Array<{ title: string; answer: string }> = await ctx.runQuery(
+		internal.chatKnowledge.getApprovedContext, { sessionId: args.sessionId }
+	);
+	const approvedKnowledge = approvedContext
+		.map(({ title, answer }) => `- ${title}: ${answer}`)
+		.join('\n');
 	const propertyContext = properties
 		.map(
 			(p) =>
@@ -464,6 +470,12 @@ export async function generateConciergeReply(
 PROPERTIES:
 ${propertyContext}
 
+OWNER-APPROVED KNOWLEDGE:
+${approvedKnowledge || '- No additional owner-approved answers are available.'}
+- Use an approved answer when it is relevant to the guest's question. Property-specific answers apply only to that property.
+- For live prices, availability, service offerings, and bookings, use the current data and tools rather than assuming an older answer is current.
+- If the facts needed for an answer are missing from this context and the tools, reply with exactly [[UNKNOWN]]. Do not invent policies or amenities.
+
 ${currentProperty ? `The guest is currently viewing: ${currentProperty.name} (${currentProperty.slug})` : 'The guest is browsing all properties.'}
 
 PRICING:
@@ -481,6 +493,7 @@ STYLE:
 - Do not claim that ${settings.businessName} is a real-world verified resort or independently verified business. If asked whether it is real, say it is presented here as a demo/preview experience and offer to help with the demo villas, pricing, availability, or 360° tour.
 - Use ฿ symbol for prices
 - Suggest the 360° virtual tour when relevant
+- For questions about services, spa treatments, activities, or their prices, call list_services and answer from its result.
 ${isMessaging ? '' : `- If the guest seems ready to book or asks about availability, point them to the booking card below the chat
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
@@ -589,9 +602,12 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 			lastMessage: args.userMessage
 		}).catch((error) => console.error('Could not queue staff handoff alert:', error));
 	}
+	if (!response.content?.trim() || response.content.includes('[[UNKNOWN]]')) {
+		return await recordUnknownFallback(ctx, args, session);
+	}
 
 	return {
-		response: response.content || "I'm sorry, I couldn't process that. Please try again.",
+		response: response.content,
 		model: selectedModel
 	};
 }
@@ -702,7 +718,9 @@ export const respond = action({
 						questionBankHint: questionBankHintFromMatch(questionBankMatch)
 					}, session);
 				} else {
-					result = await recordUnknownFallback(ctx, args, session);
+					result = process.env.AI_API_KEY
+						? await generateConciergeReply(ctx, args, session)
+						: await recordUnknownFallback(ctx, args, session);
 				}
 			}
 		}

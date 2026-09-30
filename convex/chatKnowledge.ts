@@ -663,6 +663,33 @@ export const resolveExact = query({
 	}
 });
 
+/** Bounded, property-aware owner answers for concierge questions without an exact match. */
+export const getApprovedContext = internalQuery({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) return [];
+		const { propertyId, propertySlug } = await resolveSessionProperty(ctx, session);
+		const normalizedSlug = propertySlug ? normalizePropertySlug(propertySlug) : undefined;
+		const answers = await ctx.db.query('chatAnswers')
+			.withIndex('by_status_and_updatedAt', (q) => q.eq('status', 'approved'))
+			.order('desc').take(100);
+		const relevant: Array<{ title: string; answer: string; scopeRank: number }> = [];
+		for (const answer of answers) {
+			const scopes = await getAnswerPropertyScopes(ctx, answer);
+			const matchesScope = scopes.some((scope) =>
+				(normalizedSlug && scope.normalizedSlug === normalizedSlug) ||
+				(propertyId && scope.propertyId === propertyId)
+			);
+			if (scopes.length > 0 && !matchesScope) continue;
+			if (scopes.length === 0 && answer.propertyId && answer.propertyId !== propertyId) continue;
+			relevant.push({ title: answer.title, answer: answer.answer, scopeRank: matchesScope || answer.propertyId ? 1 : 0 });
+		}
+		relevant.sort((left, right) => right.scopeRank - left.scopeRank);
+		return relevant.slice(0, 30).map(({ title, answer }) => ({ title, answer }));
+	}
+});
+
 export const recordUnknownQuestion = mutation({
 	args: {
 		sessionId: v.optional(v.id('chatSessions')),

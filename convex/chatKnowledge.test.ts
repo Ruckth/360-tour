@@ -58,6 +58,36 @@ async function createWebSession(
 }
 
 describe("chatKnowledge approved exact matching", () => {
+  it("only includes global and relevant property answers in AI context", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await createProperty(t, "pool-villa");
+      await createProperty(t, "garden-villa");
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        title: "General policy", answer: "Breakfast is available.", primaryQuestion: "Is breakfast available?",
+      });
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        propertySlug: "pool-villa", title: "Pool feature", answer: "This villa has a private pool.",
+        primaryQuestion: "Does it have a private pool?",
+      });
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        propertySlug: "garden-villa", title: "Garden feature", answer: "This villa has a garden patio.",
+        primaryQuestion: "Does it have a patio?",
+      });
+      const sessionId = await createWebSession(t, { propertySlug: "pool-villa" });
+
+      const context = await t.query(internal.chatKnowledge.getApprovedContext, { sessionId });
+
+      expect(context.map((entry) => entry.title)).toContain("General policy");
+      expect(context.map((entry) => entry.title)).toContain("Pool feature");
+      expect(context.map((entry) => entry.title)).not.toContain("Garden feature");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("reuses an approved question and clears stale unknown references when it is removed", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {
