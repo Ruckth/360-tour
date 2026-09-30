@@ -105,6 +105,8 @@ export async function patchSessionAfterMessages(
 		addedMessages: number;
 		latestMessageAt: number;
 		lastSeenAt?: number;
+		/** Admin replies don't reopen a resolved/archived chat; guest turns (and the bot reply to them) do. */
+		fromAdmin?: boolean;
 	}
 ) {
 	const session = await ctx.db.get(sessionId);
@@ -124,5 +126,8 @@ export async function patchSessionAfterMessages(
 			lastSeenAt: nextLastSeenAt,
 		}),
 		...(typeof nextLastSeenAt === 'number' ? { lastSeenAt: nextLastSeenAt } : {}),
+		...(!options.fromAdmin && session.adminStatus && session.adminStatus !== 'open'
+			? { adminStatus: undefined, resolvedAt: undefined, archivedAt: undefined }
+			: {}),
 	});
 }

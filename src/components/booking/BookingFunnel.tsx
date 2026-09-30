@@ -34,10 +34,12 @@ import {
   rangeIntersectsDates,
   todayIsoLocal,
 } from "@/lib/booking/dates";
+import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
 import {
   readBookingInventoryCache,
   writeBookingInventoryCache,
 } from "@/lib/booking/inventory-cache";
+import { useStayBlockedDates, useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import { resort } from "@/lib/data/resort-config";
 import {
@@ -46,7 +48,6 @@ import {
 } from "@/lib/i18n/public-content";
 import {
   createBooking,
-  getBlockedDatesByProperty,
   isPropertyAvailable,
   listLiveProperties,
 } from "@/lib/react/convex-api";
@@ -140,7 +141,9 @@ export function BookingFunnel({
   const [notice, setNotice] = useState(
     convex ? t("liveInventoryNotice") : t("demoReadyNotice"),
   );
-  const [blockedByProperty, setBlockedByProperty] = useState<Record<string, string[]>>({});
+  const [visibleMonth, setVisibleMonth] = useState(() =>
+    monthOf(derivedInitialCheckOut || initialCheckIn || todayIso),
+  );
   const [loadingInventory, setLoadingInventory] = useState(Boolean(convex));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -167,7 +170,6 @@ export function BookingFunnel({
           ? current
           : cachedInventory.propertyList[0].slug,
       );
-      setBlockedByProperty(cachedInventory.blockedByProperty);
       setBookingMode("live");
       setNotice("");
       setLoadingInventory(false);
@@ -178,13 +180,8 @@ export function BookingFunnel({
         setLoadingInventory(true);
       }
       try {
-        const [rows, blocked] = await Promise.all([
-          listLiveProperties(client),
-          getBlockedDatesByProperty(client, {
-            startDate: todayIso,
-            endDate: addDaysIso(todayIso, 365),
-          }),
-        ]);
+        // Blocked nights load per villa and month below, not for every villa for a year up front.
+        const rows = await listLiveProperties(client);
         if (!active) return;
 
         const liveRows = rows;
@@ -208,6 +205,8 @@ export function BookingFunnel({
                 tourRoomIds: row.tourRoomIds,
                 currency: row.currency,
                 directDiscountPercent: row.directDiscountPercent,
+                translations: row.translations,
+                contentEditedAt: row.contentEditedAt,
                 source: "live" as const,
               },
               locale,
@@ -217,18 +216,12 @@ export function BookingFunnel({
           setSelectedId((current) => liveInventory.some((item) => item.slug === current) ? current : liveInventory[0].slug);
           setBookingMode("live");
           setNotice("");
-          writeBookingInventoryCache(
-            locale,
-            todayIso,
-            liveInventory,
-            (blocked ?? {}) as Record<string, string[]>,
-          );
+          writeBookingInventoryCache(locale, todayIso, liveInventory);
         } else {
           setPropertyList(demoInventory);
           setBookingMode("demo");
           setNotice(t("demoSeedNotice"));
         }
-        setBlockedByProperty((blocked ?? {}) as Record<string, string[]>);
       } catch {
         if (!active) return;
         if (cachedInventory) {
@@ -236,7 +229,6 @@ export function BookingFunnel({
           return;
         }
         setPropertyList(demoInventory);
-        setBlockedByProperty({});
         setBookingMode("demo");
         setNotice(t("demoUnavailableNotice"));
       } finally {
@@ -251,11 +243,25 @@ export function BookingFunnel({
   }, [convex, demoInventory, locale, t, todayIso]);
 
   const property = propertyList.find((item) => item.slug === selectedId) ?? propertyList[0];
-  const propertyId = property._id;
-  const propertyBlockedDates = useMemo(
-    () => (propertyId ? blockedByProperty[propertyId] ?? [] : []),
-    [blockedByProperty, propertyId],
+  const liveClient = bookingMode === "live" ? convex : null;
+  const livePropertyIds = useMemo(
+    () => propertyList.flatMap((item) => (item.source === "live" && item._id ? [item._id] : [])),
+    [propertyList],
   );
+  const {
+    blockedDates: propertyBlockedDates,
+    pendingMonths,
+    failedMonths,
+    retry: retryBlockedMonths,
+  } = useVillaBlockedMonths(
+    liveClient,
+    property.source === "live" ? property._id : undefined,
+    calendarMonths({ visibleMonth, checkIn, checkOut, today: todayIso }),
+  );
+  const stayBlockedByProperty = useStayBlockedDates(liveClient, livePropertyIds, checkIn, checkOut);
+  // Months still loading or that failed to load are unknown, so their days can't be picked.
+  const unknownMonths = useMemo(() => new Set([...pendingMonths, ...failedMonths]), [pendingMonths, failedMonths]);
+  const stayDatesUnknown = stayMonths(checkIn, checkOut).some((month) => unknownMonths.has(month));
   const blockedDateSet = useMemo(() => new Set(propertyBlockedDates), [propertyBlockedDates]);
   const nights = nightsBetweenIso(checkIn, checkOut);
   const guests = adults + children;
@@ -269,7 +275,9 @@ export function BookingFunnel({
   const infoValid = isValidGuestInfo(guestName, guestEmail, guestPhone);
   const invalidRange = Boolean(checkIn && checkOut && nights <= 0);
   const selectedStepIndex = bookingSteps.findIndex((item) => item.key === step);
-  const selectValid = Boolean(property && checkIn && checkOut && nights > 0 && !invalidRange && !conflicts && !loadingInventory);
+  const selectValid = Boolean(
+    property && checkIn && checkOut && nights > 0 && !invalidRange && !conflicts && !loadingInventory && !stayDatesUnknown,
+  );
   const guestsValid = adults >= 1 && children >= 0 && guests >= 1 && guests <= property.maxGuests;
   const highestAllowedStepIndex = getHighestAllowedStepIndex({
     selectValid,
@@ -294,17 +302,18 @@ export function BookingFunnel({
   const availablePropertyIds = useMemo(() => {
     const ids = new Set<string>();
     for (const item of propertyList) {
-      const blocked = item._id ? blockedByProperty[item._id] ?? [] : [];
+      // Unknown (still loading or failed) counts as available; the booking is re-checked on the server.
+      const blocked = item._id ? stayBlockedByProperty?.[item._id] ?? [] : [];
       if (!checkIn || !checkOut || !rangeIntersectsDates(blocked, checkIn, checkOut)) {
         ids.add(item.slug);
       }
     }
     return ids;
-  }, [blockedByProperty, checkIn, checkOut, propertyList]);
+  }, [stayBlockedByProperty, checkIn, checkOut, propertyList]);
 
   function isStayDateDisabled(date: Date) {
     const iso = dateToIso(date);
-    return iso < todayIso || isDateInIsoList(date, blockedDateSet);
+    return iso < todayIso || unknownMonths.has(monthOf(iso)) || isDateInIsoList(date, blockedDateSet);
   }
 
   function selectProperty(item: BookingProperty) {
@@ -442,7 +451,16 @@ export function BookingFunnel({
                   isDateDisabled={isStayDateDisabled}
                   unavailableDates={propertyBlockedDates}
                   helperText={invalidRange ? t("checkoutAfterCheckin") : nightHelperText}
+                  onMonthChange={(month) => setVisibleMonth(monthOf(dateToIso(month)))}
                 />
+                {failedMonths.length > 0 ? (
+                  <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+                    <span>{t("availabilityLoadFailed")}</span>
+                    <Button type="button" size="sm" variant="outline" onClick={retryBlockedMonths}>
+                      {t("retryAvailability")}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
 
               <DateStatus

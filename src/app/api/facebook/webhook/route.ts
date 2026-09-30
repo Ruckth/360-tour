@@ -450,10 +450,22 @@ async function resolveFacebookReply({
   }
 
   if (eventType === "message" && messageText) {
-    await client.mutation(api.chatKnowledge.recordUnknownQuestion, {
-      sessionId,
-      userQuestion: messageText,
-    } as never);
+    const generated = await timeout(
+      client.action(api.chatAi.generateReply, {
+        sessionId,
+        userMessage: messageText,
+        channel: "facebook",
+        siteUrl,
+        ...(locale ? { locale } : {}),
+      } as never) as Promise<GeneratedReply>,
+      AI_REPLY_TIMEOUT_MS,
+      () => timeoutFallbackReply(locale),
+    );
+    return {
+      responseText: generated.response ?? timeoutFallbackReply(locale).response,
+      replyMode: generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai",
+      questionBankMatch: null,
+    };
   }
 
   return {
@@ -487,6 +499,7 @@ async function handleFacebookEvent({
   let claimed: ClaimedFacebookEvent;
   try {
     claimed = (await client.mutation(api.facebook.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       facebookUserId,
       profileName: await fetchFacebookProfileName(accessToken, facebookUserId),
@@ -513,6 +526,7 @@ async function handleFacebookEvent({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.facebook.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
@@ -521,8 +535,19 @@ async function handleFacebookEvent({
 
     if (!claimed.sessionId) {
       await client.mutation(api.facebook.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: "Missing Facebook sender id",
+      } as never);
+      return;
+    }
+
+    // Staff took over this chat: the guest message is recorded, no automatic reply.
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.facebook.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       } as never);
       return;
     }
@@ -535,6 +560,15 @@ async function handleFacebookEvent({
       sessionId: claimed.sessionId,
       siteUrl: getSiteUrl(request),
     });
+
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.facebook.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
+      } as never);
+      return;
+    }
 
     facebookReplyStatus = await sendFacebookTextMessage({
       accessToken,
@@ -564,6 +598,7 @@ async function handleFacebookEvent({
     }
 
     await client.mutation(api.facebook.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
@@ -586,6 +621,7 @@ async function handleFacebookEvent({
 
     try {
       await client.mutation(api.facebook.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedFacebookReplyStatus === "number"

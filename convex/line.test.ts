@@ -1,8 +1,8 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -12,12 +12,33 @@ declare global {
 }
 
 const modules = import.meta.glob("./**/*.ts");
+afterEach(() => vi.unstubAllEnvs());
 
 describe("LINE webhook events", () => {
+  it("requires the configured server secret for every event mutation", async () => {
+    vi.stubEnv("CONVEX_SERVER_SECRET", "trusted-secret");
+    const t = convexTest(schema, modules);
+    await expect(t.mutation(api.line.claimEvent, { serverSecret: "wrong", eventKey: "secure", eventType: "message" }))
+      .rejects.toThrow("Invalid server secret");
+    await expect(t.mutation(api.facebook.claimEvent, { serverSecret: "wrong", eventKey: "secure-fb", eventType: "message" }))
+      .rejects.toThrow("Invalid server secret");
+    await expect(t.mutation(api.instagram.claimEvent, { serverSecret: "wrong", eventKey: "secure-ig", eventType: "message" }))
+      .rejects.toThrow("Invalid server secret");
+    await expect(t.mutation(api.whatsapp.claimEvent, { serverSecret: "wrong", eventKey: "secure-wa", eventType: "message" }))
+      .rejects.toThrow("Invalid server secret");
+    const claimed = await t.mutation(api.line.claimEvent, { serverSecret: "trusted-secret", eventKey: "secure", eventType: "message", lineUserId: "U123" });
+    for (const call of [
+      () => t.mutation(api.line.recordInboundEvent, { serverSecret: "wrong", eventId: claimed.eventId, sessionId: claimed.sessionId! }),
+      () => t.mutation(api.line.completeEvent, { serverSecret: "wrong", eventId: claimed.eventId, sessionId: claimed.sessionId!, assistantContent: "Hi", replyMode: "exact" }),
+      () => t.mutation(api.line.markEventIgnored, { serverSecret: "wrong", eventId: claimed.eventId }),
+      () => t.mutation(api.line.markEventFailed, { serverSecret: "wrong", eventId: claimed.eventId, error: "error" }),
+    ]) await expect(call()).rejects.toThrow("Invalid server secret");
+  });
   it("claims duplicate events once and stores the LINE transcript", async () => {
     const t = convexTest(schema, modules);
 
     const firstClaim = await t.mutation(api.line.claimEvent, {
+      serverSecret: "",
       eventKey: "line-event-1",
       lineUserId: "U123",
       sourceType: "user",
@@ -26,12 +47,14 @@ describe("LINE webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.line.recordInboundEvent, {
+      serverSecret: "",
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       userContent: "See prices",
     });
 
     const duplicateClaim = await t.mutation(api.line.claimEvent, {
+      serverSecret: "",
       eventKey: "line-event-1",
       lineUserId: "U123",
       sourceType: "user",
@@ -46,6 +69,7 @@ describe("LINE webhook events", () => {
     expect(duplicateClaim.sessionId).toBe(firstClaim.sessionId);
 
     await t.mutation(api.line.completeEvent, {
+      serverSecret: "",
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
@@ -56,7 +80,7 @@ describe("LINE webhook events", () => {
     const messages = await t.query(api.chat.getMessages, {
       sessionId: firstClaim.sessionId!,
     });
-    const session = await t.query(api.chat.getSession, {
+    const session = await t.query(internal.chat.getSessionInternal, {
       sessionId: firstClaim.sessionId!,
     });
 
@@ -76,6 +100,7 @@ describe("LINE webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.line.claimEvent, {
+      serverSecret: "",
       eventKey: "line-event-failed-reply",
       lineUserId: "U999",
       sourceType: "user",
@@ -85,11 +110,13 @@ describe("LINE webhook events", () => {
     });
 
     await t.mutation(api.line.recordInboundEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "ราคาเท่าไหร่",
     });
     await t.mutation(api.line.markEventFailed, {
+      serverSecret: "",
       eventId: claim.eventId,
       error: "LINE reply failed (401): invalid token",
       lineReplyStatus: 401,
@@ -99,6 +126,7 @@ describe("LINE webhook events", () => {
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.line.claimEvent, {
+      serverSecret: "",
       eventKey: "line-event-failed-reply",
       lineUserId: "U999",
       sourceType: "user",
@@ -118,6 +146,7 @@ describe("LINE webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.line.claimEvent, {
+      serverSecret: "",
       eventKey: "line-event-question-bank",
       lineUserId: "UQB",
       sourceType: "user",
@@ -126,11 +155,13 @@ describe("LINE webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.line.recordInboundEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "Do you include airport pickup?",
     });
     await t.mutation(api.line.completeEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       assistantContent: "Yes. Direct booking includes airport pickup.",

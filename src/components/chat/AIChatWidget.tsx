@@ -224,6 +224,7 @@ function ChatExperience(props: ChatExperienceProps) {
         isTyping={isTyping}
         initialPrompt={t("initialPrompt")}
         thinkingLabel={t("thinking")}
+        staffReplyNoticeLabel={t("staffWillReply")}
         mode={mode}
         style={messagesStyle}
       />

@@ -2,35 +2,48 @@ import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
+import { allowedImageUrl, IMAGE_HOSTS } from './lib/imageUrls';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
 const MAX_NIGHTLY_RATE = 10_000_000;
 
+export type PublicProperty = Omit<Doc<'properties'>, 'icalExportToken' | 'tenantId'>;
+
+/** Public queries never expose the private iCal export token or tenant link. */
+function toPublic(property: Doc<'properties'> | null): PublicProperty | null {
+	if (!property || property.status !== 'active') return null;
+	const rest: Partial<Doc<'properties'>> = { ...property };
+	delete rest.icalExportToken;
+	delete rest.tenantId;
+	return rest as PublicProperty;
+}
+
 export const list = query({
 	args: {},
-	handler: async (ctx) => {
-		return await ctx.db
+	handler: async (ctx): Promise<PublicProperty[]> => {
+		const properties = await ctx.db
 			.query('properties')
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
 			.take(100);
+		return properties.flatMap((property) => toPublic(property) ?? []);
 	}
 });
 
 export const getBySlug = query({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('properties')
-			.withIndex('by_slug', (q) => q.eq('slug', args.slug))
-			.first();
+		return toPublic(
+			await ctx.db
+				.query('properties')
+				.withIndex('by_slug', (q) => q.eq('slug', args.slug))
+				.first()
+		);
 	}
 });
 
 export const getById = query({
 	args: { id: v.id('properties') },
-	handler: async (ctx, args) => {
-		return await ctx.db.get(args.id);
-	}
+	handler: async (ctx, args) => toPublic(await ctx.db.get(args.id))
 });
 
 export const getRooms = query({
@@ -43,7 +56,7 @@ export const getRooms = query({
 	}
 });
 
-/** Public room content for the guest tour. */
+/** Public 360 rooms of an active villa, in tour order (`tourRoomIds`, then any others by creation). */
 export const getTourRooms = query({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
@@ -52,7 +65,14 @@ export const getTourRooms = query({
 		if (!property || property.status !== 'active') return null;
 		const rooms = await ctx.db.query('rooms')
 			.withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(50);
-		return rooms.map(({ slug, name, imagePath }) => ({ slug, name, imagePath }));
+		const rank = (slug: string) => {
+			const index = property.tourRoomIds.indexOf(slug);
+			return index === -1 ? Infinity : index;
+		};
+		// Stable sort: unlisted rooms keep the index's creation order.
+		return rooms
+			.sort((a, b) => rank(a.slug) - rank(b.slug) || 0)
+			.map(({ slug, name, imagePath, hotspots }) => ({ slug, name, imagePath, hotspots }));
 	}
 });
 
@@ -186,13 +206,13 @@ export const getTourSnippets = query({
 // them. Draft and archived villas are excluded from live booking and chat queries.
 
 const propertyStatus = v.union(v.literal('active'), v.literal('draft'), v.literal('archived'));
-function required(value: string, label: string): string {
+export function required(value: string, label: string): string {
 	const trimmed = value.trim();
 	if (!trimmed) throw new Error(`${label} is required`);
 	return trimmed;
 }
 
-function amount(value: number, label: string, { integer = false, min = 0, max = Infinity } = {}): number {
+export function amount(value: number, label: string, { integer = false, min = 0, max = Infinity } = {}): number {
 	if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
 		const range = max === Infinity ? `at least ${min}` : `between ${min} and ${max}`;
 		throw new Error(`${label} must be ${integer ? 'a whole number ' : ''}${range}`);
@@ -206,9 +226,17 @@ function textList(values: string[], label: string, maxItems: number): string[] {
 	return trimmed;
 }
 
-function imageUrl(value: string): string {
-	if (!/^(https:\/\/|\/(?!\/))\S+$/.test(value)) throw new Error('Images must be https:// URLs or /public paths');
+export function imageUrl(value: string): string {
+	if (!allowedImageUrl(value)) throw new Error(`Images must be /public paths or https URLs. Use an uploaded photo or an image from ${IMAGE_HOSTS.join(' or ')}.`);
 	return value;
+}
+
+/** True when guest-facing English copy changed, so the public site stops showing bundled i18n text. */
+function contentChanged(existing: Doc<'properties'>, changes: Partial<Doc<'properties'>>): boolean {
+	const textChanged = (['name', 'tagline', 'description'] as const).some(
+		(field) => changes[field] !== undefined && changes[field] !== existing[field]
+	);
+	return textChanged || (changes.amenities !== undefined && changes.amenities.join('\n') !== existing.amenities.join('\n'));
 }
 
 export const adminList = query({
@@ -249,7 +277,8 @@ export const update = mutation({
 	},
 	handler: async (ctx, { propertyId, ...args }) => {
 		await requireAdmin(ctx);
-		if (!(await ctx.db.get(propertyId))) throw new Error('Property not found');
+		const existing = await ctx.db.get(propertyId);
+		if (!existing) throw new Error('Property not found');
 		const changes: Partial<Doc<'properties'>> = {};
 		if (args.name !== undefined) changes.name = required(args.name, 'Name');
 		if (args.tagline !== undefined) changes.tagline = args.tagline.trim();
@@ -269,6 +298,7 @@ export const update = mutation({
 			changes.directDiscountPercent = amount(args.directDiscountPercent, 'Direct discount', { max: 100 });
 		}
 		if (args.status !== undefined) changes.status = args.status;
+		if (contentChanged(existing, changes)) changes.contentEditedAt = Date.now();
 		await ctx.db.patch(propertyId, changes);
 	}
 });

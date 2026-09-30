@@ -37,7 +37,20 @@ export default defineSchema({
 		amenities: v.array(v.string()),
 		tourRoomIds: v.array(v.string()),
 		directDiscountPercent: v.number(),
-		status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived'))
+		status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived')),
+		// Optional per-locale copy; the public site falls back to English (see src/lib/i18n/public-content.ts).
+		translations: v.optional(
+			v.array(
+				v.object({
+					locale: v.string(),
+					tagline: v.optional(v.string()),
+					description: v.optional(v.string()),
+					amenities: v.optional(v.array(v.string()))
+				})
+			)
+		),
+		// Set when an admin edits name/tagline/description/amenities, so edited English beats bundled i18n copy.
+		contentEditedAt: v.optional(v.number())
 	})
 		.index('by_slug', ['slug'])
 		.index('by_icalExportToken', ['icalExportToken'])
@@ -67,6 +80,10 @@ export default defineSchema({
 		guestName: v.string(),
 		guestEmail: v.optional(v.string()),
 		guestPhone: v.string(),
+		// Exact-lookup forms of the guest's phone (digits only) and email (trimmed, lower case).
+		// Written with every booking; migrations:backfillBookingGuestLookup fills older rows.
+		guestPhoneDigits: v.optional(v.string()),
+		guestEmailNormalized: v.optional(v.string()),
 		source: v.optional(
 			v.union(
 				v.literal('web'),
@@ -87,6 +104,9 @@ export default defineSchema({
 		total: v.number(),
 		currency: v.string(),
 		paidAt: v.optional(v.number()),
+		// What the guest actually paid; the total can change later if an admin edits the stay.
+		amountPaid: v.optional(v.number()),
+		refundedAt: v.optional(v.number()),
 		paymentMethod: v.optional(v.string()),
 		confirmationCode: v.optional(v.string()),
 		invoiceNumber: v.optional(v.string()),
@@ -96,10 +116,23 @@ export default defineSchema({
 		stripePaymentIntentId: v.optional(v.string()),
 		stripeCheckoutUrl: v.optional(v.string()),
 		stripeCheckoutExpiresAt: v.optional(v.number()),
+		checkoutAttempt: v.optional(v.number()),
+		checkoutRequest: v.optional(v.object({
+			attempt: v.number(),
+			expiresAt: v.number(),
+			total: v.number(),
+			currency: v.string(),
+			checkIn: v.string(),
+			checkOut: v.string(),
+			propertyName: v.string(),
+			siteUrl: v.string(),
+			guestEmail: v.optional(v.string())
+		})),
 		confirmationEmailsQueuedAt: v.optional(v.number()),
 		cancellationEmailQueuedAt: v.optional(v.number()),
 		preArrivalEmailQueuedAt: v.optional(v.number()),
 		reviewEmailQueuedAt: v.optional(v.number()),
+		adminNotes: v.optional(v.string()),
 		paymentStatus: v.union(
 			v.literal('pending'),
 			v.literal('paid'),
@@ -116,6 +149,7 @@ export default defineSchema({
 	})
 		.index('by_property', ['propertyId'])
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
+		.index('by_property_checkOut', ['propertyId', 'checkOut'])
 		.index('by_checkIn', ['checkIn'])
 		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status'])
@@ -124,7 +158,11 @@ export default defineSchema({
 		.index('by_status_checkOut', ['status', 'checkOut'])
 		.index('by_stripePaymentIntentId', ['stripePaymentIntentId'])
 		.index('by_chatSession', ['chatSessionId'])
-		.index('by_guestPhone', ['guestPhone']),
+		.index('by_guestPhone', ['guestPhone'])
+		.index('by_guestPhoneDigits', ['guestPhoneDigits'])
+		.index('by_guestEmailNormalized', ['guestEmailNormalized'])
+		.index('by_confirmationCode', ['confirmationCode'])
+		.searchIndex('search_guestName', { searchField: 'guestName' }),
 
 	staff: defineTable({
 		name: v.string(),
@@ -163,6 +201,44 @@ export default defineSchema({
 		createdByAdminEmail: v.optional(v.string())
 	}).index('by_staff_start', ['staffId', 'start']),
 
+	/** Roster override for one person on one resort-local date; replaces the weekly pattern. No shifts = off. */
+	staffDays: defineTable({
+		staffId: v.id('staff'),
+		date: v.string(),
+		shifts: v.array(v.object({ start: v.string(), end: v.string() })),
+		breaks: v.array(v.object({ start: v.string(), end: v.string(), label: v.string() })),
+		note: v.optional(v.string()),
+		updatedAt: v.number()
+	})
+		.index('by_staff_date', ['staffId', 'date'])
+		.index('by_date', ['date']),
+
+	/** One bulk roster action, kept so the latest one can be undone. */
+	rosterBatches: defineTable({
+		label: v.string(),
+		status: v.union(v.literal('running'), v.literal('undoing'), v.literal('done'), v.literal('undone')),
+		createdByAdminEmail: v.string(),
+		createdAt: v.number(),
+		// makeDefault only: each person's weekly pattern before the change.
+		patterns: v.optional(v.array(v.object({
+			staffId: v.id('staff'),
+			workingHours: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string() })),
+			breaks: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string(), label: v.string() }))
+		})))
+	}),
+
+	/** A cell's state before a batch changed it; null = no override (the pattern applied). */
+	rosterBatchItems: defineTable({
+		batchId: v.id('rosterBatches'),
+		staffId: v.id('staff'),
+		date: v.string(),
+		previous: v.union(v.null(), v.object({
+			shifts: v.array(v.object({ start: v.string(), end: v.string() })),
+			breaks: v.array(v.object({ start: v.string(), end: v.string(), label: v.string() })),
+			note: v.optional(v.string())
+		}))
+	}).index('by_batch', ['batchId']),
+
 	serviceAppointments: defineTable({
 		serviceId: v.id('services'),
 		staffId: v.id('staff'),
@@ -191,13 +267,16 @@ export default defineSchema({
 			v.literal('no_show')
 		),
 		paymentStatus: v.union(v.literal('unpaid'), v.literal('paid'), v.literal('refunded')),
+		refundedAt: v.optional(v.number()),
 		price: v.number(),
 		currency: v.string(),
+		notes: v.optional(v.string()),
 		confirmationCode: v.string(),
 		accessToken: v.string(),
 		createdAt: v.number()
 	})
 		.index('by_staff_start', ['staffId', 'start'])
+		.index('by_service_start', ['serviceId', 'start'])
 		.index('by_start', ['start'])
 		.index('by_booking', ['bookingId'])
 		.index('by_chatSession', ['chatSessionId'])
@@ -217,21 +296,25 @@ export default defineSchema({
 		photos: v.optional(v.array(v.string()))
 	})
 		.index('by_property', ['propertyId'])
+		.index('by_property_date', ['propertyId', 'date'])
 		.index('by_rating', ['rating']),
 
 	socialProof: defineTable({
 		propertyId: v.id('properties'),
 		overallRating: v.number(),
 		totalReviews: v.number(),
-		isSuperhost: v.boolean(),
-		breakdown: v.object({
-			cleanliness: v.number(),
-			accuracy: v.number(),
-			communication: v.number(),
-			location: v.number(),
-			checkIn: v.number(),
-			value: v.number()
-		})
+		// Derived from real reviews by lib/socialProof.ts; the two fields below only exist on legacy seeded rows.
+		isSuperhost: v.optional(v.boolean()),
+		breakdown: v.optional(
+			v.object({
+				cleanliness: v.number(),
+				accuracy: v.number(),
+				communication: v.number(),
+				location: v.number(),
+				checkIn: v.number(),
+				value: v.number()
+			})
+		)
 	}).index('by_property', ['propertyId']),
 
 	tourSnippets: defineTable({
@@ -263,6 +346,7 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_email', ['email'])
+		.index('by_email_and_source_and_propertyId', ['email', 'source', 'propertyId'])
 		.index('by_property', ['propertyId'])
 		.index('by_source', ['source']),
 
@@ -311,8 +395,27 @@ export default defineSchema({
 		platform: v.string(),
 		icalUrl: v.string(),
 		lastSyncedAt: v.optional(v.number()),
-		lastSyncError: v.optional(v.string())
+		lastSyncError: v.optional(v.string()),
+		// Set when an admin removes the feed; its nights are deleted in batches, then the row itself.
+		deletingAt: v.optional(v.number()),
+		// Bumped by each applied sync and URL change, so a stale background prune stops.
+		syncGeneration: v.optional(v.number()),
+		// Bumped when a sync starts (before its fetch), on URL change and on removal. Only the sync
+		// holding the current ticket may apply its result or record its error.
+		syncTicket: v.optional(v.number())
 	}).index('by_property', ['propertyId']),
+
+	// Host date blocks (owner stay, maintenance); each night is mirrored as an availability row.
+	dateBlocks: defineTable({
+		propertyId: v.id('properties'),
+		start: v.string(),
+		end: v.string(),
+		reason: v.string(),
+		createdAt: v.number()
+	})
+		.index('by_property_start', ['propertyId', 'start'])
+		// With by_property_start, lets the calendar find every block overlapping a range (see stayOverlap.ts).
+		.index('by_propertyId_and_end', ['propertyId', 'end']),
 
 	availability: defineTable({
 		propertyId: v.id('properties'),
@@ -326,10 +429,12 @@ export default defineSchema({
 			v.literal('manual')
 		),
 		bookingId: v.optional(v.id('bookings')),
-		icalSourceId: v.optional(v.id('icalSources'))
+		icalSourceId: v.optional(v.id('icalSources')),
+		dateBlockId: v.optional(v.id('dateBlocks'))
 	})
 		.index('by_property', ['propertyId'])
 		.index('by_icalSourceId', ['icalSourceId'])
+		.index('by_dateBlockId', ['dateBlockId'])
 		.index('by_property_date', ['propertyId', 'date']),
 
 	// Phase 3: AI Chat
@@ -374,6 +479,15 @@ export default defineSchema({
 		adminSearchText: v.optional(v.string()),
 		// Guest message an admin marked as settled; clears the unanswered warning.
 		settledGuestMessageId: v.optional(v.id('chatMessages')),
+		// Inbox lifecycle set by admins; undefined = open. A new guest message reopens it.
+		adminStatus: v.optional(
+			v.union(v.literal('open'), v.literal('resolved'), v.literal('archived'))
+		),
+		resolvedAt: v.optional(v.number()),
+		archivedAt: v.optional(v.number()),
+		// Staff took over: no AI/automatic replies on any channel until resumed.
+		aiPaused: v.optional(v.boolean()),
+		assignedAdminEmail: v.optional(v.string()),
 		// AI booking flow: last time the guest was in a booking conversation,
 		// and the quote awaiting their "yes" (bookingId is set once confirmed).
 		bookingFlowAt: v.optional(v.number()),
@@ -438,6 +552,9 @@ export default defineSchema({
 		.index('by_messageCount_and_adminSortAt', ['messageCount', 'adminSortAt'])
 		.index('by_propertyId_and_adminSortAt', ['propertyId', 'adminSortAt'])
 		.index('by_propertyId_and_latestMessageAt', ['propertyId', 'latestMessageAt'])
+		// Filtered admin inbox: resolved/archived chats and one channel's chats are sparse in by_latestMessageAt.
+		.index('by_adminStatus_and_latestMessageAt', ['adminStatus', 'latestMessageAt'])
+		.index('by_channel_and_latestMessageAt', ['channel', 'latestMessageAt'])
 		.searchIndex('search_adminSearchText', {
 			searchField: 'adminSearchText'
 		}),
@@ -465,7 +582,9 @@ export default defineSchema({
 		createdAt: v.number(),
 		completedAt: v.optional(v.number()),
 		error: v.optional(v.string())
-	}).index('by_requestId', ['requestId']),
+	})
+		.index('by_requestId', ['requestId'])
+		.index('by_sessionId', ['sessionId']),
 
 	chatBrowserHandoffs: defineTable({
 		token: v.string(),
@@ -475,7 +594,8 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_token', ['token'])
-		.index('by_expires_at', ['expiresAt']),
+		.index('by_expires_at', ['expiresAt'])
+		.index('by_sessionId', ['sessionId']),
 
 	lineWebhookEvents: defineTable({
 		eventKey: v.string(),
@@ -723,6 +843,16 @@ export default defineSchema({
 		.index('by_propertySlug_and_normalizedQuestion', ['propertySlug', 'normalizedQuestion'])
 		.index('by_status_and_propertySlug_and_score', ['status', 'propertySlug', 'score']),
 
+	// Exact-match lookup rows for curatedChatQuestions: one per normalized question text and
+	// translation. Written by every curated writer; migrations:backfillCuratedQuestionVariants fills old rows.
+	curatedChatQuestionVariants: defineTable({
+		questionId: v.id('curatedChatQuestions'),
+		normalizedVariant: v.string(),
+		propertySlug: v.optional(v.string())
+	})
+		.index('by_questionId', ['questionId'])
+		.index('by_normalizedVariant_and_propertySlug', ['normalizedVariant', 'propertySlug']),
+
 	chatQuestionInteractions: defineTable({
 		sessionId: v.id('chatSessions'),
 		questionId: v.id('curatedChatQuestions'),
@@ -731,7 +861,8 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_session', ['sessionId'])
-		.index('by_session_and_question', ['sessionId', 'questionId']),
+		.index('by_session_and_question', ['sessionId', 'questionId'])
+		.index('by_questionId', ['questionId']),
 
 	chatAnswers: defineTable({
 		propertyId: v.optional(v.id('properties')),
@@ -747,7 +878,9 @@ export default defineSchema({
 	})
 		.index('by_createdAt', ['createdAt'])
 		.index('by_status_and_updatedAt', ['status', 'updatedAt'])
-		.index('by_propertyId_and_status_and_updatedAt', ['propertyId', 'status', 'updatedAt']),
+		.index('by_propertyId_and_status_and_updatedAt', ['propertyId', 'status', 'updatedAt'])
+		.searchIndex('search_title', { searchField: 'title', filterFields: ['status'] })
+		.searchIndex('search_answer', { searchField: 'answer', filterFields: ['status'] }),
 
 	chatQuestions: defineTable({
 		propertyId: v.optional(v.id('properties')),
@@ -766,7 +899,10 @@ export default defineSchema({
 		updatedByAdminEmail: v.optional(v.string())
 	})
 		.index('by_answerId', ['answerId'])
+		.index('by_propertyId', ['propertyId'])
+		.index('by_answerId_and_normalizedQuestion', ['answerId', 'normalizedQuestion'])
 		.index('by_answerId_and_status', ['answerId', 'status'])
+		.index('by_answerId_and_status_and_isPrimary', ['answerId', 'status', 'isPrimary'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
 		.index('by_status_and_normalizedQuestion', ['status', 'normalizedQuestion'])
 		.index('by_status_and_normalizedQuestion_and_propertyId', [
@@ -799,6 +935,7 @@ export default defineSchema({
 		updatedByAdminEmail: v.string()
 	})
 		.index('by_answerId', ['answerId'])
+		.index('by_propertyId', ['propertyId'])
 		.index('by_normalizedSlug', ['normalizedSlug'])
 		.index('by_propertySlug', ['propertySlug'])
 		.index('by_propertySlug_and_answerId', ['propertySlug', 'answerId']),
@@ -812,7 +949,8 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_propertyId', ['propertyId'])
-		.index('by_propertyId_and_normalizedName', ['propertyId', 'normalizedName']),
+		.index('by_propertyId_and_normalizedName', ['propertyId', 'normalizedName'])
+		.index('by_normalizedName', ['normalizedName']),
 
 	chatAnswerTopics: defineTable({
 		propertyId: v.optional(v.id('properties')),
@@ -844,8 +982,48 @@ export default defineSchema({
 	})
 		.index('by_createdAt', ['createdAt'])
 		.index('by_status_and_createdAt', ['status', 'createdAt'])
+		.index('by_status_and_normalizedQuestion', ['status', 'normalizedQuestion'])
+		.index('by_propertySlug', ['propertySlug'])
 		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
-		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion']),
+		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion'])
+		.index('by_sessionId', ['sessionId'])
+		.index('by_resolvedAnswerId', ['resolvedAnswerId'])
+		.index('by_resolvedQuestionId', ['resolvedQuestionId'])
+		.searchIndex('search_userQuestion', { searchField: 'userQuestion', filterFields: ['status'] }),
+
+	// Admin-editable business profile; a single row with key 'default'. Missing fields fall back to lib/siteSettings defaults.
+	siteSettings: defineTable({
+		key: v.literal('default'),
+		businessName: v.optional(v.string()),
+		tagline: v.optional(v.string()),
+		contactEmail: v.optional(v.string()),
+		contactPhone: v.optional(v.string()),
+		whatsapp: v.optional(v.string()),
+		lineId: v.optional(v.string()),
+		lineUrl: v.optional(v.string()),
+		address: v.optional(v.string()),
+		currency: v.optional(v.string()),
+		timezone: v.optional(v.string()),
+		checkInTime: v.optional(v.string()),
+		checkOutTime: v.optional(v.string()),
+		cancellationPolicy: v.optional(v.string()),
+		ai: v.optional(
+			v.object({
+				tone: v.optional(v.string()),
+				extraInstructions: v.optional(v.string()),
+				maxWords: v.optional(v.number())
+			})
+		),
+		email: v.optional(
+			v.object({
+				fromName: v.optional(v.string()),
+				ownerNotificationEmail: v.optional(v.string()),
+				footer: v.optional(v.string())
+			})
+		),
+		updatedAt: v.number(),
+		updatedByEmail: v.string()
+	}).index('by_key', ['key']),
 
 	propertyKnowledge: defineTable({
 		propertyId: v.id('properties'),

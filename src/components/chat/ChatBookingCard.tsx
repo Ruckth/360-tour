@@ -11,13 +11,14 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { BookingProperty } from "@/lib/booking/booking";
+import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
 import {
-  addDaysIso,
   dateToIso,
   isDateInIsoList,
   rangeIntersectsDates,
   todayIsoLocal,
 } from "@/lib/booking/dates";
+import { useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
 import {
@@ -27,7 +28,7 @@ import {
 } from "@/components/chat/chat-villa-data";
 import { resort } from "@/lib/data/resort-config";
 import { useOptionalConvex } from "@/lib/react/convex";
-import { getBlockedDatesByProperty, listLiveProperties } from "@/lib/react/convex-api";
+import { listLiveProperties } from "@/lib/react/convex-api";
 import { cn } from "@/lib/utils";
 
 export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
@@ -41,58 +42,51 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const convex = useOptionalConvex();
   const today = todayIsoLocal();
   const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
-  const [blockedByProperty, setBlockedByProperty] = useState<Record<string, string[]>>({});
-  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [selectedPropertySlug, setSelectedPropertySlug] = useState(context.propertySlug ?? "");
   const [checkIn, setCheckIn] = useState(context.checkIn);
   const [checkOut, setCheckOut] = useState(context.checkOut);
+  const [visibleMonth, setVisibleMonth] = useState(() => monthOf(context.checkOut || context.checkIn || today));
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!convex) {
       setProperties(fallbackProperties);
-      setBlockedByProperty({});
-      setAvailabilityLoading(false);
+      setPropertiesLoading(false);
       return;
     }
 
     const client = convex;
     let active = true;
 
-    async function loadAvailability() {
-      setAvailabilityLoading(true);
+    // Only the villa list here; blocked nights load for the selected villa, a month at a time.
+    async function loadProperties() {
+      setPropertiesLoading(true);
       try {
-        const [rows, blocked] = await Promise.all([
-          listLiveProperties(client),
-          getBlockedDatesByProperty(client, {
-            startDate: today,
-            endDate: addDaysIso(today, 365),
-          }),
-        ]);
+        const rows = await listLiveProperties(client);
         if (!active) return;
 
         const liveProperties = getLiveChatProperties(rows, locale);
         setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
-        setBlockedByProperty((blocked ?? {}) as Record<string, string[]>);
       } catch {
         if (!active) return;
         setProperties(fallbackProperties);
-        setBlockedByProperty({});
       } finally {
-        if (active) setAvailabilityLoading(false);
+        if (active) setPropertiesLoading(false);
       }
     }
 
-    loadAvailability();
+    loadProperties();
     return () => {
       active = false;
     };
-  }, [convex, fallbackProperties, locale, today]);
+  }, [convex, fallbackProperties, locale]);
 
   useEffect(() => {
     setSelectedPropertySlug(context.propertySlug ?? "");
     setCheckIn(context.checkIn);
     setCheckOut(context.checkOut);
+    if (context.checkIn || context.checkOut) setVisibleMonth(monthOf(context.checkOut || context.checkIn));
     setError("");
   }, [context.checkIn, context.checkOut, context.propertySlug]);
 
@@ -122,10 +116,19 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
       ),
     [properties, selectedPropertySlug],
   );
-  const selectedBlockedDates = useMemo(
-    () => (selectedProperty?._id ? blockedByProperty[selectedProperty._id] ?? [] : []),
-    [blockedByProperty, selectedProperty],
+  const {
+    blockedDates: selectedBlockedDates,
+    pendingMonths,
+    failedMonths,
+    retry: retryBlockedMonths,
+  } = useVillaBlockedMonths(
+    convex,
+    selectedProperty?.source === "live" ? selectedProperty._id : undefined,
+    calendarMonths({ visibleMonth, checkIn, checkOut, today }),
   );
+  const stayMonthsFailed = stayMonths(checkIn, checkOut).some((month) => failedMonths.includes(month));
+  const availabilityLoading =
+    propertiesLoading || stayMonths(checkIn, checkOut).some((month) => pendingMonths.includes(month));
   const selectedBlockedDateSet = useMemo(
     () => new Set(selectedBlockedDates),
     [selectedBlockedDates],
@@ -156,6 +159,11 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
 
     if (availabilityLoading) {
       setError(bookingT("checkingAvailability"));
+      return;
+    }
+
+    if (stayMonthsFailed) {
+      setError(bookingT("availabilityLoadFailed"));
       return;
     }
 
@@ -219,7 +227,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
                 key={item.id}
                 type="button"
                 data-testid={`chat-villa-option-${item.id}`}
-                data-blocked-count={item._id ? blockedByProperty[item._id]?.length ?? 0 : 0}
+                data-blocked-count={isSelected ? selectedBlockedDates.length : undefined}
                 aria-pressed={isSelected}
                 onClick={() => {
                   setSelectedPropertySlug(item.slug);
@@ -300,12 +308,21 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
           checkIn={checkIn}
           checkOut={checkOut}
           onChange={updateDateRange}
-          isDateDisabled={(date) =>
-            dateToIso(date) < today || isDateInIsoList(date, selectedBlockedDateSet)
-          }
+          isDateDisabled={(date) => {
+            const iso = dateToIso(date);
+            // Months still loading or that failed to load are unknown, so their days can't be picked.
+            const month = monthOf(iso);
+            return (
+              iso < today ||
+              pendingMonths.includes(month) ||
+              failedMonths.includes(month) ||
+              isDateInIsoList(date, selectedBlockedDateSet)
+            );
+          }}
           unavailableDates={selectedBlockedDates}
           compact
           onRangeChange={() => setError("")}
+          onMonthChange={(month) => setVisibleMonth(monthOf(dateToIso(month)))}
         />
 
         <Button
@@ -318,6 +335,15 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
           {navT("book")}
         </Button>
       </div>
+
+      {failedMonths.length > 0 ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-destructive" role="alert">
+          <span>{bookingT("availabilityLoadFailed")}</span>
+          <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={retryBlockedMonths}>
+            {bookingT("retryAvailability")}
+          </Button>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="mt-2 text-xs font-medium text-destructive" role="alert">

@@ -36,14 +36,6 @@ export interface RatingBreakdown {
 	value: number;
 }
 
-export interface RecentBooking {
-	name: string;
-	city: string;
-	propertyId: string;
-	dates: string;
-	timeAgo: string;
-}
-
 export interface PropertySocialProof {
 	propertyId: string;
 	overallRating: number;
@@ -52,5 +44,4 @@ export interface PropertySocialProof {
 	breakdown: RatingBreakdown;
 	reviews: Review[];
 	tourSnippets: TourReviewSnippet[];
-	recentBookings: RecentBooking[];
 }

@@ -69,5 +69,16 @@ export function DialogFooter({
   return <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props} />;
 }
 
-export const DialogTitle = DialogPrimitive.Title;
-export const DialogDescription = DialogPrimitive.Description;
+export function DialogTitle({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof DialogPrimitive.Title>) {
+  return <DialogPrimitive.Title className={cn("text-lg font-semibold leading-tight text-foreground", className)} {...props} />;
+}
+
+export function DialogDescription({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof DialogPrimitive.Description>) {
+  return <DialogPrimitive.Description className={cn("text-sm text-muted-foreground", className)} {...props} />;
+}

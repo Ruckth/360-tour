@@ -24,12 +24,14 @@
 	--accent-foreground: oklch(0.18 0.02 260);
 	--destructive: oklch(0.577 0.245 27.325);
 	--destructive-foreground: oklch(0.985 0.001 106.423);
-	--border: oklch(0.90 0.008 80);
-	--input: oklch(0.90 0.008 80);
-	--ring: oklch(0.75 0.12 75);
+	--border: oklch(0.85 0.008 80);
+	--input: oklch(0.85 0.008 80);
+	--ring: oklch(0.53 0.11 72);
 	--radius: 0.625rem;
 	--gold: oklch(0.75 0.12 75);
 	--gold-light: oklch(0.85 0.08 75);
+	/* Gold for text and icons: bright --gold is only 2.2:1 on cream, this is ≥4.5:1 on bg, card and muted. */
+	--gold-text: oklch(0.53 0.11 72);
 	--navy: oklch(0.28 0.04 260);
 	--navy-light: oklch(0.40 0.04 260);
 
@@ -39,8 +41,8 @@
 	--sidebar-primary-foreground: oklch(0.985 0.003 80);
 	--sidebar-accent: oklch(0.955 0.008 80);
 	--sidebar-accent-foreground: oklch(0.25 0.02 260);
-	--sidebar-border: oklch(0.90 0.008 80);
-	--sidebar-ring: oklch(0.75 0.12 75);
+	--sidebar-border: oklch(0.85 0.008 80);
+	--sidebar-ring: oklch(0.53 0.11 72);
 	--sidebar: var(--sidebar-background);
 }
 
@@ -56,16 +58,18 @@
 	--secondary: oklch(0.26 0.015 260);
 	--secondary-foreground: oklch(0.94 0.005 80);
 	--muted: oklch(0.26 0.015 260);
-	--muted-foreground: oklch(0.62 0.015 260);
+	--muted-foreground: oklch(0.66 0.015 260);
 	--accent: oklch(0.75 0.12 75);
 	--accent-foreground: oklch(0.16 0.015 260);
-	--destructive: oklch(0.577 0.245 27.325);
-	--destructive-foreground: oklch(0.985 0.001 106.423);
-	--border: oklch(0.32 0.015 260);
-	--input: oklch(0.32 0.015 260);
+	/* Lighter red so error text passes on dark cards; text on a red fill turns dark to match. */
+	--destructive: oklch(0.68 0.2 25);
+	--destructive-foreground: oklch(0.16 0.015 260);
+	--border: oklch(0.36 0.015 260);
+	--input: oklch(0.36 0.015 260);
 	--ring: oklch(0.75 0.12 75);
 	--gold: oklch(0.80 0.10 75);
 	--gold-light: oklch(0.85 0.08 75);
+	--gold-text: oklch(0.80 0.10 75);
 	--navy: oklch(0.28 0.04 260);
 	--navy-light: oklch(0.40 0.04 260);
 
@@ -75,7 +79,7 @@
 	--sidebar-primary-foreground: oklch(0.16 0.015 260);
 	--sidebar-accent: oklch(0.26 0.015 260);
 	--sidebar-accent-foreground: oklch(0.94 0.005 80);
-	--sidebar-border: oklch(0.32 0.015 260);
+	--sidebar-border: oklch(0.36 0.015 260);
 	--sidebar-ring: oklch(0.75 0.12 75);
 	--sidebar: var(--sidebar-background);
 }
@@ -85,6 +89,7 @@
 	--font-sans: 'Manrope', sans-serif;
 	--color-gold: var(--gold);
 	--color-gold-light: var(--gold-light);
+	--color-gold-text: var(--gold-text);
 	--color-navy: var(--navy);
 	--color-navy-light: var(--navy-light);
 	--color-background: var(--background);
@@ -130,6 +135,29 @@
 		color: var(--foreground);
 		font-family: var(--font-sans);
 	}
+	/* Preflight fades placeholders to ~3:1; muted-foreground keeps them ≥4.5:1. */
+	input::placeholder,
+	textarea::placeholder {
+		color: var(--muted-foreground);
+	}
+}
+
+/*
+ * Admin type scale — use these, not arbitrary text-[Npx] sizes.
+ *   Page title     text-2xl font-semibold tracking-tight   (one per view)
+ *   Section title  text-base font-semibold
+ *   Dialog title   text-lg font-semibold                   (DialogTitle default)
+ *   Body           text-sm
+ *   Meta / helper  text-xs text-muted-foreground
+ *   Eyebrow        .admin-eyebrow                          (label above a title or group)
+ */
+@utility admin-eyebrow {
+	font-size: var(--text-xs);
+	line-height: var(--text-xs--line-height);
+	font-weight: var(--font-weight-semibold);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--muted-foreground);
 }
 
 /* Hero center card — slow reveal via clip-path */

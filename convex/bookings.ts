@@ -11,7 +11,7 @@ import {
 } from './lib/validation';
 import { calculateDirectQuote } from './lib/pricing';
 import { demoCode } from './lib/codes';
-import { blockBookingDates } from './lib/availabilityWrites';
+import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 import { requireAdmin } from './lib/adminAuth';
 import { internal } from './_generated/api';
 import { enforceRateLimit } from './lib/rateLimit';
@@ -79,27 +79,6 @@ export const quoteStay = query({
 	}
 });
 
-async function assertPaymentStillAvailable(
-	ctx: MutationCtx,
-	booking: Doc<'bookings'>,
-	bookingId: Id<'bookings'>
-): Promise<void> {
-	const inRange = await ctx.db
-		.query('availability')
-		.withIndex('by_property_date', (q) =>
-			q.eq('propertyId', booking.propertyId).gte('date', booking.checkIn).lt('date', booking.checkOut)
-		)
-		.take(366);
-
-	const conflicting = inRange.filter(
-		(a) => a.status !== 'available' && a.bookingId !== bookingId
-	);
-
-	if (conflicting.length > 0) {
-		throw new Error('These dates are no longer available. Please choose different dates.');
-	}
-}
-
 function assertNotCancelled(booking: Doc<'bookings'>): void {
 	if (booking.status === 'cancelled') {
 		throw new Error('This booking was cancelled.');
@@ -125,37 +104,6 @@ export const create = mutation({
 	}
 });
 
-export const updatePaymentStatus = mutation({
-	args: {
-		bookingId: v.id('bookings'),
-		paymentStatus: v.union(
-			v.literal('pending'),
-			v.literal('paid'),
-			v.literal('failed'),
-			v.literal('refunded')
-		)
-	},
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) {
-			throw new Error('Booking not found');
-		}
-		if (args.paymentStatus === 'refunded' && booking.paymentMethod === 'stripe') {
-			throw new Error('Refund Stripe payments in Stripe; the signed webhook updates this booking.');
-		}
-
-		const update: Record<string, unknown> = {
-			paymentStatus: args.paymentStatus
-		};
-		if (args.paymentStatus === 'paid') {
-			await markBookingPaid(ctx, args.bookingId, 'admin');
-			return;
-		}
-		await ctx.db.patch(args.bookingId, update);
-	}
-});
-
 export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string) {
 	const booking = await ctx.db.get(bookingId);
 	if (!booking) {
@@ -166,20 +114,22 @@ export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'
 		throw new Error('An active Stripe checkout must expire before changing this booking manually.');
 	}
 	assertNotCancelled(booking);
-	await assertPaymentStillAvailable(ctx, booking, bookingId);
+	// Validates (no overlapping confirmed booking, no other hold or block) and holds the nights in
+	// this transaction; a conflict throws before anything is marked paid.
+	await blockBookingDates(ctx, booking, bookingId);
 
 	const bookingIdText = bookingId as string;
 	await ctx.db.patch(bookingId, {
 		paymentStatus: 'paid',
 		status: 'confirmed',
 		paidAt: booking.paidAt ?? Date.now(),
+		amountPaid: booking.amountPaid ?? booking.total,
 		paymentMethod: booking.paymentMethod ?? paymentMethod,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
 		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
 	});
 
-	await blockBookingDates(ctx, booking, bookingId);
 	await queueBookingEmails(ctx, booking);
 	return await ctx.db.get(bookingId);
 }
@@ -222,7 +172,7 @@ export async function queueCancellationEmail(ctx: MutationCtx, booking: Doc<'boo
 export const getLifecycleEmailDetails = internalQuery({
 	args: {
 		bookingId: v.id('bookings'),
-		kind: v.union(v.literal('cancellation'), v.literal('preArrival'), v.literal('review'))
+		kind: v.union(v.literal('cancellation'), v.literal('preArrival'), v.literal('review'), v.literal('updated'))
 	},
 	handler: async (ctx, args) => {
 		const booking = await ctx.db.get(args.bookingId);
@@ -230,13 +180,17 @@ export const getLifecycleEmailDetails = internalQuery({
 		if (args.kind === 'cancellation' && (booking.status !== 'cancelled' || !booking.cancellationEmailQueuedAt)) return null;
 		if (args.kind === 'preArrival' && (booking.status !== 'confirmed' || !booking.preArrivalEmailQueuedAt)) return null;
 		if (args.kind === 'review' && (booking.status !== 'confirmed' || !booking.reviewEmailQueuedAt)) return null;
+		if (args.kind === 'updated' && booking.status === 'cancelled') return null;
 		const property = await ctx.db.get(booking.propertyId);
 		return {
 			guestName: booking.guestName,
 			guestEmail: booking.guestEmail,
 			propertyName: property?.name ?? 'Your stay',
 			checkIn: booking.checkIn,
-			checkOut: booking.checkOut
+			checkOut: booking.checkOut,
+			guests: booking.guests,
+			total: booking.total,
+			currency: booking.currency
 		};
 	}
 });
@@ -497,6 +451,7 @@ export const cancelChatBooking = internalMutation({
 
 		await ctx.db.patch(booking._id, { status: 'cancelled' });
 		await queueCancellationEmail(ctx, booking);
+		await releaseBookingDates(ctx, booking);
 		await ctx.db.patch(args.sessionId, { pendingCancellation: undefined });
 		return { state: 'cancelled' as const, ...summary };
 	}

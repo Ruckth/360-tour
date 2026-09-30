@@ -26,6 +26,8 @@ type BookingRangePickerProps = {
   className?: string;
   contentClassName?: string;
   onRangeChange?: () => void;
+  /** Called with the first day of the month the calendar shows, so callers can load that month. */
+  onMonthChange?: (month: Date) => void;
 };
 
 export function BookingDatePicker({
@@ -35,6 +37,7 @@ export function BookingDatePicker({
   isDateDisabled,
   unavailableDates = [],
   helperText,
+  onMonthChange,
 }: {
   checkIn: string;
   checkOut: string;
@@ -42,6 +45,7 @@ export function BookingDatePicker({
   isDateDisabled: (date: Date) => boolean;
   unavailableDates?: string[];
   helperText?: string;
+  onMonthChange?: (month: Date) => void;
 }) {
   return (
     <BookingRangePicker
@@ -51,6 +55,7 @@ export function BookingDatePicker({
       isDateDisabled={isDateDisabled}
       unavailableDates={unavailableDates}
       helperText={helperText}
+      onMonthChange={onMonthChange}
     />
   );
 }
@@ -66,6 +71,7 @@ export function BookingRangePicker({
   className,
   contentClassName,
   onRangeChange,
+  onMonthChange,
 }: BookingRangePickerProps) {
   const t = useTranslations("Booking");
   const activeLocale = useLocale();
@@ -157,6 +163,7 @@ export function BookingRangePicker({
       onActivateField={setActiveField}
       onClear={clearActiveDate}
       onSelectDate={selectDate}
+      onMonthChange={onMonthChange}
     />
   );
 
@@ -285,6 +292,7 @@ function RangePickerContent({
   onActivateField,
   onClear,
   onSelectDate,
+  onMonthChange,
 }: {
   className: string;
   checkInValue: string;
@@ -301,6 +309,7 @@ function RangePickerContent({
   onActivateField: (field: ActiveDateField) => void;
   onClear: () => void;
   onSelectDate: (date: Date) => void;
+  onMonthChange?: (month: Date) => void;
 }) {
   return (
     <PopoverContent align="center" collisionPadding={16} className={className}>
@@ -322,6 +331,7 @@ function RangePickerContent({
         isUnavailableDate={isUnavailableDate}
         unavailableDayClassName={unavailableDayClassName}
         onSelectDate={onSelectDate}
+        onMonthChange={onMonthChange}
       />
     </PopoverContent>
   );
@@ -389,6 +399,7 @@ function RangeCalendarBody({
   isUnavailableDate,
   unavailableDayClassName,
   onSelectDate,
+  onMonthChange,
 }: {
   compact: boolean;
   calendarFormatters: NonNullable<DayPickerProps["formatters"]>;
@@ -398,12 +409,14 @@ function RangeCalendarBody({
   isUnavailableDate: (date: Date) => boolean;
   unavailableDayClassName: string;
   onSelectDate: (date: Date) => void;
+  onMonthChange?: (month: Date) => void;
 }) {
   return (
     <Calendar
       mode="range"
       selected={selectedRange}
       defaultMonth={defaultMonth}
+      onMonthChange={onMonthChange}
       onDayClick={onSelectDate}
       disabled={isDateDisabled}
       modifiers={{ unavailable: isUnavailableDate }}

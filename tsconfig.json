@@ -29,6 +29,9 @@
       ],
       "convex/*": [
         "./convex/*"
+      ],
+      "@convex-dev/migrations/test": [
+        "./types/convex-migrations-test.d.ts"
       ]
     }
   },

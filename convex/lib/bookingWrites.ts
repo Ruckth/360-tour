@@ -3,6 +3,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { nightsBetween, todayIso } from './dates';
 import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from './validation';
 import { calculateDirectQuote } from './pricing';
+import { assertNoBookingOverlap, findBlockingNight, STAY_BLOCKED_ERROR } from './stayOverlap';
 
 export type BookingSource = 'web' | 'whatsapp' | 'messenger' | 'line' | 'instagram' | 'admin';
 
@@ -33,54 +34,69 @@ export async function loadProperty(
 	if (!property) {
 		throw new Error('Property not found');
 	}
+	if (property.status !== 'active') {
+		throw new Error('Property is not available for booking');
+	}
 
 	return property;
 }
 
-function blocksNewBookings(booking: Doc<'bookings'>): boolean {
-	return booking.status === 'confirmed' || booking.status === 'completed';
-}
-
-async function assertNoOverlap(
+/** Throws unless [checkIn, checkOut) is free of other confirmed bookings and blocked nights. */
+export async function assertStayFree(
 	ctx: QueryCtx | MutationCtx,
 	propertyId: Id<'properties'>,
 	checkIn: string,
-	checkOut: string
+	checkOut: string,
+	excludeBookingId?: Id<'bookings'>
 ): Promise<void> {
-	const candidates = await ctx.db
-		.query('bookings')
-		.withIndex('by_property_checkIn', (q) =>
-			q.eq('propertyId', propertyId).lt('checkIn', checkOut)
-		)
-		.take(500);
-
-	const overlapping = candidates.filter(
-		(b) => blocksNewBookings(b) && b.checkOut > checkIn
-	);
-
-	if (overlapping.length > 0) {
-		throw new Error('These dates are no longer available. Please choose different dates.');
+	await assertNoBookingOverlap(ctx, propertyId, checkIn, checkOut, excludeBookingId);
+	if (await findBlockingNight(ctx, propertyId, checkIn, checkOut, excludeBookingId)) {
+		throw new Error(STAY_BLOCKED_ERROR);
 	}
 }
 
-async function assertNotBlocked(
-	ctx: QueryCtx | MutationCtx,
-	propertyId: Id<'properties'>,
-	checkIn: string,
-	checkOut: string
-): Promise<void> {
-	const inRange = await ctx.db
-		.query('availability')
-		.withIndex('by_property_date', (q) =>
-			q.eq('propertyId', propertyId).gte('date', checkIn).lt('date', checkOut)
-		)
-		.take(366);
-
-	const blocked = inRange.filter((a) => a.status !== 'available');
-
-	if (blocked.length > 0) {
-		throw new Error('Some of these dates are blocked. Please choose different dates.');
+/** Validates the date pair and returns the number of nights. */
+export function assertStayDates(checkIn: string, checkOut: string, { allowPastCheckIn = false } = {}): number {
+	assertValidIsoDate(checkIn, 'Check-in date');
+	assertValidIsoDate(checkOut, 'Check-out date');
+	if (!allowPastCheckIn && checkIn < todayIso()) {
+		throw new Error('Check-in date cannot be in the past');
 	}
+	if (checkOut <= checkIn) {
+		throw new Error('Check-out must be after check-in');
+	}
+	const nights = nightsBetween(checkIn, checkOut);
+	if (!Number.isFinite(nights) || nights <= 0) {
+		throw new Error('Check-out must be after check-in');
+	}
+	if (nights > 365) throw new Error('A stay cannot exceed 365 nights');
+	return nights;
+}
+
+export function assertCapacity(property: Doc<'properties'>, guests: number): void {
+	assertPositiveInt(guests, 'Guest count');
+	if (guests > property.maxGuests) {
+		throw new Error(`Guest count exceeds max capacity (${property.maxGuests})`);
+	}
+}
+
+/** Trims and validates guest contact details. */
+export function cleanGuestDetails(input: { guestName: string; guestPhone: string; guestEmail?: string }) {
+	const guestName = input.guestName.trim();
+	const guestPhone = input.guestPhone.trim();
+	const guestEmail = input.guestEmail?.trim() || undefined;
+	if (!guestName) throw new Error('Guest name is required');
+	if (!guestPhone) throw new Error('Guest phone is required');
+	if (guestEmail) assertValidEmail(guestEmail);
+	return { guestName, guestPhone, guestEmail };
+}
+
+/** The exact-lookup forms stored with a booking's guest details (see schema `guestPhoneDigits`). */
+export function guestLookupFields(guest: { guestPhone: string; guestEmail?: string }) {
+	return {
+		guestPhoneDigits: guest.guestPhone.replace(/\D/g, '') || undefined,
+		guestEmailNormalized: guest.guestEmail?.trim().toLowerCase() || undefined
+	};
 }
 
 /** Validates a stay (dates, capacity, overlap, blocked dates) and prices it. */
@@ -90,47 +106,27 @@ export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: Stay
 	assertPositiveInt(input.guests, 'Guest count');
 
 	const property = await loadProperty(ctx, input.propertySlug);
-
-	if (input.guests > property.maxGuests) {
-		throw new Error(`Guest count exceeds max capacity (${property.maxGuests})`);
-	}
-
-	if (input.checkIn < todayIso()) {
-		throw new Error('Check-in date cannot be in the past');
-	}
-	if (input.checkOut <= input.checkIn) {
-		throw new Error('Check-out must be after check-in');
-	}
-
-	const nights = nightsBetween(input.checkIn, input.checkOut);
-	if (!Number.isFinite(nights) || nights <= 0) {
-		throw new Error('Check-out must be after check-in');
-	}
-	if (nights > 365) throw new Error('A stay cannot exceed 365 nights');
-
-	await assertNoOverlap(ctx, property._id, input.checkIn, input.checkOut);
-	await assertNotBlocked(ctx, property._id, input.checkIn, input.checkOut);
+	assertCapacity(property, input.guests);
+	const nights = assertStayDates(input.checkIn, input.checkOut);
+	await assertStayFree(ctx, property._id, input.checkIn, input.checkOut);
 
 	return { property, nights, quote: calculateDirectQuote(property, nights) };
 }
 
 export async function createBookingRecord(ctx: MutationCtx, input: BookingInput) {
-	const guestName = input.guestName.trim();
-	const guestPhone = input.guestPhone.trim();
-	const guestEmail = input.guestEmail?.trim() || undefined;
-	if (!guestName) throw new Error('Guest name is required');
-	if (!guestPhone) throw new Error('Guest phone is required');
-	if (guestEmail) assertValidEmail(guestEmail);
-
+	const { guestName, guestPhone, guestEmail } = cleanGuestDetails(input);
 	const { property, nights, quote } = await quoteBookableStay(ctx, input);
 
 	const accessToken = crypto.randomUUID();
+	const { guestPhoneDigits, guestEmailNormalized } = guestLookupFields({ guestPhone, guestEmail });
 	const bookingId = await ctx.db.insert('bookings', {
 		propertyId: property._id,
 		tenantId: property.tenantId,
 		guestName,
 		...(guestEmail ? { guestEmail } : {}),
 		guestPhone,
+		...(guestPhoneDigits ? { guestPhoneDigits } : {}),
+		...(guestEmailNormalized ? { guestEmailNormalized } : {}),
 		source: input.source,
 		...(input.chatSessionId ? { chatSessionId: input.chatSessionId } : {}),
 		checkIn: input.checkIn,

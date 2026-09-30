@@ -8,21 +8,23 @@ import { resortLocalParts } from './lib/serviceSlots';
 export const PENDING_BOOKING_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const expirePending = internalMutation({
-  args: { cutoff: v.optional(v.number()) },
+  args: { cutoff: v.optional(v.number()), cursor: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const cutoff = args.cutoff ?? Date.now() - PENDING_BOOKING_TTL_MS;
-    const bookings = await ctx.db.query('bookings')
+    const page = await ctx.db.query('bookings')
       .withIndex('by_status_createdAt', (q) => q.eq('status', 'pending').lt('createdAt', cutoff))
-      .take(100);
+      .paginate({ numItems: 100, cursor: args.cursor ?? null });
     let expired = 0;
-    for (const booking of bookings) {
+    for (const booking of page.page) {
+      // Host-created pending bookings (phone / walk-in) stay until the host acts on them.
+      if (booking.source === 'admin') continue;
       if (booking.paymentStatus !== 'paid' && (booking.stripeCheckoutExpiresAt ? booking.stripeCheckoutExpiresAt + 60 * 60 * 1000 : 0) <= Date.now()) {
         await releaseBookingDates(ctx, booking);
         await ctx.db.patch(booking._id, { status: 'cancelled' });
         expired++;
       }
     }
-    if (bookings.length === 100 && expired > 0) await ctx.scheduler.runAfter(0, internal.crons.expirePending, { cutoff });
+    if (!page.isDone) await ctx.scheduler.runAfter(0, internal.crons.expirePending, { cutoff, cursor: page.continueCursor });
     return expired;
   },
 });

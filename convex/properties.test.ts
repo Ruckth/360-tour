@@ -39,11 +39,11 @@ describe('admin property editing', () => {
 		const { t, admin, propertyId } = await setup();
 		await admin.mutation(api.properties.update, {
 			propertyId, name: '  Tideglass Residence ', currency: 'usd', pricePerNight: 300, directDiscountPercent: 15,
-			amenities: ['Pool', ' ', 'Wi-Fi'], images: ['https://example.com/a.jpg', '/b.webp'], status: 'draft'
+			amenities: ['Pool', ' ', 'Wi-Fi'], images: ['https://images.unsplash.com/a.jpg', '/b.webp'], status: 'draft'
 		});
 		expect(await t.run((ctx) => ctx.db.get(propertyId))).toMatchObject({
 			name: 'Tideglass Residence', currency: 'USD', pricePerNight: 300, directDiscountPercent: 15,
-			amenities: ['Pool', 'Wi-Fi'], images: ['https://example.com/a.jpg', '/b.webp'], status: 'draft', tagline: 'Sea views'
+			amenities: ['Pool', 'Wi-Fi'], images: ['https://images.unsplash.com/a.jpg', '/b.webp'], status: 'draft', tagline: 'Sea views'
 		});
 		expect(await t.query(api.properties.list, {})).toHaveLength(0);
 		expect(await admin.query(api.properties.adminList, {})).toHaveLength(1);
@@ -59,17 +59,35 @@ describe('admin property editing', () => {
 		await expect(admin.mutation(api.properties.update, { propertyId, currency: 'baht' })).rejects.toThrow('3-letter');
 		await expect(admin.mutation(api.properties.update, { propertyId, images: ['javascript:alert(1)'] })).rejects.toThrow('Images must be');
 		await expect(admin.mutation(api.properties.update, { propertyId, images: ['//evil.com/x.jpg'] })).rejects.toThrow('Images must be');
+		await expect(admin.mutation(api.properties.update, { propertyId, images: ['https://example.com/x.jpg'] })).rejects.toThrow('uploaded photo');
+		await expect(admin.mutation(api.properties.update, { propertyId, images: ['https://evil.convex.cloud.example.com/x.jpg'] })).rejects.toThrow('uploaded photo');
+		await expect(admin.mutation(api.properties.update, { propertyId, images: ['https://nested.demo.convex.cloud/x.jpg'] })).rejects.toThrow('uploaded photo');
+		await admin.mutation(api.properties.update, { propertyId, images: ['https://demo.convex.cloud/x.jpg', 'https://qr-official.line.me/x.jpg'] });
 	});
 
 	it('updates rooms', async () => {
 		const { t, admin, propertyId, roomId } = await setup();
 		await admin.mutation(api.properties.updateRoom, { roomId, name: 'Living room', imagePath: '/new-living.webp' });
 		expect(await t.query(api.properties.getTourRooms, { slug: 'pool-villa' })).toEqual([
-			{ slug: 'living', name: 'Living room', imagePath: '/new-living.webp' }
+			{ slug: 'living', name: 'Living room', imagePath: '/new-living.webp', hotspots: [] }
 		]);
 		await admin.mutation(api.properties.update, { propertyId, status: 'draft' });
 		expect(await t.query(api.properties.getTourRooms, { slug: 'pool-villa' })).toBeNull();
 		await expect(admin.mutation(api.properties.updateRoom, { roomId, name: '' })).rejects.toThrow('Room name is required');
+	});
+
+	it('returns tour rooms in tour order, then unlisted rooms by creation, with hotspots', async () => {
+		const { t, propertyId } = await setup();
+		const hotspot = { id: 'pool-to-living', position: [1, 2, 3], targetRoomSlug: 'living', label: 'Living' };
+		await t.run(async (ctx) => {
+			await ctx.db.insert('rooms', { propertyId, slug: 'pool', name: 'Pool', imagePath: '/pool.webp', hotspots: [hotspot] });
+			await ctx.db.insert('rooms', { propertyId, slug: 'bedroom', name: 'Bedroom', imagePath: '/bed.webp', hotspots: [] });
+			await ctx.db.insert('rooms', { propertyId, slug: 'terrace', name: 'Terrace', imagePath: '/terrace.webp', hotspots: [] });
+			await ctx.db.patch(propertyId, { tourRoomIds: ['pool', 'living'] });
+		});
+		const rooms = await t.query(api.properties.getTourRooms, { slug: 'pool-villa' });
+		expect(rooms?.map((room) => room.slug)).toEqual(['pool', 'living', 'bedroom', 'terrace']);
+		expect(rooms?.[0].hotspots).toEqual([hotspot]);
 	});
 
 });

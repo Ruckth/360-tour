@@ -5,7 +5,6 @@ import { verifyMetaSignature } from "@/lib/meta/signature";
 import {
   detectQuickAnswerLocale,
   localizedTimeoutFallbackReply,
-  localizedUnknownFallbackReply,
   resolveLineQuickAnswer,
   type LinePropertySummary,
 } from "@/lib/line/quick-answers";
@@ -287,7 +286,7 @@ async function sendWhatsAppTextMessage({
   return response.status;
 }
 
-async function resolveWhatsAppReply({
+export async function resolveWhatsAppReply({
   client,
   messageText,
   sessionId,
@@ -426,14 +425,20 @@ async function resolveWhatsAppReply({
     };
   }
 
-  await client.mutation(api.chatKnowledge.recordUnknownQuestion, {
-    sessionId,
-    userQuestion: messageText,
-  } as never);
-
+  const generated = await timeout(
+    client.action(api.chatAi.generateReply, {
+      sessionId,
+      userMessage: messageText,
+      channel: "whatsapp",
+      siteUrl,
+      ...(locale ? { locale } : {}),
+    } as never) as Promise<GeneratedReply>,
+    AI_REPLY_TIMEOUT_MS,
+    () => timeoutFallbackReply(locale),
+  );
   return {
-    responseText: localizedUnknownFallbackReply(locale),
-    replyMode: "unknown_fallback",
+    responseText: generated.response ?? timeoutFallbackReply(locale).response,
+    replyMode: generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai",
     questionBankMatch: null,
   };
 }
@@ -465,6 +470,7 @@ async function handleWhatsAppMessage({
   let claimed: ClaimedWhatsAppEvent;
   try {
     claimed = (await client.mutation(api.whatsapp.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       whatsappUserId,
       profileName,
@@ -490,6 +496,7 @@ async function handleWhatsAppMessage({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.whatsapp.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(messageText ? { userContent: messageText } : {}),
@@ -498,14 +505,26 @@ async function handleWhatsAppMessage({
 
     if (!claimed.sessionId) {
       await client.mutation(api.whatsapp.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: "Missing WhatsApp sender id",
       } as never);
       return;
     }
 
+    // Staff took over this chat: the guest message is recorded, no automatic reply.
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.whatsapp.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
+      } as never);
+      return;
+    }
+
     if (eventType === "unsupported" || !messageText) {
       await client.mutation(api.whatsapp.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: `Unsupported WhatsApp message type: ${message.type ?? "unknown"}`,
       } as never);
@@ -518,6 +537,15 @@ async function handleWhatsAppMessage({
       sessionId: claimed.sessionId,
       siteUrl: getSiteUrl(request),
     });
+
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.whatsapp.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
+      } as never);
+      return;
+    }
 
     whatsappReplyStatus = await sendWhatsAppTextMessage({
       accessToken,
@@ -548,6 +576,7 @@ async function handleWhatsAppMessage({
     }
 
     await client.mutation(api.whatsapp.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       userContent: messageText,
@@ -570,6 +599,7 @@ async function handleWhatsAppMessage({
 
     try {
       await client.mutation(api.whatsapp.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedWhatsAppReplyStatus === "number"

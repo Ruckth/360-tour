@@ -110,6 +110,56 @@ describe('service slots', () => {
 			.rejects.toThrow('not available for this service');
 	});
 
+	it('uses a roster override instead of the weekly pattern, with its own breaks', async () => {
+		const { t, admin, serviceId, staffIds } = await setup();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('staffDays', {
+				staffId: staffIds[0], date, shifts: [{ start: '14:00', end: '22:00' }],
+				breaks: [{ start: '18:00', end: '19:00', label: 'Dinner' }], updatedAt: Date.now()
+			});
+		});
+		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		const has = (time: string) => slots.some((slot) => slot.start === at(time));
+		expect(has('09:00')).toBe(false); // pattern hours no longer apply
+		expect(has('13:00')).toBe(false); // pattern lunch is gone but it's before the shift
+		expect(has('14:00')).toBe(true);
+		expect(has('16:30')).toBe(true); // ends 17:30 + 30 min buffer = 18:00
+		expect(has('16:45')).toBe(false); // runs into the override's dinner break
+		expect(has('19:00')).toBe(true);
+		expect(has('20:45')).toBe(false); // would end after the shift
+		// Other dates keep the pattern.
+		const nextDay = await admin.query(api.adminServices.findOpenSlots, { serviceId, date: '2026-09-26', staffId: staffIds[0] });
+		expect(nextDay.some((slot) => slot.start === localDateTimeUtc('2026-09-26', '09:00'))).toBe(true);
+		const schedule = await admin.query(api.adminServices.listSchedule, { from: at('00:00'), to: at('00:00') + 86_400_000, staffIds: [staffIds[0]] });
+		expect(schedule.shifts).toEqual([{ staffId: staffIds[0], start: at('14:00'), end: at('22:00') }]);
+		expect(schedule.blocks).toEqual([{ staffId: staffIds[0], start: at('18:00'), end: at('19:00'), label: 'Dinner', kind: 'break' }]);
+	});
+
+	it('treats an override with no shifts as a day off', async () => {
+		const { t, admin, serviceId, staffIds, booking } = await setup();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('staffDays', { staffId: staffIds[0], date, shifts: [], breaks: [], updatedAt: Date.now() });
+		});
+		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date });
+		expect(slots.length).toBeGreaterThan(0);
+		expect(slots.every((slot) => !slot.staffIds.includes(staffIds[0]))).toBe(true);
+		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[0], start: at('10:00') }))
+			.rejects.toThrow('That time was just taken');
+		// The pattern guard in updateStaff ignores dates that have an override.
+		const created = await admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[1], start: at('10:00') });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('staffDays', { staffId: staffIds[1], date, shifts: [{ start: '09:00', end: '17:00' }], breaks: [], updatedAt: Date.now() });
+		});
+		await admin.mutation(api.adminServices.updateStaff, { staffId: staffIds[1], workingHours: [], breaks: [] });
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', staffIds[1]).eq('date', date)).unique();
+			await ctx.db.delete(row!._id);
+		});
+		await expect(admin.mutation(api.adminServices.updateStaff, { staffId: staffIds[1], workingHours: weekdays.map((weekday) => ({ weekday, start: '12:00', end: '17:00' })) }))
+			.rejects.toThrow('outside the new hours');
+		expect(created.staffId).toBe(staffIds[1]);
+	});
+
 	it('blocks next-day slots with an appointment that runs past midnight', async () => {
 		const { admin } = await setup();
 		const staffId = await admin.mutation(api.adminServices.createStaff, {

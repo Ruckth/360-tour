@@ -10,10 +10,13 @@ import {
 	findOpenSlots,
 	localDateTimeUtc,
 	resortLocalParts,
+	serviceRostered,
 	SLOT_CONFLICT
 } from './lib/serviceSlots';
 
 type ReadCtx = QueryCtx | MutationCtx;
+
+export const NOT_SCHEDULED = 'The staff schedule for this date is not set yet, so it is not fully booked. Say it is not scheduled yet and offer another date or to have the team follow up.';
 
 async function sessionFor(ctx: ReadCtx, sessionId: Id<'chatSessions'>) {
 	const session = await ctx.db.get(sessionId);
@@ -61,6 +64,10 @@ export const checkServiceAvailability = internalQuery({
 		const service = await activeService(ctx, args.serviceSlug);
 		const slots = await findOpenSlots(ctx, { serviceId: service._id, date: args.date });
 		const openTimes = slots.map((slot) => resortLocalParts(slot.start).time);
+		// Nobody rostered yet is not the same as fully booked.
+		if (!slots.length && !(await serviceRostered(ctx, service._id, args.date))) {
+			return { service: service.name, date: args.date, ...(args.time === undefined ? {} : { time: args.time, available: false, alternatives: [] }), openTimes, scheduled: false, note: NOT_SCHEDULED };
+		}
 		if (args.time === undefined) return { service: service.name, date: args.date, openTimes };
 		const requested = localDateTimeUtc(args.date, args.time);
 		const available = slots.some((slot) => slot.start === requested);
@@ -112,6 +119,7 @@ async function prepareQuote(
 	const slots = await findOpenSlots(ctx, { serviceId: service._id, date: args.date, staffId: preferred?._id });
 	if (!slots.some((slot) => slot.start === start)) {
 		await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
+		if (!slots.length && !(await serviceRostered(ctx, service._id, args.date))) return { error: NOT_SCHEDULED, alternatives: [] };
 		return { error: SLOT_CONFLICT, alternatives: nearestTimes(slots, start) };
 	}
 	const now = Date.now();

@@ -25,7 +25,8 @@ const navLinks = [
   { href: "/#contact", labelKey: "contact" },
 ] as const;
 
-export function SiteHeader() {
+/** `hasReviews` hides the Reviews link while the home page has no reviews section to jump to. */
+export function SiteHeader({ hasReviews = true }: { hasReviews?: boolean }) {
   const t = useTranslations("Nav");
   const a11y = useTranslations("A11y");
   const activeLocale = useLocale();
@@ -35,6 +36,7 @@ export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
   const isHome = stripLocalePrefix(pathname) === "/";
   const solid = scrolled || !isHome || mobileMenuOpen;
+  const links = hasReviews ? navLinks : navLinks.filter((link) => link.labelKey !== "reviews");
 
   useEffect(() => {
     function onScroll() {
@@ -71,7 +73,7 @@ export function SiteHeader() {
         </Link>
 
         <div className="hidden items-center gap-5 md:flex lg:gap-6">
-          {navLinks.map((link) => (
+          {links.map((link) => (
             <Link
               key={link.href}
               href={localizeHref(link.href, locale)}
@@ -123,7 +125,7 @@ export function SiteHeader() {
       {mobileMenuOpen ? (
         <div className="border-t border-border bg-background/98 backdrop-blur-md md:hidden">
           <div className="flex flex-col space-y-1 px-5 py-4">
-            {navLinks.map((link) => (
+            {links.map((link) => (
               <Link
                 key={link.href}
                 href={localizeHref(link.href, locale)}

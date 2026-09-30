@@ -454,10 +454,22 @@ async function resolveInstagramReply({
   }
 
   if (eventType === "message" && messageText) {
-    await client.mutation(api.chatKnowledge.recordUnknownQuestion, {
-      sessionId,
-      userQuestion: messageText,
-    } as never);
+    const generated = await timeout(
+      client.action(api.chatAi.generateReply, {
+        sessionId,
+        userMessage: messageText,
+        channel: "instagram",
+        siteUrl,
+        ...(locale ? { locale } : {}),
+      } as never) as Promise<GeneratedReply>,
+      AI_REPLY_TIMEOUT_MS,
+      () => timeoutFallbackReply(locale),
+    );
+    return {
+      responseText: generated.response ?? timeoutFallbackReply(locale).response,
+      replyMode: generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai",
+      questionBankMatch: null,
+    };
   }
 
   return {
@@ -491,6 +503,7 @@ async function handleInstagramEvent({
   let claimed: ClaimedInstagramEvent;
   try {
     claimed = (await client.mutation(api.instagram.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       instagramUserId,
       profileName: await fetchInstagramProfileName(accessToken, instagramUserId),
@@ -517,6 +530,7 @@ async function handleInstagramEvent({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.instagram.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
@@ -525,8 +539,19 @@ async function handleInstagramEvent({
 
     if (!claimed.sessionId) {
       await client.mutation(api.instagram.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: "Missing Instagram sender id",
+      } as never);
+      return;
+    }
+
+    // Staff took over this chat: the guest message is recorded, no automatic reply.
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.instagram.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       } as never);
       return;
     }
@@ -539,6 +564,15 @@ async function handleInstagramEvent({
       sessionId: claimed.sessionId,
       siteUrl: getSiteUrl(request),
     });
+
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.instagram.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
+      } as never);
+      return;
+    }
 
     instagramReplyStatus = await sendInstagramTextMessage({
       accessToken,
@@ -568,6 +602,7 @@ async function handleInstagramEvent({
     }
 
     await client.mutation(api.instagram.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
@@ -590,6 +625,7 @@ async function handleInstagramEvent({
 
     try {
       await client.mutation(api.instagram.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedInstagramReplyStatus === "number"

@@ -59,6 +59,17 @@ async function listBookings(t: ReturnType<typeof convexTest>) {
 }
 
 describe("AI chat booking", () => {
+  it("rejects an inactive property when preparing or confirming a chat booking", async () => {
+    const { t, sessionId, propertyId } = await setup();
+    await t.run(ctx => ctx.db.patch(propertyId, { status: "draft" }));
+    await expect(t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay }))
+      .rejects.toThrow("Property is not available for booking");
+    await t.run(ctx => ctx.db.patch(propertyId, { status: "active" }));
+    await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+    await t.run(ctx => ctx.db.patch(propertyId, { status: "archived" }));
+    await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId }))
+      .rejects.toThrow("Property is not available for booking");
+  });
   it("rejects confirm_booking without a prepared quote", async () => {
     const { t, sessionId } = await setup();
     await expect(
@@ -369,8 +380,13 @@ describe("get_my_bookings / cancel_booking", () => {
   });
 
   it("only cancels after the guest confirms on a later turn, then blocks payment", async () => {
-    const { t, sessionId } = await setup("whatsapp");
+    const { t, sessionId, propertyId } = await setup("whatsapp");
     const { confirmationCode, bookingId } = await bookViaChat(t, sessionId);
+    await t.run(async ctx => {
+      for (const date of [checkIn, isoInDays(31), isoInDays(32)]) {
+        await ctx.db.insert("availability", { propertyId, date, status: "booked", source: "direct", bookingId });
+      }
+    });
     const turn1 = Date.now();
 
     const first = await t.mutation(internal.bookings.cancelChatBooking, {
@@ -388,6 +404,7 @@ describe("get_my_bookings / cancel_booking", () => {
     });
     expect(later.state).toBe("cancelled");
     expect((await listBookings(t))[0].status).toBe("cancelled");
+    expect(await t.run(async ctx => (await ctx.db.query("availability").collect()).filter(row => row.bookingId === bookingId))).toEqual([]);
 
     await expect(
       t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId }),

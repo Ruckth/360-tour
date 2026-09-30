@@ -2,6 +2,7 @@ import {
   extractChatBookingContext,
   inferChatPropertySlug,
   type ChatBookingContext,
+  type ChatVillaRef,
 } from "@/lib/chat/booking-intent";
 import type { ChatSuggestionId } from "@/lib/chat/suggestions";
 
@@ -17,6 +18,7 @@ type ChatActionInput = {
   latestUserMessage?: string;
   latestAssistantMessage?: string;
   activePropertySlug?: string;
+  villas?: ChatVillaRef[];
   actionHint?: ChatActionHint | null;
   clickedSuggestionId?: ChatSuggestionId | null;
   rankedSuggestionTopic?: string | null;
@@ -76,6 +78,7 @@ export function resolveChatActionHint({
   latestUserMessage = "",
   latestAssistantMessage = "",
   activePropertySlug,
+  villas,
   clickedSuggestionId,
   rankedSuggestionTopic,
 }: ChatActionInput): ChatActionHint | null {
@@ -88,6 +91,7 @@ export function resolveChatActionHint({
     latestUserMessage,
     latestAssistantMessage,
     activePropertySlug,
+    villas,
   });
   const rankedHint = getChatActionHintForRankedTopic(rankedSuggestionTopic);
 
@@ -107,17 +111,20 @@ function bookingActionFromText({
   latestUserMessage,
   latestAssistantMessage,
   activePropertySlug,
+  villas,
   forceIntent = false,
 }: {
   latestUserMessage: string;
   latestAssistantMessage: string;
   activePropertySlug?: string;
+  villas?: ChatVillaRef[];
   forceIntent?: boolean;
 }): ChatBookingActionCard {
   const context = extractChatBookingContext({
     latestUserMessage,
     latestAssistantMessage,
     activePropertySlug,
+    villas,
   });
 
   return {
@@ -130,6 +137,7 @@ export function getChatActionCard({
   latestUserMessage = "",
   latestAssistantMessage = "",
   activePropertySlug,
+  villas,
   actionHint,
   clickedSuggestionId,
   rankedSuggestionTopic,
@@ -141,6 +149,7 @@ export function getChatActionCard({
       latestUserMessage,
       latestAssistantMessage,
       activePropertySlug,
+      villas,
       clickedSuggestionId,
       rankedSuggestionTopic,
     });
@@ -150,7 +159,7 @@ export function getChatActionCard({
   if (resolvedActionHint === "tour") {
     return {
       type: "tour",
-      propertySlug: inferChatPropertySlug(combined, activePropertySlug),
+      propertySlug: inferChatPropertySlug(combined, activePropertySlug, villas),
     };
   }
 
@@ -159,6 +168,7 @@ export function getChatActionCard({
       latestUserMessage,
       latestAssistantMessage,
       activePropertySlug,
+      villas,
       forceIntent: true,
     });
   }
@@ -166,7 +176,7 @@ export function getChatActionCard({
   if (hasChatTourIntent(combined)) {
     return {
       type: "tour",
-      propertySlug: inferChatPropertySlug(combined, activePropertySlug),
+      propertySlug: inferChatPropertySlug(combined, activePropertySlug, villas),
     };
   }
 
@@ -174,6 +184,7 @@ export function getChatActionCard({
     latestUserMessage,
     latestAssistantMessage,
     activePropertySlug,
+    villas,
   });
 
   return bookingAction.context.hasBookingIntent ? bookingAction : { type: "none" };

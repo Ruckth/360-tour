@@ -8,6 +8,16 @@ import { RoomSphere } from "@/components/tour/RoomSphere";
 import type { Room } from "@/lib/data/rooms";
 import { useEffect, useMemo, useRef } from "react";
 
+/** The viewer at the sphere's center, looking around by dragging. */
+export function TourCamera({ enabled = true }: { enabled?: boolean }) {
+  return (
+    <>
+      <PerspectiveCamera makeDefault fov={75} near={0.1} far={1100} position={[0, 0, 0.1]} />
+      <OrbitControls enabled={enabled} enableZoom={false} enablePan={false} enableDamping dampingFactor={0.12} rotateSpeed={-0.45} />
+    </>
+  );
+}
+
 function SphereScene({
   rooms,
   currentRoomId,
@@ -72,8 +82,7 @@ function SphereScene({
 
   return (
     <>
-      <PerspectiveCamera makeDefault fov={75} near={0.1} far={1100} position={[0, 0, 0.1]} />
-      <OrbitControls enableZoom={false} enablePan={false} enableDamping dampingFactor={0.12} rotateSpeed={-0.45} />
+      <TourCamera />
       {previousTexture && transitioning ? (
         <RoomSphere texture={previousTexture} opacity={1} materialRef={previousMaterialRef} />
       ) : null}

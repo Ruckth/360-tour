@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -18,6 +18,7 @@ describe("Facebook webhook events", () => {
     const t = convexTest(schema, modules);
 
     const firstClaim = await t.mutation(api.facebook.claimEvent, {
+      serverSecret: "",
       eventKey: "facebook-event-1",
       facebookUserId: "fb-user-123",
       pageId: "page-123",
@@ -26,12 +27,14 @@ describe("Facebook webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.facebook.recordInboundEvent, {
+      serverSecret: "",
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       userContent: "See prices",
     });
 
     const duplicateClaim = await t.mutation(api.facebook.claimEvent, {
+      serverSecret: "",
       eventKey: "facebook-event-1",
       facebookUserId: "fb-user-123",
       pageId: "page-123",
@@ -46,6 +49,7 @@ describe("Facebook webhook events", () => {
     expect(duplicateClaim.sessionId).toBe(firstClaim.sessionId);
 
     await t.mutation(api.facebook.completeEvent, {
+      serverSecret: "",
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
@@ -56,7 +60,7 @@ describe("Facebook webhook events", () => {
     const messages = await t.query(api.chat.getMessages, {
       sessionId: firstClaim.sessionId!,
     });
-    const session = await t.query(api.chat.getSession, {
+    const session = await t.query(internal.chat.getSessionInternal, {
       sessionId: firstClaim.sessionId!,
     });
     const event = await t.run(async (ctx) => await ctx.db.get(firstClaim.eventId));
@@ -82,6 +86,7 @@ describe("Facebook webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.facebook.claimEvent, {
+      serverSecret: "",
       eventKey: "facebook-event-failed-reply",
       facebookUserId: "fb-user-999",
       pageId: "page-123",
@@ -91,11 +96,13 @@ describe("Facebook webhook events", () => {
     });
 
     await t.mutation(api.facebook.recordInboundEvent, {
+      serverSecret: "",
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "ราคาเท่าไหร่",
     });
     await t.mutation(api.facebook.markEventFailed, {
+      serverSecret: "",
       eventId: claim.eventId,
       error: "Facebook reply failed (401): invalid token",
       facebookReplyStatus: 401,
@@ -105,6 +112,7 @@ describe("Facebook webhook events", () => {
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.facebook.claimEvent, {
+      serverSecret: "",
       eventKey: "facebook-event-failed-reply",
       facebookUserId: "fb-user-999",
       pageId: "page-123",

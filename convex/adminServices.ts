@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
-import type { MutationCtx } from './_generated/server';
+import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 import {
@@ -12,9 +12,13 @@ import {
 	assertValidTime,
 	createAppointmentRecord,
 	findOpenSlots as openSlots,
-	recurringBlocks,
+	localDayRange,
+	localDateTimeUtc,
+	planWorking,
+	scheduleDays,
 	staffBusyRanges
 } from './lib/serviceSlots';
+import { assertValidEmail } from './lib/validation';
 
 const DAY = 86_400_000;
 const MINUTE = 60_000;
@@ -52,7 +56,60 @@ function validateService(input: Pick<Doc<'services'>, 'durationMin' | 'bufferMin
 
 async function validateStaffIds(ctx: MutationCtx, staffIds: Id<'staff'>[]) {
 	if (!staffIds.length || new Set(staffIds).size !== staffIds.length) throw new Error('Choose distinct staff members');
-	for (const id of staffIds) if (!(await ctx.db.get(id))) throw new Error('Staff member not found');
+	for (const id of staffIds) {
+		const person = await ctx.db.get(id);
+		if (!person) throw new Error('Staff member not found');
+		if (person.status !== 'active') throw new Error(`${person.name} is archived. Restore them first or choose someone else`);
+	}
+}
+
+const appointmentCount = (n: number) => (n === 1 ? '1 upcoming appointment' : `${n} upcoming appointments`);
+
+/** Booked, arrived or in service appointments that aren't over yet. */
+async function countUpcoming(ctx: QueryCtx | MutationCtx, owner: { staffId: Id<'staff'> } | { serviceId: Id<'services'> }) {
+	const now = Date.now();
+	const rows = 'staffId' in owner
+		? ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) => q.eq('staffId', owner.staffId).gte('start', now - APPOINTMENT_LOOKBACK))
+		: ctx.db.query('serviceAppointments').withIndex('by_service_start', (q) => q.eq('serviceId', owner.serviceId).gte('start', now - APPOINTMENT_LOOKBACK));
+	let count = 0;
+	for await (const appointment of rows) {
+		if (appointment.blockedUntil > now && blocksTime(appointment) && appointment.status !== 'completed') count++;
+	}
+	return count;
+}
+
+/** Archived staff keep their past appointments but leave every service. */
+async function archiveStaffRecord(ctx: MutationCtx, staff: Doc<'staff'>) {
+	const upcoming = await countUpcoming(ctx, { staffId: staff._id });
+	if (upcoming) throw new Error(`Reassign or cancel ${staff.name}'s ${appointmentCount(upcoming)} first`);
+	let servicesUpdated = 0;
+	for await (const service of ctx.db.query('services')) {
+		if (!service.staffIds.includes(staff._id)) continue;
+		await ctx.db.patch(service._id, { staffIds: service.staffIds.filter((id) => id !== staff._id), updatedAt: Date.now() });
+		servicesUpdated++;
+	}
+	await ctx.db.patch(staff._id, { status: 'archived', updatedAt: Date.now() });
+	return { servicesUpdated };
+}
+
+function assertTimeOffRange(start: number, end: number) {
+	if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end <= start || end - start > TIME_OFF_LOOKBACK) throw new Error('Time off must be positive and at most 60 days');
+}
+
+/** Booked appointments that would fall inside the time off. */
+async function timeOffConflicts(ctx: MutationCtx, staffId: Id<'staff'>, start: number, end: number) {
+	const conflicts: Array<{ appointmentId: Id<'serviceAppointments'>; start: number }> = [];
+	for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+		q.eq('staffId', staffId).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', end)
+	)) {
+		if (appointment.blockedUntil > start && blocksTime(appointment) && appointment.status !== 'completed') conflicts.push({ appointmentId: appointment._id, start: appointment.start });
+	}
+	return conflicts;
+}
+
+async function assertTimeOffFits(ctx: MutationCtx, staffId: Id<'staff'>, start: number, end: number) {
+	assertTimeOffRange(start, end);
+	if ((await timeOffConflicts(ctx, staffId, start, end)).length) throw new Error('Reassign or cancel the appointments during this time off first');
 }
 
 export const listStaff = query({
@@ -86,6 +143,7 @@ export const updateStaff = mutation({
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
 		const { staffId, ...changes } = args;
+		if (changes.status === 'archived' && staff.status !== 'archived') await archiveStaffRecord(ctx, staff);
 		validateHours(changes.workingHours ?? staff.workingHours);
 		validateHours(changes.breaks ?? staff.breaks);
 		if (changes.workingHours || changes.breaks) {
@@ -95,7 +153,7 @@ export const updateStaff = mutation({
 			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK)
 			)) {
-				if (appointment.blockedUntil <= now || appointment.status !== 'booked') continue;
+				if (appointment.blockedUntil <= now || !blocksTime(appointment) || appointment.status === 'completed') continue;
 				if ((await staffBusyRanges(ctx, next, appointment.start, appointment.blockedUntil, appointment._id)).length) {
 					throw new Error('Reassign or cancel the appointments outside the new hours first');
 				}
@@ -106,6 +164,8 @@ export const updateStaff = mutation({
 			...(changes.name !== undefined ? { name: required(changes.name, 'Name') } : {}),
 			...(changes.role !== undefined ? { role: required(changes.role, 'Role') } : {}),
 			...(changes.color !== undefined ? { color: required(changes.color, 'Color') } : {}),
+			// A blank photo URL clears the photo; omitting it keeps the current one.
+			...(changes.avatarUrl !== undefined ? { avatarUrl: changes.avatarUrl.trim() || undefined } : {}),
 			updatedAt: Date.now()
 		});
 	}
@@ -115,15 +175,20 @@ export const archiveStaff = mutation({
 	args: { staffId: v.id('staff') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		if (!(await ctx.db.get(args.staffId))) throw new Error('Staff member not found');
-		for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
-			q.eq('staffId', args.staffId).gte('start', Date.now() - APPOINTMENT_LOOKBACK)
-		)) {
-			if (appointment.blockedUntil > Date.now() && blocksTime(appointment) && appointment.status !== 'completed') {
-				throw new Error('Reassign or cancel this staff member\'s upcoming appointments first');
-			}
-		}
-		await ctx.db.patch(args.staffId, { status: 'archived', updatedAt: Date.now() });
+		const staff = await ctx.db.get(args.staffId);
+		if (!staff) throw new Error('Staff member not found');
+		return await archiveStaffRecord(ctx, staff);
+	}
+});
+
+/** Shown before archiving a staff member or service. */
+export const countUpcomingAppointments = query({
+	args: { staffId: v.optional(v.id('staff')), serviceId: v.optional(v.id('services')) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (args.staffId) return await countUpcoming(ctx, { staffId: args.staffId });
+		if (args.serviceId) return await countUpcoming(ctx, { serviceId: args.serviceId });
+		throw new Error('Choose a staff member or service');
 	}
 });
 
@@ -166,6 +231,10 @@ export const updateService = mutation({
 		if (duplicate && duplicate._id !== serviceId) throw new Error('Service slug already exists');
 		validateService({ durationMin: changes.durationMin ?? service.durationMin, bufferMin: changes.bufferMin ?? service.bufferMin, price: changes.price ?? service.price });
 		if (changes.staffIds) await validateStaffIds(ctx, changes.staffIds);
+		if (changes.status === 'active' && service.status !== 'active') {
+			const staff = await Promise.all((changes.staffIds ?? service.staffIds).map((id) => ctx.db.get(id)));
+			if (!staff.some((person) => person?.status === 'active')) throw new Error('Assign at least one active staff member before restoring this service');
+		}
 		await ctx.db.patch(serviceId, {
 			...changes, slug,
 			...(changes.name !== undefined ? { name: required(changes.name, 'Name') } : {}),
@@ -177,29 +246,105 @@ export const updateService = mutation({
 	}
 });
 
+/** Upcoming appointments stay booked; the count is returned so the UI can say so. */
 export const archiveService = mutation({
 	args: { serviceId: v.id('services') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		if (!(await ctx.db.get(args.serviceId))) throw new Error('Service not found');
+		const upcomingAppointments = await countUpcoming(ctx, { serviceId: args.serviceId });
 		await ctx.db.patch(args.serviceId, { status: 'archived', updatedAt: Date.now() });
+		return { upcomingAppointments };
 	}
 });
 
+/** Saves the services × staff matrix in one go. Refuses if an active service would be left with no one. */
+export const setServiceStaffMatrix = mutation({
+	args: { assignments: v.array(v.object({ serviceId: v.id('services'), staffIds: v.array(v.id('staff')) })) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (args.assignments.length > 200) throw new Error('Save at most 200 services at once');
+		if (new Set(args.assignments.map((row) => row.serviceId)).size !== args.assignments.length) throw new Error('Each service can appear only once');
+		const staffCache = new Map<Id<'staff'>, Doc<'staff'> | null>();
+		const services: Array<{ service: Doc<'services'>; staffIds: Id<'staff'>[] }> = [];
+		const unstaffed: string[] = [];
+		for (const row of args.assignments) {
+			const service = await ctx.db.get(row.serviceId);
+			if (!service) throw new Error('Service not found');
+			if (new Set(row.staffIds).size !== row.staffIds.length) throw new Error(`Choose distinct staff members for ${service.name}`);
+			for (const id of row.staffIds) {
+				if (!staffCache.has(id)) staffCache.set(id, await ctx.db.get(id));
+				const person = staffCache.get(id);
+				if (!person) throw new Error('Staff member not found');
+				if (person.status !== 'active') throw new Error(`${person.name} is archived. Restore them first or choose someone else`);
+			}
+			if (service.status === 'active' && !row.staffIds.length) unstaffed.push(service.name);
+			services.push({ service, staffIds: row.staffIds });
+		}
+		if (unstaffed.length) throw new Error(`${unstaffed.join(', ')} would have no staff. Assign at least one person to each active service`);
+		let updated = 0;
+		for (const { service, staffIds } of services) {
+			const same = staffIds.length === service.staffIds.length && staffIds.every((id) => service.staffIds.includes(id));
+			if (same) continue;
+			await ctx.db.patch(service._id, { staffIds, updatedAt: Date.now() });
+			updated++;
+		}
+		return { updated };
+	}
+});
+
+/** Time off that hasn't ended yet, soonest first. */
+export const listTimeOff = query({
+	args: { staffId: v.id('staff') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const now = Date.now();
+		const rows: Doc<'staffTimeOff'>[] = [];
+		for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
+			q.eq('staffId', args.staffId).gte('start', now - TIME_OFF_LOOKBACK)
+		)) {
+			if (row.end > now) rows.push(row);
+			if (rows.length >= 100) break;
+		}
+		return rows;
+	}
+});
+
+/**
+ * Adds the same time off for one or more staff. People with booked appointments in the way
+ * are skipped and reported with those appointments; everyone else is saved.
+ */
 export const addTimeOff = mutation({
-	args: { staffId: v.id('staff'), start: v.number(), end: v.number(), label: v.string() },
+	args: { staffId: v.optional(v.id('staff')), staffIds: v.optional(v.array(v.id('staff'))), start: v.number(), end: v.number(), label: v.string() },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		if (!(await ctx.db.get(args.staffId))) throw new Error('Staff member not found');
-		if (!Number.isSafeInteger(args.start) || !Number.isSafeInteger(args.end) || args.end <= args.start || args.end - args.start > TIME_OFF_LOOKBACK) throw new Error('Time off must be positive and at most 60 days');
-		for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
-			q.eq('staffId', args.staffId).gte('start', args.start - APPOINTMENT_LOOKBACK).lt('start', args.end)
-		)) {
-			if (appointment.blockedUntil > args.start && appointment.status === 'booked') {
-				throw new Error('Reassign or cancel the appointments during this time off first');
-			}
+		const staffIds = [...new Set([...(args.staffId ? [args.staffId] : []), ...(args.staffIds ?? [])])];
+		if (!staffIds.length) throw new Error('Choose at least one staff member');
+		if (staffIds.length > 200) throw new Error('Choose at most 200 staff members');
+		assertTimeOffRange(args.start, args.end);
+		const label = required(args.label, 'Label');
+		const people = await Promise.all(staffIds.map((id) => ctx.db.get(id)));
+		if (people.some((person) => !person)) throw new Error('Staff member not found');
+		const results: Array<{ staffId: Id<'staff'>; name: string; timeOffId?: Id<'staffTimeOff'>; conflicts: Array<{ appointmentId: Id<'serviceAppointments'>; start: number }> }> = [];
+		for (const person of people as Doc<'staff'>[]) {
+			const conflicts = await timeOffConflicts(ctx, person._id, args.start, args.end);
+			const timeOffId = conflicts.length
+				? undefined
+				: await ctx.db.insert('staffTimeOff', { staffId: person._id, start: args.start, end: args.end, label, createdByAdminEmail: admin.email });
+			results.push({ staffId: person._id, name: person.name, ...(timeOffId ? { timeOffId } : {}), conflicts });
 		}
-		return await ctx.db.insert('staffTimeOff', { ...args, label: required(args.label, 'Label'), createdByAdminEmail: admin.email });
+		return results;
+	}
+});
+
+export const updateTimeOff = mutation({
+	args: { timeOffId: v.id('staffTimeOff'), start: v.number(), end: v.number(), label: v.string() },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const row = await ctx.db.get(args.timeOffId);
+		if (!row) throw new Error('Time off not found');
+		await assertTimeOffFits(ctx, row.staffId, args.start, args.end);
+		await ctx.db.patch(row._id, { start: args.start, end: args.end, label: required(args.label, 'Label') });
 	}
 });
 
@@ -212,42 +357,91 @@ export const removeTimeOff = mutation({
 	}
 });
 
+const SELECTED_STAFF_READ_LIMIT = 10;
+
 export const listSchedule = query({
 	args: { from: v.number(), to: v.number(), staffIds: v.optional(v.array(v.id('staff'))) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		if (!Number.isSafeInteger(args.from) || !Number.isSafeInteger(args.to) || args.to <= args.from || args.to - args.from > 14 * DAY) throw new Error('Schedule range must be at most 14 days');
 		const selected = args.staffIds ? new Set(args.staffIds) : undefined;
-		const staff = (await ctx.db.query('staff').withIndex('by_status', (q) => q.eq('status', 'active')).take(200))
-			.filter((person) => !selected || selected.has(person._id));
-		const services = await ctx.db.query('services').take(200);
-		const staffSet = new Set(staff.map((person) => person._id));
-		const appointments: Doc<'serviceAppointments'>[] = [];
-		for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_start', (q) =>
-			q.gte('start', args.from - APPOINTMENT_LOOKBACK).lt('start', args.to)
-		)) {
-			if (appointment.end > args.from && staffSet.has(appointment.staffId)) appointments.push(appointment);
+		const inRange: Doc<'serviceAppointments'>[] = [];
+		// A few selected people: read only their appointments. Otherwise one scan of the range.
+		const ranges = selected && selected.size <= SELECTED_STAFF_READ_LIMIT
+			? [...selected].map((staffId) => ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+				q.eq('staffId', staffId).gte('start', args.from - APPOINTMENT_LOOKBACK).lt('start', args.to)
+			))
+			: [ctx.db.query('serviceAppointments').withIndex('by_start', (q) =>
+				q.gte('start', args.from - APPOINTMENT_LOOKBACK).lt('start', args.to)
+			)];
+		for (const range of ranges) {
+			for await (const appointment of range) {
+				if (appointment.end > args.from && (!selected || selected.has(appointment.staffId))) inRange.push(appointment);
+			}
 		}
-		const blocks: Array<{ staffId: Id<'staff'>; start: number; end: number; label: string; kind: 'break' | 'time_off'; timeOffId?: Id<'staffTimeOff'> }> = [];
+		inRange.sort((a, b) => a.start - b.start);
+		const active = (await ctx.db.query('staff').withIndex('by_status', (q) => q.eq('status', 'active')).take(200))
+			.filter((person) => !selected || selected.has(person._id));
+		// Archived staff appear only when they have appointments in range, so their history stays visible.
+		const activeIds = new Set(active.map((person) => person._id));
+		const archivedIds = [...new Set(inRange.map((appointment) => appointment.staffId))].filter((id) => !activeIds.has(id));
+		const archived = (await Promise.all(archivedIds.map((id) => ctx.db.get(id)))).filter((person): person is Doc<'staff'> => !!person);
+		const staff = [...active, ...archived];
+		const staffSet = new Set(staff.map((person) => person._id));
+		const appointments = inRange.filter((appointment) => staffSet.has(appointment.staffId));
+		const services = await ctx.db.query('services').take(200);
+		const blocks: Array<{ staffId: Id<'staff'>; start: number; end: number; label: string; kind: 'break' | 'time_off'; timeOff?: Doc<'staffTimeOff'> }> = [];
+		// Working time from the roster (override or weekly pattern), so calendars can shade off-hours.
+		const shifts: Array<{ staffId: Id<'staff'>; start: number; end: number }> = [];
+		const clip = (start: number, end: number) => (start < args.to && end > args.from ? { start: Math.max(start, args.from), end: Math.min(end, args.to) } : null);
 		for (const person of staff) {
-			for (const block of recurringBlocks(person.breaks, args.from, args.to)) {
-				blocks.push({ staffId: person._id, start: block.start, end: block.end, label: block.label ?? '', kind: 'break' });
+			for (const { date, plan } of await scheduleDays(ctx, person, args.from, args.to)) {
+				for (const [start, end] of planWorking(date, plan)) {
+					const range = clip(start, end);
+					if (range) shifts.push({ staffId: person._id, ...range });
+				}
+				for (const block of plan.breaks) {
+					const range = clip(localDateTimeUtc(date, block.start), localDateTimeUtc(date, block.end));
+					if (range) blocks.push({ staffId: person._id, ...range, label: block.label, kind: 'break' });
+				}
 			}
 			for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', args.from - TIME_OFF_LOOKBACK).lt('start', args.to)
 			)) {
-				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off', timeOffId: row._id });
+				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off', timeOff: row });
 			}
 		}
-		return { staff, services, appointments, blocks };
+		return { staff, services, appointments, blocks, shifts };
 	}
 });
 
+/**
+ * Open times, each with `autoStaffId`: who `createAppointment` picks when no staff is given
+ * (least appointments that day, then by name), so the dialog can preview the assignment.
+ */
 export const findOpenSlots = query({
 	args: { serviceId: v.id('services'), date: v.string(), staffId: v.optional(v.id('staff')) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		return await openSlots(ctx, args);
+		const slots = await openSlots(ctx, args);
+		const [dayStart, dayEnd] = localDayRange(args.date);
+		const ranked = new Map<Id<'staff'>, { name: string; count: number }>();
+		for (const id of new Set(slots.flatMap((slot) => slot.staffIds))) {
+			const person = await ctx.db.get(id);
+			let count = 0;
+			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+				q.eq('staffId', id).gte('start', dayStart).lt('start', dayEnd)
+			)) {
+				if (blocksTime(appointment)) count++;
+			}
+			ranked.set(id, { name: person?.name ?? '', count });
+		}
+		const order = (a: Id<'staff'>, b: Id<'staff'>) => {
+			const x = ranked.get(a)!;
+			const y = ranked.get(b)!;
+			return x.count - y.count || x.name.localeCompare(y.name) || a.localeCompare(b);
+		};
+		return slots.map((slot) => ({ ...slot, autoStaffId: [...slot.staffIds].sort(order)[0] }));
 	}
 });
 
@@ -309,6 +503,60 @@ export const markAppointmentPaid = mutation({
 		if (!appointment) throw new Error('Appointment not found');
 		if (appointment.status === 'cancelled') throw new Error('Cancelled appointment cannot be paid');
 		await ctx.db.patch(appointment._id, { paymentStatus: 'paid' });
+	}
+});
+
+export const updateAppointmentDetails = mutation({
+	args: { appointmentId: v.id('serviceAppointments'), guestName: v.string(), guestPhone: v.string(), guestEmail: v.optional(v.string()), notes: v.optional(v.string()) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (!(await ctx.db.get(args.appointmentId))) throw new Error('Appointment not found');
+		const guestEmail = args.guestEmail?.trim() || undefined;
+		if (guestEmail) assertValidEmail(guestEmail);
+		const notes = args.notes?.trim() || undefined;
+		if (notes && notes.length > 2000) throw new Error('Notes must be at most 2000 characters');
+		await ctx.db.patch(args.appointmentId, {
+			guestName: required(args.guestName, 'Guest name'),
+			guestPhone: required(args.guestPhone, 'Guest phone'),
+			guestEmail,
+			notes
+		});
+	}
+});
+
+/** Same staff and start time; the length, turnaround and price follow the new service. */
+export const changeAppointmentService = mutation({
+	args: { appointmentId: v.id('serviceAppointments'), serviceId: v.id('services') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const appointment = await ctx.db.get(args.appointmentId);
+		if (!appointment) throw new Error('Appointment not found');
+		if (appointment.status !== 'booked' && appointment.status !== 'arrived') throw new Error('Only booked or arrived appointments can change service');
+		if (appointment.paymentStatus !== 'unpaid') throw new Error('Paid appointments cannot change service');
+		const service = await ctx.db.get(args.serviceId);
+		if (!service || service.status !== 'active') throw new Error('Service unavailable');
+		const staff = await ctx.db.get(appointment.staffId);
+		if (!staff || staff.status !== 'active' || !service.staffIds.includes(staff._id)) {
+			throw new Error(`${staff?.name ?? 'This staff member'} doesn't perform ${service.name}`);
+		}
+		const end = appointment.start + service.durationMin * MINUTE;
+		const blockedUntil = end + service.bufferMin * MINUTE;
+		if ((await staffBusyRanges(ctx, staff, appointment.start, blockedUntil, appointment._id)).length) {
+			throw new Error(`${staff.name} isn't free for the full ${service.durationMin + service.bufferMin} minutes this service needs`);
+		}
+		await ctx.db.patch(appointment._id, { serviceId: service._id, end, blockedUntil, price: service.price, currency: service.currency });
+	}
+});
+
+/** Records a refund given at the desk; no money moves through the app. */
+export const refundAppointment = mutation({
+	args: { appointmentId: v.id('serviceAppointments') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const appointment = await ctx.db.get(args.appointmentId);
+		if (!appointment) throw new Error('Appointment not found');
+		if (appointment.paymentStatus !== 'paid') throw new Error('Only paid appointments can be refunded');
+		await ctx.db.patch(appointment._id, { paymentStatus: 'refunded', refundedAt: Date.now() });
 	}
 });
 

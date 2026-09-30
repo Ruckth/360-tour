@@ -79,13 +79,29 @@ function DeferredAIChatWidget() {
   );
 }
 
+/**
+ * Root chrome. Public pages are served from the [locale] segment, whose layout renders
+ * PublicSiteShell (with the data it needs), so admin and auth pages never load villa data.
+ */
 export function SiteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const normalizedPath = stripLocalePrefix(pathname);
 
   if (pathname.startsWith("/admin")) {
     return <div className="min-h-screen bg-background text-foreground">{children}</div>;
   }
+
+  // Sign-in and sign-up live outside [locale] (see src/proxy.ts) but keep the public header and footer.
+  if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) {
+    return <PublicSiteShell>{children}</PublicSiteShell>;
+  }
+
+  return children;
+}
+
+/** Header, footer and chat widget for public pages. `hasReviews` shows the header's Reviews link. */
+export function PublicSiteShell({ children, hasReviews }: { children: ReactNode; hasReviews?: boolean }) {
+  const pathname = usePathname();
+  const normalizedPath = stripLocalePrefix(pathname);
 
   if (normalizedPath === "/chat") {
     return (
@@ -99,7 +115,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <DeferredDemoDisclaimer />
-      <SiteHeader />
+      <SiteHeader hasReviews={hasReviews} />
       <ChatContextProvider>
         <main className="flex-1">{children}</main>
         <SiteFooter />

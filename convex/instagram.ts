@@ -1,5 +1,6 @@
 import { mutation, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import { requireServerSecret } from './lib/serverSecret';
 import type { Id } from './_generated/dataModel';
 import { asksForStaff, queueStaffAlert } from './chatKnowledge';
 import {
@@ -85,6 +86,7 @@ async function getOrCreateInstagramSession(
 
 export const claimEvent = mutation({
 	args: {
+		serverSecret: v.string(),
 		eventKey: v.string(),
 		instagramUserId: v.optional(v.string()),
 		profileName: v.optional(v.string()),
@@ -95,6 +97,7 @@ export const claimEvent = mutation({
 		eventTimestamp: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
+		await requireServerSecret(args.serverSecret);
 		const eventKey = args.eventKey.trim();
 		if (!eventKey) throw new Error('Instagram event key is required');
 
@@ -170,11 +173,13 @@ export const claimEvent = mutation({
 
 export const recordInboundEvent = mutation({
 	args: {
+		serverSecret: v.string(),
 		eventId: v.id('instagramWebhookEvents'),
 		sessionId: v.id('chatSessions'),
 		userContent: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
+		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
 		if (!event) throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
@@ -232,6 +237,7 @@ export const recordInboundEvent = mutation({
 
 export const completeEvent = mutation({
 	args: {
+		serverSecret: v.string(),
 		eventId: v.id('instagramWebhookEvents'),
 		sessionId: v.id('chatSessions'),
 		userContent: v.optional(v.string()),
@@ -240,6 +246,7 @@ export const completeEvent = mutation({
 		instagramReplyStatus: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
+		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
 		if (!event) throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
@@ -314,10 +321,12 @@ export const completeEvent = mutation({
 
 export const markEventIgnored = mutation({
 	args: {
+		serverSecret: v.string(),
 		eventId: v.id('instagramWebhookEvents'),
 		reason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
+		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
 		if (!event) throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
@@ -338,11 +347,13 @@ export const markEventIgnored = mutation({
 
 export const markEventFailed = mutation({
 	args: {
+		serverSecret: v.string(),
 		eventId: v.id('instagramWebhookEvents'),
 		error: v.string(),
 		instagramReplyStatus: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
+		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
 		if (!event) throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {

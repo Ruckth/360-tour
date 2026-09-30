@@ -6,35 +6,30 @@ import { useLocale, useTranslations } from "next-intl";
 import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import { DEMO_DIRECT_DISCOUNT_PERCENT } from "@/lib/booking/booking";
 import { calculateBookingQuote } from "@/lib/booking/quote";
-import { resort } from "@/lib/data/resort-config";
-import { getLocalizedPricingByPropertyId } from "@/lib/i18n/public-content";
+import { getLocalizedDirectBenefits } from "@/lib/i18n/public-content";
+import { currencyPrefix, type PublicVilla } from "@/lib/villas";
 
 export function PriceComparison({
-  propertyId,
+  property,
   onOpen360,
   onPreload360,
 }: {
-  propertyId: string;
+  property: Pick<PublicVilla, "id" | "pricePerNight" | "directDiscountPercent" | "currency">;
   onOpen360?: () => void;
   onPreload360?: () => void;
 }) {
   const locale = useLocale();
   const t = useTranslations("Villa");
   const pricingT = useTranslations("Pricing");
+  const propertyId = property.id;
   const comparison = useOtaComparison(propertyId);
-  const pricing = getLocalizedPricingByPropertyId(propertyId, locale);
-  if (!pricing) return null;
-  // Prefer live Convex pricing (what checkout charges); static data matches it for SSR and demo mode.
-  const pricePerNight = comparison?.pricePerNight ?? pricing.directRate;
-  const discountPercent = comparison?.directDiscountPercent ?? DEMO_DIRECT_DISCOUNT_PERCENT;
-  const directRate = calculateBookingQuote({
-    pricePerNight,
-    nights: 1,
-    discountPercent,
-    currency: comparison?.currency ?? resort.currency,
-  }).directTotal;
+  const benefits = getLocalizedDirectBenefits(locale);
+  // Server-rendered villa pricing, refreshed by the live Convex query (what checkout charges).
+  const pricePerNight = comparison?.pricePerNight ?? property.pricePerNight;
+  const discountPercent = comparison?.directDiscountPercent ?? property.directDiscountPercent;
+  const currency = comparison?.currency ?? property.currency;
+  const directRate = calculateBookingQuote({ pricePerNight, nights: 1, discountPercent, currency }).directTotal;
 
   return (
     <aside className="rounded-2xl border border-border bg-card p-5 shadow-lg">
@@ -45,13 +40,13 @@ export function PriceComparison({
           </p>
           <p className="mt-1 flex items-baseline gap-2">
             <span className="text-3xl font-bold text-foreground">
-              {resort.currencySymbol}
+              {currencyPrefix(currency)}
               {directRate.toLocaleString()}
             </span>
             {discountPercent > 0 ? (
               <s className="text-sm text-muted-foreground">
                 <span className="sr-only">{pricingT("standardRate")} </span>
-                {resort.currencySymbol}
+                {currencyPrefix(currency)}
                 {pricePerNight.toLocaleString()}
               </s>
             ) : null}
@@ -74,7 +69,7 @@ export function PriceComparison({
         />
       ) : null}
       <div className="mt-5 space-y-2">
-        {pricing.directBenefits.slice(0, 5).map((benefit) => (
+        {benefits.slice(0, 5).map((benefit) => (
           <div key={benefit.benefit} className="flex items-center gap-2 text-sm text-muted-foreground">
             {benefit.directOnly ? (
               <ShieldCheck className="h-4 w-4 text-gold" />
