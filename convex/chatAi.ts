@@ -116,11 +116,11 @@ const realityGuardrailPatterns: Array<{
 	},
 	{
 		locale: 'ja',
-		patterns: [/(本当|実在|存在しますか|ありますか|詐欺|偽物|本物|本当にある)/u]
+		patterns: [/(本当|実在|存在しますか|詐欺|偽物|本物|本当にある)/u, /(?:(?:この|その|あの)(?:リゾート|ホテル|宿)|auralis cove retreat)\s*(?:は|が)\s*ありますか/u]
 	},
 	{
 		locale: 'ko',
-		patterns: [/(진짜|실제|실존|존재|사기|가짜|정말 있는)/u]
+		patterns: [/(진짜|실제|실존|존재|사기|가짜|정말 있는)/u, /(?:(?:이|그|저)\s*(?:리조트|숙소|호텔)|auralis cove retreat)\s*(?:가|이|은|는)\s*(?:정말\s*)?있나요/u]
 	},
 	{
 		locale: 'hi',
@@ -268,6 +268,14 @@ WHATSAPP CHANNEL:
 - Keep WhatsApp responses under 120 words unless the guest explicitly asks for detail.`;
 }
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Resort-local date, so the AI can resolve "tomorrow" or a year-less date like "Oct 10". */
+export function resortTodayLine(now = Date.now()): string {
+	const { date, weekday } = resortLocalParts(now);
+	return `Today is ${date} (${WEEKDAYS[weekday]}) in Koh Samui.`;
+}
+
 function messagingBookingGuidance(channel: 'line' | 'facebook' | 'whatsapp' | 'instagram', siteUrl?: string) {
 	const bookingUrl = `${normalizeSiteUrl(siteUrl) ?? ''}/booking`;
 	const contactStep =
@@ -277,7 +285,7 @@ function messagingBookingGuidance(channel: 'line' | 'facebook' | 'whatsapp' | 'i
 				`${bookingUrl}?unit=<slug>&checkin=<YYYY-MM-DD>&checkout=<YYYY-MM-DD>&guests=<n>`;
 	return `
 BOOKING IN CHAT:
-- Today is ${resortLocalParts(Date.now()).date} (${new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Bangkok' })}). Convert the guest's dates to YYYY-MM-DD; a year-less date means the next upcoming one.
+- Convert the guest's dates to YYYY-MM-DD; a year-less date means the next upcoming one.
 - You can book directly in this chat. You need: villa, check-in, check-out, number of guests, and the guest's name.
 ${contactStep}
 - As soon as you have those, call prepare_booking. It checks availability, capacity and price itself, so do not call check_availability or calculate_price first, and never write your own booking summary or total: only prepare_booking holds the booking.
@@ -483,6 +491,8 @@ ${approvedKnowledge || '- No additional owner-approved answers are available.'}
 - If the facts needed for an answer are missing from this context and the tools, reply with exactly [[UNKNOWN]]. Do not invent policies or amenities.
 
 ${currentProperty ? `The guest is currently viewing: ${currentProperty.name} (${currentProperty.slug})` : 'The guest is browsing all properties.'}
+
+${resortTodayLine()}
 
 PRICING:
 - All prices are in Thai Baht (฿ / THB)

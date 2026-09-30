@@ -1,11 +1,12 @@
-import { TZDate } from '@date-fns/tz';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { demoCode } from './codes';
 import { assertValidIsoDate, assertValidEmail } from './validation';
 
-const ZONE = 'Asia/Bangkok';
 const MINUTE = 60_000;
+// Asia/Bangkok is UTC+7 with no DST. Use fixed arithmetic: zone-aware helpers returned
+// UTC clock times in the Convex production runtime, shifting every service slot by 7 hours.
+const RESORT_OFFSET = 7 * 60 * MINUTE;
 const DAY = 24 * 60 * MINUTE;
 export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
 export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
@@ -25,16 +26,16 @@ export function localDateTimeUtc(date: string, time: string): number {
 	assertValidTime(time);
 	const [year, month, day] = date.split('-').map(Number);
 	const [hour, minute] = time.split(':').map(Number);
-	return TZDate.tz(ZONE, year, month - 1, day, hour, minute).getTime();
+	return Date.UTC(year, month - 1, day, hour, minute) - RESORT_OFFSET;
 }
 
 export function resortLocalParts(instant: number): { date: string; time: string; weekday: number } {
-	const local = TZDate.tz(ZONE, instant);
+	const local = new Date(instant + RESORT_OFFSET);
 	const pad = (n: number) => String(n).padStart(2, '0');
 	return {
-		date: `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}`,
-		time: `${pad(local.getHours())}:${pad(local.getMinutes())}`,
-		weekday: local.getDay()
+		date: local.toISOString().slice(0, 10),
+		time: `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`,
+		weekday: local.getUTCDay()
 	};
 }
 

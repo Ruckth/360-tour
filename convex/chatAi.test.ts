@@ -3,7 +3,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
-import { getResortRealityDisclosure } from "./chatAi";
+import { getResortRealityDisclosure, resortTodayLine } from "./chatAi";
 import schema from "./schema";
 
 declare global {
@@ -107,7 +107,16 @@ describe("chat AI guardrails", () => {
   it("does not intercept ordinary villa questions", () => {
     expect(getResortRealityDisclosure("Which villa is best for 4 adults?")).toBeNull();
     expect(getResortRealityDisclosure("Can I book the Pool Villa tomorrow?")).toBeNull();
+    // "Is there / can I…?" endings are ordinary questions, not reality checks.
     expect(getResortRealityDisclosure("마사지 예약할 수 있나요?")).toBeNull();
+    expect(getResortRealityDisclosure("プールはありますか？")).toBeNull();
+    expect(getResortRealityDisclosure("このリゾートにプールはありますか？")).toBeNull();
+    expect(getResortRealityDisclosure("이 리조트에 마사지 서비스가 있나요?")).toBeNull();
+  });
+
+  it("catches Korean and Japanese questions about whether this resort exists", () => {
+    expect(getResortRealityDisclosure("이 리조트가 있나요?")).toContain("데모/미리보기");
+    expect(getResortRealityDisclosure("Auralis Cove Retreat はありますか？")).toContain("デモ/プレビュー");
   });
 });
 
@@ -529,5 +538,12 @@ describe("AI takeover", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("resortTodayLine", () => {
+  it("uses the Koh Samui date, not UTC", () => {
+    // 20:00 UTC on Sunday 27 Sep is 03:00 Monday 28 Sep in Bangkok.
+    expect(resortTodayLine(Date.parse("2026-09-27T20:00:00.000Z"))).toBe("Today is 2026-09-28 (Monday) in Koh Samui.");
   });
 });

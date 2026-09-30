@@ -45,6 +45,11 @@ describe('service slots', () => {
 	it('converts Bangkok local time and respects hours and lunch', async () => {
 		expect(at('09:00')).toBe(Date.parse('2026-09-25T02:00:00.000Z'));
 		expect(resortLocalParts(at('09:00'))).toMatchObject({ date, time: '09:00', weekday: 5 });
+		expect(resortLocalParts(Date.parse('2026-09-25T06:00:00.000Z'))).toMatchObject({ date, time: '13:00' });
+		expect(resortLocalParts(Date.parse('2026-09-24T20:30:00.000Z'))).toMatchObject({ date, time: '03:30', weekday: 5 });
+		expect(at('24:00')).toBe(localDateTimeUtc('2026-09-26', '00:00'));
+		expect(localDateTimeUtc('2026-12-31', '24:00')).toBe(localDateTimeUtc('2027-01-01', '00:00'));
+		expect(resortLocalParts(Date.parse('2026-12-31T17:30:00.000Z'))).toEqual({ date: '2027-01-01', time: '00:30', weekday: 5 });
 		expect(() => at('25:00')).toThrow('HH:mm');
 		const { admin, serviceId, staffIds } = await setup();
 		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
