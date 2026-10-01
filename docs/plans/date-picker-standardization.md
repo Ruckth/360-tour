@@ -1,6 +1,8 @@
 # แผนรวม Date / Time Picker กลาง
 
-สถานะ: ตรวจ source และจัดทำแผนแล้ว ยังไม่ได้แก้ application code
+สถานะ: Implement และ audit แล้ว ดูผลการตรวจและข้อจำกัดใน [date-picker-standardization-audit.md](./date-picker-standardization-audit.md)
+
+Inventory ด้านล่างเป็น snapshot ตอนวางแผน ก่อน implementation พบเพิ่มว่า appointment dialog ถูกแยกเป็น `NewAppointmentDialog.tsx` และมี native controls ใน `RescheduleDialog.tsx` / `BreakEditDialog.tsx`; ย้ายทั้งสามจุดมาใช้ components กลางแล้ว
 
 ## ผลการตรวจ
 
