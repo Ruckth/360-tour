@@ -69,6 +69,22 @@ describe('appointment changes', () => {
 		expect(schedule.appointments.map((a) => a._id)).toContain(id);
 	});
 
+	it('shows cleanup that overlaps the next date even after the service is completed', async () => {
+		const { admin, maliId, book } = await setup();
+		const nextDate = addDays(date, 1);
+		await admin.mutation(api.roster.applyCells, { cells: [{ staffId: maliId, date }], shifts: [{ start: '23:00', end: '24:00' }], breaks: [] });
+		await admin.mutation(api.roster.applyCells, { cells: [{ staffId: maliId, date: nextDate }], shifts: [{ start: '00:00', end: '01:00' }], breaks: [] });
+		const id = await book('23:00');
+		const range = { from: at('00:00', nextDate), to: at('00:00', addDays(nextDate, 1)), staffIds: [maliId] };
+		for (const status of ['booked', 'completed'] as const) {
+			if (status === 'completed') await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: id, status });
+			const schedule = await admin.query(api.adminServices.listSchedule, range);
+			expect(schedule.appointments).toMatchObject([{ _id: id, end: range.from, blockedUntil: range.from + 15 * 60_000 }]);
+		}
+		// Cleanup ending exactly at the range boundary has no occupancy in that range.
+		expect((await admin.query(api.adminServices.listSchedule, { ...range, from: range.from + 15 * 60_000 })).appointments).toEqual([]);
+	});
+
 	it('books a cancelled or no-show appointment again without touching the original', async () => {
 		const { admin, serviceId, maliId, book, get, history } = await setup();
 		const id = await book('10:00');
@@ -246,7 +262,7 @@ describe('calendar break edits', () => {
 		expect(await preview({ next: { ...lunch, start: '17:30', end: '18:30' } })).toMatchObject({ problem: 'Breaks must fall inside a shift' });
 		expect(await preview({ next: { ...lunch, start: '14:45', end: '15:30' } })).toMatchObject({ problem: 'Breaks cannot overlap' });
 		expect(await preview({ next: lunch })).toMatchObject({ problem: expect.stringContaining('Nothing to change') });
-		expect(await preview({})).toEqual({ problem: null, conflicts: [], keptDates: [] });
+		expect(await preview({})).toMatchObject({ problem: null, conflicts: [], keptDates: [], affectedDates: [date] });
 		const stale = { ...patternPlan, breaks: [lunch] };
 		await expect(admin.mutation(api.roster.editBreak, change(maliId, { expectedPlan: stale }))).rejects.toThrow(STALE_ROSTER);
 		await admin.mutation(api.roster.editBreak, change(maliId, { next: null }));
@@ -274,6 +290,19 @@ describe('calendar break edits', () => {
 			expect(await admin.query(api.roster.previewBreakChange, over)).toMatchObject({ conflicts: [{ appointmentId: id }] });
 			expect(await admin.mutation(api.roster.editBreak, over)).toMatchObject({ ok: false, conflicts: [{ appointmentId: id }] });
 		}
+	});
+
+	it('previews the next four weeks of affected weekly dates while exempting overrides', async () => {
+		const { admin, maliId } = await setup();
+		const exempt = addDays(date, 7);
+		await admin.mutation(api.roster.applyCells, { cells: [{ staffId: maliId, date: exempt }], shifts: [], breaks: [] });
+		const preview = await admin.query(api.roster.previewBreakChange, change(maliId, { scope: 'weekly' }));
+		expect(preview).toMatchObject({
+			problem: null,
+			affectedDates: [date, addDays(date, 14), addDays(date, 21)],
+			keptDates: [exempt],
+			previewThrough: '2026-10-21'
+		});
 	});
 
 	it('changes the weekly default only on pattern dates, keeping date overrides in force', async () => {

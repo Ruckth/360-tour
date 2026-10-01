@@ -589,6 +589,7 @@ function StaffCalendar() {
       </div>
 
       <AppointmentSheet
+        key={selected?._id ?? "closed"}
         appointment={selected}
         services={activeServices}
         staffById={staffById}

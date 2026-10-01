@@ -694,7 +694,7 @@ async function planBreakChange(ctx: ReadCtx, input: BreakChange) {
 		const appointments = await appointmentsByCell(ctx, input.date, input.date);
 		const orphaned = uncovered(input.date, plan, appointments.get(cellKey(person._id, input.date)), Date.now());
 		const conflicts = await describeConflicts(ctx, orphaned.length ? [{ staff: person, date: input.date, appointments: orphaned }] : []);
-		return { scope: 'day' as const, person, override, plan, conflicts, keptDates: [] };
+		return { scope: 'day' as const, person, override, plan, conflicts, keptDates: [], affectedDates: [input.date], previewThrough: input.date };
 	}
 	if (override) throw new Error("This date has its own roster plan, so the weekly default doesn't show here. Change this day only, or reset the day in Roster first");
 	const weekday = weekdayOf(input.date);
@@ -706,20 +706,24 @@ async function planBreakChange(ctx: ReadCtx, input: BreakChange) {
 	const overrideDates = await upcomingOverrideDates(ctx, person._id);
 	const conflicts = await describeConflicts(ctx, await patternConflicts(ctx, person, pattern, overrideDates));
 	const today = resortLocalParts(Date.now()).date;
-	const keptDates = [...overrideDates].filter((date) => date >= today && weekdayOf(date) === weekday).sort();
-	return { scope: 'weekly' as const, person, pattern, conflicts, keptDates };
+	// The weekly default continues indefinitely; show a bounded four-week date preview.
+	const previewThrough = addDays(today, 27);
+	const upcomingDates = Array.from({ length: 28 }, (_, i) => addDays(today, i)).filter((date) => weekdayOf(date) === weekday);
+	const keptDates = upcomingDates.filter((date) => overrideDates.has(date));
+	const affectedDates = upcomingDates.filter((date) => !overrideDates.has(date));
+	return { scope: 'weekly' as const, person, pattern, conflicts, keptDates, affectedDates, previewThrough };
 }
 
-/** What a break edit would do: a problem, or its conflicts and the dates that keep their own plan. Never throws for bad input. */
+/** Conflicts are checked across upcoming bookings; affected and exempt dates are previewed for four weeks. Never throws for bad input. */
 export const previewBreakChange = query({
 	args: breakChangeArgs,
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		try {
 			const change = await planBreakChange(ctx, args);
-			return { problem: null, conflicts: change.conflicts, keptDates: change.keptDates };
+			return { problem: null, conflicts: change.conflicts, keptDates: change.keptDates, affectedDates: change.affectedDates, previewThrough: change.previewThrough };
 		} catch (error) {
-			return { problem: error instanceof Error ? error.message : 'Could not check this change', conflicts: [], keptDates: [] };
+			return { problem: error instanceof Error ? error.message : 'Could not check this change', conflicts: [], keptDates: [], affectedDates: [], previewThrough: null };
 		}
 	}
 });

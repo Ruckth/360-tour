@@ -401,7 +401,8 @@ export const listSchedule = query({
 			)];
 		for (const range of ranges) {
 			for await (const appointment of range) {
-				if (appointment.end > args.from && (!selected || selected.has(appointment.staffId))) inRange.push(appointment);
+				const occupiedUntil = blocksTime(appointment) ? appointment.blockedUntil : appointment.end;
+				if (occupiedUntil > args.from && (!selected || selected.has(appointment.staffId))) inRange.push(appointment);
 			}
 		}
 		inRange.sort((a, b) => a.start - b.start);
@@ -582,12 +583,17 @@ export const markAppointmentPaid = mutation({
 	}
 });
 
-/** Same staff and start time; the length, turnaround and price follow the new service. */
-async function serviceChange(ctx: MutationCtx, appointment: Doc<'serviceAppointments'>, serviceId: Id<'services'>) {
+type ServiceTerms = Pick<Doc<'services'>, 'durationMin' | 'bufferMin' | 'price' | 'currency'>;
+
+/** Same staff and start time; the length, turnaround and price follow the reviewed service. */
+async function serviceChange(ctx: MutationCtx, appointment: Doc<'serviceAppointments'>, serviceId: Id<'services'>, expected?: ServiceTerms) {
 	if (appointment.status !== 'booked' && appointment.status !== 'arrived') throw new Error('Only booked or arrived appointments can change service');
 	if (appointment.paymentStatus !== 'unpaid') throw new Error('Paid appointments cannot change service');
 	const service = await ctx.db.get(serviceId);
 	if (!service || service.status !== 'active') throw new Error('Service unavailable');
+	if (expected && (service.durationMin !== expected.durationMin || service.bufferMin !== expected.bufferMin || service.price !== expected.price || service.currency !== expected.currency)) {
+		throw new Error('The service changed since you reviewed it. Review the latest service and try again.');
+	}
 	const staff = await ctx.db.get(appointment.staffId);
 	if (!staff || staff.status !== 'active' || !service.staffIds.includes(staff._id)) {
 		throw new Error(`${staff?.name ?? 'This staff member'} doesn't perform ${service.name}`);
@@ -613,12 +619,7 @@ export const updateAppointmentDetails = mutation({
 		assertFresh(appointment, args.expectedRevision);
 		const details = guestDetails(args);
 		const newServiceId = args.serviceId !== undefined && args.serviceId !== appointment.serviceId ? args.serviceId : null;
-		if (newServiceId && args.expectedService) {
-			const current = await ctx.db.get(newServiceId);
-			const expected = args.expectedService;
-			if (!current || current.durationMin !== expected.durationMin || current.bufferMin !== expected.bufferMin || current.price !== expected.price || current.currency !== expected.currency) throw new Error('The service changed since you reviewed it. Review the latest service and try again.');
-		}
-		const service = newServiceId ? await serviceChange(ctx, appointment, newServiceId) : {};
+		const service = newServiceId ? await serviceChange(ctx, appointment, newServiceId, args.expectedService) : {};
 		await recordAppointmentChange(ctx, appointment, { ...details, ...service }, { actor: admin.email, kind: newServiceId ? 'service' : 'details' });
 	}
 });

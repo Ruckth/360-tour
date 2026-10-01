@@ -64,6 +64,13 @@ export function BreakEditDialog({
         <>
           <p>An end time of 00:00 means midnight at the end of this date.</p>
           <p>Other shifts, breaks and notes stay as they are. The latest roster change can be undone in Roster.</p>
+          {scope === "weekly" && preview?.previewThrough ? (
+            <p>
+              Next four weeks, through {formatResortFullDate(resortMidnight(preview.previewThrough))}: {preview.affectedDates.length
+                ? `changes ${preview.affectedDates.map((date) => formatResortFullDate(resortMidnight(date))).join(", ")}.`
+                : "all these dates keep their own plan."} The weekly default continues after that; dates with their own plan keep it.
+            </p>
+          ) : null}
           {scope === "weekly" && preview?.keptDates.length ? (
             <p>These {weekday}s keep their own plan: {preview.keptDates.map((date) => formatResortFullDate(resortMidnight(date))).join(", ")}.</p>
           ) : null}

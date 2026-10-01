@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -87,22 +93,37 @@ export function NewAppointmentDialog({
   const { rebook } = draft;
   const [serviceId, setServiceId] = useState<Id<"services"> | undefined>(() => {
     // The rebooked or last used service, as long as the staff member picked on the calendar performs it.
-    const fits = (s: Service) => !draft.staffId || s.staffIds.includes(draft.staffId);
+    const fits = (s: Service) =>
+      !draft.staffId || s.staffIds.includes(draft.staffId);
     const wanted = rebook?.serviceId ?? readLastService();
-    return (services.find((s) => s._id === wanted && fits(s)) ?? services.find(fits) ?? services[0])?._id;
+    return (
+      services.find((s) => s._id === wanted && fits(s)) ??
+      services.find(fits) ??
+      services[0]
+    )?._id;
   });
   const service = services.find((s) => s._id === serviceId);
-  const qualified = staff.filter((person) => service?.staffIds.includes(person._id));
-  const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "auto");
-  const staffId = qualified.some((person) => person._id === staffChoice) ? (staffChoice as Id<"staff">) : undefined;
+  const qualified = staff.filter((person) =>
+    service?.staffIds.includes(person._id),
+  );
+  const [staffChoice, setStaffChoice] = useState<string>(
+    draft.staffId ?? "auto",
+  );
+  const staffId = qualified.some((person) => person._id === staffChoice)
+    ? (staffChoice as Id<"staff">)
+    : undefined;
   const [changingStaff, setChangingStaff] = useState(false);
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
   const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
   const [error, setError] = useState("");
   const today = resortIsoDate(useNow());
 
-  const slots = useQuery(api.adminServices.findOpenSlots, serviceId && date >= today ? { serviceId, date, staffId } : "skip");
+  const slots = useQuery(
+    api.adminServices.findOpenSlots,
+    serviceId && date >= today ? { serviceId, date, staffId } : "skip",
+  );
   // Fall back to the next open time (or the first), so the form is always one click from booking.
   const selectedSlot = pickSlot(slots, start);
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
@@ -117,9 +138,10 @@ export function NewAppointmentDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSlot || !serviceId || saving) return;
+    if (!selectedSlot || !serviceId || submitting.current) return;
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "").trim();
+    submitting.current = true;
     setSaving(true);
     setError("");
     try {
@@ -138,6 +160,7 @@ export function NewAppointmentDialog({
     } catch (err) {
       setError(errorText(err, "Could not create the appointment."));
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
@@ -146,183 +169,257 @@ export function NewAppointmentDialog({
     <Dialog
       open
       onOpenChange={(next) => {
-        if (!next) onClose();
+        if (!next && !submitting.current) onClose();
       }}
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
+        showCloseButton={!saving}
+      >
         <DialogHeader>
-          <DialogTitle>{rebook ? `Book ${rebook.guestName} again` : "New appointment"}</DialogTitle>
+          <DialogTitle>
+            {rebook ? `Book ${rebook.guestName} again` : "New appointment"}
+          </DialogTitle>
           <DialogDescription>
             {rebook
               ? `A new appointment linked to ${rebook.confirmationCode}, which stays as it was. Only open times are shown.`
               : "Only open times are shown. Booking blocks the staff member's time."}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label>Service</Label>
-              <Select
-                value={serviceId}
-                onValueChange={(value) => {
-                  setServiceId(value as Id<"services">);
-                  setStart(null);
-                }}
-              >
-                <SelectTrigger className="rounded-lg" aria-label="Service">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {services.map((s) => (
-                    <SelectItem key={s._id} value={s._id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="na-date">Date</Label>
-              <DatePicker id="na-date" value={date} min={today} required onValueChange={(next) => { setDate(next); setStart(null); }} />
-            </div>
-          </div>
-          {service ? (
-            <p className="-mt-2 text-xs text-muted-foreground">
-              {service.durationMin} min · {formatMoney(service.price, service.currency)}
-              {service.bufferMin ? ` · ${service.bufferMin} min turnaround` : ""}
-            </p>
-          ) : null}
-          <div className="grid gap-2">
-            <Label>Time</Label>
-            {date < today ? (
-              <p className="text-sm text-muted-foreground">Pick today or a future date.</p>
-            ) : slots === undefined ? (
-              <div role="status" aria-label="Finding open times" className="grid grid-cols-4 gap-1.5 rounded-lg border border-border p-3 sm:grid-cols-6">
-                {Array.from({ length: 12 }, (_, i) => (
-                  <Skeleton key={i} className="h-9" />
-                ))}
-              </div>
-            ) : slots.length === 0 ? (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                No open times on this date.
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDate(resortIsoDate(resortMidnight(date) + DAY_MS))}
+        <form onSubmit={submit}>
+          <fieldset disabled={saving} className="grid min-w-0 gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label>Service</Label>
+                <Select
+                  value={serviceId}
+                  disabled={saving}
+                  onValueChange={(value) => {
+                    setServiceId(value as Id<"services">);
+                    setStart(null);
+                  }}
                 >
-                  Next day
-                </Button>
-              </p>
-            ) : (
-              <div className="grid max-h-64 gap-3 overflow-y-auto rounded-lg border border-border p-3">
-                {parts.map((part) => (
-                  <fieldset key={part.label}>
-                    <legend className="admin-eyebrow mb-1.5">{part.label}</legend>
-                    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-                      {part.slots.map((slot) => {
-                        const active = slot.start === selectedSlot?.start;
-                        return (
-                          <Button
-                            key={slot.start}
-                            type="button"
-                            size="sm"
-                            variant={active ? "default" : "outline"}
-                            aria-pressed={active}
-                            aria-label={formatResortTime(slot.start)}
-                            className="px-0 tabular-nums"
-                            onClick={() => setStart(slot.start)}
-                          >
-                            {/* The section heading says morning/afternoon/evening. */}
-                            {formatResortTime(slot.start).replace(/\s?[AP]M$/, "")}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-                ))}
+                  <SelectTrigger className="rounded-lg" aria-label="Service">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {services.map((s) => (
+                      <SelectItem key={s._id} value={s._id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-            {start !== null && selectedSlot && selectedSlot.start !== start ? (
-              <p className="text-sm text-destructive">
-                {selectedSlot.start > start
-                  ? "That time isn't open. Showing the next open time."
-                  : "No open times after that. Showing the first open time."}
+              <div className="grid gap-2">
+                <Label htmlFor="na-date">Date</Label>
+                <DatePicker
+                  disabled={saving}
+                  id="na-date"
+                  value={date}
+                  min={today}
+                  required
+                  onValueChange={(next) => {
+                    setDate(next);
+                    setStart(null);
+                  }}
+                />
+              </div>
+            </div>
+            {service ? (
+              <p className="-mt-2 text-xs text-muted-foreground">
+                {service.durationMin} min ·{" "}
+                {formatMoney(service.price, service.currency)}
+                {service.bufferMin
+                  ? ` · ${service.bufferMin} min turnaround`
+                  : ""}
               </p>
             ) : null}
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="na-staff">Staff</Label>
-            {changingStaff ? (
-              <Select
-                value={staffId ?? "auto"}
-                onValueChange={(value) => {
-                  setStaffChoice(value);
-                  setChangingStaff(false);
+            <div className="grid gap-2">
+              <Label>Time</Label>
+              {date < today ? (
+                <p className="text-sm text-muted-foreground">
+                  Pick today or a future date.
+                </p>
+              ) : slots === undefined ? (
+                <div
+                  role="status"
+                  aria-label="Finding open times"
+                  className="grid grid-cols-4 gap-1.5 rounded-lg border border-border p-3 sm:grid-cols-6"
+                >
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <Skeleton key={i} className="h-9" />
+                  ))}
+                </div>
+              ) : slots.length === 0 ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  No open times on this date.
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setDate(resortIsoDate(resortMidnight(date) + DAY_MS))
+                    }
+                  >
+                    Next day
+                  </Button>
+                </p>
+              ) : (
+                <div className="grid max-h-64 gap-3 overflow-y-auto rounded-lg border border-border p-3">
+                  {parts.map((part) => (
+                    <fieldset key={part.label}>
+                      <legend className="admin-eyebrow mb-1.5">
+                        {part.label}
+                      </legend>
+                      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+                        {part.slots.map((slot) => {
+                          const active = slot.start === selectedSlot?.start;
+                          return (
+                            <Button
+                              key={slot.start}
+                              type="button"
+                              size="sm"
+                              variant={active ? "default" : "outline"}
+                              aria-pressed={active}
+                              aria-label={formatResortTime(slot.start)}
+                              className="px-0 tabular-nums"
+                              onClick={() => setStart(slot.start)}
+                            >
+                              {/* The section heading says morning/afternoon/evening. */}
+                              {formatResortTime(slot.start).replace(
+                                /\s?[AP]M$/,
+                                "",
+                              )}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              )}
+              {start !== null &&
+              selectedSlot &&
+              selectedSlot.start !== start ? (
+                <p className="text-sm text-destructive">
+                  {selectedSlot.start > start
+                    ? "That time isn't open. Showing the next open time."
+                    : "No open times after that. Showing the first open time."}
+                </p>
+              ) : null}
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="na-staff">Staff</Label>
+              {changingStaff ? (
+                <Select
+                  value={staffId ?? "auto"}
+                  disabled={saving}
+                  onValueChange={(value) => {
+                    setStaffChoice(value);
+                    setChangingStaff(false);
+                  }}
+                >
+                  <SelectTrigger id="na-staff" className="rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">
+                      Auto (least busy that day)
+                    </SelectItem>
+                    {qualified.map((person) => (
+                      <SelectItem key={person._id} value={person._id}>
+                        {person.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="flex min-h-9 flex-wrap items-center gap-x-2 text-sm">
+                  {assigned ? (
+                    <>
+                      <StaffAvatar staff={assigned} className="size-6" />
+                      <span>
+                        Assigned to{" "}
+                        <span className="font-semibold">{assigned.name}</span>
+                        {staffId ? null : (
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · least busy
+                          </span>
+                        )}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      Picked automatically once there&apos;s an open time.
+                    </span>
+                  )}
+                  <Button
+                    id="na-staff"
+                    type="button"
+                    size="sm"
+                    variant="link"
+                    className="h-auto px-1"
+                    onClick={() => setChangingStaff(true)}
+                  >
+                    Change
+                  </Button>
+                </p>
+              )}
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="na-name">Guest name</Label>
+              <Input
+                id="na-name"
+                name="guestName"
+                defaultValue={rebook?.guestName}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor="na-phone">Phone</Label>
+                <Input
+                  id="na-phone"
+                  name="guestPhone"
+                  type="tel"
+                  defaultValue={rebook?.guestPhone}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="na-email">Email (optional)</Label>
+                <Input
+                  id="na-email"
+                  name="guestEmail"
+                  type="email"
+                  defaultValue={rebook?.guestEmail}
+                />
+              </div>
+            </div>
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={() => {
+                  if (!submitting.current) onClose();
                 }}
               >
-                <SelectTrigger id="na-staff" className="rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">Auto (least busy that day)</SelectItem>
-                  {qualified.map((person) => (
-                    <SelectItem key={person._id} value={person._id}>
-                      {person.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <p className="flex min-h-9 flex-wrap items-center gap-x-2 text-sm">
-                {assigned ? (
-                  <>
-                    <StaffAvatar staff={assigned} className="size-6" />
-                    <span>
-                      Assigned to <span className="font-semibold">{assigned.name}</span>
-                      {staffId ? null : <span className="text-muted-foreground"> · least busy</span>}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">Picked automatically once there&apos;s an open time.</span>
-                )}
-                <Button
-                  id="na-staff"
-                  type="button"
-                  size="sm"
-                  variant="link"
-                  className="h-auto px-1"
-                  onClick={() => setChangingStaff(true)}
-                >
-                  Change
-                </Button>
-              </p>
-            )}
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="na-name">Guest name</Label>
-            <Input id="na-name" name="guestName" defaultValue={rebook?.guestName} required />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="na-phone">Phone</Label>
-              <Input id="na-phone" name="guestPhone" type="tel" defaultValue={rebook?.guestPhone} required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="na-email">Email (optional)</Label>
-              <Input id="na-email" name="guestEmail" type="email" defaultValue={rebook?.guestEmail} />
-            </div>
-          </div>
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving || !selectedSlot}>
-              {saving ? <Spinner className="text-current" /> : null}
-              {rebook ? "Book again" : "Book appointment"}
-            </Button>
-          </DialogFooter>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving || !selectedSlot}>
+                {saving ? <Spinner className="text-current" /> : null}
+                {rebook ? "Book again" : "Book appointment"}
+              </Button>
+            </DialogFooter>
+          </fieldset>
         </form>
       </DialogContent>
     </Dialog>
