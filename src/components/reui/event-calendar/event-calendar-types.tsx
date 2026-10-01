@@ -57,6 +57,9 @@ interface CalendarEvent<TData = unknown> {
   /** Per-event overrides; defaults come from interactions.drag / .resize. */
   draggable?: boolean
   resizable?: boolean
+  /** Drag/resize step and minimum length in minutes; default to the calendar step. */
+  snapDuration?: number
+  minDuration?: number
   /** Packing prominence; feeds getEventPriority ordering. */
   priority?: number
   /** Verbatim stacking override; replaces the computed 10 + column. */

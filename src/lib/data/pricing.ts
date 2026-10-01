@@ -19,7 +19,7 @@ export interface PropertyPricing {
 	directBenefits: DirectBenefit[];
 }
 
-const sharedBenefits: DirectBenefit[] = [
+export const directBenefits: DirectBenefit[] = [
 	{ benefit: 'Free airport pickup', directOnly: true },
 	{ benefit: 'Welcome basket', directOnly: true },
 	{ benefit: 'Late checkout (2pm)', directOnly: true },
@@ -58,7 +58,7 @@ export const propertyPricingData: PropertyPricing[] = [
 				logo: 'AG'
 			}
 		],
-		directBenefits: sharedBenefits
+		directBenefits
 	},
 	{
 		propertyId: 'garden-suite',
@@ -89,7 +89,7 @@ export const propertyPricingData: PropertyPricing[] = [
 				logo: 'AG'
 			}
 		],
-		directBenefits: sharedBenefits
+		directBenefits
 	},
 	{
 		propertyId: 'penthouse',
@@ -120,7 +120,7 @@ export const propertyPricingData: PropertyPricing[] = [
 				logo: 'AG'
 			}
 		],
-		directBenefits: sharedBenefits
+		directBenefits
 	}
 ];
 

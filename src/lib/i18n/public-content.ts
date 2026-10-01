@@ -10,7 +10,7 @@ import ru from "../../../messages/ru.json";
 import th from "../../../messages/th.json";
 import zhCN from "../../../messages/zh-CN.json";
 import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
-import { getPricingByPropertyId } from "@/lib/data/pricing";
+import { directBenefits, getPricingByPropertyId } from "@/lib/data/pricing";
 import { getPropertyById, properties, type Property } from "@/lib/data/properties";
 import type { PropertySocialProof } from "@/lib/data/reviews";
 import { resort } from "@/lib/data/resort-config";
@@ -131,34 +131,43 @@ export function getLocationImageAlt(locale?: string) {
   return getPublicMessages(locale).Resort.locationImageAlt;
 }
 
-export function localizeProperty<T extends Property>(property: T, locale?: string): T {
-  const key = propertyKeyFrom(property);
-  if (!key) return property;
+export type PropertyTranslation = {
+  locale: string;
+  tagline?: string;
+  description?: string;
+  amenities?: string[];
+};
 
-  const content = getPublicMessages(locale).Properties[key];
+/** Villa copy as stored in Convex: English fields plus optional per-locale overrides. */
+export type LocalizableProperty = Property & {
+  slug?: string;
+  translations?: PropertyTranslation[];
+  contentEditedAt?: number | null;
+};
+
+/**
+ * Resolves guest-facing villa copy for a locale, per field:
+ * DB translation → edited DB English → bundled messages/*.json copy → DB English.
+ * Bundled copy only exists for the seeded slugs, and stops applying once an admin edits the English text.
+ */
+export function localizePropertyLike<T extends LocalizableProperty>(property: T, locale?: string): T {
+  const publicLocale = normalizePublicLocale(locale);
+  const translation = property.translations?.find(
+    (item) => normalizePublicLocale(item.locale) === publicLocale,
+  );
+  const key = property.contentEditedAt ? undefined : propertyKeyFrom(property);
+  const bundled = key ? getPublicMessages(publicLocale).Properties[key] : undefined;
+  const bundledAmenities = key && bundled ? valuesFromKeys(bundled.amenities, propertyAmenityKeys[key]) : undefined;
+
   return {
     ...property,
-    tagline: content.tagline,
-    description: content.description,
-    amenities: valuesFromKeys(content.amenities, propertyAmenityKeys[key]),
+    tagline: translation?.tagline?.trim() || bundled?.tagline || property.tagline,
+    description: translation?.description?.trim() || bundled?.description || property.description,
+    amenities: translation?.amenities?.length ? translation.amenities : bundledAmenities ?? property.amenities,
   };
 }
 
-export function localizePropertyLike<T extends Property & { slug?: string }>(
-  property: T,
-  locale?: string,
-): T {
-  const key = propertyKeyFrom(property);
-  if (!key) return property;
-
-  const content = getPublicMessages(locale).Properties[key];
-  return {
-    ...property,
-    tagline: content.tagline,
-    description: content.description,
-    amenities: valuesFromKeys(content.amenities, propertyAmenityKeys[key]),
-  };
-}
+export const localizeProperty = localizePropertyLike;
 
 export function getLocalizedProperties(locale?: string) {
   return properties.map((property) => localizeProperty(property, locale));
@@ -221,6 +230,15 @@ export function getLocalizedSocialProofByPropertyId(
       return content ? { ...snippet, quote: content.quote } : snippet;
     }),
   };
+}
+
+/** Direct-booking perks shared by every villa. */
+export function getLocalizedDirectBenefits(locale?: string) {
+  const benefits = getPublicMessages(locale).Pricing.benefits;
+  return directBenefits.map((benefit, index) => ({
+    ...benefit,
+    benefit: benefits[pricingBenefitKeys[index]] ?? benefit.benefit,
+  }));
 }
 
 export function getLocalizedPricingByPropertyId(propertyId: string, locale?: string) {

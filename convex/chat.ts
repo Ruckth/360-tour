@@ -7,11 +7,13 @@ import {
 import {
 	buildAdminChatMetadataPatch,
 	buildAdminSearchText,
+	getAdminChatSortAt,
 	patchSessionAfterMessages
 } from './lib/adminChatMetadata';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 import { enforceRateLimit } from './lib/rateLimit';
 import { asksForStaff, queueStaffAlert } from './chatKnowledge';
+import { recordLead } from './leads';
 
 const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -116,13 +118,17 @@ export const touchSession = mutation({
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
+		// Runs every 30s per open chat, so only fields that changed are written and the villa
+		// lookup happens only when the page's villa changes. lastSeenAt is always written: it is
+		// what marks the guest as online.
 		const now = Date.now();
-		const propertyId = args.propertySlug
-			? await resolvePropertyId(ctx, args.propertySlug)
-			: session.propertyId;
+		const slugChanged = args.propertySlug !== undefined && args.propertySlug !== session.propertySlug;
+		const propertyId =
+			args.propertySlug && (slugChanged || !session.propertyId)
+				? await resolvePropertyId(ctx, args.propertySlug)
+				: session.propertyId;
 
-		const touchPatch = {
-			propertyId,
+		const context = {
 			propertySlug: args.propertySlug ?? session.propertySlug,
 			currentPath: args.currentPath ?? session.currentPath,
 			referrer: args.referrer ?? session.referrer,
@@ -131,18 +137,25 @@ export const touchSession = mutation({
 			browserLanguage: args.browserLanguage ?? session.browserLanguage,
 			screenSize: args.screenSize ?? session.screenSize,
 			viewportSize: args.viewportSize ?? session.viewportSize,
-			platform: args.platform ?? session.platform,
-			lastSeenAt: now,
-			lastOpenedAt: args.isOpen ? now : session.lastOpenedAt
+			platform: args.platform ?? session.platform
 		};
-		const nextSession = {
-			...session,
-			...touchPatch
-		};
+		const changed = Object.fromEntries(
+			Object.entries(context).filter(([key, value]) => session[key as keyof typeof context] !== value)
+		) as Partial<typeof context>;
+		const nextSession = { ...session, ...context, propertyId, lastSeenAt: now };
+		const adminSortAt = getAdminChatSortAt(nextSession);
+		const adminSearchText =
+			Object.keys(changed).length > 0 || session.adminSearchText === undefined
+				? buildAdminSearchText(nextSession)
+				: session.adminSearchText;
 
 		await ctx.db.patch(args.sessionId, {
-			...touchPatch,
-			...buildAdminChatMetadataPatch(nextSession)
+			...changed,
+			...(propertyId !== session.propertyId ? { propertyId } : {}),
+			lastSeenAt: now,
+			...(args.isOpen ? { lastOpenedAt: now } : {}),
+			...(adminSortAt !== session.adminSortAt ? { adminSortAt } : {}),
+			...(adminSearchText !== session.adminSearchText ? { adminSearchText } : {})
 		});
 	}
 });
@@ -302,19 +315,7 @@ export const identifyVisitor = mutation({
 		});
 
 		if (email) {
-			const existingLead = await ctx.db
-				.query('leads')
-				.withIndex('by_email', (q) => q.eq('email', email))
-				.first();
-
-			if (!existingLead) {
-				await ctx.db.insert('leads', {
-					propertyId: session.propertyId,
-					email,
-					source: 'chat',
-					createdAt: Date.now()
-				});
-			}
+			await recordLead(ctx, { email, source: 'chat', propertyId: session.propertyId });
 		}
 	}
 });
@@ -362,6 +363,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		if (session.aiPaused) return { stored: false as const, messageId: null };
 
 		const timestamp = Date.now();
 		const messageId = await ctx.db.insert('chatMessages', {
@@ -377,14 +379,40 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 			lastSeenAt: timestamp,
 		});
 
-		return messageId;
+		return { stored: true as const, messageId };
 	}
 });
 
+/** Public view of a chat session: no admin-only or visitor-contact fields. */
 export const getSession = query({
 	args: { sessionId: v.id('chatSessions') },
 	handler: async (ctx, args) => {
-		return await ctx.db.get(args.sessionId);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) return null;
+		return {
+			_id: session._id,
+			_creationTime: session._creationTime,
+			propertySlug: session.propertySlug,
+			channel: session.channel,
+			messageCount: session.messageCount,
+			latestMessageAt: session.latestMessageAt,
+			createdAt: session.createdAt,
+			aiPaused: Boolean(session.aiPaused)
+		};
+	}
+});
+
+export const getSessionInternal = internalQuery({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => await ctx.db.get(args.sessionId)
+});
+
+/** Webhooks check this before any automatic reply: staff took over the chat. */
+export const isAiPaused = query({
+	args: { sessionId: v.id('chatSessions') },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.sessionId);
+		return Boolean(session?.aiPaused);
 	}
 });
 
@@ -394,11 +422,12 @@ export const getMessages = query({
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db
+		const recent = await ctx.db
 			.query('chatMessages')
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-			.order('asc')
+			.order('desc')
 			.take(args.limit ?? 100);
+		return recent.reverse();
 	}
 });
 

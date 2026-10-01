@@ -6,6 +6,8 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   action?: ChatActionHint;
+  /** Staff has taken over: show "a team member will reply" after this guest message. */
+  staffReplyNotice?: boolean;
 };
 export type ChatSuggestion = ChatSuggestionCandidate & {
   answer: string;

@@ -294,6 +294,7 @@ async function handleLineEvent({
   let claimed: ClaimedLineEvent;
   try {
     claimed = (await client.mutation(api.line.claimEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       lineUserId,
       profileName: await fetchLineProfileName(accessToken, lineUserId),
@@ -320,6 +321,7 @@ async function handleLineEvent({
   try {
     if (claimed.sessionId) {
       await client.mutation(api.line.recordInboundEvent, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
@@ -328,12 +330,23 @@ async function handleLineEvent({
 
     if (!event.replyToken || !claimed.sessionId || eventType === "unsupported") {
       await client.mutation(api.line.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         reason: !event.replyToken
           ? "Missing LINE reply token"
           : !claimed.sessionId
             ? "Missing direct LINE user id"
             : "Unsupported LINE event type",
+      } as never);
+      return;
+    }
+
+    // Staff took over this chat: the guest message is recorded, no automatic reply.
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.line.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       } as never);
       return;
     }
@@ -464,16 +477,35 @@ async function handleLineEvent({
                 : questionBankReplyMode(questionBankMatch);
           } else {
             if (eventType === "message" && messageText) {
-              await client.mutation(api.chatKnowledge.recordUnknownQuestion, {
-                sessionId: claimed.sessionId,
-                userQuestion: messageText,
-              } as never);
+              generated = await timeout(
+                client.action(api.chatAi.generateReply, {
+                  sessionId: claimed.sessionId,
+                  userMessage: messageText,
+                  channel: "line",
+                  siteUrl,
+                  ...(locale ? { locale } : {}),
+                } as never) as Promise<GeneratedReply>,
+                AI_REPLY_TIMEOUT_MS,
+                () => timeoutFallbackReply(locale),
+              );
+              responseText = generated.response ?? timeoutFallbackReply(locale).response;
+              replyMode = generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai";
+            } else {
+              responseText = localizedUnknownFallbackReply(locale);
+              replyMode = "unknown_fallback";
             }
-            responseText = localizedUnknownFallbackReply(locale);
-            replyMode = "unknown_fallback";
           }
         }
       }
+    }
+
+    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+      await client.mutation(api.line.markEventIgnored, {
+        eventId: claimed.eventId,
+        reason: "AI paused: staff is replying",
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
+      } as never);
+      return;
     }
 
     lineReplyStatus = await replyToLine({
@@ -504,6 +536,7 @@ async function handleLineEvent({
     }
 
     await client.mutation(api.line.completeEvent, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventId: claimed.eventId,
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
@@ -525,6 +558,7 @@ async function handleLineEvent({
 
     try {
       await client.mutation(api.line.markEventFailed, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         error: errorMessage,
         ...(typeof failedLineReplyStatus === "number"

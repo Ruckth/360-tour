@@ -45,6 +45,7 @@ Set these in Vercel Production and Preview:
 | Name | Required | Notes |
 | --- | --- | --- |
 | `CONVEX_DEPLOY_KEY` | Yes | Required by `pnpm vercel-build`. Use the correct Convex deploy key for each Vercel environment. |
+| `CONVEX_SERVER_SECRET` | Yes for channel webhooks | Use the same random secret in Vercel and Convex. Next.js sends it to Convex for LINE, Facebook, Instagram, and WhatsApp event mutations. |
 | `NEXT_PUBLIC_CONVEX_URL` | Yes | Usually injected by `convex deploy`; keep a placeholder only if Vercel requires the key before first deploy. |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Optional | Convex HTTP origin for the OTA export URL shown in admin. If omitted, the app derives it from `NEXT_PUBLIC_CONVEX_URL`. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes for admin | Enables Clerk UI and admin sign-in. Do not use `placeholder` in production if admin should work. |
@@ -77,6 +78,7 @@ Set these in the Convex production deployment:
 | --- | --- | --- |
 | `CLERK_JWT_ISSUER_DOMAIN` | Yes for admin | Required for Convex to validate Clerk tokens. |
 | `ADMIN_EMAILS` | Yes for admin | Comma-separated allowlist for `/admin`, for example `owner@example.com,manager@example.com`. |
+| `CONVEX_SERVER_SECRET` | Yes for channel webhooks | Must match Vercel exactly. Set it in Convex first, then Vercel; until it is set in Convex, webhook event mutations warn once and accept calls for rollout compatibility. |
 | `AI_API_KEY` | No | Enables live AI concierge responses. |
 | `AI_API_BASE_URL` | No | Use `https://api.x.ai/v1` for xAI. |
 | `AI_SIMPLE_MODEL` | No | Current expected value is `grok-4.3`. |

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type CSSProperties } from "react";
+import { Fragment, forwardRef, type CSSProperties } from "react";
 import { ChatBookingCard } from "@/components/chat/ChatBookingCard";
 import { ChatVillaTourCard } from "@/components/chat/ChatVillaTourCard";
 import {
@@ -89,6 +89,7 @@ export const ChatMessages = forwardRef<
     isTyping: boolean;
     initialPrompt: string;
     thinkingLabel: string;
+    staffReplyNoticeLabel: string;
     mode: "overlay" | "page";
     style?: CSSProperties;
   }
@@ -104,6 +105,7 @@ export const ChatMessages = forwardRef<
     isTyping,
     initialPrompt,
     thinkingLabel,
+    staffReplyNoticeLabel,
     mode,
     style,
   },
@@ -145,39 +147,45 @@ export const ChatMessages = forwardRef<
         const hasActionCard =
           message.role === "assistant" && actionCard.type !== "none";
         return (
-          <ChatBubble
-            key={`${message.role}-${index}`}
-            variant={message.role === "user" ? "sent" : "received"}
-            className={
-              hasActionCard ? "w-full max-w-[96%] md:max-w-[85%]" : undefined
-            }
-          >
-            {message.role === "assistant" ? (
-              <ChatBubbleAvatar label="✦" />
+          <Fragment key={`${message.role}-${index}`}>
+            <ChatBubble
+              variant={message.role === "user" ? "sent" : "received"}
+              className={
+                hasActionCard ? "w-full max-w-[96%] md:max-w-[85%]" : undefined
+              }
+            >
+              {message.role === "assistant" ? (
+                <ChatBubbleAvatar label="✦" />
+              ) : null}
+              <div className={cn("min-w-0", hasActionCard && "flex-1")}>
+                <ChatBubbleMessage
+                  variant={message.role === "user" ? "sent" : "received"}
+                >
+                  {renderMessage(message.content)}
+                </ChatBubbleMessage>
+                {actionCard.type === "booking" ? (
+                  <ChatBookingCard context={actionCard.context} />
+                ) : null}
+                {actionCard.type === "tour" ? (
+                  <ChatVillaTourCard propertySlug={actionCard.propertySlug} />
+                ) : null}
+                {message.role === "assistant" &&
+                index === latestAssistantIndex &&
+                canShowMessageSuggestions ? (
+                  <SuggestionChips
+                    suggestions={visibleSuggestions}
+                    onSelect={onSuggestionSelect}
+                    disabled={chatInputDisabled}
+                  />
+                ) : null}
+              </div>
+            </ChatBubble>
+            {message.staffReplyNotice ? (
+              <p role="status" className="mx-auto my-3 max-w-sm text-center text-xs text-muted-foreground">
+                {staffReplyNoticeLabel}
+              </p>
             ) : null}
-            <div className={cn("min-w-0", hasActionCard && "flex-1")}>
-              <ChatBubbleMessage
-                variant={message.role === "user" ? "sent" : "received"}
-              >
-                {renderMessage(message.content)}
-              </ChatBubbleMessage>
-              {actionCard.type === "booking" ? (
-                <ChatBookingCard context={actionCard.context} />
-              ) : null}
-              {actionCard.type === "tour" ? (
-                <ChatVillaTourCard propertySlug={actionCard.propertySlug} />
-              ) : null}
-              {message.role === "assistant" &&
-              index === latestAssistantIndex &&
-              canShowMessageSuggestions ? (
-                <SuggestionChips
-                  suggestions={visibleSuggestions}
-                  onSelect={onSuggestionSelect}
-                  disabled={chatInputDisabled}
-                />
-              ) : null}
-            </div>
-          </ChatBubble>
+          </Fragment>
         );
       })}
       {isTyping ? (

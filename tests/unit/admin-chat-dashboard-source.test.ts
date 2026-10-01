@@ -2,14 +2,16 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("admin chat dashboard source", () => {
-  it("defaults the admin chat filters to not-empty latest-message mode", () => {
+  it("defaults the admin chat filters to open, needs-reply, not-empty chats", () => {
     const dashboardSource = readFileSync(
-      new URL("../../src/components/admin/AdminChatDashboard.tsx", import.meta.url),
+      new URL("../../src/components/admin/ChatsView.tsx", import.meta.url),
       "utf8",
     );
 
     expect(dashboardSource).toContain('type EmptyChatFilter = "non_empty" | "empty"');
-    expect(dashboardSource).toContain('useState<EmptyChatFilter>("non_empty")');
+    expect(dashboardSource).toContain('view: "needs_reply"');
+    expect(dashboardSource).toContain('state: "open"');
+    expect(dashboardSource).toContain('empty: "non_empty"');
     expect(dashboardSource).toContain("Message status");
     expect(dashboardSource).toContain("Not empty");
     expect(dashboardSource).toContain("Latest message start");
@@ -19,10 +21,13 @@ describe("admin chat dashboard source", () => {
   });
 
   it("does not expose the old Fill Thai backfill action", () => {
-    const dashboardSource = readFileSync(
-      new URL("../../src/components/admin/AdminChatDashboard.tsx", import.meta.url),
-      "utf8",
-    );
+    const dashboardSource = [
+      "ChatsView.tsx",
+      "QuestionsView.tsx",
+      "AnswerFormDialog.tsx",
+    ]
+      .map((file) => readFileSync(new URL(`../../src/components/admin/${file}`, import.meta.url), "utf8"))
+      .join("\n");
     const suggestionsSource = readFileSync(
       new URL("../../convex/chatSuggestions.ts", import.meta.url),
       "utf8",
@@ -36,7 +41,7 @@ describe("admin chat dashboard source", () => {
 
   it("does not show an empty link-answer select when no approved answers exist", () => {
     const dashboardSource = readFileSync(
-      new URL("../../src/components/admin/AdminChatDashboard.tsx", import.meta.url),
+      new URL("../../src/components/admin/UnknownQuestionsPanel.tsx", import.meta.url),
       "utf8",
     );
     const selectSource = readFileSync(
@@ -45,8 +50,8 @@ describe("admin chat dashboard source", () => {
     );
 
     expect(dashboardSource).toContain("No approved answers");
-    expect(dashboardSource).toContain("disabled={linkableAnswersLoading || !hasLinkableAnswers}");
-    expect(dashboardSource).toContain("{hasLinkableAnswers ? (");
+    expect(dashboardSource).toContain("disabled={answersLoading || !hasAnswers}");
+    expect(dashboardSource).toContain("{hasAnswers ? <SelectContent>");
     expect(selectSource).not.toContain("h-[var(--radix-select-trigger-height)]");
   });
 });

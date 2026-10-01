@@ -16,6 +16,7 @@ const config = [
       "convex/_generated/**",
       "src/components/reui/**", // vendored ReUI registry code
       "build/**",
+      "output/**", // local evaluation logs, recordings, and generated reports
     ],
   },
   {

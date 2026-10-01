@@ -1,11 +1,15 @@
 import type { MetadataRoute } from 'next';
-import { locales, localizeHref } from '@/i18n/routing';
-import { properties } from '@/lib/data/properties';
+import { defaultLocale, locales, localizeHref } from '@/i18n/routing';
+import { getVillaCatalog } from '@/lib/server/villas';
 import { siteUrl } from '@/lib/site-url';
 
-export default function sitemap(): MetadataRoute.Sitemap {
+// Regenerate so newly activated or archived villas appear/disappear without a redeploy.
+export const revalidate = 60;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
-  const paths = ['/', '/experiences', '/booking', ...properties.map(property => `/rooms/${property.id}`)];
+  const { villas } = await getVillaCatalog(defaultLocale);
+  const paths = ['/', '/experiences', '/booking', ...villas.map(villa => `/rooms/${villa.id}`)];
   const localized = paths.flatMap(path => locales.map(locale => ({
     url: `${base}${localizeHref(path, locale)}`,
     changeFrequency: path === '/' ? 'weekly' as const : 'monthly' as const,

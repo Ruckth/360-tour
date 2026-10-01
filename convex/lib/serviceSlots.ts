@@ -1,11 +1,12 @@
-import { TZDate } from '@date-fns/tz';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { demoCode } from './codes';
 import { assertValidIsoDate, assertValidEmail } from './validation';
 
-const ZONE = 'Asia/Bangkok';
 const MINUTE = 60_000;
+// Asia/Bangkok is UTC+7 with no DST. Use fixed arithmetic: zone-aware helpers returned
+// UTC clock times in the Convex production runtime, shifting every service slot by 7 hours.
+const RESORT_OFFSET = 7 * 60 * MINUTE;
 const DAY = 24 * 60 * MINUTE;
 export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
 export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
@@ -14,7 +15,6 @@ export const SLOT_CONFLICT = 'That time was just taken. Please choose another ti
 export type Range = [start: number, end: number];
 export type Slot = { start: number; staffIds: Id<'staff'>[] };
 type ReadCtx = QueryCtx | MutationCtx;
-type LocalBlock = { weekday: number; start: string; end: string; label?: string };
 
 /** Local "HH:mm"; "24:00" is allowed so shifts and breaks can end at midnight. */
 export function assertValidTime(time: string): void {
@@ -26,16 +26,16 @@ export function localDateTimeUtc(date: string, time: string): number {
 	assertValidTime(time);
 	const [year, month, day] = date.split('-').map(Number);
 	const [hour, minute] = time.split(':').map(Number);
-	return TZDate.tz(ZONE, year, month - 1, day, hour, minute).getTime();
+	return Date.UTC(year, month - 1, day, hour, minute) - RESORT_OFFSET;
 }
 
 export function resortLocalParts(instant: number): { date: string; time: string; weekday: number } {
-	const local = TZDate.tz(ZONE, instant);
+	const local = new Date(instant + RESORT_OFFSET);
 	const pad = (n: number) => String(n).padStart(2, '0');
 	return {
-		date: `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}`,
-		time: `${pad(local.getHours())}:${pad(local.getMinutes())}`,
-		weekday: local.getDay()
+		date: local.toISOString().slice(0, 10),
+		time: `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`,
+		weekday: local.getUTCDay()
 	};
 }
 
@@ -65,28 +65,85 @@ export function mergeRanges(ranges: Range[]): Range[] {
 	return merged;
 }
 
-export function recurringBlocks(
-		blocks: LocalBlock[],
-		from: number,
-		to: number
-): Array<{ start: number; end: number; label?: string }> {
-	const result: Array<{ start: number; end: number; label?: string }> = [];
-	if (to <= from) return result;
-	let date = resortLocalParts(from).date;
-	const lastDate = resortLocalParts(to - 1).date;
-	while (date <= lastDate) {
-		const weekday = resortLocalParts(localDateTimeUtc(date, '00:00')).weekday;
-		for (const block of blocks) {
-			if (block.weekday !== weekday) continue;
-			const start = localDateTimeUtc(date, block.start);
-			const end = localDateTimeUtc(date, block.end);
-			if (start < to && end > from) {
-				result.push({ start: Math.max(start, from), end: Math.min(end, to), label: block.label });
-			}
-		}
-		date = nextLocalDate(date);
+export type Shift = { start: string; end: string };
+export type RosterBreak = { start: string; end: string; label: string };
+/** One person's working day: shifts minus breaks. No shifts = off. */
+export type DayPlan = { shifts: Shift[]; breaks: RosterBreak[]; note?: string };
+type Pattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;
+
+/** 0 = Sunday, for a "YYYY-MM-DD" date. */
+export function weekdayOf(date: string): number {
+	return new Date(`${date}T00:00:00Z`).getUTCDay();
+}
+
+export function addDays(date: string, days: number): string {
+	const [year, month, day] = date.split('-').map(Number);
+	return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+const byStart = (a: { start: string }, b: { start: string }) => a.start.localeCompare(b.start);
+
+/** The weekly pattern's plan for a date. */
+export function patternDay(staff: Pattern, date: string): DayPlan {
+	const weekday = weekdayOf(date);
+	return {
+		shifts: staff.workingHours.filter((h) => h.weekday === weekday).map(({ start, end }) => ({ start, end })).sort(byStart),
+		breaks: staff.breaks.filter((b) => b.weekday === weekday).map(({ start, end, label }) => ({ start, end, label })).sort(byStart)
+	};
+}
+
+/** Roster overrides for one person, keyed by date, in [firstDate, lastDate]. */
+export async function staffDayOverrides(ctx: ReadCtx, staffId: Id<'staff'>, firstDate: string, lastDate: string) {
+	const rows = new Map<string, Doc<'staffDays'>>();
+	for await (const row of ctx.db.query('staffDays').withIndex('by_staff_date', (q) =>
+		q.eq('staffId', staffId).gte('date', firstDate).lte('date', lastDate)
+	)) {
+		rows.set(row.date, row);
 	}
-	return result;
+	return rows;
+}
+
+/** The plan in force on a date: the override row if there is one, otherwise the weekly pattern. */
+export function effectivePlan(staff: Pattern, date: string, override: Doc<'staffDays'> | null | undefined): DayPlan {
+	if (!override) return patternDay(staff, date);
+	return { shifts: override.shifts, breaks: override.breaks, ...(override.note ? { note: override.note } : {}) };
+}
+
+/** Working time for a plan on a date, as absolute ranges. */
+export function planWorking(date: string, plan: DayPlan): Range[] {
+	return mergeRanges(plan.shifts.map((s): Range => [localDateTimeUtc(date, s.start), localDateTimeUtc(date, s.end)]));
+}
+
+/** Unavailable time within a date's local day: the gaps around shifts, plus breaks. */
+export function planBusy(date: string, plan: DayPlan): Range[] {
+	const [dayStart, dayEnd] = localDayRange(date);
+	const busy: Range[] = [];
+	let cursor = dayStart;
+	for (const [start, end] of planWorking(date, plan)) {
+		if (start > cursor) busy.push([cursor, start]);
+		cursor = Math.max(cursor, end);
+	}
+	if (cursor < dayEnd) busy.push([cursor, dayEnd]);
+	busy.push(...plan.breaks.map((b): Range => [localDateTimeUtc(date, b.start), localDateTimeUtc(date, b.end)]));
+	return mergeRanges(busy);
+}
+
+/** True when part of [start, end) on this date falls outside the plan's working time. */
+export function planUncovers(date: string, plan: DayPlan, start: number, end: number): boolean {
+	return planBusy(date, plan).some(([a, b]) => start < b && end > a);
+}
+
+/** Each local date touched by [from, to), with the plan in force. */
+export async function scheduleDays(ctx: ReadCtx, staff: Doc<'staff'>, from: number, to: number) {
+	const days: Array<{ date: string; plan: DayPlan; override: boolean }> = [];
+	if (to <= from) return days;
+	const first = resortLocalParts(from).date;
+	const last = resortLocalParts(to - 1).date;
+	const overrides = await staffDayOverrides(ctx, staff._id, first, last);
+	for (let date = first; date <= last; date = nextLocalDate(date)) {
+		days.push({ date, plan: effectivePlan(staff, date, overrides.get(date)), override: overrides.has(date) });
+	}
+	return days;
 }
 
 export function blocksTime(appointment: Doc<'serviceAppointments'>): boolean {
@@ -102,15 +159,13 @@ export async function staffBusyRanges(
 		ignoreAppointmentId?: Id<'serviceAppointments'>
 ): Promise<Range[]> {
 	if (to <= from) return [];
-	const working = mergeRanges(recurringBlocks(staff.workingHours, from, to).map((b) => [b.start, b.end]));
 	const busy: Range[] = [];
-	let cursor = from;
-	for (const [start, end] of working) {
-		if (start > cursor) busy.push([cursor, start]);
-		cursor = Math.max(cursor, end);
+	// A roster override replaces the weekly pattern for its date.
+	for (const { date, plan } of await scheduleDays(ctx, staff, from, to)) {
+		for (const [start, end] of planBusy(date, plan)) {
+			if (start < to && end > from) busy.push([Math.max(start, from), Math.min(end, to)]);
+		}
 	}
-	if (cursor < to) busy.push([cursor, to]);
-	busy.push(...recurringBlocks(staff.breaks, from, to).map((b): Range => [b.start, b.end]));
 
 	for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staff._id).gte('start', from - TIME_OFF_LOOKBACK).lt('start', to)
@@ -139,24 +194,48 @@ export async function assertStaffFree(
 	}
 }
 
+/** Future 15-minute starts on a date, each with the people free for `occupyMs` from then. */
+export async function openStarts(
+		ctx: ReadCtx,
+		staff: Doc<'staff'>[],
+		date: string,
+		occupyMs: number,
+		ignoreAppointmentId?: Id<'serviceAppointments'>
+): Promise<Slot[]> {
+	const [dayStart, dayEnd] = localDayRange(date);
+	const busy = await Promise.all(staff.map((person) => staffBusyRanges(ctx, person, dayStart, dayEnd + DAY, ignoreAppointmentId)));
+	const slots: Slot[] = [];
+	for (let start = dayStart; start < dayEnd; start += 15 * MINUTE) {
+		if (start < Date.now()) continue;
+		const staffIds = staff.filter((_, i) => !busy[i].some(([a, b]) => start < b && start + occupyMs > a)).map((person) => person._id);
+		if (staffIds.length) slots.push({ start, staffIds });
+	}
+	return slots;
+}
+
 export async function findOpenSlots(
 		ctx: ReadCtx,
 		input: { serviceId: Id<'services'>; date: string; staffId?: Id<'staff'> }
 ): Promise<Slot[]> {
-	const [dayStart, dayEnd] = localDayRange(input.date);
+	assertValidIsoDate(input.date, 'Date');
 	const service = await ctx.db.get(input.serviceId);
 	if (!service || service.status !== 'active') return [];
-	const duration = (service.durationMin + service.bufferMin) * MINUTE;
 	const staff = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
 		.filter((person): person is Doc<'staff'> => !!person && person.status === 'active' && (!input.staffId || person._id === input.staffId));
-	const busy = await Promise.all(staff.map((person) => staffBusyRanges(ctx, person, dayStart, dayEnd + DAY)));
-	const slots: Slot[] = [];
-	for (let start = dayStart; start < dayEnd; start += 15 * MINUTE) {
-		if (start < Date.now()) continue;
-		const staffIds = staff.filter((_, i) => !busy[i].some(([a, b]) => start < b && start + duration > a)).map((person) => person._id);
-		if (staffIds.length) slots.push({ start, staffIds });
+	return await openStarts(ctx, staff, input.date, (service.durationMin + service.bufferMin) * MINUTE);
+}
+
+/** Whether anyone active who offers the service has shifts on this date. No open slots then means "fully booked", not "not scheduled yet". */
+export async function serviceRostered(ctx: ReadCtx, serviceId: Id<'services'>, date: string): Promise<boolean> {
+	const service = await ctx.db.get(serviceId);
+	if (!service) return false;
+	for (const id of service.staffIds) {
+		const person = await ctx.db.get(id);
+		if (!person || person.status !== 'active') continue;
+		const override = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', id).eq('date', date)).unique();
+		if (effectivePlan(person, date, override).shifts.length) return true;
 	}
-	return slots;
+	return false;
 }
 
 export type AppointmentInput = {
@@ -168,17 +247,26 @@ export type AppointmentInput = {
 	guestEmail?: string;
 	bookingId?: Id<'bookings'>;
 	chatSessionId?: Id<'chatSessions'>;
+	rebookedFromId?: Id<'serviceAppointments'>;
 	source: Doc<'serviceAppointments'>['source'];
 };
 
-export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput) {
-	assertAppointmentStart(input.start);
+/** Trimmed guest details; throws on a missing name or phone, a bad email or long notes. */
+export function guestDetails(input: { guestName: string; guestPhone: string; guestEmail?: string; notes?: string }) {
 	const guestName = input.guestName.trim();
 	const guestPhone = input.guestPhone.trim();
 	const guestEmail = input.guestEmail?.trim() || undefined;
+	const notes = input.notes?.trim() || undefined;
 	if (!guestName) throw new Error('Guest name is required');
 	if (!guestPhone) throw new Error('Guest phone is required');
 	if (guestEmail) assertValidEmail(guestEmail);
+	if (notes && notes.length > 2000) throw new Error('Notes must be at most 2000 characters');
+	return { guestName, guestPhone, guestEmail, notes };
+}
+
+export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput) {
+	assertAppointmentStart(input.start);
+	const { guestName, guestPhone, guestEmail } = guestDetails(input);
 	const service = await ctx.db.get(input.serviceId);
 	if (!service || service.status !== 'active') throw new Error('Service unavailable');
 	const blockedUntil = input.start + (service.durationMin + service.bufferMin) * MINUTE;
@@ -214,6 +302,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 		...(guestEmail ? { guestEmail } : {}),
 		...(input.bookingId ? { bookingId: input.bookingId } : {}),
 		...(input.chatSessionId ? { chatSessionId: input.chatSessionId } : {}),
+		...(input.rebookedFromId ? { rebookedFromId: input.rebookedFromId } : {}),
 		source: input.source,
 		status: 'booked',
 		paymentStatus: 'unpaid',

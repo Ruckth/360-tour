@@ -1,7 +1,12 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
-import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, Shield } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "convex/_generated/api";
+import { Shield } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ADMIN_NAV, adminNavItem } from "@/components/admin/admin-routes";
 import {
   Sidebar,
   SidebarContent,
@@ -17,41 +22,11 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-export type AdminDashboardView = "chats" | "hotel" | "staff" | "questions" | "properties" | "leads";
-
-export const ADMIN_VIEW_TITLES: Record<AdminDashboardView, string> = {
-  chats: "Chats",
-  hotel: "Hotel bookings",
-  staff: "Staff bookings",
-  questions: "Questions",
-  properties: "Properties",
-  leads: "Leads",
-};
-
-const NAV_ITEMS = [
-  { view: "chats", icon: MessageCircle },
-  { view: "hotel", icon: BedDouble },
-  { view: "staff", icon: CalendarClock },
-  { view: "questions", icon: HelpCircle },
-  { view: "properties", icon: Building2 },
-  { view: "leads", icon: Mail },
-] as const;
-
-export function AdminSidebar({
-  view,
-  onViewChange,
-  userEmail,
-}: {
-  view: AdminDashboardView;
-  onViewChange: (view: AdminDashboardView) => void;
-  userEmail?: string;
-}) {
+export function AdminSidebar({ userEmail }: { userEmail?: string }) {
+  const pathname = usePathname();
+  const activeHref = adminNavItem(pathname)?.href;
   const { isMobile, setOpenMobile } = useSidebar();
-
-  function selectView(nextView: AdminDashboardView) {
-    onViewChange(nextView);
-    if (isMobile) setOpenMobile(false);
-  }
+  const profile = useQuery(api.settings.publicProfile, {});
 
   return (
     <Sidebar variant="inset" collapsible="icon">
@@ -61,7 +36,7 @@ export function AdminSidebar({
             <Shield aria-hidden="true" className="size-4" />
           </span>
           <span className="min-w-0 leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="block truncate text-sm font-semibold">Auralis Cove</span>
+            <span className="block truncate text-sm font-semibold">{profile?.businessName ?? "\u00a0"}</span>
             <span className="block truncate text-xs text-sidebar-foreground/70">Concierge operations</span>
           </span>
         </div>
@@ -72,16 +47,19 @@ export function AdminSidebar({
           <SidebarGroupLabel>Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map(({ view: itemView, icon: Icon }) => (
-                <SidebarMenuItem key={itemView}>
-                  <SidebarMenuButton
-                    type="button"
-                    isActive={view === itemView}
-                    tooltip={ADMIN_VIEW_TITLES[itemView]}
-                    onClick={() => selectView(itemView)}
-                  >
-                    <Icon aria-hidden="true" />
-                    <span>{ADMIN_VIEW_TITLES[itemView]}</span>
+              {ADMIN_NAV.map(({ href, label, icon: Icon }) => (
+                <SidebarMenuItem key={href}>
+                  <SidebarMenuButton asChild isActive={href === activeHref} tooltip={label}>
+                    <Link
+                      href={href}
+                      aria-current={href === activeHref ? "page" : undefined}
+                      onClick={() => {
+                        if (isMobile) setOpenMobile(false);
+                      }}
+                    >
+                      <Icon aria-hidden="true" />
+                      <span>{label}</span>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

@@ -1,111 +1,153 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
+import { useQuery } from "convex/react";
+import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { CalendarDays, Clock, Filter, Loader2, PlusIcon, Users } from "lucide-react";
-import { format } from "date-fns";
-import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { canEditTurnaround, canReschedule, turnaroundMinutes } from "convex/lib/appointmentWindow";
+import { CalendarDays, Clock, Filter, History, PlusIcon, Users } from "lucide-react";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
 import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
 import type {
   CalendarEvent,
   CalendarView,
+  EventCalendarProposedUpdate,
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
-import { AdminStaffServicesManager } from "@/components/admin/AdminStaffServicesManager";
-import { adminStaffTabPath, type AdminStaffTab } from "@/components/admin/admin-routes";
+import { AdminStaffServicesManager, TimeOffDialog } from "@/components/admin/AdminStaffServicesManager";
+import { AppointmentSheet } from "@/components/admin/AppointmentSheet";
+import { BreakEditDialog } from "@/components/admin/BreakEditDialog";
+import { adminStaffTabPath, isAdminStaffTab, type AdminStaffTab } from "@/components/admin/admin-routes";
+import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { DisabledReason } from "@/components/admin/DisabledReason";
+import { NewAppointmentDialog, type AppointmentDraft } from "@/components/admin/NewAppointmentDialog";
+import { RescheduleDialog } from "@/components/admin/RescheduleDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
+import { StaffRosterView } from "@/components/admin/StaffRosterView";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
+import { CALENDAR_TONE_COLORS } from "@/components/admin/status-tones";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { WheelPicker, WheelPickerWrapper } from "@/components/ui/wheel-picker";
+import { Spinner } from "@/components/ui/spinner";
 import {
-  APPOINTMENT_STATUS,
+  breakFromDrag,
+  moveProposal,
+  turnaroundFromTail,
+  type BreakBlock,
+  type Ghost,
+  type ScheduleData,
+} from "@/lib/schedule-changes";
+import {
+  APPOINTMENT_STATUSES,
   DAY_MS,
   RESORT_ZONE,
+  appointmentStatus,
+  appointmentStatusColor,
   displayStatus,
-  errorText,
-  formatResortDate,
   formatResortTime,
-  initials,
-  money,
   resortIsoDate,
   resortMidnight,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
+import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
 import { cn } from "@/lib/utils";
 
-type Staff = Doc<"staff">;
-type Service = Doc<"services">;
 type Appointment = Doc<"serviceAppointments">;
-type Block = {
-  staffId: Id<"staff">;
-  start: number;
-  end: number;
-  label: string;
-  kind: "break" | "time_off" | "turnaround";
-  timeOffId?: Id<"staffTimeOff">;
-};
-type EventData = { kind: "appointment"; appointment: Appointment } | { kind: "block"; block: Block };
-type Move = { start: number; end: number; staffId: Id<"staff"> };
-type Draft = { date: string; staffId?: Id<"staff">; start?: number };
+type EventData =
+  | { kind: "appointment"; appointment: Appointment }
+  /** The appointment's turnaround; it moves with the appointment and only its end resizes. */
+  | { kind: "turnaround"; appointment: Appointment }
+  | { kind: "block"; block: ScheduleData["blocks"][number] }
+  | { kind: "off" };
+/** The one change waiting for confirmation; `ghostId` is the calendar event drawn at the proposed place. */
+type Proposal = { ghostId: string; ghost?: Ghost } & (
+  | { kind: "reschedule"; appointment: Appointment; start: number; staffId: Id<"staff"> }
+  | { kind: "turnaround"; appointment: Appointment; turnaroundMin?: number }
+  | { kind: "break"; block: BreakBlock; times?: { start: string; end: string } }
+);
 
-const SOURCE_LABELS: Record<Appointment["source"], string> = {
-  web: "Website",
-  whatsapp: "WhatsApp",
-  messenger: "Messenger",
-  line: "LINE",
-  instagram: "Instagram",
-  admin: "Manual",
-};
-const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", "completed", "no_show", "cancelled"];
-const BLOCK_COLOR = "var(--color-zinc-500)";
-const MINUTE = 60_000;
+// Cancelled appointments have their own toggle.
+const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", "completed", "no_show"];
+const BLOCK_COLOR = CALENDAR_TONE_COLORS.muted;
+/** listSchedule's limit. */
+const MAX_SCHEDULE_DAYS = 14;
 // Stable reference: the calendar rebuilds its settings when this object changes.
 const CALENDAR_I18N = { viewNames: { resource: "Day" } };
-
-/** "2026-09-24" → local Date at midnight, for the day picker. */
-function isoToLocalDate(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
 
 function todayRange() {
   const from = resortMidnight(resortIsoDate(Date.now()));
   return { from, to: from + DAY_MS };
 }
 
-export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
+const TABS = [
+  ["calendar", "Calendar"],
+  ["roster", "Roster"],
+  ["staff", "Staff"],
+  ["services", "Services"],
+] as const satisfies ReadonlyArray<readonly [AdminStaffTab, string]>;
+
+/**
+ * The Staff bookings tab strip and panel. It lives in the staff layout, so it stays mounted
+ * (and keeps keyboard focus) while each tab is its own route.
+ */
+export function AdminStaffTabs({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const segment = useSelectedLayoutSegment();
+  const tab = segment && isAdminStaffTab(segment) ? segment : null;
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const confirm = useConfirm();
+
+  async function openTab(index: number) {
+    const target = (index + TABS.length) % TABS.length;
+    const key = TABS[target][0];
+    if (key === tab) return;
+    if (
+      hasUnsavedChanges() &&
+      !(await confirm({ title: UNSAVED_CHANGES_MESSAGE, confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
+    ) {
+      return;
+    }
+    tabRefs.current[target]?.focus();
+    router.push(adminStaffTabPath(key));
+  }
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
+    if (!(event.key in moves)) return;
+    event.preventDefault();
+    void openTab(moves[event.key]);
+  }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
-      <nav className="mb-4 flex gap-6 border-b border-border" aria-label="Staff bookings sections">
-        {([["calendar", "Calendar"], ["staff", "Staff"], ["services", "Services"]] as const).map(([key, label]) => (
+    // The calendar fills the viewport under the 4rem admin header from tablet up; the other tabs scroll the page.
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6",
+        tab === "calendar" && "md:h-[calc(100dvh-4rem)] md:min-h-[40rem]",
+      )}
+    >
+      <div role="tablist" aria-label="Staff bookings sections" className="mb-4 flex shrink-0 gap-6 overflow-x-auto border-b border-border">
+        {TABS.map(([key, label], index) => (
           <button
             key={key}
+            ref={(el) => {
+              tabRefs.current[index] = el;
+            }}
+            id={`staff-tab-${key}`}
             type="button"
-            onClick={() => router.push(adminStaffTabPath(key))}
-            aria-current={tab === key ? "page" : undefined}
+            role="tab"
+            aria-selected={tab === key}
+            aria-controls="staff-tabpanel"
+            tabIndex={tab === key ? 0 : -1}
+            onClick={() => void openTab(index)}
+            onKeyDown={(event) => onTabKeyDown(event, index)}
             className={cn(
-              "-mb-px border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors",
+              "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               tab === key
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -114,10 +156,22 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
             {label}
           </button>
         ))}
-      </nav>
-      {tab === "calendar" ? <StaffCalendar /> : <AdminStaffServicesManager section={tab} />}
+      </div>
+      <div
+        role="tabpanel"
+        id="staff-tabpanel"
+        aria-labelledby={tab ? `staff-tab-${tab}` : undefined}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {children}
+      </div>
     </div>
   );
+}
+
+/** One Staff bookings tab's content; the page for each [tab] route. */
+export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
+  return tab === "calendar" ? <StaffCalendar /> : tab === "roster" ? <StaffRosterView /> : <AdminStaffServicesManager section={tab} />;
 }
 
 function StaffCalendar() {
@@ -127,15 +181,16 @@ function StaffCalendar() {
   const [hiddenStaff, setHiddenStaff] = useState<Set<string>>(() => new Set());
   const [hiddenServices, setHiddenServices] = useState<Set<string>>(() => new Set());
   const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(() => new Set());
-  const [moves, setMoves] = useState<Map<string, Move>>(() => new Map());
+  // Cancelled appointments are kept but stay out of the working grid unless asked for.
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [proposal, setProposal] = useState<Proposal | null>(null);
   const [selectedId, setSelectedId] = useState<Id<"serviceAppointments"> | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<AppointmentDraft | null>(null);
+  const [editingTimeOff, setEditingTimeOff] = useState<Doc<"staffTimeOff"> | null>(null);
   const [error, setError] = useState("");
   const now = useNow();
 
   const data = useQuery(api.adminServices.listSchedule, range);
-  const reschedule = useMutation(api.adminServices.rescheduleAppointment);
-  const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
 
   const staffById = useMemo(() => new Map((data?.staff ?? []).map((s) => [s._id as string, s])), [data?.staff]);
   const serviceById = useMemo(() => new Map((data?.services ?? []).map((s) => [s._id as string, s])), [data?.services]);
@@ -146,12 +201,17 @@ function StaffCalendar() {
     [data?.staff, hiddenStaff],
   );
 
+  const cancelledCount = (data?.appointments ?? []).filter((a) => a.status === "cancelled").length;
   const appointments = useMemo(
     () =>
       (data?.appointments ?? []).filter(
-        (a) => !hiddenStaff.has(a.staffId) && !hiddenServices.has(a.serviceId) && !hiddenStatuses.has(a.status),
+        (a) =>
+          !hiddenStaff.has(a.staffId) &&
+          !hiddenServices.has(a.serviceId) &&
+          !hiddenStatuses.has(a.status) &&
+          (showCancelled || a.status !== "cancelled"),
       ),
-    [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses],
+    [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled],
   );
 
   const bookedCount = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show").length;
@@ -169,20 +229,22 @@ function StaffCalendar() {
   );
 
   const events = useMemo<CalendarEvent<EventData>[]>(() => {
+    const ghostFor = (id: string) => proposal?.ghostId === id ? proposal.ghost : undefined;
     if (!data) return [];
     const appointmentEvents = appointments.map((appointment): CalendarEvent<EventData> => {
-      const move = moves.get(appointment._id);
+      const ghost = ghostFor(appointment._id);
       const service = serviceById.get(appointment.serviceId);
-      const staff = staffById.get(appointment.staffId);
-      const editable = appointment.status === "booked" && appointment.start > now;
+      const staff = staffById.get(ghost?.staffId ?? appointment.staffId);
       return {
         id: appointment._id,
         title: `${appointment.guestName} · ${service?.name ?? "Service"}${staff ? ` · ${staff.name}` : ""}`,
-        start: new Date(move?.start ?? appointment.start),
-        end: new Date(move?.end ?? appointment.end),
-        resourceId: move?.staffId ?? appointment.staffId,
-        color: APPOINTMENT_STATUS[displayStatus(appointment)].color,
-        readOnly: !editable,
+        start: new Date(ghost?.start ?? appointment.start),
+        end: new Date(ghost?.end ?? appointment.end),
+        resourceId: ghost?.staffId ?? appointment.staffId,
+        color: appointmentStatusColor(displayStatus(appointment)),
+        readOnly: !canReschedule(appointment, now),
+        // The booked length is kept; a different length is a different service.
+        resizable: false,
         priority: 1,
         data: { kind: "appointment", appointment },
       };
@@ -190,77 +252,97 @@ function StaffCalendar() {
     // Every staff member's daily breaks side by side are noise in the week view.
     const blockEvents = data.blocks
       .filter((block) => !hiddenStaff.has(block.staffId) && (view === "resource" || block.kind === "time_off"))
-      .map((block): CalendarEvent<EventData> => ({
-        id: `block-${block.staffId}-${block.start}`,
-        title: `${block.label} · ${staffById.get(block.staffId)?.name ?? "Staff"}`,
-        start: new Date(block.start),
-        end: new Date(block.end),
-        resourceId: block.staffId,
-        color: BLOCK_COLOR,
-        readOnly: true,
-        data: { kind: "block", block },
-      }));
-    // Cleanup/travel after a service blocks the staff member too, so show it.
+      .map((block): CalendarEvent<EventData> => {
+        const id = `block-${block.staffId}-${block.start}`;
+        const ghost = ghostFor(id);
+        const editable = block.kind === "break" && staffById.get(block.staffId)?.status === "active";
+        return {
+          id,
+          title: `${block.label} · ${staffById.get(block.staffId)?.name ?? "Staff"}`,
+          start: new Date(ghost?.start ?? block.start),
+          end: new Date(ghost?.end ?? block.end),
+          resourceId: block.staffId,
+          color: BLOCK_COLOR,
+          readOnly: !editable,
+          data: { kind: "block", block },
+        };
+      });
+    // Shade time outside each person's rostered shifts.
+    const offEvents = view === "resource"
+      ? visibleStaff.flatMap((person) => {
+          const gaps: Array<{ start: number; end: number }> = [];
+          let cursor = range.from;
+          for (const shift of data.shifts.filter((s) => s.staffId === person._id).sort((a, b) => a.start - b.start)) {
+            if (shift.start > cursor) gaps.push({ start: cursor, end: shift.start });
+            cursor = Math.max(cursor, shift.end);
+          }
+          if (cursor < range.to) gaps.push({ start: cursor, end: range.to });
+          return gaps.map((gap): CalendarEvent<EventData> => ({
+            id: `off-${person._id}-${gap.start}`,
+            title: `Not working · ${person.name}`,
+            start: new Date(gap.start),
+            end: new Date(gap.end),
+            resourceId: person._id,
+            color: BLOCK_COLOR,
+            readOnly: true,
+            data: { kind: "off" },
+          }));
+        })
+      : [];
+    // Cleanup/travel after a service blocks the staff member too. It follows its appointment
+    // and only its end can be resized.
     const turnaroundEvents = view === "resource"
       ? appointments
           .filter((a) => a.blockedUntil > a.end && a.status !== "cancelled" && a.status !== "no_show")
           .map((appointment): CalendarEvent<EventData> => {
-            const move = moves.get(appointment._id);
-            const start = move?.end ?? appointment.end;
-            const block: Block = {
-              staffId: move?.staffId ?? appointment.staffId,
-              start,
-              end: start + appointment.blockedUntil - appointment.end,
-              label: "Turnaround",
-              kind: "turnaround",
-            };
+            const id = `turnaround-${appointment._id}`;
+            const moved = ghostFor(appointment._id);
+            const resized = ghostFor(id);
+            const start = moved?.end ?? appointment.end;
             return {
-              id: `turnaround-${appointment._id}`,
+              id,
               title: "Turnaround",
-              start: new Date(block.start),
-              end: new Date(block.end),
-              resourceId: block.staffId,
+              start: new Date(start),
+              end: new Date(resized?.end ?? start + appointment.blockedUntil - appointment.end),
+              resourceId: moved?.staffId ?? appointment.staffId,
               color: BLOCK_COLOR,
-              readOnly: true,
-              data: { kind: "block", block },
+              readOnly: !canEditTurnaround(appointment),
+              draggable: false,
+              snapDuration: 5,
+              minDuration: 0,
+              data: { kind: "turnaround", appointment },
             };
           })
       : [];
-    return [...blockEvents, ...turnaroundEvents, ...appointmentEvents];
-  }, [data, appointments, moves, serviceById, staffById, hiddenStaff, now, view]);
+    return [...offEvents, ...blockEvents, ...turnaroundEvents, ...appointmentEvents];
+  }, [data, appointments, proposal, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range]);
 
   const renderEvent = useCallback(
     ({ occurrence, view: currentView }: { occurrence: { event: CalendarEvent<EventData> }; view: CalendarView }) => {
       const eventData = occurrence.event.data;
       if (!eventData) return null;
-      if (eventData.kind === "block") {
+      if (eventData.kind === "off") {
+        return <span aria-label="Not working" className="absolute inset-0 rounded-[inherit] bg-muted" />;
+      }
+      if (eventData.kind !== "appointment") {
         return (
           <span className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)] text-xs font-medium text-muted-foreground">
             <Clock aria-hidden className="size-3.5 shrink-0" />
-            <span className="truncate">{eventData.block.label}</span>
+            <span className="truncate">{eventData.kind === "turnaround" ? "Turnaround" : eventData.block.label}</span>
           </span>
         );
       }
       const { appointment } = eventData;
-      const status = APPOINTMENT_STATUS[displayStatus(appointment)];
       const service = serviceById.get(appointment.serviceId);
-      const staffName = currentView === "resource" ? null : staffById.get(appointment.staffId)?.name;
+      const staffName = currentView === "resource" ? null : staffById.get(occurrence.event.resourceId ?? appointment.staffId)?.name;
       return (
         <span className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-background/80 text-[9px] font-semibold text-foreground">
-              {initials(appointment.guestName)}
-            </span>
-            <span className="truncate text-[13px] font-semibold">{appointment.guestName}</span>
-            <span
-              className="hidden shrink-0 rounded-md border px-1.5 text-[11px] leading-5 font-medium @[12rem]:inline"
-              style={{ color: status.color, borderColor: `color-mix(in oklab, ${status.color} 45%, transparent)` }}
-            >
-              {status.label}
-            </span>
+            <span className="truncate text-sm font-semibold">{appointment.guestName}</span>
+            <StatusBadge {...appointmentStatus(displayStatus(appointment))} className="hidden @[12rem]:inline-flex" />
           </span>
           <span className="truncate text-xs text-muted-foreground">
-            {formatResortTime(appointment.start)} • {service?.name ?? "Service"}
+            {formatResortTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
             {staffName ? ` · ${staffName}` : ""}
           </span>
         </span>
@@ -280,6 +362,7 @@ function StaffCalendar() {
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-foreground">{person.name}</span>
             <span className="block truncate text-xs font-normal text-muted-foreground">
+              {person.status === "archived" ? "Archived · " : ""}
               {count === 1 ? "1 appointment" : `${count} appointments`}
             </span>
           </span>
@@ -289,12 +372,46 @@ function StaffCalendar() {
     [staffById, countByStaff],
   );
 
+  /** Drops the calendar can't turn into a proposal are refused before they land. */
+  const canDropEvent = useCallback(
+    (update: EventCalendarProposedUpdate<EventData>) => {
+      const eventData = update.event.data;
+      if (!eventData) return false;
+      if (eventData.kind === "appointment") {
+        const staffId = update.resourceId ?? eventData.appointment.staffId;
+        return serviceById.get(eventData.appointment.serviceId)?.staffIds.includes(staffId as Id<"staff">) ?? false;
+      }
+      if (eventData.kind === "turnaround") {
+        return update.source === "resize-end" && (update.resourceId ?? eventData.appointment.staffId) === eventData.appointment.staffId;
+      }
+      // A break stays in its own staff column and on its own date.
+      if (eventData.kind === "block" && eventData.block.kind === "break") {
+        const { block } = eventData;
+        return (update.resourceId ?? block.staffId) === block.staffId && breakFromDrag(block, update.start.getTime(), update.end.getTime()) !== null;
+      }
+      return false;
+    },
+    [serviceById],
+  );
+
+  function propose(next: Proposal, ghostId: string, ghost: Ghost) {
+    setProposal({ ...next, ghostId, ghost });
+    setError("");
+  }
+
+  function dismissProposal() {
+    setProposal(null);
+  }
+
   const selected = data?.appointments.find((a) => a._id === selectedId) ?? null;
   const filterCount = hiddenServices.size + hiddenStatuses.size;
+  const proposedAppointment = proposal && proposal.kind !== "break"
+    ? proposal.appointment
+    : undefined;
 
   return (
     <>
-      <div className="border border-border bg-card [&_*]:border-border">
+      <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
@@ -302,6 +419,8 @@ function StaffCalendar() {
           date={date}
           onDateChange={setDate}
           views={["resource", "week", "agenda"]}
+          // listSchedule serves at most 14 days; the list defaults to 30.
+          agendaDayCount={7}
           resources={resources}
           timeZone={RESORT_ZONE}
           dayStartHour={6}
@@ -313,61 +432,68 @@ function StaffCalendar() {
           interactions={{ drag: true, resize: true, selectSlot: false }}
           renderEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
+          canDropEvent={canDropEvent}
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "appointment") setSelectedId(eventData.appointment._id);
-            if (eventData?.kind === "block" && eventData.block.timeOffId) {
-              const { timeOffId, label } = eventData.block;
-              if (window.confirm(`Remove "${label}" time off?`)) {
-                removeTimeOff({ timeOffId }).catch((err: unknown) => setError(errorText(err, "Could not remove time off.")));
-              }
+            if (eventData?.kind === "turnaround" && canEditTurnaround(eventData.appointment)) {
+              setProposal({ kind: "turnaround", appointment: eventData.appointment, ghostId: occurrence.event.id });
+            }
+            if (eventData?.kind === "block" && eventData.block.kind === "time_off") setEditingTimeOff(eventData.block.timeOff);
+            if (eventData?.kind === "block" && eventData.block.kind === "break" && !occurrence.event.readOnly) {
+              setProposal({ kind: "break", block: eventData.block, ghostId: occurrence.event.id });
             }
           }}
           onSlotClick={(slot) => {
             if (slot.allDay || !data || activeServices.length === 0) return;
             const start = slot.date.getTime();
             setDraft({
-              date: resortIsoDate(start),
+              // A click on a past day books from today: open times are only searched from today on.
+              date: resortIsoDate(Math.max(start, Date.now())),
               staffId: slot.resourceId as Id<"staff"> | undefined,
               start: start > Date.now() ? start : undefined,
             });
           }}
           onEventUpdate={(update) => {
             const eventData = update.event.data;
-            if (update.source === "api" || eventData?.kind !== "appointment") return false;
-            const { appointment } = eventData;
-            const move: Move = {
-              start: update.start.getTime(),
-              end: update.end.getTime(),
-              staffId: (update.resourceId ?? appointment.staffId) as Id<"staff">,
-            };
-            setMoves((current) => new Map(current).set(appointment._id, move));
-            setError("");
-            reschedule({
-              appointmentId: appointment._id,
-              start: move.start,
-              staffId: move.staffId,
-              durationMin: Math.round((move.end - move.start) / MINUTE),
-            })
-              .catch((err: unknown) => setError(errorText(err, "Could not move the appointment.")))
-              .finally(() =>
-                setMoves((current) => {
-                  const next = new Map(current);
-                  next.delete(appointment._id);
-                  return next;
-                }),
-              );
-            return true;
+            // One pending change at a time; nothing is saved until it's confirmed.
+            if (update.source === "api" || !eventData || proposal) return false;
+            const start = update.start.getTime();
+            const end = update.end.getTime();
+            const id = update.event.id;
+            if (eventData.kind === "appointment") {
+              const { appointment } = eventData;
+              const next = moveProposal(appointment, { start, staffId: update.resourceId as Id<"staff"> | undefined });
+              if (!next) return false;
+              propose({ kind: "reschedule", appointment, ghostId: id, ...next }, id, { start, end, staffId: next.staffId });
+              return true;
+            }
+            if (eventData.kind === "turnaround" && update.source === "resize-end") {
+              const { appointment } = eventData;
+              const turnaroundMin = turnaroundFromTail(appointment, end);
+              if (turnaroundMin === turnaroundMinutes(appointment)) return false;
+              propose({ kind: "turnaround", appointment, ghostId: id, turnaroundMin }, id, { start: appointment.end, end, staffId: appointment.staffId });
+              return true;
+            }
+            if (eventData.kind === "block" && eventData.block.kind === "break") {
+              const { block } = eventData;
+              const times = breakFromDrag(block, start, end);
+              if (!times) return false;
+              propose({ kind: "break", block, ghostId: id, times }, id, { start, end, staffId: block.staffId });
+              return true;
+            }
+            return false;
           }}
           onRangeChange={({ range: visible }) => {
             const from = visible.start.getTime();
-            const to = visible.end.getTime();
+            // Never ask for more than listSchedule serves, whatever the view.
+            const to = Math.min(visible.end.getTime(), from + MAX_SCHEDULE_DAYS * DAY_MS);
             setRange((current) => (current.from === from && current.to === to ? current : { from, to }));
           }}
-          className="h-[calc(100vh-230px)] min-h-[600px] w-full"
+          loading={data === undefined}
+          className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
         >
           <AdminCalendarHeader>
-            {data === undefined ? <Loader2 aria-label="Loading" className="size-4 animate-spin text-gold" /> : null}
             <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
               <CalendarDays aria-hidden className="size-3.5" />
               {bookedCount} booked in view
@@ -397,22 +523,47 @@ function StaffCalendar() {
                 },
                 {
                   title: "Status",
-                  items: STATUS_FILTERS.map((status) => ({ id: status, label: APPOINTMENT_STATUS[status].label })),
+                  items: STATUS_FILTERS.map((status) => ({ id: status, label: appointmentStatus(status).label })),
                   hidden: hiddenStatuses,
                   onChange: setHiddenStatuses,
                 },
               ]}
             />
-            <Button
-              size="sm"
-              className="sm:ms-auto"
-              disabled={!data || activeServices.length === 0}
-              onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
-            >
-              <PlusIcon aria-hidden className="size-4" />
-              New appointment
+            <Button size="sm" variant={showCancelled ? "secondary" : "outline"} aria-pressed={showCancelled} onClick={() => setShowCancelled(!showCancelled)}>
+              <History aria-hidden className="size-4" />
+              {showCancelled ? "Hide cancelled" : "Show cancelled"}
+              {cancelledCount ? (
+                <Badge variant="secondary" className="ms-0.5 h-5 min-w-5 justify-center rounded-full px-1.5">
+                  {cancelledCount}
+                </Badge>
+              ) : null}
             </Button>
+            {data === undefined ? <Spinner label="Loading appointments" /> : null}
+            <div className="sm:ms-auto">
+              <DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
+                <Button
+                  size="sm"
+                  disabled={!data || activeServices.length === 0}
+                  onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
+                >
+                  <PlusIcon aria-hidden className="size-4" />
+                  New appointment
+                </Button>
+              </DisabledReason>
+            </div>
           </AdminCalendarHeader>
+          {data && (data.staff.length === 0 || activeServices.length === 0) ? (
+            <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-sm">
+              <p className="min-w-0 flex-1 text-muted-foreground">
+                {data.staff.length === 0
+                  ? "No staff yet. Add the people who perform services, then the services guests can book."
+                  : "No services yet. Add what guests can book and who performs it."}
+              </p>
+              <ButtonLink href={adminStaffTabPath(data.staff.length === 0 ? "staff" : "services")} size="sm">
+                {data.staff.length === 0 ? "Add staff" : "Add a service"}
+              </ButtonLink>
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">
               {error}
@@ -420,30 +571,73 @@ function StaffCalendar() {
           ) : null}
           <EventCalendarContent />
         </EventCalendar>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          {Object.values(APPOINTMENT_STATUS).map((status) => (
-            <span key={status.label} className="flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
-              {status.label}
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          {APPOINTMENT_STATUSES.map((key) => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: appointmentStatusColor(key) }} />
+              {appointmentStatus(key).label}
             </span>
           ))}
           <span className="flex items-center gap-1.5">
             <Clock aria-hidden className="size-3" />
-            Break / time off
+            Break / turnaround / time off
           </span>
-          <span className="ms-auto hidden sm:inline">Drag a booked appointment to move it. Click an empty slot to book.</span>
+          <span className="ms-auto hidden sm:inline">
+            Drag a booking or break to propose a change; you confirm before it saves. Times are Bangkok time.
+          </span>
         </div>
       </div>
 
       <AppointmentSheet
+        key={selected?._id ?? "closed"}
         appointment={selected}
-        service={selected ? serviceById.get(selected.serviceId) : undefined}
-        staff={selected ? staffById.get(selected.staffId) : undefined}
+        services={activeServices}
+        staffById={staffById}
+        serviceById={serviceById}
+        onBookAgain={(appointment) => {
+          if (activeServices.length === 0) return;
+          setSelectedId(null);
+          setDraft({ date: resortIsoDate(Math.max(appointment.start, Date.now())), staffId: appointment.staffId, rebook: appointment });
+        }}
         onClose={() => setSelectedId(null)}
       />
+      {proposal?.kind === "reschedule" && proposedAppointment ? (
+        <RescheduleDialog
+          appointment={proposedAppointment}
+          serviceName={serviceById.get(proposedAppointment.serviceId)?.name ?? "Service"}
+          staffById={staffById}
+          initial={{ start: proposal.start, staffId: proposal.staffId }}
+          onClose={dismissProposal}
+          onFailed={setError}
+        />
+      ) : null}
+      {proposal?.kind === "turnaround" && proposedAppointment ? (
+        <TurnaroundDialog
+          appointment={proposedAppointment}
+          serviceDefaultMin={serviceById.get(proposedAppointment.serviceId)?.bufferMin}
+          initialMin={proposal.turnaroundMin}
+          onClose={dismissProposal}
+        />
+      ) : null}
+      {proposal?.kind === "break" ? (
+        <BreakEditDialog
+          block={proposal.block}
+          staffName={staffById.get(proposal.block.staffId)?.name ?? "Staff"}
+          initial={proposal.times}
+          onClose={dismissProposal}
+        />
+      ) : null}
+      {editingTimeOff ? (
+        <TimeOffDialog
+          key={editingTimeOff._id}
+          timeOff={editingTimeOff}
+          staffName={staffById.get(editingTimeOff.staffId)?.name}
+          onClose={() => setEditingTimeOff(null)}
+        />
+      ) : null}
       {data && draft ? (
         <NewAppointmentDialog
-          key={`${draft.date}-${draft.staffId ?? ""}-${draft.start ?? ""}`}
+          key={`${draft.date}-${draft.staffId ?? ""}-${draft.start ?? ""}-${draft.rebook?._id ?? ""}`}
           draft={draft}
           services={activeServices}
           staff={data.staff}
@@ -482,12 +676,14 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-0">
         {groups.map((group) => (
-          <fieldset key={group.title} className="border-b border-border p-2 last:border-b-0">
+          <div key={group.title} role="group" aria-label={group.title} className="border-b border-border p-2 last:border-b-0">
             <div className="flex items-center justify-between px-2 pb-1">
-              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</legend>
+              <span aria-hidden className="admin-eyebrow">
+                {group.title}
+              </span>
               <button
                 type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => group.onChange(new Set())}
               >
                 Show all
@@ -510,353 +706,9 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
                 {item.detail ? <span className="truncate text-xs text-muted-foreground">{item.detail}</span> : null}
               </label>
             ))}
-          </fieldset>
+          </div>
         ))}
       </PopoverContent>
     </Popover>
-  );
-}
-
-function Detail({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-2 text-sm">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words text-foreground">{children}</dd>
-    </div>
-  );
-}
-
-type SheetAction = "arrived" | "in_service" | "completed" | "no_show" | "cancel" | "paid";
-
-const NEXT_ACTIONS: Record<AppointmentStatus, SheetAction[]> = {
-  booked: ["arrived", "in_service", "completed", "no_show", "cancel"],
-  arrived: ["in_service", "completed", "no_show", "cancel"],
-  in_service: ["completed"],
-  completed: [],
-  cancelled: [],
-  no_show: [],
-};
-
-const ACTION_LABELS: Record<SheetAction, string> = {
-  arrived: "Mark arrived",
-  in_service: "Start service",
-  completed: "Complete",
-  no_show: "No-show",
-  cancel: "Cancel appointment",
-  paid: "Mark paid",
-};
-
-function AppointmentSheet({
-  appointment,
-  service,
-  staff,
-  onClose,
-}: {
-  appointment: Appointment | null;
-  service?: Service;
-  staff?: Staff;
-  onClose: () => void;
-}) {
-  const updateStatus = useMutation(api.adminServices.updateAppointmentStatus);
-  const markPaid = useMutation(api.adminServices.markAppointmentPaid);
-  const cancel = useMutation(api.adminServices.cancelAppointment);
-  const [pending, setPending] = useState<SheetAction | null>(null);
-  const [error, setError] = useState("");
-  const now = useNow();
-
-  async function run(action: SheetAction) {
-    if (!appointment) return;
-    if (action === "cancel" && !window.confirm("Cancel this appointment and free the staff member's time?")) return;
-    setPending(action);
-    setError("");
-    try {
-      if (action === "cancel") await cancel({ appointmentId: appointment._id });
-      else if (action === "paid") await markPaid({ appointmentId: appointment._id });
-      else await updateStatus({ appointmentId: appointment._id, status: action });
-    } catch (err) {
-      setError(errorText(err, "Could not update the appointment."));
-    } finally {
-      setPending(null);
-    }
-  }
-
-  const actions = appointment
-    ? [
-        ...NEXT_ACTIONS[appointment.status].filter((action) => action !== "no_show" || appointment.start <= now),
-        ...(appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (["paid"] as const) : []),
-      ]
-    : [];
-  const status = appointment ? APPOINTMENT_STATUS[displayStatus(appointment)] : null;
-
-  return (
-    <Sheet
-      open={Boolean(appointment)}
-      onOpenChange={(open) => {
-        if (!open) {
-          setError("");
-          onClose();
-        }
-      }}
-    >
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
-        {appointment && status ? (
-          <div className="grid gap-5">
-            <div>
-              <SheetTitle className="font-serif text-2xl font-semibold">{appointment.guestName}</SheetTitle>
-              <SheetDescription className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                <span className="size-2 rounded-full" style={{ backgroundColor: status.color }} />
-                {status.label} · {appointment.confirmationCode}
-              </SheetDescription>
-            </div>
-            <dl className="divide-y divide-border border-y border-border">
-              <Detail label="Service">{service?.name ?? "—"}</Detail>
-              <Detail label="Staff">
-                {staff ? (
-                  <span className="flex items-center gap-2">
-                    <StaffAvatar staff={staff} className="size-6 text-[10px]" />
-                    {staff.name} <span className="text-muted-foreground">· {staff.role}</span>
-                  </span>
-                ) : (
-                  "—"
-                )}
-              </Detail>
-              <Detail label="When">
-                {formatResortDate(appointment.start)}, {formatResortTime(appointment.start)} –{" "}
-                {formatResortTime(appointment.end)}
-              </Detail>
-              <Detail label="Price">{money(appointment.price, appointment.currency)}</Detail>
-              <Detail label="Payment">{appointment.paymentStatus}</Detail>
-              <Detail label="Phone">{appointment.guestPhone}</Detail>
-              <Detail label="Email">{appointment.guestEmail ?? "—"}</Detail>
-              <Detail label="Villa stay">{appointment.bookingId ? "Linked to a villa booking" : "—"}</Detail>
-              <Detail label="Source">
-                <Badge variant="outline">{SOURCE_LABELS[appointment.source]}</Badge>
-              </Detail>
-            </dl>
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            {actions.length ? (
-              <div className="flex flex-wrap gap-2">
-                {actions.map((action) => (
-                  <Button
-                    key={action}
-                    variant={action === "cancel" || action === "no_show" ? "outline" : action === "paid" ? "secondary" : "default"}
-                    onClick={() => run(action)}
-                    disabled={pending !== null}
-                  >
-                    {pending === action ? <Loader2 className="size-4 animate-spin" /> : null}
-                    {ACTION_LABELS[action]}
-                  </Button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function NewAppointmentDialog({
-  draft,
-  services,
-  staff,
-  onClose,
-  onCreated,
-}: {
-  draft: Draft;
-  services: Service[];
-  staff: Staff[];
-  onClose: () => void;
-  onCreated: (id: Id<"serviceAppointments">, start: number) => void;
-}) {
-  const createAppointment = useMutation(api.adminServices.createAppointment);
-  const [serviceId, setServiceId] = useState<Id<"services">>(
-    () => (services.find((s) => !draft.staffId || s.staffIds.includes(draft.staffId)) ?? services[0])._id,
-  );
-  const service = services.find((s) => s._id === serviceId);
-  const qualified = staff.filter((person) => service?.staffIds.includes(person._id));
-  const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "any");
-  const staffId = qualified.some((person) => person._id === staffChoice) ? (staffChoice as Id<"staff">) : undefined;
-  const [date, setDate] = useState(draft.date);
-  const [start, setStart] = useState<number | null>(draft.start ?? null);
-  const [dateOpen, setDateOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const today = resortIsoDate(useNow());
-
-  const slots = useQuery(api.adminServices.findOpenSlots, date >= today ? { serviceId, date, staffId } : "skip");
-  // The wheel always shows a time, so fall back to the first open slot.
-  const selectedSlot = slots?.find((slot) => slot.start === start) ?? slots?.[0];
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedSlot) return;
-    const form = new FormData(event.currentTarget);
-    const text = (name: string) => String(form.get(name) ?? "").trim();
-    setSaving(true);
-    setError("");
-    try {
-      const result = await createAppointment({
-        serviceId,
-        start: selectedSlot.start,
-        staffId,
-        guestName: text("guestName"),
-        guestPhone: text("guestPhone"),
-        guestEmail: text("guestEmail") || undefined,
-      });
-      onCreated(result.appointmentId, selectedSlot.start);
-    } catch (err) {
-      setError(errorText(err, "Could not create the appointment."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New appointment</DialogTitle>
-          <DialogDescription>Only open times are shown. Booking blocks the staff member&apos;s time.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label>Service</Label>
-              <Select
-                value={serviceId}
-                onValueChange={(value) => {
-                  setServiceId(value as Id<"services">);
-                  setStart(null);
-                }}
-              >
-                <SelectTrigger className="rounded-lg" aria-label="Service">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {services.map((s) => (
-                    <SelectItem key={s._id} value={s._id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Staff</Label>
-              <Select
-                value={staffId ?? "any"}
-                onValueChange={(value) => {
-                  setStaffChoice(value);
-                  setStart(null);
-                }}
-              >
-                <SelectTrigger className="rounded-lg" aria-label="Staff">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any available</SelectItem>
-                  {qualified.map((person) => (
-                    <SelectItem key={person._id} value={person._id}>
-                      {person.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {service ? (
-            <p className="-mt-2 text-xs text-muted-foreground">
-              {service.durationMin} min · {money(service.price, service.currency)}
-              {service.bufferMin ? ` · ${service.bufferMin} min turnaround` : ""}
-            </p>
-          ) : null}
-          <div className="grid gap-2">
-            <Label htmlFor="na-date">Date</Label>
-            <Popover open={dateOpen} onOpenChange={setDateOpen}>
-              <PopoverTrigger asChild>
-                <Button id="na-date" type="button" variant="outline" className="justify-start font-normal">
-                  <CalendarDays aria-hidden className="size-4 text-muted-foreground" />
-                  {formatResortDate(resortMidnight(date))}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto p-3">
-                <Calendar
-                  mode="single"
-                  selected={isoToLocalDate(date)}
-                  defaultMonth={isoToLocalDate(date)}
-                  disabled={{ before: isoToLocalDate(today) }}
-                  onSelect={(day) => {
-                    if (!day) return;
-                    setDate(format(day, "yyyy-MM-dd"));
-                    setStart(null);
-                    setDateOpen(false);
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-          <div className="grid gap-2">
-            <Label>Time</Label>
-            {slots === undefined ? (
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
-            ) : slots.length === 0 ? (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                No open times on this date.
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDate(resortIsoDate(resortMidnight(date) + DAY_MS))}
-                >
-                  Next day
-                </Button>
-              </p>
-            ) : (
-              <WheelPickerWrapper className="w-full">
-                <WheelPicker
-                  value={String(selectedSlot?.start ?? slots[0].start)}
-                  onValueChange={(value) => setStart(Number(value))}
-                  options={slots.map((slot) => ({ value: String(slot.start), label: formatResortTime(slot.start) }))}
-                  visibleCount={12}
-                />
-              </WheelPickerWrapper>
-            )}
-            {start !== null && slots?.length && !slots.some((slot) => slot.start === start) ? (
-              <p className="text-sm text-destructive">That time isn&apos;t open. Showing the next open time.</p>
-            ) : null}
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="na-name">Guest name</Label>
-            <Input id="na-name" name="guestName" required />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="na-phone">Phone</Label>
-              <Input id="na-phone" name="guestPhone" type="tel" required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="na-email">Email (optional)</Label>
-              <Input id="na-email" name="guestEmail" type="email" />
-            </div>
-          </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving || !selectedSlot}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-              Book appointment
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

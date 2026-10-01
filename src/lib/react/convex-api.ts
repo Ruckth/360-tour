@@ -2,6 +2,7 @@ import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { BookingProperty } from "@/lib/booking/booking";
 import type { ChatActionHint } from "@/lib/chat/action-card";
+import type { PropertyTranslation } from "@/lib/i18n/public-content";
 
 const CONVEX_TIMEOUT_MS = 8_000;
 const AI_CONVEX_TIMEOUT_MS = 45_000;
@@ -24,6 +25,8 @@ async function withConvexTimeout<T>(promise: Promise<T>, label: string, timeoutM
 export type LivePropertyRow = Omit<BookingProperty, "id" | "source"> & {
   _id: string;
   slug: string;
+  translations?: PropertyTranslation[];
+  contentEditedAt?: number;
 };
 
 export type CreateBookingResult = {
@@ -93,14 +96,26 @@ export async function listLiveProperties(client: ConvexReactClient) {
   )) as LivePropertyRow[];
 }
 
+/** Blocked nights per villa in [startDate, endDate] for the listed villas (keep the range short). */
 export async function getBlockedDatesByProperty(
   client: ConvexReactClient,
-  args: { startDate: string; endDate: string },
+  args: { startDate: string; endDate: string; propertyIds: string[] },
 ) {
   return (await withConvexTimeout(
     client.query(api.availability.getBlockedDatesByProperty, args as never),
     "Loading blocked dates",
   )) as Record<string, string[]>;
+}
+
+/** Blocked nights of one villa in [startDate, endDate]. */
+export async function getBlockedDates(
+  client: ConvexReactClient,
+  args: { propertyId: string; startDate: string; endDate: string },
+) {
+  return (await withConvexTimeout(
+    client.query(api.availability.getBlockedDates, args as never),
+    "Loading blocked dates",
+  )) as string[];
 }
 
 export async function isPropertyAvailable(
@@ -312,7 +327,7 @@ export async function askConcierge(
     client.action(api.chatAi.respond, args as never),
     "Asking concierge",
     AI_CONVEX_TIMEOUT_MS,
-  )) as { response?: string };
+  )) as { response?: string; aiPaused?: boolean };
 }
 
 export async function getNextChatSuggestions(

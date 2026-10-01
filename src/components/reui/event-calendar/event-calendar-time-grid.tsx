@@ -834,11 +834,13 @@ function EventCalendarTimeGutter({
   slots,
   startHour,
   interval,
+  className,
 }: {
   days: Date[]
   slots: number[]
   startHour: number
   interval: number
+  className?: string
 }) {
   const settings = useEventCalendarSettings()
   const viewConfig = useEventCalendarViewConfig()
@@ -852,7 +854,8 @@ function EventCalendarTimeGutter({
       data-slot="event-calendar-time-gutter"
       className={cn(
         "relative w-(--ec-gutter-width,4.5rem) shrink-0 border-e",
-        viewConfig.classNames?.timeGutter
+        viewConfig.classNames?.timeGutter,
+        className
       )}
     >
       {slots.map((minutes) => {

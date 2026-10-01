@@ -1172,6 +1172,8 @@ test("locale routing handles canonical English, removed Arabic, and sampled deep
 
   await page.goto("/ar");
   await expect(page.getByText("This page could not be found")).toBeVisible();
+  // An unsupported route renders the global 404 without the public navigation.
+  await page.goto("/");
   await page.getByLabel("Language").first().click();
   await expect(page.getByRole("link", { name: "العربية AR" })).toHaveCount(0);
 

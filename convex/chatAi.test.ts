@@ -3,7 +3,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
-import { getResortRealityDisclosure } from "./chatAi";
+import { getResortRealityDisclosure, resortTodayLine } from "./chatAi";
 import schema from "./schema";
 
 declare global {
@@ -107,10 +107,113 @@ describe("chat AI guardrails", () => {
   it("does not intercept ordinary villa questions", () => {
     expect(getResortRealityDisclosure("Which villa is best for 4 adults?")).toBeNull();
     expect(getResortRealityDisclosure("Can I book the Pool Villa tomorrow?")).toBeNull();
+    // "Is there / can I…?" endings are ordinary questions, not reality checks.
+    expect(getResortRealityDisclosure("마사지 예약할 수 있나요?")).toBeNull();
+    expect(getResortRealityDisclosure("プールはありますか？")).toBeNull();
+    expect(getResortRealityDisclosure("このリゾートにプールはありますか？")).toBeNull();
+    expect(getResortRealityDisclosure("이 리조트에 마사지 서비스가 있나요?")).toBeNull();
+  });
+
+  it("catches Korean and Japanese questions about whether this resort exists", () => {
+    expect(getResortRealityDisclosure("이 리조트가 있나요?")).toContain("데모/미리보기");
+    expect(getResortRealityDisclosure("Auralis Cove Retreat はありますか？")).toContain("デモ/プレビュー");
   });
 });
 
 describe("chatAi.respond question-bank matching", () => {
+  it("answers the latest production service question using live services when no curated question matches", async () => {
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    try {
+      const t = convexTest(schema, modules);
+      await t.run(async (ctx) => {
+        await ctx.db.insert("services", {
+          slug: "thai-massage", name: "Traditional Thai Massage", description: "Thai massage",
+          category: "Wellness", durationMin: 60, bufferMin: 15, price: 1500,
+          currency: "THB", staffIds: [], status: "active", createdAt: Date.now(), updatedAt: Date.now(),
+        });
+      });
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        const messages = JSON.parse(String(init?.body ?? "{}")).messages ?? [];
+        if (JSON.stringify(messages).includes("Candidate question-bank items")) {
+          return new Response(JSON.stringify({ choices: [{ message: { content: '{"matched":false}' } }] }), { status: 200 });
+        }
+        const toolResult = messages.find((message: { role: string }) => message.role === "tool");
+        const message = toolResult
+          ? { content: "มีบริการ Traditional Thai Massage ราคา ฿1,500 ครับ" }
+          : { content: null, tool_calls: [{ id: "service-list", type: "function", function: { name: "list_services", arguments: "{}" } }] };
+        return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const sessionId = await createWebSession(t);
+
+      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "มีบริการอะไรบ้าง", locale: "th" });
+
+      expect(result.response).toContain("Traditional Thai Massage");
+      expect(result.response).toContain("฿1,500");
+      expect(fetchMock.mock.calls.some(([, init]) => String((init as RequestInit)?.body).includes("list_services"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("includes approved owner answers in AI context for paraphrased questions", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    try {
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      await admin.mutation(api.chatKnowledge.adminCreateAnswer, {
+        title: "Assistance animals", answer: "Registered assistance animals are allowed if the team is told in advance.",
+        primaryQuestion: "Are pets allowed?",
+      });
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        const prompt = String(body.messages?.[0]?.content ?? "");
+        const content = prompt.includes("Registered assistance animals are allowed")
+          ? "Registered assistance animals are allowed with advance notice."
+          : "[[UNKNOWN]]";
+        return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const sessionId = await createWebSession(t);
+
+      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Can my guide dog stay with me?" });
+
+      expect(result.response).toContain("Registered assistance animals");
+      expect(fetchMock.mock.calls.some(([, init]) => String((init as RequestInit)?.body).includes("OWNER-APPROVED KNOWLEDGE"))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("records a question when the concierge has no supporting facts", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    try {
+      const t = convexTest(schema, modules);
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+        choices: [{ message: { content: "[[UNKNOWN]]" } }],
+      }), { status: 200 })));
+      const sessionId = await createWebSession(t);
+
+      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Is helicopter transfer included?" });
+      const unknownRows = await adminTest(t).query(api.chatKnowledge.adminListUnknownQuestions, {
+        status: "new", paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.model).toBe("unknown_fallback");
+      expect(unknownRows.page[0]?.userQuestion).toBe("Is helicopter transfer included?");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("returns a static exact question-bank answer for typed website messages", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {
@@ -226,7 +329,7 @@ describe("chatAi.respond question-bank matching", () => {
     }
   });
 
-  it("records an unknown fallback when semantic confidence is low", async () => {
+  it("uses the concierge when semantic confidence is low", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     vi.stubEnv("AI_API_KEY", "test-key");
     vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
@@ -264,15 +367,11 @@ describe("chatAi.respond question-bank matching", () => {
 
       const unknownRows = await admin.query(api.chatKnowledge.adminListUnknownQuestions, {
         status: "new",
-      });
+        paginationOpts: { numItems: 50, cursor: null },
+      }).then((result) => result.page);
 
-      expect(result).toMatchObject({
-        response: "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
-        model: "unknown_fallback",
-      });
-      expect(unknownRows[0]).toMatchObject({
-        userQuestion: "Can you help with late checkout?",
-      });
+      expect(result).toMatchObject({ response: "The host can help with late checkout.", model: "openai/gpt-6-luna" });
+      expect(unknownRows).toHaveLength(0);
       expect(fetchMock).toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
@@ -412,5 +511,39 @@ describe("chatAi.respond question-bank matching", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("AI takeover", () => {
+  it("records the guest message but skips the AI reply while staff has paused the AI", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await createWebSession(t);
+      await adminTest(t).mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
+
+      const result = await t.action(api.chatAi.respond, {
+        sessionId,
+        userMessage: "Is Auralis Cove a real luxury villa resort?",
+      });
+      const transcript = await t.query(api.chat.getMessages, { sessionId });
+
+      expect(result).toMatchObject({ model: "ai_paused", aiPaused: true, response: "" });
+      expect(transcript.map((message) => [message.role, message.content])).toEqual([
+        ["user", "Is Auralis Cove a real luxury villa resort?"],
+      ]);
+      await expect(
+        t.action(api.chatAi.generateReply, { sessionId, userMessage: "Hello?", channel: "whatsapp" }),
+      ).rejects.toThrow(/paused/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describe("resortTodayLine", () => {
+  it("uses the Koh Samui date, not UTC", () => {
+    // 20:00 UTC on Sunday 27 Sep is 03:00 Monday 28 Sep in Bangkok.
+    expect(resortTodayLine(Date.parse("2026-09-27T20:00:00.000Z"))).toBe("Today is 2026-09-28 (Monday) in Koh Samui.");
   });
 });

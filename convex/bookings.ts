@@ -1,3 +1,4 @@
+import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
@@ -11,7 +12,7 @@ import {
 } from './lib/validation';
 import { calculateDirectQuote } from './lib/pricing';
 import { demoCode } from './lib/codes';
-import { blockBookingDates } from './lib/availabilityWrites';
+import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 import { requireAdmin } from './lib/adminAuth';
 import { internal } from './_generated/api';
 import { enforceRateLimit } from './lib/rateLimit';
@@ -79,27 +80,6 @@ export const quoteStay = query({
 	}
 });
 
-async function assertPaymentStillAvailable(
-	ctx: MutationCtx,
-	booking: Doc<'bookings'>,
-	bookingId: Id<'bookings'>
-): Promise<void> {
-	const inRange = await ctx.db
-		.query('availability')
-		.withIndex('by_property_date', (q) =>
-			q.eq('propertyId', booking.propertyId).gte('date', booking.checkIn).lt('date', booking.checkOut)
-		)
-		.take(366);
-
-	const conflicting = inRange.filter(
-		(a) => a.status !== 'available' && a.bookingId !== bookingId
-	);
-
-	if (conflicting.length > 0) {
-		throw new Error('These dates are no longer available. Please choose different dates.');
-	}
-}
-
 function assertNotCancelled(booking: Doc<'bookings'>): void {
 	if (booking.status === 'cancelled') {
 		throw new Error('This booking was cancelled.');
@@ -125,37 +105,6 @@ export const create = mutation({
 	}
 });
 
-export const updatePaymentStatus = mutation({
-	args: {
-		bookingId: v.id('bookings'),
-		paymentStatus: v.union(
-			v.literal('pending'),
-			v.literal('paid'),
-			v.literal('failed'),
-			v.literal('refunded')
-		)
-	},
-	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) {
-			throw new Error('Booking not found');
-		}
-		if (args.paymentStatus === 'refunded' && booking.paymentMethod === 'stripe') {
-			throw new Error('Refund Stripe payments in Stripe; the signed webhook updates this booking.');
-		}
-
-		const update: Record<string, unknown> = {
-			paymentStatus: args.paymentStatus
-		};
-		if (args.paymentStatus === 'paid') {
-			await markBookingPaid(ctx, args.bookingId, 'admin');
-			return;
-		}
-		await ctx.db.patch(args.bookingId, update);
-	}
-});
-
 export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string) {
 	const booking = await ctx.db.get(bookingId);
 	if (!booking) {
@@ -166,20 +115,22 @@ export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'
 		throw new Error('An active Stripe checkout must expire before changing this booking manually.');
 	}
 	assertNotCancelled(booking);
-	await assertPaymentStillAvailable(ctx, booking, bookingId);
+	// Validates (no overlapping confirmed booking, no other hold or block) and holds the nights in
+	// this transaction; a conflict throws before anything is marked paid.
+	await blockBookingDates(ctx, booking, bookingId);
 
 	const bookingIdText = bookingId as string;
 	await ctx.db.patch(bookingId, {
 		paymentStatus: 'paid',
 		status: 'confirmed',
 		paidAt: booking.paidAt ?? Date.now(),
+		amountPaid: booking.amountPaid ?? booking.total,
 		paymentMethod: booking.paymentMethod ?? paymentMethod,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
 		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
 	});
 
-	await blockBookingDates(ctx, booking, bookingId);
 	await queueBookingEmails(ctx, booking);
 	return await ctx.db.get(bookingId);
 }
@@ -222,7 +173,7 @@ export async function queueCancellationEmail(ctx: MutationCtx, booking: Doc<'boo
 export const getLifecycleEmailDetails = internalQuery({
 	args: {
 		bookingId: v.id('bookings'),
-		kind: v.union(v.literal('cancellation'), v.literal('preArrival'), v.literal('review'))
+		kind: v.union(v.literal('cancellation'), v.literal('preArrival'), v.literal('review'), v.literal('updated'))
 	},
 	handler: async (ctx, args) => {
 		const booking = await ctx.db.get(args.bookingId);
@@ -230,13 +181,17 @@ export const getLifecycleEmailDetails = internalQuery({
 		if (args.kind === 'cancellation' && (booking.status !== 'cancelled' || !booking.cancellationEmailQueuedAt)) return null;
 		if (args.kind === 'preArrival' && (booking.status !== 'confirmed' || !booking.preArrivalEmailQueuedAt)) return null;
 		if (args.kind === 'review' && (booking.status !== 'confirmed' || !booking.reviewEmailQueuedAt)) return null;
+		if (args.kind === 'updated' && booking.status === 'cancelled') return null;
 		const property = await ctx.db.get(booking.propertyId);
 		return {
 			guestName: booking.guestName,
 			guestEmail: booking.guestEmail,
 			propertyName: property?.name ?? 'Your stay',
 			checkIn: booking.checkIn,
-			checkOut: booking.checkOut
+			checkOut: booking.checkOut,
+			guests: booking.guests,
+			total: booking.total,
+			currency: booking.currency
 		};
 	}
 });
@@ -313,6 +268,16 @@ export const touchChatBookingFlow = internalMutation({
 	}
 });
 
+/** Invalidate the old draft even when a replacement tool call later fails parsing or validation. */
+export const invalidateChatProposal = internalMutation({
+	args: { sessionId: v.id('chatSessions'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
+	handler: async (ctx, args) => {
+		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
+		await ctx.db.patch(args.sessionId, args.kind === 'villa' ? { pendingBookingQuote: undefined } : { pendingServiceQuote: undefined });
+	}
+});
+
 export const prepareChatBooking = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
@@ -321,10 +286,12 @@ export const prepareChatBooking = internalMutation({
 		checkOut: v.string(),
 		guests: v.number(),
 		guestName: v.string(),
-		guestPhone: v.optional(v.string())
+		guestPhone: v.optional(v.string()),
+		deadlineAt: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		// WhatsApp numbers are verified by WhatsApp, so never trust a model-supplied phone there.
 		const guestPhone = (
 			session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone
@@ -366,16 +333,19 @@ export const prepareChatBooking = internalMutation({
 });
 
 export const confirmChatBooking = internalMutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		const pending = session.pendingBookingQuote;
+		assertSameProposal(pending, args.expectedProposal);
 		if (!pending) throw new Error('No prepared booking. Call prepare_booking first.');
 
 		// Already confirmed (e.g. the guest said "yes" twice): return the same booking.
 		const existing = pending.bookingId ? await ctx.db.get(pending.bookingId) : null;
 		if (existing) {
-			return { bookingId: existing._id, accessToken: existing.accessToken ?? '', confirmationCode: existing.confirmationCode ?? '', total: existing.total, currency: existing.currency, alreadyConfirmed: true };
+			if (existing.status === 'cancelled') throw new Error('That booking has been cancelled. Prepare a new booking if the guest requests one.');
+			return { bookingId: existing._id, accessToken: existing.accessToken ?? '', confirmationCode: existing.confirmationCode ?? '', property: (await ctx.db.get(existing.propertyId))?.name ?? 'Villa', checkIn: existing.checkIn, checkOut: existing.checkOut, guests: existing.guests, nights: existing.nights, total: existing.total, currency: existing.currency, paymentStatus: existing.paymentStatus, alreadyConfirmed: true };
 		}
 
 		if (Date.now() - pending.createdAt > CHAT_BOOKING_TTL_MS) {
@@ -383,6 +353,10 @@ export const confirmChatBooking = internalMutation({
 			throw new Error('The prepared booking expired. Call prepare_booking again.');
 		}
 
+		const currentQuote = await quoteBookableStay(ctx, pending);
+		if (currentQuote.quote.directTotal !== pending.total || currentQuote.quote.currency !== pending.currency) {
+			throw new Error('The villa price changed. Prepare a new quote and ask the guest to confirm it.');
+		}
 		const { bookingId, accessToken } = await createBookingRecord(ctx, {
 			propertySlug: pending.propertySlug,
 			checkIn: pending.checkIn,
@@ -398,7 +372,7 @@ export const confirmChatBooking = internalMutation({
 		await ctx.db.patch(bookingId, { confirmationCode });
 		await ctx.db.patch(args.sessionId, { pendingBookingQuote: { ...pending, bookingId } });
 
-		return { bookingId, accessToken, confirmationCode, total: pending.total, currency: pending.currency, alreadyConfirmed: false };
+		return { bookingId, accessToken, confirmationCode, property: currentQuote.property.name, checkIn: pending.checkIn, checkOut: pending.checkOut, guests: pending.guests, nights: pending.nights, total: pending.total, currency: pending.currency, paymentStatus: 'pending' as const, alreadyConfirmed: false };
 	}
 });
 
@@ -454,10 +428,12 @@ export const cancelChatBooking = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
 		reference: v.string(),
-		turnStartedAt: v.number()
+		turnStartedAt: v.number(),
+		deadlineAt: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		const reference = args.reference.trim().toUpperCase();
 		const booking = (await guestBookingsForSession(ctx, session)).find(
 			(b) => bookingReference(b).toUpperCase() === reference
@@ -497,6 +473,7 @@ export const cancelChatBooking = internalMutation({
 
 		await ctx.db.patch(booking._id, { status: 'cancelled' });
 		await queueCancellationEmail(ctx, booking);
+		await releaseBookingDates(ctx, booking);
 		await ctx.db.patch(args.sessionId, { pendingCancellation: undefined });
 		return { state: 'cancelled' as const, ...summary };
 	}

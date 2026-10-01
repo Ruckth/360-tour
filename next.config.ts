@@ -43,6 +43,7 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
     qualities: [72, 75, 82],
+    // Keep these hosts in sync with convex/lib/imageUrls.ts.
     remotePatterns: [
       {
         protocol: "https",
@@ -51,6 +52,11 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "qr-official.line.me",
+      },
+      {
+        // Photos and panoramas uploaded from the villa admin (Convex file storage).
+        protocol: "https",
+        hostname: "*.convex.cloud",
       },
     ],
   },

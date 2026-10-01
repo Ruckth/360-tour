@@ -10,7 +10,9 @@
 
 import type * as adminBookings from "../adminBookings.js";
 import type * as adminChat from "../adminChat.js";
+import type * as adminProperties from "../adminProperties.js";
 import type * as adminReply from "../adminReply.js";
+import type * as adminReviews from "../adminReviews.js";
 import type * as adminServices from "../adminServices.js";
 import type * as aiEval from "../aiEval.js";
 import type * as availability from "../availability.js";
@@ -29,8 +31,11 @@ import type * as instagram from "../instagram.js";
 import type * as leads from "../leads.js";
 import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminChatMetadata from "../lib/adminChatMetadata.js";
+import type * as lib_appointmentChanges from "../lib/appointmentChanges.js";
+import type * as lib_appointmentWindow from "../lib/appointmentWindow.js";
 import type * as lib_availabilityWrites from "../lib/availabilityWrites.js";
 import type * as lib_bookingWrites from "../lib/bookingWrites.js";
+import type * as lib_channelReplyWindow from "../lib/channelReplyWindow.js";
 import type * as lib_chatFallback from "../lib/chatFallback.js";
 import type * as lib_chatLlm from "../lib/chatLlm.js";
 import type * as lib_chatPresence from "../lib/chatPresence.js";
@@ -38,16 +43,26 @@ import type * as lib_chatReuse from "../lib/chatReuse.js";
 import type * as lib_chatSuggestions from "../lib/chatSuggestions.js";
 import type * as lib_chatTools from "../lib/chatTools.js";
 import type * as lib_codes from "../lib/codes.js";
+import type * as lib_curatedVariants from "../lib/curatedVariants.js";
 import type * as lib_dates from "../lib/dates.js";
+import type * as lib_imageUploads from "../lib/imageUploads.js";
+import type * as lib_imageUrls from "../lib/imageUrls.js";
 import type * as lib_ical from "../lib/ical.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_serviceSlots from "../lib/serviceSlots.js";
+import type * as lib_serverSecret from "../lib/serverSecret.js";
+import type * as lib_siteSettings from "../lib/siteSettings.js";
+import type * as lib_slug from "../lib/slug.js";
+import type * as lib_socialProof from "../lib/socialProof.js";
+import type * as lib_stayOverlap from "../lib/stayOverlap.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
 import type * as payments from "../payments.js";
 import type * as properties from "../properties.js";
+import type * as publicProperties from "../publicProperties.js";
+import type * as roster from "../roster.js";
 import type * as seed from "../seed.js";
 import type * as seeds_aiEvalData from "../seeds/aiEvalData.js";
 import type * as seeds_curatedQuestions from "../seeds/curatedQuestions.js";
@@ -59,6 +74,7 @@ import type * as seeds_socialProof from "../seeds/socialProof.js";
 import type * as seeds_staffServices from "../seeds/staffServices.js";
 import type * as seeds_tourSnippets from "../seeds/tourSnippets.js";
 import type * as serviceBookings from "../serviceBookings.js";
+import type * as settings from "../settings.js";
 import type * as users from "../users.js";
 import type * as whatsapp from "../whatsapp.js";
 
@@ -71,7 +87,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   adminBookings: typeof adminBookings;
   adminChat: typeof adminChat;
+  adminProperties: typeof adminProperties;
   adminReply: typeof adminReply;
+  adminReviews: typeof adminReviews;
   adminServices: typeof adminServices;
   aiEval: typeof aiEval;
   availability: typeof availability;
@@ -90,8 +108,11 @@ declare const fullApi: ApiFromModules<{
   leads: typeof leads;
   "lib/adminAuth": typeof lib_adminAuth;
   "lib/adminChatMetadata": typeof lib_adminChatMetadata;
+  "lib/appointmentChanges": typeof lib_appointmentChanges;
+  "lib/appointmentWindow": typeof lib_appointmentWindow;
   "lib/availabilityWrites": typeof lib_availabilityWrites;
   "lib/bookingWrites": typeof lib_bookingWrites;
+  "lib/channelReplyWindow": typeof lib_channelReplyWindow;
   "lib/chatFallback": typeof lib_chatFallback;
   "lib/chatLlm": typeof lib_chatLlm;
   "lib/chatPresence": typeof lib_chatPresence;
@@ -99,16 +120,26 @@ declare const fullApi: ApiFromModules<{
   "lib/chatSuggestions": typeof lib_chatSuggestions;
   "lib/chatTools": typeof lib_chatTools;
   "lib/codes": typeof lib_codes;
+  "lib/curatedVariants": typeof lib_curatedVariants;
   "lib/dates": typeof lib_dates;
+  "lib/imageUploads": typeof lib_imageUploads;
+  "lib/imageUrls": typeof lib_imageUrls;
   "lib/ical": typeof lib_ical;
   "lib/pricing": typeof lib_pricing;
   "lib/rateLimit": typeof lib_rateLimit;
   "lib/serviceSlots": typeof lib_serviceSlots;
+  "lib/serverSecret": typeof lib_serverSecret;
+  "lib/siteSettings": typeof lib_siteSettings;
+  "lib/slug": typeof lib_slug;
+  "lib/socialProof": typeof lib_socialProof;
+  "lib/stayOverlap": typeof lib_stayOverlap;
   "lib/validation": typeof lib_validation;
   line: typeof line;
   migrations: typeof migrations;
   payments: typeof payments;
   properties: typeof properties;
+  publicProperties: typeof publicProperties;
+  roster: typeof roster;
   seed: typeof seed;
   "seeds/aiEvalData": typeof seeds_aiEvalData;
   "seeds/curatedQuestions": typeof seeds_curatedQuestions;
@@ -120,6 +151,7 @@ declare const fullApi: ApiFromModules<{
   "seeds/staffServices": typeof seeds_staffServices;
   "seeds/tourSnippets": typeof seeds_tourSnippets;
   serviceBookings: typeof serviceBookings;
+  settings: typeof settings;
   users: typeof users;
   whatsapp: typeof whatsapp;
 }>;
@@ -150,4 +182,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+};

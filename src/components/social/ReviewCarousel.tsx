@@ -30,19 +30,28 @@ function ReviewCard({ review }: { review: Review }) {
   return (
     <article className="h-full rounded-xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-center gap-3">
-        <Image
-          src={review.author.avatarUrl}
-          alt={review.author.name}
-          width={44}
-          height={44}
-          className="rounded-full object-cover"
-        />
+        {review.author.avatarUrl ? (
+          <Image
+            src={review.author.avatarUrl}
+            alt={review.author.name}
+            width={44}
+            height={44}
+            className="rounded-full object-cover"
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold/10 text-sm font-semibold text-gold"
+          >
+            {review.author.name.trim().charAt(0).toUpperCase()}
+          </span>
+        )}
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">
             {review.author.name}
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            {review.author.city}, {review.author.country}
+            {[review.author.city, review.author.country].filter(Boolean).join(", ")}
           </p>
         </div>
       </div>

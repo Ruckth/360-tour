@@ -65,6 +65,26 @@ describe("admin replies", () => {
     ]);
     const session = await t.run((ctx) => ctx.db.get(sessionId));
     expect(session?.messageCount).toBe(1);
+    // Replying takes the chat over from the AI.
+    expect(session).toMatchObject({ aiPaused: true, assignedAdminEmail: adminEmail });
+  });
+
+  it("allows a Facebook reply inside the 24-hour window", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+    const sessionId = await insertSession(t, "facebook");
+    await t.run((ctx) =>
+      ctx.db.insert("chatMessages", {
+        sessionId,
+        role: "user",
+        content: "Hi",
+        timestamp: Date.now() - 60_000,
+      }),
+    );
+    expect(
+      await admin.mutation(api.adminReply.claim, { sessionId, requestId: "reply-5", content: "Hello" }),
+    ).toMatchObject({ state: "new", channel: "facebook", recipient: "fb-user-123" });
   });
 
   it("uses the saved LINE recipient and refuses duplicate claims", async () => {

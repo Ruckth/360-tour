@@ -12,7 +12,10 @@
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"noEmit": true,
-		"jsx": "react-jsx"
+		"jsx": "react-jsx",
+		"paths": {
+			"@convex-dev/migrations/test": ["../types/convex-migrations-test.d.ts"]
+		}
 	},
 	"include": ["./**/*.ts"],
 	"exclude": ["./node_modules", "./_generated"]

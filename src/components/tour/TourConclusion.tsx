@@ -22,8 +22,13 @@ export function TourConclusion({
   const locale = useLocale();
   const t = useTranslations("Booking");
   const navT = useTranslations("Nav");
-  const conclusion = getLocalizedTourConclusion(property.id, locale);
-  if (!conclusion) return null;
+  // Villas without bundled closing copy (e.g. created in the admin) reuse their own description.
+  const conclusion = getLocalizedTourConclusion(property.id, locale) ?? {
+    headline: property.tagline || property.name,
+    summary: property.description,
+    highlights: property.amenities.slice(0, 4),
+    closingLine: "",
+  };
 
   function book() {
     const params = new URLSearchParams({ unit: property.id });

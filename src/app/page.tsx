@@ -9,13 +9,14 @@ import { ButtonLink } from "@/components/ui/button";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { buildEmailHref } from "@/lib/contact-links";
 import {
-  getLocalizedProperties,
   getLocalizedPropertyTagline,
   getLocalizedResort,
-  getLocalizedSocialProofByPropertyId,
   getLocationBullets,
   getLocationImageAlt,
+  getPublicMessages,
 } from "@/lib/i18n/public-content";
+import { getFeaturedReviews, getVillaCatalog } from "@/lib/server/villas";
+import type { PublicVilla } from "@/lib/villas";
 
 const amenityIcons = {
   waves: Waves,
@@ -28,22 +29,36 @@ const amenityIcons = {
   anchor: Anchor,
 };
 
+/** Stats computed from live villas and real reviews; rating stats are hidden until reviews exist. */
+function resortHighlights(
+  villas: PublicVilla[],
+  labels: { villaTypes: string; guestRating: string; reviews: string; directSavings: string },
+) {
+  const reviewCount = villas.reduce((sum, villa) => sum + (villa.rating?.count ?? 0), 0);
+  const ratingTotal = villas.reduce((sum, villa) => sum + (villa.rating ? villa.rating.average * villa.rating.count : 0), 0);
+  const maxDiscount = Math.max(0, ...villas.map((villa) => villa.directDiscountPercent));
+  return [
+    { stat: String(villas.length), label: labels.villaTypes },
+    reviewCount ? { stat: (ratingTotal / reviewCount).toFixed(1), label: labels.guestRating } : null,
+    reviewCount ? { stat: String(reviewCount), label: labels.reviews } : null,
+    maxDiscount ? { stat: `${maxDiscount}%`, label: labels.directSavings } : null,
+  ].filter((item): item is { stat: string; label: string } => item !== null);
+}
+
 export default async function HomePage() {
   const t = await getTranslations("Home");
   const nav = await getTranslations("Nav");
   const activeLocale = await getLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const resort = getLocalizedResort(locale);
-  const properties = getLocalizedProperties(locale);
-  const reviews = properties
-    .flatMap((property) => getLocalizedSocialProofByPropertyId(property.id, locale)?.reviews ?? [])
-    .sort((a, b) => b.rating - a.rating)
-    .slice(0, 6);
-  const villaItems = properties.map((property) => ({
+  const catalog = await getVillaCatalog(locale);
+  const reviews = await getFeaturedReviews(catalog, locale);
+  const villaItems = catalog.villas.map((property) => ({
     property,
-    socialProof: getLocalizedSocialProofByPropertyId(property.id, locale),
-    storyTagline: getLocalizedPropertyTagline(property.id, locale),
+    // Decorative bundled line; dropped once an admin rewrites the villa copy.
+    storyTagline: property.contentEditedAt ? undefined : getLocalizedPropertyTagline(property.id, locale),
   }));
+  const highlights = resortHighlights(catalog.villas, getPublicMessages(locale).Resort.highlights);
   const locationBullets = getLocationBullets(locale);
 
   return (
@@ -65,7 +80,7 @@ export default async function HomePage() {
             </p>
           </div>
           <div className="mt-14 grid grid-cols-2 gap-6 md:grid-cols-4 md:gap-8">
-            {resort.highlights.map((highlight) => (
+            {highlights.map((highlight) => (
               <div key={highlight.label} className="text-center">
                 <p className="font-serif text-3xl font-semibold text-foreground md:text-4xl">
                   {highlight.stat}
@@ -93,13 +108,8 @@ export default async function HomePage() {
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 md:gap-8 lg:gap-10 2xl:grid-cols-3">
-            {villaItems.map(({ property, socialProof, storyTagline }) => (
-              <VillaCard
-                key={property.id}
-                property={property}
-                socialProof={socialProof}
-                storyTagline={storyTagline}
-              />
+            {villaItems.map(({ property, storyTagline }) => (
+              <VillaCard key={property.id} property={property} storyTagline={storyTagline} />
             ))}
           </div>
         </div>
@@ -139,22 +149,24 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="reviews" className="bg-muted/40 py-20 md:py-28">
-        <div className="mx-auto max-w-7xl px-5 md:px-8">
-          <div className="mx-auto mb-12 max-w-3xl text-center md:mb-16">
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
-              {t("testimonials")}
-            </p>
-            <h2 className="mt-3 font-serif text-3xl font-semibold text-foreground md:text-4xl lg:text-5xl">
-              {t("reviewsTitle")}
-            </h2>
-            <p className="mx-auto mt-4 max-w-lg text-sm text-muted-foreground md:text-base">
-              {t("reviewsIntro", { resortName: resort.name })}
-            </p>
+      {reviews.length > 0 ? (
+        <section id="reviews" className="bg-muted/40 py-20 md:py-28">
+          <div className="mx-auto max-w-7xl px-5 md:px-8">
+            <div className="mx-auto mb-12 max-w-3xl text-center md:mb-16">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
+                {t("testimonials")}
+              </p>
+              <h2 className="mt-3 font-serif text-3xl font-semibold text-foreground md:text-4xl lg:text-5xl">
+                {t("reviewsTitle")}
+              </h2>
+              <p className="mx-auto mt-4 max-w-lg text-sm text-muted-foreground md:text-base">
+                {t("reviewsIntro", { resortName: resort.name })}
+              </p>
+            </div>
+            <ReviewCarousel reviews={reviews} />
           </div>
-          <ReviewCarousel reviews={reviews} />
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section className="py-20 md:py-28">
         <div className="mx-auto max-w-7xl px-5 md:px-8">

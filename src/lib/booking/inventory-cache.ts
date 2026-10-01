@@ -1,6 +1,7 @@
 import type { BookingProperty } from "@/lib/booking/booking";
 
-const BOOKING_INVENTORY_CACHE_VERSION = 1;
+// v2: villas only; blocked nights now load per villa and month (see use-blocked-dates.ts).
+const BOOKING_INVENTORY_CACHE_VERSION = 2;
 const BOOKING_INVENTORY_CACHE_TTL_MS = 5 * 60 * 1000;
 
 type BookingInventoryCache = {
@@ -8,7 +9,6 @@ type BookingInventoryCache = {
   todayIso: string;
   locale: string;
   propertyList: BookingProperty[];
-  blockedByProperty: Record<string, string[]>;
   updatedAt: number;
 };
 
@@ -35,13 +35,6 @@ function isBookingPropertyList(value: unknown): value is BookingProperty[] {
   );
 }
 
-function isBlockedByProperty(value: unknown): value is Record<string, string[]> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return Object.values(value).every(
-    (dates) => Array.isArray(dates) && dates.every((date) => typeof date === "string"),
-  );
-}
-
 export function readBookingInventoryCache(locale: string, todayIso: string) {
   if (typeof window === "undefined") return null;
 
@@ -55,12 +48,8 @@ export function readBookingInventoryCache(locale: string, todayIso: string) {
     if (typeof parsed.updatedAt !== "number") return null;
     if (Date.now() - parsed.updatedAt > BOOKING_INVENTORY_CACHE_TTL_MS) return null;
     if (!isBookingPropertyList(parsed.propertyList)) return null;
-    if (!isBlockedByProperty(parsed.blockedByProperty)) return null;
 
-    return {
-      propertyList: parsed.propertyList,
-      blockedByProperty: parsed.blockedByProperty,
-    };
+    return { propertyList: parsed.propertyList };
   } catch {
     return null;
   }
@@ -70,7 +59,6 @@ export function writeBookingInventoryCache(
   locale: string,
   todayIso: string,
   propertyList: BookingProperty[],
-  blockedByProperty: Record<string, string[]>,
 ) {
   if (typeof window === "undefined" || !propertyList.length) return;
 
@@ -79,7 +67,6 @@ export function writeBookingInventoryCache(
     locale,
     todayIso,
     propertyList,
-    blockedByProperty,
     updatedAt: Date.now(),
   };
 

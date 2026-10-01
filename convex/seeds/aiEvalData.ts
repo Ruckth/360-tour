@@ -38,7 +38,7 @@ const serviceSeeds = [
 const answerSeeds = [
 	{
 		title: 'Check-in and check-out times',
-		answer: 'Check-in is from 3:00 PM and check-out is by 11:00 AM (Koh Samui time). Direct bookings get a free late check-out until 2:00 PM, subject to availability. Early check-in can be arranged if the villa is ready — just let us know your arrival time.',
+		answer: 'Check-in is from 2:00 PM and check-out is by 11:00 AM (Koh Samui time). Direct bookings get a free late check-out until 2:00 PM, subject to availability. Early check-in can be arranged if the villa is ready — just let us know your arrival time.',
 		questions: ['What time is check-in?', 'What time is check in?', 'When is check-in?', 'What are the check-in and check-out times?', 'What time is check-out?', 'Check-in time', 'เช็คอินกี่โมง', '체크인 시간이 언제예요?']
 	},
 	{

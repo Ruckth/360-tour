@@ -21,7 +21,6 @@ import type {
   ChatSuggestion,
 } from "@/components/chat/chat-types";
 import {
-  addChatMessage,
   askConcierge,
   claimChatBrowserHandoff,
   closeChatSession,
@@ -33,6 +32,7 @@ import {
   identifyChatVisitor,
   markChatSuggestionClicked,
   markChatSuggestionsShown,
+  listLiveProperties,
   touchChatSession,
 } from "@/lib/react/convex-api";
 import {
@@ -50,6 +50,7 @@ import {
   extractChatBookingContext,
   getBookingPromptKey,
   type ChatBookingContext,
+  type ChatVillaRef,
 } from "@/lib/chat/booking-intent";
 import {
   appendChatExternalParams,
@@ -450,6 +451,17 @@ function createAssistantMessage(
     : { role: "assistant", content };
 }
 
+/** Flags the guest's latest copy of `content` so the "a team member will reply" note shows after it. */
+function withStaffReplyNotice(items: Message[], content: string): Message[] {
+  const index = items.findLastIndex(
+    (item) => item.role === "user" && item.content === content,
+  );
+  if (index === -1) return items;
+  const next = [...items];
+  next[index] = { ...next[index], staffReplyNotice: true };
+  return next;
+}
+
 function latestExchangeFromMessages(items: Message[]): LatestExchange | null {
   for (
     let assistantIndex = items.length - 1;
@@ -513,6 +525,8 @@ export function useChatSession({
   const activePropertySlug = propertySlug ?? pageContext?.context.propertySlug;
   const activePropertyName = propertyName ?? pageContext?.context.propertyName;
   const [open, setOpen] = useState(isPageMode);
+  // Live villa names so guests can name admin-created villas; undefined → bundled list.
+  const [villas, setVillas] = useState<ChatVillaRef[]>();
   const [hydrated, setHydrated] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -520,6 +534,11 @@ export function useChatSession({
   const [sessionReady, setSessionReady] = useState(false);
   const [isHydratingSession, setIsHydratingSession] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Staff took over this session: presets go to them as normal messages and the guest is told
+  // a person will reply (once per paused stretch).
+  const [pausedSessionId, setPausedSessionId] = useState<string | null>(null);
+  const aiPaused = pausedSessionId !== null && pausedSessionId === sessionId;
+  const staffReplyNoticeShownRef = useRef(false);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [latestExchange, setLatestExchange] = useState<LatestExchange | null>(
@@ -700,6 +719,18 @@ export function useChatSession({
     }
     return -1;
   }, [messages]);
+  useEffect(() => {
+    if (!convex || !open || villas) return;
+    let active = true;
+    listLiveProperties(convex)
+      .then((rows) => {
+        if (active) setVillas(rows.map(({ slug, name }) => ({ slug, name })));
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+    };
+  }, [convex, open, villas]);
   const messageActionCards = useMemo<ChatActionCard[]>(
     () =>
       messages.map((message, index) => {
@@ -713,6 +744,7 @@ export function useChatSession({
           latestUserMessage: previousUserMessageFor(messages, index),
           latestAssistantMessage: message.content,
           activePropertySlug: activePropertySlug || undefined,
+          villas,
           actionHint: message.action,
           clickedSuggestionId,
         });
@@ -722,6 +754,7 @@ export function useChatSession({
       latestAssistantIndex,
       latestExchange?.clickedSuggestionId,
       messages,
+      villas,
     ],
   );
   const canShowMessageSuggestions =
@@ -1605,6 +1638,20 @@ export function useChatSession({
     return unsubscribe;
   }, [browserGateVisible, convex, open, sessionId, sessionReady]);
 
+  useEffect(() => {
+    if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
+    const watch = convex.watchQuery(api.chat.getSession, {
+      sessionId: sessionId as Id<"chatSessions">,
+    });
+    return watch.onUpdate(() => {
+      const session = watch.localQueryResult();
+      if (session === undefined) return;
+      const paused = Boolean(session?.aiPaused);
+      if (!paused) staffReplyNoticeShownRef.current = false;
+      setPausedSessionId(paused ? sessionId : null);
+    });
+  }, [browserGateVisible, convex, open, sessionId, sessionReady]);
+
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!contactForm.email.trim() && !contactForm.contactHandle.trim()) return;
@@ -1731,13 +1778,18 @@ export function useChatSession({
     setTrackedSuggestionIds(null);
     setMessages((items) => [...items, { role: "user", content: clean }]);
 
-    const preset = suggestions.find((item) => item.text === clean);
+    // While staff has the chat, a canned answer would talk over them: send it as a normal message.
+    const preset = aiPaused
+      ? undefined
+      : suggestions.find((item) => item.text === clean);
     const selectedActionHint = resolveChatActionHint({
       latestUserMessage: clean,
       activePropertySlug: activePropertySlug || undefined,
+      villas,
       clickedSuggestionId: preset?.id,
     });
-    if (preset) {
+    // Connected chats resolve every suggestion against current server facts.
+    if (preset && !convex) {
       const assistantMessage = preset.answer;
       setMessages((items) => [
         ...items,
@@ -1748,36 +1800,6 @@ export function useChatSession({
         assistantMessage,
         clickedSuggestionId: preset.id,
       });
-      if (convex) {
-        try {
-          const id = await ensureSession({ markOpen: true, generation });
-          if (generation !== chatGenerationRef.current) return;
-          if (id) {
-            await markChatSuggestionClicked(convex, {
-              sessionId: id,
-              suggestion: {
-                source: "static",
-                suggestionId: preset.id,
-              },
-            }).catch(() => null);
-            if (generation !== chatGenerationRef.current) return;
-            await addChatMessage(convex, {
-              sessionId: id,
-              role: "user",
-              content: clean,
-            });
-            if (generation !== chatGenerationRef.current) return;
-            await addChatMessage(convex, {
-              sessionId: id,
-              role: "assistant",
-              content: preset.answer,
-              ...(selectedActionHint ? { action: selectedActionHint } : {}),
-            });
-          }
-        } catch {
-          // The visitor still sees the local answer if persistence is temporarily unavailable.
-        }
-      }
       return;
     }
 
@@ -1810,6 +1832,13 @@ export function useChatSession({
       id = await ensureSession({ markOpen: true, generation });
       if (generation !== chatGenerationRef.current) return;
       if (!id) throw new Error("No chat session");
+      if (preset) {
+        await markChatSuggestionClicked(convex, {
+          sessionId: id,
+          suggestion: { source: "static", suggestionId: preset.id },
+        }).catch(() => null);
+        if (generation !== chatGenerationRef.current) return;
+      }
       const result = await askConcierge(convex, {
         sessionId: id,
         userMessage: clean,
@@ -1818,6 +1847,17 @@ export function useChatSession({
         ...(selectedActionHint ? { actionHint: selectedActionHint } : {}),
       });
       if (generation !== chatGenerationRef.current) return;
+      // Staff took over: their reply arrives through the transcript watch.
+      if (result?.aiPaused) {
+        setPausedSessionId(id);
+        if (!staffReplyNoticeShownRef.current) {
+          staffReplyNoticeShownRef.current = true;
+          setMessages((items) => withStaffReplyNotice(items, clean));
+        }
+        return;
+      }
+      staffReplyNoticeShownRef.current = false;
+      setPausedSessionId(null);
       const response =
         typeof result === "object" && result && "response" in result
           ? String(result.response)
@@ -1829,6 +1869,7 @@ export function useChatSession({
       setLatestExchange({
         userMessage: clean,
         assistantMessage: response,
+        ...(preset ? { clickedSuggestionId: preset.id } : {}),
       });
     } catch {
       if (generation !== chatGenerationRef.current) return;
