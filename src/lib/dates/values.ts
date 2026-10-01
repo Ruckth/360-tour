@@ -53,17 +53,23 @@ export function timeValueProblem(
   {
     required,
     minuteStep = 1,
-  }: { required?: boolean; minuteStep?: number } = {},
+    stepBase = "",
+  }: { required?: boolean; minuteStep?: number; stepBase?: string } = {},
 ): string {
   if (!value) return required ? "Choose a time." : "";
   if (!isTimeValue(value)) return "Choose a valid time.";
-  if (Number(value.slice(3)) % minuteStep !== 0)
+  const baseMinute = isTimeValue(stepBase) ? Number(stepBase.slice(3)) : 0;
+  if ((Number(value.slice(3)) - baseMinute) % minuteStep !== 0)
     return `Choose a time in ${minuteStep}-minute steps.`;
   return "";
 }
 
 /** Include an existing off-step minute so opening a picker never rounds saved data. */
-export function timeMinuteOptions(minuteStep: number, value = ""): string[] {
+export function timeMinuteOptions(
+  minuteStep: number,
+  value = "",
+  stepBase = "",
+): string[] {
   if (
     !Number.isInteger(minuteStep) ||
     minuteStep < 1 ||
@@ -72,8 +78,11 @@ export function timeMinuteOptions(minuteStep: number, value = ""): string[] {
   ) {
     throw new Error("minuteStep must divide 60.");
   }
+  const offset = isTimeValue(stepBase)
+    ? Number(stepBase.slice(3)) % minuteStep
+    : 0;
   const options = Array.from({ length: 60 / minuteStep }, (_, index) =>
-    String(index * minuteStep).padStart(2, "0"),
+    String(offset + index * minuteStep).padStart(2, "0"),
   );
   if (isTimeValue(value) && !options.includes(value.slice(3)))
     options.push(value.slice(3));

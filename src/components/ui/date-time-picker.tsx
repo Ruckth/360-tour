@@ -10,12 +10,14 @@ export function DateTimePicker({
   value,
   onValueChange,
   defaultTime = "00:00",
+  locale = "en",
 }: {
   id: string;
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   defaultTime?: string;
+  locale?: string;
 }) {
   const parts = parseLocalDateTime(value);
   const date = parts?.date ?? "";
@@ -23,6 +25,7 @@ export function DateTimePicker({
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
       <DatePicker
+        locale={locale}
         id={id}
         value={date}
         onValueChange={(next) => onValueChange(next ? `${next}T${time}` : "")}

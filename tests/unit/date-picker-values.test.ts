@@ -100,4 +100,22 @@ describe("time and wall-clock values", () => {
     expect(timeMinuteOptions(1)).toHaveLength(60);
     expect(() => timeMinuteOptions(7)).toThrow();
   });
+
+  it("preserves a native time field's saved step base", () => {
+    expect(timeMinuteOptions(15, "09:10", "09:10")).toEqual([
+      "10",
+      "25",
+      "40",
+      "55",
+    ]);
+    expect(
+      timeValueProblem("09:10", { minuteStep: 15, stepBase: "09:10" }),
+    ).toBe("");
+    expect(
+      timeValueProblem("09:25", { minuteStep: 15, stepBase: "09:10" }),
+    ).toBe("");
+    expect(
+      timeValueProblem("09:15", { minuteStep: 15, stepBase: "09:10" }),
+    ).toBeTruthy();
+  });
 });

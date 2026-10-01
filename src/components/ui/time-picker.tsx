@@ -48,7 +48,9 @@ export function TimePicker({
   const [hour, minute] = isTimeValue(field.value)
     ? field.value.split(":")
     : ["", ""];
-  const minutes = timeMinuteOptions(minuteStep, field.value);
+  // Preserve the value-attribute step base used by native time inputs.
+  const stepBase = props.defaultValue ?? props.value ?? "";
+  const minutes = timeMinuteOptions(minuteStep, field.value, stepBase);
   return (
     <div className={cn("min-w-0", className)}>
       <div className="flex items-center gap-2">
@@ -123,6 +125,7 @@ export function TimePicker({
         problem={timeValueProblem(field.value, {
           required: props.required,
           minuteStep,
+          stepBase,
         })}
         focusRef={trigger}
         onReset={field.reset}

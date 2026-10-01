@@ -2,6 +2,13 @@
 
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 
+function clearPickerError(trigger: HTMLButtonElement | null) {
+  if (!trigger?.hasAttribute("data-picker-invalid")) return;
+  trigger.removeAttribute("data-picker-invalid");
+  trigger.removeAttribute("aria-invalid");
+  trigger.removeAttribute("aria-errormessage");
+}
+
 export type PickerValueProps = {
   value?: string;
   defaultValue?: string;
@@ -52,21 +59,18 @@ export function PickerFormControl({
   const [invalid, setInvalid] = useState(false);
   useEffect(() => {
     input.current?.setCustomValidity(problem);
-    if (!problem && focusRef.current?.hasAttribute("data-picker-invalid")) {
-      focusRef.current.removeAttribute("data-picker-invalid");
-      focusRef.current.removeAttribute("aria-invalid");
-      focusRef.current.removeAttribute("aria-errormessage");
-    }
+    if (!problem) clearPickerError(focusRef.current);
   }, [problem, focusRef]);
   useEffect(() => {
     const form = input.current?.form;
     const reset = () => {
       onReset();
       setInvalid(false);
+      clearPickerError(focusRef.current);
     };
     form?.addEventListener("reset", reset);
     return () => form?.removeEventListener("reset", reset);
-  }, [onReset]);
+  }, [onReset, focusRef]);
   return (
     <>
       <input
@@ -83,15 +87,18 @@ export function PickerFormControl({
           event.preventDefault();
           setInvalid(true);
           const trigger = focusRef.current;
-          // Keep focus on the first invalid field when several controls fail.
-          if (
-            !trigger?.form?.contains(document.activeElement) ||
-            !document.activeElement?.hasAttribute("data-picker-invalid")
-          )
-            trigger?.focus();
           trigger?.setAttribute("data-picker-invalid", "true");
           trigger?.setAttribute("aria-invalid", "true");
           trigger?.setAttribute("aria-errormessage", errorId);
+          // Native reporting can focus a later text input after this handler.
+          // Restore the first invalid picker once that synchronous work ends.
+          queueMicrotask(() => {
+            const control = input.current;
+            const firstInvalid = control?.form?.querySelector(
+              "input:invalid, select:invalid, textarea:invalid",
+            );
+            if (firstInvalid === control) focusRef.current?.focus();
+          });
         }}
       />
       {invalid && problem ? (
