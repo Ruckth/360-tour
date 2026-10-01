@@ -31,6 +31,7 @@ import {
   WEEKDAYS,
   errorText,
   formatTimeOff,
+  formatResortDateTime,
   resortIsoDate,
   timeOffInput,
   timeOffRange,
@@ -734,7 +735,8 @@ function TimeOffList({ staff }: { staff: Staff }) {
   );
 }
 
-export function TimeOffDialog({ timeOff, staffName, onClose }: { timeOff: TimeOff; staffName?: string; onClose: () => void }) {
+export function TimeOffDialog({ timeOff: initialTimeOff, staffName, onClose }: { timeOff: TimeOff; staffName?: string; onClose: () => void }) {
+  const [timeOff] = useState(initialTimeOff);
   const updateTimeOff = useMutation(api.adminServices.updateTimeOff);
   const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
   const [pending, setPending] = useState<"save" | "remove" | null>(null);
@@ -754,12 +756,21 @@ export function TimeOffDialog({ timeOff, staffName, onClose }: { timeOff: TimeOf
     }
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // This dialog can open from inside the staff form; React events bubble through portals.
     event.stopPropagation();
     const input = readTimeOff(new FormData(event.currentTarget));
-    void act("save", () => updateTimeOff({ timeOffId: timeOff._id, ...timeOffRange(input), label: input.label || "Time off" }));
+    if (pending !== null) return;
+    const next = { ...timeOffRange(input), label: input.label || "Time off" };
+    const problem = timeOffRangeProblem(next);
+    if (problem) { setError(problem); return; }
+    if (!(await confirm({
+      title: "Confirm time off change?",
+      description: <>From: {timeOff.label} · {formatResortDateTime(timeOff.start)} – {formatResortDateTime(timeOff.end)}.<br />To: {next.label} · {formatResortDateTime(next.start)} – {formatResortDateTime(next.end)}. Times are Bangkok time.</>,
+      confirmLabel: "Save time off", cancelLabel: "Keep editing",
+    }))) return;
+    await act("save", () => updateTimeOff({ timeOffId: timeOff._id, ...next, expected: { start: timeOff.start, end: timeOff.end, label: timeOff.label } }));
   }
 
   async function remove() {

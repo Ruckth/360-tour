@@ -14,8 +14,7 @@ import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { timeRange } from "@/lib/schedule-changes";
-import { formatResortTime } from "@/lib/staff-bookings";
+import { endTime, timeRange } from "@/lib/schedule-changes";
 
 /** This appointment's cleanup/travel time after the service; it stays attached to the service end. */
 export function TurnaroundDialog({
@@ -45,7 +44,7 @@ export function TurnaroundDialog({
       rows={[
         { label: "Service", before: timeRange(original.start, original.end), after: timeRange(original.start, original.end) },
         { label: "Turnaround", before: `${current} min`, after: `${problem ? current : minutes} min` },
-        { label: "Available again", before: formatResortTime(original.blockedUntil), after: formatResortTime(after.blockedUntil) },
+        { label: "Available again", before: endTime(original.start, original.blockedUntil), after: endTime(original.start, after.blockedUntil) },
       ]}
       footnote={
         <p>

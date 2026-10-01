@@ -95,11 +95,11 @@ export function NewAppointmentDialog({
 }) {
   const createAppointment = useMutation(api.adminServices.createAppointment);
   const { rebook } = draft;
-  const [serviceId, setServiceId] = useState<Id<"services">>(() => {
+  const [serviceId, setServiceId] = useState<Id<"services"> | undefined>(() => {
     // The rebooked or last used service, as long as the staff member picked on the calendar performs it.
     const fits = (s: Service) => !draft.staffId || s.staffIds.includes(draft.staffId);
     const wanted = rebook?.serviceId ?? readLastService();
-    return (services.find((s) => s._id === wanted && fits(s)) ?? services.find(fits) ?? services[0])._id;
+    return (services.find((s) => s._id === wanted && fits(s)) ?? services.find(fits) ?? services[0])?._id;
   });
   const service = services.find((s) => s._id === serviceId);
   const qualified = staff.filter((person) => service?.staffIds.includes(person._id));
@@ -113,7 +113,7 @@ export function NewAppointmentDialog({
   const [error, setError] = useState("");
   const today = resortIsoDate(useNow());
 
-  const slots = useQuery(api.adminServices.findOpenSlots, date >= today ? { serviceId, date, staffId } : "skip");
+  const slots = useQuery(api.adminServices.findOpenSlots, serviceId && date >= today ? { serviceId, date, staffId } : "skip");
   // Fall back to the next open time (or the first), so the form is always one click from booking.
   const selectedSlot = pickSlot(slots, start);
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
@@ -128,7 +128,7 @@ export function NewAppointmentDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSlot) return;
+    if (!selectedSlot || !serviceId || saving) return;
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "").trim();
     setSaving(true);

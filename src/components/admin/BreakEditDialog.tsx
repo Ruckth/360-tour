@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
@@ -12,7 +11,6 @@ import { breakText, type BreakBlock } from "@/lib/schedule-changes";
 import { WEEKDAYS_LONG, formatResortFullDate, formatResortTime, resortMidnight } from "@/lib/staff-bookings";
 
 type Scope = "day" | "weekly";
-type Conflicts = FunctionReturnType<typeof api.roster.previewBreakChange>["conflicts"];
 
 const TIME = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/;
 
@@ -42,7 +40,6 @@ export function BreakEditDialog({
   const [label, setLabel] = useState(original.label);
   const [scope, setScope] = useState<Scope>("day");
   const [remove, setRemove] = useState(false);
-  const [saveConflicts, setSaveConflicts] = useState<Conflicts | null>(null);
 
   const weekday = WEEKDAYS_LONG[new Date(`${shown.date}T00:00:00Z`).getUTCDay()];
   const next = remove ? null : { start, end, label: label.trim() || "Break" };
@@ -50,7 +47,7 @@ export function BreakEditDialog({
   const unchanged = next !== null && next.start === original.start && next.end === original.end && next.label === original.label;
   const args = { staffId: shown.staffId, date: shown.date, scope, original, next, expectedPlan: shown.plan };
   const preview = useQuery(api.roster.previewBreakChange, timesValid && !unchanged ? args : "skip");
-  const conflicts = saveConflicts ?? preview?.conflicts ?? [];
+  const conflicts = preview?.conflicts ?? [];
   const problem = !timesValid ? "Enter a start before the end, as HH:mm." : unchanged ? "Change the time or label, or remove the break." : preview?.problem;
   const scopeText = (value: Scope) => (value === "day" ? "This day only" : `Every ${weekday} (weekly default)`);
 
@@ -64,6 +61,7 @@ export function BreakEditDialog({
       ]}
       footnote={
         <>
+          <p>An end time of 00:00 means midnight at the end of this date.</p>
           <p>Other shifts, breaks and notes stay as they are. The latest roster change can be undone in Roster.</p>
           {scope === "weekly" && preview?.keptDates.length ? (
             <p>These {weekday}s keep their own plan: {preview.keptDates.map((date) => formatResortFullDate(resortMidnight(date))).join(", ")}.</p>
@@ -75,19 +73,18 @@ export function BreakEditDialog({
       onConfirm={async () => {
         const result = await editBreak(args);
         if (result.ok) return true;
-        setSaveConflicts(result.conflicts);
-        return false;
+        throw new Error("The break now conflicts with a booking. Review the updated preview and try again.");
       }}
       onClose={onClose}
     >
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="grid gap-2">
           <Label htmlFor="br-start">Start</Label>
-          <Input id="br-start" type="time" step={300} value={start} disabled={remove} onChange={(event) => { setStart(event.target.value); setSaveConflicts(null); }} />
+          <Input id="br-start" type="time" step={300} value={start} disabled={remove} onChange={(event) => { setStart(event.target.value); }} />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="br-end">End</Label>
-          <Input id="br-end" type="time" step={300} value={end} disabled={remove} onChange={(event) => { setEnd(event.target.value); setSaveConflicts(null); }} />
+          <Input id="br-end" type="time" step={300} value={end === "24:00" ? "00:00" : end} disabled={remove} onChange={(event) => { setEnd(event.target.value === "00:00" ? "24:00" : event.target.value); }} />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="br-label">Label</Label>
@@ -104,7 +101,7 @@ export function BreakEditDialog({
               className="size-4 accent-foreground"
               checked={scope === value}
               disabled={value === "weekly" && shown.override}
-              onChange={() => { setScope(value); setSaveConflicts(null); }}
+              onChange={() => { setScope(value); }}
             />
             {scopeText(value)}
           </label>
@@ -114,7 +111,7 @@ export function BreakEditDialog({
         ) : null}
       </fieldset>
       <div>
-        <Button type="button" size="sm" variant="outline" aria-pressed={remove} onClick={() => { setRemove(!remove); setSaveConflicts(null); }}>
+        <Button type="button" size="sm" variant="outline" aria-pressed={remove} onClick={() => { setRemove(!remove); }}>
           {remove ? "Keep this break" : "Remove this break"}
         </Button>
       </div>

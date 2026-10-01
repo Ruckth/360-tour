@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import { breakFromDrag, moveProposal, scheduleRows, turnaroundFromTail, withGhost, withoutGhost } from "@/lib/schedule-changes";
+import { breakFromDrag, moveProposal, scheduleRows, turnaroundFromTail } from "@/lib/schedule-changes";
 import { resortDateTime } from "@/lib/staff-bookings";
 
 const mali = "staff-mali" as Id<"staff">;
@@ -53,13 +53,8 @@ describe("scheduleRows", () => {
   });
 });
 
-describe("proposal ghosts", () => {
-  it("leaves the saved position once a proposal is dismissed", () => {
-    const empty = new Map();
-    const proposed = withGhost(empty, "a1", { start: at("14:00"), end: at("15:00"), staffId: nok });
-    expect(empty.size).toBe(0);
-    expect(proposed.get("a1")).toMatchObject({ staffId: nok });
-    expect(withoutGhost(proposed, "a1").has("a1")).toBe(false);
-    expect(withoutGhost(empty, "a1")).toBe(empty);
-  });
+it("shows the following date when cleanup crosses midnight", () => {
+  const before = { start: at("22:45"), end: at("23:45"), blockedUntil: at("00:15", "2026-10-02"), staffName: "Mali" };
+  const row = scheduleRows(before, before).find((r) => r.label === "Occupied until");
+  expect(row?.before).toBe("Fri, Oct 2, 2026, 12:15 AM (30 min turnaround)");
 });

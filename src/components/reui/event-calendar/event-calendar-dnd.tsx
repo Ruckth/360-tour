@@ -348,7 +348,8 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
   const { instance, kind, origin, startEvent, segment, ui } = config
   const { settings, internals, api } = instance
   const timeZone = settings.timeZone
-  const snap = settings.snapDuration
+  const snap = segment?.occurrence.event.snapDuration ?? settings.snapDuration
+  const minDuration = segment?.occurrence.event.minDuration ?? snap
   // per-calendar tuning shallow-merged over the module defaults
   const activation = { ...EVENT_CALENDAR_ACTIVATION, ...settings.activation }
   const startX = startEvent.clientX
@@ -654,7 +655,7 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
     if (kind === "resize-start") {
       const clamped = Math.min(
         Math.max(min, col.boundsStartMin),
-        Math.min(occEndMinInCol - snap, col.boundsEndMin)
+        Math.min(occEndMinInCol - minDuration, col.boundsEndMin)
       )
       const start = addMinutes(dayStart, clamped)
       if (start >= occurrence.end) return null
@@ -662,10 +663,10 @@ function beginGesture<TData>(config: BeginGestureConfig<TData>) {
     }
     const clamped = Math.max(
       Math.min(min, col.boundsEndMin),
-      Math.max(occStartMinInCol + snap, col.boundsStartMin)
+      Math.max(occStartMinInCol + minDuration, col.boundsStartMin)
     )
     const end = addMinutes(dayStart, clamped)
-    if (end <= occurrence.start) return null
+    if (end < occurrence.start || (end.getTime() === occurrence.start.getTime() && minDuration > 0)) return null
     return { start: occurrence.start, end, allDay: false }
   }
 

@@ -307,12 +307,14 @@ export default defineSchema({
 			v.literal('rebooked')
 		),
 		reason: v.optional(v.string()),
+		currencyBefore: v.string(),
+		currencyAfter: v.string(),
 		changes: v.array(v.object({
 			field: v.string(),
 			from: v.union(v.string(), v.number(), v.null()),
 			to: v.union(v.string(), v.number(), v.null())
 		}))
-	}).index('by_appointment_at', ['appointmentId', 'at']),
+	}).index('by_appointmentId_and_at', ['appointmentId', 'at']),
 
 	reviews: defineTable({
 		propertyId: v.id('properties'),
@@ -553,6 +555,7 @@ export default defineSchema({
 		})),
 		pendingServiceCancellation: v.optional(v.object({
 			appointmentId: v.id('serviceAppointments'),
+			expectedRevision: v.optional(v.number()),
 			createdAt: v.number()
 		})),
 		// Cancellation the guest was asked to confirm; executed on a later turn.

@@ -45,18 +45,16 @@ const paymentLabels: Record<string, string> = STATUS_LABELS.payment;
 /** Who changed the appointment, when, and each old → new value. Newest first; the server caps the list. */
 export function AppointmentHistory({
   appointmentId,
-  currency,
   staffName,
   serviceName,
 }: {
   appointmentId: Id<"serviceAppointments">;
-  currency: string;
   staffName: (id: string) => string;
   serviceName: (id: string) => string;
 }) {
   const history = useQuery(api.adminServices.listAppointmentHistory, { appointmentId });
 
-  function show(field: string, value: Value): string {
+  function show(field: string, value: Value, currency: string): string {
     if (value === null || value === "") return "—";
     if (typeof value === "number") {
       if (TIME_FIELDS.has(field)) return formatResortDateTime(value);
@@ -91,7 +89,7 @@ export function AppointmentHistory({
               <ul className="grid gap-0.5 text-xs text-muted-foreground">
                 {entry.changes.map((change) => (
                   <li key={change.field}>
-                    {FIELD_LABELS[change.field] ?? change.field}: {show(change.field, change.from)} → {show(change.field, change.to)}
+                    {FIELD_LABELS[change.field] ?? change.field}: {show(change.field, change.from, entry.currencyBefore)} → {show(change.field, change.to, entry.currencyAfter)}
                   </li>
                 ))}
               </ul>

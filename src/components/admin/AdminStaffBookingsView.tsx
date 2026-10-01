@@ -37,11 +37,8 @@ import {
   breakFromDrag,
   moveProposal,
   turnaroundFromTail,
-  withGhost,
-  withoutGhost,
   type BreakBlock,
   type Ghost,
-  type Ghosts,
   type ScheduleData,
 } from "@/lib/schedule-changes";
 import {
@@ -68,9 +65,9 @@ type EventData =
   | { kind: "block"; block: ScheduleData["blocks"][number] }
   | { kind: "off" };
 /** The one change waiting for confirmation; `ghostId` is the calendar event drawn at the proposed place. */
-type Proposal = { ghostId: string } & (
-  | { kind: "reschedule"; appointmentId: Id<"serviceAppointments">; start: number; staffId: Id<"staff"> }
-  | { kind: "turnaround"; appointmentId: Id<"serviceAppointments">; turnaroundMin?: number }
+type Proposal = { ghostId: string; ghost?: Ghost } & (
+  | { kind: "reschedule"; appointment: Appointment; start: number; staffId: Id<"staff"> }
+  | { kind: "turnaround"; appointment: Appointment; turnaroundMin?: number }
   | { kind: "break"; block: BreakBlock; times?: { start: string; end: string } }
 );
 
@@ -186,8 +183,6 @@ function StaffCalendar() {
   const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(() => new Set());
   // Cancelled appointments are kept but stay out of the working grid unless asked for.
   const [showCancelled, setShowCancelled] = useState(false);
-  // Proposed positions, drawn until the change is confirmed or dismissed.
-  const [ghosts, setGhosts] = useState<Ghosts>(() => new Map());
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [selectedId, setSelectedId] = useState<Id<"serviceAppointments"> | null>(null);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
@@ -234,11 +229,12 @@ function StaffCalendar() {
   );
 
   const events = useMemo<CalendarEvent<EventData>[]>(() => {
+    const ghostFor = (id: string) => proposal?.ghostId === id ? proposal.ghost : undefined;
     if (!data) return [];
     const appointmentEvents = appointments.map((appointment): CalendarEvent<EventData> => {
-      const ghost = ghosts.get(appointment._id);
+      const ghost = ghostFor(appointment._id);
       const service = serviceById.get(appointment.serviceId);
-      const staff = staffById.get(appointment.staffId);
+      const staff = staffById.get(ghost?.staffId ?? appointment.staffId);
       return {
         id: appointment._id,
         title: `${appointment.guestName} · ${service?.name ?? "Service"}${staff ? ` · ${staff.name}` : ""}`,
@@ -258,7 +254,7 @@ function StaffCalendar() {
       .filter((block) => !hiddenStaff.has(block.staffId) && (view === "resource" || block.kind === "time_off"))
       .map((block): CalendarEvent<EventData> => {
         const id = `block-${block.staffId}-${block.start}`;
-        const ghost = ghosts.get(id);
+        const ghost = ghostFor(id);
         const editable = block.kind === "break" && staffById.get(block.staffId)?.status === "active";
         return {
           id,
@@ -300,8 +296,8 @@ function StaffCalendar() {
           .filter((a) => a.blockedUntil > a.end && a.status !== "cancelled" && a.status !== "no_show")
           .map((appointment): CalendarEvent<EventData> => {
             const id = `turnaround-${appointment._id}`;
-            const moved = ghosts.get(appointment._id);
-            const resized = ghosts.get(id);
+            const moved = ghostFor(appointment._id);
+            const resized = ghostFor(id);
             const start = moved?.end ?? appointment.end;
             return {
               id,
@@ -312,12 +308,14 @@ function StaffCalendar() {
               color: BLOCK_COLOR,
               readOnly: !canEditTurnaround(appointment),
               draggable: false,
+              snapDuration: 5,
+              minDuration: 0,
               data: { kind: "turnaround", appointment },
             };
           })
       : [];
     return [...offEvents, ...blockEvents, ...turnaroundEvents, ...appointmentEvents];
-  }, [data, appointments, ghosts, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range]);
+  }, [data, appointments, proposal, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range]);
 
   const renderEvent = useCallback(
     ({ occurrence, view: currentView }: { occurrence: { event: CalendarEvent<EventData> }; view: CalendarView }) => {
@@ -336,7 +334,7 @@ function StaffCalendar() {
       }
       const { appointment } = eventData;
       const service = serviceById.get(appointment.serviceId);
-      const staffName = currentView === "resource" ? null : staffById.get(appointment.staffId)?.name;
+      const staffName = currentView === "resource" ? null : staffById.get(occurrence.event.resourceId ?? appointment.staffId)?.name;
       return (
         <span className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
           <span className="flex min-w-0 items-center gap-1.5">
@@ -344,7 +342,7 @@ function StaffCalendar() {
             <StatusBadge {...appointmentStatus(displayStatus(appointment))} className="hidden @[12rem]:inline-flex" />
           </span>
           <span className="truncate text-xs text-muted-foreground">
-            {formatResortTime(appointment.start)} • {service?.name ?? "Service"}
+            {formatResortTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
             {staffName ? ` · ${staffName}` : ""}
           </span>
         </span>
@@ -397,20 +395,18 @@ function StaffCalendar() {
   );
 
   function propose(next: Proposal, ghostId: string, ghost: Ghost) {
-    setGhosts((current) => withGhost(current, ghostId, ghost));
-    setProposal(next);
+    setProposal({ ...next, ghostId, ghost });
     setError("");
   }
 
   function dismissProposal() {
-    if (proposal) setGhosts((current) => withoutGhost(current, proposal.ghostId));
     setProposal(null);
   }
 
   const selected = data?.appointments.find((a) => a._id === selectedId) ?? null;
   const filterCount = hiddenServices.size + hiddenStatuses.size;
   const proposedAppointment = proposal && proposal.kind !== "break"
-    ? data?.appointments.find((a) => a._id === proposal.appointmentId)
+    ? proposal.appointment
     : undefined;
 
   return (
@@ -441,7 +437,7 @@ function StaffCalendar() {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "appointment") setSelectedId(eventData.appointment._id);
             if (eventData?.kind === "turnaround" && canEditTurnaround(eventData.appointment)) {
-              setProposal({ kind: "turnaround", appointmentId: eventData.appointment._id, ghostId: occurrence.event.id });
+              setProposal({ kind: "turnaround", appointment: eventData.appointment, ghostId: occurrence.event.id });
             }
             if (eventData?.kind === "block" && eventData.block.kind === "time_off") setEditingTimeOff(eventData.block.timeOff);
             if (eventData?.kind === "block" && eventData.block.kind === "break" && !occurrence.event.readOnly) {
@@ -469,14 +465,14 @@ function StaffCalendar() {
               const { appointment } = eventData;
               const next = moveProposal(appointment, { start, staffId: update.resourceId as Id<"staff"> | undefined });
               if (!next) return false;
-              propose({ kind: "reschedule", appointmentId: appointment._id, ghostId: id, ...next }, id, { start, end, staffId: next.staffId });
+              propose({ kind: "reschedule", appointment, ghostId: id, ...next }, id, { start, end, staffId: next.staffId });
               return true;
             }
             if (eventData.kind === "turnaround" && update.source === "resize-end") {
               const { appointment } = eventData;
               const turnaroundMin = turnaroundFromTail(appointment, end);
               if (turnaroundMin === turnaroundMinutes(appointment)) return false;
-              propose({ kind: "turnaround", appointmentId: appointment._id, ghostId: id, turnaroundMin }, id, { start: appointment.end, end, staffId: appointment.staffId });
+              propose({ kind: "turnaround", appointment, ghostId: id, turnaroundMin }, id, { start: appointment.end, end, staffId: appointment.staffId });
               return true;
             }
             if (eventData.kind === "block" && eventData.block.kind === "break") {
@@ -598,6 +594,7 @@ function StaffCalendar() {
         staffById={staffById}
         serviceById={serviceById}
         onBookAgain={(appointment) => {
+          if (activeServices.length === 0) return;
           setSelectedId(null);
           setDraft({ date: resortIsoDate(Math.max(appointment.start, Date.now())), staffId: appointment.staffId, rebook: appointment });
         }}

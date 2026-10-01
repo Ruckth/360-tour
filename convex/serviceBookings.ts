@@ -3,6 +3,7 @@ import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
+import { appointmentRevision } from './lib/appointmentWindow';
 import { cancelAppointmentRecord } from './lib/appointmentChanges';
 import { enforceRateLimit } from './lib/rateLimit';
 import {
@@ -226,9 +227,9 @@ export const cancelChatServiceBooking = internalMutation({
 			date: resortLocalParts(appointment.start).date, time: resortLocalParts(appointment.start).time
 		};
 		const pending = session.pendingServiceCancellation;
-		if (pending?.appointmentId !== appointment._id || pending.createdAt >= args.turnStartedAt || Date.now() - pending.createdAt >= CHAT_BOOKING_TTL_MS) {
+		if (pending?.appointmentId !== appointment._id || pending.expectedRevision !== appointmentRevision(appointment) || pending.createdAt >= args.turnStartedAt || Date.now() - pending.createdAt >= CHAT_BOOKING_TTL_MS) {
 			await ctx.db.patch(args.sessionId, {
-				bookingFlowAt: Date.now(), pendingServiceCancellation: { appointmentId: appointment._id, createdAt: Date.now() }
+				bookingFlowAt: Date.now(), pendingServiceCancellation: { appointmentId: appointment._id, expectedRevision: appointmentRevision(appointment), createdAt: Date.now() }
 			});
 			return { state: 'needs_confirmation' as const, ...summary };
 		}

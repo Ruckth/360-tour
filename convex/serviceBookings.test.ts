@@ -190,6 +190,24 @@ describe('AI service booking', () => {
 		expect(await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' })).toMatchObject({ available: true });
 	});
 
+	it('asks the guest to reconfirm cancellation after an admin reschedules the appointment', async () => {
+		const s = await setup();
+		await prepare(s);
+		const booked = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		if (!('confirmationCode' in booked)) throw new Error('Expected confirmation');
+		const args = { sessionId: s.sessionId, reference: booked.confirmationCode!, turnStartedAt: Date.now() };
+		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation', time: '14:00' });
+		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
+		const admin = s.t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const [appointment] = await appointments(s.t);
+		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: appointment._id, expectedRevision: 0, staffId: s.staffId, start: at('16:00') });
+		vi.advanceTimersByTime(1000);
+		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'needs_confirmation', time: '16:00' });
+		expect((await appointments(s.t))[0]).toMatchObject({ status: 'booked', start: at('16:00') });
+		vi.advanceTimersByTime(1000);
+		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'cancelled', time: '16:00' });
+	});
+
 	it('honours an active first-name preference and reports an unknown one', async () => {
 		const s = await setup('facebook', true);
 		const preferred = await prepare(s, { guestPhone: '0812345678', staffPreference: 'nOk' });

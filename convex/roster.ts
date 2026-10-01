@@ -160,7 +160,7 @@ async function timeOffByCell(ctx: ReadCtx, staffIds: Id<'staff'>[], first: strin
 /** Upcoming appointments that the plan would leave outside working time on that date. */
 function uncovered(date: string, plan: DayPlan, appointments: Appointment[] | undefined, now: number): Appointment[] {
 	return (appointments ?? []).filter((a) =>
-		a.blockedUntil > now && a.status !== 'completed' && planUncovers(date, plan, a.start, a.blockedUntil)
+		a.blockedUntil > now && planUncovers(date, plan, a.start, a.blockedUntil)
 	);
 }
 
@@ -457,7 +457,7 @@ async function patternConflicts(ctx: ReadCtx, person: Staff, pattern: Pattern, o
 	for await (const a of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', person._id).gte('start', now - APPOINTMENT_LOOKBACK)
 	)) {
-		if (!blocksTime(a) || a.status === 'completed' || a.blockedUntil <= now) continue;
+		if (!blocksTime(a) || a.blockedUntil <= now) continue;
 		const lastTouched = resortLocalParts(a.blockedUntil - 1).date;
 		for (let date = resortLocalParts(a.start).date; date <= lastTouched; date = addDays(date, 1)) {
 			if (overrideDates.has(date)) continue;

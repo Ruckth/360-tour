@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,11 +46,13 @@ export function ChangeConfirmDialog({
   onConfirm: () => Promise<boolean | void>;
   onClose: () => void;
 }) {
+  const submitting = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
   async function confirm() {
-    if (pending) return;
+    if (submitting.current || confirmDisabled) return;
+    submitting.current = true;
     setPending(true);
     setError("");
     try {
@@ -58,12 +60,13 @@ export function ChangeConfirmDialog({
     } catch (err) {
       setError(errorText(err, "Could not save the change."));
     } finally {
+      submitting.current = false;
       setPending(false);
     }
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && !submitting.current && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -71,7 +74,7 @@ export function ChangeConfirmDialog({
             {description ?? "Review the change before saving it."}
           </DialogDescription>
         </DialogHeader>
-        {children ? <div className="grid gap-4">{children}</div> : null}
+        {children ? <fieldset disabled={pending} className="grid gap-4">{children}</fieldset> : null}
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">Before and after</caption>
           <thead>

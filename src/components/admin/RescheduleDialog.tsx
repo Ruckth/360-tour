@@ -91,7 +91,7 @@ export function RescheduleDialog({
   return (
     <ChangeConfirmDialog
       title={`Reschedule ${original.guestName} — ${serviceName}?`}
-      description="Same service length, turnaround and price. Only open times are listed."
+      description="Same service length, turnaround and price. Available times are checked again when you confirm."
       rows={scheduleRows({ ...original, staffName: staffName(original.staffId) }, { ...after, staffName: staffName(staffId) })}
       footnote={<p>The guest isn&apos;t notified automatically. Let them know about the new time.</p>}
       confirmLabel="Confirm reschedule"

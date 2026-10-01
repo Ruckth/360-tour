@@ -28,7 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { timeRange } from "@/lib/schedule-changes";
+import { endTime, timeRange } from "@/lib/schedule-changes";
 import {
   PAYMENT_LABELS,
   appointmentStatus,
@@ -36,7 +36,6 @@ import {
   errorText,
   formatResortDate,
   formatResortDateTime,
-  formatResortTime,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
@@ -195,7 +194,7 @@ export function AppointmentSheet({
                   <Detail label="Occupied">
                     Service {timeRange(appointment.start, appointment.end)}
                     {turnaround ? ` · Turnaround ${timeRange(appointment.end, appointment.blockedUntil)}` : " · No turnaround"}
-                    {" · "}Available again {formatResortTime(appointment.blockedUntil)}
+                    {" · "}Available again {endTime(appointment.start, appointment.blockedUntil)}
                   </Detail>
                   <Detail label="Price">{formatMoney(appointment.price, appointment.currency)}</Detail>
                   <Detail label="Payment">
@@ -248,7 +247,7 @@ export function AppointmentSheet({
                     </Button>
                   ) : null}
                   {canBookAgain(appointment) ? (
-                    <Button variant="outline" onClick={() => onBookAgain(appointment)} disabled={pending !== null}>
+                    <Button variant="outline" onClick={() => onBookAgain(appointment)} disabled={pending !== null || services.length === 0}>
                       <Repeat aria-hidden className="size-4" />
                       Book again
                     </Button>
@@ -263,9 +262,9 @@ export function AppointmentSheet({
                     </Button>
                   ) : null}
                 </div>
+                {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
                 <AppointmentHistory
                   appointmentId={appointment._id}
-                  currency={appointment.currency}
                   staffName={staffName}
                   serviceName={(id) => serviceById.get(id)?.name ?? "Former service"}
                 />
@@ -308,7 +307,9 @@ function AppointmentEditForm({
   onDone: () => void;
 }) {
   const updateDetails = useMutation(api.adminServices.updateAppointmentDetails);
-  const [revision] = useState(() => appointmentRevision(appointment));
+  const [original] = useState(appointment);
+  const revision = appointmentRevision(original);
+  const confirm = useConfirm();
   const [serviceId, setServiceId] = useState<Id<"services">>(appointment.serviceId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -322,9 +323,22 @@ function AppointmentEditForm({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "").trim();
+    if (saving) return;
+    const chosen = options.find((s) => s._id === serviceId);
     setSaving(true);
     setError("");
     try {
+      if (serviceId !== original.serviceId) {
+        if (!chosen) throw new Error("This service is no longer available. Choose another service.");
+        const end = original.start + chosen.durationMin * 60_000;
+        const blockedUntil = end + chosen.bufferMin * 60_000;
+        if (!(await confirm({
+          title: "Confirm service change?",
+          description: <>From: {service?.name ?? "Service"} · {timeRange(original.start, original.end)} · {turnaroundMinutes(original)} min turnaround · available again {endTime(original.start, original.blockedUntil)} · {formatMoney(original.price, original.currency)}.<br />To: {chosen.name} · {timeRange(original.start, end)} · {chosen.bufferMin} min turnaround · available again {endTime(original.start, blockedUntil)} · {formatMoney(chosen.price, chosen.currency)}. Staff and start time stay the same. Guest is not notified automatically.</>,
+          confirmLabel: "Change service",
+          cancelLabel: "Keep editing",
+        }))) return;
+      }
       await updateDetails({
         appointmentId: appointment._id,
         expectedRevision: revision,
@@ -332,7 +346,7 @@ function AppointmentEditForm({
         guestPhone: text("guestPhone"),
         guestEmail: text("guestEmail"),
         notes: text("notes"),
-        ...(serviceId !== appointment.serviceId ? { serviceId } : {}),
+        ...(serviceId !== original.serviceId && chosen ? { serviceId, expectedService: { durationMin: chosen.durationMin, bufferMin: chosen.bufferMin, price: chosen.price, currency: chosen.currency } } : {}),
       });
       onDone();
     } catch (err) {
@@ -344,60 +358,62 @@ function AppointmentEditForm({
 
   return (
     <form onSubmit={submit} className="grid gap-4">
-      <div className="grid gap-2">
-        <Label>Service</Label>
-        <Select value={serviceId} onValueChange={(value) => setServiceId(value as Id<"services">)} disabled={!canChangeService}>
-          <SelectTrigger className="rounded-lg" aria-label="Service">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((s) => (
-              <SelectItem key={s._id} value={s._id}>
-                {s.name} · {s.durationMin} min · {formatMoney(s.price, s.currency)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          {canChangeService
-            ? "Same staff member and start time. The length, turnaround and price follow the new service."
-            : "The service can only change while the appointment is booked or arrived and unpaid."}
-        </p>
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="ap-name">Guest name</Label>
-        <Input id="ap-name" name="guestName" defaultValue={appointment.guestName} required />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
+      <fieldset disabled={saving} className="grid gap-4">
         <div className="grid gap-2">
-          <Label htmlFor="ap-phone">Phone</Label>
-          <Input id="ap-phone" name="guestPhone" type="tel" defaultValue={appointment.guestPhone} required />
+          <Label>Service</Label>
+          <Select value={serviceId} onValueChange={(value) => setServiceId(value as Id<"services">)} disabled={!canChangeService}>
+            <SelectTrigger className="rounded-lg" aria-label="Service">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((s) => (
+                <SelectItem key={s._id} value={s._id}>
+                  {s.name} · {s.durationMin} min · {formatMoney(s.price, s.currency)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {canChangeService
+              ? "Same staff member and start time. The length, turnaround and price follow the new service."
+              : "The service can only change while the appointment is booked or arrived and unpaid."}
+          </p>
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="ap-email">Email (optional)</Label>
-          <Input id="ap-email" name="guestEmail" type="email" defaultValue={appointment.guestEmail} />
+          <Label htmlFor="ap-name">Guest name</Label>
+          <Input id="ap-name" name="guestName" defaultValue={appointment.guestName} required />
         </div>
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="ap-notes">Notes (optional)</Label>
-        <Textarea
-          id="ap-notes"
-          name="notes"
-          maxLength={2000}
-          defaultValue={appointment.notes}
-          placeholder="Allergies, pressure preference, room number…"
-        />
-      </div>
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onDone}>
-          Discard changes
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? <Spinner className="text-current" /> : null}
-          Save
-        </Button>
-      </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-2">
+            <Label htmlFor="ap-phone">Phone</Label>
+            <Input id="ap-phone" name="guestPhone" type="tel" defaultValue={appointment.guestPhone} required />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="ap-email">Email (optional)</Label>
+            <Input id="ap-email" name="guestEmail" type="email" defaultValue={appointment.guestEmail} />
+          </div>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="ap-notes">Notes (optional)</Label>
+          <Textarea
+            id="ap-notes"
+            name="notes"
+            maxLength={2000}
+            defaultValue={appointment.notes}
+            placeholder="Allergies, pressure preference, room number…"
+          />
+        </div>
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onDone}>
+            Discard changes
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? <Spinner className="text-current" /> : null}
+            Save
+          </Button>
+        </div>
+      </fieldset>
     </form>
   );
 }

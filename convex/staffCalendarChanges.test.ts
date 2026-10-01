@@ -165,6 +165,32 @@ describe('appointment changes', () => {
 		expect(await get(id)).toMatchObject({ guestName: 'Bea', guestPhone: '+66222', notes: 'Quiet room', serviceId: before.serviceId, revision: 1 });
 	});
 
+	it('keeps price currency snapshots and rejects changed service terms before saving', async () => {
+		const { admin, maliId, book, get, history } = await setup();
+		const id = await book('09:00');
+		const serviceId = await admin.mutation(api.adminServices.createService, {
+			slug: 'facial-usd', name: 'Facial', description: '', category: 'Wellness', durationMin: 45, bufferMin: 5, price: 60, currency: 'USD', staffIds: [maliId]
+		});
+		const expectedService = { durationMin: 45, bufferMin: 5, price: 60, currency: 'USD' };
+		const edit = { appointmentId: id, expectedRevision: 0, guestName: 'Ann', guestPhone: '+66111', serviceId, expectedService };
+		await admin.mutation(api.adminServices.updateService, { serviceId, price: 70 });
+		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, edit)).rejects.toThrow('service changed');
+		expect(await get(id)).toMatchObject({ price: 2000, currency: 'THB' });
+		await admin.mutation(api.adminServices.updateAppointmentDetails, { ...edit, expectedService: { ...expectedService, price: 70 } });
+		expect((await history(id))[0]).toMatchObject({ currencyBefore: 'THB', currencyAfter: 'USD', changes: expect.arrayContaining([{ field: 'price', from: 2000, to: 70 }]) });
+		await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id });
+		expect((await history(id))[0]).toMatchObject({ currencyBefore: 'USD', currencyAfter: 'USD' });
+	});
+
+	it('refuses time off edited by a colleague after its confirmation was prepared', async () => {
+		const { admin, maliId } = await setup();
+		const timeOffId = (await admin.mutation(api.adminServices.addTimeOff, { staffId: maliId, start: at('09:00'), end: at('10:00'), label: 'Doctor' }))[0].timeOffId!;
+		const expected = { start: at('09:00'), end: at('10:00'), label: 'Doctor' };
+		await admin.mutation(api.adminServices.updateTimeOff, { timeOffId, start: at('09:00'), end: at('11:00'), label: 'Doctor', expected });
+		await expect(admin.mutation(api.adminServices.updateTimeOff, { timeOffId, start: at('16:00'), end: at('17:00'), label: 'Leave', expected })).rejects.toThrow('changed since you opened');
+		expect(await admin.query(api.adminServices.listTimeOff, { staffId: maliId })).toMatchObject([{ start: at('09:00'), end: at('11:00'), label: 'Doctor' }]);
+	});
+
 	it('requires an admin for every new appointment change', async () => {
 		const { t, maliId, book } = await setup();
 		const id = await book('10:00');
@@ -236,6 +262,18 @@ describe('calendar break edits', () => {
 		expect(await admin.query(api.roster.previewBreakChange, over)).toMatchObject({ problem: null, conflicts: [{ appointmentId: id, guestName: 'Ann' }] });
 		expect(await admin.mutation(api.roster.editBreak, over)).toMatchObject({ ok: false, conflicts: [{ appointmentId: id }] });
 		expect(await planOn(admin, maliId, date)).toEqual(patternPlan);
+	});
+
+	it('keeps a completed service busy until its turnaround ends for day and weekly breaks', async () => {
+		const { admin, maliId, book } = await setup();
+		const id = await book('10:45');
+		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: id, status: 'completed' });
+		vi.setSystemTime(at('11:50'));
+		for (const scope of ['day', 'weekly'] as const) {
+			const over = change(maliId, { scope, next: { ...lunch, start: '11:45', end: '12:45' } });
+			expect(await admin.query(api.roster.previewBreakChange, over)).toMatchObject({ conflicts: [{ appointmentId: id }] });
+			expect(await admin.mutation(api.roster.editBreak, over)).toMatchObject({ ok: false, conflicts: [{ appointmentId: id }] });
+		}
 	});
 
 	it('changes the weekly default only on pattern dates, keeping date overrides in force', async () => {

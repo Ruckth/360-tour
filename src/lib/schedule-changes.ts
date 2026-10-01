@@ -43,11 +43,16 @@ export function breakFromDrag(
   return next.start === block.original.start && next.end === block.original.end ? null : next;
 }
 
-export const timeRange = (start: number, end: number) => `${formatResortTime(start)} – ${formatResortTime(end)}`;
+/** Include the end date when a service or cleanup crosses midnight in Bangkok. */
+export const endTime = (start: number, end: number) => resortIsoDate(start) === resortIsoDate(end)
+  ? formatResortTime(end)
+  : `${formatResortFullDate(end)}, ${formatResortTime(end)}`;
+
+export const timeRange = (start: number, end: number) => `${formatResortTime(start)} – ${endTime(start, end)}`;
 
 function occupiedUntil(occupancy: Occupancy) {
   const turnaround = turnaroundMinutes(occupancy);
-  return turnaround ? `${formatResortTime(occupancy.blockedUntil)} (${turnaround} min turnaround)` : formatResortTime(occupancy.blockedUntil);
+  return turnaround ? `${endTime(occupancy.start, occupancy.blockedUntil)} (${turnaround} min turnaround)` : endTime(occupancy.start, occupancy.blockedUntil);
 }
 
 /** Date, service time, staff and the end of the turnaround, before and after a schedule change. */
@@ -64,14 +69,3 @@ export const breakText = (item: RosterBreak) => `${item.label} ${item.start}–$
 
 /** Where a proposed change is drawn until it's confirmed or dismissed, by calendar event id. */
 export type Ghost = { start: number; end: number; staffId: Id<"staff"> };
-export type Ghosts = ReadonlyMap<string, Ghost>;
-
-export const withGhost = (ghosts: Ghosts, id: string, ghost: Ghost): Ghosts => new Map(ghosts).set(id, ghost);
-
-/** Dismissing a proposal draws the event where it is saved again. */
-export function withoutGhost(ghosts: Ghosts, id: string): Ghosts {
-  if (!ghosts.has(id)) return ghosts;
-  const next = new Map(ghosts);
-  next.delete(id);
-  return next;
-}

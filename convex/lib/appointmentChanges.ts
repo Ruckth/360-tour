@@ -3,8 +3,8 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { appointmentRevision } from './appointmentWindow';
 
 /**
- * Every appointment write goes through `recordAppointmentChange`, so each entry point
- * (admin calendar, chat) bumps the revision and leaves the same history row.
+ * Shared recording for calendar edits and guest cancellations. Each tracked change
+ * bumps the revision and keeps its old and new values in history.
  */
 
 type Appointment = Doc<'serviceAppointments'>;
@@ -44,6 +44,7 @@ export async function recordAppointmentChange(ctx: MutationCtx, appointment: App
 	await ctx.db.patch(appointment._id, { ...patch, revision: appointmentRevision(appointment) + 1 });
 	await ctx.db.insert('appointmentChanges', {
 		appointmentId: appointment._id, at: Date.now(), actor: entry.actor, kind: entry.kind,
+		currencyBefore: appointment.currency, currencyAfter: patch.currency ?? appointment.currency,
 		...(entry.reason ? { reason: entry.reason } : {}), changes
 	});
 	return true;
@@ -61,13 +62,14 @@ export async function cancelAppointmentRecord(ctx: MutationCtx, appointment: App
 export async function recordRebooked(ctx: MutationCtx, original: Appointment, confirmationCode: string, actor: string) {
 	await ctx.db.insert('appointmentChanges', {
 		appointmentId: original._id, at: Date.now(), actor, kind: 'rebooked',
+		currencyBefore: original.currency, currencyAfter: original.currency,
 		changes: [{ field: 'rebookedAs', from: null, to: confirmationCode }]
 	});
 }
 
 export async function appointmentHistory(ctx: QueryCtx | MutationCtx, appointmentId: Id<'serviceAppointments'>) {
 	return await ctx.db.query('appointmentChanges')
-		.withIndex('by_appointment_at', (q) => q.eq('appointmentId', appointmentId))
+		.withIndex('by_appointmentId_and_at', (q) => q.eq('appointmentId', appointmentId))
 		.order('desc')
 		.take(HISTORY_LIMIT);
 }

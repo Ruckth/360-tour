@@ -357,11 +357,12 @@ export const addTimeOff = mutation({
 });
 
 export const updateTimeOff = mutation({
-	args: { timeOffId: v.id('staffTimeOff'), start: v.number(), end: v.number(), label: v.string() },
+	args: { timeOffId: v.id('staffTimeOff'), start: v.number(), end: v.number(), label: v.string(), expected: v.optional(v.object({ start: v.number(), end: v.number(), label: v.string() })) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const row = await ctx.db.get(args.timeOffId);
 		if (!row) throw new Error('Time off not found');
+		if (args.expected && (row.start !== args.expected.start || row.end !== args.expected.end || row.label !== args.expected.label)) throw new Error('This time off changed since you opened it. Review the latest details and try again.');
 		await assertTimeOffFits(ctx, row.staffId, args.start, args.end);
 		await ctx.db.patch(row._id, { start: args.start, end: args.end, label: required(args.label, 'Label') });
 	}
@@ -554,8 +555,8 @@ export const updateAppointmentTurnaround = mutation({
 });
 
 const transitions: Record<Doc<'serviceAppointments'>['status'], Doc<'serviceAppointments'>['status'][]> = {
-	booked: ['arrived', 'in_service', 'completed', 'no_show', 'cancelled'],
-	arrived: ['in_service', 'completed', 'no_show', 'cancelled'],
+	booked: ['arrived', 'in_service', 'completed', 'no_show'],
+	arrived: ['in_service', 'completed', 'no_show'],
 	in_service: ['completed'],
 	completed: [], cancelled: [], no_show: []
 };
@@ -603,7 +604,8 @@ async function serviceChange(ctx: MutationCtx, appointment: Doc<'serviceAppointm
 export const updateAppointmentDetails = mutation({
 	args: {
 		appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), guestName: v.string(), guestPhone: v.string(),
-		guestEmail: v.optional(v.string()), notes: v.optional(v.string()), serviceId: v.optional(v.id('services'))
+		guestEmail: v.optional(v.string()), notes: v.optional(v.string()), serviceId: v.optional(v.id('services')),
+		expectedService: v.optional(v.object({ durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string() }))
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
@@ -611,6 +613,11 @@ export const updateAppointmentDetails = mutation({
 		assertFresh(appointment, args.expectedRevision);
 		const details = guestDetails(args);
 		const newServiceId = args.serviceId !== undefined && args.serviceId !== appointment.serviceId ? args.serviceId : null;
+		if (newServiceId && args.expectedService) {
+			const current = await ctx.db.get(newServiceId);
+			const expected = args.expectedService;
+			if (!current || current.durationMin !== expected.durationMin || current.bufferMin !== expected.bufferMin || current.price !== expected.price || current.currency !== expected.currency) throw new Error('The service changed since you reviewed it. Review the latest service and try again.');
+		}
 		const service = newServiceId ? await serviceChange(ctx, appointment, newServiceId) : {};
 		await recordAppointmentChange(ctx, appointment, { ...details, ...service }, { actor: admin.email, kind: newServiceId ? 'service' : 'details' });
 	}
@@ -634,7 +641,7 @@ export const cancelAppointment = mutation({
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
-		if (!transitions[appointment.status].includes('cancelled')) throw new Error('Appointment cannot be cancelled');
+		if (appointment.status !== 'booked' && appointment.status !== 'arrived') throw new Error('Appointment cannot be cancelled');
 		await cancelAppointmentRecord(ctx, appointment, { actor: admin.email, reason: args.reason });
 	}
 });
