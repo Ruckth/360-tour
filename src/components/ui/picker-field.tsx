@@ -92,13 +92,13 @@ export function PickerFormControl({
           trigger?.setAttribute("aria-errormessage", errorId);
           // Native reporting can focus a later text input after this handler.
           // Restore the first invalid picker once that synchronous work ends.
-          queueMicrotask(() => {
+          setTimeout(() => {
             const control = input.current;
             const firstInvalid = control?.form?.querySelector(
               "input:invalid, select:invalid, textarea:invalid",
             );
             if (firstInvalid === control) focusRef.current?.focus();
-          });
+          }, 0);
         }}
       />
       {invalid && problem ? (
