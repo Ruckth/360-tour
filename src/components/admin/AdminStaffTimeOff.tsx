@@ -17,6 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -70,18 +72,18 @@ export function TimeOffFields({
   const [preset, setPreset] = useState<string>(PRESETS.includes(initial as (typeof PRESETS)[number]) ? initial : "Custom");
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="From" htmlFor={`${idPrefix}-from`}>
-          <Input id={`${idPrefix}-from`} name="offFrom" type="date" min={min} defaultValue={defaults?.from} required={required} />
+          <DatePicker id={`${idPrefix}-from`} name="offFrom" clearable min={min} defaultValue={defaults?.from} required={required} />
         </Field>
         <Field label="Start time (optional)" htmlFor={`${idPrefix}-start`}>
-          <Input id={`${idPrefix}-start`} name="offStartTime" type="time" step={900} defaultValue={defaults?.startTime} />
+          <TimePicker id={`${idPrefix}-start`} label="Start time" name="offStartTime" minuteStep={15} allowEmpty defaultValue={defaults?.startTime} />
         </Field>
         <Field label="To" htmlFor={`${idPrefix}-to`}>
-          <Input id={`${idPrefix}-to`} name="offTo" type="date" min={min} defaultValue={defaults?.to} />
+          <DatePicker id={`${idPrefix}-to`} name="offTo" clearable min={min} defaultValue={defaults?.to} />
         </Field>
         <Field label="End time (optional)" htmlFor={`${idPrefix}-end`}>
-          <Input id={`${idPrefix}-end`} name="offEndTime" type="time" step={900} defaultValue={defaults?.endTime} />
+          <TimePicker id={`${idPrefix}-end`} label="End time" name="offEndTime" minuteStep={15} allowEmpty defaultValue={defaults?.endTime} />
         </Field>
       </div>
       <fieldset className="grid gap-2">

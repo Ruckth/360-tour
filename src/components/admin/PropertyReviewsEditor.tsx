@@ -8,6 +8,7 @@ import { BadgeCheck, Pencil, Plus, Star, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -204,7 +205,7 @@ function ReviewForm({
           </select>
         </Field>
         <Field label="Date of stay or review" htmlFor="rv-date">
-          <Input id="rv-date" name="date" type="date" defaultValue={review?.date ?? format(new Date(), "yyyy-MM-dd")} required />
+          <DatePicker id="rv-date" name="date" clearable defaultValue={review?.date ?? format(new Date(), "yyyy-MM-dd")} required />
         </Field>
         <label className="flex items-center gap-2 self-end pb-2.5 text-sm">
           <input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} className="size-4 accent-foreground" />

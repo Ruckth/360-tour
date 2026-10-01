@@ -5,6 +5,7 @@ import { api } from "convex/_generated/api";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { breakText, type BreakBlock } from "@/lib/schedule-changes";
@@ -80,11 +81,11 @@ export function BreakEditDialog({
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="grid gap-2">
           <Label htmlFor="br-start">Start</Label>
-          <Input id="br-start" type="time" step={300} value={start} disabled={remove} onChange={(event) => { setStart(event.target.value); }} />
+          <TimePicker id="br-start" label="Break start" minuteStep={5} value={start} disabled={remove} onValueChange={setStart} />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="br-end">End</Label>
-          <Input id="br-end" type="time" step={300} value={end === "24:00" ? "00:00" : end} disabled={remove} onChange={(event) => { setEnd(event.target.value === "00:00" ? "24:00" : event.target.value); }} />
+          <TimePicker id="br-end" label="Break end" minuteStep={5} value={end === "24:00" ? "00:00" : end} disabled={remove} onValueChange={(value) => setEnd(value === "00:00" ? "24:00" : value)} />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="br-label">Label</Label>

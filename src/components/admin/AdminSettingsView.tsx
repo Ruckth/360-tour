@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -251,6 +252,18 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
                 </Label>
                 {field.type === "textarea" ? (
                   <Textarea {...common} className={cn("min-h-24", error && "border-destructive")} />
+                ) : field.type === "time" ? (
+                  <TimePicker
+                    id={id}
+                    name={field.name}
+                    label={field.label}
+                    value={common.value}
+                    onValueChange={(value) => common.onChange({ target: { value } })}
+                    onBlur={common.onBlur}
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={describedBy}
+                    allowEmpty
+                  />
                 ) : (
                   <Input
                     {...common}

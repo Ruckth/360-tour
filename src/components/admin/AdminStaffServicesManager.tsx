@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -499,10 +500,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
               </fieldset>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Starts" htmlFor="st-start">
-                  <Input id="st-start" name="start" type="time" step={900} defaultValue={firstShift?.start ?? "09:00"} required />
+                  <TimePicker id="st-start" label="Shift start" name="start" minuteStep={15} defaultValue={firstShift?.start ?? "09:00"} required />
                 </Field>
                 <Field label="Ends" htmlFor="st-end">
-                  <Input id="st-end" name="end" type="time" step={900} defaultValue={firstShift?.end ?? "18:00"} required />
+                  <TimePicker id="st-end" label="Shift end" name="end" minuteStep={15} defaultValue={firstShift?.end ?? "18:00"} required />
                 </Field>
               </div>
               <label className="flex items-center gap-2 text-sm font-medium">
@@ -515,10 +516,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
                     <Input id="st-break-label" name="breakLabel" defaultValue={firstBreak?.label ?? "Lunch"} required />
                   </Field>
                   <Field label="From" htmlFor="st-break-start">
-                    <Input id="st-break-start" name="breakStart" type="time" step={900} defaultValue={firstBreak?.start ?? "12:00"} required />
+                    <TimePicker id="st-break-start" label="Break start" name="breakStart" minuteStep={15} defaultValue={firstBreak?.start ?? "12:00"} required />
                   </Field>
                   <Field label="To" htmlFor="st-break-end">
-                    <Input id="st-break-end" name="breakEnd" type="time" step={900} defaultValue={firstBreak?.end ?? "13:00"} required />
+                    <TimePicker id="st-break-end" label="Break end" name="breakEnd" minuteStep={15} defaultValue={firstBreak?.end ?? "13:00"} required />
                   </Field>
                 </div>
               ) : null}

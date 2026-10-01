@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
-import { dateToIso, formatDisplayDate, isoToDate, todayIsoLocal } from "@/lib/booking/dates";
+import { defaultLocale, isLocale } from "@/i18n/routing";
+import { dateToIso, isoToDate, todayIsoLocal } from "@/lib/booking/dates";
+import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 import { cn } from "@/lib/utils";
 
 type BookingRange = { checkIn: string; checkOut: string };
@@ -422,30 +423,8 @@ function RangeCalendarBody({
       modifiers={{ unavailable: isUnavailableDate }}
       modifiersClassNames={{ unavailable: unavailableDayClassName }}
       formatters={calendarFormatters}
-      classNames={{
-        month_caption: "pointer-events-none flex h-8 items-center justify-start px-0 pr-16",
-        caption_label: cn("font-semibold text-foreground", compact ? "text-base" : "text-lg"),
-        nav: "pointer-events-none absolute right-0 top-0 z-10 flex items-center gap-1",
-        button_previous:
-          "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-muted-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
-        button_next:
-          "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
-        weekday:
-          "flex h-8 items-center justify-center rounded-md text-sm font-medium text-foreground",
-        week: "mt-1 grid grid-cols-7",
-        day: "relative flex h-9 w-full items-center justify-center p-0 text-center text-base",
-        day_button:
-          "inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-base font-medium transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-40",
-        outside: "text-muted-foreground opacity-45",
-        disabled: "text-muted-foreground opacity-30",
-        today: "font-semibold text-foreground",
-        range_start:
-          "rounded-l-full bg-gold text-navy [&>button]:bg-gold [&>button]:text-navy hover:[&>button]:bg-gold",
-        range_end:
-          "rounded-r-full bg-gold text-navy [&>button]:bg-gold [&>button]:text-navy hover:[&>button]:bg-gold",
-        range_middle:
-          "rounded-none bg-gold/70 text-navy [&>button]:rounded-none [&>button]:bg-transparent [&>button]:text-navy hover:[&>button]:bg-transparent",
-      }}
+      appearance="booking"
+      compact={compact}
       initialFocus
     />
   );
@@ -484,47 +463,4 @@ function RangeSummaryButton({
       </span>
     </button>
   );
-}
-
-function formatPickerDate(value: string, locale: string) {
-  const date = isoToDate(value);
-  if (!date) return formatDisplayDate(value);
-  return new Intl.DateTimeFormat(locale, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
-function getCalendarIntlLocale(locale: Locale) {
-  const localesByAppLocale: Record<Locale, string> = {
-    en: "en-US",
-    th: "th-TH-u-ca-buddhist",
-    "zh-CN": "zh-CN",
-    ja: "ja-JP",
-    ko: "ko-KR",
-    fr: "fr-FR",
-    de: "de-DE",
-    es: "es-ES",
-    ru: "ru-RU",
-    it: "it-IT",
-    hi: "hi-IN",
-  };
-  return localesByAppLocale[locale];
-}
-
-function getCalendarFormatters(locale: Locale): NonNullable<DayPickerProps["formatters"]> {
-  const intlLocale = getCalendarIntlLocale(locale);
-  const monthFormatter = new Intl.DateTimeFormat(intlLocale, {
-    month: "long",
-    year: "numeric",
-  });
-  const weekdayFormatter = new Intl.DateTimeFormat(intlLocale, {
-    weekday: "short",
-  });
-
-  return {
-    formatCaption: (month) => monthFormatter.format(month),
-    formatWeekdayName: (weekday) => weekdayFormatter.format(weekday).replace(/\.$/, ""),
-  };
 }

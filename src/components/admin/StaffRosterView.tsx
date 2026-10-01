@@ -5,7 +5,6 @@ import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { format } from "date-fns";
 import {
   CalendarDays,
   ChevronLeft,
@@ -25,7 +24,8 @@ import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { TONES } from "@/components/admin/status-tones";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +36,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -83,12 +82,6 @@ function addDays(iso: string, days: number) {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
-/** "2026-09-28" → local Date at midnight, for the day picker. */
-function isoToLocalDate(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
 /** The Monday of the week containing `iso`. */
 function mondayOf(iso: string) {
   return addDays(iso, -((new Date(utcDay(iso)).getUTCDay() + 6) % 7));
@@ -114,7 +107,6 @@ export function StaffRosterView() {
   const [conflicts, setConflicts] = useState<ConflictState | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const gridRef = useRef<HTMLTableElement>(null);
   const drag = useRef<{ start: Pos; last: Pos; mode: "add" | "remove"; base: Set<string> } | null>(null);
   // The selection when the anchor was set: Shift extends from it, so the range can shrink as well as grow.
@@ -364,27 +356,16 @@ export function StaffRosterView() {
           <Button size="icon" variant="ghost" className="size-9" aria-label="Next week" onClick={() => goToWeek(addDays(weekStart, 7))}>
             <ChevronRight aria-hidden className="size-4" />
           </Button>
-          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-            <PopoverTrigger asChild>
-              <Button size="sm" variant="ghost" className="text-sm" aria-label={`Week of ${weekRange(weekStart, weekEnd)}. Choose another week`}>
-                <CalendarDays aria-hidden className="size-4" />
-                {weekRange(weekStart, weekEnd)}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-auto p-3">
-              <Calendar
-                mode="single"
-                weekStartsOn={1}
-                selected={isoToLocalDate(weekStart)}
-                defaultMonth={isoToLocalDate(weekStart)}
-                onSelect={(day) => {
-                  if (!day) return;
-                  goToWeek(mondayOf(format(day, "yyyy-MM-dd")));
-                  setPickerOpen(false);
-                }}
-              />
-            </PopoverContent>
-          </Popover>
+          <DatePicker
+            value={weekStart}
+            onValueChange={(value) => goToWeek(mondayOf(value))}
+            weekStartsOn={1}
+            triggerLabel={weekRange(weekStart, weekEnd)}
+            size="sm"
+            variant="ghost"
+            className="text-sm"
+            aria-label={`Week of ${weekRange(weekStart, weekEnd)}. Choose another week`}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:ms-auto">
           <Button size="sm" variant="outline" disabled={!data || busy || !staff.length} onClick={onMakeDefault}>
@@ -794,7 +775,7 @@ function TimeField({ name, label, defaultValue, required }: { name: string; labe
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={name} type="time" step={900} defaultValue={defaultValue} required={required} />
+      <TimePicker id={id} label={label} name={name} minuteStep={15} allowEmpty={!required} defaultValue={defaultValue} required={required} />
     </div>
   );
 }

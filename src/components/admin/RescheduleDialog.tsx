@@ -6,7 +6,7 @@ import type { Doc, Id } from "convex/_generated/dataModel";
 import { appointmentRevision, movedWindow } from "convex/lib/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { moveProposal, scheduleRows, type ScheduleProposal } from "@/lib/schedule-changes";
@@ -102,7 +102,7 @@ export function RescheduleDialog({
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="grid gap-2">
           <Label htmlFor="rs-date">Date</Label>
-          <Input id="rs-date" type="date" min={today} value={date} onChange={(event) => changeDate(event.target.value)} required />
+          <DatePicker id="rs-date" min={today} value={date} onValueChange={changeDate} required />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="rs-staff">Staff</Label>

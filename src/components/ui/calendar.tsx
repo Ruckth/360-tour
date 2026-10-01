@@ -1,15 +1,21 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { DayPicker, getDefaultClassNames, type DayPickerProps } from "react-day-picker";
+import {
+  DayPicker,
+  getDefaultClassNames,
+  type DayPickerProps,
+} from "react-day-picker";
 import { cn } from "@/lib/utils";
 
 export function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  appearance = "default",
+  compact = false,
   ...props
-}: DayPickerProps) {
+}: DayPickerProps & { appearance?: "default" | "booking"; compact?: boolean }) {
   const defaultClassNames = getDefaultClassNames();
 
   return (
@@ -20,7 +26,8 @@ export function Calendar({
         root: cn(defaultClassNames.root, "relative"),
         months: "flex flex-col gap-4",
         month: "relative space-y-4",
-        month_caption: "pointer-events-none flex h-9 items-center justify-center px-10",
+        month_caption:
+          "pointer-events-none flex h-9 items-center justify-center px-10",
         caption_label: "text-sm font-semibold text-foreground",
         nav: "pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between",
         button_previous:
@@ -35,7 +42,10 @@ export function Calendar({
         day: "relative flex h-9 w-full items-center justify-center p-0 text-center text-sm",
         day_button:
           "inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-sm font-normal transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-45",
-        selected: "text-foreground",
+        selected:
+          props.mode === "single"
+            ? "rounded-md bg-primary text-primary-foreground [&>button]:bg-primary [&>button]:text-primary-foreground hover:[&>button]:bg-primary"
+            : "text-foreground",
         today:
           "rounded-md border border-gold bg-transparent font-semibold text-foreground",
         outside: "text-muted-foreground opacity-45",
@@ -47,6 +57,7 @@ export function Calendar({
           "rounded-r-md bg-primary text-primary-foreground [&>button]:bg-primary [&>button]:text-primary-foreground hover:[&>button]:bg-primary hover:[&>button]:text-primary-foreground",
         range_middle:
           "rounded-none bg-gold-light/45 text-foreground [&>button]:rounded-none [&>button]:bg-transparent [&>button]:text-foreground hover:[&>button]:bg-transparent",
+        ...(appearance === "booking" ? bookingCalendarClassNames(compact) : {}),
         ...classNames,
       }}
       components={{
@@ -60,4 +71,35 @@ export function Calendar({
       {...props}
     />
   );
+}
+
+function bookingCalendarClassNames(compact: boolean) {
+  return {
+    month_caption:
+      "pointer-events-none flex h-8 items-center justify-start px-0 pr-16",
+    caption_label: cn(
+      "font-semibold text-foreground",
+      compact ? "text-base" : "text-lg",
+    ),
+    nav: "pointer-events-none absolute right-0 top-0 z-10 flex items-center gap-1",
+    button_previous:
+      "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-muted-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
+    button_next:
+      "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
+    weekday:
+      "flex h-8 items-center justify-center rounded-md text-sm font-medium text-foreground",
+    week: "mt-1 grid grid-cols-7",
+    day: "relative flex h-9 w-full items-center justify-center p-0 text-center text-base",
+    day_button:
+      "inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-base font-medium transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-40",
+    outside: "text-muted-foreground opacity-45",
+    disabled: "text-muted-foreground opacity-30",
+    today: "font-semibold text-foreground",
+    range_start:
+      "rounded-l-full bg-gold text-navy [&>button]:bg-gold [&>button]:text-navy hover:[&>button]:bg-gold",
+    range_end:
+      "rounded-r-full bg-gold text-navy [&>button]:bg-gold [&>button]:text-navy hover:[&>button]:bg-gold",
+    range_middle:
+      "rounded-none bg-gold/70 text-navy [&>button]:rounded-none [&>button]:bg-transparent [&>button]:text-navy hover:[&>button]:bg-transparent",
+  };
 }

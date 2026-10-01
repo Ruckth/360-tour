@@ -3,13 +3,11 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { CalendarDays } from "lucide-react";
-import { format } from "date-fns";
 import { useState, type FormEvent } from "react";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -20,14 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
   DAY_MS,
   errorText,
-  formatResortDate,
   formatResortTime,
   pickSlot,
   resortIsoDate,
@@ -46,12 +42,6 @@ export type AppointmentDraft = {
   start?: number;
   rebook?: Doc<"serviceAppointments">;
 };
-
-/** "2026-09-24" → local Date at midnight, for the day picker. */
-function isoToLocalDate(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
 
 const LAST_SERVICE_KEY = "admin.staff.lastServiceId";
 const DAY_PARTS = [
@@ -108,7 +98,6 @@ export function NewAppointmentDialog({
   const [changingStaff, setChangingStaff] = useState(false);
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
-  const [dateOpen, setDateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const today = resortIsoDate(useNow());
@@ -194,28 +183,7 @@ export function NewAppointmentDialog({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="na-date">Date</Label>
-              <Popover open={dateOpen} onOpenChange={setDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button id="na-date" type="button" variant="outline" className="justify-start font-normal">
-                    <CalendarDays aria-hidden className="size-4 text-muted-foreground" />
-                    {formatResortDate(resortMidnight(date))}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-auto p-3">
-                  <Calendar
-                    mode="single"
-                    selected={isoToLocalDate(date)}
-                    defaultMonth={isoToLocalDate(date)}
-                    disabled={{ before: isoToLocalDate(today) }}
-                    onSelect={(day) => {
-                      if (!day) return;
-                      setDate(format(day, "yyyy-MM-dd"));
-                      setStart(null);
-                      setDateOpen(false);
-                    }}
-                  />
-                </PopoverContent>
-              </Popover>
+              <DatePicker id="na-date" value={date} min={today} required onValueChange={(next) => { setDate(next); setStart(null); }} />
             </div>
           </div>
           {service ? (
