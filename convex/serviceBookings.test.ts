@@ -183,7 +183,10 @@ describe('AI service booking', () => {
 		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation' });
 		vi.advanceTimersByTime(1000);
 		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'cancelled' });
-		expect((await appointments(s.t))[0].status).toBe('cancelled');
+		const [cancelled] = await appointments(s.t);
+		expect(cancelled).toMatchObject({ status: 'cancelled', cancelledBy: 'guest', cancelledAt: Date.now(), paymentStatus: 'unpaid', revision: 1 });
+		const history = await s.t.run(async (ctx) => await ctx.db.query('appointmentChanges').take(10));
+		expect(history).toMatchObject([{ appointmentId: cancelled._id, actor: 'guest', kind: 'cancelled', changes: [{ field: 'status', from: 'booked', to: 'cancelled' }] }]);
 		expect(await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' })).toMatchObject({ available: true });
 	});
 

@@ -10,11 +10,19 @@ export const DAY_MS = 86_400_000;
 
 const timeFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, hour: "numeric", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, weekday: "short", month: "short", day: "numeric" });
+const fullDateFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, weekday: "short", month: "short", day: "numeric", year: "numeric" });
+const dateTimeFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const isoFormat = new Intl.DateTimeFormat("en-CA", { timeZone: RESORT_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
 const time24Format = new Intl.DateTimeFormat("en-GB", { timeZone: RESORT_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 export const formatResortTime = (ms: number) => timeFormat.format(ms);
 export const formatResortDate = (ms: number) => dateFormat.format(ms);
+/** "Fri, Sep 25, 2026", for confirmations where the year matters. */
+export const formatResortFullDate = (ms: number) => fullDateFormat.format(ms);
+/** "Sep 25, 2:30 PM", for history entries. */
+export const formatResortDateTime = (ms: number) => dateTimeFormat.format(ms);
+/** Shown under every schedule confirmation. */
+export const RESORT_ZONE_LABEL = "All times: Bangkok";
 /** YYYY-MM-DD in resort time. */
 export const resortIsoDate = (ms: number) => isoFormat.format(ms);
 export const resortMidnight = (isoDate: string) => Date.parse(`${isoDate}T00:00:00${RESORT_OFFSET}`);
@@ -110,6 +118,7 @@ export function displayStatus(
 }
 
 export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+export const WEEKDAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
 export function initials(name: string) {
   // Only words that start with a letter, so tags like "[AI-EVAL]" or "(VIP)" are skipped.

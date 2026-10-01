@@ -192,7 +192,7 @@ describe('staff roster', () => {
 		const refused = await admin.mutation(api.roster.makeDefault, { weekStart: MON });
 		expect(refused).toMatchObject({ ok: false, conflicts: [{ appointmentId, date: addDays(MON, 7) }] });
 
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId });
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId, expectedRevision: 0 });
 		const made = await admin.mutation(api.roster.makeDefault, { weekStart: MON });
 		expect(made).toMatchObject({ ok: true, staffUpdated: 2 });
 		expect(await rows()).toHaveLength(0); // the week's overrides are now the pattern

@@ -555,6 +555,8 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
 function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: Staff[]; onClose: () => void }) {
   const createService = useMutation(api.adminServices.createService);
   const updateService = useMutation(api.adminServices.updateService);
+  const upcoming = useQuery(api.adminServices.countUpcomingAppointments, service ? { serviceId: service._id } : "skip");
+  const confirm = useConfirm();
   // Only active staff can be assigned; archived ones already left the service.
   const [staffIds, setStaffIds] = useState<Set<Id<"staff">>>(
     () => new Set(service?.staffIds.filter((id) => staff.some((person) => person._id === id)) ?? []),
@@ -578,6 +580,25 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
       currency: service?.currency ?? "THB",
       staffIds: [...staffIds],
     };
+    // A new default turnaround is for new bookings; booked appointments keep their own.
+    if (
+      service &&
+      fields.bufferMin !== service.bufferMin &&
+      !(await confirm({
+        title: `Change the default turnaround from ${service.bufferMin} to ${fields.bufferMin} min?`,
+        description: `Applies to new bookings only. ${
+          upcoming === undefined
+            ? "Upcoming appointments"
+            : upcoming === 1
+              ? "The 1 upcoming appointment"
+              : `The ${upcoming} upcoming appointments`
+        } keep their current turnaround; change one from its details on the calendar.`,
+        confirmLabel: "Change default",
+        cancelLabel: "Keep current default",
+      }))
+    ) {
+      return;
+    }
     setSaving(true);
     setError("");
     try {

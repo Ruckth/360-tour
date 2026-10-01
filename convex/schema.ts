@@ -273,7 +273,15 @@ export default defineSchema({
 		notes: v.optional(v.string()),
 		confirmationCode: v.string(),
 		accessToken: v.string(),
-		createdAt: v.number()
+		createdAt: v.number(),
+		// Bumped on every change; a confirmation made against an older revision is refused. Missing = 0.
+		revision: v.optional(v.number()),
+		cancelledAt: v.optional(v.number()),
+		/** Admin email, or "guest" for a chat cancellation. */
+		cancelledBy: v.optional(v.string()),
+		cancellationReason: v.optional(v.string()),
+		/** The cancelled or no-show appointment this one was booked again from. */
+		rebookedFromId: v.optional(v.id('serviceAppointments'))
 	})
 		.index('by_staff_start', ['staffId', 'start'])
 		.index('by_service_start', ['serviceId', 'start'])
@@ -281,6 +289,30 @@ export default defineSchema({
 		.index('by_booking', ['bookingId'])
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone']),
+
+	/** Who changed an appointment, when, and the old and new value of each changed field. */
+	appointmentChanges: defineTable({
+		appointmentId: v.id('serviceAppointments'),
+		at: v.number(),
+		/** Admin email, or "guest" for chat. */
+		actor: v.string(),
+		kind: v.union(
+			v.literal('rescheduled'),
+			v.literal('turnaround'),
+			v.literal('details'),
+			v.literal('service'),
+			v.literal('status'),
+			v.literal('cancelled'),
+			v.literal('payment'),
+			v.literal('rebooked')
+		),
+		reason: v.optional(v.string()),
+		changes: v.array(v.object({
+			field: v.string(),
+			from: v.union(v.string(), v.number(), v.null()),
+			to: v.union(v.string(), v.number(), v.null())
+		}))
+	}).index('by_appointment_at', ['appointmentId', 'at']),
 
 	reviews: defineTable({
 		propertyId: v.id('properties'),

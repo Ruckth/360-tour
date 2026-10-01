@@ -3,6 +3,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import { localDateTimeUtc } from './lib/serviceSlots';
 import schema from './schema';
 
@@ -25,7 +26,9 @@ async function setup() {
 		durationMin: 60, bufferMin: 15, price: 2000, currency: 'THB', staffIds: [staffId]
 	});
 	const booking = { serviceId, staffId, guestName: 'Guest', guestPhone: '+66000000000' };
-	return { t, admin, staffId, serviceId, booking };
+	const appointment = async (id: Id<'serviceAppointments'>) => (await t.run((ctx) => ctx.db.get(id)))!;
+	const revision = async (id: Id<'serviceAppointments'>) => (await appointment(id)).revision ?? 0;
+	return { t, admin, staffId, serviceId, booking, appointment, revision };
 }
 
 beforeEach(() => {
@@ -80,28 +83,33 @@ describe('admin services', () => {
 		expect(schedule.staff[0].workingHours).toHaveLength(7);
 		expect(schedule.services).toHaveLength(1);
 		expect(schedule.appointments).toHaveLength(1);
-		expect(schedule.blocks).toContainEqual({ staffId, start: at('12:00'), end: at('13:00'), label: 'Lunch', kind: 'break' });
+		expect(schedule.blocks).toContainEqual({
+			staffId, start: at('12:00'), end: at('13:00'), label: 'Lunch', kind: 'break', date, override: false,
+			original: { start: '12:00', end: '13:00', label: 'Lunch' },
+			plan: { shifts: [{ start: '09:00', end: '18:00' }], breaks: [{ start: '12:00', end: '13:00', label: 'Lunch' }] }
+		});
 		expect(schedule.blocks).toContainEqual({ staffId, start: at('09:00'), end: at('10:00'), label: 'Training', kind: 'time_off', timeOff: expect.objectContaining({ _id: timeOffId, start: at('09:00') - 2 * 86_400_000 }) });
 		await admin.mutation(api.adminServices.removeTimeOff, { timeOffId: timeOffId! });
 		expect((await admin.query(api.adminServices.listSchedule, { from: at('09:00'), to: at('17:00') })).blocks.some((block) => block.kind === 'time_off')).toBe(false);
 	});
 
 	it('reschedules with conflict checks and enforces status transitions', async () => {
-		const { admin, booking, staffId } = await setup();
+		const { admin, booking, staffId, revision } = await setup();
 		const first = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
 		const second = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('13:00') });
-		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: first.appointmentId, start: at('09:00') });
-		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: first.appointmentId, start: at('13:00') })).rejects.toThrow('That time was just taken');
-		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: first.appointmentId, start: at('15:00') });
+		const move = { appointmentId: first.appointmentId, expectedRevision: 0, staffId };
+		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, start: at('09:00') })).rejects.toThrow('Nothing to change');
+		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, start: at('13:00') })).rejects.toThrow('That time was just taken');
+		await admin.mutation(api.adminServices.rescheduleAppointment, { ...move, start: at('15:00') });
 		const schedule = await admin.query(api.adminServices.listSchedule, { from: at('09:00'), to: at('17:00') });
 		expect(schedule.appointments.find((a) => a._id === first.appointmentId)).toMatchObject({ staffId, start: at('15:00') });
 		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: first.appointmentId, status: 'arrived' });
 		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: first.appointmentId, status: 'in_service' });
-		await expect(admin.mutation(api.adminServices.cancelAppointment, { appointmentId: first.appointmentId })).rejects.toThrow('cannot be cancelled');
+		await expect(admin.mutation(api.adminServices.cancelAppointment, { appointmentId: first.appointmentId, expectedRevision: await revision(first.appointmentId) })).rejects.toThrow('cannot be cancelled');
 		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: first.appointmentId, status: 'completed' });
-		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: first.appointmentId, start: at('16:00') })).rejects.toThrow('cannot be rescheduled');
+		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: await revision(first.appointmentId), start: at('16:00') })).rejects.toThrow('cannot be rescheduled');
 		await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: second.appointmentId });
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId });
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId, expectedRevision: 1 });
 		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: second.appointmentId, status: 'arrived' })).rejects.toThrow('Invalid appointment status transition');
 	});
 
@@ -115,18 +123,18 @@ describe('admin services', () => {
 		expect(await admin.query(api.adminServices.listServices, {})).toHaveLength(6);
 	});
 
-	it('resizes appointments and refuses to archive staff with upcoming appointments', async () => {
+	it('moves appointments without changing their length and refuses to archive staff with upcoming appointments', async () => {
 		const { admin, booking, staffId } = await setup();
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
-		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId, start: at('09:00'), durationMin: 90 });
+		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId, expectedRevision: 0, staffId, start: at('10:00') });
 		const [appointment] = (await admin.query(api.adminServices.listSchedule, { from: at('09:00'), to: at('17:00') })).appointments;
-		expect(appointment).toMatchObject({ end: at('10:30'), blockedUntil: at('10:45') });
-		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId, start: at('11:00'), durationMin: 90 })).rejects.toThrow('That time was just taken'); // lunch
+		expect(appointment).toMatchObject({ start: at('10:00'), end: at('11:00'), blockedUntil: at('11:15') });
+		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId, expectedRevision: 1, staffId, start: at('11:30') })).rejects.toThrow('That time was just taken'); // lunch
 		await expect(admin.mutation(api.adminServices.archiveStaff, { staffId })).rejects.toThrow("Reassign or cancel Mali's 1 upcoming appointment first");
 		expect(await admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('10:00'), end: at('11:00'), label: 'Leave' }))
-			.toEqual([{ staffId, name: 'Mali', conflicts: [{ appointmentId, start: at('09:00') }] }]);
+			.toEqual([{ staffId, name: 'Mali', conflicts: [{ appointmentId, start: at('10:00') }] }]);
 		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId, status: 'no_show' })).rejects.toThrow('after the start time');
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId });
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId, expectedRevision: 1 });
 		await admin.mutation(api.adminServices.archiveStaff, { staffId });
 	});
 
@@ -176,7 +184,7 @@ describe('admin services', () => {
 		const { admin, booking, serviceId, staffId } = await setup();
 		const kept = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
 		const cancelled = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('14:00') });
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: cancelled.appointmentId });
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: cancelled.appointmentId, expectedRevision: 0 });
 		expect(await admin.query(api.adminServices.countUpcomingAppointments, { serviceId })).toBe(1);
 		expect(await admin.query(api.adminServices.countUpcomingAppointments, { staffId })).toBe(1);
 		expect(await admin.mutation(api.adminServices.archiveService, { serviceId })).toEqual({ upcomingAppointments: 1 });
@@ -213,29 +221,31 @@ describe('admin services', () => {
 	});
 
 	it('edits appointment details, changes service and records refunds', async () => {
-		const { admin, booking, staffId } = await setup();
+		const { admin, booking, staffId, revision } = await setup();
 		const facialId = await admin.mutation(api.adminServices.createService, {
 			slug: 'facial', name: 'Facial', description: '', category: 'Wellness',
 			durationMin: 90, bufferMin: 0, price: 3000, currency: 'THB', staffIds: [staffId]
 		});
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('10:00') });
 		const find = async () => (await admin.query(api.adminServices.listSchedule, { from: at('00:00'), to: at('23:00') })).appointments.find((a) => a._id === appointmentId);
+		const edit = async (fields: { guestName: string; guestPhone: string; guestEmail?: string; notes?: string; serviceId?: Id<'services'> }, id = appointmentId) =>
+			await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId: id, expectedRevision: await revision(id), ...fields });
 
-		await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, guestName: ' Ann ', guestPhone: '+66111', guestEmail: 'ann@example.com', notes: ' Allergic to lavender ' });
+		await edit({ guestName: ' Ann ', guestPhone: '+66111', guestEmail: 'ann@example.com', notes: ' Allergic to lavender ' });
 		expect(await find()).toMatchObject({ guestName: 'Ann', guestPhone: '+66111', guestEmail: 'ann@example.com', notes: 'Allergic to lavender' });
-		await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, guestName: 'Ann', guestPhone: '+66111', guestEmail: '', notes: '' });
+		await edit({ guestName: 'Ann', guestPhone: '+66111', guestEmail: '', notes: '' });
 		const cleared = await find();
 		expect(cleared?.guestEmail).toBeUndefined();
 		expect(cleared?.notes).toBeUndefined();
-		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, guestName: ' ', guestPhone: '+66111' })).rejects.toThrow('Guest name is required');
-		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, guestName: 'Ann', guestPhone: '+66111', guestEmail: 'nope' })).rejects.toThrow();
+		await expect(edit({ guestName: ' ', guestPhone: '+66111' })).rejects.toThrow('Guest name is required');
+		await expect(edit({ guestName: 'Ann', guestPhone: '+66111', guestEmail: 'nope' })).rejects.toThrow();
 
-		await admin.mutation(api.adminServices.changeAppointmentService, { appointmentId, serviceId: facialId });
+		await edit({ guestName: 'Ann', guestPhone: '+66111', serviceId: facialId });
 		expect(await find()).toMatchObject({ serviceId: facialId, end: at('11:30'), blockedUntil: at('11:30'), price: 3000 });
 		// 13:00 massage, then 14:15 massage: a 90-minute facial at 13:00 would overlap the second one.
 		const later = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('13:00') });
 		await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('14:15') });
-		await expect(admin.mutation(api.adminServices.changeAppointmentService, { appointmentId: later.appointmentId, serviceId: facialId })).rejects.toThrow("Mali isn't free");
+		await expect(edit({ guestName: 'Guest', guestPhone: '+66000000000', serviceId: facialId }, later.appointmentId)).rejects.toThrow("Mali isn't free");
 		const otherId = await admin.mutation(api.adminServices.createStaff, {
 			name: 'Nok', role: 'Therapist', color: '#def', workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
 		});
@@ -243,11 +253,11 @@ describe('admin services', () => {
 			slug: 'nails', name: 'Nails', description: '', category: 'Beauty',
 			durationMin: 30, bufferMin: 0, price: 500, currency: 'THB', staffIds: [otherId]
 		});
-		await expect(admin.mutation(api.adminServices.changeAppointmentService, { appointmentId, serviceId: nailsId })).rejects.toThrow("Mali doesn't perform Nails");
+		await expect(edit({ guestName: 'Ann', guestPhone: '+66111', serviceId: nailsId })).rejects.toThrow("Mali doesn't perform Nails");
 
 		await expect(admin.mutation(api.adminServices.refundAppointment, { appointmentId })).rejects.toThrow('Only paid appointments');
 		await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId });
-		await expect(admin.mutation(api.adminServices.changeAppointmentService, { appointmentId, serviceId: booking.serviceId })).rejects.toThrow('Paid appointments cannot change service');
+		await expect(edit({ guestName: 'Ann', guestPhone: '+66111', serviceId: booking.serviceId })).rejects.toThrow('Paid appointments cannot change service');
 		await admin.mutation(api.adminServices.refundAppointment, { appointmentId });
 		expect(await find()).toMatchObject({ paymentStatus: 'refunded', refundedAt: Date.now() });
 		await expect(admin.mutation(api.adminServices.refundAppointment, { appointmentId })).rejects.toThrow('Only paid appointments');
@@ -258,8 +268,7 @@ describe('admin services', () => {
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('10:00') });
 		const timeOffId = (await admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('15:00'), end: at('16:00'), label: 'Off' }))[0].timeOffId!;
 		await expect(t.mutation(api.adminServices.updateTimeOff, { timeOffId, start: at('15:00'), end: at('17:00'), label: 'Off' })).rejects.toThrow('Not authenticated');
-		await expect(t.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, guestName: 'X', guestPhone: '1' })).rejects.toThrow('Not authenticated');
-		await expect(t.mutation(api.adminServices.changeAppointmentService, { appointmentId, serviceId: booking.serviceId })).rejects.toThrow('Not authenticated');
+		await expect(t.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, expectedRevision: 0, guestName: 'X', guestPhone: '1', serviceId: booking.serviceId })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.adminServices.refundAppointment, { appointmentId })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.adminServices.listTimeOff, { staffId })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.adminServices.countUpcomingAppointments, { staffId })).rejects.toThrow('Not authenticated');

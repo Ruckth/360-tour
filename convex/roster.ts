@@ -16,7 +16,8 @@ import {
 	planUncovers,
 	resortLocalParts,
 	weekdayOf,
-	type DayPlan
+	type DayPlan,
+	type RosterBreak
 } from './lib/serviceSlots';
 import { assertValidIsoDate } from './lib/validation';
 
@@ -35,6 +36,7 @@ type Pattern = Pick<Staff, 'workingHours' | 'breaks'>;
 const shiftValidator = v.object({ start: v.string(), end: v.string() });
 const breakValidator = v.object({ start: v.string(), end: v.string(), label: v.string() });
 const cellValidator = v.object({ staffId: v.id('staff'), date: v.string() });
+const planValidator = v.object({ shifts: v.array(shiftValidator), breaks: v.array(breakValidator), note: v.optional(v.string()) });
 
 const MAX_CELLS = 1000;
 const MAX_WEEKS = 52;
@@ -52,6 +54,8 @@ export type RosterConflict = {
 	guestName: string;
 	serviceName: string;
 };
+
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const cellKey = (staffId: Id<'staff'>, date: string) => `${staffId}|${date}`;
 
@@ -91,6 +95,9 @@ function normalizePlan(input: { shifts: DayPlan['shifts']; breaks: DayPlan['brea
 	breaks.forEach(range);
 	for (const b of breaks) {
 		if (!shifts.some((s) => s.start <= b.start && b.end <= s.end)) throw new Error('Breaks must fall inside a shift');
+	}
+	for (let i = 1; i < breaks.length; i++) {
+		if (breaks[i].start < breaks[i - 1].end) throw new Error('Breaks cannot overlap');
 	}
 	const note = input.note?.trim();
 	if (note && note.length > 200) throw new Error('Note must be at most 200 characters');
@@ -637,5 +644,106 @@ export const pruneBatches = internalMutation({
 			}
 			await ctx.db.delete(batch._id);
 		}
+	}
+});
+
+export const STALE_ROSTER = 'This roster day changed since you opened it. Review the latest schedule and try again.';
+
+const breakChangeArgs = {
+	staffId: v.id('staff'),
+	date: v.string(),
+	/** "day" saves a date override; "weekly" changes the weekly pattern for that weekday. */
+	scope: v.union(v.literal('day'), v.literal('weekly')),
+	original: breakValidator,
+	/** null removes the break. */
+	next: v.union(v.null(), breakValidator),
+	/** The day's whole plan as shown when the edit started. */
+	expectedPlan: planValidator
+};
+
+type BreakChange = {
+	staffId: Id<'staff'>;
+	date: string;
+	scope: 'day' | 'weekly';
+	original: RosterBreak;
+	next: RosterBreak | null;
+	expectedPlan: DayPlan;
+};
+
+const sameBreak = (a: RosterBreak, b: RosterBreak) => a.start === b.start && a.end === b.end && a.label === b.label;
+
+/**
+ * One break moved, resized or removed, keeping every other shift, break and note of the day.
+ * Refused when the day no longer matches what was shown; conflicts are returned, not thrown.
+ */
+async function planBreakChange(ctx: ReadCtx, input: BreakChange) {
+	assertValidIsoDate(input.date, 'Date');
+	const person = await ctx.db.get(input.staffId);
+	if (!person) throw new Error('Staff member not found');
+	if (person.status !== 'active') throw new Error(`${person.name} is archived`);
+	const override = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', person._id).eq('date', input.date)).unique();
+	const current = effectivePlan(person, input.date, override);
+	if (!samePlan(current, input.expectedPlan)) throw new Error(STALE_ROSTER);
+	const index = current.breaks.findIndex((b) => sameBreak(b, input.original));
+	if (index < 0) throw new Error(STALE_ROSTER);
+	if (input.next && sameBreak(input.next, input.original)) throw new Error('Nothing to change: move, resize or rename the break');
+	const breaks = current.breaks.flatMap((b, i) => (i !== index ? [b] : input.next ? [input.next] : []));
+	// Checks the edited break against the day's shifts and its other breaks.
+	const plan = normalizePlan({ ...current, breaks });
+	if (input.scope === 'day') {
+		const appointments = await appointmentsByCell(ctx, input.date, input.date);
+		const orphaned = uncovered(input.date, plan, appointments.get(cellKey(person._id, input.date)), Date.now());
+		const conflicts = await describeConflicts(ctx, orphaned.length ? [{ staff: person, date: input.date, appointments: orphaned }] : []);
+		return { scope: 'day' as const, person, override, plan, conflicts, keptDates: [] };
+	}
+	if (override) throw new Error("This date has its own roster plan, so the weekly default doesn't show here. Change this day only, or reset the day in Roster first");
+	const weekday = weekdayOf(input.date);
+	const pattern: Pattern = {
+		workingHours: person.workingHours,
+		breaks: [...person.breaks.filter((b) => b.weekday !== weekday), ...plan.breaks.map((b) => ({ weekday, ...b }))]
+	};
+	// Dates with their own plan keep it; only pattern days can conflict.
+	const overrideDates = await upcomingOverrideDates(ctx, person._id);
+	const conflicts = await describeConflicts(ctx, await patternConflicts(ctx, person, pattern, overrideDates));
+	const today = resortLocalParts(Date.now()).date;
+	const keptDates = [...overrideDates].filter((date) => date >= today && weekdayOf(date) === weekday).sort();
+	return { scope: 'weekly' as const, person, pattern, conflicts, keptDates };
+}
+
+/** What a break edit would do: a problem, or its conflicts and the dates that keep their own plan. Never throws for bad input. */
+export const previewBreakChange = query({
+	args: breakChangeArgs,
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		try {
+			const change = await planBreakChange(ctx, args);
+			return { problem: null, conflicts: change.conflicts, keptDates: change.keptDates };
+		} catch (error) {
+			return { problem: error instanceof Error ? error.message : 'Could not check this change', conflicts: [], keptDates: [] };
+		}
+	}
+});
+
+/** Saves a confirmed break edit. Day edits are a roster override; weekly edits keep each date override in force. Both can be undone in Roster. */
+export const editBreak = mutation({
+	args: breakChangeArgs,
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		await assertRosterIdle(ctx);
+		const change = await planBreakChange(ctx, args);
+		if (change.conflicts.length) return { ok: false as const, conflicts: change.conflicts };
+		const what = args.next ? `Change ${args.original.label} to ${args.next.start}–${args.next.end}` : `Remove ${args.original.label}`;
+		const { person } = change;
+		if (change.scope === 'day') {
+			const batchId = await newBatch(ctx, admin.email, `${what} for ${person.name} on ${args.date}`);
+			const next = samePlan(change.plan, patternDay(person, args.date)) ? null : change.plan;
+			await writeCell(ctx, batchId, person._id, args.date, change.override, next);
+			return { ok: true as const, batchId };
+		}
+		const batchId = await newBatch(ctx, admin.email, `${what} for ${person.name} every ${WEEKDAY_NAMES[weekdayOf(args.date)]}`, {
+			patterns: [{ staffId: person._id, workingHours: person.workingHours, breaks: person.breaks }]
+		});
+		await ctx.db.patch(person._id, { breaks: change.pattern.breaks, updatedAt: Date.now() });
+		return { ok: true as const, batchId };
 	}
 });

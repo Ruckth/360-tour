@@ -3,6 +3,7 @@ import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
+import { cancelAppointmentRecord } from './lib/appointmentChanges';
 import { enforceRateLimit } from './lib/rateLimit';
 import {
 	assertAppointmentStart,
@@ -231,7 +232,7 @@ export const cancelChatServiceBooking = internalMutation({
 			});
 			return { state: 'needs_confirmation' as const, ...summary };
 		}
-		await ctx.db.patch(appointment._id, { status: 'cancelled' });
+		await cancelAppointmentRecord(ctx, appointment, { actor: 'guest' });
 		await ctx.db.patch(args.sessionId, { pendingServiceCancellation: undefined });
 		return { state: 'cancelled' as const, ...summary };
 	}

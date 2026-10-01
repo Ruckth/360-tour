@@ -73,7 +73,7 @@ describe('service slots', () => {
 		expect(slots.some((slot) => slot.start === at('10:15'))).toBe(false);
 		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:15') }))
 			.rejects.toThrow('That time was just taken');
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: created.appointmentId });
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: created.appointmentId, expectedRevision: 0 });
 		slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
 		expect(slots.some((slot) => slot.start === at('09:00'))).toBe(true);
 	});
@@ -86,7 +86,7 @@ describe('service slots', () => {
 		expect(second.staffId).toBe(staffIds[1]); // Mali is busy
 		const third = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('14:00') });
 		expect(third.staffId).toBe(staffIds[0]); // tied counts, stable name order
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId });
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId, expectedRevision: 0 });
 		const fourth = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('15:00') });
 		expect(fourth.staffId).toBe(staffIds[1]); // fewer non-cancelled appointments
 	});
@@ -137,7 +137,7 @@ describe('service slots', () => {
 		expect(nextDay.some((slot) => slot.start === localDateTimeUtc('2026-09-26', '09:00'))).toBe(true);
 		const schedule = await admin.query(api.adminServices.listSchedule, { from: at('00:00'), to: at('00:00') + 86_400_000, staffIds: [staffIds[0]] });
 		expect(schedule.shifts).toEqual([{ staffId: staffIds[0], start: at('14:00'), end: at('22:00') }]);
-		expect(schedule.blocks).toEqual([{ staffId: staffIds[0], start: at('18:00'), end: at('19:00'), label: 'Dinner', kind: 'break' }]);
+		expect(schedule.blocks).toEqual([expect.objectContaining({ staffId: staffIds[0], start: at('18:00'), end: at('19:00'), label: 'Dinner', kind: 'break', date, override: true })]);
 	});
 
 	it('treats an override with no shifts as a day off', async () => {

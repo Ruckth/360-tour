@@ -194,24 +194,35 @@ export async function assertStaffFree(
 	}
 }
 
+/** Future 15-minute starts on a date, each with the people free for `occupyMs` from then. */
+export async function openStarts(
+		ctx: ReadCtx,
+		staff: Doc<'staff'>[],
+		date: string,
+		occupyMs: number,
+		ignoreAppointmentId?: Id<'serviceAppointments'>
+): Promise<Slot[]> {
+	const [dayStart, dayEnd] = localDayRange(date);
+	const busy = await Promise.all(staff.map((person) => staffBusyRanges(ctx, person, dayStart, dayEnd + DAY, ignoreAppointmentId)));
+	const slots: Slot[] = [];
+	for (let start = dayStart; start < dayEnd; start += 15 * MINUTE) {
+		if (start < Date.now()) continue;
+		const staffIds = staff.filter((_, i) => !busy[i].some(([a, b]) => start < b && start + occupyMs > a)).map((person) => person._id);
+		if (staffIds.length) slots.push({ start, staffIds });
+	}
+	return slots;
+}
+
 export async function findOpenSlots(
 		ctx: ReadCtx,
 		input: { serviceId: Id<'services'>; date: string; staffId?: Id<'staff'> }
 ): Promise<Slot[]> {
-	const [dayStart, dayEnd] = localDayRange(input.date);
+	assertValidIsoDate(input.date, 'Date');
 	const service = await ctx.db.get(input.serviceId);
 	if (!service || service.status !== 'active') return [];
-	const duration = (service.durationMin + service.bufferMin) * MINUTE;
 	const staff = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
 		.filter((person): person is Doc<'staff'> => !!person && person.status === 'active' && (!input.staffId || person._id === input.staffId));
-	const busy = await Promise.all(staff.map((person) => staffBusyRanges(ctx, person, dayStart, dayEnd + DAY)));
-	const slots: Slot[] = [];
-	for (let start = dayStart; start < dayEnd; start += 15 * MINUTE) {
-		if (start < Date.now()) continue;
-		const staffIds = staff.filter((_, i) => !busy[i].some(([a, b]) => start < b && start + duration > a)).map((person) => person._id);
-		if (staffIds.length) slots.push({ start, staffIds });
-	}
-	return slots;
+	return await openStarts(ctx, staff, input.date, (service.durationMin + service.bufferMin) * MINUTE);
 }
 
 /** Whether anyone active who offers the service has shifts on this date. No open slots then means "fully booked", not "not scheduled yet". */
@@ -236,17 +247,26 @@ export type AppointmentInput = {
 	guestEmail?: string;
 	bookingId?: Id<'bookings'>;
 	chatSessionId?: Id<'chatSessions'>;
+	rebookedFromId?: Id<'serviceAppointments'>;
 	source: Doc<'serviceAppointments'>['source'];
 };
 
-export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput) {
-	assertAppointmentStart(input.start);
+/** Trimmed guest details; throws on a missing name or phone, a bad email or long notes. */
+export function guestDetails(input: { guestName: string; guestPhone: string; guestEmail?: string; notes?: string }) {
 	const guestName = input.guestName.trim();
 	const guestPhone = input.guestPhone.trim();
 	const guestEmail = input.guestEmail?.trim() || undefined;
+	const notes = input.notes?.trim() || undefined;
 	if (!guestName) throw new Error('Guest name is required');
 	if (!guestPhone) throw new Error('Guest phone is required');
 	if (guestEmail) assertValidEmail(guestEmail);
+	if (notes && notes.length > 2000) throw new Error('Notes must be at most 2000 characters');
+	return { guestName, guestPhone, guestEmail, notes };
+}
+
+export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput) {
+	assertAppointmentStart(input.start);
+	const { guestName, guestPhone, guestEmail } = guestDetails(input);
 	const service = await ctx.db.get(input.serviceId);
 	if (!service || service.status !== 'active') throw new Error('Service unavailable');
 	const blockedUntil = input.start + (service.durationMin + service.bufferMin) * MINUTE;
@@ -282,6 +302,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 		...(guestEmail ? { guestEmail } : {}),
 		...(input.bookingId ? { bookingId: input.bookingId } : {}),
 		...(input.chatSessionId ? { chatSessionId: input.chatSessionId } : {}),
+		...(input.rebookedFromId ? { rebookedFromId: input.rebookedFromId } : {}),
 		source: input.source,
 		status: 'booked',
 		paymentStatus: 'unpaid',
