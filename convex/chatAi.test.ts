@@ -370,7 +370,7 @@ describe("chatAi.respond question-bank matching", () => {
         paginationOpts: { numItems: 50, cursor: null },
       }).then((result) => result.page);
 
-      expect(result).toMatchObject({ response: "The host can help with late checkout.", model: "grok-4.3" });
+      expect(result).toMatchObject({ response: "The host can help with late checkout.", model: "openai/gpt-6-luna" });
       expect(unknownRows).toHaveLength(0);
       expect(fetchMock).toHaveBeenCalled();
     } finally {

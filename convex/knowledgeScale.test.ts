@@ -151,21 +151,21 @@ describe('exact approved answers with custom scopes', () => {
 		const { t } = setup();
 		const ids: Id<'chatAnswers'>[] = [];
 		for (let i = 0; i < 103; i++) {
-			ids.push(await customScopedAnswer(t, { slug: `retreat-${i}`, title: `Check in ${i}`, question: 'When is check in?', updatedAt: i }));
+			ids.push(await customScopedAnswer(t, { slug: `retreat-${i}`, title: `Pets ${i}`, question: 'Are pets allowed?', updatedAt: i }));
 		}
-		const global = await customScopedAnswer(t, { title: 'Check in (all villas)', question: 'When is check in?', updatedAt: 1000 });
+		const global = await customScopedAnswer(t, { title: 'Pets (all villas)', question: 'Are pets allowed?', updatedAt: 1000 });
 		const customSession = await t.run((ctx) =>
 			ctx.db.insert('chatSessions', { propertySlug: 'retreat-102', channel: 'web', createdAt: 1, lastSeenAt: 1 })
 		);
 		// The villa's own answer beats the newer answer for every villa.
-		expect((await t.query(api.chatKnowledge.resolveExact, { sessionId: customSession, messageText: 'When is check in?' }))?.answerId).toBe(ids[102]);
+		expect((await t.query(api.chatKnowledge.resolveExact, { sessionId: customSession, messageText: 'Are pets allowed?' }))?.answerId).toBe(ids[102]);
 		// With no villa, only the answer for every villa applies; the custom-scoped ones never leak.
 		const plainSession = await t.run((ctx) => ctx.db.insert('chatSessions', { channel: 'web', createdAt: 1, lastSeenAt: 1 }));
-		expect((await t.query(api.chatKnowledge.resolveExact, { sessionId: plainSession, messageText: 'When is check in?' }))?.answerId).toBe(global);
+		expect((await t.query(api.chatKnowledge.resolveExact, { sessionId: plainSession, messageText: 'Are pets allowed?' }))?.answerId).toBe(global);
 		const otherSession = await t.run((ctx) =>
 			ctx.db.insert('chatSessions', { propertySlug: 'retreat-none', channel: 'web', createdAt: 1, lastSeenAt: 1 })
 		);
-		expect((await t.query(api.chatKnowledge.resolveExact, { sessionId: otherSession, messageText: 'When is check in?' }))?.answerId).toBe(global);
+		expect((await t.query(api.chatKnowledge.resolveExact, { sessionId: otherSession, messageText: 'Are pets allowed?' }))?.answerId).toBe(global);
 	});
 });
 

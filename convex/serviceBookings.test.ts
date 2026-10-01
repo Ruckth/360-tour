@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import { localDateTimeUtc } from './lib/serviceSlots';
 import schema from './schema';
+import { proposalIdentity } from './lib/chatWriteGuard';
 
 const modules = import.meta.glob('./**/*.ts');
 const date = '2026-09-25';
@@ -223,28 +224,30 @@ describe('AI service booking', () => {
 		const s = await setup();
 		const results: string[] = [];
 		mockAi([{ name: 'prepare_service_booking', args: request }, { name: 'confirm_service_booking' }], results);
-		await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: 'Book Thai massage', channel: 'whatsapp', bookingFlow: true });
-		expect(results.join('\n')).toContain('Ask the guest to confirm the service summary first');
+		const proposal = await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: 'Book Thai massage', channel: 'whatsapp', bookingFlow: true });
+		expect(proposal.response).toContain('not confirmed yet');
+		expect(proposal.response).toContain('Reply yes');
 		expect(await appointments(s.t)).toHaveLength(0);
 		await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		vi.unstubAllGlobals();
 		const listing: string[] = [];
 		mockAi([{ name: 'get_my_bookings' }], listing);
-		await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: 'What are my bookings?', channel: 'whatsapp', bookingFlow: true });
-		expect(listing.join('\n')).toContain('"services"');
-		expect(listing.join('\n')).toContain('SVC-');
+		const bookingList = await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: 'What are my bookings?', channel: 'whatsapp', bookingFlow: true });
+		expect(bookingList.response).toContain('status: booked');
+		expect(bookingList.response).toContain('SVC-');
 		const reference = (await appointments(s.t))[0].confirmationCode;
 		vi.unstubAllGlobals();
 		const firstCancel: string[] = [];
 		mockAi([{ name: 'cancel_booking', args: { reference } }], firstCancel);
-		await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: `Cancel ${reference}`, channel: 'whatsapp', bookingFlow: true });
-		expect(firstCancel.join('\n')).toContain('needs_confirmation');
+		const cancellationProposal = await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: `Cancel ${reference}`, channel: 'whatsapp', bookingFlow: true });
+		expect(cancellationProposal.response).toContain('not been cancelled yet');
+		expect(cancellationProposal.response).toContain(reference);
 		vi.advanceTimersByTime(1000);
 		vi.unstubAllGlobals();
 		const confirmedCancel: string[] = [];
 		mockAi([{ name: 'cancel_booking', args: { reference } }], confirmedCancel);
-		await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: 'Yes, cancel it', channel: 'whatsapp', bookingFlow: true });
-		expect(confirmedCancel.join('\n')).toContain('"cancelled"');
+		const cancelledReply = await s.t.action(api.chatAi.generateReply, { sessionId: s.sessionId, userMessage: 'Yes, cancel it', channel: 'whatsapp', bookingFlow: true });
+		expect(cancelledReply.response).toContain(`Booking cancelled.\n${reference}`);
 		expect((await appointments(s.t))[0].status).toBe('cancelled');
 	});
 
@@ -290,4 +293,13 @@ describe('AI service booking', () => {
 		await expect(s.t.mutation(api.chat.createSession, { channel: 'whatsapp' } as never)).rejects.toThrow();
 		await expect(s.t.mutation(api.chat.identifyVisitor, { sessionId: s.sessionId, phone: '66000000000', contactApp: 'whatsapp' })).rejects.toThrow(/web chat/);
 	});
+});
+
+
+it('cannot confirm a service proposal that was replaced while the yes turn was running', async () => {
+	const s = await setup(); await prepare(s);
+	const expectedProposal = proposalIdentity((await s.t.run(ctx => ctx.db.get(s.sessionId)))?.pendingServiceQuote);
+	await prepare(s, { time: '15:00' });
+	await expect(s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId, expectedProposal })).rejects.toThrow('proposal changed');
+	expect(await appointments(s.t)).toHaveLength(0);
 });

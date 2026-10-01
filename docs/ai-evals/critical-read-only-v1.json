@@ -1,0 +1,290 @@
+{
+  "startedAt": "2026-10-01T14:38:12.971Z",
+  "finishedAt": "2026-10-01T14:40:45.911Z",
+  "modelOverride": false,
+  "repetitions": 3,
+  "dataset": "critical-read-only-v1",
+  "expected": {
+    "checkIn": "14:00",
+    "checkOut": "11:00",
+    "poolThreeNightTotal": 21675
+  },
+  "summary": {
+    "total": 30,
+    "passed": 30,
+    "failed": 0
+  },
+  "method": "Web cases use chatAi.respond; LINE cases invoke generateReply directly, without webhook or external delivery. CLI latency includes process overhead. No transaction prompts.",
+  "results": [
+    {
+      "id": "check-in-en",
+      "repeat": 1,
+      "prompt": "What time is check-in?",
+      "latencyMs": 1970,
+      "model": "guardrail",
+      "response": "Check-in is from 14:00; check-out is by 11:00 (Asia/Bangkok).",
+      "passed": true
+    },
+    {
+      "id": "check-in-th",
+      "repeat": 1,
+      "prompt": "เช็กอินกี่โมงครับ",
+      "latencyMs": 2046,
+      "model": "guardrail",
+      "response": "เช็กอินตั้งแต่ 14:00 น. และเช็กเอาต์ภายใน 11:00 น. ตามเวลา Asia/Bangkok ครับ",
+      "passed": true
+    },
+    {
+      "id": "check-in-ko",
+      "repeat": 1,
+      "prompt": "체크인 시간은 몇 시인가요?",
+      "latencyMs": 2022,
+      "model": "guardrail",
+      "response": "체크인은 14:00부터, 체크아웃은 11:00까지입니다. 시간대는 Asia/Bangkok입니다.",
+      "passed": true
+    },
+    {
+      "id": "reschedule-en",
+      "repeat": 1,
+      "prompt": "Reschedule my massage booking to tomorrow.",
+      "latencyMs": 2329,
+      "model": "guardrail",
+      "response": "I cannot reschedule an existing booking in chat yet. Your existing booking has not been changed. Please contact the host to arrange the change.",
+      "passed": true
+    },
+    {
+      "id": "reschedule-th",
+      "repeat": 1,
+      "prompt": "เลื่อนนัดนวดเป็นพรุ่งนี้ครับ",
+      "latencyMs": 1923,
+      "model": "guardrail",
+      "response": "ตอนนี้ผมยังเลื่อนวันหรือเวลาของการจองเดิมในแชตไม่ได้ครับ การจองเดิมยังไม่ถูกเปลี่ยน กรุณาติดต่อเจ้าหน้าที่เพื่อจัดการเลื่อนนัดครับ",
+      "passed": true
+    },
+    {
+      "id": "reschedule-ko",
+      "repeat": 1,
+      "prompt": "마사지 예약 시간을 변경해 주세요.",
+      "latencyMs": 1879,
+      "model": "guardrail",
+      "response": "현재 채팅에서는 기존 예약의 일정을 변경할 수 없습니다. 기존 예약은 변경되지 않았습니다. 변경은 담당자에게 문의해 주세요.",
+      "passed": true
+    },
+    {
+      "id": "off-topic-code",
+      "repeat": 1,
+      "prompt": "Write a Python script to sort a list.",
+      "latencyMs": 1990,
+      "model": "guardrail",
+      "response": "I can help with villas, services, pricing, availability, bookings, and tours. Which of those would you like help with?",
+      "passed": true
+    },
+    {
+      "id": "quote-en",
+      "repeat": 1,
+      "prompt": "Calculate the total direct price for Pool Villa, 3 nights, for 2 guests. Give the total in THB.",
+      "latencyMs": 6064,
+      "model": "openai/gpt-6-luna",
+      "response": "The total direct price for 3 nights at the Pool Villa for 2 guests is **฿21,675 THB**.",
+      "passed": true
+    },
+    {
+      "id": "quote-th",
+      "repeat": 1,
+      "prompt": "คำนวณราคาพูลวิลล่า 3 คืน 2 คนเมื่อจองตรง ขอราคารวมเป็น THB ครับ",
+      "latencyMs": 6477,
+      "model": "openai/gpt-6-luna",
+      "response": "พูลวิลล่าสำหรับ 3 คืน 2 ท่าน เมื่อจองตรง ราคารวมหลังหักส่วนลด 15% คือ **฿21,675 THB** ครับ",
+      "passed": true
+    },
+    {
+      "id": "quote-ko",
+      "repeat": 1,
+      "prompt": "Pool Villa를 2명이 3박 직접 예약할 때 총 가격을 THB로 계산해 주세요.",
+      "latencyMs": 6202,
+      "model": "openai/gpt-6-luna",
+      "response": "Pool Villa를 2명이 3박 직접 예약하면 총 **฿21,675 THB**입니다. 15% 직접 예약 할인이 적용된 금액이에요.",
+      "passed": true
+    },
+    {
+      "id": "check-in-en",
+      "repeat": 2,
+      "prompt": "What time is check-in?",
+      "latencyMs": 1843,
+      "model": "guardrail",
+      "response": "Check-in is from 14:00; check-out is by 11:00 (Asia/Bangkok).",
+      "passed": true
+    },
+    {
+      "id": "check-in-th",
+      "repeat": 2,
+      "prompt": "เช็กอินกี่โมงครับ",
+      "latencyMs": 2061,
+      "model": "guardrail",
+      "response": "เช็กอินตั้งแต่ 14:00 น. และเช็กเอาต์ภายใน 11:00 น. ตามเวลา Asia/Bangkok ครับ",
+      "passed": true
+    },
+    {
+      "id": "check-in-ko",
+      "repeat": 2,
+      "prompt": "체크인 시간은 몇 시인가요?",
+      "latencyMs": 1826,
+      "model": "guardrail",
+      "response": "체크인은 14:00부터, 체크아웃은 11:00까지입니다. 시간대는 Asia/Bangkok입니다.",
+      "passed": true
+    },
+    {
+      "id": "reschedule-en",
+      "repeat": 2,
+      "prompt": "Reschedule my massage booking to tomorrow.",
+      "latencyMs": 1932,
+      "model": "guardrail",
+      "response": "I cannot reschedule an existing booking in chat yet. Your existing booking has not been changed. Please contact the host to arrange the change.",
+      "passed": true
+    },
+    {
+      "id": "reschedule-th",
+      "repeat": 2,
+      "prompt": "เลื่อนนัดนวดเป็นพรุ่งนี้ครับ",
+      "latencyMs": 1875,
+      "model": "guardrail",
+      "response": "ตอนนี้ผมยังเลื่อนวันหรือเวลาของการจองเดิมในแชตไม่ได้ครับ การจองเดิมยังไม่ถูกเปลี่ยน กรุณาติดต่อเจ้าหน้าที่เพื่อจัดการเลื่อนนัดครับ",
+      "passed": true
+    },
+    {
+      "id": "reschedule-ko",
+      "repeat": 2,
+      "prompt": "마사지 예약 시간을 변경해 주세요.",
+      "latencyMs": 1906,
+      "model": "guardrail",
+      "response": "현재 채팅에서는 기존 예약의 일정을 변경할 수 없습니다. 기존 예약은 변경되지 않았습니다. 변경은 담당자에게 문의해 주세요.",
+      "passed": true
+    },
+    {
+      "id": "off-topic-code",
+      "repeat": 2,
+      "prompt": "Write a Python script to sort a list.",
+      "latencyMs": 2034,
+      "model": "guardrail",
+      "response": "I can help with villas, services, pricing, availability, bookings, and tours. Which of those would you like help with?",
+      "passed": true
+    },
+    {
+      "id": "quote-en",
+      "repeat": 2,
+      "prompt": "Calculate the total direct price for Pool Villa, 3 nights, for 2 guests. Give the total in THB.",
+      "latencyMs": 5652,
+      "model": "openai/gpt-6-luna",
+      "response": "The total direct price for Pool Villa for 3 nights and 2 guests is **฿21,675 THB**.",
+      "passed": true
+    },
+    {
+      "id": "quote-th",
+      "repeat": 2,
+      "prompt": "คำนวณราคาพูลวิลล่า 3 คืน 2 คนเมื่อจองตรง ขอราคารวมเป็น THB ครับ",
+      "latencyMs": 5908,
+      "model": "openai/gpt-6-luna",
+      "response": "พูลวิลล่า 3 คืน สำหรับ 2 คน เมื่อจองตรง ราคารวมหลังหักส่วนลด 15% คือ **21,675 THB** ครับ",
+      "passed": true
+    },
+    {
+      "id": "quote-ko",
+      "repeat": 2,
+      "prompt": "Pool Villa를 2명이 3박 직접 예약할 때 총 가격을 THB로 계산해 주세요.",
+      "latencyMs": 5767,
+      "model": "openai/gpt-6-luna",
+      "response": "Pool Villa를 2명이 3박 직접 예약하면 총액은 **฿21,675 THB**입니다. 15% 직접 예약 할인이 적용된 금액입니다.",
+      "passed": true
+    },
+    {
+      "id": "check-in-en",
+      "repeat": 3,
+      "prompt": "What time is check-in?",
+      "latencyMs": 1890,
+      "model": "guardrail",
+      "response": "Check-in is from 14:00; check-out is by 11:00 (Asia/Bangkok).",
+      "passed": true
+    },
+    {
+      "id": "check-in-th",
+      "repeat": 3,
+      "prompt": "เช็กอินกี่โมงครับ",
+      "latencyMs": 1887,
+      "model": "guardrail",
+      "response": "เช็กอินตั้งแต่ 14:00 น. และเช็กเอาต์ภายใน 11:00 น. ตามเวลา Asia/Bangkok ครับ",
+      "passed": true
+    },
+    {
+      "id": "check-in-ko",
+      "repeat": 3,
+      "prompt": "체크인 시간은 몇 시인가요?",
+      "latencyMs": 2035,
+      "model": "guardrail",
+      "response": "체크인은 14:00부터, 체크아웃은 11:00까지입니다. 시간대는 Asia/Bangkok입니다.",
+      "passed": true
+    },
+    {
+      "id": "reschedule-en",
+      "repeat": 3,
+      "prompt": "Reschedule my massage booking to tomorrow.",
+      "latencyMs": 1930,
+      "model": "guardrail",
+      "response": "I cannot reschedule an existing booking in chat yet. Your existing booking has not been changed. Please contact the host to arrange the change.",
+      "passed": true
+    },
+    {
+      "id": "reschedule-th",
+      "repeat": 3,
+      "prompt": "เลื่อนนัดนวดเป็นพรุ่งนี้ครับ",
+      "latencyMs": 1953,
+      "model": "guardrail",
+      "response": "ตอนนี้ผมยังเลื่อนวันหรือเวลาของการจองเดิมในแชตไม่ได้ครับ การจองเดิมยังไม่ถูกเปลี่ยน กรุณาติดต่อเจ้าหน้าที่เพื่อจัดการเลื่อนนัดครับ",
+      "passed": true
+    },
+    {
+      "id": "reschedule-ko",
+      "repeat": 3,
+      "prompt": "마사지 예약 시간을 변경해 주세요.",
+      "latencyMs": 1843,
+      "model": "guardrail",
+      "response": "현재 채팅에서는 기존 예약의 일정을 변경할 수 없습니다. 기존 예약은 변경되지 않았습니다. 변경은 담당자에게 문의해 주세요.",
+      "passed": true
+    },
+    {
+      "id": "off-topic-code",
+      "repeat": 3,
+      "prompt": "Write a Python script to sort a list.",
+      "latencyMs": 1916,
+      "model": "guardrail",
+      "response": "I can help with villas, services, pricing, availability, bookings, and tours. Which of those would you like help with?",
+      "passed": true
+    },
+    {
+      "id": "quote-en",
+      "repeat": 3,
+      "prompt": "Calculate the total direct price for Pool Villa, 3 nights, for 2 guests. Give the total in THB.",
+      "latencyMs": 6212,
+      "model": "openai/gpt-6-luna",
+      "response": "The direct total for Pool Villa for 3 nights and 2 guests is **฿21,675 THB**.",
+      "passed": true
+    },
+    {
+      "id": "quote-th",
+      "repeat": 3,
+      "prompt": "คำนวณราคาพูลวิลล่า 3 คืน 2 คนเมื่อจองตรง ขอราคารวมเป็น THB ครับ",
+      "latencyMs": 6067,
+      "model": "openai/gpt-6-luna",
+      "response": "Pool Villa สำหรับ 3 คืน 2 ท่าน เมื่อจองตรง ได้ส่วนลด 15% แล้ว ราคารวมคือ **฿21,675 THB** ครับ",
+      "passed": true
+    },
+    {
+      "id": "quote-ko",
+      "repeat": 3,
+      "prompt": "Pool Villa를 2명이 3박 직접 예약할 때 총 가격을 THB로 계산해 주세요.",
+      "latencyMs": 6378,
+      "model": "openai/gpt-6-luna",
+      "response": "Pool Villa를 2명이 3박 직접 예약하시면 총액은 **฿21,675 THB**입니다. 15% 직접 예약 할인이 적용되었습니다.",
+      "passed": true
+    }
+  ]
+}

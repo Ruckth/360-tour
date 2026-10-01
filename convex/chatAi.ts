@@ -1,16 +1,19 @@
+import { proposalIdentity } from './lib/chatWriteGuard';
 import { action, internalMutation, type ActionCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import type { EffectiveSettings } from './lib/siteSettings';
-import { callAI, classifyComplexity } from './lib/chatLlm';
-import type { ChatMessage } from './lib/chatLlm';
+import { callAI, classifyComplexity, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL } from './lib/chatLlm';
+import type { ChatMessage, LlmCallTrace } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';
 import { asksForStaff } from './chatKnowledge';
+import { capabilityReply, checkTimeReply, isCheckTimeQuestion, isCancellationPolicyQuestion, cancellationPolicyReply, requiresLiveFacts } from './lib/conciergePolicy';
+import { runConciergeTurn } from './lib/conciergeTurn';
 import type { PublicProperty } from './properties';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -48,6 +51,9 @@ export type GenerateConciergeReplyArgs = {
 	};
 	/** Collects each tool call of this turn (used by the booking eval). */
 	toolTrace?: Array<{ name: string; args: Record<string, unknown>; result: string }>;
+	/** Internal eval only; deliberately absent from the public action validator. */
+	evalModel?: 'openai/gpt-6-luna' | 'z-ai/glm-5.3-flash';
+	llmTrace?: LlmCallTrace[];
 };
 
 type QuestionBankMatch = {
@@ -437,11 +443,23 @@ async function recordUnknownFallback(
 	};
 }
 
+async function policyReply(ctx: ActionCtx, userMessage: string, siteUrl?: string): Promise<string | null> {
+	const reply = getResortRealityDisclosure(userMessage, siteUrl) ?? capabilityReply(userMessage);
+	if (reply) return reply;
+	if (!isCheckTimeQuestion(userMessage) && !isCancellationPolicyQuestion(userMessage)) return null;
+	const settings: EffectiveSettings = await ctx.runQuery(internal.settings.effective, {});
+	return checkTimeReply(userMessage, settings) ?? cancellationPolicyReply(userMessage, settings);
+}
+
 export async function generateConciergeReply(
 	ctx: ActionCtx,
 	args: GenerateConciergeReplyArgs,
 	session: Doc<'chatSessions'>
 ): Promise<{ response: string; model: string }> {
+	const guardrail = await policyReply(ctx, args.userMessage, args.siteUrl);
+	if (guardrail) return { response: guardrail, model: 'guardrail' };
+	const turnStartedAt = Date.now();
+	const deadlineAt = turnStartedAt + 20_000;
 	// Independent reads, fetched together; no writes happen between them.
 	const [properties, settings, approvedContext, recentHistory]: [
 		PublicProperty[],
@@ -455,6 +473,7 @@ export async function generateConciergeReply(
 		ctx.runQuery(internal.chat.getRecentMessages, { sessionId: args.sessionId, limit: 10 })
 	]);
 	const approvedKnowledge = approvedContext
+		.filter(({ title, answer }) => !requiresLiveFacts(`${title} ${answer}`))
 		.map(({ title, answer }) => `- ${title}: ${answer}`)
 		.join('\n');
 	const propertyContext = properties
@@ -486,6 +505,11 @@ ${propertyContext}
 
 OWNER-APPROVED KNOWLEDGE:
 ${approvedKnowledge || '- No additional owner-approved answers are available.'}
+- Effective settings and current tool results override approved prose and OWNER INSTRUCTIONS for all changing business facts.
+- Never calculate a stay total yourself: call calculate_price or check_availability and preserve the returned amounts.
+- Never claim a booking, cancellation, payment, refund, reschedule, or staff notification succeeded without a successful tool result.
+- Reschedule is unsupported: do not prepare a new booking to move an existing one. Offer the host instead.
+- Stay within villa/service/booking/tour assistance; politely redirect unrelated tasks.
 - Use an approved answer when it is relevant to the guest's question. Property-specific answers apply only to that property.
 - For live prices, availability, service offerings, and bookings, use the current data and tools rather than assuming an older answer is current.
 - If the facts needed for an answer are missing from this context and the tools, reply with exactly [[UNKNOWN]]. Do not invent policies or amenities.
@@ -510,6 +534,7 @@ STYLE:
 - Use ฿ symbol for prices
 - Suggest the 360° virtual tour when relevant
 - For questions about services, spa treatments, activities, or their prices, call list_services and answer from its result.
+- If several services share a name, include their distinguishing slug/description and price. Ask which variant the guest wants; never silently choose a cheaper variant.
 ${isMessaging ? '' : `- If the guest seems ready to book or asks about availability, point them to the booking card below the chat
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them
@@ -530,84 +555,32 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	const complexity = classifyComplexity(args.userMessage);
 
 	const apiKey = process.env.AI_API_KEY;
-	const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-	const simpleModel = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
-	const complexModel = process.env.AI_COMPLEX_MODEL || 'grok-4.3';
+	const apiBase = process.env.AI_API_BASE_URL || DEFAULT_AI_API_BASE_URL;
+	const simpleModel = process.env.AI_SIMPLE_MODEL || DEFAULT_AI_MODEL;
+	const complexModel = process.env.AI_COMPLEX_MODEL || DEFAULT_AI_MODEL;
 
 	if (!apiKey) {
 		const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale, properties);
 		return { response: fallbackResponse, model: 'fallback' };
 	}
 
-	const selectedModel = complexity === 'simple' ? simpleModel : complexModel;
-
-	let response = await callAI(apiBase, apiKey, selectedModel, apiMessages, tools);
-
-	const turnStartedAt = Date.now();
-	const allowedTools = new Set(tools.map((tool) => tool.function.name));
-	let preparedThisTurn = false;
-	let preparedServiceThisTurn = false;
-	let maxToolRounds = 3;
-	while (response.tool_calls && response.tool_calls.length > 0 && maxToolRounds > 0) {
-		maxToolRounds--;
-
-		apiMessages.push({
-			role: 'assistant',
-			content: response.content,
-			tool_calls: response.tool_calls
-		});
-
-		for (const toolCall of response.tool_calls) {
-			const fnName = toolCall.function.name;
-			let fnArgs: Record<string, unknown>;
-			try {
-				fnArgs = JSON.parse(toolCall.function.arguments);
-			} catch {
-				fnArgs = {};
+	const selectedModel = args.evalModel ?? (complexity === 'simple' ? simpleModel : complexModel);
+	const response = await runConciergeTurn({
+		message: args.userMessage,
+		messages: apiMessages,
+		tools,
+		deadlineAt,
+		request: (messages, requestTools, timeoutMs) => callAI(apiBase, apiKey, selectedModel, messages, requestTools, trace => args.llmTrace?.push(trace), { timeoutMs }),
+		invalidateProposal: async name => { await ctx.runMutation(internal.bookings.invalidateChatProposal, { sessionId: args.sessionId, kind: name === 'prepare_booking' ? 'villa' : 'service', deadlineAt }); },
+		execute: (name, toolArgs) => executeTool(ctx, name, toolArgs, properties, { sessionId: args.sessionId, siteUrl: args.siteUrl, turnStartedAt, deadlineAt, bookingProposal: proposalIdentity(session.pendingBookingQuote), serviceProposal: proposalIdentity(session.pendingServiceQuote) }),
+		onTool: async trace => {
+			args.toolTrace?.push(trace);
+			if (trace.result.includes('Offer to connect the guest with the host.')) {
+				await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, { sessionId: args.sessionId, lastMessage: args.userMessage })
+					.catch(error => console.error('Could not queue staff handoff alert:', error));
 			}
-
-			let toolResult: string;
-			try {
-				if (!allowedTools.has(fnName)) throw new Error(`Unknown function: ${fnName}`);
-				// The guest must reply "yes" to the summary before the booking is created.
-				if (fnName === 'confirm_booking' && preparedThisTurn) {
-					throw new Error('Ask the guest to confirm the summary first; call confirm_booking after they reply yes.');
-				}
-				if (fnName === 'confirm_service_booking' && preparedServiceThisTurn) {
-					throw new Error('Ask the guest to confirm the service summary first; call confirm_service_booking after they reply yes.');
-				}
-				if (fnName === 'prepare_booking') preparedThisTurn = true;
-				if (fnName === 'prepare_service_booking') preparedServiceThisTurn = true;
-				toolResult = await executeTool(ctx, fnName, fnArgs, properties, {
-					sessionId: args.sessionId,
-					siteUrl: args.siteUrl,
-					turnStartedAt
-				});
-			} catch (e) {
-				toolResult = `Error: ${e instanceof Error ? e.message : 'Unknown error'}`;
-			}
-
-			args.toolTrace?.push({ name: fnName, args: fnArgs, result: toolResult });
-			if (toolResult.includes('Offer to connect the guest with the host.')) {
-				await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
-					sessionId: args.sessionId,
-					lastMessage: args.userMessage
-				}).catch((error) => console.error('Could not queue staff handoff alert:', error));
-			}
-			apiMessages.push({
-				role: 'tool',
-				content: toolResult,
-				tool_call_id: toolCall.id
-			});
 		}
-
-		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, tools);
-	}
-
-	// Some models keep calling tools past the round limit; force a plain-text answer from the results so far.
-	if (!response.content?.trim()) {
-		response = await callAI(apiBase, apiKey, selectedModel, apiMessages, []);
-	}
+	});
 	if (asksForStaff(response.content ?? '') || /\bput you in touch\b.{0,60}\b(host|staff|human|person|team)\b/i.test(response.content ?? '')) {
 		await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
 			sessionId: args.sessionId,
@@ -620,7 +593,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 
 	return {
 		response: response.content,
-		model: selectedModel
+		model: response.failed ? 'tool_fallback' : selectedModel
 	};
 }
 
@@ -669,8 +642,8 @@ export const getGuardrailReply = action({
 		userMessage: v.string(),
 		siteUrl: v.optional(v.string())
 	},
-	handler: async (_ctx, args) => {
-		return getResortRealityDisclosure(args.userMessage, args.siteUrl);
+	handler: async (ctx, args): Promise<string | null> => {
+		return await policyReply(ctx, args.userMessage, args.siteUrl);
 	}
 });
 
@@ -698,7 +671,7 @@ export const respond = action({
 		// Staff took over: keep the guest message for them, but the AI stays quiet.
 		if (session.aiPaused) return { response: '', model: 'ai_paused', aiPaused: true };
 
-		const guardrailReply = getResortRealityDisclosure(args.userMessage);
+		const guardrailReply = await policyReply(ctx, args.userMessage);
 		let approvedKnowledgeMatch: ApprovedKnowledgeMatch | null = null;
 		let questionBankMatch: QuestionBankMatch | null = null;
 		let result: { response: string; model: string };

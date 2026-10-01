@@ -1,3 +1,4 @@
+import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
@@ -85,10 +86,11 @@ export const checkServiceAvailability = internalQuery({
 export const prepareChatServiceBooking = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'), serviceSlug: v.string(), date: v.string(), time: v.string(),
-		guestName: v.string(), guestPhone: v.optional(v.string()), staffPreference: v.optional(v.string())
+		guestName: v.string(), guestPhone: v.optional(v.string()), staffPreference: v.optional(v.string()), deadlineAt: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const session = await sessionFor(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		try {
 			return await prepareQuote(ctx, session, args);
 		} catch (error) {
@@ -141,16 +143,19 @@ async function prepareQuote(
 }
 
 export const confirmChatServiceBooking = internalMutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const session = await sessionFor(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		const quote = session.pendingServiceQuote;
+		assertSameProposal(quote, args.expectedProposal);
 		if (!quote) throw new Error('No prepared service booking. Call prepare_service_booking first.');
 		const existing = quote.appointmentId ? await ctx.db.get(quote.appointmentId) : null;
 		if (existing) {
+			if (existing.status === 'cancelled') throw new Error('That appointment has been cancelled. Prepare a new booking if the guest requests one.');
 			return {
 				appointmentId: existing._id, confirmationCode: existing.confirmationCode,
-				service: quote.serviceName, ...resortLocalParts(existing.start),
+				service: quote.serviceName, price: existing.price, currency: existing.currency, ...resortLocalParts(existing.start),
 				staff: firstName((await ctx.db.get(existing.staffId))?.name ?? 'Staff'), alreadyConfirmed: true
 			};
 		}
@@ -185,7 +190,7 @@ export const confirmChatServiceBooking = internalMutation({
 		await ctx.db.patch(args.sessionId, { pendingServiceQuote: { ...quote, appointmentId: created.appointmentId } });
 		return {
 			appointmentId: created.appointmentId, confirmationCode: created.confirmationCode,
-			service: service.name, ...resortLocalParts(quote.start),
+			service: service.name, price: service.price, currency: service.currency, ...resortLocalParts(quote.start),
 			staff: firstName((await ctx.db.get(created.staffId))?.name ?? 'Staff'), alreadyConfirmed: false
 		};
 	}
@@ -213,9 +218,10 @@ export const listChatGuestServiceBookings = internalQuery({
 });
 
 export const cancelChatServiceBooking = internalMutation({
-	args: { sessionId: v.id('chatSessions'), reference: v.string(), turnStartedAt: v.number() },
+	args: { sessionId: v.id('chatSessions'), reference: v.string(), turnStartedAt: v.number(), deadlineAt: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const session = await sessionFor(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		const appointment = (await guestAppointments(ctx, session)).find((row) => row.confirmationCode.toUpperCase() === args.reference.trim().toUpperCase());
 		if (!appointment) throw new Error('No service booking with that reference was found for this guest.');
 		if (appointment.status === 'cancelled') return { state: 'already_cancelled' as const, reference: appointment.confirmationCode };

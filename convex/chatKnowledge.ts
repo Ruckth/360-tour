@@ -12,7 +12,8 @@ import {
 } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { callAI, type ChatMessage } from './lib/chatLlm';
+import { callAI, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL, type ChatMessage } from './lib/chatLlm';
+import { requiresLiveFacts, capabilityReply } from './lib/conciergePolicy';
 import { requireAdmin } from './lib/adminAuth';
 import { readBudget, ReadBudgetExceeded, readRangeWithinBudget } from './lib/readBudget';
 import { normalizeSuggestedQuestion } from './lib/chatSuggestions';
@@ -734,6 +735,7 @@ export const resolveExact = query({
 		messageText: v.string()
 	},
 	handler: async (ctx, args) => {
+		if (requiresLiveFacts(args.messageText) || capabilityReply(args.messageText)) return null;
 		const normalizedQuestion = normalizeQuestion(args.messageText);
 		if (!normalizedQuestion) return null;
 
@@ -1591,8 +1593,8 @@ Rules:
 		}
 	];
 
-	const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-	const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+	const apiBase = process.env.AI_API_BASE_URL || DEFAULT_AI_API_BASE_URL;
+	const model = process.env.AI_SIMPLE_MODEL || DEFAULT_AI_MODEL;
 	const response = await callAI(apiBase, apiKey, model, messages, []);
 	const parsed = parseQuestionArray(response.content);
 	return (parsed.length > 0 ? parsed : fallbackSimilarQuestions(context, sourceQuestion)).slice(0, limit);

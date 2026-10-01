@@ -1,7 +1,8 @@
 import type { ActionCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { api, internal } from '../_generated/api';
-import { nightsBetween } from './dates';
+import { isIsoDate } from './dates';
+import { assertCapacity, assertStayDates } from './bookingWrites';
 import { calculateDirectQuote, maxSavings } from './pricing';
 import type { ToolDef } from './chatLlm';
 
@@ -23,8 +24,8 @@ export const TOOLS: ToolDef[] = [
 				type: 'object',
 				properties: {
 					serviceSlug: { type: 'string', description: 'Service slug from list_services' },
-					date: { type: 'string', description: 'Resort local date, YYYY-MM-DD' },
-					time: { type: 'string', description: 'Optional resort local time, HH:mm' }
+					date: { type: 'string', format: 'date', description: 'Resort local date, YYYY-MM-DD' },
+					time: { type: 'string', pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$', description: 'Optional resort local time, HH:mm' }
 				},
 				required: ['serviceSlug', 'date']
 			}
@@ -44,11 +45,11 @@ export const TOOLS: ToolDef[] = [
 						description: 'The property slug (pool-villa, garden-suite, or penthouse)'
 					},
 					checkIn: {
-						type: 'string',
+						type: 'string', format: 'date',
 						description: 'Check-in date in YYYY-MM-DD format'
 					},
 					checkOut: {
-						type: 'string',
+						type: 'string', format: 'date',
 						description: 'Check-out date in YYYY-MM-DD format'
 					}
 				},
@@ -70,11 +71,11 @@ export const TOOLS: ToolDef[] = [
 						description: 'The property slug (pool-villa, garden-suite, or penthouse)'
 					},
 					nights: {
-						type: 'number',
+						type: 'integer', minimum: 1, maximum: 365,
 						description: 'Number of nights'
 					},
 					guests: {
-						type: 'number',
+						type: 'integer', minimum: 1,
 						description: 'Number of guests'
 					}
 				},
@@ -124,8 +125,8 @@ export const BOOKING_TOOLS: ToolDef[] = [
 				type: 'object',
 				properties: {
 					serviceSlug: { type: 'string', description: 'Service slug from list_services' },
-					date: { type: 'string', description: 'Resort local date, YYYY-MM-DD' },
-					time: { type: 'string', description: 'Resort local time, HH:mm' },
+					date: { type: 'string', format: 'date', description: 'Resort local date, YYYY-MM-DD' },
+					time: { type: 'string', pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$', description: 'Resort local time, HH:mm' },
 					guestName: { type: 'string', description: 'Guest full name' },
 					guestPhone: { type: 'string', description: 'Guest phone (ignored on WhatsApp)' },
 					staffPreference: { type: 'string', description: 'Optional preferred staff first name' }
@@ -147,14 +148,14 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'prepare_booking',
 			description:
-				'Start a booking as soon as the guest wants to book and you know villa, check-in, check-out, guests and their name. Checks availability, capacity and price itself and holds the stay for the guest to approve; it does not create the booking yet. Read the returned summary (villa, dates, guests, total) back and ask the guest to reply "yes". Call again if they change details.',
+				'Start a booking as soon as the guest wants to book and you know villa, check-in, check-out, guests and their name. Checks availability, capacity and price itself and prepares the stay for the guest to approve (availability is rechecked on confirmation); it does not create the booking yet. Read the returned summary (villa, dates, guests, total) back and ask the guest to reply "yes". Call again if they change details.',
 			parameters: {
 				type: 'object',
 				properties: {
 					propertySlug: { type: 'string', description: 'Villa slug: pool-villa, garden-suite, or penthouse' },
-					checkIn: { type: 'string', description: 'Check-in date in YYYY-MM-DD format' },
-					checkOut: { type: 'string', description: 'Check-out date in YYYY-MM-DD format' },
-					guests: { type: 'number', description: 'Number of guests' },
+					checkIn: { type: 'string', format: 'date', description: 'Check-in date in YYYY-MM-DD format' },
+					checkOut: { type: 'string', format: 'date', description: 'Check-out date in YYYY-MM-DD format' },
+					guests: { type: 'integer', minimum: 1, description: 'Number of guests' },
 					guestName: { type: 'string', description: 'Full name of the guest' },
 					guestPhone: {
 						type: 'string',
@@ -202,11 +203,48 @@ export const BOOKING_TOOLS: ToolDef[] = [
 
 type ToolArgs = Record<string, unknown>;
 
+// The runtime contract is the same schema the model sees.
+const toolDefinitions = new Map([...TOOLS, ...BOOKING_TOOLS].map(tool => {
+	tool.function.parameters.additionalProperties = false;
+	return [tool.function.name, tool] as const;
+}));
+
+export function validateToolArgs(name: string, value: unknown): ToolArgs {
+	const definition = toolDefinitions.get(name);
+	if (!definition) throw new Error(`Unknown function: ${name}`);
+	if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Tool arguments must be an object');
+	const args = value as ToolArgs;
+	const schema = definition.function.parameters;
+	for (const field of schema.required ?? []) {
+		if (!(field in args)) throw new Error(`Missing required field: ${field}`);
+	}
+	for (const [field, input] of Object.entries(args)) {
+		const rule = schema.properties[field];
+		if (!rule) throw new Error(`Unknown field: ${field}`);
+		if (rule.type === 'string') {
+			if (typeof input !== 'string' || !input.trim() || input.length > 500) throw new Error(`Invalid ${field}: expected a nonempty string`);
+			if (rule.format === 'date' && !isIsoDate(input)) throw new Error(`Invalid ${field}: expected YYYY-MM-DD`);
+			if (rule.pattern && !new RegExp(rule.pattern).test(input)) throw new Error(`Invalid ${field}: expected HH:mm`);
+		} else if (typeof input !== 'number' || !Number.isFinite(input) || (rule.type === 'integer' && !Number.isInteger(input)) ||
+			(rule.minimum !== undefined && input < rule.minimum) || (rule.maximum !== undefined && input > rule.maximum)) {
+			throw new Error(`Invalid ${field}: expected ${rule.type} in the permitted range`);
+		}
+	}
+	return args;
+}
+
+export function toolError(code: string, error: string) {
+	return JSON.stringify({ ok: false, code, error, retryable: false });
+}
+
 export type ToolContext = {
 	sessionId: Id<'chatSessions'>;
 	siteUrl?: string;
 	/** When the current AI turn started; lets two-step tools require a guest reply in between. */
 	turnStartedAt: number;
+	deadlineAt?: number;
+	bookingProposal?: string;
+	serviceProposal?: string;
 };
 
 function paymentUrl(toolContext: ToolContext, bookingId: string, accessToken: string) {
@@ -232,10 +270,21 @@ async function ownerOtaQuotes(ctx: ActionCtx, slug: string, nights: number) {
 export async function executeTool(
 	ctx: ActionCtx,
 	fnName: string,
-	fnArgs: ToolArgs,
+	input: unknown,
 	properties: Doc<'properties'>[],
 	toolContext: ToolContext
 ): Promise<string> {
+	let fnArgs: ToolArgs;
+	try { fnArgs = validateToolArgs(fnName, input); }
+	catch (error) { return toolError('INVALID_ARGUMENTS', error instanceof Error ? error.message : 'Invalid tool arguments'); }
+	try {
+	return await executeValidatedTool(ctx, fnName, fnArgs, properties, toolContext);
+	} catch (error) {
+		return toolError('TOOL_FAILED', error instanceof Error ? error.message : 'Tool failed');
+	}
+}
+
+async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: ToolArgs, properties: Doc<'properties'>[], toolContext: ToolContext): Promise<string> {
 	switch (fnName) {
 		case 'list_services':
 			return JSON.stringify({ services: await ctx.runQuery(internal.serviceBookings.listActiveServices, {}) });
@@ -249,6 +298,7 @@ export async function executeTool(
 		case 'prepare_service_booking': {
 			const summary = await ctx.runMutation(internal.serviceBookings.prepareChatServiceBooking, {
 				sessionId: toolContext.sessionId,
+				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
 				serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
 				time: String(fnArgs.time ?? ''), guestName: String(fnArgs.guestName ?? ''),
 				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {}),
@@ -259,7 +309,9 @@ export async function executeTool(
 
 		case 'confirm_service_booking':
 			return JSON.stringify(await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
-				sessionId: toolContext.sessionId
+				sessionId: toolContext.sessionId,
+				expectedProposal: toolContext.serviceProposal ?? '',
+				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			}));
 
 		case 'check_availability': {
@@ -269,13 +321,13 @@ export async function executeTool(
 			const checkIn = String(fnArgs.checkIn);
 			const checkOut = String(fnArgs.checkOut);
 
+			const nights = assertStayDates(checkIn, checkOut);
 			const available = await ctx.runQuery(api.availability.isAvailable, {
 				propertyId: property._id,
 				checkIn,
 				checkOut
 			});
 
-			const nights = nightsBetween(checkIn, checkOut);
 			const quote = calculateDirectQuote(property, nights);
 			const ota = await ownerOtaQuotes(ctx, property.slug, nights);
 
@@ -297,7 +349,8 @@ export async function executeTool(
 			const property = findProperty(properties, fnArgs.propertySlug);
 			if (!property) return JSON.stringify({ error: 'Property not found' });
 
-			const nights = typeof fnArgs.nights === 'number' && fnArgs.nights > 0 ? fnArgs.nights : 1;
+			const nights = Number(fnArgs.nights);
+			if (fnArgs.guests !== undefined) assertCapacity(property, Number(fnArgs.guests));
 			const quote = calculateDirectQuote(property, nights);
 			const otaComparison = await ownerOtaQuotes(ctx, property.slug, nights);
 
@@ -360,6 +413,7 @@ export async function executeTool(
 		case 'prepare_booking': {
 			const summary = await ctx.runMutation(internal.bookings.prepareChatBooking, {
 				sessionId: toolContext.sessionId,
+				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
 				propertySlug: String(fnArgs.propertySlug ?? ''),
 				checkIn: String(fnArgs.checkIn ?? ''),
 				checkOut: String(fnArgs.checkOut ?? ''),
@@ -372,14 +426,17 @@ export async function executeTool(
 
 		case 'confirm_booking': {
 			const booking = await ctx.runMutation(internal.bookings.confirmChatBooking, {
-				sessionId: toolContext.sessionId
+				sessionId: toolContext.sessionId,
+				expectedProposal: toolContext.bookingProposal ?? '',
+				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			});
 			return JSON.stringify({
 				confirmationCode: booking.confirmationCode,
-				status: 'pending_payment',
+				property: booking.property, checkIn: booking.checkIn, checkOut: booking.checkOut, guests: booking.guests, nights: booking.nights,
+				status: booking.paymentStatus === 'paid' ? 'paid' : 'pending_payment',
 				total: booking.total,
 				currency: booking.currency,
-				paymentUrl: paymentUrl(toolContext, booking.bookingId, booking.accessToken),
+				...(booking.paymentStatus === 'pending' && booking.accessToken ? { paymentUrl: paymentUrl(toolContext, booking.bookingId, booking.accessToken) } : {}),
 				alreadyConfirmed: booking.alreadyConfirmed
 			});
 		}
@@ -406,7 +463,8 @@ export async function executeTool(
 				? internal.serviceBookings.cancelChatServiceBooking : internal.bookings.cancelChatBooking, {
 				sessionId: toolContext.sessionId,
 				reference,
-				turnStartedAt: toolContext.turnStartedAt
+				turnStartedAt: toolContext.turnStartedAt,
+				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			});
 			return JSON.stringify(
 				result.state === 'needs_confirmation'

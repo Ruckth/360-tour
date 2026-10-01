@@ -240,9 +240,11 @@ describe("AI chat booking through generateReply", () => {
         ]),
         aiResponse("Pool Villa, 3 nights, ฿25,500. Reply yes to confirm."),
       ],
-      async (toolResults) => {
-        await reply(`Book pool villa ${checkIn} to ${checkOut} for 2, Rugby 0812345678`);
-        expect(toolResults.join("\n")).toContain("Ask the guest to confirm the summary first");
+      async () => {
+        const proposal = await reply(`Book pool villa ${checkIn} to ${checkOut} for 2, Rugby 0812345678`);
+        expect(proposal.response).toContain("not booked yet");
+        expect(proposal.response).toContain("THB 25,500");
+        expect(proposal.response).toContain("Reply yes");
       },
     );
     expect(await listBookings(t)).toHaveLength(0);
@@ -250,10 +252,12 @@ describe("AI chat booking through generateReply", () => {
 
     await runWithAi(
       [aiResponse(null, [{ name: "confirm_booking" }]), aiResponse("Booked!")],
-      async (toolResults) => {
+      async () => {
         const result = await reply("yes");
-        expect(result.response).toBe("Booked!");
-        expect(toolResults[0]).toContain("https://tour.example.com/booking/pay?bookingId=");
+        expect(result.response).toContain("payment is pending");
+        expect(result.response).toContain("THB 25,500");
+        expect(result.response).toContain("https://tour.example.com/booking/pay?bookingId=");
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
       },
     );
     const bookings = await listBookings(t);
@@ -432,9 +436,10 @@ describe("get_my_bookings / cancel_booking", () => {
     await runWithAi(
       [aiResponse(null, [{ name: "get_my_bookings" }, { name: "cancel_booking", args: { reference: confirmationCode } }]),
         aiResponse("Cancel this booking? Reply yes.")],
-      async (toolResults) => {
-        await reply("cancel my booking");
-        expect(toolResults.join("\n")).toContain("needs_confirmation");
+      async () => {
+        const proposal = await reply("cancel my booking");
+        expect(proposal.response).toContain("not been cancelled yet");
+        expect(proposal.response).toContain(confirmationCode);
       },
     );
     expect((await listBookings(t))[0].status).toBe("pending");
@@ -443,7 +448,7 @@ describe("get_my_bookings / cancel_booking", () => {
     await runWithAi(
       [aiResponse(null, [{ name: "cancel_booking", args: { reference: confirmationCode } }]), aiResponse("Cancelled.")],
       async () => {
-        expect((await reply("yes")).response).toBe("Cancelled.");
+        expect((await reply("yes")).response).toContain(`Booking cancelled.\n${confirmationCode}`);
       },
     );
     expect((await listBookings(t))[0].status).toBe("cancelled");

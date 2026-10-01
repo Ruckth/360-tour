@@ -2,7 +2,8 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { callAI, type ChatMessage } from './lib/chatLlm';
+import { callAI, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL, type ChatMessage } from './lib/chatLlm';
+import { requiresLiveFacts, capabilityReply } from './lib/conciergePolicy';
 import { requireAdmin } from './lib/adminAuth';
 import {
 	clampSuggestionScore,
@@ -405,6 +406,7 @@ export const resolveCuratedExact = query({
 	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
 		const messageText = args.messageText.trim();
 		if (!messageText) return null;
+		if (capabilityReply(messageText)) return null;
 		const locale = detectMessageLocale(messageText, args.locale);
 		const normalizedMessage = normalizeSuggestedQuestion(messageText);
 		const session = await ctx.db.get(args.sessionId);
@@ -419,7 +421,7 @@ export const resolveCuratedExact = query({
 			getCuratedResolutionCandidates(ctx, args.sessionId)
 		]);
 		const candidates = new Map([...legacy, ...indexed].map((candidate) => [candidate._id, candidate]));
-		return resolveExactCuratedMatch({ candidates: [...candidates.values()], locale, messageText });
+		return resolveExactCuratedMatch({ candidates: [...candidates.values()].filter(candidate => !requiresLiveFacts(messageText) || candidate.answerMode === 'dynamic'), locale, messageText });
 	}
 });
 
@@ -432,6 +434,7 @@ export const resolveCuratedSemantic = action({
 	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
 		const messageText = args.messageText.trim();
 		if (!messageText) return null;
+		if (capabilityReply(messageText)) return null;
 
 		const apiKey = process.env.AI_API_KEY;
 		if (!apiKey) return null;
@@ -441,7 +444,7 @@ export const resolveCuratedSemantic = action({
 			internal.chatSuggestions.getCuratedResolutionContext,
 			{ sessionId: args.sessionId }
 		);
-		const boundedCandidates = sortCuratedResolutionCandidates(candidates).slice(
+		const boundedCandidates = sortCuratedResolutionCandidates(candidates.filter(candidate => !requiresLiveFacts(messageText) || candidate.answerMode === 'dynamic')).slice(
 			0,
 			SEMANTIC_MATCH_CANDIDATE_LIMIT
 		);
@@ -491,8 +494,8 @@ Rules:
 			}
 		];
 
-		const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-		const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+		const apiBase = process.env.AI_API_BASE_URL || DEFAULT_AI_API_BASE_URL;
+		const model = process.env.AI_SIMPLE_MODEL || DEFAULT_AI_MODEL;
 		const response = await callAI(apiBase, apiKey, model, messages, []);
 		const parsed = parseSemanticQuestionMatch(response.content);
 		if (
@@ -654,8 +657,8 @@ async function translateCuratedContent(question: string, answer: string | undefi
 	const apiKey = process.env.AI_API_KEY;
 	if (!apiKey) throw new Error('AI_API_KEY is required to translate question bank content');
 
-	const apiBase = process.env.AI_API_BASE_URL || 'https://api.x.ai/v1';
-	const model = process.env.AI_SIMPLE_MODEL || 'grok-4.3';
+	const apiBase = process.env.AI_API_BASE_URL || DEFAULT_AI_API_BASE_URL;
+	const model = process.env.AI_SIMPLE_MODEL || DEFAULT_AI_MODEL;
 	const messages: ChatMessage[] = [
 		{
 			role: 'system',

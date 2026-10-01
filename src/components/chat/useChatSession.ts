@@ -21,7 +21,6 @@ import type {
   ChatSuggestion,
 } from "@/components/chat/chat-types";
 import {
-  addChatMessage,
   askConcierge,
   claimChatBrowserHandoff,
   closeChatSession,
@@ -1789,7 +1788,8 @@ export function useChatSession({
       villas,
       clickedSuggestionId: preset?.id,
     });
-    if (preset) {
+    // Connected chats resolve every suggestion against current server facts.
+    if (preset && !convex) {
       const assistantMessage = preset.answer;
       setMessages((items) => [
         ...items,
@@ -1800,36 +1800,6 @@ export function useChatSession({
         assistantMessage,
         clickedSuggestionId: preset.id,
       });
-      if (convex) {
-        try {
-          const id = await ensureSession({ markOpen: true, generation });
-          if (generation !== chatGenerationRef.current) return;
-          if (id) {
-            await markChatSuggestionClicked(convex, {
-              sessionId: id,
-              suggestion: {
-                source: "static",
-                suggestionId: preset.id,
-              },
-            }).catch(() => null);
-            if (generation !== chatGenerationRef.current) return;
-            await addChatMessage(convex, {
-              sessionId: id,
-              role: "user",
-              content: clean,
-            });
-            if (generation !== chatGenerationRef.current) return;
-            await addChatMessage(convex, {
-              sessionId: id,
-              role: "assistant",
-              content: preset.answer,
-              ...(selectedActionHint ? { action: selectedActionHint } : {}),
-            });
-          }
-        } catch {
-          // The visitor still sees the local answer if persistence is temporarily unavailable.
-        }
-      }
       return;
     }
 
@@ -1862,6 +1832,13 @@ export function useChatSession({
       id = await ensureSession({ markOpen: true, generation });
       if (generation !== chatGenerationRef.current) return;
       if (!id) throw new Error("No chat session");
+      if (preset) {
+        await markChatSuggestionClicked(convex, {
+          sessionId: id,
+          suggestion: { source: "static", suggestionId: preset.id },
+        }).catch(() => null);
+        if (generation !== chatGenerationRef.current) return;
+      }
       const result = await askConcierge(convex, {
         sessionId: id,
         userMessage: clean,
@@ -1892,6 +1869,7 @@ export function useChatSession({
       setLatestExchange({
         userMessage: clean,
         assistantMessage: response,
+        ...(preset ? { clickedSuggestionId: preset.id } : {}),
       });
     } catch {
       if (generation !== chatGenerationRef.current) return;

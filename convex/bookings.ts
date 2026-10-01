@@ -1,3 +1,4 @@
+import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
@@ -267,6 +268,16 @@ export const touchChatBookingFlow = internalMutation({
 	}
 });
 
+/** Invalidate the old draft even when a replacement tool call later fails parsing or validation. */
+export const invalidateChatProposal = internalMutation({
+	args: { sessionId: v.id('chatSessions'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
+	handler: async (ctx, args) => {
+		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
+		await ctx.db.patch(args.sessionId, args.kind === 'villa' ? { pendingBookingQuote: undefined } : { pendingServiceQuote: undefined });
+	}
+});
+
 export const prepareChatBooking = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
@@ -275,10 +286,12 @@ export const prepareChatBooking = internalMutation({
 		checkOut: v.string(),
 		guests: v.number(),
 		guestName: v.string(),
-		guestPhone: v.optional(v.string())
+		guestPhone: v.optional(v.string()),
+		deadlineAt: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		// WhatsApp numbers are verified by WhatsApp, so never trust a model-supplied phone there.
 		const guestPhone = (
 			session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone
@@ -320,16 +333,19 @@ export const prepareChatBooking = internalMutation({
 });
 
 export const confirmChatBooking = internalMutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		const pending = session.pendingBookingQuote;
+		assertSameProposal(pending, args.expectedProposal);
 		if (!pending) throw new Error('No prepared booking. Call prepare_booking first.');
 
 		// Already confirmed (e.g. the guest said "yes" twice): return the same booking.
 		const existing = pending.bookingId ? await ctx.db.get(pending.bookingId) : null;
 		if (existing) {
-			return { bookingId: existing._id, accessToken: existing.accessToken ?? '', confirmationCode: existing.confirmationCode ?? '', total: existing.total, currency: existing.currency, alreadyConfirmed: true };
+			if (existing.status === 'cancelled') throw new Error('That booking has been cancelled. Prepare a new booking if the guest requests one.');
+			return { bookingId: existing._id, accessToken: existing.accessToken ?? '', confirmationCode: existing.confirmationCode ?? '', property: (await ctx.db.get(existing.propertyId))?.name ?? 'Villa', checkIn: existing.checkIn, checkOut: existing.checkOut, guests: existing.guests, nights: existing.nights, total: existing.total, currency: existing.currency, paymentStatus: existing.paymentStatus, alreadyConfirmed: true };
 		}
 
 		if (Date.now() - pending.createdAt > CHAT_BOOKING_TTL_MS) {
@@ -337,6 +353,10 @@ export const confirmChatBooking = internalMutation({
 			throw new Error('The prepared booking expired. Call prepare_booking again.');
 		}
 
+		const currentQuote = await quoteBookableStay(ctx, pending);
+		if (currentQuote.quote.directTotal !== pending.total || currentQuote.quote.currency !== pending.currency) {
+			throw new Error('The villa price changed. Prepare a new quote and ask the guest to confirm it.');
+		}
 		const { bookingId, accessToken } = await createBookingRecord(ctx, {
 			propertySlug: pending.propertySlug,
 			checkIn: pending.checkIn,
@@ -352,7 +372,7 @@ export const confirmChatBooking = internalMutation({
 		await ctx.db.patch(bookingId, { confirmationCode });
 		await ctx.db.patch(args.sessionId, { pendingBookingQuote: { ...pending, bookingId } });
 
-		return { bookingId, accessToken, confirmationCode, total: pending.total, currency: pending.currency, alreadyConfirmed: false };
+		return { bookingId, accessToken, confirmationCode, property: currentQuote.property.name, checkIn: pending.checkIn, checkOut: pending.checkOut, guests: pending.guests, nights: pending.nights, total: pending.total, currency: pending.currency, paymentStatus: 'pending' as const, alreadyConfirmed: false };
 	}
 });
 
@@ -408,10 +428,12 @@ export const cancelChatBooking = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
 		reference: v.string(),
-		turnStartedAt: v.number()
+		turnStartedAt: v.number(),
+		deadlineAt: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
+		assertChatWriteAllowed(session, args.deadlineAt);
 		const reference = args.reference.trim().toUpperCase();
 		const booking = (await guestBookingsForSession(ctx, session)).find(
 			(b) => bookingReference(b).toUpperCase() === reference
