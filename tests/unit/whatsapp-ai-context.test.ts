@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveWhatsAppReply } from "@/app/api/whatsapp/webhook/route";
+import { resolveWhatsAppReply } from "@/lib/whatsapp/reply";
 
 describe("WhatsApp answer routing", () => {
   it("sends the latest production service question to the concierge when no preset matches", async () => {
