@@ -1,0 +1,60 @@
+{
+  "rttMs": 25,
+  "modelMs": 400,
+  "results": [
+    {
+      "scenario": "typed policy question",
+      "convexCalls": 12,
+      "modelRequests": 2,
+      "deliveredAtMs": 1062,
+      "replies": 1,
+      "functions": [
+        "line:claimEvent",
+        "line:recordInboundEvent",
+        "chat:isAiPaused",
+        "chatAi:getGuardrailReply",
+        "chatKnowledge:resolveExact",
+        "properties:list",
+        "bookings:isChatBookingFlowActive",
+        "chatSuggestions:resolveCuratedExact",
+        "chatSuggestions:resolveCuratedSemantic",
+        "chatAi:generateReply",
+        "chat:isAiPaused",
+        "line:completeEvent"
+      ]
+    },
+    {
+      "scenario": "typed booking request",
+      "convexCalls": 9,
+      "modelRequests": 1,
+      "deliveredAtMs": 584,
+      "replies": 1,
+      "functions": [
+        "line:claimEvent",
+        "line:recordInboundEvent",
+        "chat:isAiPaused",
+        "chatAi:getGuardrailReply",
+        "chatKnowledge:resolveExact",
+        "properties:list",
+        "chatAi:generateReply",
+        "chat:isAiPaused",
+        "line:completeEvent"
+      ]
+    },
+    {
+      "scenario": "menu postback (prices)",
+      "convexCalls": 6,
+      "modelRequests": 0,
+      "deliveredAtMs": 134,
+      "replies": 1,
+      "functions": [
+        "line:claimEvent",
+        "line:recordInboundEvent",
+        "chat:isAiPaused",
+        "properties:list",
+        "chat:isAiPaused",
+        "line:completeEvent"
+      ]
+    }
+  ]
+}

@@ -45,7 +45,9 @@ import { resort } from "@/lib/data/resort-config";
 import {
   getLocalizedProperties,
   localizePropertyLike,
+  type PublicMessages,
 } from "@/lib/i18n/public-content";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import {
   createBooking,
   isPropertyAvailable,
@@ -74,8 +76,8 @@ function BookingDatePickerSkeleton() {
   );
 }
 
-function getDemoInventory(locale: string): BookingProperty[] {
-  return getLocalizedProperties(locale).map((property) => ({
+function getDemoInventory(messages: PublicMessages, localeTag: string): BookingProperty[] {
+  return getLocalizedProperties(messages, localeTag).map((property) => ({
     ...property,
     _id: `demo-${property.id}`,
     slug: property.id,
@@ -104,8 +106,9 @@ export function BookingFunnel({
 }) {
   const router = useRouter();
   const locale = useLocale();
+  const messages = usePublicMessages();
   const t = useTranslations("Booking");
-  const demoInventory = useMemo(() => getDemoInventory(locale), [locale]);
+  const demoInventory = useMemo(() => getDemoInventory(messages, locale), [messages, locale]);
   const convex = useOptionalConvex();
   const todayIso = todayIsoLocal();
   const demoPayHref = localizeHref("/booking/pay?bookingId=demo", locale);
@@ -209,6 +212,7 @@ export function BookingFunnel({
                 contentEditedAt: row.contentEditedAt,
                 source: "live" as const,
               },
+              messages,
               locale,
             ),
           );
@@ -240,7 +244,7 @@ export function BookingFunnel({
     return () => {
       active = false;
     };
-  }, [convex, demoInventory, locale, t, todayIso]);
+  }, [convex, demoInventory, locale, messages, t, todayIso]);
 
   const property = propertyList.find((item) => item.slug === selectedId) ?? propertyList[0];
   const liveClient = bookingMode === "live" ? convex : null;

@@ -135,7 +135,7 @@ export function AdminSessionDetail({
   replyError,
   replyStatus,
   replyWindow,
-  onCreateFact,
+  onAddBusinessFact,
   actions,
 }: {
   canLoadOlderMessages: boolean;
@@ -157,7 +157,7 @@ export function AdminSessionDetail({
   replyError: string | null;
   replyStatus: string | null;
   replyWindow?: ChannelReplyWindow;
-  onCreateFact?: (message: AdminMessage) => void;
+  onAddBusinessFact?: (message: AdminMessage) => void;
   /** Status / AI takeover controls (see AdminSessionActions), rendered under the header. */
   actions?: ReactNode;
 }) {
@@ -400,14 +400,14 @@ export function AdminSessionDetail({
                   >
                     {formatDateTime(message.timestamp)}
                   </ChatBubbleTimestamp>
-                  {fromGuest && onCreateFact ? (
+                  {fromGuest && onAddBusinessFact ? (
                     <button
                       type="button"
-                      onClick={() => onCreateFact(message)}
+                      onClick={() => onAddBusinessFact(message)}
                       className="mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                      Add business fact
+                      Add as business fact
                     </button>
                   ) : null}
                 </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getFallbackResponse } from "../../convex/lib/chatFallback";
+import { getFallbackResponse, getSupportedFallbackResponse } from "../../convex/lib/chatFallback";
 
 const property = {
   name: "Tideglass Pool Residence",
@@ -13,6 +13,30 @@ const property = {
 } as never;
 
 describe("localized chat fallback responses", () => {
+  it.each(["line", "facebook", "instagram", "whatsapp"] as const)("offers a real booking link without website-only UI in %s", channel => {
+    const reply = getSupportedFallbackResponse("I want to book", property, "en", [property], channel, "https://resort.test/");
+    expect(reply).toContain("https://resort.test/booking");
+    expect(reply).toContain("I have not created a booking");
+    expect(reply).not.toContain("card");
+    expect(reply).not.toContain("below");
+  });
+
+  it("leaves unsupported policies for missing-information recording without treating greetings as unknown", () => {
+    expect(getSupportedFallbackResponse("What breakfast is included?", property, "en", [property], "web")).toBeNull();
+    expect(getSupportedFallbackResponse("Is helicopter transfer included?", property, "en", [property], "line")).toBeNull();
+    expect(getSupportedFallbackResponse("Hello!", property, "en", [property], "web")).toContain("Tideglass");
+    expect(getSupportedFallbackResponse("สวัสดีครับ", property, "th", [property], "line")).not.toBeNull();
+    expect(getSupportedFallbackResponse("안녕하세요", property, "ko", [property], "line")).not.toBeNull();
+  });
+
+  it("uses an explicitly named property's supported fields rather than the current page", () => {
+    const other = { ...(property as object), name: "Other Villa", slug: "other-villa", pricePerNight: 1000, currency: "THB", directDiscountPercent: 10 } as never;
+    const reply = getSupportedFallbackResponse("How much is Other Villa?", property, "en", [property, other], "line");
+    expect(reply).toContain("Other Villa");
+    expect(reply).toContain("900");
+    expect(reply).not.toContain("Tideglass");
+  });
+
   it("returns English pricing and property details", () => {
     expect(getFallbackResponse("How much is it?", property, "en")).toContain("฿7,225/night");
     expect(getFallbackResponse("What amenities are included?", property, "en")).toContain("Private Pool");
@@ -67,5 +91,19 @@ describe("localized chat fallback responses", () => {
       { ...(property as object), name: "B", directDiscountPercent: 15 },
     ] as never[];
     expect(getFallbackResponse("price", null, "en", villas)).not.toContain("All prices include");
+  });
+
+  it("no longer asserts retired policy benefits that are not in settings or property records", () => {
+    // The retirement removed hardcoded free airport pickup / welcome basket / late checkout
+    // claims from the coded fallback: they are not owner-approved facts.
+    const booking = getFallbackResponse("book my dates", property, "en");
+    expect(booking).toContain("15% off");
+    for (const retired of ["airport pickup", "welcome basket", "late checkout", "breakfast"]) {
+      expect(booking.toLowerCase()).not.toContain(retired);
+    }
+    // Localized presets must not reintroduce the claims either.
+    expect(getFallbackResponse("book dates", null, "th")).not.toContain("รับสนามบิน");
+    expect(getFallbackResponse("book dates", null, "ko")).not.toContain("공항 픽업");
+    expect(getFallbackResponse("book dates", null, "ja")).not.toContain("空港送迎");
   });
 });

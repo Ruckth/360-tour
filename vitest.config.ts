@@ -12,7 +12,7 @@ export default defineConfig({
     alias: [
       { find: "@", replacement: path.resolve(dirname, "src") },
       {
-        find: /^convex\/(?!server$|values$|react$|react-clerk$)(.*)$/,
+        find: /^convex\/(?!server$|values$|browser$|react$|react-clerk$)(.*)$/,
         replacement: path.resolve(dirname, "convex/$1"),
       },
     ],

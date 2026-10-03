@@ -19,3 +19,20 @@ jobs:
         env:
           NEXT_PUBLIC_CONVEX_URL: https://example.convex.cloud
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: placeholder
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      # Disconnected demo build: scripts/e2e-server.mjs forces placeholder backend settings and
+      # never runs Convex, so this cannot sync or deploy a deployment.
+      - name: Browser smoke tests
+        run: pnpm test:e2e:smoke
+        env:
+          CI: 'true'
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

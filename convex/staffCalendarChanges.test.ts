@@ -171,7 +171,6 @@ describe('appointment changes', () => {
 		const before = await get(id);
 		const edit = { appointmentId: id, expectedRevision: 0, guestName: 'Bea', guestPhone: '+66222', serviceId: facialId };
 		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { ...edit, guestEmail: 'not-an-email' })).rejects.toThrow();
-		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { ...edit, guestPhone: ' ' })).rejects.toThrow('Guest phone is required');
 		expect(await get(id)).toEqual(before);
 		// A clashing service leaves the guest details unsaved too.
 		await book('10:15');

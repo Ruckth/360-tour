@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": [
+      "node"
+    ],
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.d.ts",
+    "tests/**/*.ts",
+    "convex/**/*.test.ts",
+    "scripts/**/*.ts",
+    "playwright.config.ts",
+    "playwright.bench.config.ts",
+    "vitest.config.ts",
+    "vitest.bench.config.ts",
+    "scripts/demo-server-config.mjs",
+    "scripts/e2e-server.mjs"
+  ],
+  "exclude": [
+    "node_modules",
+    "opensrc",
+    "archive"
+  ]
+}

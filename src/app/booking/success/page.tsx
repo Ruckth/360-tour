@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
 import { BookingSuccessClient } from "@/components/booking/BookingSuccessClient";
-import { getPublicMessages } from "@/lib/i18n/public-content";
+import { getPublicMessages } from "@/lib/i18n/server-content";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();

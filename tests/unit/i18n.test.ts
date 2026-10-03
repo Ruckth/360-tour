@@ -9,7 +9,7 @@ import {
   getLocalizedRooms,
   getLocalizedSocialProofByPropertyId,
   getLocalizedTourConclusion,
-} from "@/lib/i18n/public-content";
+} from "@/lib/i18n/server-content";
 import { properties } from "@/lib/data/properties";
 
 type Messages = Record<string, unknown>;

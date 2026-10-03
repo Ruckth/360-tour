@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("admin route shows setup state and stays isolated from public shell", async ({ page }) => {
+test("@smoke admin route shows setup state and stays isolated from public shell", async ({ page }) => {
   await page.goto("/admin/chats");
 
   await expect(page.getByText("Admin setup")).toBeVisible();

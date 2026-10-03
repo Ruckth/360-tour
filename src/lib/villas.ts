@@ -8,6 +8,7 @@ import {
   getLocalizedSocialProofByPropertyId,
   localizePropertyLike,
   type LocalizableProperty,
+  type PublicMessages,
 } from "@/lib/i18n/public-content";
 
 // Public villa content. Convex is the source of truth; the bundled files in src/lib/data
@@ -39,7 +40,7 @@ export function currencyPrefix(currency: string) {
   return currency === resort.currency ? resort.currencySymbol : `${currency} `;
 }
 
-export function villaFromDb(row: DbVilla, locale: string): PublicVilla {
+export function villaFromDb(row: DbVilla, messages: PublicMessages, localeTag: string): PublicVilla {
   return localizePropertyLike(
     {
       id: row.slug,
@@ -64,7 +65,8 @@ export function villaFromDb(row: DbVilla, locale: string): PublicVilla {
           ? { average: row.averageRating, count: row.reviewCount }
           : null,
     },
-    locale,
+    messages,
+    localeTag,
   );
 }
 
@@ -87,11 +89,11 @@ export function reviewFromDb(row: DbReview): Review {
   };
 }
 
-export function staticReviews(slug: string, locale: string): Review[] {
-  return getLocalizedSocialProofByPropertyId(slug, locale)?.reviews ?? [];
+export function staticReviews(slug: string, messages: PublicMessages): Review[] {
+  return getLocalizedSocialProofByPropertyId(slug, messages)?.reviews ?? [];
 }
 
-export function staticVillas(locale: string): PublicVilla[] {
+export function staticVillas(messages: PublicMessages, localeTag: string): PublicVilla[] {
   return properties.map((property) =>
     localizePropertyLike(
       {
@@ -99,17 +101,22 @@ export function staticVillas(locale: string): PublicVilla[] {
         slug: property.id,
         currency: resort.currency,
         directDiscountPercent: DEMO_DIRECT_DISCOUNT_PERCENT,
-        rating: summarizeRatings(staticReviews(property.id, locale)),
+        rating: summarizeRatings(staticReviews(property.id, messages)),
       },
-      locale,
+      messages,
+      localeTag,
     ),
   );
 }
 
 /** Uses DB villas unless Convex is unavailable (`undefined`) or holds no properties at all. */
-export function catalogFrom(list: DbVillaList | undefined, locale: string): VillaCatalog {
-  if (!list?.hasProperties) return { source: "static", villas: staticVillas(locale) };
-  return { source: "db", villas: list.villas.map((row) => villaFromDb(row, locale)) };
+export function catalogFrom(
+  list: DbVillaList | undefined,
+  messages: PublicMessages,
+  localeTag: string,
+): VillaCatalog {
+  if (!list?.hasProperties) return { source: "static", villas: staticVillas(messages, localeTag) };
+  return { source: "db", villas: list.villas.map((row) => villaFromDb(row, messages, localeTag)) };
 }
 
 /** Top reviews across villas, highest rating first. */

@@ -14,7 +14,7 @@ import {
   getLocationBullets,
   getLocationImageAlt,
   getPublicMessages,
-} from "@/lib/i18n/public-content";
+} from "@/lib/i18n/server-content";
 import { getFeaturedReviews, getVillaCatalog } from "@/lib/server/villas";
 import type { PublicVilla } from "@/lib/villas";
 

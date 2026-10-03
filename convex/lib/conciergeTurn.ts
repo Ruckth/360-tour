@@ -1,4 +1,4 @@
-import type { ChatMessage, LlmResponse, ToolDef } from './chatLlm';
+import { InvalidAiResponseError, type ChatMessage, type LlmResponse, type ToolDef } from './chatLlm';
 import { bookingStatusReply, committedReply, hasTransactionCompletionClaim, isCancellationRequest, isGuestConfirmation, proposalReply, toolFailureReply } from './conciergePolicy';
 import { toolError } from './chatTools';
 
@@ -11,26 +11,38 @@ type TurnOptions = {
 	onTool?: (trace: { name: string; args: Record<string, unknown>; result: string }) => void | Promise<void>;
 	invalidateProposal?: (name: string) => Promise<void>;
 	deadlineAt: number;
+	/** Optional metrics sink. Records each model request (ms) and each tool (name, ms, ok). */
+	metrics?: {
+		recordModelRequest?: (ms: number) => void;
+		recordTool?: (name: string, ms: number, ok: boolean) => void;
+	};
 };
 
 /** Bounded model/tool orchestration; writes stay sequential and are never retried here. */
-export async function runConciergeTurn(options: TurnOptions): Promise<{ content: string | null; failed: boolean }> {
+export async function runConciergeTurn(options: TurnOptions): Promise<{ content: string | null; failed: boolean; committedTool?: string }> {
 	const { messages, tools, message } = options;
 	const allowed = new Set(tools.map(tool => tool.function.name));
 	const prepared = new Set<string>();
 	let toolCount = 0;
 	let failedTool = false;
 	let committed: string | null = null;
+	let committedTool: string | undefined;
 	let proposal: string | null = null;
 	let status: string | null = null;
 	const reads = new Map<string, string>();
-	const request = (offeredTools: ToolDef[]) => {
+	const request = async (offeredTools: ToolDef[]) => {
 		const remaining = options.deadlineAt - Date.now();
 		if (remaining <= 0) throw new Error('AI turn deadline exceeded');
-		return options.request(messages, offeredTools, Math.min(remaining, 15_000));
+		const startedAt = Date.now();
+		try {
+			return await options.request(messages, offeredTools, Math.min(remaining, 15_000));
+		} finally {
+			options.metrics?.recordModelRequest?.(Date.now() - startedAt);
+		}
 	};
 	try {
 		let response = await request(tools);
+		if (response.finishReason === 'length') return { content: toolFailureReply(message), failed: true };
 		for (let round = 0; response.tool_calls?.length && round < 3; round++) {
 			if (response.finishReason === 'length') return { content: toolFailureReply(message), failed: true };
 			if (response.tool_calls.length > 12) return { content: toolFailureReply(message), failed: true };
@@ -39,6 +51,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 				const name = call.function.name;
 				let args: unknown;
 				let result: string;
+				const toolStartedAt = Date.now();
 				try {
 					if (++toolCount > 12) throw new Error('Tool call budget exceeded');
 					if (!allowed.has(name)) throw new Error(`Unknown function: ${name}`);
@@ -49,6 +62,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 						await options.invalidateProposal?.(name);
 					}
 					args = JSON.parse(call.function.arguments);
+					if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Tool arguments must be an object');
 					if (name.startsWith('confirm_')) {
 						if (prepared.has(name.replace('confirm_', 'prepare_'))) throw new Error('Ask the guest to confirm the summary first; confirm after they reply yes.');
 						if (!isGuestConfirmation(message)) throw new Error('Ask the guest to explicitly confirm the current summary first.');
@@ -66,16 +80,21 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 					result = toolError('TOOL_REJECTED', error instanceof Error ? error.message : 'Tool failed');
 				}
 				const payload = JSON.parse(result) as Record<string, unknown>;
-				failedTool ||= Boolean(payload.error || payload.ok === false);
+				const toolOk = !(payload.error || payload.ok === false);
+				options.metrics?.recordTool?.(name, Date.now() - toolStartedAt, toolOk);
+				failedTool ||= !toolOk;
 				if (name.startsWith('prepare_')) proposal = null;
 				proposal = proposalReply(name, payload, message) ?? proposal;
-				committed ??= committedReply(name, payload, message);
+				if (!committed) {
+					committed = committedReply(name, payload, message);
+					if (committed) committedTool = name;
+				}
 				if (name === 'get_my_bookings') status = bookingStatusReply(payload, message);
 				await options.onTool?.({ name, args: args && typeof args === 'object' && !Array.isArray(args) ? args as Record<string, unknown> : {}, result });
 				messages.push({ role: 'tool', content: result, tool_call_id: call.id });
 			}
 			// A committed transaction has an authoritative reply and needs no further model call.
-			if (committed) return { content: committed, failed: false };
+			if (committed) return { content: committed, failed: false, committedTool };
 			if (proposal) return { content: proposal, failed: false };
 			if (status && !failedTool) return { content: status, failed: false };
 			response = await request(tools);
@@ -89,7 +108,14 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 			return { content: toolFailureReply(message), failed: true };
 		}
 		return { content: response.content, failed: false };
-	} catch {
-		return { content: committed ?? toolFailureReply(message), failed: !committed };
+	} catch (error) {
+		// A rejected replacement must not leave an old draft available for a later yes.
+		if (error instanceof InvalidAiResponseError) {
+			for (const name of error.preparationTools) {
+				if (!allowed.has(name)) continue;
+				try { await options.invalidateProposal?.(name); } catch { /* Keep the original failure response. */ }
+			}
+		}
+		return committed ? { content: committed, failed: false, committedTool } : { content: toolFailureReply(message), failed: true };
 	}
 }

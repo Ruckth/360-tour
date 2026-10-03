@@ -9,7 +9,7 @@ import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { breakText, type BreakBlock } from "@/lib/schedule-changes";
-import { WEEKDAYS_LONG, formatResortFullDate, formatResortTime, resortMidnight } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, WEEKDAYS_LONG, formatResortFullDate, formatResortTime, resortMidnight } from "@/lib/staff-bookings";
 
 type Scope = "day" | "weekly";
 
@@ -130,7 +130,7 @@ export function BreakEditDialog({
           <ul className="list-disc ps-5">
             {conflicts.map((conflict) => (
               <li key={`${conflict.appointmentId}-${conflict.date}`}>
-                {conflict.guestName} · {conflict.serviceName} · {formatResortFullDate(conflict.start)}, {formatResortTime(conflict.start)}
+                {appointmentGuestLabel(conflict)} · {conflict.serviceName} · {formatResortFullDate(conflict.start)}, {formatResortTime(conflict.start)}
               </li>
             ))}
           </ul>

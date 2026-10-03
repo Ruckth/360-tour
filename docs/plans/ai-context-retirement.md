@@ -43,7 +43,7 @@ Archival removed the production data from eligibility. The implementation now di
 
 These are local source findings. Production function metadata confirms that the cleanup mutations and query entry points exist, but does not establish complete source parity.
 
-At cleanup time, production used GLM overrides. A separate model-routing rollout already changed production to Luna/Sol; see [model routing](ai-model-routing.md). This refactor preserves those existing working-tree changes and provider compatibility, so deploying retirement does not lose support for the configured complex model. It does not change production model environment settings.
+At cleanup time, production used GLM overrides. Separate model-routing work added optional Sol support while keeping Luna as the source default; see [model routing](ai-model-routing.md). This refactor preserves those existing working-tree changes and provider compatibility, so deploying retirement does not lose support for the configured optional complex model. It does not change production model environment settings.
 
 ## Target flow
 
@@ -136,3 +136,5 @@ Production monitoring, larger labeled live-model recall evaluation, paired p95 l
 Live development smoke: four Luna turns (EN, TH, KO cross-property while viewing another villa, and an EN follow-up) each called `search_business_facts`, selected the expected approved scope and answered with the labeled fixture's inclusion/exclusion meaning. Each required two provider calls; summed provider latency ranged 2.15–2.61 seconds. Fixtures were archived afterward. Full controlled traces are local at `output/qa-retirement-2026-10-03/live-smoke.json`. This four-case smoke is not a recall benchmark or p95 estimate.
 
 Audit corrections: missing-information scope now follows successful explicit fact lookups; unknown copy is shared and localized without promising a callback; deterministic policy replies identify unsaved demo defaults; translated policy menus use the concierge for translation of current settings. Tests cover these regressions. Eval sessions suppress staff alert delivery.
+
+Integration with main preserves PR23 public/tour optimizations, missing-information grouping/structured source resolution, shared messaging deadline/committed-result protections, current Luna defaults and optional Sol safety. Canonical `concierge_turn` metrics remain alongside fact/source metadata logs.

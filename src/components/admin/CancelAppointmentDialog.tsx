@@ -10,7 +10,7 @@ import { formatMoney } from "@/components/admin/labels";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { timeRange } from "@/lib/schedule-changes";
-import { PAYMENT_LABELS, appointmentStatus, formatResortFullDate } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, PAYMENT_LABELS, appointmentStatus, formatResortFullDate } from "@/lib/staff-bookings";
 
 const REASON_MAX = 500;
 
@@ -43,7 +43,7 @@ export function CancelAppointmentDialog({
 
   return (
     <ChangeConfirmDialog
-      title={`Cancel ${original.guestName}'s ${serviceName}?`}
+      title={`Cancel ${serviceName} for ${appointmentGuestLabel(original)}?`}
       description={`${staffName}'s time is freed for other bookings. The appointment, its payment state and history are kept. ${paymentConsequence(original)}`}
       rows={[
         same("Service", serviceName),

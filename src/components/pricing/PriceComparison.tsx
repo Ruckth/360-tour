@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import { calculateBookingQuote } from "@/lib/booking/quote";
 import { getLocalizedDirectBenefits } from "@/lib/i18n/public-content";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { currencyPrefix, type PublicVilla } from "@/lib/villas";
 
 export function PriceComparison({
@@ -24,7 +25,7 @@ export function PriceComparison({
   const pricingT = useTranslations("Pricing");
   const propertyId = property.id;
   const comparison = useOtaComparison(propertyId);
-  const benefits = getLocalizedDirectBenefits(locale);
+  const benefits = getLocalizedDirectBenefits(usePublicMessages());
   // Server-rendered villa pricing, refreshed by the live Convex query (what checkout charges).
   const pricePerNight = comparison?.pricePerNight ?? property.pricePerNight;
   const discountPercent = comparison?.directDiscountPercent ?? property.directDiscountPercent;

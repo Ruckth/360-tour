@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { getPublicMessages } from "@/lib/i18n/messages-loader";
 import { resolveTourRooms, type DbTourRooms } from "@/lib/tour/rooms";
+
+// resolveTourRooms now takes the active locale's message object instead of a locale string.
+const en = getPublicMessages("en");
+const th = getPublicMessages("th");
 
 const dbRooms: NonNullable<DbTourRooms> = [
   {
@@ -21,7 +26,7 @@ const dbRooms: NonNullable<DbTourRooms> = [
 
 describe("resolveTourRooms", () => {
   it("uses DB rooms in their tour order with DB hotspots", () => {
-    const rooms = resolveTourRooms(["pv-living", "pv-pool"], dbRooms, "en");
+    const rooms = resolveTourRooms(["pv-living", "pv-pool"], dbRooms, en);
     expect(rooms.map((room) => room.id)).toEqual(["terrace", "pv-living"]);
     expect(rooms[0]).toMatchObject({ name: "Terrace", imagePath: "/terrace.webp" });
     expect(rooms[0].hotspots).toEqual([
@@ -34,23 +39,23 @@ describe("resolveTourRooms", () => {
 
   it("translates only DB text the admin left as the bundled English", () => {
     const edited = [{ ...dbRooms[1], name: "Great Room" }, dbRooms[0]];
-    const [living, terrace] = resolveTourRooms([], edited, "th");
+    const [living, terrace] = resolveTourRooms([], edited, th);
     expect(living.name).toBe("Great Room");
     expect(living.hotspots[0].label).not.toBe("Pool Area");
     expect(terrace.name).toBe("Terrace");
-    expect(resolveTourRooms([], [dbRooms[1]], "th")[0].name).not.toBe("Living Area");
+    expect(resolveTourRooms([], [dbRooms[1]], th)[0].name).not.toBe("Living Area");
   });
 
   it("falls back to the bundled rooms when the villa has no DB rooms or Convex is unavailable", () => {
     for (const db of [[], null, undefined]) {
-      const rooms = resolveTourRooms(["pv-pool", "pv-living", "missing"], db, "en");
+      const rooms = resolveTourRooms(["pv-pool", "pv-living", "missing"], db, en);
       expect(rooms.map((room) => room.id)).toEqual(["pv-pool", "pv-living"]);
       expect(rooms[0].hotspots.map((hotspot) => hotspot.targetRoomId)).toEqual(["pv-living"]);
     }
   });
 
   it("skips hotspots whose target is not in the tour", () => {
-    const rooms = resolveTourRooms(["pv-living"], null, "en");
+    const rooms = resolveTourRooms(["pv-living"], null, en);
     expect(rooms).toHaveLength(1);
     expect(rooms[0].hotspots).toEqual([]);
   });

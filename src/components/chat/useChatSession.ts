@@ -69,27 +69,50 @@ import {
   getSafeChatReturnTo,
 } from "@/lib/chat/navigation";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
+import {
+  clearCachedChatMessages,
+  clearKnownChatMessageCaches,
+  clearStoredSessionId,
+  createAssistantMessage,
+  getOrCreateVisitorId,
+  getStoredSessionId,
+  latestExchangeFromMessages,
+  mergeAdminMessages,
+  normalizeTranscriptMessages,
+  previousUserMessageFor,
+  readCachedChatMessages,
+  setStoredSessionId,
+  withStaffReplyNotice,
+  writeCachedChatMessages,
+  type LatestExchange,
+} from "@/components/chat/session/message-cache";
+import {
+  CHAT_PAGE_HEADER_OFFSET,
+  CHAT_PAGE_MIN_HEIGHT,
+  CHAT_PAGE_VIEWPORT_FALLBACK,
+  getFocusedFooterInput,
+  getKeyboardLayoutMeasurement,
+  getKeyboardViewportBaselineHeight,
+  isKeyboardOverlayBrowser,
+  KEYBOARD_INSET_EPSILON,
+  KEYBOARD_PROBE_DELAYS_MS,
+  MOBILE_KEYBOARD_THRESHOLD,
+  PAGE_COMPOSER_RESERVE_FALLBACK,
+  type ChatExperienceMode,
+  type KeyboardLayoutMode,
+} from "@/components/chat/session/keyboard-viewport";
+import { HEARTBEAT_MS, startSessionHeartbeat } from "@/components/chat/session/heartbeat";
+import {
+  recoverPersistedAssistantMessage as recoverPersistedAssistantMessageLoop,
+  reconcilePersistedAssistantMessage as reconcilePersistedAssistantMessageLoop,
+  type RecoveryDeps,
+} from "@/components/chat/session/transport-recovery";
+
+import { GenerationToken } from "@/components/chat/session/generation-token";
+import { BrowserHandoffClaimGate } from "@/components/chat/session/browser-handoff";
 
 type StaticChatSuggestion = ChatSuggestion;
-type ChatExperienceMode = "overlay" | "page";
 type FooterFocusScope = "composer" | "contact" | null;
-type KeyboardLayoutMode =
-  | "none"
-  | "resizedViewport"
-  | "overlayInset"
-  | "overlayFallback";
-type LatestExchange = {
-  userMessage: string;
-  assistantMessage: string;
-  clickedSuggestionId?: ChatSuggestionId | null;
-};
-type ChatMessageCache = {
-  version: number;
-  sessionId: string | null;
-  messages: Message[];
-  latestExchange: LatestExchange | null;
-  updatedAt: number;
-};
 type EnsureSessionOptions = {
   markOpen?: boolean;
   validateForReuse?: boolean;
@@ -97,51 +120,13 @@ type EnsureSessionOptions = {
   generation?: number;
 };
 
-const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
-const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
-const MESSAGE_CACHE_STORAGE_PREFIX = "sv_chat_messages:";
-const LOCAL_MESSAGE_CACHE_ID = "local";
-const MESSAGE_CACHE_VERSION = 1;
-const MAX_CACHED_MESSAGES = 100;
 const REUSABLE_CHAT_MESSAGE_LIMIT = 20;
 const VISIBLE_FOLLOW_UP_SUGGESTION_LIMIT = 2;
-const HEARTBEAT_MS = 30_000;
-const TRANSCRIPT_RECOVERY_ATTEMPTS = 10;
-const TRANSCRIPT_RECOVERY_DELAY_MS = 2_000;
-const BACKGROUND_RECONCILE_ATTEMPTS = 30;
-const BACKGROUND_RECONCILE_DELAY_MS = 2_000;
-const MOBILE_KEYBOARD_THRESHOLD = 80;
-const CHAT_PAGE_HEADER_OFFSET = 0;
-const CHAT_PAGE_MIN_HEIGHT = 360;
-const CHAT_PAGE_VIEWPORT_FALLBACK = "100svh";
-const PAGE_COMPOSER_RESERVE_FALLBACK = 84;
-const IN_APP_KEYBOARD_FALLBACK_RATIO = 0.43;
-const IN_APP_KEYBOARD_FALLBACK_MIN = 280;
-const IN_APP_KEYBOARD_FALLBACK_MAX = 440;
-const KEYBOARD_SAFE_GAP = 16;
-const KEYBOARD_INSET_EPSILON = 8;
-const KEYBOARD_PROBE_DELAYS_MS = [80, 180, 360, 600] as const;
-const KEYBOARD_OVERLAY_BROWSER_PATTERN =
-  /Instagram|FBAN|FBAV|FB_IAB|Line\/|MicroMessenger|TikTok|TwitterAndroid|;\s?wv\)/i;
 
 type ChatPanelStyle = CSSProperties & {
   "--chat-keyboard-inset"?: string;
   "--chat-visible-height"?: string;
 };
-
-function getOrCreateVisitorId() {
-  if (typeof window === "undefined") return undefined;
-
-  const existing = window.localStorage.getItem(VISITOR_ID_STORAGE_KEY);
-  if (existing) return existing;
-
-  const id =
-    typeof window.crypto?.randomUUID === "function"
-      ? window.crypto.randomUUID()
-      : `visitor_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(VISITOR_ID_STORAGE_KEY, id);
-  return id;
-}
 
 function getBrowserChatMetadata() {
   if (typeof window === "undefined") return {};
@@ -170,327 +155,6 @@ function getBrowserChatMetadata() {
   };
 }
 
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function isKeyboardOverlayBrowser() {
-  if (typeof navigator === "undefined") return false;
-  return KEYBOARD_OVERLAY_BROWSER_PATTERN.test(navigator.userAgent);
-}
-
-function getKeyboardOverlayFallbackInset() {
-  if (typeof window === "undefined") return 0;
-  return Math.min(
-    IN_APP_KEYBOARD_FALLBACK_MAX,
-    Math.max(
-      IN_APP_KEYBOARD_FALLBACK_MIN,
-      Math.round(window.innerHeight * IN_APP_KEYBOARD_FALLBACK_RATIO),
-    ),
-  );
-}
-
-function getVisualViewportHeight() {
-  if (typeof window === "undefined") return 0;
-  return window.visualViewport?.height ?? window.innerHeight;
-}
-
-function getKeyboardViewportBaselineHeight() {
-  if (typeof window === "undefined") return 0;
-  return Math.max(window.innerHeight, getVisualViewportHeight());
-}
-
-function isKeyboardInputElement(
-  element: Element | null,
-): element is HTMLElement {
-  if (!(element instanceof HTMLElement)) return false;
-  return element.matches("input, textarea, [contenteditable='true']");
-}
-
-function getFocusedFooterInput(footerNode: HTMLElement | null) {
-  if (typeof document === "undefined") return null;
-  const activeElement = document.activeElement;
-  if (
-    !footerNode?.contains(activeElement) ||
-    !isKeyboardInputElement(activeElement)
-  ) {
-    return null;
-  }
-
-  return activeElement;
-}
-
-function clampKeyboardInset(inset: number) {
-  if (typeof window === "undefined") return inset;
-  const maxInset = Math.max(
-    IN_APP_KEYBOARD_FALLBACK_MAX,
-    Math.round(window.innerHeight * 0.7),
-  );
-  return Math.min(Math.max(0, Math.ceil(inset)), maxInset);
-}
-
-function getKeyboardLayoutMeasurement({
-  fallbackAllowed,
-  focusedInputIsActive,
-  footerNode,
-  inputNode,
-  mode,
-  viewportBaselineHeight,
-}: {
-  fallbackAllowed: boolean;
-  focusedInputIsActive: boolean;
-  footerNode: HTMLElement | null;
-  inputNode: HTMLElement | null;
-  mode: ChatExperienceMode;
-  viewportBaselineHeight: number | null;
-}): { inset: number; layoutMode: KeyboardLayoutMode } {
-  if (typeof window === "undefined") return { inset: 0, layoutMode: "none" };
-
-  const visualViewport = window.visualViewport;
-  const visualViewportHeight = getVisualViewportHeight();
-  const visibleViewportBottom =
-    (visualViewport?.offsetTop ?? 0) + visualViewportHeight;
-  const realInset = Math.max(
-    0,
-    Math.round(window.innerHeight - visibleViewportBottom),
-  );
-  const viewportShrink = viewportBaselineHeight
-    ? Math.max(0, Math.round(viewportBaselineHeight - visualViewportHeight))
-    : 0;
-  const viewportResizedByKeyboard = viewportShrink > MOBILE_KEYBOARD_THRESHOLD;
-
-  if (!focusedInputIsActive) {
-    return realInset > MOBILE_KEYBOARD_THRESHOLD
-      ? { inset: clampKeyboardInset(realInset), layoutMode: "overlayInset" }
-      : { inset: 0, layoutMode: "none" };
-  }
-
-  if (mode === "page" && viewportResizedByKeyboard) {
-    return { inset: 0, layoutMode: "resizedViewport" };
-  }
-
-  if (mode !== "page") {
-    return realInset > MOBILE_KEYBOARD_THRESHOLD
-      ? { inset: clampKeyboardInset(realInset), layoutMode: "overlayInset" }
-      : { inset: 0, layoutMode: "none" };
-  }
-
-  const inputBottom = inputNode?.getBoundingClientRect().bottom ?? 0;
-  const footerBottom = footerNode?.getBoundingClientRect().bottom ?? 0;
-  const requiredLift = Math.max(
-    0,
-    Math.ceil(
-      Math.max(inputBottom, footerBottom) -
-        visibleViewportBottom +
-        KEYBOARD_SAFE_GAP,
-    ),
-  );
-  const overlayFallback =
-    realInset <= MOBILE_KEYBOARD_THRESHOLD && fallbackAllowed;
-  const estimatedInset = overlayFallback
-    ? getKeyboardOverlayFallbackInset()
-    : 0;
-  const inset = clampKeyboardInset(
-    Math.max(realInset, requiredLift, estimatedInset),
-  );
-
-  if (inset <= MOBILE_KEYBOARD_THRESHOLD)
-    return { inset: 0, layoutMode: "none" };
-  return {
-    inset,
-    layoutMode:
-      overlayFallback && estimatedInset >= Math.max(realInset, requiredLift)
-        ? "overlayFallback"
-        : "overlayInset",
-  };
-}
-
-function getStoredSessionId() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(SESSION_ID_STORAGE_KEY);
-}
-
-function setStoredSessionId(sessionId: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(SESSION_ID_STORAGE_KEY, sessionId);
-}
-
-function clearStoredSessionId() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(SESSION_ID_STORAGE_KEY);
-}
-
-function getMessageCacheStorageKey(sessionId: string | null) {
-  return `${MESSAGE_CACHE_STORAGE_PREFIX}${sessionId ?? LOCAL_MESSAGE_CACHE_ID}`;
-}
-
-function isMessage(value: unknown): value is Message {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<Message>;
-  return (
-    (item.role === "user" || item.role === "assistant") &&
-    typeof item.content === "string" &&
-    (item.action === undefined ||
-      item.action === "booking" ||
-      item.action === "tour" ||
-      item.action === "none")
-  );
-}
-
-function isLatestExchange(value: unknown): value is LatestExchange {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<LatestExchange>;
-  return (
-    typeof item.userMessage === "string" &&
-    typeof item.assistantMessage === "string" &&
-    (item.clickedSuggestionId === undefined ||
-      item.clickedSuggestionId === null ||
-      typeof item.clickedSuggestionId === "string")
-  );
-}
-
-function normalizeCachedMessages(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value.filter(isMessage).slice(-MAX_CACHED_MESSAGES);
-}
-
-function readCachedChatMessages(
-  sessionId: string | null,
-): ChatMessageCache | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = window.localStorage.getItem(
-      getMessageCacheStorageKey(sessionId),
-    );
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as Partial<ChatMessageCache>;
-    if (parsed.version !== MESSAGE_CACHE_VERSION) return null;
-
-    const messages = normalizeCachedMessages(parsed.messages);
-    if (!messages.length) return null;
-
-    return {
-      version: MESSAGE_CACHE_VERSION,
-      sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : null,
-      messages,
-      latestExchange: isLatestExchange(parsed.latestExchange)
-        ? parsed.latestExchange
-        : latestExchangeFromMessages(messages),
-      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedChatMessages(
-  sessionId: string | null,
-  messages: Message[],
-  latestExchange: LatestExchange | null,
-) {
-  if (typeof window === "undefined") return;
-
-  const cachedMessages = normalizeCachedMessages(messages);
-  if (!cachedMessages.length) return;
-
-  const cache: ChatMessageCache = {
-    version: MESSAGE_CACHE_VERSION,
-    sessionId,
-    messages: cachedMessages,
-    latestExchange:
-      latestExchange ?? latestExchangeFromMessages(cachedMessages),
-    updatedAt: Date.now(),
-  };
-
-  window.localStorage.setItem(
-    getMessageCacheStorageKey(sessionId),
-    JSON.stringify(cache),
-  );
-  if (sessionId) {
-    window.localStorage.removeItem(getMessageCacheStorageKey(null));
-  }
-}
-
-function clearCachedChatMessages(sessionId: string | null) {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(getMessageCacheStorageKey(sessionId));
-}
-
-function clearKnownChatMessageCaches(sessionId: string | null) {
-  clearCachedChatMessages(sessionId);
-  clearCachedChatMessages(null);
-}
-
-function normalizeTranscriptMessages(
-  transcript: {
-    _id?: string;
-    role: "user" | "assistant";
-    content: string;
-    action?: ChatActionHint;
-  }[],
-) {
-  return transcript.map((message) =>
-    message.role === "assistant" && message.action
-      ? createAssistantMessage(message.content, message.action)
-      : {
-          id: message._id,
-          role: message.role,
-          content: message.content,
-        },
-  );
-}
-
-function createAssistantMessage(
-  content: string,
-  action?: ChatActionHint | null,
-): Message {
-  return action
-    ? { role: "assistant", content, action }
-    : { role: "assistant", content };
-}
-
-/** Flags the guest's latest copy of `content` so the "a team member will reply" note shows after it. */
-function withStaffReplyNotice(items: Message[], content: string): Message[] {
-  const index = items.findLastIndex(
-    (item) => item.role === "user" && item.content === content,
-  );
-  if (index === -1) return items;
-  const next = [...items];
-  next[index] = { ...next[index], staffReplyNotice: true };
-  return next;
-}
-
-function latestExchangeFromMessages(items: Message[]): LatestExchange | null {
-  for (
-    let assistantIndex = items.length - 1;
-    assistantIndex >= 0;
-    assistantIndex -= 1
-  ) {
-    if (items[assistantIndex]?.role !== "assistant") continue;
-
-    for (let userIndex = assistantIndex - 1; userIndex >= 0; userIndex -= 1) {
-      if (items[userIndex]?.role === "user") {
-        return {
-          userMessage: items[userIndex].content,
-          assistantMessage: items[assistantIndex].content,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-function previousUserMessageFor(items: Message[], assistantIndex: number) {
-  for (let userIndex = assistantIndex - 1; userIndex >= 0; userIndex -= 1) {
-    if (items[userIndex]?.role === "user") return items[userIndex].content;
-  }
-
-  return "";
-}
-
 function localBookingReplyKey(context: ChatBookingContext) {
   return getBookingPromptKey(context);
 }
@@ -504,6 +168,8 @@ export type ChatExperienceProps = {
   lineId?: string;
   lineUrl?: string;
   lineQrImage?: string;
+  /** Overlay only: open once after mount, for a widget loaded by launcher activation. */
+  initialOpen?: boolean;
 };
 
 export function useChatSession({
@@ -515,6 +181,7 @@ export function useChatSession({
   lineId,
   lineUrl,
   lineQrImage,
+  initialOpen = false,
 }: ChatExperienceProps) {
   const isPageMode = mode === "page";
   const t = useTranslations("Chat");
@@ -584,12 +251,16 @@ export function useChatSession({
   const keyboardInsetRef = useRef(0);
   const keyboardFocusStartedAtRef = useRef(0);
   const keyboardViewportBaselineRef = useRef<number | null>(null);
-  const chatGenerationRef = useRef(0);
+  const [chatLifecycle] = useState(() => new GenerationToken());
+  useEffect(() => {
+    chatLifecycle.activate();
+    return () => chatLifecycle.dispose();
+  }, [chatLifecycle]);
   const isRestartingChatRef = useRef(false);
   const restoredMessageCacheRef = useRef(false);
   const previousPropertySlugRef = useRef(activePropertySlug);
   const browserGateAttemptedRef = useRef(false);
-  const claimedHandoffTokenRef = useRef<string | null>(null);
+  const [handoffClaimGate] = useState(() => new BrowserHandoffClaimGate());
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const normalizedPathname = stripLocalePrefix(pathname);
@@ -890,14 +561,17 @@ export function useChatSession({
     const shouldKeepTranscriptPinned = isTranscriptNearEnd();
     updateChatPageViewportHeight();
     if (shouldKeepTranscriptPinned) scrollTranscriptToEnd();
+    const generation = chatLifecycle.value;
     KEYBOARD_PROBE_DELAYS_MS.forEach((delay) => {
-      window.setTimeout(() => {
+      void chatLifecycle.wait(delay, generation).then(() => {
+        if (chatLifecycle.isStale(generation)) return;
         updateChatPageViewportHeight();
         inputRef.current?.scrollIntoView({ block: "nearest" });
         if (shouldKeepTranscriptPinned) scrollTranscriptToEnd();
-      }, delay);
+      });
     });
   }, [
+    chatLifecycle,
     isTranscriptNearEnd,
     mode,
     scrollTranscriptToEnd,
@@ -916,7 +590,9 @@ export function useChatSession({
   );
 
   const clearFooterFocusAfterBlur = useCallback(() => {
-    window.setTimeout(() => {
+    const generation = chatLifecycle.value;
+    void chatLifecycle.wait(120, generation).then(() => {
+      if (chatLifecycle.isStale(generation)) return;
       const focusedInput = getFocusedFooterInput(chatFooterRef.current);
       if (focusedInput === inputRef.current) {
         setFooterFocusScope("composer");
@@ -934,8 +610,8 @@ export function useChatSession({
       keyboardViewportBaselineRef.current = null;
       setFooterFocusScope(null);
       refreshChatPageAfterKeyboardChange();
-    }, 120);
-  }, [refreshChatPageAfterKeyboardChange]);
+    });
+  }, [chatLifecycle, refreshChatPageAfterKeyboardChange]);
 
   useEffect(() => {
     setHydrated(true);
@@ -1015,20 +691,20 @@ export function useChatSession({
   }, [activePropertySlug]);
 
   const createFreshSession = useCallback(
-    async (generation = chatGenerationRef.current) => {
-      if (!convex) return null;
+    async (generation = chatLifecycle.value) => {
+      if (!convex || chatLifecycle.isStale(generation)) return null;
       const id = await createChatSession(convex, {
         propertySlug: activePropertySlug || undefined,
         channel: "web",
         visitorId: getOrCreateVisitorId(),
         ...getBrowserChatMetadata(),
       });
-      if (generation !== chatGenerationRef.current) return null;
+      if (chatLifecycle.isStale(generation)) return null;
       setStoredSessionId(id);
       setSessionId(id);
       return id;
     },
-    [activePropertySlug, convex],
+    [activePropertySlug, chatLifecycle, convex],
   );
 
   const hydrateExistingSession = useCallback(
@@ -1037,9 +713,9 @@ export function useChatSession({
       markOpen = false,
       hydrateMessages = true,
       enforceReusableLimit = true,
-      generation = chatGenerationRef.current,
+      generation = chatLifecycle.value,
     ) => {
-      if (!convex) return null;
+      if (!convex || chatLifecycle.isStale(generation)) return null;
       await touchChatSession(convex, {
         sessionId: id,
         propertySlug: activePropertySlug || undefined,
@@ -1047,7 +723,7 @@ export function useChatSession({
         isOpen: markOpen,
       });
 
-      if (generation !== chatGenerationRef.current) return null;
+      if (chatLifecycle.isStale(generation)) return null;
       setStoredSessionId(id);
       setSessionId(id);
 
@@ -1066,13 +742,13 @@ export function useChatSession({
         throw new Error("Chat session has reached the reusable message limit.");
       }
 
-      if (generation !== chatGenerationRef.current) return null;
+      if (chatLifecycle.isStale(generation)) return null;
       const restoredMessages = normalizeTranscriptMessages(transcript);
       setMessages(restoredMessages);
       setLatestExchange(latestExchangeFromMessages(restoredMessages));
       return id;
     },
-    [activePropertySlug, convex],
+    [activePropertySlug, chatLifecycle, convex],
   );
 
   const ensureSession = useCallback(
@@ -1080,18 +756,17 @@ export function useChatSession({
       markOpen = false,
       validateForReuse = false,
       hydrateMessages = false,
-      generation = chatGenerationRef.current,
+      generation = chatLifecycle.value,
     }: EnsureSessionOptions = {}) => {
-      if (!convex) return null;
+      if (!convex || chatLifecycle.isStale(generation)) return null;
       if (
-        browserHandoffToken &&
-        claimedHandoffTokenRef.current !== browserHandoffToken
+        handoffClaimGate.shouldClaim(browserHandoffToken)
       ) {
-        claimedHandoffTokenRef.current = browserHandoffToken;
         try {
           const claimedSessionId = await claimChatBrowserHandoff(convex, {
             token: browserHandoffToken,
           });
+          if (chatLifecycle.isStale(generation)) return null;
           router.replace(stripChatHandoffParam(currentPathWithSearch));
           if (claimedSessionId) {
             return await hydrateExistingSession(
@@ -1103,6 +778,7 @@ export function useChatSession({
             );
           }
         } catch {
+          if (chatLifecycle.isStale(generation)) return null;
           router.replace(stripChatHandoffParam(currentPathWithSearch));
         }
       }
@@ -1117,10 +793,10 @@ export function useChatSession({
               true,
               generation,
             );
-            if (generation !== chatGenerationRef.current) return null;
+            if (chatLifecycle.isStale(generation)) return null;
             return sessionId;
           } catch {
-            if (generation !== chatGenerationRef.current) return null;
+            if (chatLifecycle.isStale(generation)) return null;
             clearStoredSessionId();
             clearCachedChatMessages(sessionId);
             setSessionId(null);
@@ -1140,7 +816,7 @@ export function useChatSession({
             isOpen: true,
           });
         }
-        if (generation !== chatGenerationRef.current) return null;
+        if (chatLifecycle.isStale(generation)) return null;
         return sessionId;
       }
 
@@ -1154,10 +830,10 @@ export function useChatSession({
             true,
             generation,
           );
-          if (generation !== chatGenerationRef.current) return null;
+          if (chatLifecycle.isStale(generation)) return null;
           return storedId;
         } catch {
-          if (generation !== chatGenerationRef.current) return null;
+          if (chatLifecycle.isStale(generation)) return null;
           clearStoredSessionId();
           clearCachedChatMessages(storedId);
         }
@@ -1170,6 +846,7 @@ export function useChatSession({
             visitorId,
             messageLimit: REUSABLE_CHAT_MESSAGE_LIMIT,
           });
+          if (chatLifecycle.isStale(generation)) return null;
           if (reusableSession?._id) {
             return await hydrateExistingSession(
               reusableSession._id,
@@ -1184,11 +861,14 @@ export function useChatSession({
         }
       }
 
+      if (chatLifecycle.isStale(generation)) return null;
       return await createFreshSession(generation);
     },
     [
       activePropertySlug,
       browserHandoffToken,
+      chatLifecycle,
+      handoffClaimGate,
       convex,
       createFreshSession,
       currentPathWithSearch,
@@ -1267,6 +947,7 @@ export function useChatSession({
           validateForReuse: true,
           hydrateMessages: false,
         });
+        if (cancelled) return;
         if (id && convex) {
           handoffToken = await createChatBrowserHandoff(convex, {
             sessionId: id,
@@ -1304,7 +985,7 @@ export function useChatSession({
   }, [browserGateVisible, convex, ensureSession, messageCacheReady, mode]);
 
   const primeSessionForOpen = useCallback(async () => {
-    const generation = chatGenerationRef.current;
+    const generation = chatLifecycle.value;
     if (!convex || !messageCacheReady) {
       setSessionReady(true);
       return;
@@ -1323,11 +1004,11 @@ export function useChatSession({
     } catch {
       // Chat can still operate from the local transcript if the session touch fails.
     } finally {
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       setSessionReady(true);
       setIsHydratingSession(false);
     }
-  }, [convex, ensureSession, messageCacheReady, messages.length]);
+  }, [chatLifecycle, convex, ensureSession, messageCacheReady, messages.length]);
 
   const openChat = useCallback(() => {
     if (mode === "page") return;
@@ -1337,10 +1018,18 @@ export function useChatSession({
     void primeSessionForOpen();
   }, [mode, primeSessionForOpen]);
 
+  // The launcher mounts this widget lazily on activation; open it exactly once when it arrives,
+  // so a first click never depends on the chunk loading within one frame.
+  const initialOpenHandledRef = useRef(false);
+  useEffect(() => {
+    if (!initialOpen || mode !== "overlay" || !hydrated || initialOpenHandledRef.current) return;
+    initialOpenHandledRef.current = true;
+    openChat();
+  }, [hydrated, initialOpen, mode, openChat]);
+
   const restartChat = useCallback(async () => {
     const previousSessionId = sessionId ?? getStoredSessionId();
-    const generation = chatGenerationRef.current + 1;
-    chatGenerationRef.current = generation;
+    const generation = chatLifecycle.next();
     isRestartingChatRef.current = true;
     clearKnownChatMessageCaches(previousSessionId);
     clearStoredSessionId();
@@ -1368,21 +1057,21 @@ export function useChatSession({
           () => undefined,
         );
       }
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       const id = await createFreshSession(generation);
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       if (!id) throw new Error("No chat session");
       setSessionReady(true);
     } catch {
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       setSessionReady(true);
       setContactStatus("error");
     } finally {
-      if (generation === chatGenerationRef.current) {
+      if (chatLifecycle.isCurrent(generation)) {
         isRestartingChatRef.current = false;
       }
     }
-  }, [convex, createFreshSession, sessionId]);
+  }, [chatLifecycle, convex, createFreshSession, sessionId]);
 
   const closeChat = useCallback(() => {
     if (mode === "page") {
@@ -1593,12 +1282,18 @@ export function useChatSession({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeChat, open]);
 
+  // Presence heartbeat. The scheduler (session/heartbeat.ts) owns the interval and
+  // the visibility/focus listeners: it suppresses ticks while the tab is hidden
+  // (so a backgrounded guest ages out to "away" after the admin window) and sends
+  // an immediate touch when the tab becomes visible or regains focus.
   useEffect(() => {
     if (!open || !convex || browserGateVisible) return;
-    const interval = window.setInterval(() => {
-      void ensureSession({ markOpen: true });
-    }, HEARTBEAT_MS);
-    return () => window.clearInterval(interval);
+    return startSessionHeartbeat({
+      intervalMs: HEARTBEAT_MS,
+      touch: () => {
+        void ensureSession({ markOpen: true }).catch(() => null);
+      },
+    });
   }, [browserGateVisible, convex, ensureSession, open]);
 
   useEffect(() => {
@@ -1610,19 +1305,8 @@ export function useChatSession({
     const unsubscribe = watch.onUpdate(() => {
       const transcript = watch.localQueryResult();
       if (!transcript) return;
-        const adminMessages = transcript.filter(
-          (message) => message.source === "admin" && Boolean(message._id),
-        );
-        if (adminMessages.length === 0) return;
-        setMessages((items) => {
-          const next = [...items];
-          for (const message of adminMessages) {
-            if (next.some((item) => item.id === message._id)) continue;
-            next.push({ id: message._id, role: "assistant", content: message.content });
-          }
-          return next.length === items.length ? items : next;
-        });
-      });
+      setMessages((items) => mergeAdminMessages(items, transcript));
+    });
     return unsubscribe;
   }, [browserGateVisible, convex, open, sessionId, sessionReady]);
 
@@ -1641,6 +1325,7 @@ export function useChatSession({
   }, [browserGateVisible, convex, open, sessionId, sessionReady]);
 
   async function saveContact(event: FormEvent<HTMLFormElement>) {
+    const generation = chatLifecycle.value;
     event.preventDefault();
     if (!contactForm.email.trim() && !contactForm.contactHandle.trim()) return;
     if (!convex) {
@@ -1652,6 +1337,7 @@ export function useChatSession({
     try {
       const id = await ensureSession({ markOpen: true });
       if (!id) throw new Error("No chat session");
+      if (chatLifecycle.isStale(generation)) return;
       await identifyChatVisitor(convex, {
         sessionId: id,
         email: contactForm.email || undefined,
@@ -1662,51 +1348,39 @@ export function useChatSession({
         contactApp: contactForm.preferredApp,
         contactHandle: contactForm.contactHandle || undefined,
       });
+      if (chatLifecycle.isStale(generation)) return;
       setContactStatus("saved");
     } catch {
+      if (chatLifecycle.isStale(generation)) return;
       setContactStatus("error");
     }
   }
 
+  // Transport recovery (late-reply polling after send errors) lives in
+  // session/transport-recovery.ts. We supply the convex-backed transcript loader,
+  // the `wait` clock, and a staleness check against the live generation ref so the
+  // loops cancel themselves on restart/unmount.
+  const buildRecoveryDeps = useCallback(
+    (): RecoveryDeps => ({
+      loadTranscript: (sessionId, limit) =>
+        getChatMessages(convex!, { sessionId, limit }),
+      wait: (ms, generation) => chatLifecycle.wait(ms, generation),
+      isStale: (generation) => chatLifecycle.isStale(generation),
+    }),
+    [chatLifecycle, convex],
+  );
+
   async function recoverPersistedAssistantMessage(
     sessionId: string,
     userMessage: string,
-    generation = chatGenerationRef.current,
+    generation = chatLifecycle.value,
   ) {
-    for (
-      let attempt = 0;
-      attempt < TRANSCRIPT_RECOVERY_ATTEMPTS;
-      attempt += 1
-    ) {
-      if (generation !== chatGenerationRef.current) return null;
-      if (attempt > 0) await wait(TRANSCRIPT_RECOVERY_DELAY_MS);
-      if (generation !== chatGenerationRef.current) return null;
-
-      try {
-        const transcript = await getChatMessages(convex!, {
-          sessionId,
-          limit: 25,
-        });
-        if (generation !== chatGenerationRef.current) return null;
-        const matchingUserIndex = transcript.findLastIndex(
-          (message) =>
-            message.role === "user" && message.content.trim() === userMessage,
-        );
-        const assistantAfterUser =
-          matchingUserIndex >= 0
-            ? transcript
-                .slice(matchingUserIndex + 1)
-                .find((message) => message.role === "assistant")
-            : undefined;
-
-        if (assistantAfterUser?.content.trim())
-          return assistantAfterUser.content;
-      } catch {
-        // Keep trying briefly before falling back locally.
-      }
-    }
-
-    return null;
+    return recoverPersistedAssistantMessageLoop(
+      buildRecoveryDeps(),
+      sessionId,
+      userMessage,
+      generation,
+    );
   }
 
   async function reconcilePersistedAssistantMessage(
@@ -1714,47 +1388,40 @@ export function useChatSession({
     userMessage: string,
     placeholderMessage: string,
     action?: ChatActionHint | null,
-    generation = chatGenerationRef.current,
+    generation = chatLifecycle.value,
   ) {
-    for (
-      let attempt = 0;
-      attempt < BACKGROUND_RECONCILE_ATTEMPTS;
-      attempt += 1
-    ) {
-      await wait(BACKGROUND_RECONCILE_DELAY_MS);
-      if (generation !== chatGenerationRef.current) return;
-      const recoveredMessage = await recoverPersistedAssistantMessage(
-        sessionId,
-        userMessage,
-        generation,
-      );
-      if (!recoveredMessage || recoveredMessage === placeholderMessage)
-        continue;
-      if (generation !== chatGenerationRef.current) return;
-
-      setMessages((items) => {
-        const next = [...items];
-        for (let index = next.length - 1; index >= 0; index -= 1) {
-          if (
-            next[index]?.role === "assistant" &&
-            next[index]?.content === placeholderMessage
-          ) {
-            next[index] = { ...next[index], content: recoveredMessage };
-            return next;
-          }
-        }
-        return [...items, createAssistantMessage(recoveredMessage, action)];
-      });
-      setLatestExchange({
-        userMessage,
-        assistantMessage: recoveredMessage,
-      });
-      return;
-    }
+    return reconcilePersistedAssistantMessageLoop(
+      buildRecoveryDeps(),
+      {
+        applyRecoveredMessage: (recoveredMessage) => {
+          setMessages((items) => {
+            const next = [...items];
+            for (let index = next.length - 1; index >= 0; index -= 1) {
+              if (
+                next[index]?.role === "assistant" &&
+                next[index]?.content === placeholderMessage
+              ) {
+                next[index] = { ...next[index], content: recoveredMessage };
+                return next;
+              }
+            }
+            return [...items, createAssistantMessage(recoveredMessage, action)];
+          });
+          setLatestExchange({
+            userMessage,
+            assistantMessage: recoveredMessage,
+          });
+        },
+      },
+      sessionId,
+      userMessage,
+      placeholderMessage,
+      generation,
+    );
   }
 
   async function sendMessage(inputOrSuggestion: string | ChatSuggestion) {
-    const generation = chatGenerationRef.current;
+    const generation = chatLifecycle.value;
     const text =
       typeof inputOrSuggestion === "string"
         ? inputOrSuggestion
@@ -1766,7 +1433,11 @@ export function useChatSession({
     setTrackedSuggestionIds(null);
     setMessages((items) => [...items, { role: "user", content: clean }]);
 
-    // While staff has the chat, a canned answer would talk over them: send it as a normal message.
+    // Suggestion chips are question-only (ai-context-retirement step 5): a click
+    // sends the ordinary question text through the SAME path as typed text. We
+    // still track which chip was clicked so the connected server call can mark it
+    // and so action cards attach, but there is no canned answer text any more.
+    // While staff has the chat, we don't resolve a chip to any local reply.
     const preset = aiPaused
       ? undefined
       : suggestions.find((item) => item.text === clean);
@@ -1776,26 +1447,30 @@ export function useChatSession({
       villas,
       clickedSuggestionId: preset?.id,
     });
-    // Suggestions contain question text only; connected chats use current server sources.
+
     if (!convex) {
+      // Disconnected demo: no canned policy answers. Booking-intent questions get
+      // the local booking prompt; everything else gets the honest noConvex notice.
+      // The clicked chip's action hint still drives the booking/tour card so, e.g.,
+      // the availability chip shows the booking card without asserting any policy.
       const bookingContext = extractChatBookingContext({
         latestUserMessage: clean,
         latestAssistantMessage: "",
         activePropertySlug: activePropertySlug || undefined,
       });
-      const assistantMessage = bookingContext.hasBookingIntent
+      const hasBookingReply =
+        bookingContext.hasBookingIntent || selectedActionHint === "booking";
+      const assistantMessage = hasBookingReply
         ? t(localBookingReplyKey(bookingContext))
         : t("noConvex");
       setMessages((items) => [
         ...items,
-        createAssistantMessage(
-          assistantMessage,
-          bookingContext.hasBookingIntent ? "booking" : null,
-        ),
+        createAssistantMessage(assistantMessage, selectedActionHint),
       ]);
       setLatestExchange({
         userMessage: clean,
         assistantMessage,
+        ...(preset ? { clickedSuggestionId: preset.id } : {}),
       });
       return;
     }
@@ -1804,14 +1479,14 @@ export function useChatSession({
     let id: string | null = null;
     try {
       id = await ensureSession({ markOpen: true, generation });
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       if (!id) throw new Error("No chat session");
       if (preset) {
         await markChatSuggestionClicked(convex, {
           sessionId: id,
           suggestion: { source: "static", suggestionId: preset.id },
         }).catch(() => null);
-        if (generation !== chatGenerationRef.current) return;
+        if (chatLifecycle.isStale(generation)) return;
       }
       const result = await askConcierge(convex, {
         sessionId: id,
@@ -1820,7 +1495,7 @@ export function useChatSession({
         locale,
         ...(selectedActionHint ? { actionHint: selectedActionHint } : {}),
       });
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       // Staff took over: their reply arrives through the transcript watch.
       if (result?.aiPaused) {
         setPausedSessionId(id);
@@ -1846,11 +1521,11 @@ export function useChatSession({
         ...(preset ? { clickedSuggestionId: preset.id } : {}),
       });
     } catch {
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       const recoveredMessage = id
         ? await recoverPersistedAssistantMessage(id, clean, generation)
         : null;
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       const assistantMessage = recoveredMessage ?? t("fallback");
       setMessages((items) => [
         ...items,
@@ -1870,7 +1545,7 @@ export function useChatSession({
         );
       }
     } finally {
-      if (generation !== chatGenerationRef.current) return;
+      if (chatLifecycle.isStale(generation)) return;
       setIsTyping(false);
     }
   }
@@ -1884,14 +1559,17 @@ export function useChatSession({
   }, [router]);
 
   const copyBrowserLink = useCallback(async () => {
+    const generation = chatLifecycle.value;
     if (!browserGateUrl) return;
     try {
       await navigator.clipboard.writeText(browserGateUrl);
+      if (chatLifecycle.isStale(generation)) return;
       setBrowserGateCopyStatus("copied");
     } catch {
+      if (chatLifecycle.isStale(generation)) return;
       setBrowserGateCopyStatus("error");
     }
-  }, [browserGateUrl]);
+  }, [browserGateUrl, chatLifecycle]);
 
   return {
     mode,

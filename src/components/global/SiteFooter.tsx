@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
+import { localizeHref } from "@/i18n/routing";
 import { buildEmailHref } from "@/lib/contact-links";
 import { getLocalizedResort } from "@/lib/i18n/public-content";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 
 export function SiteFooter() {
   const nav = useTranslations("Nav");
   const footer = useTranslations("Footer");
-  const activeLocale = useLocale();
-  const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
-  const resort = getLocalizedResort(locale);
+  const locale = useLocale();
+  const resort = getLocalizedResort(usePublicMessages());
 
   return (
     <footer className="border-t border-border bg-card">

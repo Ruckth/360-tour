@@ -1,9 +1,9 @@
-import { resolveMessagingReply } from "@/lib/chat/messaging-reply";
 import { createHash } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
 import { verifyLineSignature } from "@/lib/line/signature";
-import { buildLineQuickReplyItems, detectQuickAnswerLocale, parseLineLocaleFromPostback, type LineQuickReplyItem } from "@/lib/line/quick-answers";
+import { measureMessagingStage, startMessagingEventMetrics, recordLateMessagingResult, resolveMessagingReply, storedReplyMode, type MessagingClient } from "@/lib/chat/messaging-reply";
+import { type LineQuickReplyItem } from "@/lib/line/quick-answers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +51,6 @@ type ClaimedLineEvent = {
   duplicate: boolean;
   status: string;
 };
-
 
 class LineReplyError extends Error {
   status: number;
@@ -213,9 +212,10 @@ async function handleLineEvent({
   const eventKey = getEventKey(event);
   const userContent = getUserContent(eventType, event);
 
+  const turnMetrics = startMessagingEventMetrics("line");
   let claimed: ClaimedLineEvent;
   try {
-    claimed = (await client.mutation(api.line.claimEvent, {
+    claimed = (await measureMessagingStage(turnMetrics, "claim", async () => client.mutation(api.line.claimEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       lineUserId,
@@ -225,7 +225,7 @@ async function handleLineEvent({
       messageText,
       postbackData,
       eventTimestamp: event.timestamp,
-    } as never)) as ClaimedLineEvent;
+    } as never))) as ClaimedLineEvent;
   } catch (error) {
     console.error("LINE webhook failed to claim event", {
       eventKey,
@@ -262,6 +262,7 @@ async function handleLineEvent({
       } as never);
       return;
     }
+    const replyToken = event.replyToken;
 
     // Staff took over this chat: the guest message is recorded, no automatic reply.
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
@@ -274,14 +275,16 @@ async function handleLineEvent({
     }
 
     const siteUrl = getSiteUrl(request);
-    const locale =
-      eventType === "postback"
-        ? parseLineLocaleFromPostback(postbackData)
-        : detectQuickAnswerLocale(messageText);
-    const { responseText, replyMode } = await resolveMessagingReply({
-      client: { query: (ref, args) => client.query(ref as never, args as never), action: (ref, args) => client.action(ref as never, args as never) }, channel: "line", sessionId: claimed.sessionId, siteUrl, eventType, messageText, postbackData,
-    });
-    const quickReplyItems = buildLineQuickReplyItems(locale);
+    const { responseText, replyMode, quickReplyItems, timedOut, lateResult } =
+      await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client as unknown as MessagingClient, {
+        channel: "line",
+        sessionId: claimed.sessionId!,
+        siteUrl,
+        kind: eventType,
+        ...(messageText ? { text: messageText } : {}),
+        ...(postbackData ? { postbackData } : {}),
+        turnId: turnMetrics.turnId,
+      }));
 
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
       await client.mutation(api.line.markEventIgnored, {
@@ -292,11 +295,16 @@ async function handleLineEvent({
       return;
     }
 
-    lineReplyStatus = await replyToLine({
+    lineReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => replyToLine({
       accessToken,
-      replyToken: event.replyToken,
-      messages: [createLineTextMessage(responseText, quickReplyItems)],
-    });
+      replyToken,
+      messages: [createLineTextMessage(responseText, quickReplyItems ?? [])],
+    }));
+
+    // Exactly-once delivery: a late concierge result is recorded, never delivered.
+    if (timedOut && lateResult) {
+      void recordLateMessagingResult(lateResult, { turnId: turnMetrics.turnId, channel: "line" });
+    }
 
     await client.mutation(api.line.completeEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
@@ -304,7 +312,7 @@ async function handleLineEvent({
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
-      replyMode,
+      replyMode: storedReplyMode(replyMode),
       lineReplyStatus,
     } as never);
   } catch (error) {

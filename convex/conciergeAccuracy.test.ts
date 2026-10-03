@@ -12,6 +12,24 @@ declare global {
 const modules = import.meta.glob('./**/*.ts');
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
+/** Insert a historical approved saved answer + primary question directly (pre-retirement data). */
+async function seedHistoricalAnswer(t: ReturnType<typeof convexTest>, args: { title: string; answer: string; question: string }) {
+	await t.run(async ctx => {
+		const now = Date.now();
+		const answerId = await ctx.db.insert('chatAnswers', {
+			title: args.title, answer: args.answer, status: 'approved', createdAt: now, updatedAt: now,
+			createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com'
+		});
+		await ctx.db.insert('chatQuestions', {
+			answerId, questionText: args.question,
+			normalizedQuestion: args.question.trim().toLowerCase().replace(/[\s?!.]+/g, ' ').trim(),
+			isPrimary: true, isAiTrigger: true, createdBy: 'admin', status: 'approved',
+			createdAt: now, updatedAt: now, approvedAt: now,
+			createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com'
+		});
+	});
+}
+
 async function setup(channel: 'web' | 'line' | 'whatsapp' = 'line') {
 	const t = convexTest(schema, modules);
 	const fixture = await t.run(async ctx => {
@@ -41,8 +59,8 @@ describe('authoritative facts and capability routing', () => {
 	it.each(['What time is check-in?', 'เช็กอินกี่โมงครับ', '체크인 시간은 몇 시인가요?'])('uses effective check-in settings ahead of stale exact FAQ: %s', async message => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, sessionId } = await setup('web');
-		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-		await admin.mutation(api.businessFacts.adminSave, { title: 'Check-in', body: 'Check-in is at 15:00.', searchText: "old policy", source: "Test fixture", status: "draft" });
+		// A stale historical saved answer must never resurface; current settings win.
+		await seedHistoricalAnswer(t, { title: 'Check-in', answer: 'Check-in is at 15:00.', question: message });
 		await t.run(async ctx => { await ctx.db.insert('siteSettings', { key: 'default', checkInTime: '16:00', checkOutTime: '10:00', updatedAt: Date.now(), updatedByEmail: 'admin@example.com' }); });
 		const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
 		const result = await t.action(api.chatAi.respond, { sessionId, userMessage: message });
@@ -52,11 +70,10 @@ describe('authoritative facts and capability routing', () => {
 		expect(await t.action(api.chatAi.getGuardrailReply, { userMessage: message })).toBe(result.response);
 	});
 
-	it('does not let an approved exact price bypass live data', async () => {
+	it('does not let a historical approved exact price bypass live data', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, sessionId } = await setup('web');
-		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-		await admin.mutation(api.businessFacts.adminSave, { title: 'Old villa price', body: 'Pool Villa is ฿1 per night.', searchText: "old policy", source: "Test fixture", status: "draft" });
+		await seedHistoricalAnswer(t, { title: 'Old villa price', answer: 'Pool Villa is ฿1 per night.', question: 'What is the Pool Villa price?' });
 		expect(await t.query(api.chatKnowledge.resolveExact, { sessionId, messageText: 'What is the Pool Villa price?' })).toBeNull();
 	});
 
@@ -112,6 +129,33 @@ describe('tool inputs and honest outcomes', () => {
 		modelSequence([modelReply(null, 'prepare_booking', '{broken', 'tool_calls'), modelReply('Please clarify the new dates.')]);
 		await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'Change the dates of my draft.' });
 		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
+		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
+	});
+
+	it.each([
+		{ model: 'openai/gpt-6-luna', truncated: false },
+		{ model: 'openai/gpt-6.1-sol', truncated: false },
+		{ model: 'openai/gpt-6-luna', truncated: true },
+		{ model: 'openai/gpt-6.1-sol', truncated: true }
+	])('rejects the $model batch while invalidating the replaced draft (truncated: $truncated)', async ({ model, truncated }) => {
+		const { t, sessionId, stay } = await setup();
+		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		vi.stubEnv('AI_API_KEY', 'test-key');
+		vi.stubEnv('AI_SIMPLE_MODEL', model);
+		const calls = [
+			{ id: 'call-1', type: 'function', function: { name: 'confirm_booking', arguments: '{}' } },
+			{ id: 'call-2', type: 'function', function: { name: 'prepare_booking', arguments: truncated ? '{}' : '{broken' } }
+		];
+		const envelope = model === 'openai/gpt-6.1-sol'
+			? { status: truncated ? 'incomplete' : 'completed', output: calls.map(call => ({ type: 'function_call', call_id: call.id, ...call.function })) }
+			: { choices: [{ finish_reason: truncated ? 'length' : 'tool_calls', message: { content: null, tool_calls: calls } }] };
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify(envelope)));
+		vi.stubGlobal('fetch', fetchMock);
+		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes' });
+		expect(reply.model).toBe('tool_fallback');
+		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
+		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
 	});
 
@@ -176,10 +220,10 @@ describe('tool inputs and honest outcomes', () => {
 
 
 describe('review accuracy regressions', () => {
-	it('uses current cancellation policy instead of approved stale prose', async () => {
+	it('uses current cancellation policy instead of historical stale prose', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, sessionId } = await setup('web');
-		await t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' }).mutation(api.businessFacts.adminSave, { title: 'Cancellation policy', body: 'Free cancellation anytime.', searchText: "old policy", source: "Test fixture", status: "draft" });
+		await seedHistoricalAnswer(t, { title: 'Cancellation policy', answer: 'Free cancellation anytime.', question: 'What is your cancellation policy?' });
 		await t.run(ctx => ctx.db.insert('siteSettings', { key: 'default', cancellationPolicy: 'Cancellation requires 72 hours notice.', updatedAt: Date.now(), updatedByEmail: 'admin@example.com' }));
 		const reply = await t.action(api.chatAi.respond, { sessionId, userMessage: 'What is your cancellation policy?' });
 		expect(reply.model).toBe('guardrail'); expect(reply.response).toBe('Cancellation requires 72 hours notice.');

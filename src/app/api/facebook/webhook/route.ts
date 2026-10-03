@@ -1,7 +1,7 @@
-import { resolveMessagingReply } from "@/lib/chat/messaging-reply";
 import { createHash } from "node:crypto";
 import { api } from "convex/_generated/api";
 import { verifyMetaSignature } from "@/lib/meta/signature";
+import { measureMessagingStage, startMessagingEventMetrics, recordLateMessagingResult, resolveMessagingReply, storedReplyMode } from "@/lib/chat/messaging-reply";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +47,6 @@ type ClaimedFacebookEvent = {
   duplicate: boolean;
   status: string;
 };
-
 
 type FacebookConvexClient = {
   query: (functionReference: unknown, args: unknown) => Promise<unknown>;
@@ -211,24 +210,6 @@ async function sendFacebookTextMessage({
   return response.status;
 }
 
-async function resolveFacebookReply({
-  client,
-  eventType,
-  messageText,
-  postbackData,
-  sessionId,
-  siteUrl,
-}: {
-  client: FacebookConvexClient;
-  eventType: Exclude<FacebookEventType, "unsupported">;
-  messageText?: string;
-  postbackData?: string;
-  sessionId: string;
-  siteUrl: string;
-}) {
-  return await resolveMessagingReply({ client, channel: "facebook", eventType, messageText, postbackData, sessionId, siteUrl });
-}
-
 async function handleFacebookEvent({
   accessToken,
   client,
@@ -250,9 +231,10 @@ async function handleFacebookEvent({
 
   if (!facebookUserId || eventType === "unsupported") return;
 
+  const turnMetrics = startMessagingEventMetrics("facebook");
   let claimed: ClaimedFacebookEvent;
   try {
-    claimed = (await client.mutation(api.facebook.claimEvent, {
+    claimed = (await measureMessagingStage(turnMetrics, "claim", async () => client.mutation(api.facebook.claimEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       facebookUserId,
@@ -262,7 +244,7 @@ async function handleFacebookEvent({
       messageText,
       postbackData,
       eventTimestamp: event.timestamp,
-    } as never)) as ClaimedFacebookEvent;
+    } as never))) as ClaimedFacebookEvent;
   } catch (error) {
     console.error("Facebook webhook failed to claim event", {
       eventKey,
@@ -306,14 +288,15 @@ async function handleFacebookEvent({
       return;
     }
 
-    const { responseText, replyMode } = await resolveFacebookReply({
-      client,
-      eventType,
-      messageText,
-      postbackData,
-      sessionId: claimed.sessionId,
+    const { responseText, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client, {
+      channel: "facebook",
+      sessionId: claimed.sessionId!,
       siteUrl: getSiteUrl(request),
-    });
+      kind: eventType,
+      ...(messageText ? { text: messageText } : {}),
+      ...(postbackData ? { postbackData } : {}),
+      turnId: turnMetrics.turnId,
+    }));
 
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
       await client.mutation(api.facebook.markEventIgnored, {
@@ -324,11 +307,16 @@ async function handleFacebookEvent({
       return;
     }
 
-    facebookReplyStatus = await sendFacebookTextMessage({
+    facebookReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => sendFacebookTextMessage({
       accessToken,
       recipientId: facebookUserId,
       text: responseText,
-    });
+    }));
+
+    // Exactly-once delivery: a late concierge result is recorded, never delivered.
+    if (timedOut && lateResult) {
+      void recordLateMessagingResult(lateResult, { turnId: turnMetrics.turnId, channel: "facebook" });
+    }
 
     await client.mutation(api.facebook.completeEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
@@ -336,7 +324,7 @@ async function handleFacebookEvent({
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
-      replyMode,
+      replyMode: storedReplyMode(replyMode),
       facebookReplyStatus,
     } as never);
   } catch (error) {

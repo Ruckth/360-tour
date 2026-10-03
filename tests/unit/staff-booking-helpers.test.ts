@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { isInAppNavigation } from "@/lib/react/use-unsaved-changes";
-import { DAY_MS, pickSlot, timeOffRange, timeOffRangeProblem } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, DAY_MS, pickSlot, timeOffRange, timeOffRangeProblem } from "@/lib/staff-bookings";
+
+describe("appointmentGuestLabel", () => {
+  it("keeps a known guest name and identifies unnamed guests by their appointment reference", () => {
+    expect(appointmentGuestLabel({ guestName: " Ann ", confirmationCode: "SVC-1" })).toBe("Ann");
+    expect(appointmentGuestLabel({ guestName: " ", confirmationCode: "SVC-1" })).toBe("Unnamed guest · SVC-1");
+    expect(appointmentGuestLabel({ guestName: "", confirmationCode: "SVC-2" })).toBe("Unnamed guest · SVC-2");
+  });
+});
 
 describe("pickSlot", () => {
   const slots = [{ start: 900 }, { start: 600 }, { start: 1200 }];

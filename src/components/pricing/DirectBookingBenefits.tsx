@@ -1,13 +1,13 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { getLocalizedDirectBenefits } from "@/lib/i18n/public-content";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 
 export function DirectBookingBenefits() {
   const t = useTranslations("Villa");
-  const locale = useLocale();
-  const benefits = getLocalizedDirectBenefits(locale);
+  const benefits = getLocalizedDirectBenefits(usePublicMessages());
 
   return (
     <section className="mt-8 rounded-2xl border border-border bg-card p-5 md:p-6">

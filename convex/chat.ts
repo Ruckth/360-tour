@@ -11,6 +11,7 @@ import {
 	patchSessionAfterMessages
 } from './lib/adminChatMetadata';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
+import { PRESENCE_WRITE_THROTTLE_MS } from './lib/chatPresence';
 import { enforceRateLimit } from './lib/rateLimit';
 import { asksForStaff, queueStaffAlert } from './chatKnowledge';
 import { recordLead } from './leads';
@@ -148,6 +149,25 @@ export const touchSession = mutation({
 			Object.keys(changed).length > 0 || session.adminSearchText === undefined
 				? buildAdminSearchText(nextSession)
 				: session.adminSearchText;
+
+		// Nothing but the presence timestamp would move, the chat already sorts by its latest
+		// message (not lastSeenAt), it is already open, and we refreshed presence very recently.
+		// Skipping the write here never changes an observable value: isChatSessionActive() tolerates
+		// a gap up to ACTIVE_CHAT_WINDOW_MS (90s) and with a 30s heartbeat the worst-case gap between
+		// writes is PRESENCE_WRITE_THROTTLE_MS (45s) + 30s = 75s, so the guest stays "online" while the
+		// high-churn write that every inbox/session reader reruns on is avoided. OCC contention on
+		// this mutation was already negligible (one retry in 72h), so this is a cost reduction, not
+		// a fix: message-less chats (which sort by lastSeenAt) and newly-opened chats still write.
+		const presenceOnlyBeat =
+			Object.keys(changed).length === 0 &&
+			propertyId === session.propertyId &&
+			adminSearchText === session.adminSearchText &&
+			adminSortAt === session.adminSortAt &&
+			typeof session.latestMessageAt === 'number' &&
+			typeof session.lastSeenAt === 'number' &&
+			now - session.lastSeenAt < PRESENCE_WRITE_THROTTLE_MS &&
+			(!args.isOpen || (session.lastOpenedAt ?? 0) > (session.lastClosedAt ?? 0));
+		if (presenceOnlyBeat) return;
 
 		await ctx.db.patch(args.sessionId, {
 			...changed,

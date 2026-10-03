@@ -1,0 +1,594 @@
+{
+  "projectDir": "/tmp/360-baseline-ae5c123",
+  "generatedAt": "2026-10-03T07:28:03.291Z",
+  "results": [
+    {
+      "route": "/",
+      "chunks": 21,
+      "raw": 1630467,
+      "gzip": 474873,
+      "brotli": 406310,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/_global-error",
+      "chunks": 10,
+      "raw": 775991,
+      "gzip": 230044,
+      "brotli": 199575,
+      "localeScripts": []
+    },
+    {
+      "route": "/_not-found",
+      "chunks": 20,
+      "raw": 1592659,
+      "gzip": 462026,
+      "brotli": 394778,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 21,
+      "raw": 1630467,
+      "gzip": 474873,
+      "brotli": 406310,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/booking",
+      "chunks": 23,
+      "raw": 1688138,
+      "gzip": 493391,
+      "brotli": 422824,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/booking/pay",
+      "chunks": 22,
+      "raw": 1608969,
+      "gzip": 467742,
+      "brotli": 399789,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/booking/success",
+      "chunks": 22,
+      "raw": 1608461,
+      "gzip": 467486,
+      "brotli": 399552,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/chat",
+      "chunks": 27,
+      "raw": 1828211,
+      "gzip": 537267,
+      "brotli": 461751,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/experiences",
+      "chunks": 21,
+      "raw": 1606960,
+      "gzip": 467499,
+      "brotli": 399644,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/privacy",
+      "chunks": 21,
+      "raw": 1593094,
+      "gzip": 462359,
+      "brotli": 395022,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 22,
+      "raw": 1638741,
+      "gzip": 477139,
+      "brotli": 408258,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/[locale]/terms",
+      "chunks": 21,
+      "raw": 1593094,
+      "gzip": 462359,
+      "brotli": 395022,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/chats",
+      "chunks": 30,
+      "raw": 1884589,
+      "gzip": 554877,
+      "brotli": 477757,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/hotel",
+      "chunks": 30,
+      "raw": 2145343,
+      "gzip": 632201,
+      "brotli": 541650,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/leads",
+      "chunks": 26,
+      "raw": 1728875,
+      "gzip": 505428,
+      "brotli": 433537,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/properties",
+      "chunks": 26,
+      "raw": 1712986,
+      "gzip": 501468,
+      "brotli": 429846,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 29,
+      "raw": 2733812,
+      "gzip": 772251,
+      "brotli": 655491,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/questions",
+      "chunks": 27,
+      "raw": 1791355,
+      "gzip": 521575,
+      "brotli": 447691,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/settings",
+      "chunks": 27,
+      "raw": 1755475,
+      "gzip": 514749,
+      "brotli": 441636,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/admin/staff/[tab]",
+      "chunks": 30,
+      "raw": 2211312,
+      "gzip": 651475,
+      "brotli": 557906,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/booking",
+      "chunks": 23,
+      "raw": 1688138,
+      "gzip": 493391,
+      "brotli": 422824,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/booking/pay",
+      "chunks": 22,
+      "raw": 1608969,
+      "gzip": 467742,
+      "brotli": 399789,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/booking/success",
+      "chunks": 22,
+      "raw": 1608461,
+      "gzip": 467486,
+      "brotli": 399552,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/chat",
+      "chunks": 27,
+      "raw": 1828211,
+      "gzip": 537267,
+      "brotli": 461751,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/experiences",
+      "chunks": 21,
+      "raw": 1606960,
+      "gzip": 467499,
+      "brotli": 399644,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/privacy",
+      "chunks": 21,
+      "raw": 1593094,
+      "gzip": 462359,
+      "brotli": 395022,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/rooms/[id]",
+      "chunks": 22,
+      "raw": 1638741,
+      "gzip": 477139,
+      "brotli": 408258,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/sign-in",
+      "chunks": 20,
+      "raw": 1592659,
+      "gzip": 462026,
+      "brotli": 394778,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/sign-up",
+      "chunks": 20,
+      "raw": 1592659,
+      "gzip": 462026,
+      "brotli": 394778,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    },
+    {
+      "route": "/terms",
+      "chunks": 21,
+      "raw": 1593094,
+      "gzip": 462359,
+      "brotli": 395022,
+      "localeScripts": [
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "ru",
+        "th",
+        "zh-CN"
+      ]
+    }
+  ]
+}

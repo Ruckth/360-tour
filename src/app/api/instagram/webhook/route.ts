@@ -1,7 +1,7 @@
-import { resolveMessagingReply } from "@/lib/chat/messaging-reply";
 import { createHash } from "node:crypto";
 import { api } from "convex/_generated/api";
 import { verifyMetaSignature } from "@/lib/meta/signature";
+import { measureMessagingStage, startMessagingEventMetrics, recordLateMessagingResult, resolveMessagingReply, storedReplyMode } from "@/lib/chat/messaging-reply";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,7 +48,6 @@ type ClaimedInstagramEvent = {
   duplicate: boolean;
   status: string;
 };
-
 
 type InstagramConvexClient = {
   query: (functionReference: unknown, args: unknown) => Promise<unknown>;
@@ -211,24 +210,6 @@ async function sendInstagramTextMessage({
   return response.status;
 }
 
-async function resolveInstagramReply({
-  client,
-  eventType,
-  messageText,
-  postbackData,
-  sessionId,
-  siteUrl,
-}: {
-  client: InstagramConvexClient;
-  eventType: Exclude<InstagramEventType, "unsupported">;
-  messageText?: string;
-  postbackData?: string;
-  sessionId: string;
-  siteUrl: string;
-}) {
-  return await resolveMessagingReply({ client, channel: "instagram", eventType, messageText, postbackData, sessionId, siteUrl });
-}
-
 async function handleInstagramEvent({
   accessToken,
   client,
@@ -250,9 +231,10 @@ async function handleInstagramEvent({
 
   if (!instagramUserId || eventType === "unsupported") return;
 
+  const turnMetrics = startMessagingEventMetrics("instagram");
   let claimed: ClaimedInstagramEvent;
   try {
-    claimed = (await client.mutation(api.instagram.claimEvent, {
+    claimed = (await measureMessagingStage(turnMetrics, "claim", async () => client.mutation(api.instagram.claimEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       instagramUserId,
@@ -262,7 +244,7 @@ async function handleInstagramEvent({
       messageText,
       postbackData,
       eventTimestamp: event.timestamp,
-    } as never)) as ClaimedInstagramEvent;
+    } as never))) as ClaimedInstagramEvent;
   } catch (error) {
     console.error("Instagram webhook failed to claim event", {
       eventKey,
@@ -306,14 +288,15 @@ async function handleInstagramEvent({
       return;
     }
 
-    const { responseText, replyMode } = await resolveInstagramReply({
-      client,
-      eventType,
-      messageText,
-      postbackData,
-      sessionId: claimed.sessionId,
+    const { responseText, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client, {
+      channel: "instagram",
+      sessionId: claimed.sessionId!,
       siteUrl: getSiteUrl(request),
-    });
+      kind: eventType,
+      ...(messageText ? { text: messageText } : {}),
+      ...(postbackData ? { postbackData } : {}),
+      turnId: turnMetrics.turnId,
+    }));
 
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
       await client.mutation(api.instagram.markEventIgnored, {
@@ -324,11 +307,16 @@ async function handleInstagramEvent({
       return;
     }
 
-    instagramReplyStatus = await sendInstagramTextMessage({
+    instagramReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => sendInstagramTextMessage({
       accessToken,
       recipientId: instagramUserId,
       text: responseText,
-    });
+    }));
+
+    // Exactly-once delivery: a late concierge result is recorded, never delivered.
+    if (timedOut && lateResult) {
+      void recordLateMessagingResult(lateResult, { turnId: turnMetrics.turnId, channel: "instagram" });
+    }
 
     await client.mutation(api.instagram.completeEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
@@ -336,7 +324,7 @@ async function handleInstagramEvent({
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
-      replyMode,
+      replyMode: storedReplyMode(replyMode),
       instagramReplyStatus,
     } as never);
   } catch (error) {
