@@ -1,4 +1,5 @@
 export const DEFAULT_AI_MODEL = 'openai/gpt-6-luna';
+export const DEFAULT_COMPLEX_AI_MODEL = 'openai/gpt-6.1-sol';
 export const DEFAULT_AI_API_BASE_URL = 'https://openrouter.ai/api/v1';
 
 export type ToolCall = {
@@ -13,7 +14,7 @@ export type ToolCall = {
 export type ChatMessage =
 	| { role: 'system'; content: string }
 	| { role: 'user'; content: string }
-	| { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
+	| { role: 'assistant'; content: string | null; tool_calls?: ToolCall[]; responsesOutput?: Record<string, unknown>[] }
 	| { role: 'tool'; content: string; tool_call_id: string };
 
 export type ToolDef = {
@@ -34,6 +35,8 @@ export type LlmResponse = {
 	content: string | null;
 	tool_calls?: ToolCall[];
 	finishReason?: string;
+	/** Responses items, including encrypted reasoning, replayed only within this turn. */
+	responsesOutput?: Record<string, unknown>[];
 };
 
 export type LlmCallTrace = {
@@ -59,6 +62,9 @@ export async function callAI(
 	onResponse?: (trace: LlmCallTrace) => void,
 	options: { timeoutMs?: number; maxOutputTokens?: number } = {}
 ): Promise<LlmResponse> {
+	if (model === 'openai/gpt-6.1-sol' || model === 'gpt-6.1-sol') {
+		return callSol(apiBase, apiKey, model, messages, tools, onResponse, options);
+	}
 	const body: {
 		model: string;
 		messages: ChatMessage[];
@@ -126,19 +132,85 @@ export async function callAI(
 }
 
 export function classifyComplexity(message: string): 'simple' | 'complex' {
-	const lower = message.toLowerCase();
-
-	const complexPatterns = [
-		/compar/i,
-		/which.*(better|best|recommend)/i,
-		/differ.*between/i,
-		/should i/i,
-		/help me (choose|decide|pick)/i,
-		/multiple.*dates/i,
-		/if.*then/i,
-		/budget.*plan/i
+	// Basic comparisons, quotes and bookings stay on Luna. Sol is for planning
+	// that combines several independent constraints, without another paid router.
+	const decision = /\b(?:compar\w*|recommend\w*|plan\w*|choose|decide|best|optimi[sz]\w*|trade.?offs?)\b|เปรียบเทียบ|แนะนำ|วางแผน|เลือก|คุ้มที่สุด|비교|추천|계획|선택|최적/i;
+	const constraints = [
+		/\b(?:budget|under|at most|no more than|cheapest|afford\w*)\b|งบ|ไม่เกิน|예산|이하/i,
+		/\b\d+\s*(?:adults?|children|kids?|guests?|people|persons?)\b|\b(?:family|couple|group)\b|ผู้ใหญ่|เด็ก|ครอบครัว|성인|아이|가족|\d+\s*명/i,
+		/\b\d+\s*(?:nights?|days?|weeks?)\b|\b(?:dates?|weekend|itinerary)\b|\d{4}-\d{2}-\d{2}|\d+\s*(?:คืน|วัน|박|일)|วันที่|일정/i,
+		/\b(?:quiet|private|accessible|wheelchair|bedrooms?|pool|garden)\b|เงียบ|ส่วนตัว|รถเข็น|ห้องนอน|สระ|조용|프라이빗|휠체어|침실|수영장/i,
+		/\b(?:spa|massage|services?|activities|treatments?)\b|สปา|นวด|กิจกรรม|스파|마사지|서비스|활동/i
 	];
-
-	if (complexPatterns.some((p) => p.test(lower))) return 'complex';
+	if (decision.test(message) && constraints.filter(pattern => pattern.test(message)).length >= 3) return 'complex';
 	return 'simple';
+}
+
+/** Sol requires Responses for function calling and reasoning across tool rounds. */
+async function callSol(
+	apiBase: string, apiKey: string, model: string, messages: ChatMessage[], tools: ToolDef[],
+	onResponse: ((trace: LlmCallTrace) => void) | undefined,
+	options: { timeoutMs?: number; maxOutputTokens?: number }
+): Promise<LlmResponse> {
+	const input: Record<string, unknown>[] = [];
+	for (const message of messages) {
+		if (message.role === 'tool') {
+			input.push({ type: 'function_call_output', call_id: message.tool_call_id, output: message.content });
+		} else if (message.role === 'assistant' && message.responsesOutput) {
+			input.push(...message.responsesOutput);
+		} else {
+			if (message.content !== null) input.push({ role: message.role, content: message.content });
+			if (message.role === 'assistant') {
+				for (const call of message.tool_calls ?? []) input.push({ type: 'function_call', call_id: call.id, ...call.function });
+			}
+		}
+	}
+	const body = {
+		model, input, store: false, include: ['reasoning.encrypted_content'], reasoning: { effort: 'low' },
+		// This budget includes reasoning tokens as well as the visible reply.
+		max_output_tokens: options.maxOutputTokens ?? 4096,
+		...(tools.length ? {
+			tools: tools.map(tool => ({ type: 'function', ...tool.function, strict: false })),
+			tool_choice: 'auto'
+		} : {})
+	};
+	const startedAt = Date.now();
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), Math.max(1, options.timeoutMs ?? 15_000));
+	try {
+		const res = await fetch(`${apiBase}/responses`, {
+			method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+			body: JSON.stringify(body), signal: controller.signal
+		});
+		if (!res.ok) throw new Error(`AI API error (${res.status})`);
+		const data = await res.json();
+		if (!data || !Array.isArray(data.output) || !['completed', 'incomplete'].includes(data.status) || data.error) throw new Error('Invalid AI response');
+		const toolCalls: ToolCall[] = [];
+		const text: string[] = [];
+		for (const item of data.output) {
+			if (!item || typeof item !== 'object') throw new Error('Invalid AI response');
+			if (item.type === 'function_call') {
+				if (typeof item.call_id !== 'string' || !item.call_id || typeof item.name !== 'string' || typeof item.arguments !== 'string') throw new Error('Invalid AI response');
+				toolCalls.push({ id: item.call_id, type: 'function', function: { name: item.name, arguments: item.arguments } });
+			} else if (item.type === 'message') {
+				if (item.role !== 'assistant' || !Array.isArray(item.content)) throw new Error('Invalid AI response');
+				for (const part of item.content) {
+					if (part?.type === 'output_text' && typeof part.text === 'string') text.push(part.text);
+					else if (part?.type === 'refusal' && typeof part.refusal === 'string') text.push(part.refusal);
+					else throw new Error('Invalid AI response');
+				}
+			} else if (item.type !== 'reasoning') throw new Error('Invalid AI response');
+		}
+		// All incomplete output is unsafe for tools, even if the partial arguments parse.
+		const finishReason = data.status === 'incomplete' ? 'length' : toolCalls.length ? 'tool_calls' : 'stop';
+		onResponse?.({ model: data.model ?? model, latencyMs: Date.now() - startedAt, finishReason, usage: data.usage ? {
+			prompt_tokens: data.usage.input_tokens, completion_tokens: data.usage.output_tokens,
+			total_tokens: data.usage.total_tokens, cost: data.usage.cost,
+			prompt_tokens_details: data.usage.input_tokens_details,
+			completion_tokens_details: data.usage.output_tokens_details
+		} : undefined });
+		return { content: text.join('\n') || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}), finishReason, responsesOutput: data.output };
+	} finally {
+		clearTimeout(timeout);
+	}
 }

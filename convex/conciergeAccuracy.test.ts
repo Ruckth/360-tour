@@ -42,7 +42,7 @@ describe('authoritative facts and capability routing', () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, sessionId } = await setup('web');
 		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-		await admin.mutation(api.chatKnowledge.adminCreateAnswer, { title: 'Check-in', answer: 'Check-in is at 15:00.', primaryQuestion: message });
+		await admin.mutation(api.businessFacts.adminSave, { title: 'Check-in', body: 'Check-in is at 15:00.', searchText: "old policy", source: "Test fixture", status: "draft" });
 		await t.run(async ctx => { await ctx.db.insert('siteSettings', { key: 'default', checkInTime: '16:00', checkOutTime: '10:00', updatedAt: Date.now(), updatedByEmail: 'admin@example.com' }); });
 		const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
 		const result = await t.action(api.chatAi.respond, { sessionId, userMessage: message });
@@ -56,7 +56,7 @@ describe('authoritative facts and capability routing', () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, sessionId } = await setup('web');
 		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-		await admin.mutation(api.chatKnowledge.adminCreateAnswer, { title: 'Old villa price', answer: 'Pool Villa is ฿1 per night.', primaryQuestion: 'What is the Pool Villa price?' });
+		await admin.mutation(api.businessFacts.adminSave, { title: 'Old villa price', body: 'Pool Villa is ฿1 per night.', searchText: "old policy", source: "Test fixture", status: "draft" });
 		expect(await t.query(api.chatKnowledge.resolveExact, { sessionId, messageText: 'What is the Pool Villa price?' })).toBeNull();
 	});
 
@@ -179,7 +179,7 @@ describe('review accuracy regressions', () => {
 	it('uses current cancellation policy instead of approved stale prose', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, sessionId } = await setup('web');
-		await t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' }).mutation(api.chatKnowledge.adminCreateAnswer, { title: 'Cancellation policy', answer: 'Free cancellation anytime.', primaryQuestion: 'What is your cancellation policy?' });
+		await t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' }).mutation(api.businessFacts.adminSave, { title: 'Cancellation policy', body: 'Free cancellation anytime.', searchText: "old policy", source: "Test fixture", status: "draft" });
 		await t.run(ctx => ctx.db.insert('siteSettings', { key: 'default', cancellationPolicy: 'Cancellation requires 72 hours notice.', updatedAt: Date.now(), updatedByEmail: 'admin@example.com' }));
 		const reply = await t.action(api.chatAi.respond, { sessionId, userMessage: 'What is your cancellation policy?' });
 		expect(reply.model).toBe('guardrail'); expect(reply.response).toBe('Cancellation requires 72 hours notice.');

@@ -1,3 +1,4 @@
+import { assertLegacyQaWritable, legacyQaRetired } from './lib/legacyQa';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
@@ -335,6 +336,7 @@ export const getCuratedResolutionContext = internalQuery({
 		sessionId: v.id('chatSessions')
 	},
 	handler: async (ctx, args): Promise<CuratedResolutionCandidate[]> => {
+		if (legacyQaRetired()) return [];
 		return await getCuratedResolutionCandidates(ctx, args.sessionId);
 	}
 });
@@ -404,6 +406,7 @@ export const resolveCuratedExact = query({
 		locale: v.optional(v.string())
 	},
 	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
+		if (legacyQaRetired()) return null;
 		const messageText = args.messageText.trim();
 		if (!messageText) return null;
 		if (capabilityReply(messageText)) return null;
@@ -432,6 +435,7 @@ export const resolveCuratedSemantic = action({
 		locale: v.optional(v.string())
 	},
 	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
+		if (legacyQaRetired()) return null;
 		const messageText = args.messageText.trim();
 		if (!messageText) return null;
 		if (capabilityReply(messageText)) return null;
@@ -549,6 +553,7 @@ export const adminCreateCurated = mutation({
 		propertySlug: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const question = sanitizeQuestionText(args.question);
 		const answer = sanitizeAnswerText(args.answer);
@@ -597,6 +602,7 @@ export const adminUpdateCurated = mutation({
 		propertySlug: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const existing = await ctx.db.get(args.questionId);
 		if (!existing) throw new Error('Question not found');
@@ -635,6 +641,7 @@ export const adminTranslateCuratedDraft = action({
 		targetLocales: v.optional(v.array(v.string()))
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		await requireAdmin(ctx);
 		return await translateCuratedContent(
 			sanitizeQuestionText(args.question),
@@ -709,6 +716,7 @@ function missingCuratedLocales(
 export const listCuratedMissingTranslations = internalQuery({
 	args: { limit: v.number(), skipIds: v.array(v.id('curatedChatQuestions')) },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return { total: 0, batch: [] };
 		const skip = new Set(args.skipIds);
 		const rows = await ctx.db
 			.query('curatedChatQuestions')
@@ -737,6 +745,7 @@ export const applyCuratedTranslations = internalMutation({
 		adminEmail: v.string()
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const row = await ctx.db.get(args.questionId);
 		if (!row) return { filled: 0 };
 		const translations: Record<string, string> = { ...row.translations };
@@ -782,6 +791,7 @@ export const adminTranslateMissingCurated = action({
 		processedIds: Id<'curatedChatQuestions'>[];
 		remaining: number;
 	}> => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const limit = Math.min(Math.max(Math.round(args.batchSize ?? TRANSLATION_BATCH_DEFAULT), 1), TRANSLATION_BATCH_MAX);
 		const { total, batch } = await ctx.runQuery(internal.chatSuggestions.listCuratedMissingTranslations, {
@@ -816,6 +826,7 @@ export const adminSetCuratedStatus = mutation({
 		status: v.union(v.literal('active'), v.literal('archived'))
 	},
 	handler: async (ctx, args) => {
+		if (args.status !== 'archived') assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const questionIds = [...new Set(args.questionIds)];
 		if (questionIds.length > 200) throw new Error('Select 200 or fewer at a time');
@@ -860,6 +871,7 @@ export const adminArchiveCurated = mutation({
 export const adminRestoreCurated = mutation({
 	args: { questionId: v.id('curatedChatQuestions') },
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const existing = await ctx.db.get(args.questionId);
 		if (!existing) throw new Error('Question not found');

@@ -611,73 +611,61 @@ export function useChatSession({
       {
         id: "availability",
         text: t("suggestionAvailability"),
-        answer: t("answerAvailability"),
         source: "static",
       },
       {
         id: "totalPrice",
         text: t("suggestionTotalPrice"),
-        answer: t("answerTotalPrice"),
         source: "static",
       },
       {
         id: "direct",
         text: t("suggestionDirect"),
-        answer: t("answerDirect"),
         source: "static",
       },
       {
         id: "tour",
         text: t("suggestion360"),
-        answer: t("answer360"),
         source: "static",
       },
       {
         id: "guests",
         text: t("suggestionGuests"),
-        answer: t("answerGuests"),
         source: "static",
       },
       {
         id: "contact",
         text: t("suggestionContact"),
-        answer: t("answerContact"),
         source: "static",
       },
       {
         id: "couple",
         text: t("suggestionCouple"),
-        answer: t("answerCouple"),
         source: "static",
       },
       {
         id: "family",
         text: t("suggestionFamily"),
-        answer: t("answerFamily"),
         source: "static",
       },
       {
         id: "cancellation",
         text: t("suggestionCancellation"),
-        answer: t("answerCancellation"),
         source: "static",
       },
       {
         id: "airport",
         text: t("suggestionAirport"),
-        answer: t("answerAirport"),
         source: "static",
       },
       {
         id: "amenitiesIncluded",
         text: t("suggestionAmenitiesIncluded"),
-        answer: t("answerAmenitiesIncluded"),
         source: "static",
       },
       {
         id: "location",
         text: t("suggestionLocation"),
-        answer: t("answerLocation"),
         source: "static",
       },
     ],
@@ -1788,21 +1776,7 @@ export function useChatSession({
       villas,
       clickedSuggestionId: preset?.id,
     });
-    // Connected chats resolve every suggestion against current server facts.
-    if (preset && !convex) {
-      const assistantMessage = preset.answer;
-      setMessages((items) => [
-        ...items,
-        createAssistantMessage(assistantMessage, selectedActionHint),
-      ]);
-      setLatestExchange({
-        userMessage: clean,
-        assistantMessage,
-        clickedSuggestionId: preset.id,
-      });
-      return;
-    }
-
+    // Suggestions contain question text only; connected chats use current server sources.
     if (!convex) {
       const bookingContext = extractChatBookingContext({
         latestUserMessage: clean,

@@ -287,7 +287,7 @@ async function handleWhatsAppMessage({
       return;
     }
 
-    const { responseText, replyMode, questionBankMatch } = await resolveWhatsAppReply({
+    const { responseText, replyMode } = await resolveWhatsAppReply({
       client,
       messageText,
       sessionId: claimed.sessionId,
@@ -309,27 +309,6 @@ async function handleWhatsAppMessage({
       recipientId: whatsappUserId,
       text: responseText,
     });
-
-    if (questionBankMatch) {
-      await client
-        .mutation(api.chatSuggestions.markClicked, {
-          sessionId: claimed.sessionId,
-          suggestion: {
-            source: "curated",
-            suggestionId: questionBankMatch.suggestionId,
-          },
-        } as never)
-        .catch((markClickedError) => {
-          console.warn("WhatsApp webhook failed to mark question-bank match clicked", {
-            eventKey,
-            suggestionId: questionBankMatch?.suggestionId,
-            error:
-              markClickedError instanceof Error
-                ? markClickedError.message
-                : "Unknown Convex failure",
-          });
-        });
-    }
 
     await client.mutation(api.whatsapp.completeEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",

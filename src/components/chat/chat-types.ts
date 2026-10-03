@@ -10,7 +10,6 @@ export type ChatMessage = {
   staffReplyNotice?: boolean;
 };
 export type ChatSuggestion = ChatSuggestionCandidate & {
-  answer: string;
   source: "static";
 };
 export type ChatMessageActionCard = ChatActionCard;

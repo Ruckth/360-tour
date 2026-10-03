@@ -8,7 +8,7 @@ describe("admin routes", () => {
     ["/admin/staff/calendar", "Staff bookings"],
     ["/admin/staff/staff", "Staff bookings"],
     ["/admin/staff/services", "Staff bookings"],
-    ["/admin/questions", "Questions"],
+    ["/admin/questions", "Business facts"],
     ["/admin/properties", "Properties"],
     ["/admin/properties/abc123", "Properties"],
     ["/admin/leads", "Leads"],

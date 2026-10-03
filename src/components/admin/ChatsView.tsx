@@ -17,14 +17,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AdminDateTimeFilterField } from "@/components/admin/AdminDateTimeFilterField";
 import { AdminSessionActions } from "@/components/admin/AdminSessionActions";
 import { AdminSessionDetail, chronologicalTranscriptMessages } from "@/components/admin/AdminSessionDetail";
-import { AnswerFormDialog, type AnswerFormTarget } from "@/components/admin/AnswerFormDialog";
+import { FactFormDialog, type FactFormTarget } from "@/components/admin/FactFormDialog";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { SetupBanner } from "@/components/admin/SetupChecklist";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { sourceLabel } from "@/components/admin/labels";
 import { TONES, statusMeta } from "@/components/admin/status-tones";
-import type { AdminKnowledgePropertyScope } from "@/components/admin/admin-knowledge-types";
 import {
   ChannelIcon,
   formatDateTime,
@@ -198,11 +197,7 @@ export function ChatsView() {
     if (sessionId === selectedSessionId) return;
     updateParams({ session: sessionId });
   }
-  const [answerTarget, setAnswerTarget] = useState<AnswerFormTarget | null>(null);
-  const propertyScopes = useQuery(
-    api.chatKnowledge.adminListPropertyScopes,
-    answerTarget ? {} : "skip",
-  ) as AdminKnowledgePropertyScope[] | undefined;
+  const [answerTarget, setAnswerTarget] = useState<FactFormTarget | null>(null);
   const selectedSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [replyPending, setReplyPending] = useState(false);
@@ -375,7 +370,7 @@ export function ChatsView() {
     replyError,
     replyStatus,
     replyWindow: sessionDetail?.replyWindow,
-    onSaveAsAnswer: (message: AdminMessage) => setAnswerTarget({ question: message.content }),
+    onCreateFact: (message: AdminMessage) => setAnswerTarget({ question: message.content }),
     actions: selectedSession ? (
       <AdminSessionActions session={selectedSession} onDeleted={() => selectSession(null)} />
     ) : null,
@@ -809,9 +804,8 @@ export function ChatsView() {
           <AdminSessionDetail key={selectedSession?._id ?? "none"} compact {...detailProps} />
         </DialogContent>
       </Dialog>
-      <AnswerFormDialog
+      <FactFormDialog
         target={answerTarget}
-        propertyScopes={propertyScopes ?? []}
         onClose={() => setAnswerTarget(null)}
       />
       <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}>

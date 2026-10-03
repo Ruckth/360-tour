@@ -39,7 +39,7 @@ describe("admin chat dashboard source", () => {
     expect(suggestionsSource).not.toContain("adminBackfillThaiGeneratedSuggestions");
   });
 
-  it("does not show an empty link-answer select when no approved answers exist", () => {
+  it("does not expose legacy answer linking in the missing-information inbox", () => {
     const dashboardSource = readFileSync(
       new URL("../../src/components/admin/UnknownQuestionsPanel.tsx", import.meta.url),
       "utf8",
@@ -49,9 +49,9 @@ describe("admin chat dashboard source", () => {
       "utf8",
     );
 
-    expect(dashboardSource).toContain("No approved answers");
-    expect(dashboardSource).toContain("disabled={answersLoading || !hasAnswers}");
-    expect(dashboardSource).toContain("{hasAnswers ? <SelectContent>");
+    expect(dashboardSource).toContain("No approved facts apply yet.");
+    expect(dashboardSource).not.toContain("adminLinkUnknownGroups");
+    expect(dashboardSource).toContain("adminResolveMissing");
     expect(selectSource).not.toContain("h-[var(--radix-select-trigger-height)]");
   });
 });

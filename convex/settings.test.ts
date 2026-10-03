@@ -217,14 +217,6 @@ describe('settings in the AI prompt', () => {
 				directDiscountPercent: 12, status: 'active'
 			});
 		});
-		// Web chat only calls the AI for question-bank matches.
-		await admin.mutation(api.chatSuggestions.adminCreateCurated, {
-			question: 'Can I check live availability?',
-			answerMode: 'dynamic',
-			dynamicIntent: 'availability',
-			topic: 'availability',
-			score: 90
-		});
 		const prompts: string[] = [];
 		vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
 			prompts.push(JSON.parse(String(init?.body ?? '{}')).messages?.[0]?.content ?? '');
@@ -238,13 +230,14 @@ describe('settings in the AI prompt', () => {
 		);
 
 		await t.action(api.chatAi.respond, { sessionId, userMessage: 'Can I check live availability?' });
-		const prompt = prompts.find((content) => content.includes('PRICING')) ?? '';
+		const prompt = prompts.find((content) => content.includes('BUSINESS PROFILE')) ?? '';
 		expect(prompt).toContain('Sea Breeze');
 		expect(prompt).not.toContain('Auralis Cove Retreat');
 		expect(prompt).toContain('Free cancellation up to 7 days before arrival.');
 		expect(prompt).not.toContain('48 hours');
 		expect(prompt).not.toContain('15%');
-		expect(prompt).toContain('12% off when booked direct');
+		expect(prompt).not.toContain('12% off when booked direct');
+		expect(prompt).toContain('calculate_price');
 		expect(prompt).toContain('Check-in from 15:00, check-out by 11:00');
 		expect(prompt).toContain('Tone: cheerful and brief');
 		expect(prompt).toContain('under 90 words');

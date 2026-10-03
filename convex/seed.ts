@@ -1,3 +1,4 @@
+import { assertLegacyQaWritable } from './lib/legacyQa';
 import { v } from 'convex/values';
 import { internalMutation, mutation } from './_generated/server';
 import { requireAdmin } from './lib/adminAuth';
@@ -50,6 +51,7 @@ export const seedCuratedQuestionBank = mutation({
 		dryRun: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const dryRun = args.dryRun ?? false;
 		const now = Date.now();
