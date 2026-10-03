@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { CheckCheck, ChevronLeft, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -22,6 +21,7 @@ import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { sourceLabel } from "@/components/admin/labels";
 import { TONES, statusMeta } from "@/components/admin/status-tones";
+import { useAdminReplyComposer } from "@/components/admin/useAdminReplyComposer";
 import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 import {
   ChannelIcon,
@@ -58,6 +58,9 @@ const queueTabs = [
   { value: "open", label: "Open" },
   { value: "done", label: "Done" },
 ] satisfies { value: InboxQueue; label: string }[];
+function queueParams(queue: InboxQueue): { view: SessionStatus; state: InboxStateFilter } {
+  return { view: queue === "waiting" ? "needs_reply" : "all", state: queue === "done" ? "done" : "open" };
+}
 const adminStatusOptions: InboxStateFilter[] = ["open", "done", "resolved", "archived"];
 const adminStatusTabs = adminStatusOptions.map((value) => ({
   value,
@@ -116,8 +119,9 @@ function withLivePresence<T extends AdminSession>(session: T, now: number): T {
   return session.isActive === isActive ? session : { ...session, isActive };
 }
 
+/** `undefined` until the browser has answered, so neither layout is assumed on first paint. */
 function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
+  const [matches, setMatches] = useState<boolean>();
 
   useEffect(() => {
     const media = window.matchMedia(query);
@@ -175,14 +179,20 @@ export function ChatsView() {
   useEffect(() => {
     navigationQueryRef.current = searchParams.toString();
   }, [searchParams]);
-  const { getToken } = useAuth();
+  // A late action result may navigate only if nothing else has since: call at action start, check when it ends.
+  function captureNavigation() {
+    const query = searchParams.toString();
+    return () => navigationQueryRef.current === query;
+  }
   const now = usePresenceClock();
   const presenceMinute = Math.floor(now / 60_000) * 60_000;
-  const isLargeViewport = useMediaQuery("(min-width: 1024px)");
+  const largeViewport = useMediaQuery("(min-width: 1024px)");
+  const isLargeViewport = largeViewport === true;
   // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
   const updateParams = useCallback(
     (patch: Partial<Record<FilterParam | "session", string | null>>) => {
-      const params = new URLSearchParams(searchParams.toString());
+      // Compose rapid filter changes against the latest requested URL, including an uncommitted navigation.
+      const params = new URLSearchParams(navigationQueryRef.current);
       // A filter change must not leave a conversation from the previous queue open.
       if (!Object.hasOwn(patch, "session") && Object.keys(patch).some((key) => key in FILTER_DEFAULTS))
         params.delete("session");
@@ -197,10 +207,15 @@ export function ChatsView() {
         scroll: false,
       });
     },
-    [router, searchParams],
+    [router],
   );
-  const status = readOption(searchParams.get("view"), statusOptions, FILTER_DEFAULTS.view);
   const adminStatus = readOption(searchParams.get("state"), adminStatusOptions, FILTER_DEFAULTS.state);
+  // Older Done links omitted activity because All used to be the default.
+  const status = readOption(
+    searchParams.get("view"),
+    statusOptions,
+    adminStatus === "open" ? FILTER_DEFAULTS.view : "all",
+  );
   const emptyFilter = readOption(searchParams.get("empty"), emptyFilterOptions, FILTER_DEFAULTS.empty);
   const channelFilter = readOption(searchParams.get("channel"), channelFilterOptions, FILTER_DEFAULTS.channel);
   const messageStartAt = searchParams.get("from") ?? "";
@@ -208,11 +223,7 @@ export function ChatsView() {
   const setStatus = (value: SessionStatus) => updateParams({ view: value });
   const setAdminStatus = (value: InboxStateFilter) => updateParams({ state: value, view: "all" });
   const queue: InboxQueue = adminStatus !== "open" ? "done" : status === "needs_reply" ? "waiting" : "open";
-  const setQueue = (value: InboxQueue) =>
-    updateParams({
-      view: value === "waiting" ? "needs_reply" : "all",
-      state: value === "done" ? "done" : "open",
-    });
+  const setQueue = (value: InboxQueue) => updateParams(queueParams(value));
   const setEmptyFilter = (value: EmptyChatFilter) => updateParams({ empty: value });
   const setChannelFilter = (value: SessionChannelFilter) => updateParams({ channel: value });
   const setMessageStartAt = (value: string) => updateParams({ from: value });
@@ -224,6 +235,9 @@ export function ChatsView() {
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const selectedSessionId = searchParams.get("session") as Id<"chatSessions"> | null;
+  const [incomingSessionId, setIncomingSessionId] = useState(() =>
+    !searchParams.has("view") && !searchParams.has("state") ? selectedSessionId : null,
+  );
   function selectSession(sessionId: Id<"chatSessions"> | null) {
     if (sessionId === selectedSessionId) return;
     updateParams({ session: sessionId });
@@ -233,18 +247,15 @@ export function ChatsView() {
   const factProperties = useQuery(api.properties.adminList, factTarget ? {} : "skip") as
     | AdminFactProperty[]
     | undefined;
-  const selectedSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
-  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
-  const [replyFeedback, setReplyFeedback] = useState<Record<string, { error?: string; status?: string }>>({});
-  const replyDraft = selectedSessionId ? (replyDrafts[selectedSessionId] ?? "") : "";
-  const replyError = selectedSessionId ? (replyFeedback[selectedSessionId]?.error ?? null) : null;
-  const replyStatus = selectedSessionId ? (replyFeedback[selectedSessionId]?.status ?? null) : null;
-  function setReplyDraft(value: string) {
-    if (selectedSessionId) setReplyDrafts((drafts) => ({ ...drafts, [selectedSessionId]: value }));
-  }
-  const [replyPending, setReplyPending] = useState(false);
+  const reply = useAdminReplyComposer(selectedSessionId);
+  const [retainedReply, setRetainedReply] = useState<{ sessionId: Id<"chatSessions">; query: string } | null>(null);
+  useEffect(() => {
+    setRetainedReply((current) => (current?.query === searchParams.toString() ? current : null));
+  }, [searchParams]);
   const settleGuestMessageMutation = useMutation(api.adminChat.settleGuestMessage);
-  const [settlingMessageId, setSettlingMessageId] = useState<Id<"chatMessages"> | null>(null);
+  // The ref guards repeat clicks and `e` before React commits; the state drives the buttons.
+  const settlingRef = useRef(new Set<Id<"chatMessages">>());
+  const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"chatMessages">>>(() => new Set());
   const [settleError, setSettleError] = useState<string | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
   const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt, "start");
@@ -257,7 +268,7 @@ export function ChatsView() {
   const filterResetKey = [
     status,
     adminStatus,
-    trimmedSearchQuery,
+    urlSearchQuery.trim(),
     emptyFilter,
     channelFilter,
     messageStartAt,
@@ -274,7 +285,7 @@ export function ChatsView() {
           adminStatus,
           empty: emptyFilter,
           channel: channelFilter,
-          searchQuery: trimmedSearchQuery || undefined,
+          searchQuery: urlSearchQuery.trim() || undefined,
           messageStartAt: parsedMessageStartAt,
           messageEndAt: parsedMessageEndAt,
           // Only the Live/Inactive filters need the server's clock; a coarse minute keeps the subscription stable.
@@ -297,19 +308,32 @@ export function ChatsView() {
     { initialNumItems: 10 },
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
-  const unqualifiedDeepLink = Boolean(selectedSessionId) && !searchParams.has("view") && !searchParams.has("state");
+  const unqualifiedDeepLink =
+    Boolean(selectedSessionId) &&
+    incomingSessionId === selectedSessionId &&
+    !searchParams.has("view") &&
+    !searchParams.has("state");
   useEffect(() => {
     // Links from staff alerts and Missing Information have no queue. Open their actual conversation.
+    if (!unqualifiedDeepLink) {
+      if (incomingSessionId) setIncomingSessionId(null);
+      return;
+    }
     if (!unqualifiedDeepLink || !sessionDetail?.session || navigationQueryRef.current !== searchParams.toString())
       return;
     const selectedStatus = sessionDetail.session.adminStatus ?? "open";
-    if (selectedStatus === "open" && sessionDetail.session.needsReply) return;
+    if (selectedStatus === "open" && sessionDetail.session.needsReply) {
+      // Consume a Waiting link once. Later live replies must stay in the chosen queue.
+      setIncomingSessionId(null);
+      return;
+    }
+    // Keep the incoming transcript visible until the matching queue URL commits.
     updateParams({
       view: "all",
       state: selectedStatus === "open" ? "open" : "done",
       session: selectedSessionId,
     });
-  }, [unqualifiedDeepLink, sessionDetail, searchParams, selectedSessionId, updateParams]);
+  }, [incomingSessionId, unqualifiedDeepLink, sessionDetail, searchParams, selectedSessionId, updateParams]);
   const transcriptMessages = useMemo(
     () => chronologicalTranscriptMessages(transcriptPagination.results),
     [transcriptPagination.results],
@@ -327,81 +351,49 @@ export function ChatsView() {
     if (unqualifiedDeepLink) return candidate;
     const candidateStatus = candidate.adminStatus ?? "open";
     if (adminStatus === "done" ? candidateStatus === "open" : candidateStatus !== adminStatus) return null;
-    if (status === "needs_reply" && !candidate.needsReply) return null;
+    const awaitingReplyNavigation =
+      reply.pending ||
+      (retainedReply?.sessionId === selectedSessionId && retainedReply.query === searchParams.toString());
+    if (status === "needs_reply" && !candidate.needsReply && !awaitingReplyNavigation) return null;
     return candidate;
-  }, [selectedSessionId, sessions, sessionDetail, now, adminStatus, status, unqualifiedDeepLink]);
+  }, [
+    selectedSessionId,
+    sessions,
+    sessionDetail,
+    now,
+    adminStatus,
+    status,
+    unqualifiedDeepLink,
+    reply.pending,
+    retainedReply,
+    searchParams,
+  ]);
 
-  useEffect(() => {
-    selectedSessionIdRef.current = selectedSessionId;
-  }, [selectedSessionId]);
-
-  async function sendAdminReply() {
-    const sessionId = selectedSessionId;
-    const content = replyDraft.trim();
-    if (!sessionId || !content || replyPending) return;
-    setReplyPending(true);
-    setReplyFeedback((feedback) => ({ ...feedback, [sessionId]: {} }));
-    try {
-      const token = await getToken({ template: "convex" });
-      if (!token) throw new Error("Admin sign-in has expired. Sign in again.");
-      const response = await fetch("/api/admin/chat/reply", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId,
-          requestId: crypto.randomUUID(),
-          content,
-        }),
-      });
-      const result = (await response.json()) as {
-        error?: string;
-        channel?: string;
-      };
-      if (!response.ok) throw new Error(result.error || "Unable to send reply");
-      setReplyDrafts((drafts) => ({
-        ...drafts,
-        [sessionId]: drafts[sessionId]?.trim() === content ? "" : (drafts[sessionId] ?? ""),
-      }));
-      setReplyFeedback((feedback) => ({
-        ...feedback,
-        [sessionId]: {
-          status:
-            result.channel === "web"
-              ? "Reply sent"
-              : `Reply accepted by ${sourceLabel(result.channel)}. Delivery is not confirmed.`,
-        },
-      }));
+  function sendAdminReply() {
+    const isCurrentNavigation = captureNavigation();
+    const leavesWaiting = status === "needs_reply";
+    return reply.send((sessionId) => {
       // A reply leaves Waiting. Keep it visible in Open, including its delivery feedback.
-      if (
-        selectedSessionIdRef.current === sessionId &&
-        navigationQueryRef.current === searchParams.toString() &&
-        status === "needs_reply"
-      )
-        updateParams({ view: "all", state: "open", session: sessionId });
-    } catch (error) {
-      setReplyFeedback((feedback) => ({
-        ...feedback,
-        [sessionId]: {
-          error: error instanceof Error ? error.message : "Unable to send reply",
-        },
-      }));
-    } finally {
-      setReplyPending(false);
-    }
+      if (leavesWaiting && isCurrentNavigation()) {
+        // Convex can mark the guest answered before the response/URL arrives. Keep this transcript mounted.
+        setRetainedReply({ sessionId, query: searchParams.toString() });
+        updateParams({ ...queueParams("open"), session: sessionId });
+      }
+    });
   }
 
   async function settleGuestMessage(sessionId: Id<"chatSessions">, messageId: Id<"chatMessages">) {
-    setSettlingMessageId(messageId);
+    if (settlingRef.current.has(messageId)) return;
+    settlingRef.current.add(messageId);
+    setSettlingMessageIds(new Set(settlingRef.current));
     setSettleError(null);
     try {
       await settleGuestMessageMutation({ sessionId, messageId });
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Unable to mark the message as settled.");
     } finally {
-      setSettlingMessageId(null);
+      settlingRef.current.delete(messageId);
+      setSettlingMessageIds(new Set(settlingRef.current));
     }
   }
 
@@ -431,12 +423,12 @@ export function ChatsView() {
     messages: transcriptMessages,
     now,
     selectedSession,
-    replyDraft,
-    onReplyDraftChange: setReplyDraft,
+    replyDraft: reply.draft,
+    onReplyDraftChange: reply.setDraft,
     onSendReply: sendAdminReply,
-    replyPending,
-    replyError,
-    replyStatus,
+    replyPending: reply.pending,
+    replyError: reply.error,
+    replyStatus: reply.status,
     replyWindow: sessionDetail?.replyWindow,
     onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content } }),
     actions: selectedSession ? (
@@ -448,14 +440,10 @@ export function ChatsView() {
         onStatusChanged={(nextStatus) => {
           // A completed mutation must not replace navigation requested while it was pending.
           if (navigationQueryRef.current !== searchParams.toString()) return;
-          if (nextStatus === "open")
-            updateParams({
-              view: "all",
-              state: "open",
-              session: selectedSession._id,
-            });
+          if (nextStatus === "open") updateParams({ ...queueParams("open"), session: selectedSession._id });
           else {
-            const next = sessions.find((session) => session._id !== selectedSession._id);
+            const index = sessions.findIndex((session) => session._id === selectedSession._id);
+            const next = sessions[index + 1] ?? sessions[index - 1];
             selectSession(isLargeViewport ? (next?._id ?? null) : null);
           }
         }}
@@ -524,8 +512,7 @@ export function ChatsView() {
                     channel: null,
                     from: null,
                     to: null,
-                    view: queue === "waiting" ? "needs_reply" : "all",
-                    state: queue === "done" ? "done" : "open",
+                    ...queueParams(queue),
                   });
                 }}
               >
@@ -583,7 +570,7 @@ export function ChatsView() {
       document.getElementById(isLargeViewport ? "admin-reply-desktop" : "admin-reply-mobile")?.focus();
     else if (key === "e") {
       const session = sessions[selectedIndex];
-      if (!session?.needsReply || !session.latestMessage) return;
+      if (!session?.needsReply || !session.latestMessage || settlingRef.current.has(session.latestMessage._id)) return;
       // Settled chats leave the "Needs reply" list, so move on to the next one.
       if (status === "needs_reply") moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
       void settleGuestMessage(session._id, session.latestMessage._id);
@@ -766,8 +753,7 @@ export function ChatsView() {
                             channel: null,
                             from: null,
                             to: null,
-                            view: queue === "waiting" ? "needs_reply" : "all",
-                            state: queue === "done" ? "done" : "open",
+                            ...queueParams(queue),
                           });
                         }}
                       >
@@ -874,7 +860,7 @@ export function ChatsView() {
                         variant="ghost"
                         size="icon"
                         onClick={() => settleGuestMessage(session._id, unansweredMessage._id)}
-                        disabled={settlingMessageId === unansweredMessage._id}
+                        disabled={settlingMessageIds.has(unansweredMessage._id)}
                         aria-label={`Mark the message from ${visitorLabel(session)} as settled`}
                         title="Mark as settled: no reply needed (e)"
                         className={cn(
@@ -928,12 +914,15 @@ export function ChatsView() {
           </aside>
 
           <section aria-label="Selected chat" className="hidden min-h-0 bg-card lg:block">
-            <AdminSessionDetail key={selectedSession?._id ?? "none"} {...detailProps} />
+            {/* Mobile uses the dialog below. Until the viewport is known, CSS keeps this hidden on small screens. */}
+            {largeViewport !== false ? (
+              <AdminSessionDetail key={selectedSession?._id ?? "none"} {...detailProps} />
+            ) : null}
           </section>
         </div>
       </div>
       <Dialog
-        open={!isLargeViewport && Boolean(selectedSession)}
+        open={largeViewport === false && Boolean(selectedSession)}
         onOpenChange={(isOpen) => {
           if (!isOpen) selectSession(null);
         }}
