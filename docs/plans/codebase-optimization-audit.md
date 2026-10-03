@@ -1,6 +1,6 @@
 # Codebase optimization audit
 
-Independent standards and specification reviews compared implementation snapshot `8e64636` with `ae5c123`. The source specification is [the optimization plan](./codebase-optimization.md), with [AI context retirement](./ai-context-retirement.md) defining the saved-answer behavior. Reviewers inspected a fixed commit rather than a moving working tree. The coordinator reproduced or checked actionable findings and returned them to Kiro for correction.
+Independent standards and specification reviews compared implementation snapshot `8e64636` with `ae5c123`. The source specification is [the optimization plan](./codebase-optimization.md), with [AI context retirement](./ai-context-retirement.md) defining the saved-answer behavior. Reviewers inspected a fixed commit rather than a moving working tree. The coordinator reproduced or checked actionable findings, assigned corrections to Kiro and the audit agents, and added integration regressions.
 
 ## Standards review
 
@@ -22,4 +22,4 @@ Conditional provider relocation, presence-table splitting, summary tables, durab
 
 ## Fix verification
 
-Final correction status and check results are recorded in [the implementation report](./codebase-optimization-implementation.md). The review remains open until the fix diff is checked, full validation succeeds, and the coordinator records the final conclusion here.
+Final correction status and check results are recorded in [the implementation report](./codebase-optimization-implementation.md). The fix diff was independently re-reviewed with no remaining blocking findings. Final validation passes: all typechecks, lint, 94 unit files/889 tests, the production build, and 63 disconnected browser tests. The concurrent `main` merge received a semantic review preserving the newer provider/model safety and optional guest-service behavior. An actual LINE handler regression additionally caught privacy scrubbing of UUID digits; generated turn IDs now preserve correlation without weakening the scrubber. Representative production costs and live integration remain unmeasured.

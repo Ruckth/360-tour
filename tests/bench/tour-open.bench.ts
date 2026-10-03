@@ -70,6 +70,12 @@ async function newMobilePage(browser: Browser, disableCache: boolean) {
   await context.addInitScript(() => sessionStorage.setItem("seaview-demo-disclaimer-dismissed", "true"));
   await context.addInitScript(INSTRUMENT);
   const page = await context.newPage();
+  page.on("requestfailed", (request) => {
+    if (PANORAMA.test(request.url())) console.error("panorama-request-failed", new URL(request.url()).pathname, request.failure()?.errorText);
+  });
+  page.on("response", (response) => {
+    if (PANORAMA.test(response.url()) && response.status() >= 400) console.error("panorama-http-error", new URL(response.url()).pathname, response.status());
+  });
   await throttle(context, page, disableCache);
   return { context, page };
 }
@@ -87,6 +93,7 @@ async function openTour(page: Page, kind: Sample["kind"]): Promise<Sample> {
       const deadline = start + 120_000;
       const check = () => {
         const viewer = document.querySelector('[data-testid="tour-viewer"]');
+        if (viewer?.querySelector('[role="alert"]')) return reject(new Error("panorama load failed before readiness"));
         if (viewer && /rooms explored/i.test(viewer.textContent ?? "")) return resolve(performance.now());
         if (performance.now() > deadline) return reject(new Error("tour never became usable"));
         requestAnimationFrame(check);
@@ -140,6 +147,7 @@ test("tour open: cold and warm, mobile profile", async ({ browser }) => {
     const { context, page } = await newMobilePage(browser, true);
     await page.goto(VILLA_PATH, { waitUntil: "load" });
     samples.push(await openTour(page, "cold"));
+    console.log("tour-sample", run + 1, samples.at(-1));
     await context.close();
   }
   {
@@ -149,6 +157,7 @@ test("tour open: cold and warm, mobile profile", async ({ browser }) => {
     for (let run = 0; run < RUNS; run++) {
       await closeTour(page);
       samples.push(await openTour(page, "warm"));
+      console.log("tour-warm-sample", run + 1, samples.at(-1));
     }
     await context.close();
   }

@@ -44,7 +44,7 @@ test("home idle JS and first chat open", async ({ browser }) => {
     });
     const clickToChatPanelMs = await page.evaluate(async () => {
       const button = [...document.querySelectorAll("button")].find(
-        (node) => node.getAttribute("aria-label") === "Open concierge chat" && node.offsetParent !== null,
+        (node) => node.getAttribute("aria-label") === "Open concierge chat" && node.getClientRects().length > 0,
       );
       if (!button) throw new Error("launcher not found");
       const start = performance.now();
@@ -60,6 +60,7 @@ test("home idle JS and first chat open", async ({ browser }) => {
       });
     });
     samples.push({ idleScriptBytes: idle.bytes, idleScriptRequests: idle.requests, clickToChatPanelMs });
+    console.log(`sample ${run + 1}: ${JSON.stringify(samples.at(-1))}`);
     await context.close();
   }
   const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
