@@ -18,6 +18,20 @@ describe("turnMetrics", () => {
     expect(createTurnId()).not.toBe(createTurnId());
   });
 
+  it("keeps generated UUID correlation unchanged when the UUID contains phone-like digits", () => {
+    const uuid = vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValue("4658ee01-1a4d-4688-bce6-58bfc8559311");
+    try {
+      const turnId = createTurnId();
+      const metrics = startTurnMetrics(turnId, "line");
+      expect(turnId).toMatch(/^turn_[a-p-]+$/);
+      expect(serializeConciergeTurnLog({ metrics, outcome: "ai" }).turnId).toBe(turnId);
+      expect(JSON.parse(conciergeTurnLogLine({ metrics, outcome: "ai" })).turnId).toBe(turnId);
+    } finally {
+      uuid.mockRestore();
+    }
+  });
+
   it("accumulates stage, model and tool timings", () => {
     const m = startTurnMetrics("turn_a", "line");
     recordStage(m, "guardrail", 5);

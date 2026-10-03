@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MESSAGING_REPLY_TIMEOUT_MS,
   recordLateMessagingResult,
+  measureMessagingStage,
+  startMessagingEventMetrics,
   resolveMessagingReply,
   type IncomingMessage,
   type MessagingChannel,
@@ -14,6 +16,7 @@ type ActionArgs = {
   userMessage?: string;
   siteUrl?: string;
   bookingFlow?: boolean;
+  turnId?: string;
 };
 
 const CHANNELS: MessagingChannel[] = ["line", "facebook", "instagram", "whatsapp"];
@@ -154,6 +157,45 @@ describe("resolveMessagingReply — cross-channel parity", () => {
   });
 
   describe("timeout and late results (fake timers)", () => {
+    it.each(CHANNELS)("[%s] times out a pending lookup and never starts an action after it resolves", async (channel) => {
+      vi.useFakeTimers();
+      let finishLookup: (active: boolean) => void = () => {};
+      const query = vi.fn(() => new Promise<boolean>(resolve => { finishLookup = resolve; }));
+      const action = vi.fn(async () => ({ response: "should never start" }));
+      const pending = resolveMessagingReply({ query, action }, incoming(channel));
+      await vi.advanceTimersByTimeAsync(MESSAGING_REPLY_TIMEOUT_MS + 1);
+      const reply = await pending;
+      expect(reply.timedOut).toBe(true);
+      expect(reply.lateResult).toBeUndefined();
+      finishLookup(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(action).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("returns a safe fallback when the booking-flow lookup rejects", async () => {
+      const action = vi.fn(async () => ({ response: "should never start" }));
+      const reply = await resolveMessagingReply({
+        query: async () => { throw new Error("private provider error"); },
+        action,
+      }, incoming("line"));
+      expect(reply.replyMode).toBe("failed");
+      expect(reply.timedOut).toBe(false);
+      expect(reply.responseText).not.toContain("private");
+      expect(action).not.toHaveBeenCalled();
+    });
+
+    it("uses only the remaining timeout after a slow booking-flow lookup", async () => {
+      vi.useFakeTimers();
+      const query = vi.fn(() => new Promise<boolean>(resolve => setTimeout(() => resolve(false), 10_000)));
+      const action = vi.fn(() => new Promise(() => {}));
+      const pending = resolveMessagingReply({ query, action }, incoming("instagram"));
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(action).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(MESSAGING_REPLY_TIMEOUT_MS - 10_000 + 1);
+      expect((await pending).timedOut).toBe(true);
+    });
+
     it("a slow generation times out: fallback is returned once and the late result is exposed, not delivered", async () => {
       vi.useFakeTimers();
       let resolveLate: (value: { response: string; model: string; committed?: { tool: string } }) => void = () => {};
@@ -174,7 +216,7 @@ describe("resolveMessagingReply — cross-channel parity", () => {
       // The late result resolving AFTER the fallback must not be delivered — only recorded.
       const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
       resolveLate({ response: "the real answer", model: "openai/gpt-6-luna", committed: { tool: "confirm_booking" } });
-      await recordLateMessagingResult(result.lateResult!, { eventKey: "evt_1", channel: "whatsapp" });
+      await recordLateMessagingResult(result.lateResult!, { turnId: "turn_1", channel: "whatsapp" });
 
       const logged = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
       expect(logged).toContain("messaging_late_result");
@@ -201,5 +243,30 @@ describe("resolveMessagingReply — cross-channel parity", () => {
     });
     const result = await resolveMessagingReply(client, incoming("line", { text: "yes confirm" }));
     expect(result.committed).toEqual({ tool: "confirm_booking", reference: "CONF-1" });
+  });
+
+  it("passes the same correlation id to the typed concierge action", async () => {
+    const { client, action } = makeClient({});
+    const result = await resolveMessagingReply(client, incoming("line", { turnId: "turn_shared" }));
+    expect(action.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ turnId: "turn_shared" }));
+    expect(result.metrics.turnId).toBe("turn_shared");
+  });
+
+  it("logs claim, generation and delivery timings with one id without operation payloads or errors", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const metrics = startMessagingEventMetrics("whatsapp");
+    await measureMessagingStage(metrics, "claim", async () => ({ phone: "+66812345678" }));
+    await measureMessagingStage(metrics, "generation", async () => "private guest text");
+    await expect(measureMessagingStage(metrics, "delivery", async () => {
+      throw new Error("guest@example.com");
+    })).rejects.toThrow("guest@example.com");
+    const logs = info.mock.calls.map(call => JSON.parse(String(call[0])));
+    expect(logs.map(log => log.turnId)).toEqual([metrics.turnId, metrics.turnId, metrics.turnId]);
+    expect(logs.map(log => log.outcome)).toEqual(["claim_completed", "generation_completed", "delivery_failed"]);
+    expect(logs[2].stages).toEqual({ claim: expect.any(Number), generation: expect.any(Number), delivery: expect.any(Number) });
+    const text = JSON.stringify(logs);
+    expect(text).not.toContain("66812345678");
+    expect(text).not.toContain("guest@example.com");
+    expect(text).not.toContain("private guest text");
   });
 });

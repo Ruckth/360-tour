@@ -58,6 +58,46 @@ async function createWebSession(t: ReturnType<typeof convexTest>, propertySlug?:
   });
 }
 
+describe("concierge without AI credentials", () => {
+  it.each(["line", "facebook", "instagram", "whatsapp"] as const)("[%s] uses a booking link and cannot claim a committed booking", async channel => {
+    vi.stubEnv("AI_API_KEY", "");
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await createWebSession(t);
+      await t.run(ctx => ctx.db.patch(sessionId, { channel }));
+      const reply = await t.action(api.chatAi.generateReply, {
+        sessionId, userMessage: "I want to book a villa", siteUrl: "https://resort.test",
+      });
+      expect(reply.response).toContain("https://resort.test/booking");
+      expect(reply.response).not.toContain("card below");
+      expect(reply.committed).toBeUndefined();
+      const bookings = await t.run(ctx => ctx.db.query("bookings").take(10));
+      expect(bookings).toHaveLength(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("records an unsupported policy with an empty fact store, while a greeting creates no report", async () => {
+    vi.stubEnv("AI_API_KEY", "");
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await createWebSession(t);
+      const hello = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "Hello!" });
+      expect(hello.model).toBe("fallback");
+      expect(await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10))).toHaveLength(0);
+      const policy = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "Is helicopter transfer included?" });
+      expect(policy.model).toBe("unknown_fallback");
+      expect(policy.response).toContain("not fully sure");
+      const reports = await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10));
+      expect(reports).toHaveLength(1);
+      expect(reports[0].userQuestion).toBe("Is helicopter transfer included?");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 /** Insert a historical approved saved answer + primary question, as if from before retirement. */
 async function seedHistoricalAnswer(
   t: ReturnType<typeof convexTest>,

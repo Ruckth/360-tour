@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
-import { TourCanvas } from "@/components/tour/TourCanvas";
+import { TourCanvas, type TourSceneStatus } from "@/components/tour/TourCanvas";
 import { TourConclusion } from "@/components/tour/TourConclusion";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,8 @@ export function TourViewer({
   const [texturesLoaded, setTexturesLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [sceneStatus, setSceneStatus] = useState<TourSceneStatus>("loading");
+  const [shownRoomId, setShownRoomId] = useState<string | null>(null);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
 
@@ -81,9 +83,10 @@ export function TourViewer({
   }, [phase, texturesLoaded]);
 
   useEffect(() => {
-    if (!currentRoomId) return;
-    setVisited((items) => new Set(items).add(currentRoomId));
-  }, [currentRoomId]);
+    // A room counts as explored once its panorama is actually on screen, not merely requested.
+    if (sceneStatus !== "ready" || !shownRoomId || shownRoomId !== currentRoomId) return;
+    setVisited((items) => (items.has(shownRoomId) ? items : new Set(items).add(shownRoomId)));
+  }, [currentRoomId, sceneStatus, shownRoomId]);
 
   const handleLoaded = useCallback(() => {
     setTexturesLoaded(true);
@@ -94,6 +97,10 @@ export function TourViewer({
     setLoadFailed(false);
     setRetryNonce((nonce) => nonce + 1);
   }, []);
+  const handleStatusChange = useCallback((status: TourSceneStatus, roomId: string | null) => {
+    setSceneStatus(status);
+    setShownRoomId(roomId);
+  }, []);
   const completeTransition = useCallback(() => {
     setTransitioning(false);
     setPreviousRoomId(null);
@@ -101,7 +108,8 @@ export function TourViewer({
 
   function navigateTo(roomId: string) {
     if (!activeRoomIds.has(roomId)) return;
-    if (transitioning || roomId === currentRoomId) return;
+    // Navigation is locked while a room is loading, crossfading, or failed (retry first).
+    if (transitioning || loadFailed || sceneStatus !== "ready" || roomId === currentRoomId) return;
     setPreviousRoomId(currentRoomId);
     setSelectedRoomId(roomId);
     setTransitioning(true);
@@ -115,11 +123,21 @@ export function TourViewer({
   );
   const previousRoom = activeRooms[(currentRoomIndex - 1 + activeRooms.length) % activeRooms.length];
   const nextRoom = activeRooms[(currentRoomIndex + 1) % activeRooms.length];
+  const navigationLocked = transitioning || loadFailed || sceneStatus !== "ready";
 
   if (roomsReady && !activeRooms.length) return null;
 
   const viewer = (
-    <div data-testid="tour-viewer" className="fixed inset-0 z-[70] bg-black" style={{ touchAction: "none" }}>
+    <div
+      data-testid="tour-viewer"
+      // Observable scene state (requested vs. on-screen room) for assistive tech and browser tests.
+      data-scene-status={sceneStatus}
+      data-requested-room={currentRoomId}
+      data-shown-room={shownRoomId ?? ""}
+      aria-busy={navigationLocked}
+      className="fixed inset-0 z-[70] bg-black"
+      style={{ touchAction: "none" }}
+    >
       {/* Keeps the villa identity available to assistive tech once the intro gives way to the tour. */}
       <h2 className="sr-only">{property.name}</h2>
       <div
@@ -138,6 +156,7 @@ export function TourViewer({
             onTransitionComplete={completeTransition}
             onLoaded={handleLoaded}
             onLoadError={handleLoadError}
+            onStatusChange={handleStatusChange}
             onNavigate={navigateTo}
             retrySignal={retryNonce}
           />
@@ -222,6 +241,8 @@ export function TourViewer({
                   type="button"
                   variant="glass"
                   className="inline-flex max-w-[42vw] items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-black/20 backdrop-blur-md transition hover:bg-white/25 md:max-w-none md:px-4 md:text-sm"
+                  // aria-disabled (not disabled) keeps keyboard focus on the control while locked.
+                  aria-disabled={navigationLocked}
                   onClick={() => navigateTo(previousRoom.id)}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -236,6 +257,8 @@ export function TourViewer({
                   type="button"
                   variant="outline"
                   className="inline-flex max-w-[42vw] items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-semibold text-black shadow-lg shadow-black/20 transition hover:bg-white/90 md:max-w-none md:px-4 md:text-sm"
+                  // aria-disabled (not disabled) keeps keyboard focus on the control while locked.
+                  aria-disabled={navigationLocked}
                   onClick={() => navigateTo(nextRoom.id)}
                 >
                   <span className="truncate">{nextRoom.name}</span>

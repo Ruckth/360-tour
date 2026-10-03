@@ -19,16 +19,30 @@ const desktopImages = {
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
 /** Read the client's reduced-motion / Save-Data / effective-connection signals. */
-function readHeroVideoDecision(): boolean {
-  if (typeof window === "undefined") return false;
-  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+function readHeroMediaPreferences(reducedMotion: boolean): {
+  videoAllowed: boolean;
+  reducedMotion: boolean;
+} {
   const connection = (navigator as Navigator & { connection?: NetworkInformation }).connection;
-  return shouldLoadHeroVideo({
+  return {
     reducedMotion,
-    saveData: connection?.saveData ?? false,
-    effectiveType: connection?.effectiveType ?? null,
-  });
+    videoAllowed: shouldLoadHeroVideo({
+      reducedMotion,
+      saveData: connection?.saveData ?? false,
+      effectiveType: connection?.effectiveType ?? null,
+    }),
+  };
+}
+
+/** Stop a video and drop its loaded media so it neither plays nor keeps buffering. */
+function unloadVideo(video: HTMLVideoElement | null) {
+  if (!video || !video.currentSrc) return;
+  video.pause();
+  // The <source> child is already gone; load() resets the element to its empty, poster-only state.
+  video.load();
 }
 
 export function HomeHero() {
@@ -40,8 +54,11 @@ export function HomeHero() {
   const [loaded, setLoaded] = useState(false);
   const [desktopStep, setDesktopStep] = useState(0);
   const [videosEnabled, setVideosEnabled] = useState(false);
-  // Decided once on mount: false for reduced-motion, Save-Data, or a slow connection → poster only.
+  // False for reduced-motion, Save-Data, or a slow connection → poster only. Reduced motion is
+  // tracked live; Save-Data / connection are read with it. Save-Data alone still cycles posters
+  // (it limits data, not motion), while reduced motion holds the first poster still.
   const [videoAllowed, setVideoAllowed] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const [onscreen, setOnscreen] = useState(true);
   const sectionRef = useRef<HTMLElement>(null);
   const video0 = useRef<HTMLVideoElement>(null);
@@ -53,8 +70,27 @@ export function HomeHero() {
   const video1Active = playVideo && desktopStep === 2;
 
   useEffect(() => {
-    setVideoAllowed(readHeroVideoDecision());
+    const query = window.matchMedia?.(REDUCED_MOTION_QUERY);
+    const apply = () => {
+      const preferences = readHeroMediaPreferences(query?.matches ?? false);
+      setVideoAllowed(preferences.videoAllowed);
+      setReducedMotion(preferences.reducedMotion);
+      // Reduced motion: return to (and hold) the first poster.
+      if (preferences.reducedMotion) setDesktopStep(0);
+    };
+    apply();
+    query?.addEventListener?.("change", apply);
+    return () => query?.removeEventListener?.("change", apply);
   }, []);
+
+  // When a clip stops being the active one (cycle advanced, or video was turned off live), stop it
+  // and release its media instead of leaving a paused, buffered element behind.
+  useEffect(() => {
+    if (!video0Active) unloadVideo(video0.current);
+  }, [video0Active]);
+  useEffect(() => {
+    if (!video1Active) unloadVideo(video1.current);
+  }, [video1Active]);
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => setLoaded(true), 100);
@@ -91,18 +127,26 @@ export function HomeHero() {
     }
 
     if (playVideo && desktopStep !== 1) return;
+    // Reduced motion: keep the first poster still instead of cycling cross-fades.
+    if (reducedMotion) return;
 
     // Timed advance: step 1 (image Ken Burns) always; steps 0/2 only in poster-only mode.
     const nextStep = desktopStep === 0 ? 1 : desktopStep === 1 ? 2 : 0;
     const delay = desktopStep === 1 ? 6000 : 7000;
     const timer = window.setTimeout(() => setDesktopStep(nextStep), delay);
     return () => window.clearTimeout(timer);
-  }, [desktopStep, playVideo, onscreen]);
+  }, [desktopStep, playVideo, onscreen, reducedMotion]);
 
   return (
-    <section ref={sectionRef} className="relative h-[100svh] overflow-hidden md:h-screen md:min-h-[520px]">
-      <div className={cn("absolute inset-0 transition-opacity duration-1000", loaded ? "opacity-100" : "opacity-0")}>
-        <div className={cn("absolute inset-0 transition-opacity duration-[2000ms]", desktopStep === 0 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
+    <section
+      ref={sectionRef}
+      data-testid="home-hero"
+      data-hero-step={desktopStep}
+      data-hero-motion={reducedMotion ? "reduced" : "full"}
+      className="relative h-[100svh] overflow-hidden md:h-screen md:min-h-[520px]"
+    >
+      <div className={cn("absolute inset-0 transition-opacity duration-1000 motion-reduce:transition-none", loaded ? "opacity-100" : "opacity-0")}>
+        <div className={cn("absolute inset-0 transition-opacity duration-[2000ms] motion-reduce:transition-none", desktopStep === 0 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
           <video
             ref={video0}
             muted
@@ -115,7 +159,7 @@ export function HomeHero() {
             {video0Active ? <source src="/videos/hero-left.mp4" type="video/mp4" /> : null}
           </video>
         </div>
-        <div className={cn("absolute inset-0 transition-opacity duration-[2000ms]", desktopStep === 1 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
+        <div className={cn("absolute inset-0 transition-opacity duration-[2000ms] motion-reduce:transition-none", desktopStep === 1 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
           <div className="flex h-full w-full flex-col md:flex-row">
             <div className="relative h-1/2 w-full overflow-hidden md:h-full md:w-1/2">
               <Image
@@ -123,7 +167,7 @@ export function HomeHero() {
                 alt=""
                 fill
                 sizes="(min-width: 768px) 50vw, 100vw"
-                className={cn("object-cover", desktopStep === 1 && "hero-ken-burns")}
+                className={cn("object-cover", desktopStep === 1 && !reducedMotion && "hero-ken-burns")}
               />
             </div>
             <div className="relative h-1/2 w-full overflow-hidden md:h-full md:w-1/2">
@@ -132,12 +176,12 @@ export function HomeHero() {
                 alt=""
                 fill
                 sizes="(min-width: 768px) 50vw, 100vw"
-                className={cn("object-cover", desktopStep === 1 && "hero-ken-burns")}
+                className={cn("object-cover", desktopStep === 1 && !reducedMotion && "hero-ken-burns")}
               />
             </div>
           </div>
         </div>
-        <div className={cn("absolute inset-0 transition-opacity duration-[2000ms]", desktopStep === 2 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
+        <div className={cn("absolute inset-0 transition-opacity duration-[2000ms] motion-reduce:transition-none", desktopStep === 2 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
           <video
             ref={video1}
             muted
@@ -183,7 +227,7 @@ export function HomeHero() {
         aria-label={a11y("scrollDown")}
         className="absolute bottom-6 left-1/2 z-10 hidden -translate-x-1/2 flex-col items-center gap-1.5 md:bottom-8 md:flex"
       >
-        <ArrowDown className="h-5 w-5 animate-bounce text-white/50 md:h-6 md:w-6" />
+        <ArrowDown className="h-5 w-5 text-white/50 motion-safe:animate-bounce md:h-6 md:w-6" />
       </Link>
     </section>
   );

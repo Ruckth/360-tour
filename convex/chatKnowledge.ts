@@ -583,6 +583,7 @@ async function clearQuestionReferences(ctx: MutationCtx, questionId: Id<'chatQue
 export const clearDeletedQuestionReferences = internalMutation({
 	args: { questionId: v.id('chatQuestions') },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return null;
 		if (!(await clearQuestionReferences(ctx, args.questionId))) {
 			await ctx.scheduler.runAfter(0, internal.chatKnowledge.clearDeletedQuestionReferences, args);
 		}
@@ -994,6 +995,7 @@ export const adminDeletePropertyScope = mutation({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const slug = sanitizePropertySlug(args.slug);
 		const property = await getPropertyBySlug(ctx, slug);
 		if (property) throw new Error('Real properties cannot be deleted here');
@@ -1773,6 +1775,7 @@ async function deleteQuestionBatch(ctx: MutationCtx, questionId: Id<'chatQuestio
 export const continueDeleteQuestion = internalMutation({
 	args: { questionId: v.id('chatQuestions') },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return null;
 		if (!(await deleteQuestionBatch(ctx, args.questionId))) {
 			await ctx.scheduler.runAfter(0, internal.chatKnowledge.continueDeleteQuestion, args);
 		}
@@ -1808,6 +1811,7 @@ async function deleteAnswerBatch(ctx: MutationCtx, answerId: Id<'chatAnswers'>) 
 export const continueDeleteAnswer = internalMutation({
 	args: { answerId: v.id('chatAnswers') },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return null;
 		if (!(await deleteAnswerBatch(ctx, args.answerId)).done) {
 			await ctx.scheduler.runAfter(0, internal.chatKnowledge.continueDeleteAnswer, args);
 		}
@@ -1897,6 +1901,7 @@ export const adminRejectQuestion = mutation({
 	args: { questionId: v.id('chatQuestions') },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const question = await ctx.db.get(args.questionId);
 		if (!question) throw new Error('Question not found');
 		await ctx.db.patch(args.questionId, {
@@ -1933,31 +1938,35 @@ function groupKeys(normalizedQuestions: string[]) {
 	return bulkIds(normalizedQuestions.map((key) => key.trim()).filter(Boolean), BULK_GROUP_LIMIT);
 }
 
-async function unknownsInGroup(ctx: QueryCtx, status: UnknownStatus, normalizedQuestion: string) {
+async function unknownsInGroup(ctx: QueryCtx, status: UnknownStatus, normalizedQuestion: string, limit = BULK_GROUP_ROW_LIMIT) {
 	return await ctx.db
 		.query('chatUnknownQuestions')
 		.withIndex('by_status_and_normalizedQuestion', (q) =>
 			q.eq('status', status).eq('normalizedQuestion', normalizedQuestion)
 		)
-		.take(BULK_GROUP_ROW_LIMIT);
+		.take(limit);
 }
 
-const REMAINING_COUNT_LIMIT = 1000;
+const REMAINING_COUNT_LIMIT = BULK_GROUP_ROW_LIMIT;
 
-/** Rows still matching the groups after a bulk action (capped), so the UI can offer to repeat it. */
+/** Bounded pending count; a positive lower bound lets the UI offer another 100-row batch. */
 async function remainingInGroups(ctx: QueryCtx, keys: string[], statuses: UnknownStatus[]) {
 	let remaining = 0;
-	for (const key of keys) {
+	groups: for (const key of keys) {
 		for (const status of statuses) {
-			if (remaining >= REMAINING_COUNT_LIMIT) return remaining;
+			if (remaining > REMAINING_COUNT_LIMIT) break groups;
 			const rows = await ctx.db
 				.query('chatUnknownQuestions')
 				.withIndex('by_status_and_normalizedQuestion', (q) => q.eq('status', status).eq('normalizedQuestion', key))
-				.take(REMAINING_COUNT_LIMIT - remaining);
+				.take(REMAINING_COUNT_LIMIT + 1 - remaining);
 			remaining += rows.length;
 		}
 	}
-	return remaining;
+	return {
+		remaining: Math.min(remaining, REMAINING_COUNT_LIMIT),
+		remainingIsLowerBound: remaining > REMAINING_COUNT_LIMIT,
+		hasMore: remaining > 0
+	};
 }
 
 async function newUnknownsByNormalizedQuestion(ctx: QueryCtx, normalizedQuestion: string) {
@@ -2090,7 +2099,7 @@ export const adminSuggestAnswersForUnknownGroups = query({
 	}
 });
 
-/** Ignores every "new" question in the given groups. Returns the ids so the UI can undo. */
+/** Ignores at most 100 "new" reports across the groups. Returns bounded IDs for Undo. */
 export const adminIgnoreUnknownGroups = mutation({
 	args: { normalizedQuestions: v.array(v.string()) },
 	handler: async (ctx, args) => {
@@ -2099,39 +2108,48 @@ export const adminIgnoreUnknownGroups = mutation({
 		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
 		const keys = groupKeys(args.normalizedQuestions);
 		for (const key of keys) {
-			for (const row of await unknownsInGroup(ctx, 'new', key)) {
+			const budget = BULK_GROUP_ROW_LIMIT - unknownQuestionIds.length;
+			if (budget === 0) break;
+			for (const row of await unknownsInGroup(ctx, 'new', key, budget)) {
 				await ctx.db.patch(row._id, { status: 'ignored', ignoredAt: now, updatedAt: now });
 				unknownQuestionIds.push(row._id);
 			}
 		}
-		return { ignored: unknownQuestionIds.length, unknownQuestionIds, remaining: await remainingInGroups(ctx, keys, ['new']) };
+		return { ignored: unknownQuestionIds.length, unknownQuestionIds, ...await remainingInGroups(ctx, keys, ['new']) };
 	}
 });
 
-/** Reopens resolved/ignored questions, either whole groups or specific rows (used by Undo). */
+/** Reopens at most 100 resolved/ignored reports across groups and explicit Undo IDs. */
 export const adminReopenUnknownGroups = mutation({
 	args: {
 		normalizedQuestions: v.optional(v.array(v.string())),
 		unknownQuestionIds: v.optional(v.array(v.id('chatUnknownQuestions')))
 	},
-	handler: async (ctx, args) => {
+		handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const keys = groupKeys(args.normalizedQuestions ?? []);
-		const rows: Doc<'chatUnknownQuestions'>[] = [];
-		for (const id of bulkIds(args.unknownQuestionIds ?? [], BULK_GROUP_LIMIT * BULK_GROUP_ROW_LIMIT)) {
-			const row = await ctx.db.get(id);
-			if (row) rows.push(row);
-		}
-		for (const key of keys) {
-			rows.push(...(await unknownsInGroup(ctx, 'resolved', key)), ...(await unknownsInGroup(ctx, 'ignored', key)));
+		if ((args.unknownQuestionIds?.length ?? 0) > BULK_GROUP_ROW_LIMIT) {
+			throw new Error(`Reopen ${BULK_GROUP_ROW_LIMIT} or fewer report IDs at a time`);
 		}
 		const reopenedIds = new Set<Id<'chatUnknownQuestions'>>();
-		for (const row of rows) {
-			if (row.status === 'new' || reopenedIds.has(row._id)) continue;
+		for (const id of bulkIds(args.unknownQuestionIds ?? [], BULK_GROUP_ROW_LIMIT)) {
+			const row = await ctx.db.get(id);
+			if (!row || row.status === 'new') continue;
 			await reopenUnknownQuestion(ctx, row._id);
 			reopenedIds.add(row._id);
 		}
-		return { reopened: reopenedIds.size, remaining: await remainingInGroups(ctx, keys, ['resolved', 'ignored']) };
+		for (const key of keys) {
+			for (const status of ['resolved', 'ignored'] as const) {
+				const budget = BULK_GROUP_ROW_LIMIT - reopenedIds.size;
+				if (budget === 0) break;
+				for (const row of await unknownsInGroup(ctx, status, key, budget)) {
+					await reopenUnknownQuestion(ctx, row._id);
+					reopenedIds.add(row._id);
+				}
+			}
+			if (reopenedIds.size === BULK_GROUP_ROW_LIMIT) break;
+		}
+		return { reopened: reopenedIds.size, ...await remainingInGroups(ctx, keys, ['resolved', 'ignored']) };
 	}
 });
 
@@ -2207,7 +2225,7 @@ export const adminLinkUnknownGroups = mutation({
 				linkQuestionId: questionChanges[0].questionId
 			});
 		}
-		return { linked: unknownQuestionIds.length, remaining: await remainingInGroups(ctx, keys, ['new']), undo: { unknownQuestionIds, questionChanges } };
+		return { linked: unknownQuestionIds.length, ...await remainingInGroups(ctx, keys, ['new']), undo: { unknownQuestionIds, questionChanges } };
 	}
 });
 
@@ -2359,6 +2377,7 @@ export const adminRejectQuestions = mutation({
 	args: { questionIds: v.array(v.id('chatQuestions')) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		return { rejected: await setQuestionsStatus(ctx, args.questionIds, 'rejected', admin.email) };
 	}
 });

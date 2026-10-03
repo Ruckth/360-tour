@@ -487,3 +487,24 @@ describe("static suggestion chips remain live", () => {
     }
   });
 });
+
+describe("retired queued curated deletion", () => {
+  it("preserves historical interactions when a pre-retirement deletion job runs", async () => {
+    vi.useFakeTimers();
+    try {
+      const t = convexTest(schema, modules);
+      const questionId = await seedHistoricalCurated(t, { question: "Historical booking policy", answer: "Archived answer" });
+      const sessionId = await createWebSession(t, "queued-delete-visitor");
+      await t.mutation(api.chatSuggestions.markClicked, { sessionId, suggestion: { source: "curated", suggestionId: questionId } });
+      const before = await t.run((ctx) => ctx.db.query("chatQuestionInteractions").withIndex("by_questionId", (q) => q.eq("questionId", questionId)).collect());
+      await t.run((ctx) => ctx.scheduler.runAfter(0, internal.chatSuggestions.deleteCuratedInteractions, { questionId }));
+      await finishScheduledWork(t);
+      const after = await t.run((ctx) => ctx.db.query("chatQuestionInteractions").withIndex("by_questionId", (q) => q.eq("questionId", questionId)).collect());
+      expect(after).toEqual(before);
+      expect(after).toHaveLength(1);
+      expect(await t.run((ctx) => ctx.db.get(questionId))).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

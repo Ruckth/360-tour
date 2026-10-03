@@ -16,10 +16,18 @@ class FakeTexture implements DisposableTexture {
  * ordering and concurrency are deterministic. Records call order and tracks concurrent in-flight.
  */
 function makeLoader() {
+  // Several loads of one path can be pending at once (e.g. across a teardown/reopen): FIFO per path.
   const pending = new Map<
     string,
-    { resolve: (t: FakeTexture) => void; reject: (e: unknown) => void }
+    Array<{ resolve: (t: FakeTexture) => void; reject: (e: unknown) => void }>
   >();
+  const take = (path: string) => {
+    const queue = pending.get(path);
+    const entry = queue?.shift();
+    if (!entry) throw new Error(`no in-flight load for ${path}`);
+    if (!queue!.length) pending.delete(path);
+    return entry;
+  };
   const callOrder: string[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
@@ -32,7 +40,7 @@ function makeLoader() {
     signal.addEventListener("abort", () => aborted.push(path));
     try {
       return await new Promise<FakeTexture>((resolve, reject) => {
-        pending.set(path, { resolve, reject });
+        pending.set(path, [...(pending.get(path) ?? []), { resolve, reject }]);
       });
     } finally {
       inFlight -= 1;
@@ -49,18 +57,15 @@ function makeLoader() {
       return inFlight;
     },
     aborted,
+    /** Resolve the OLDEST pending load of `path`. */
     settle(path: string): FakeTexture {
-      const entry = pending.get(path);
-      if (!entry) throw new Error(`no in-flight load for ${path}`);
-      pending.delete(path);
+      const entry = take(path);
       const texture = new FakeTexture(path);
       entry.resolve(texture);
       return texture;
     },
     fail(path: string): void {
-      const entry = pending.get(path);
-      if (!entry) throw new Error(`no in-flight load for ${path}`);
-      pending.delete(path);
+      const entry = take(path);
       entry.reject(new Error(`load failed: ${path}`));
     },
     isPending(path: string): boolean {
@@ -240,7 +245,7 @@ describe("TourTextureCache", () => {
     expect(cache.peek("a")).toBe(ta2);
   });
 
-  it("disposes a stale-generation result instead of installing it", async () => {
+  it("a stale acquire gets nothing; its texture is kept unowned (never handed out, disposed once on eviction)", async () => {
     const stale = cache.acquire("roomA", "current");
     await flush();
     // Guest switches rooms before roomA's texture arrives.
@@ -250,6 +255,18 @@ describe("TourTextureCache", () => {
 
     expect(result.texture).toBeNull();
     expect(result.failed).toBe(false);
+    // Installed by the flight's single completion owner, but with NO owner: an eviction candidate.
+    expect(cache.peek("roomA")).toBe(staleTex);
+    expect(cache.ownersOf("roomA")).toEqual([]);
+    expect(staleTex.dispose).not.toHaveBeenCalled();
+
+    // Overfill: the unowned stale texture is evicted and disposed exactly once.
+    cache.prefetch(["b", "c", "d", "e"]);
+    for (const p of ["b", "c", "d", "e"]) {
+      await flush();
+      if (loader.isPending(p)) loader.settle(p);
+    }
+    await flush();
     expect(cache.peek("roomA")).toBeUndefined();
     expect(staleTex.dispose).toHaveBeenCalledTimes(1);
   });
@@ -324,5 +341,145 @@ describe("TourTextureCache", () => {
     const second = await cache.acquire("roomA", "previous");
     expect(second.texture).toBe(tex);
     expect(loader.load.mock.calls.length).toBe(callsBefore); // no reload
+  });
+
+  describe("one completion owner per flight (deferred loader)", () => {
+    it("prefetch, then room switch, then acquire of the same path: promoted, live, not disposed", async () => {
+      cache.prefetch(["B"]);
+      await flush();
+      expect(loader.isPending("B")).toBe(true);
+      cache.bumpGeneration(); // the room switch that makes the prefetch's generation stale
+      const acquire = cache.acquire("B", "current");
+      await flush();
+      expect(loader.load).toHaveBeenCalledTimes(1); // joined the prefetch flight
+      const tex = loader.settle("B");
+      const result = await acquire;
+
+      expect(result.texture).toBe(tex);
+      expect(tex.dispose).not.toHaveBeenCalled();
+      expect(cache.peek("B")).toBe(tex);
+      expect(cache.ownersOf("B")).toEqual(["current"]);
+      expect(cache.prefetchesInFlight).toBe(0);
+    });
+
+    it("same-generation acquire joining a prefetch flight is promoted to an owner and survives eviction pressure", async () => {
+      cache.prefetch(["B"]);
+      await flush();
+      const acquire = cache.acquire("B", "current");
+      const tex = loader.settle("B");
+      expect((await acquire).texture).toBe(tex);
+      expect(cache.ownersOf("B")).toEqual(["current"]);
+
+      cache.prefetch(["x1", "x2", "x3", "x4", "x5"]);
+      for (const p of ["x1", "x2", "x3", "x4", "x5"]) {
+        await flush();
+        if (loader.isPending(p)) loader.settle(p);
+      }
+      await flush();
+      expect(cache.peek("B")).toBe(tex);
+      expect(tex.dispose).not.toHaveBeenCalled();
+    });
+
+    it("simultaneous acquires of one path share one load, both own it, and nothing is disposed", async () => {
+      const first = cache.acquire("A", "current");
+      const second = cache.acquire("A", "previous");
+      await flush();
+      expect(loader.load).toHaveBeenCalledTimes(1);
+      const tex = loader.settle("A");
+      const [r1, r2] = await Promise.all([first, second]);
+      expect(r1.texture).toBe(tex);
+      expect(r2.texture).toBe(tex);
+      expect(cache.ownersOf("A").sort()).toEqual(["current", "previous"]);
+      expect(tex.dispose).not.toHaveBeenCalled();
+
+      cache.release("A", "current");
+      expect(cache.ownersOf("A")).toEqual(["previous"]);
+    });
+
+    it("a stale acquire and a live acquire of the same path: only the live owner receives and owns it", async () => {
+      const stale = cache.acquire("A", "old");
+      await flush();
+      cache.bumpGeneration();
+      const live = cache.acquire("A", "current");
+      const tex = loader.settle("A");
+      const [staleResult, liveResult] = await Promise.all([stale, live]);
+      expect(staleResult.texture).toBeNull();
+      expect(liveResult.texture).toBe(tex);
+      expect(cache.ownersOf("A")).toEqual(["current"]);
+      expect(tex.dispose).not.toHaveBeenCalled();
+    });
+
+    it("a failed shared flight fails the live acquire and is retried on demand", async () => {
+      cache.prefetch(["A"]);
+      await flush();
+      const acquire = cache.acquire("A", "current");
+      loader.fail("A");
+      expect(await acquire).toEqual({ texture: null, failed: true });
+      expect(cache.prefetchesInFlight).toBe(0);
+
+      const retry = cache.acquire("A", "current");
+      await flush();
+      const tex = loader.settle("A");
+      expect((await retry).texture).toBe(tex);
+    });
+
+    it("shutdown then reopen: late completions from before shutdown cannot touch the new flight, counters, or cache", async () => {
+      cache.prefetch(["A", "P"]);
+      await flush();
+      expect(cache.prefetchesInFlight).toBe(2);
+      const oldAcquire = cache.acquire("A", "current"); // joins the old A flight
+
+      cache.disposeAll();
+      expect(loader.aborted).toEqual(expect.arrayContaining(["A", "P"]));
+      cache.reopen();
+
+      // The reopened tour starts a NEW flight for the same path, plus a new prefetch.
+      const freshAcquire = cache.acquire("A", "current");
+      cache.prefetch(["Q"]);
+      await flush();
+      expect(loader.load).toHaveBeenCalledTimes(4);
+      expect(cache.loadsInFlight).toBe(2);
+      expect(cache.prefetchesInFlight).toBe(1);
+
+      // The pre-shutdown loads complete late (the fake loader ignores abort).
+      const lateA = loader.settle("A"); // oldest pending A = the pre-shutdown flight
+      loader.fail("P");
+      await flush();
+      expect(await oldAcquire).toEqual({ texture: null, failed: false });
+      expect(lateA.dispose).toHaveBeenCalledTimes(1);
+      expect(cache.peek("A")).toBeUndefined();
+      expect(cache.hasFailed("P")).toBe(false);
+      expect(cache.loadsInFlight).toBe(2); // fresh A and Q are still tracked
+      expect(cache.prefetchesInFlight).toBe(1); // the old P slot was not double-released
+
+      const freshA = loader.settle("A");
+      const fresh = await freshAcquire;
+      expect(fresh.texture).toBe(freshA);
+      expect(freshA.dispose).not.toHaveBeenCalled();
+      expect(cache.ownersOf("A")).toEqual(["current"]);
+
+      const q = loader.settle("Q");
+      await flush();
+      expect(cache.peek("Q")).toBe(q);
+      expect(cache.prefetchesInFlight).toBe(0);
+      expect(cache.loadsInFlight).toBe(0);
+    });
+
+    it("every loaded texture is disposed exactly once across eviction and teardown", async () => {
+      const textures: FakeTexture[] = [];
+      const cur = cache.acquire("cur", "current");
+      await flush();
+      textures.push(loader.settle("cur"));
+      await cur;
+      const paths = ["p1", "p2", "p3", "p4", "p5", "p6"];
+      cache.prefetch(paths);
+      for (const p of paths) {
+        await flush();
+        if (loader.isPending(p)) textures.push(loader.settle(p));
+      }
+      await flush();
+      cache.disposeAll();
+      for (const texture of textures) expect(texture.dispose).toHaveBeenCalledTimes(1);
+    });
   });
 });

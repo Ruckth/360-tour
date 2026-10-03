@@ -9,16 +9,24 @@
 //   WebGL (fake textures carrying a `dispose` spy).
 //
 // Ownership model (the invariant that makes disposal safe):
-//   Each cache entry carries an `owners` set of opaque owner keys. A texture is disposed only when
-//   its owner set becomes empty AND it is not pinned by being the current/previous active room. The
-//   two owners the viewer uses are the current room and, during a crossfade, the previous room — so
-//   a texture in use by either is never disposed. Prefetched-but-unowned textures are the eviction
-//   candidates; eviction only ever touches an entry with no owners.
+//   Each cache entry carries an `owners` set of opaque owner keys. Only UNOWNED entries are ever
+//   evicted (and disposed). The viewer holds owner keys for the requested room, the room on screen,
+//   and the outgoing room of a crossfade, so a texture in use is never disposed.
 //
-// Generations (stale-load safety):
-//   Every room switch / teardown bumps the generation token. A load that resolves against a stale
-//   generation is DISPOSED immediately and never installed, so a slow network for an abandoned room
-//   can neither leak memory nor overwrite the live cache.
+// One completion owner per load ("flight"):
+//   Every network load is a single flight. Acquirers and prefetchers only register CLAIMS on the
+//   flight; exactly one completion handler — `completeFlight` — decides what happens to the loaded
+//   texture: install it (owned by every claim of the live generation, or unowned when only a
+//   prefetch wanted it) or dispose it (the cache was torn down since the flight began). Callers
+//   never install or dispose a flight's texture themselves, so a stale claim can never dispose an
+//   object a live claim is about to receive, and every loaded texture is disposed at most once.
+//
+// Generations and epochs:
+//   - `generation` advances on every room switch. A claim made in an older generation is ignored at
+//     completion: its acquire resolves `{ texture: null }` and contributes no owner.
+//   - `epoch` advances on `disposeAll`. A flight from an older epoch is aborted; if it still
+//     completes, its texture is disposed and it never touches the new epoch's flights, queue,
+//     counters or cache.
 
 /** The minimal shape this module needs from a THREE.Texture. Keeps it WebGL-free for tests. */
 export interface DisposableTexture {
@@ -33,9 +41,9 @@ export type TextureLoaderFn<T extends DisposableTexture> = (
 
 export interface TextureCacheOptions<T extends DisposableTexture> {
   load: TextureLoaderFn<T>;
-  /** Max textures held at once (current + previous + prefetched). Default 5. */
+  /** Max textures held at once (owned entries may exceed it; unowned ones are evicted). Default 5. */
   maxTextures?: number;
-  /** Max concurrent in-flight loads for PREFETCH. The current-room load is not subject to this. Default 2. */
+  /** Max concurrent in-flight loads started by PREFETCH. Acquires are never queued. Default 2. */
   prefetchConcurrency?: number;
 }
 
@@ -47,16 +55,23 @@ interface CacheEntry<T extends DisposableTexture> {
   lastUsed: number;
 }
 
-interface InFlight<T extends DisposableTexture> {
+interface Flight {
   path: string;
-  generation: number;
+  epoch: number;
   controller: AbortController;
-  promise: Promise<T | null>;
+  /** Acquire claims: owner → generation in which it was claimed (latest wins). */
+  claims: Map<string, number>;
+  /** True when this flight occupies a prefetch concurrency slot. */
+  holdsPrefetchSlot: boolean;
+  /** Set by `completeFlight` when the load failed. */
+  failed: boolean;
+  /** Resolves after `completeFlight` has run (install/dispose decided). Never rejects. */
+  settled: Promise<void>;
 }
 
 /** Result of requesting the current room's texture. */
 export interface AcquireResult<T extends DisposableTexture> {
-  /** The ready texture, or null if the load failed (see `failed`). */
+  /** The ready texture, or null if the load failed or the request went stale. */
   texture: T | null;
   /** True when the load failed for this generation; the caller should show the error/retry state. */
   failed: boolean;
@@ -68,7 +83,7 @@ export class TourTextureCache<T extends DisposableTexture> {
   private readonly prefetchConcurrency: number;
 
   private readonly cache = new Map<string, CacheEntry<T>>();
-  private readonly inFlight = new Map<string, InFlight<T>>();
+  private readonly inFlight = new Map<string, Flight>();
   /** Paths whose last load FAILED — used to drive the error state; never a cached texture. */
   private readonly failedPaths = new Set<string>();
   /** Prefetch requests waiting for a concurrency slot. */
@@ -76,6 +91,7 @@ export class TourTextureCache<T extends DisposableTexture> {
   private activePrefetches = 0;
 
   private generation = 0;
+  private epoch = 0;
   private clock = 0;
   private disposed = false;
 
@@ -90,15 +106,24 @@ export class TourTextureCache<T extends DisposableTexture> {
     return this.generation;
   }
 
-  /** Advance the generation so any in-flight load for the old generation is ignored on resolve. */
+  /** Advance the generation so claims made for the old generation are ignored on completion. */
   bumpGeneration(): number {
     this.generation += 1;
     return this.generation;
   }
 
-  /** Snapshot for assertions/tests: cached paths and in-use (owned) paths. */
   get size(): number {
     return this.cache.size;
+  }
+
+  /** Number of prefetch slots in use (for tests/diagnostics). */
+  get prefetchesInFlight(): number {
+    return this.activePrefetches;
+  }
+
+  /** Number of loads in flight for the current epoch (for tests/diagnostics). */
+  get loadsInFlight(): number {
+    return this.inFlight.size;
   }
 
   cachedPaths(): string[] {
@@ -109,44 +134,60 @@ export class TourTextureCache<T extends DisposableTexture> {
     return this.failedPaths.has(path);
   }
 
+  /** Owners currently holding `path` (for tests/diagnostics). */
+  ownersOf(path: string): string[] {
+    return [...(this.cache.get(path)?.owners ?? [])];
+  }
+
   /** The texture for `path` if already resident, else undefined. Does not trigger a load. */
   peek(path: string): T | undefined {
     return this.cache.get(path)?.texture;
   }
 
   /**
-   * Load (or reuse) the texture for `path` and mark `owner` as holding it. Loading the current room
-   * MUST go through this; it is not subject to prefetch concurrency so the current room is never
-   * queued behind prefetches. The returned promise resolves to `{ texture, failed }` for the
-   * generation captured at call time; a stale resolve yields `{ texture: null, failed: false }` and
-   * the loaded texture (if any) is disposed, never installed.
+   * Synchronously add `owner` to a RESIDENT texture and return it (undefined when not resident).
+   * Used to pin a texture that is already on screen (e.g. the outgoing room of a crossfade).
+   */
+  retain(path: string, owner: string): T | undefined {
+    if (this.disposed) return undefined;
+    const entry = this.cache.get(path);
+    if (!entry) return undefined;
+    entry.owners.add(owner);
+    entry.lastUsed = ++this.clock;
+    return entry.texture;
+  }
+
+  /**
+   * Load (or reuse) the texture for `path` and mark `owner` as holding it. Acquires are never queued
+   * behind prefetches; an acquire for a path a prefetch is already loading JOINS that flight (one
+   * network request) and is promoted to an owner when it completes. Resolves `{ texture, failed }`
+   * for the generation captured at call time; a stale request resolves `{ texture: null, failed:
+   * false }` and contributes no owner (the texture is still cached or disposed by the flight).
    */
   async acquire(path: string, owner: string): Promise<AcquireResult<T>> {
     if (this.disposed) return { texture: null, failed: false };
     const generation = this.generation;
+    const epoch = this.epoch;
 
-    const existing = this.cache.get(path);
-    if (existing) {
-      existing.owners.add(owner);
-      existing.lastUsed = ++this.clock;
+    const resident = this.retain(path, owner);
+    if (resident) {
       this.failedPaths.delete(path);
-      return { texture: existing.texture, failed: false };
+      return { texture: resident, failed: false };
     }
 
     this.failedPaths.delete(path);
-    const texture = await this.runLoad(path, generation, /* isPrefetch */ false);
+    const flight = this.inFlight.get(path) ?? this.startFlight(path, false);
+    flight.claims.set(owner, generation);
+    await flight.settled;
 
-    if (this.generation !== generation || this.disposed) {
-      // Stale result: dispose and never install.
-      if (texture) safeDispose(texture);
+    if (this.epoch !== epoch || this.disposed || this.generation !== generation) {
       return { texture: null, failed: false };
     }
-    if (!texture) {
-      this.failedPaths.add(path);
-      return { texture: null, failed: true };
-    }
-    this.install(path, texture, owner);
-    return { texture, failed: false };
+    const entry = this.cache.get(path);
+    if (entry && entry.owners.has(owner)) return { texture: entry.texture, failed: false };
+    if (flight.failed) return { texture: null, failed: true };
+    // Owner released (or entry evicted after release) between completion and now: not ours.
+    return { texture: null, failed: false };
   }
 
   /**
@@ -156,11 +197,16 @@ export class TourTextureCache<T extends DisposableTexture> {
    * the room is actually acquired. Call this only AFTER the current room is ready.
    */
   prefetch(paths: string[], generation = this.generation): void {
-    if (this.disposed) return;
+    if (this.disposed || generation !== this.generation) return;
     for (const path of paths) {
-      if (generation !== this.generation) return;
-      if (this.cache.has(path) || this.inFlight.has(path)) continue;
-      if (this.prefetchQueue.some((q) => q.path === path)) continue;
+      if (this.cache.has(path)) continue;
+      // Already loading (any generation): its completion installs it, so do not duplicate it.
+      if (this.inFlight.has(path)) continue;
+      const queued = this.prefetchQueue.find((q) => q.path === path);
+      if (queued) {
+        queued.generation = generation;
+        continue;
+      }
       this.prefetchQueue.push({ path, generation });
     }
     this.pumpPrefetch();
@@ -168,22 +214,21 @@ export class TourTextureCache<T extends DisposableTexture> {
 
   /** Release `owner`'s hold on `path`. Disposal happens lazily via eviction, never here directly. */
   release(path: string, owner: string): void {
-    const entry = this.cache.get(path);
-    if (!entry) return;
-    entry.owners.delete(owner);
+    this.cache.get(path)?.owners.delete(owner);
   }
 
-  /** Release `owner` from every entry it holds (used when a slot — current/previous — is cleared). */
+  /** Release `owner` from every entry it holds. */
   releaseOwner(owner: string): void {
     for (const entry of this.cache.values()) entry.owners.delete(owner);
   }
 
   /**
    * Dispose everything this cache owns and reset it so the SAME instance can be reused after teardown
-   * (reopen loads fresh — nothing disposed is ever handed back). Aborts in-flight loads and advances
-   * the generation so their resolves are ignored.
+   * (reopen loads fresh — nothing disposed is ever handed back). Aborts in-flight loads; their late
+   * completions dispose their own texture and never touch the reset state.
    */
   disposeAll(): void {
+    this.epoch += 1;
     this.generation += 1;
     this.disposed = true;
     for (const flight of this.inFlight.values()) flight.controller.abort();
@@ -203,21 +248,73 @@ export class TourTextureCache<T extends DisposableTexture> {
 
   // --- internals ---
 
-  private install(path: string, texture: T, owner?: string): void {
-    const entry: CacheEntry<T> = {
+  private startFlight(path: string, holdsPrefetchSlot: boolean): Flight {
+    const controller = new AbortController();
+    const flight: Flight = {
       path,
-      texture,
-      owners: owner ? new Set([owner]) : new Set(),
-      lastUsed: ++this.clock,
+      epoch: this.epoch,
+      controller,
+      claims: new Map(),
+      holdsPrefetchSlot,
+      failed: false,
+      settled: Promise.resolve(),
     };
-    this.cache.set(path, entry);
+    if (holdsPrefetchSlot) this.activePrefetches += 1;
+    let loading: Promise<T>;
+    try {
+      loading = this.load(path, controller.signal);
+    } catch (error) {
+      loading = Promise.reject(error);
+    }
+    flight.settled = loading.then(
+      (texture) => this.completeFlight(flight, texture),
+      () => this.completeFlight(flight, null),
+    );
+    this.inFlight.set(path, flight);
+    return flight;
+  }
+
+  /** The ONLY place a loaded texture is installed or disposed. */
+  private completeFlight(flight: Flight, texture: T | null): void {
+    if (flight.epoch !== this.epoch) {
+      // Torn down since this flight began: the new epoch's state is not ours to touch.
+      if (texture) safeDispose(texture);
+      return;
+    }
+    if (this.inFlight.get(flight.path) === flight) this.inFlight.delete(flight.path);
+    if (flight.holdsPrefetchSlot) {
+      flight.holdsPrefetchSlot = false;
+      this.activePrefetches -= 1;
+    }
+
+    if (!texture) {
+      flight.failed = true;
+      this.failedPaths.add(flight.path);
+    } else {
+      const liveOwners = [...flight.claims]
+        .filter(([, generation]) => generation === this.generation)
+        .map(([owner]) => owner);
+      const existing = this.cache.get(flight.path);
+      if (existing) {
+        // Defensive: one flight per path means this should not happen; never replace a live entry.
+        if (existing.texture !== texture) safeDispose(texture);
+        for (const owner of liveOwners) existing.owners.add(owner);
+        existing.lastUsed = ++this.clock;
+      } else {
+        // Within the same epoch a loaded texture is always worth keeping: owned by live claims, or
+        // unowned (evictable) when only a prefetch or a stale request wanted it.
+        this.install(flight.path, texture, liveOwners);
+      }
+    }
+    this.pumpPrefetch();
+  }
+
+  private install(path: string, texture: T, owners: string[]): void {
+    this.cache.set(path, { path, texture, owners: new Set(owners), lastUsed: ++this.clock });
     this.evictIfNeeded();
   }
 
-  /**
-   * Evict unowned LRU entries until the cache is within bound. An OWNED entry is never evicted, so a
-   * texture held by the current room or the crossfade-previous room survives regardless of bound.
-   */
+  /** Evict unowned LRU entries until within bound. An OWNED entry is never evicted. */
   private evictIfNeeded(): void {
     if (this.cache.size <= this.maxTextures) return;
     const evictable = [...this.cache.values()]
@@ -238,51 +335,10 @@ export class TourTextureCache<T extends DisposableTexture> {
     ) {
       const next = this.prefetchQueue.shift()!;
       if (next.generation !== this.generation) continue;
-      if (this.cache.has(next.path) || this.inFlight.has(next.path)) continue;
-      this.activePrefetches += 1;
-      void this.runLoad(next.path, next.generation, /* isPrefetch */ true)
-        .then((texture) => {
-          if (this.generation !== next.generation || this.disposed) {
-            if (texture) safeDispose(texture);
-            return;
-          }
-          if (!texture) {
-            this.failedPaths.add(next.path);
-            return;
-          }
-          if (this.cache.has(next.path)) {
-            // Raced with an acquire that already installed it; drop the duplicate.
-            safeDispose(texture);
-            return;
-          }
-          this.install(next.path, texture); // unowned
-        })
-        .finally(() => {
-          this.activePrefetches -= 1;
-          this.pumpPrefetch();
-        });
+      if (this.cache.has(next.path)) continue;
+      if (this.inFlight.has(next.path)) continue;
+      this.startFlight(next.path, true);
     }
-  }
-
-  /**
-   * Run (or join) a single load. Returns the texture, or null on failure/abort. Dedupes concurrent
-   * loads of the same path so an acquire and a prefetch for one path share one network request.
-   */
-  private runLoad(path: string, generation: number, isPrefetch: boolean): Promise<T | null> {
-    const existing = this.inFlight.get(path);
-    if (existing) return existing.promise;
-
-    const controller = new AbortController();
-    const promise = this.load(path, controller.signal)
-      .then((texture) => texture)
-      .catch(() => null)
-      .finally(() => {
-        this.inFlight.delete(path);
-      });
-
-    this.inFlight.set(path, { path, generation, controller, promise });
-    void isPrefetch; // (reserved: a future policy could prioritise non-prefetch loads)
-    return promise;
   }
 }
 

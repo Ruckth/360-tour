@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { internalQuery, mutation, query } from './_generated/server';
+import { internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 
@@ -15,7 +15,16 @@ const structuredSourceValidator = v.union(
 
 /** Bounded per call so a large unknown group is resolved in verifiable batches. */
 const RESOLVE_GROUP_LIMIT = 100;
-const RESOLVE_GROUP_ROW_LIMIT = 100;
+const RESOLVE_ROW_LIMIT = 100;
+
+function unresolvedReports(ctx: MutationCtx, key: string, propertyId?: Id<'properties'>) {
+	const rows = ctx.db.query('chatUnknownQuestions');
+	return propertyId
+		? rows.withIndex('by_status_and_normalizedQuestion_and_propertyId', q =>
+			q.eq('status', 'new').eq('normalizedQuestion', key).eq('propertyId', propertyId))
+		: rows.withIndex('by_status_and_normalizedQuestion', q =>
+			q.eq('status', 'new').eq('normalizedQuestion', key));
+}
 
 function text(value: string, label: string, limit: number) {
 	const clean = value.trim();
@@ -157,13 +166,10 @@ export const adminResolveUnknownGroups = mutation({
 		const now = Date.now();
 		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
 		for (const key of keys) {
-			const rows = await ctx.db
-				.query('chatUnknownQuestions')
-				.withIndex('by_status_and_normalizedQuestion', q => q.eq('status', 'new').eq('normalizedQuestion', key))
-				.take(RESOLVE_GROUP_ROW_LIMIT);
+			const budget = RESOLVE_ROW_LIMIT - unknownQuestionIds.length;
+			if (budget === 0) break;
+			const rows = await unresolvedReports(ctx, key, fact?.propertyId).take(budget);
 			for (const row of rows) {
-				// A property-scoped fact may only resolve unknowns for its own property.
-				if (fact?.propertyId && row.propertyId !== fact.propertyId) continue;
 				await ctx.db.patch(row._id, {
 					status: 'resolved',
 					resolvedFactId: args.factId,
@@ -180,14 +186,21 @@ export const adminResolveUnknownGroups = mutation({
 
 		let remaining = 0;
 		for (const key of keys) {
-			const rows = await ctx.db
-				.query('chatUnknownQuestions')
-				.withIndex('by_status_and_normalizedQuestion', q => q.eq('status', 'new').eq('normalizedQuestion', key))
-				.take(RESOLVE_GROUP_ROW_LIMIT);
-			remaining += fact?.propertyId ? rows.filter(row => row.propertyId === fact!.propertyId).length : rows.length;
+			const budget = RESOLVE_ROW_LIMIT + 1 - remaining;
+			if (budget === 0) break;
+			remaining += (await unresolvedReports(ctx, key, fact?.propertyId).take(budget)).length;
 		}
 
-		return { resolved: unknownQuestionIds.length, remaining, unknownQuestionIds };
+		// Count at most one more than the batch budget: zero proves completion; larger groups
+		// expose an honest lower bound without scanning their whole backlog. Returned IDs stay
+		// small enough for Convex serialization and the existing adminReopenUnknownGroups undo.
+		return {
+			resolved: unknownQuestionIds.length,
+			remaining: Math.min(remaining, RESOLVE_ROW_LIMIT),
+			remainingIsLowerBound: remaining > RESOLVE_ROW_LIMIT,
+			hasMore: remaining > 0,
+			unknownQuestionIds
+		};
 	}
 });
 

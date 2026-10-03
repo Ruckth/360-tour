@@ -84,7 +84,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
   const ignoreGroups = useMutation(api.chatKnowledge.adminIgnoreUnknownGroups);
   const reopenGroups = useMutation(api.chatKnowledge.adminReopenUnknownGroups);
   const undo = useUndoNotice();
-  const [leftover, setLeftover] = useState<{ remaining: number; rerun: () => void } | null>(null);
+  const [leftover, setLeftover] = useState<{ remaining: number; remainingIsLowerBound: boolean; rerun: () => void } | null>(null);
 
   const groups = result?.groups ?? [];
   const selection = useSelection(groups.map((group) => group.normalizedQuestion));
@@ -106,8 +106,8 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
     }
   }
 
-  function offerRerun(remaining: number | undefined, rerun: () => void) {
-    if (remaining && remaining > 0) setLeftover({ remaining, rerun });
+  function offerRerun(remaining: number | undefined, rerun: () => void, remainingIsLowerBound = false) {
+    if (remaining && remaining > 0) setLeftover({ remaining, remainingIsLowerBound, rerun });
   }
 
   async function ignore(keys: string[]) {
@@ -115,7 +115,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
       const done = await ignoreGroups({ normalizedQuestions: keys });
       selection.clear();
       undo.show(`Ignored ${pluralize(done.ignored, "report")}.`, reopenIds(done.unknownQuestionIds));
-      offerRerun(done.remaining, () => void ignore(keys));
+      offerRerun(done.remaining, () => void ignore(keys), done.remainingIsLowerBound);
     });
   }
 
@@ -124,7 +124,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
       const done = await reopenGroups({ normalizedQuestions: keys });
       selection.clear();
       undo.show(`Reopened ${pluralize(done.reopened, "report")}.`);
-      offerRerun(done.remaining, () => void reopen(keys));
+      offerRerun(done.remaining, () => void reopen(keys), done.remainingIsLowerBound);
     });
   }
 
@@ -144,7 +144,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
       const done = await resolveGroups(args);
       selection.clear();
       undo.show(`Resolved ${pluralize(done.resolved, "report")}.`, reopenIds(done.unknownQuestionIds));
-      offerRerun(done.remaining, () => void resolve(group, value));
+      offerRerun(done.remaining, () => void resolve(group, value), done.remainingIsLowerBound);
     });
   }
 
@@ -240,7 +240,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
       {leftover ? (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2 text-sm">
           <span className="text-foreground">
-            {pluralize(leftover.remaining, "more matching report")}{" "}
+            {leftover.remainingIsLowerBound ? "At least " : ""}{pluralize(leftover.remaining, "more matching report")}{" "}
             {leftover.remaining === 1 ? "wasn't" : "weren't"} updated.
           </span>
           <Button type="button" size="sm" variant="outline" disabled={pendingAction !== ""} onClick={leftover.rerun}>

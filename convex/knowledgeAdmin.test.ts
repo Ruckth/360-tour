@@ -121,6 +121,9 @@ describe("the admin authoring workflow is retired", () => {
     await expect(admin.mutation(api.chatKnowledge.adminApproveQuestion, { questionId, isPrimary: true })).rejects.toThrow(RETIRED);
     await expect(admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, { normalizedQuestions: ["x"], answerId })).rejects.toThrow(RETIRED);
     await expect(admin.mutation(api.chatKnowledge.adminApproveQuestions, { questionIds: [questionId] })).rejects.toThrow(RETIRED);
+    await expect(admin.mutation(api.chatKnowledge.adminRejectQuestion, { questionId })).rejects.toThrow(RETIRED);
+    await expect(admin.mutation(api.chatKnowledge.adminRejectQuestions, { questionIds: [questionId] })).rejects.toThrow(RETIRED);
+    await expect(admin.mutation(api.chatKnowledge.adminDeletePropertyScope, { slug: "legacy-scope" })).rejects.toThrow(RETIRED);
     await expect(admin.mutation(api.chatKnowledge.adminUnreviewQuestions, { questionIds: [questionId] })).rejects.toThrow(RETIRED);
     await expect(admin.action(api.chatKnowledge.adminGenerateSimilarQuestions, { answerId })).rejects.toThrow(RETIRED);
   });
@@ -141,6 +144,29 @@ describe("the admin authoring workflow is retired", () => {
     await expect(admin.mutation(api.chatKnowledge.adminDeleteQuestion, { questionId })).rejects.toThrow(RETIRED);
     expect(await t.run((ctx) => ctx.db.get(answerId))).not.toBeNull();
     expect(await t.run((ctx) => ctx.db.get(questionId))).not.toBeNull();
+  });
+
+  it("no-ops queued deletion and reference-cleanup workers after retirement", async () => {
+    const { t } = setup();
+    const answerId = await seedHistoricalAnswer(t, { title: "Archived", status: "archived" });
+    const question = await t.run((ctx) => ctx.db.query("chatQuestions")
+      .withIndex("by_answerId", q => q.eq("answerId", answerId)).unique());
+    const questionId = question!._id;
+    const reportId = await t.run((ctx) => ctx.db.insert("chatUnknownQuestions", {
+      userQuestion: "Old question?", normalizedQuestion: "old question", status: "resolved",
+      resolvedAnswerId: answerId, resolvedQuestionId: questionId, resolvedAt: 1,
+      adminNotified: false, createdAt: 1, updatedAt: 1,
+    }));
+    const before = await t.run(async (ctx) => Promise.all([
+      ctx.db.get(answerId), ctx.db.get(questionId), ctx.db.get(reportId),
+    ]));
+    expect(await t.mutation(internal.chatKnowledge.continueDeleteAnswer, { answerId })).toBeNull();
+    expect(await t.mutation(internal.chatKnowledge.continueDeleteQuestion, { questionId })).toBeNull();
+    expect(await t.mutation(internal.chatKnowledge.clearDeletedQuestionReferences, { questionId })).toBeNull();
+    const after = await t.run(async (ctx) => Promise.all([
+      ctx.db.get(answerId), ctx.db.get(questionId), ctx.db.get(reportId),
+    ]));
+    expect(after).toEqual(before);
   });
 
   it("refuses creating or resolving answers from an unknown question", async () => {
@@ -314,13 +340,53 @@ describe("grouped unknown questions", () => {
 
     expect(
       await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, { unknownQuestionIds: ignored.unknownQuestionIds }),
-    ).toEqual({ reopened: 3, remaining: 0 });
+    ).toEqual({ reopened: 3, remaining: 0, hasMore: false, remainingIsLowerBound: false });
 
     // Linking a group to a historical answer is a retired write.
     const answerId = await seedHistoricalAnswer(t, { title: "Pets" });
     await expect(
       admin.mutation(api.chatKnowledge.adminLinkUnknownGroups, { normalizedQuestions: keys, answerId }),
     ).rejects.toThrow(RETIRED);
+  });
+
+  it("bounds Ignore and Reopen across groups and rejects oversized Undo lists", async () => {
+    const { t, admin } = setup();
+    const keys = Array.from({ length: 100 }, (_, index) => `report-${index}`);
+    await t.run(async (ctx) => {
+      for (const key of keys) {
+        for (let index = 0; index < 3; index += 1) {
+          await ctx.db.insert("chatUnknownQuestions", {
+            userQuestion: key, normalizedQuestion: key, status: "new", adminNotified: false,
+            createdAt: index, updatedAt: index,
+          });
+        }
+      }
+    });
+    const args = { normalizedQuestions: keys };
+    const first = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, args);
+    expect(first).toMatchObject({ ignored: 100, remaining: 100, hasMore: true, remainingIsLowerBound: true });
+    expect(first.unknownQuestionIds).toHaveLength(100);
+    await expect(admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, {
+      unknownQuestionIds: [...first.unknownQuestionIds, first.unknownQuestionIds[0]],
+    })).rejects.toThrow("Reopen 100 or fewer report IDs");
+    // Validation does not partially apply an oversized Undo, even when the extra ID is a duplicate.
+    const untouched = await t.run(async (ctx) => Promise.all(first.unknownQuestionIds.map(id => ctx.db.get(id))));
+    expect(untouched.every(row => row?.status === "ignored")).toBe(true);
+
+    const second = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, args);
+    expect(second).toMatchObject({ ignored: 100, remaining: 100, hasMore: true, remainingIsLowerBound: false });
+    const last = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, args);
+    expect(last).toMatchObject({ ignored: 100, remaining: 0, hasMore: false, remainingIsLowerBound: false });
+
+    // Combining explicit Undo IDs with whole groups still shares one budget and never double-counts.
+    const reopened = await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, {
+      ...args, unknownQuestionIds: [first.unknownQuestionIds[0]],
+    });
+    expect(reopened).toEqual({ reopened: 100, remaining: 100, hasMore: true, remainingIsLowerBound: true });
+    expect(await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, args))
+      .toEqual({ reopened: 100, remaining: 100, hasMore: true, remainingIsLowerBound: false });
+    expect(await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, args))
+      .toEqual({ reopened: 100, remaining: 0, hasMore: false, remainingIsLowerBound: false });
   });
 });
 

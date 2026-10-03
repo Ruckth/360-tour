@@ -8,7 +8,7 @@ import { callAI, classifyComplexity, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL, 
 import type { ChatMessage, LlmCallTrace } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
-import { getFallbackResponse } from './lib/chatFallback';
+import { getSupportedFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';
 import { asksForStaff } from './chatKnowledge';
@@ -472,7 +472,11 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	const complexModel = process.env.AI_COMPLEX_MODEL || DEFAULT_COMPLEX_AI_MODEL;
 
 	if (!apiKey) {
-		const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale, properties);
+		const fallbackResponse = getSupportedFallbackResponse(args.userMessage, currentProperty, args.locale, properties, channel, normalizeSiteUrl(args.siteUrl));
+		if (fallbackResponse === null) {
+			emit('unknown_fallback', 'unknown_fallback');
+			return await recordUnknownFallback(ctx, args, session);
+		}
 		emit('fallback', 'fallback');
 		return { response: fallbackResponse, model: 'fallback' };
 	}

@@ -36,7 +36,7 @@ function depsFor(
   return {
     loadTranscript,
     // Real timer-free wait driven by fake timers.
-    wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    wait: (ms, generation) => token.wait(ms, generation),
     isStale: (generation) => token.isStale(generation),
   };
 }

@@ -51,12 +51,14 @@ export type ConciergeTurnLog = {
   promptChars: number;
 };
 
-/** Generate a correlation id for a turn. Uses crypto.randomUUID when available. */
+/** Generate an opaque correlation id whose digits cannot be mistaken for phone numbers in logs. */
 export function createTurnId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const random = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  // UUID hex uses a–f; g–p encode 0–9 one-to-one, preserving all its entropy while avoiding the
+  // privacy scrubber's phone-like numeric runs. The fallback is also encoded before leaving here.
+  return `turn_${random.replace(/\d/g, digit => String.fromCharCode(103 + Number(digit)))}`;
 }
 
 /** Start a fresh metrics collector for one turn. */

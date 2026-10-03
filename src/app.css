@@ -186,6 +186,14 @@
 	to { transform: scale(1.06); }
 }
 
+/* Reduced motion: the hero holds a still first poster — no reveal, zoom, or cross-fades. */
+@media (prefers-reduced-motion: reduce) {
+	.hero-card-reveal,
+	.hero-ken-burns {
+		animation: none;
+	}
+}
+
 /* Film grain texture */
 .hero-grain {
 	background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");

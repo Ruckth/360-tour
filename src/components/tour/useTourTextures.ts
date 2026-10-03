@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SRGBColorSpace, Texture, TextureLoader } from "three";
 import type { Room } from "@/lib/data/rooms";
 import { nextRoomPrefetchOrder, TourTextureCache } from "@/lib/tour/texture-cache";
@@ -36,27 +36,37 @@ function loadPanorama(path: string, signal: AbortSignal): Promise<Texture> {
   });
 }
 
-const CURRENT_OWNER = "current";
-const PREVIOUS_OWNER = "previous";
+/** Holds the texture of the REQUESTED room while it is requested. */
+const REQUESTED_OWNER = "requested";
+/** Holds the texture currently on screen (may be an older room while the requested one loads). */
+const SHOWN_OWNER = "shown";
+/** Holds the outgoing texture of a crossfade until the transition completes. */
+const OUTGOING_OWNER = "outgoing";
+
+/** A loaded panorama tagged with the room and path it belongs to. */
+export interface TaggedTexture {
+  roomId: string;
+  path: string;
+  texture: Texture;
+}
 
 export interface TourTexturesState {
-  currentTexture: Texture | null;
-  previousTexture: Texture | null;
+  /** The texture on screen: the requested room once ready, otherwise the last ready room. */
+  shown: TaggedTexture | null;
+  /** The room shown before `shown`, pinned while a transition is active (crossfade source). */
+  outgoing: TaggedTexture | null;
+  /** True only when `shown` belongs to the requested room and its load did not fail. */
   currentReady: boolean;
   currentFailed: boolean;
-  retryCurrent: () => void;
 }
 
 /**
- * Owns a {@link TourTextureCache} for one open tour. Loads the current room first and renders it as
- * soon as ready; after the current room is ready, prefetches hotspot targets then sequential
- * neighbours with bounded concurrency. Keeps the previous room's texture during a crossfade (both
- * `currentTexture` and `previousTexture` are live) so a transition never flashes a missing texture.
- * Stale loads on room switch/unmount are ignored via the cache's generation token; teardown disposes
- * everything, and a fresh mount reopens the cache so reopening the tour loads fresh textures.
- *
- * `onReady` is invoked once the current room's texture is first available; `invalidate` (optional) is
- * called whenever a texture becomes ready so a demand-driven render loop repaints.
+ * Owns a {@link TourTextureCache} for one open tour. Loads the requested room first; until it is
+ * ready the last ready room stays on screen (pinned), so a navigation never shows an empty
+ * panorama. When the requested room becomes ready during a transition, the previously shown room
+ * becomes `outgoing` (pinned) so the canvas can crossfade between two ACTUAL textures. After the
+ * requested room is ready, hotspot targets then sequential neighbours are prefetched with bounded
+ * concurrency. Teardown disposes everything; a fresh mount reopens the cache and loads fresh.
  */
 export function useTourTextures({
   rooms,
@@ -70,6 +80,7 @@ export function useTourTextures({
 }: {
   rooms: Room[];
   currentRoomId: string;
+  /** Non-null while the viewer's room transition is active. */
   previousRoomId: string | null;
   loader?: (path: string, signal: AbortSignal) => Promise<Texture>;
   maxTextures?: number;
@@ -77,15 +88,9 @@ export function useTourTextures({
   onInvalidate?: () => void;
   retrySignal?: number;
 }): TourTexturesState {
-  // Stable per-mount cache instance. useState's lazy initializer runs once; the setter is never
-  // called, so this is a value (not a ref) and is safe to list in effect dependency arrays.
+  // Stable per-mount cache instance (lazy initializer runs once; the setter is never called).
   const [cache] = useState(
-    () =>
-      new TourTextureCache<Texture>({
-        load: loader,
-        maxTextures,
-        prefetchConcurrency,
-      }),
+    () => new TourTextureCache<Texture>({ load: loader, maxTextures, prefetchConcurrency }),
   );
 
   const roomById = useMemo(() => {
@@ -95,10 +100,13 @@ export function useTourTextures({
   }, [rooms]);
   const orderedRoomIds = useMemo(() => rooms.map((room) => room.id), [rooms]);
 
-  const [currentTexture, setCurrentTexture] = useState<Texture | null>(null);
-  const [previousTexture, setPreviousTexture] = useState<Texture | null>(null);
-  const [currentFailed, setCurrentFailed] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const [shown, setShown] = useState<TaggedTexture | null>(null);
+  const [outgoing, setOutgoing] = useState<TaggedTexture | null>(null);
+  const [failedRoomId, setFailedRoomId] = useState<string | null>(null);
+  // Mirrors used by async completions; only read/written inside effects and callbacks.
+  const shownRef = useRef<TaggedTexture | null>(null);
+  const outgoingRef = useRef<TaggedTexture | null>(null);
+  const transitionActiveRef = useRef(false);
 
   const invalidate = useCallback(() => onInvalidate?.(), [onInvalidate]);
 
@@ -107,32 +115,61 @@ export function useTourTextures({
     return () => {
       cache.disposeAll();
       cache.reopen();
+      shownRef.current = null;
+      outgoingRef.current = null;
+      setShown(null);
+      setOutgoing(null);
     };
   }, [cache]);
 
-  // Load the current room first; render as soon as it is ready. Prefetch likely-next AFTER.
+  // Must run before the load effect so a completion sees the transition state of this commit.
+  useEffect(() => {
+    transitionActiveRef.current = previousRoomId !== null;
+    if (previousRoomId === null && outgoingRef.current) {
+      // Transition finished: unpin the outgoing room so it becomes an eviction candidate.
+      cache.release(outgoingRef.current.path, OUTGOING_OWNER);
+      outgoingRef.current = null;
+      setOutgoing(null);
+    }
+  }, [cache, previousRoomId]);
+
+  // Load the requested room first; prefetch likely-next rooms only AFTER it is ready.
   useEffect(() => {
     if (!currentRoomId) return;
     const path = roomById.get(currentRoomId)?.imagePath;
     if (!path) return;
 
-    // A room switch is a new generation: stale loads for the old room are ignored on resolve.
+    // A room switch (or retry) is a new generation: stale requests resolve to nothing.
     const generation = cache.bumpGeneration();
-    setCurrentFailed(false);
+    setFailedRoomId(null);
 
     let cancelled = false;
-    void cache.acquire(path, CURRENT_OWNER).then((result) => {
+    void cache.acquire(path, REQUESTED_OWNER).then((result) => {
       if (cancelled || cache.currentGeneration !== generation) return;
       if (result.failed) {
-        setCurrentFailed(true);
+        setFailedRoomId(currentRoomId);
         return;
       }
       if (!result.texture) return;
-      setCurrentTexture(result.texture);
-      setCurrentFailed(false);
+
+      const next: TaggedTexture = { roomId: currentRoomId, path, texture: result.texture };
+      const previous = shownRef.current;
+      cache.retain(path, SHOWN_OWNER);
+      if (previous && previous.path !== path) {
+        if (transitionActiveRef.current) {
+          // Pin the room that was on screen as the crossfade source.
+          const stale = outgoingRef.current;
+          if (stale && stale.path !== previous.path) cache.release(stale.path, OUTGOING_OWNER);
+          cache.retain(previous.path, OUTGOING_OWNER);
+          outgoingRef.current = previous;
+          setOutgoing(previous);
+        }
+        cache.release(previous.path, SHOWN_OWNER);
+      }
+      shownRef.current = next;
+      setShown(next);
       invalidate();
 
-      // Prefetch only after the current room is ready: hotspot targets first, then neighbours.
       const current = roomById.get(currentRoomId);
       const hotspotTargetIds = (current?.hotspots ?? [])
         .map((hotspot) => hotspot.targetRoomId)
@@ -146,42 +183,13 @@ export function useTourTextures({
 
     return () => {
       cancelled = true;
-      // Release the current owner from the room we are leaving so its texture becomes evictable
-      // unless it is also the crossfade-previous room (which holds the PREVIOUS owner).
-      cache.releaseOwner(CURRENT_OWNER);
+      // The room on screen keeps its SHOWN owner, so releasing the request never blanks it.
+      cache.release(path, REQUESTED_OWNER);
     };
-    // retryCount / retrySignal re-run this effect on an explicit retry of a failed current room.
-  }, [cache, currentRoomId, invalidate, orderedRoomIds, roomById, retryCount, retrySignal]);
+  }, [cache, currentRoomId, invalidate, orderedRoomIds, roomById, retrySignal]);
 
-  // Pin the previous room during a crossfade so the outgoing sphere never loses its texture.
-  useEffect(() => {
-    cache.releaseOwner(PREVIOUS_OWNER);
-    if (!previousRoomId) {
-      setPreviousTexture(null);
-      return;
-    }
-    const path = roomById.get(previousRoomId)?.imagePath;
-    if (!path) {
-      setPreviousTexture(null);
-      return;
-    }
-    const resident = cache.peek(path);
-    if (resident) {
-      // Re-acquire to add the PREVIOUS owner so eviction cannot take it mid-transition.
-      void cache.acquire(path, PREVIOUS_OWNER);
-      setPreviousTexture(resident);
-      invalidate();
-    } else {
-      setPreviousTexture(null);
-    }
-  }, [cache, invalidate, previousRoomId, roomById]);
+  const currentFailed = failedRoomId !== null && failedRoomId === currentRoomId;
+  const currentReady = shown !== null && shown.roomId === currentRoomId && !currentFailed;
 
-  const retryCurrent = useCallback(() => {
-    setCurrentFailed(false);
-    setRetryCount((count) => count + 1);
-  }, []);
-
-  const currentReady = currentTexture !== null && !currentFailed;
-
-  return { currentTexture, previousTexture, currentReady, currentFailed, retryCurrent };
+  return { shown, outgoing, currentReady, currentFailed };
 }

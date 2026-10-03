@@ -922,6 +922,7 @@ async function deleteCuratedInteractionBatch(ctx: MutationCtx, questionId: Id<'c
 export const deleteCuratedInteractions = internalMutation({
 	args: { questionId: v.id('curatedChatQuestions') },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return null;
 		await deleteCuratedInteractionBatch(ctx, args.questionId);
 		return null;
 	}

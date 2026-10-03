@@ -41,6 +41,20 @@ export function TourCamera({ enabled = true }: { enabled?: boolean }) {
   );
 }
 
+/** Longest frame step the crossfade will take, so a stalled tab cannot skip the fade. */
+const MAX_CROSSFADE_STEP_S = 1 / 30;
+const CROSSFADE_DURATION_S = 0.4;
+
+/**
+ * What the scene is showing, reported to the viewer (navigation lock, overlays, test hooks):
+ * - loading: nothing on screen yet (first room still loading)
+ * - pending: the requested room is not ready; the last ready room stays on screen, no hotspots
+ * - crossfade: both the outgoing and the requested room's textures are on screen, fading
+ * - ready: the requested room is fully on screen and interactive
+ * - failed: the requested room failed to load (the last ready room, if any, stays on screen)
+ */
+export type TourSceneStatus = "loading" | "pending" | "crossfade" | "ready" | "failed";
+
 function SphereScene({
   rooms,
   currentRoomId,
@@ -49,6 +63,7 @@ function SphereScene({
   onTransitionComplete,
   onLoaded,
   onLoadError,
+  onStatusChange,
   onNavigate,
   loader,
   retrySignal,
@@ -60,12 +75,13 @@ function SphereScene({
   onTransitionComplete: () => void;
   onLoaded: () => void;
   onLoadError: (failed: boolean) => void;
+  onStatusChange?: (status: TourSceneStatus, shownRoomId: string | null) => void;
   onNavigate: (roomId: string) => void;
   loader?: Parameters<typeof useTourTextures>[0]["loader"];
   retrySignal?: number;
 }) {
   const invalidate = useThree((state) => state.invalidate);
-  const { currentTexture, previousTexture, currentReady, currentFailed } = useTourTextures({
+  const { shown, outgoing, currentReady, currentFailed } = useTourTextures({
     rooms,
     currentRoomId,
     previousRoomId,
@@ -76,9 +92,31 @@ function SphereScene({
 
   const progressRef = useRef(1);
   const completedRef = useRef(false);
-  const previousMaterialRef = useRef<MeshBasicMaterial | null>(null);
-  const currentMaterialRef = useRef<MeshBasicMaterial | null>(null);
+  const activeCrossfadeRef = useRef<string | null>(null);
+  const incomingMaterialRef = useRef<MeshBasicMaterial | null>(null);
   const activeRoomIds = useMemo(() => new Set(rooms.map((room) => room.id)), [rooms]);
+
+  // A crossfade needs two ACTUAL textures: the requested room's (ready) and a different outgoing one.
+  const crossfadeKey =
+    transitioning && currentReady && shown && outgoing && outgoing.roomId !== shown.roomId
+      ? `${outgoing.roomId}->${shown.roomId}`
+      : null;
+  const pending = !currentReady;
+  // Explicit no-previous case: the requested room is ready and there is nothing to fade from.
+  const readyWithoutPrevious = transitioning && currentReady && crossfadeKey === null;
+
+  const status: TourSceneStatus = currentFailed
+    ? "failed"
+    : !shown
+      ? "loading"
+      : pending
+        ? "pending"
+        : crossfadeKey
+          ? "crossfade"
+          : transitioning
+            ? "pending"
+            : "ready";
+  const shownRoomId = shown?.roomId ?? null;
 
   // Report readiness/failure up to the viewer (drives the intro → tour progression).
   useEffect(() => {
@@ -87,54 +125,59 @@ function SphereScene({
   useEffect(() => {
     onLoadError(currentFailed);
   }, [currentFailed, onLoadError]);
-
-  // A crossfade only runs when the incoming texture is already available, so it never flashes empty.
-  const canCrossfade = transitioning && Boolean(previousTexture) && Boolean(currentTexture);
+  useEffect(() => {
+    onStatusChange?.(status, shownRoomId);
+  }, [onStatusChange, shownRoomId, status]);
 
   useEffect(() => {
-    progressRef.current = canCrossfade ? 0 : 1;
-    completedRef.current = false;
-    if (previousMaterialRef.current) previousMaterialRef.current.opacity = canCrossfade ? 1 : 0;
-    if (currentMaterialRef.current) currentMaterialRef.current.opacity = canCrossfade ? 0 : 1;
-    invalidate();
-    // If we are "transitioning" but cannot crossfade (incoming not ready), complete immediately so
-    // navigation is never stuck waiting on a texture that is still loading.
-    if (transitioning && !canCrossfade && !completedRef.current) {
-      completedRef.current = true;
-      onTransitionComplete();
-    }
-  }, [canCrossfade, currentRoomId, invalidate, onTransitionComplete, transitioning]);
+    if (readyWithoutPrevious) onTransitionComplete();
+  }, [onTransitionComplete, readyWithoutPrevious]);
 
   useFrame((state, delta) => {
-    if (!canCrossfade) return;
-    const next = Math.min(1, progressRef.current + delta / 0.4);
+    if (!crossfadeKey) return;
+    let step = Math.min(delta, MAX_CROSSFADE_STEP_S);
+    if (activeCrossfadeRef.current !== crossfadeKey) {
+      // First frame of this crossfade: demand rendering may have idled for seconds, so the clock
+      // delta is meaningless here — start from zero instead of jumping to the end.
+      activeCrossfadeRef.current = crossfadeKey;
+      progressRef.current = 0;
+      completedRef.current = false;
+      step = 0;
+    }
+    if (completedRef.current) return;
+    const next = Math.min(1, progressRef.current + step / CROSSFADE_DURATION_S);
     progressRef.current = next;
-    if (previousMaterialRef.current) previousMaterialRef.current.opacity = 1 - next;
-    if (currentMaterialRef.current) currentMaterialRef.current.opacity = next;
-    // Demand rendering: keep repainting every frame while the crossfade is in motion.
-    state.invalidate();
-    if (next >= 1 && !completedRef.current) {
+    if (incomingMaterialRef.current) incomingMaterialRef.current.opacity = next;
+    if (next >= 1) {
       completedRef.current = true;
       onTransitionComplete();
+      return;
     }
+    // Demand rendering: keep repainting every frame while the crossfade is in motion.
+    state.invalidate();
   });
 
   const currentRoom = rooms.find((room) => room.id === currentRoomId) ?? rooms[0];
+  const showHotspots = !transitioning && currentReady && currentRoom;
 
   return (
     <>
       <TourCamera />
-      {previousTexture && canCrossfade ? (
-        <RoomSphere texture={previousTexture} opacity={1} materialRef={previousMaterialRef} />
+      {crossfadeKey && outgoing ? (
+        // Opaque and drawn first; the incoming sphere fades in over it (a true crossfade).
+        <RoomSphere key={`outgoing:${outgoing.roomId}`} texture={outgoing.texture} opacity={1} />
       ) : null}
-      {currentTexture ? (
+      {shown ? (
+        // Keyed by room so each room's material is created with the right `transparent` flag
+        // (three compiles opaque materials with alpha forced to 1; toggling it later is ignored).
         <RoomSphere
-          texture={currentTexture}
-          opacity={canCrossfade ? 0 : 1}
-          materialRef={currentMaterialRef}
+          key={`shown:${shown.roomId}`}
+          texture={shown.texture}
+          opacity={crossfadeKey ? 0 : 1}
+          materialRef={incomingMaterialRef}
         />
       ) : null}
-      {!transitioning && currentRoom
+      {showHotspots
         ? currentRoom.hotspots
             .filter((hotspot) => activeRoomIds.has(hotspot.targetRoomId))
             .map((hotspot) => (
@@ -150,6 +193,8 @@ function SphereScene({
   );
 }
 
+function noop() {}
+
 export function TourCanvas({
   rooms,
   currentRoomId,
@@ -158,6 +203,7 @@ export function TourCanvas({
   onTransitionComplete,
   onLoaded,
   onLoadError,
+  onStatusChange,
   onNavigate,
   loader,
   retrySignal,
@@ -169,6 +215,7 @@ export function TourCanvas({
   onTransitionComplete: () => void;
   onLoaded: () => void;
   onLoadError?: (failed: boolean) => void;
+  onStatusChange?: (status: TourSceneStatus, shownRoomId: string | null) => void;
   onNavigate: (roomId: string) => void;
   loader?: Parameters<typeof useTourTextures>[0]["loader"];
   retrySignal?: number;
@@ -188,7 +235,8 @@ export function TourCanvas({
         transitioning={transitioning}
         onTransitionComplete={onTransitionComplete}
         onLoaded={onLoaded}
-        onLoadError={onLoadError ?? (() => {})}
+        onLoadError={onLoadError ?? noop}
+        onStatusChange={onStatusChange}
         onNavigate={onNavigate}
         loader={loader}
         retrySignal={retrySignal}

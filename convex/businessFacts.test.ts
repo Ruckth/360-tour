@@ -234,6 +234,69 @@ describe("businessFacts.adminSetStatus", () => {
 });
 
 describe("businessFacts.adminResolveUnknownGroups", () => {
+  it("finds a scoped report even after 100 other-property reports in the same group", async () => {
+    const { t, admin } = setup();
+    const poolId = await property(t, "pool-villa");
+    const otherId = await property(t, "other-villa");
+    const otherReports = await t.run(async (ctx) => {
+      const ids: Id<"chatUnknownQuestions">[] = [];
+      for (let index = 0; index < 100; index += 1) {
+        ids.push(await ctx.db.insert("chatUnknownQuestions", {
+          propertyId: otherId, userQuestion: "Pets?", normalizedQuestion: "pets", status: "new",
+          adminNotified: false, createdAt: index, updatedAt: index,
+        }));
+      }
+      return ids;
+    });
+    const poolReport = await t.run((ctx) => ctx.db.insert("chatUnknownQuestions", {
+      propertyId: poolId, userQuestion: "Pets?", normalizedQuestion: "pets", status: "new",
+      adminNotified: false, createdAt: 100, updatedAt: 100,
+    }));
+    const factId = await fact(t, { title: "Pets", searchText: "pets", propertyId: poolId });
+
+    const done = await admin.mutation(api.businessFacts.adminResolveUnknownGroups, {
+      normalizedQuestions: ["pets"], factId,
+    });
+    expect(done).toMatchObject({ resolved: 1, remaining: 0, hasMore: false, remainingIsLowerBound: false });
+    expect(done.unknownQuestionIds).toEqual([poolReport]);
+    expect(await t.run((ctx) => ctx.db.get(poolReport))).toMatchObject({ status: "resolved", resolvedFactId: factId });
+    const unchanged = await t.run(async (ctx) => Promise.all(otherReports.map(id => ctx.db.get(id))));
+    expect(unchanged.every(row => row?.status === "new")).toBe(true);
+  });
+
+  it("shares a 100-row budget across groups, reports a lower bound and supports bounded undo", async () => {
+    const { t, admin } = setup();
+    const keys = Array.from({ length: 100 }, (_, index) => `question-${index}`);
+    await t.run(async (ctx) => {
+      for (const key of keys) {
+        for (let index = 0; index < 3; index += 1) {
+          await ctx.db.insert("chatUnknownQuestions", {
+            userQuestion: key, normalizedQuestion: key, status: "new", adminNotified: false,
+            createdAt: index, updatedAt: index,
+          });
+        }
+      }
+    });
+    const args = { normalizedQuestions: keys, structuredSource: "settings" as const };
+    const first = await admin.mutation(api.businessFacts.adminResolveUnknownGroups, args);
+    expect(first).toMatchObject({ resolved: 100, remaining: 100, hasMore: true, remainingIsLowerBound: true });
+    expect(first.unknownQuestionIds).toHaveLength(100);
+    const undo = await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, {
+      unknownQuestionIds: first.unknownQuestionIds,
+    });
+    expect(undo.reopened).toBe(100);
+    const restored = await t.run(async (ctx) => Promise.all(first.unknownQuestionIds.map(id => ctx.db.get(id))));
+    expect(restored.every(row => row?.status === "new" && row.resolvedSource === undefined)).toBe(true);
+
+    await admin.mutation(api.businessFacts.adminResolveUnknownGroups, args);
+    const second = await admin.mutation(api.businessFacts.adminResolveUnknownGroups, args);
+    expect(second).toMatchObject({ resolved: 100, remaining: 100, hasMore: true, remainingIsLowerBound: false });
+    const last = await admin.mutation(api.businessFacts.adminResolveUnknownGroups, args);
+    expect(last).toMatchObject({ resolved: 100, remaining: 0, hasMore: false, remainingIsLowerBound: false });
+    const empty = await admin.mutation(api.businessFacts.adminResolveUnknownGroups, args);
+    expect(empty).toMatchObject({ resolved: 0, remaining: 0, unknownQuestionIds: [] });
+  });
+
   it("requires exactly one of factId / structuredSource", async () => {
     const { t, admin } = setup();
     const factId = await fact(t, { title: "x", searchText: "x", status: "approved" });

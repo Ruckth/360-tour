@@ -1,4 +1,5 @@
 import { api } from "convex/_generated/api";
+import { createTurnId, emitConciergeTurnLog, recordTool, serializeConciergeTurnLog, startTurnMetrics, timeStage, type TurnMetrics } from "convex/lib/turnMetrics";
 import { looksLikeBookingMessage } from "@/lib/chat/ai-booking-route";
 import {
   buildLineQuickReplyItems,
@@ -123,6 +124,27 @@ export type { GeneratedReply as MessagingGeneratedReply };
  */
 export const MESSAGING_REPLY_TIMEOUT_MS = 22_000;
 
+/** One random, non-guest identifier follows a webhook through claim, generation and delivery. */
+export function startMessagingEventMetrics(channel: MessagingChannel): TurnMetrics {
+  return startTurnMetrics(createTurnId(), channel);
+}
+
+/** Log bounded stage timings on success and failure, without event payloads or provider errors. */
+export async function measureMessagingStage<T>(
+  metrics: TurnMetrics,
+  stage: "claim" | "generation" | "delivery",
+  operation: () => Promise<T>,
+): Promise<T> {
+  let succeeded = false;
+  try {
+    const result = await timeStage(metrics, stage, operation);
+    succeeded = true;
+    return result;
+  } finally {
+    emitConciergeTurnLog({ metrics, outcome: `${stage}_${succeeded ? "completed" : "failed"}` });
+  }
+}
+
 /**
  * Record a late concierge result (one that resolved AFTER the outer timeout fallback was
  * already delivered) WITHOUT delivering it. We log only its model and committed outcome —
@@ -131,30 +153,22 @@ export const MESSAGING_REPLY_TIMEOUT_MS = 22_000;
  */
 export async function recordLateMessagingResult(
   late: Promise<GeneratedReply>,
-  context: { eventKey: string; channel: MessagingChannel },
+  context: { turnId: string; channel: MessagingChannel },
 ): Promise<void> {
   try {
     const result = await late;
+    const metrics = startTurnMetrics(context.turnId, context.channel);
+    if (result.committed) recordTool(metrics, result.committed.tool, 0, true);
     console.info(
       JSON.stringify({
+        ...serializeConciergeTurnLog({ metrics, outcome: "late_result", model: result.model }),
         event: "messaging_late_result",
-        channel: context.channel,
-        eventKey: context.eventKey,
-        model: result.model ?? "unknown",
-        committedTool: result.committed?.tool,
         delivered: false,
       }),
     );
   } catch {
     // A late failure after a delivered fallback is not actionable; ignore.
   }
-}
-
-function makeTurnId() {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**
@@ -182,7 +196,7 @@ export async function resolveMessagingReply(
   client: MessagingClient,
   incoming: IncomingMessage,
 ): Promise<MessagingReplyResult> {
-  const turnId = incoming.turnId ?? makeTurnId();
+  const turnId = incoming.turnId ?? createTurnId();
   const locale = resolveLocale(incoming);
   const quickReplyItems = menuFor(incoming.channel, locale);
 
@@ -217,33 +231,40 @@ export async function resolveMessagingReply(
   }
 
   const startedAt = Date.now();
-
-  // generateReply applies the deterministic guardrail/policy replies itself before any model
-  // call, so there is no separate guardrail round trip (it used to be a second action call).
-  const bookingFlow =
-    looksLikeBookingMessage(message) ||
-    Boolean(await client.query(api.bookings.isChatBookingFlowActive, { sessionId: incoming.sessionId }));
-
-  // The concierge generation. A Promise.race timeout does NOT cancel this action, so the
-  // live promise is captured and exposed as `lateResult` when the timeout wins — the adapter
-  // records that late result on the event WITHOUT delivering it (exactly-once delivery).
-  const generation = client.action(api.chatAi.generateReply, {
-    sessionId: incoming.sessionId,
-    userMessage: message,
-    channel: incoming.channel,
-    siteUrl: incoming.siteUrl,
-    ...(locale ? { locale } : {}),
-    ...(bookingFlow ? { bookingFlow: true } : {}),
-  }) as Promise<GeneratedReply>;
-
+  const deadlineAt = startedAt + MESSAGING_REPLY_TIMEOUT_MS;
+  let bookingFlow = looksLikeBookingMessage(message);
+  let generation: Promise<GeneratedReply> | undefined;
+  let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const TIMEOUT = Symbol("timeout");
   const timeout = new Promise<typeof TIMEOUT>((resolve) => {
-    timer = setTimeout(() => resolve(TIMEOUT), MESSAGING_REPLY_TIMEOUT_MS);
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve(TIMEOUT);
+    }, MESSAGING_REPLY_TIMEOUT_MS);
   });
 
+  // Both the preliminary lookup and action share the outer deadline. A lookup resolving late
+  // must never launch a new action (particularly one with booking tools) after a fallback.
+  const resolveGeneration = async (): Promise<GeneratedReply | typeof TIMEOUT> => {
+    if (!bookingFlow) {
+      bookingFlow = Boolean(await client.query(api.bookings.isChatBookingFlowActive, { sessionId: incoming.sessionId }));
+    }
+    if (timedOut || Date.now() >= deadlineAt) return TIMEOUT;
+    generation = client.action(api.chatAi.generateReply, {
+      sessionId: incoming.sessionId,
+      userMessage: message,
+      channel: incoming.channel,
+      siteUrl: incoming.siteUrl,
+      turnId,
+      ...(locale ? { locale } : {}),
+      ...(bookingFlow ? { bookingFlow: true } : {}),
+    }) as Promise<GeneratedReply>;
+    return await generation;
+  };
+
   try {
-    const raced = await Promise.race([generation.catch((error) => ({ __error: error })), timeout]);
+    const raced = await Promise.race([resolveGeneration().catch(() => ({ failed: true as const })), timeout]);
 
     if (raced === TIMEOUT) {
       // Timed out: deliver the localized "still checking / host will confirm" text — NOT a
@@ -254,15 +275,12 @@ export async function resolveMessagingReply(
         replyMode: "failed",
         timedOut: true,
         ...(quickReplyItems ? { quickReplyItems } : {}),
-        lateResult: generation.then(
-          (value) => value,
-          (error) => ({ model: "late_error", response: error instanceof Error ? error.message : "late failure" }),
-        ),
+        ...(generation ? { lateResult: generation.catch(() => ({ model: "late_error" })) } : {}),
         metrics: { ...baseMetrics, bookingFlow, generationMs: Date.now() - startedAt },
       };
     }
 
-    if (raced && typeof raced === "object" && "__error" in raced) {
+    if (raced && typeof raced === "object" && "failed" in raced) {
       // The action threw. One failure path, no committed outcome to preserve.
       return {
         responseText: localizedTimeoutFallbackReply(locale),

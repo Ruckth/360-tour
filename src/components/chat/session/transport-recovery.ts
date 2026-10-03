@@ -27,7 +27,7 @@ export type RecoveryDeps = {
   /** Load the latest transcript rows for a session (injected convex call). */
   loadTranscript: (sessionId: string, limit: number) => Promise<RecoveryTranscriptRow[]>;
   /** Delay helper (injected so fake timers drive it). */
-  wait: (ms: number) => Promise<void>;
+  wait: (ms: number, generation: number) => Promise<void>;
   /** True when the captured generation has been superseded — stop immediately. */
   isStale: (generation: number) => boolean;
 };
@@ -67,7 +67,7 @@ export async function recoverPersistedAssistantMessage(
 ): Promise<string | null> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (isStale(generation)) return null;
-    if (attempt > 0) await wait(delayMs);
+    if (attempt > 0) await wait(delayMs, generation);
     if (isStale(generation)) return null;
 
     try {
@@ -104,7 +104,8 @@ export async function reconcilePersistedAssistantMessage(
   delayMs = BACKGROUND_RECONCILE_DELAY_MS,
 ): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await deps.wait(delayMs);
+    if (deps.isStale(generation)) return;
+    await deps.wait(delayMs, generation);
     if (deps.isStale(generation)) return;
     const recoveredMessage = await recoverPersistedAssistantMessage(
       deps,

@@ -7,7 +7,7 @@ type LocaleCode = 'en' | 'th' | 'zh-CN' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'ru
 export type FallbackVilla = Pick<
 	Doc<'properties'>,
 	'name' | 'pricePerNight' | 'currency' | 'directDiscountPercent' | 'amenities' | 'area' | 'bedrooms' | 'bathrooms' | 'maxGuests'
->;
+> & { slug?: string };
 
 type FallbackCopy = {
 	priceProperty: (property: FallbackVilla, direct: number) => string;
@@ -424,4 +424,54 @@ export function getFallbackResponse(
 	}
 
 	return copy.generic(listNames(villas.map((villa) => villa.name), code));
+}
+
+const bookingUnavailableCopy: Record<LocaleCode, (url: string) => string> = {
+	en: url => `The concierge is unavailable right now. Choose your villa and dates at ${url}, or ask the host to help. I have not created a booking.`,
+	th: url => `ขณะนี้ระบบคอนเซียร์จไม่พร้อมให้บริการ เลือกวิลล่าและวันที่ได้ที่ ${url} หรือติดต่อโฮสต์เพื่อช่วยจอง ยังไม่มีการสร้างการจองครับ`,
+	'zh-CN': url => `礼宾服务暂时不可用。请在 ${url} 选择别墅和日期，或联系房东协助。尚未创建预订。`,
+	ja: url => `現在コンシェルジュを利用できません。${url} でヴィラと日程を選ぶか、ホストにご相談ください。予約は作成されていません。`,
+	ko: url => `현재 컨시어지를 이용할 수 없습니다. ${url} 에서 빌라와 날짜를 선택하거나 호스트에게 문의하세요. 예약은 생성되지 않았습니다.`,
+	fr: url => `Le concierge est indisponible. Choisissez votre villa et vos dates sur ${url}, ou demandez de l'aide à l'hôte. Aucune réservation n'a été créée.`,
+	de: url => `Der Concierge ist gerade nicht verfügbar. Wählen Sie Villa und Termine unter ${url} oder bitten Sie den Gastgeber um Hilfe. Es wurde keine Buchung erstellt.`,
+	es: url => `El concierge no está disponible. Elija villa y fechas en ${url}, o pida ayuda al anfitrión. No se ha creado ninguna reserva.`,
+	ru: url => `Консьерж сейчас недоступен. Выберите виллу и даты на ${url} или обратитесь к хозяину. Бронирование не создано.`,
+	it: url => `Il concierge non è disponibile. Scegli villa e date su ${url} oppure chiedi aiuto all'host. Nessuna prenotazione è stata creata.`,
+	hi: url => `कंसीयर्ज अभी उपलब्ध नहीं है। ${url} पर विला और तारीखें चुनें या होस्ट से मदद लें। कोई बुकिंग नहीं बनाई गई है।`,
+};
+
+/**
+ * Without a model, answer only greetings, navigation and explicitly supported property fields.
+ * A null result is missing information: callers must record it rather than hiding it in a menu.
+ */
+export function getSupportedFallbackResponse(
+	message: string,
+	property: FallbackVilla | null,
+	locale: string | undefined,
+	villas: FallbackVilla[],
+	channel: 'web' | 'line' | 'facebook' | 'instagram' | 'whatsapp',
+	siteUrl?: string,
+): string | null {
+	const lower = message.toLowerCase().trim();
+	const code = normalizeLocale(locale ?? 'en');
+	if (/^(?:hi|hello|hey|hello there|good morning|good evening|help|สวัสดี(?:ครับ|ค่ะ|คะ)?|안녕(?:하세요)?|こんにちは|你好|bonjour|salut|hallo|hola|ciao|привет|नमस्ते)[\s!.。！？?]*$/u.test(lower)) {
+		return fallbackCopies[code].generic(listNames(villas.map(villa => villa.name), code));
+	}
+	// These topics require approved facts or structured service/policy tools. A phrase such as
+	// "what amenities include breakfast?" must not be mistaken for a generic property lookup.
+	if (/breakfast|pets?|dogs?|cats?|polic|included|free|airport|transfer|refund|services?|spa|massage|อาหารเช้า|สัตว์เลี้ยง|สุนัข|แมว|ฟรี|สนามบิน|อาหาร|조식|반려|무료|공항|정책|마사지|早餐|宠物|免費|免费|机场|朝食|ペット|無料|空港|petit.déjeuner|animaux|gratuit|aéroport|frühstück|haustier|kostenlos|flughafen|desayuno|mascota|gratis|aeropuerto|colazione|animali|gratuito|aeroporto|завтрак|питом|бесплат|аэропорт|नाश्ता|पालतू|मुफ्त|हवाई/u.test(lower)) return null;
+	const named = villas.filter(villa => lower.includes(villa.name.toLowerCase()) || Boolean(villa.slug && lower.includes(villa.slug)));
+	if (named.length > 1) return null;
+	const selected = named[0] ?? property;
+	if (hasIntent(lower, 'booking')) {
+		if (channel !== 'web' || !selected) {
+			return bookingUnavailableCopy[code](`${siteUrl?.replace(/\/+$/, '') ?? ''}/booking`);
+		}
+		return getFallbackResponse(message, selected, code, villas);
+	}
+	if (hasIntent(lower, 'price')) return getFallbackResponse(message, selected, code, villas);
+	if (selected && /amenit|features?|capacity|guests?|bedrooms?|bathrooms?|สิ่งอำนวย|ห้องนอน|ห้องน้ำ|ผู้เข้าพัก|편의|침실|욕실|인원|设施|卧室|浴室|設備|寝室|定員|équipement|chambres?|ausstattung|schlafzimmer|comodidades|habitaciones|удобства|спальн|camere|सुविध|बेडरूम/u.test(lower)) {
+		return fallbackCopies[code].details(selected);
+	}
+	return null;
 }
