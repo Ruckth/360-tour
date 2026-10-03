@@ -1,5 +1,6 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
 import {
 	DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
 	isReusableChatMessageCount
@@ -364,7 +365,8 @@ export const addMessage = mutation({
 			latestMessageAt: timestamp,
 			lastSeenAt: timestamp,
 		});
-		if (args.role === 'user' && asksForStaff(args.content)) await queueStaffAlert(ctx, args.sessionId, args.content);
+		if (args.role === 'user') await guestReceived(ctx, args.sessionId, messageId);
+		if (args.role === 'user' && asksForStaff(args.content)) await queueStaffAlert(ctx, args.sessionId, args.content, messageId);
 
 		return messageId;
 	}
@@ -378,7 +380,8 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 		locale: v.optional(v.string()),
 		propertySlug: v.optional(v.string()),
 		replyToMessageId: v.optional(v.id('chatMessages')),
-		skipSuggestions: v.optional(v.boolean())
+		skipSuggestions: v.optional(v.boolean()),
+		outcome: v.optional(replyOutcomeValidator)
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
@@ -390,6 +393,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 			sessionId: args.sessionId,
 			role: 'assistant',
 			content: args.content,
+			replyToMessageId: args.replyToMessageId,
 			...(args.action ? { action: args.action } : {}),
 			timestamp
 		});
@@ -399,6 +403,8 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 			lastSeenAt: timestamp,
 		});
 
+		await answerAccepted(ctx, { sessionId: args.sessionId, replyToMessageId: args.replyToMessageId,
+			messageId, source: 'ai', outcome: args.outcome ?? (args.skipSuggestions ? 'needs_staff' : 'answered') });
 		return { stored: true as const, messageId };
 	}
 });

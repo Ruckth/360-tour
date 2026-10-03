@@ -1,3 +1,4 @@
+import type { InboxReason } from "convex/lib/inboxTypes";
 import type { Id } from "convex/_generated/dataModel";
 
 export type AdminSessionStatus = "open" | "resolved" | "archived";
@@ -112,6 +113,14 @@ export type AdminSession = {
   archivedAt?: number;
   aiPaused?: boolean;
   assignedAdminEmail?: string;
+  latestGuestMessageId?: Id<'chatMessages'>;
+  inboxState?: 'needs_staff' | 'processing' | 'done';
+  inboxReason?: InboxReason;
+  inboxSendError?: string;
+  inboxHandoff?: boolean;
+  staffTask?: string;
+  keepWithStaff?: boolean;
+  resolutionSource?: 'ai' | 'staff' | 'manual';
   latestMessage?: AdminMessage;
   needsReply?: boolean;
   latestLineEvent?: AdminLineEvent | null;

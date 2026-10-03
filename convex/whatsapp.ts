@@ -1,5 +1,6 @@
 import { mutation, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import { answerAccepted, guestReceived, sendFailed, replyOutcomeValidator } from './lib/inboxLifecycle';
 import { requireServerSecret } from './lib/serverSecret';
 import type { Id } from './_generated/dataModel';
 import { asksForStaff, queueStaffAlert } from './chatKnowledge';
@@ -209,7 +210,8 @@ export const recordInboundEvent = mutation({
 				latestMessageAt: timestamp,
 				lastSeenAt: now,
 			});
-			if (asksForStaff(userContent)) await queueStaffAlert(ctx, args.sessionId, userContent);
+			await guestReceived(ctx, args.sessionId, userMessageId);
+			if (asksForStaff(userContent)) await queueStaffAlert(ctx, args.sessionId, userContent, userMessageId);
 		}
 
 		await ctx.db.patch(args.eventId, {
@@ -245,6 +247,7 @@ export const completeEvent = mutation({
 		userContent: v.optional(v.string()),
 		assistantContent: v.string(),
 		replyMode: replyModeValidator,
+		outcome: v.optional(replyOutcomeValidator),
 		whatsappReplyStatus: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
@@ -270,6 +273,7 @@ export const completeEvent = mutation({
 				content: userContent,
 				timestamp: now
 			});
+			await guestReceived(ctx, args.sessionId, userMessageId);
 			addedMessages++;
 			latestMessageAt = Math.max(latestMessageAt, now);
 		}
@@ -278,6 +282,7 @@ export const completeEvent = mutation({
 			assistantMessageId = await ctx.db.insert('chatMessages', {
 				sessionId: args.sessionId,
 				role: 'assistant',
+				replyToMessageId: userMessageId,
 				content: assistantContent,
 				timestamp: now
 			});
@@ -311,6 +316,10 @@ export const completeEvent = mutation({
 				});
 			}
 		}
+
+		if (assistantMessageId) await answerAccepted(ctx, { sessionId: args.sessionId, replyToMessageId: userMessageId,
+			messageId: assistantMessageId, source: 'ai', outcome: args.outcome ??
+			(args.replyMode === 'unknown_fallback' || args.replyMode === 'failed' ? 'needs_staff' : 'answered') });
 
 		return {
 			completed: true,
@@ -373,6 +382,7 @@ export const markEventFailed = mutation({
 			processedAt: now,
 			updatedAt: now
 		});
+		if (event.sessionId) await sendFailed(ctx, event.sessionId, event.userMessageId, args.error);
 		return { failed: true, duplicate: false };
 	}
 });

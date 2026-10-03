@@ -11,6 +11,7 @@ import {
 } from './lib/adminChatMetadata';
 import { isChatSessionActive } from './lib/chatPresence';
 import { getChannelReplyWindow } from './lib/channelReplyWindow';
+import { answerAccepted, changeStaffOwnership, finishWithoutReply, inboxNeedsStaff, latestGuestId } from './lib/inboxLifecycle';
 
 const PAGE_SIZE = 10;
 const SEARCH_SESSION_LIMIT = 50;
@@ -29,7 +30,7 @@ const sessionStatusValidator = v.union(
 	v.literal('all'),
 	v.literal('active'),
 	v.literal('inactive'),
-	v.literal('needs_reply')
+	v.literal('needs_reply'), v.literal('in_progress')
 );
 
 const adminStatusValidator = v.union(
@@ -55,7 +56,7 @@ const channelFilterValidator = v.union(
 	v.literal('instagram')
 );
 
-type SessionStatus = 'all' | 'active' | 'inactive' | 'needs_reply';
+type SessionStatus = 'all' | 'active' | 'inactive' | 'needs_reply' | 'in_progress';
 type AdminStatusFilter = 'all' | 'open' | 'done' | 'resolved' | 'archived';
 type EmptyFilter = 'all' | 'empty' | 'non_empty';
 type ChannelFilter = 'all' | 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
@@ -223,7 +224,7 @@ function sessionNeedsReply(
 	session: Doc<'chatSessions'>,
 	latestMessage: Doc<'chatMessages'> | null
 ) {
-	return latestMessage?.role === 'user' && latestMessage._id !== session.settledGuestMessageId;
+	return inboxNeedsStaff(session, latestMessage);
 }
 
 async function sessionMatchesFilters(
@@ -244,6 +245,8 @@ async function sessionMatchesFilters(
 	if (options.status === 'inactive' && active) return false;
 	if (options.channel !== 'all' && session.channel !== options.channel) return false;
 	const adminStatus = session.adminStatus ?? 'open';
+	if (options.status === 'in_progress' && (session.inboxState ? session.inboxState !== 'processing' :
+		sessionNeedsReply(session, await lookups.latestMessage(session._id)))) return false;
 	if (options.adminStatus === 'done' ? adminStatus === 'open' : options.adminStatus !== 'all' && adminStatus !== options.adminStatus) {
 		return false;
 	}
@@ -702,6 +705,8 @@ export const settleGuestMessage = mutation({
 		}
 
 		await ctx.db.patch(args.sessionId, { settledGuestMessageId: args.messageId });
+		const session = await ctx.db.get(args.sessionId);
+		if (session && await latestGuestId(ctx, session) === args.messageId) await finishWithoutReply(ctx, args.sessionId);
 		return null;
 	}
 });
@@ -793,9 +798,19 @@ export const setSessionStatus = mutation({
 		if (!session) throw new Error('Session not found');
 
 		const now = Date.now();
+		if (args.status === 'resolved') {
+			await finishWithoutReply(ctx, args.sessionId);
+			return null;
+		}
 		await ctx.db.patch(args.sessionId, {
 			adminStatus: args.status === 'open' ? undefined : args.status,
-			resolvedAt: args.status === 'resolved' ? now : undefined,
+			inboxState: args.status === 'open' ? 'processing' : 'done',
+			inboxReason: args.status === 'open' ? 'follow_up' : 'archived',
+			staffTask: args.status === 'open' ? (session.staffTask ?? 'Review conversation') : undefined,
+			aiPaused: args.status === 'open' ? true : session.keepWithStaff ? true : undefined,
+			resolutionSource: undefined,
+			inboxSendRequestId: undefined,
+			resolvedAt: undefined,
 			archivedAt: args.status === 'archived' ? now : undefined
 		});
 		return null;
@@ -809,10 +824,47 @@ export const setAiPaused = mutation({
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
-		await ctx.db.patch(args.sessionId, {
-			aiPaused: args.paused ? true : undefined,
-			assignedAdminEmail: args.paused ? email : undefined
-		});
+		await changeStaffOwnership(ctx, args.sessionId, email, { paused: args.paused });
+		return null;
+	}
+});
+
+export const setStaffTask = mutation({
+	args: { sessionId: v.id('chatSessions'), task: v.union(v.string(), v.null()) },
+	handler: async (ctx, args) => {
+		const { email } = await requireAdmin(ctx);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+		if (args.task !== null) {
+			const task = args.task.trim();
+			if (!task || task.length > 300) throw new Error('Enter a follow-up of 1–300 characters');
+			await ctx.db.patch(args.sessionId, { staffTask: task,
+				inboxState: session.inboxSendError ? 'needs_staff' : 'processing',
+				inboxReason: session.inboxSendError ? 'send_failed' : session.inboxReason === 'sending' ? 'sending' : 'follow_up',
+				adminStatus: undefined, resolvedAt: undefined, aiPaused: true, assignedAdminEmail: email });
+		} else {
+			await ctx.db.patch(args.sessionId, { staffTask: undefined });
+			// Task edits must not finish a reply before the channel confirms it.
+			if (session.inboxReason === 'sending') return null;
+			const guestId = await latestGuestId(ctx, session);
+			if (!session.inboxHandoff && !session.inboxSendError && guestId === session.answeredGuestMessageId && session.inboxReason !== 'send_failed') {
+				await answerAccepted(ctx, { sessionId: args.sessionId, replyToMessageId: guestId,
+					messageId: session.resolutionMessageId, source: 'staff', outcome: 'answered' });
+			} else {
+				await ctx.db.patch(args.sessionId, { inboxState: 'needs_staff', inboxReason: session.inboxReason === 'send_failed' ? 'send_failed' : session.inboxHandoff ? 'handoff' : 'staff_reply' });
+			}
+		}
+		return null;
+	}
+});
+
+export const setKeepWithStaff = mutation({
+	args: { sessionId: v.id('chatSessions'), keep: v.boolean() },
+	handler: async (ctx, args) => {
+		const { email } = await requireAdmin(ctx);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session) throw new Error('Session not found');
+		await changeStaffOwnership(ctx, args.sessionId, email, { keep: args.keep });
 		return null;
 	}
 });

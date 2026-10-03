@@ -14,6 +14,7 @@ import { getSupportedFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';
 import { asksForStaff } from './chatKnowledge';
+import type { ReplyOutcome } from './lib/inboxLifecycle';
 import { capabilityReply, checkTimeReply, isCheckTimeQuestion, isCancellationPolicyQuestion, cancellationPolicyReply, replyLocale } from './lib/conciergePolicy';
 import { runConciergeTurn } from './lib/conciergeTurn';
 import { startTurnMetrics, recordStage, addPromptChars, recordModelRequest, recordTool, emitConciergeTurnLog, createTurnId, type TurnMetrics } from './lib/turnMetrics';
@@ -41,6 +42,7 @@ export const consumeChatLimit = internalMutation({
 export type GenerateConciergeReplyArgs = {
 	sessionId: Id<'chatSessions'>;
 	userMessage: string;
+	replyToMessageId?: Id<'chatMessages'>;
 	propertySlug?: string;
 	locale?: string;
 	channel?: 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
@@ -324,13 +326,14 @@ async function recordUnknownFallback(
   ctx: ActionCtx,
   args: Pick<
     GenerateConciergeReplyArgs,
-    "sessionId" | "userMessage" | "propertySlug" | "locale"
+    "sessionId" | "userMessage" | "propertySlug" | "locale" | "replyToMessageId"
   >,
   session: Doc<"chatSessions">,
 ) {
   await ctx.runMutation(api.chatKnowledge.recordUnknownQuestion, {
     sessionId: args.sessionId,
     userQuestion: args.userMessage,
+    replyToMessageId: args.replyToMessageId,
     propertySlug: args.propertySlug ?? session.propertySlug,
     pageUrl: session.currentPath,
   });
@@ -391,7 +394,16 @@ async function policyReply(
 }
 
 /** committed is present when a booking/service/cancellation write succeeded in this turn. */
-export type ConciergeReply = { response: string; model: string; committed?: { tool: string } };
+export type ConciergeReply = { response: string; model: string; outcome?: ReplyOutcome; committed?: { tool: string } };
+
+function withReplyOutcome(reply: ConciergeReply): ConciergeReply {
+  const needsStaff = reply.model === 'unknown_fallback' || reply.model === 'tool_fallback' ||
+    reply.response.includes('[[NEEDS_STAFF]]') || asksForStaff(reply.response) ||
+    /\b(?:ask|check with|contact|connect|confirm with)\b.{0,50}\b(?:staff|host|team|kitchen)\b/i.test(reply.response);
+  const awaitingGuest = reply.response.includes('[[AWAITING_GUEST]]') || /[?？]\s*$/.test(reply.response);
+  return { ...reply, response: reply.response.replace(/\[\[(?:NEEDS_STAFF|AWAITING_GUEST|ANSWERED)\]\]/g, '').trim(),
+    outcome: needsStaff ? 'needs_staff' : awaitingGuest ? 'awaiting_guest' : 'answered' };
+}
 
 export async function generateConciergeReply(
 	ctx: ActionCtx,
@@ -478,6 +490,7 @@ BUSINESS PROFILE (demo defaults apply to fields not yet saved by staff):
 ${settings.cancellationPolicy ? `- Cancellation policy: ${settings.cancellationPolicy}\n` : ''}- Check-in from ${settings.checkInTime}, check-out by ${settings.checkOutTime} (${settings.timezone} time)
 
 STYLE:
+- End a natural-language final answer with [[ANSWERED]], [[AWAITING_GUEST]] when waiting for guest details/confirmation, or [[NEEDS_STAFF]] when staff still owe a reply or action. These markers are removed before delivery. A promise to investigate or contact staff requires [[NEEDS_STAFF]].
 - Reply in guest locale ${args.locale ?? "detected from the latest message"}; explicit menu locale takes precedence for translated legacy menus.
 - Tone: ${settings.ai.tone}
 - Detect the language of the latest visitor message and reply in that same language
@@ -551,7 +564,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
   factRevisions.push(...(evidence.facts ?? []).map(({factId,revision})=>({factId,revision})));
  }
 			if (trace.result.includes('Offer to connect the guest with the host.')) {
-				await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, { sessionId: args.sessionId, lastMessage: args.userMessage })
+				await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, { sessionId: args.sessionId, lastMessage: args.userMessage, replyToMessageId: args.replyToMessageId })
 					.catch(error => console.error('Could not queue staff handoff alert:', error));
 			}
 		}
@@ -584,7 +597,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	if (asksForStaff(response.content ?? '') || /\bput you in touch\b.{0,60}\b(host|staff|human|person|team)\b/i.test(response.content ?? '')) {
 		await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
 			sessionId: args.sessionId,
-			lastMessage: args.userMessage
+			lastMessage: args.userMessage,
+			replyToMessageId: args.replyToMessageId
 		}).catch((error) => console.error('Could not queue staff handoff alert:', error));
 	}
 	if (!response.content?.trim() || response.content.includes('[[UNKNOWN]]')) {
@@ -606,6 +620,7 @@ export const generateReply = action({
 	args: {
 		sessionId: v.id('chatSessions'),
 		userMessage: v.string(),
+		replyToMessageId: v.optional(v.id('chatMessages')),
 		propertySlug: v.optional(v.string()),
 		locale: v.optional(v.string()),
 		channel: v.optional(chatChannelValidator),
@@ -624,7 +639,7 @@ export const generateReply = action({
 		if (session.aiPaused) throw new Error('AI replies are paused: staff took over this chat');
 
 		// Booking tools depend on the channel, so trust the stored session, not the caller.
-		return await generateConciergeReply(ctx, { ...args, channel: session.channel }, session);
+		return withReplyOutcome(await generateConciergeReply(ctx, { ...args, channel: session.channel, replyToMessageId: args.replyToMessageId ?? session.latestGuestMessageId }, session));
 	}
 });
 
@@ -663,7 +678,7 @@ export const respond = action({
 		// Staff took over: keep the guest message for them, but the AI stays quiet.
 		if (session.aiPaused) return { response: '', model: 'ai_paused', aiPaused: true };
 
-		const result = await generateConciergeReply(ctx, { ...args, channel: session.channel }, session);
+		const result = withReplyOutcome(await generateConciergeReply(ctx, { ...args, channel: session.channel, replyToMessageId: userMessageId }, session));
 
 		const stored: { stored: boolean; messageId: Id<'chatMessages'> | null } = await ctx.runMutation(internal.chat.addAssistantMessageWithSuggestions, {
 			sessionId: args.sessionId,
@@ -672,6 +687,7 @@ export const respond = action({
 			locale: args.locale,
 			propertySlug: args.propertySlug,
 			replyToMessageId: userMessageId,
+			outcome: result.outcome,
 			...(result.model === 'unknown_fallback' ? { skipSuggestions: true } : {})
 		});
 		if (!stored.stored) return { response: '', model: 'ai_paused', aiPaused: true };

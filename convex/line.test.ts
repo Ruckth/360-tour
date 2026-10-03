@@ -84,6 +84,7 @@ describe("LINE webhook events", () => {
       sessionId: firstClaim.sessionId!,
     });
 
+    expect(session).toMatchObject({ adminStatus: "resolved", inboxState: "done", resolutionSource: "ai" });
     expect(session).toMatchObject({
       channel: "line",
       visitorId: "line:U123",
