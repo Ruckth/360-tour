@@ -1,10 +1,21 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { internalQuery, mutation, query } from './_generated/server';
-import type { Doc } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 
 const status = v.union(v.literal('draft'), v.literal('approved'), v.literal('archived'));
+
+const structuredSourceValidator = v.union(
+	v.literal('settings'),
+	v.literal('property_details'),
+	v.literal('services'),
+	v.literal('pricing_availability')
+);
+
+/** Bounded per call so a large unknown group is resolved in verifiable batches. */
+const RESOLVE_GROUP_LIMIT = 100;
+const RESOLVE_GROUP_ROW_LIMIT = 100;
 
 function text(value: string, label: string, limit: number) {
 	const clean = value.trim();
@@ -56,7 +67,7 @@ export const adminSave = mutation({
 			if (args.status !== 'approved') throw new Error('Approve the fact before resolving missing information');
 			if (args.propertyId && unknown.propertyId !== args.propertyId) throw new Error('The fact must apply to the reported property');
 			await ctx.db.patch(unknown._id, {
-				status: 'resolved', resolvedFactId: factId, resolvedAnswerId: undefined, resolvedQuestionId: undefined,
+				status: 'resolved', resolvedFactId: factId, resolvedSource: undefined, resolvedAnswerId: undefined, resolvedQuestionId: undefined,
 				resolvedAt: Date.now(), updatedAt: Date.now(), ignoredAt: undefined
 			});
 		}
@@ -94,5 +105,103 @@ export const search = internalQuery({
 				updatedAt: fact.updatedAt, propertySlug: fact.propertyId ? property?.slug : null }];
 		});
 		return { facts, noMatch: facts.length === 0 };
+	}
+});
+
+/** Change a fact's status with a revision check, bumping the revision so stale editors are rejected. */
+export const adminSetStatus = mutation({
+	args: { factId: v.id('businessFacts'), status, expectedRevision: v.number() },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const existing = await ctx.db.get(args.factId);
+		if (!existing) throw new Error('Fact not found');
+		if (args.expectedRevision !== existing.revision) throw new Error('This fact changed. Reload before saving.');
+		await ctx.db.patch(existing._id, {
+			status: args.status,
+			revision: existing.revision + 1,
+			updatedAt: Date.now(),
+			updatedByAdminEmail: admin.email
+		});
+		return { status: args.status, revision: existing.revision + 1 };
+	}
+});
+
+/**
+ * Resolve the "new" unknown questions in the given groups by pointing them at one approved fact
+ * OR a current structured source. Exactly one of factId / structuredSource is required. A
+ * property-scoped fact may only resolve unknowns reported for that property; a global fact may
+ * resolve any. Bounded per call so each batch can be verified before the next.
+ */
+export const adminResolveUnknownGroups = mutation({
+	args: {
+		normalizedQuestions: v.array(v.string()),
+		factId: v.optional(v.id('businessFacts')),
+		structuredSource: v.optional(structuredSourceValidator)
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if ((args.factId === undefined) === (args.structuredSource === undefined)) {
+			throw new Error('Provide exactly one of a fact or a structured source');
+		}
+
+		let fact: Doc<'businessFacts'> | null = null;
+		if (args.factId) {
+			fact = await ctx.db.get(args.factId);
+			if (!fact) throw new Error('Fact not found');
+			if (fact.status !== 'approved') throw new Error('Approve the fact before resolving missing information');
+		}
+
+		const keys = [...new Set(args.normalizedQuestions.map(key => key.trim()).filter(Boolean))];
+		if (keys.length > RESOLVE_GROUP_LIMIT) throw new Error(`Select ${RESOLVE_GROUP_LIMIT} or fewer groups at a time`);
+
+		const now = Date.now();
+		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
+		for (const key of keys) {
+			const rows = await ctx.db
+				.query('chatUnknownQuestions')
+				.withIndex('by_status_and_normalizedQuestion', q => q.eq('status', 'new').eq('normalizedQuestion', key))
+				.take(RESOLVE_GROUP_ROW_LIMIT);
+			for (const row of rows) {
+				// A property-scoped fact may only resolve unknowns for its own property.
+				if (fact?.propertyId && row.propertyId !== fact.propertyId) continue;
+				await ctx.db.patch(row._id, {
+					status: 'resolved',
+					resolvedFactId: args.factId,
+					resolvedSource: args.structuredSource,
+					resolvedAnswerId: undefined,
+					resolvedQuestionId: undefined,
+					resolvedAt: now,
+					ignoredAt: undefined,
+					updatedAt: now
+				});
+				unknownQuestionIds.push(row._id);
+			}
+		}
+
+		let remaining = 0;
+		for (const key of keys) {
+			const rows = await ctx.db
+				.query('chatUnknownQuestions')
+				.withIndex('by_status_and_normalizedQuestion', q => q.eq('status', 'new').eq('normalizedQuestion', key))
+				.take(RESOLVE_GROUP_ROW_LIMIT);
+			remaining += fact?.propertyId ? rows.filter(row => row.propertyId === fact!.propertyId).length : rows.length;
+		}
+
+		return { resolved: unknownQuestionIds.length, remaining, unknownQuestionIds };
+	}
+});
+
+/** Active properties (id/slug/name) for the fact editor's property picker. */
+export const adminPropertyOptions = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+		const properties = await ctx.db
+			.query('properties')
+			.withIndex('by_status', q => q.eq('status', 'active'))
+			.take(100);
+		return properties
+			.map(property => ({ _id: property._id, slug: property.slug, name: property.name }))
+			.sort((left, right) => left.name.localeCompare(right.name));
 	}
 });

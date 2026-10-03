@@ -1,6 +1,10 @@
 import { DEMO_DIRECT_DISCOUNT_PERCENT, type BookingProperty } from "@/lib/booking/booking";
 import { resort } from "@/lib/data/resort-config";
-import { getLocalizedProperties, localizePropertyLike } from "@/lib/i18n/public-content";
+import {
+  getLocalizedProperties,
+  localizePropertyLike,
+  type PublicMessages,
+} from "@/lib/i18n/public-content";
 import type { LivePropertyRow } from "@/lib/react/convex-api";
 
 export const chatVillaBackgrounds: Record<string, string> = {
@@ -13,8 +17,8 @@ export function getChatVillaBackground(property: Pick<BookingProperty, "id" | "s
   return chatVillaBackgrounds[property.slug] ?? chatVillaBackgrounds[property.id];
 }
 
-export function getDemoChatProperties(locale: string): BookingProperty[] {
-  return getLocalizedProperties(locale).map((property) => ({
+export function getDemoChatProperties(messages: PublicMessages, localeTag: string): BookingProperty[] {
+  return getLocalizedProperties(messages, localeTag).map((property) => ({
     ...property,
     _id: `demo-${property.id}`,
     slug: property.id,
@@ -24,7 +28,11 @@ export function getDemoChatProperties(locale: string): BookingProperty[] {
   }));
 }
 
-export function getLiveChatProperties(rows: LivePropertyRow[], locale: string): BookingProperty[] {
+export function getLiveChatProperties(
+  rows: LivePropertyRow[],
+  messages: PublicMessages,
+  localeTag: string,
+): BookingProperty[] {
   return rows.map((row) =>
     localizePropertyLike(
       {
@@ -32,7 +40,8 @@ export function getLiveChatProperties(rows: LivePropertyRow[], locale: string): 
         id: row.slug,
         source: "live" as const,
       },
-      locale,
+      messages,
+      localeTag,
     ),
   );
 }

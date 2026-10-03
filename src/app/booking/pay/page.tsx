@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
 import { PayClient } from "@/components/booking/PayClient";
-import { getPublicMessages } from "@/lib/i18n/public-content";
+import { getPublicMessages } from "@/lib/i18n/server-content";
 
 type PaySearchParams = {
   bookingId?: string;

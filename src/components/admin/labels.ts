@@ -79,6 +79,11 @@ export const STATUS_LABELS = {
     approved: "Approved",
     archived: "Archived",
   },
+  businessFact: {
+    draft: "Draft",
+    approved: "Approved",
+    archived: "Archived",
+  },
   unknownQuestion: {
     new: "New",
     resolved: "Resolved",

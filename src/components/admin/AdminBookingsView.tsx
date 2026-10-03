@@ -5,7 +5,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from "convex/adminBookings";
 import { calculateDirectQuote } from "convex/lib/pricing";
-import { addDays, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from "date-fns";
+import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
@@ -37,15 +37,18 @@ import { formatMoney, sourceLabel } from "./labels";
 import {
   HOTEL_STATUSES,
   balanceText,
-  canEditBooking,
   displayDate,
   hotelStatus,
   hotelStatusColor,
   statusKey,
   stayConflicts,
   type AdminProperty,
-  type DateBlock,
 } from "./admin-bookings-shared";
+import {
+  buildHotelCalendarEvents,
+  isoDate,
+  type HotelEventData,
+} from "@/lib/admin/booking-calendar-events";
 
 // Stable reference: the calendar rebuilds its settings when this object changes.
 const CALENDAR_I18N = { viewNames: { resource: "Villas", agenda: "List" } };
@@ -56,34 +59,11 @@ type HotelView = (typeof VIEWS)[number];
 const DEFAULT_CHECK_IN = "14:00";
 const DEFAULT_CHECK_OUT = "11:00";
 
-type EventData =
-  | { kind: "booking"; booking: AdminBooking }
-  | { kind: "hostBlock"; block: DateBlock }
-  | { kind: "otaBlock"; propertyId: string; start: string; end: string; source: string };
+// Calendar chip payload and ISO/day helpers now live in the pure, tested module alongside the
+// event transformation. `EventData` keeps its local name so the rest of the view is unchanged.
+type EventData = HotelEventData;
 
 type Move = { booking: AdminBooking; propertyId: string; checkIn: string; checkOut: string };
-
-function isoDate(date: Date) {
-  return format(date, "yyyy-MM-dd");
-}
-
-/** Collapses per-night OTA block rows into contiguous ranges per villa and source. */
-function blockRanges(blocks: Array<{ propertyId: string; date: string; source: string }>) {
-  const ranges: Array<{ propertyId: string; start: string; end: string; source: string }> = [];
-  const sorted = [...blocks].sort(
-    (a, b) =>
-      a.propertyId.localeCompare(b.propertyId) || a.source.localeCompare(b.source) || a.date.localeCompare(b.date),
-  );
-  for (const block of sorted) {
-    const last = ranges.at(-1);
-    if (last && last.propertyId === block.propertyId && last.source === block.source && last.end === block.date) {
-      last.end = addDaysIso(block.date, 1);
-    } else {
-      ranges.push({ propertyId: block.propertyId, start: block.date, end: addDaysIso(block.date, 1), source: block.source });
-    }
-  }
-  return ranges;
-}
 
 function initialRange() {
   const today = new Date();
@@ -151,56 +131,10 @@ export function AdminBookingsView() {
     [data?.properties, villa],
   );
 
-  const events = useMemo<CalendarEvent<EventData>[]>(() => {
-    if (!data) return [];
-    const names = new Map(data.properties.map((p) => [p._id as string, p.name]));
-    const visible = (propertyId: string) => villa === "all" || propertyId === villa;
-    const allDay = (start: string, end: string) => ({
-      start: new Date(`${start}T00:00:00`),
-      end: new Date(`${end}T00:00:00`),
-      allDay: true,
-    });
-
-    const bookingEvents = data.bookings
-      .filter((b) => visible(b.propertyId) && (showCancelled || b.status !== "cancelled"))
-      .map((booking): CalendarEvent<EventData> => ({
-        id: booking._id,
-        title: `${booking.guestName} · ${names.get(booking.propertyId) ?? "Villa"}`,
-        start: new Date(`${booking.checkIn}T${checkInTime}:00`),
-        end: new Date(`${booking.checkOut}T${checkOutTime}:00`),
-        resourceId: booking.propertyId,
-        color: hotelStatusColor(statusKey(booking)),
-        // Drag to move, drag an edge to change dates. Cancelled and refunded bookings stay put.
-        readOnly: !canEditBooking(booking),
-        data: { kind: "booking", booking },
-      }));
-
-    const hostBlockEvents = data.dateBlocks
-      .filter((block) => visible(block.propertyId))
-      .map((block): CalendarEvent<EventData> => ({
-        id: `host-block-${block._id}`,
-        title: `Blocked: ${block.reason} · ${names.get(block.propertyId) ?? "Villa"}`,
-        ...allDay(block.start, block.end),
-        resourceId: block.propertyId,
-        color: hotelStatusColor("hostBlock"),
-        readOnly: true,
-        data: { kind: "hostBlock", block },
-      }));
-
-    const otaBlockEvents = blockRanges(data.blocks)
-      .filter((block) => visible(block.propertyId))
-      .map((block): CalendarEvent<EventData> => ({
-        id: `ota-block-${block.propertyId}-${block.source}-${block.start}`,
-        title: `${sourceLabel(block.source)} · ${names.get(block.propertyId) ?? "Villa"}`,
-        ...allDay(block.start, block.end),
-        resourceId: block.propertyId,
-        color: hotelStatusColor("otaBlock"),
-        readOnly: true,
-        data: { kind: "otaBlock", ...block },
-      }));
-
-    return [...bookingEvents, ...hostBlockEvents, ...otaBlockEvents];
-  }, [data, villa, showCancelled, checkInTime, checkOutTime]);
+  const events = useMemo<CalendarEvent<EventData>[]>(
+    () => buildHotelCalendarEvents({ data, villa, showCancelled, checkInTime, checkOutTime, sourceLabel }),
+    [data, villa, showCancelled, checkInTime, checkOutTime],
+  );
 
   function openFromSearch(booking: AdminBooking) {
     if (villa !== "all" && villa !== booking.propertyId) setVilla("all");

@@ -6,7 +6,7 @@ import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
 import { getClerkPublishableKey, isClerkConfigured } from "@/lib/clerk-config";
-import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/public-content";
+import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/server-content";
 import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
 import { siteUrl } from "@/lib/site-url";

@@ -7,7 +7,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/chats", label: "Chats", icon: MessageCircle },
   { href: "/admin/hotel", label: "Hotel bookings", icon: BedDouble },
   { href: "/admin/staff/calendar", label: "Staff bookings", icon: CalendarClock },
-  { href: "/admin/questions", label: "Questions", icon: HelpCircle },
+  { href: "/admin/questions", label: "Business facts", icon: HelpCircle },
   { href: "/admin/properties", label: "Properties", icon: Building2 },
   { href: "/admin/leads", label: "Leads", icon: Mail },
   { href: "/admin/settings", label: "Settings", icon: Settings },

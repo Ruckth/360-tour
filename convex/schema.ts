@@ -1020,6 +1020,14 @@ export default defineSchema({
 		status: v.union(v.literal('new'), v.literal('resolved'), v.literal('ignored')),
 		adminNotified: v.boolean(),
 		resolvedFactId: v.optional(v.id('businessFacts')),
+		resolvedSource: v.optional(
+			v.union(
+				v.literal('settings'),
+				v.literal('property_details'),
+				v.literal('services'),
+				v.literal('pricing_availability')
+			)
+		),
 		resolvedAnswerId: v.optional(v.id('chatAnswers')),
 		resolvedQuestionId: v.optional(v.id('chatQuestions')),
 		createdAt: v.number(),

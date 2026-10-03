@@ -433,6 +433,8 @@ async function deleteOrphanTopics(ctx: MutationCtx, topicIds: Id<'chatTopics'>[]
 async function reopenUnknownQuestion(ctx: MutationCtx, unknownQuestionId: Id<'chatUnknownQuestions'>) {
 	await ctx.db.patch(unknownQuestionId, {
 		status: 'new',
+		resolvedFactId: undefined,
+		resolvedSource: undefined,
 		resolvedAnswerId: undefined,
 		resolvedQuestionId: undefined,
 		resolvedAt: undefined,
@@ -958,8 +960,8 @@ export const adminListPropertyScopes = query({
 export const adminCreatePropertyScope = mutation({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const slug = sanitizePropertySlug(args.slug);
 		const property = await getPropertyBySlug(ctx, slug);
 		if (property) {
@@ -1207,8 +1209,8 @@ export const adminCreateAnswer = mutation({
 		topicNames: v.optional(v.array(v.string()))
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const propertyScopes = await resolvePropertyScopeSelections(ctx, args, admin.email);
 		const propertyId = primaryPropertyIdForScopes(propertyScopes);
 		const title = sanitizeRequiredText(args.title, 'Title', 160);
@@ -1258,8 +1260,8 @@ export const adminUpdateAnswer = mutation({
 		topicNames: v.optional(v.array(v.string()))
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const existing = await ctx.db.get(args.answerId);
 		if (!existing) throw new Error('Answer not found');
 		const editsQuestions = args.primaryQuestion !== undefined || args.questions !== undefined;
@@ -1342,15 +1344,18 @@ export const adminListUnknownQuestions = query({
 			...result,
 			page: await Promise.all(
 				result.page.map(async (row) => {
-					const [property, answer] = await Promise.all([
+					const [property, answer, fact] = await Promise.all([
 						row.propertyId ? ctx.db.get(row.propertyId) : Promise.resolve(null),
-						row.resolvedAnswerId ? ctx.db.get(row.resolvedAnswerId) : Promise.resolve(null)
+						row.resolvedAnswerId ? ctx.db.get(row.resolvedAnswerId) : Promise.resolve(null),
+						row.resolvedFactId ? ctx.db.get(row.resolvedFactId) : Promise.resolve(null)
 					]);
 					return {
 						...row,
 						propertyName: property?.name,
 						propertySlug: row.propertySlug ?? property?.slug,
-						resolvedAnswerTitle: answer?.title
+						resolvedAnswerTitle: answer?.title,
+						resolvedFactTitle: fact?.title,
+						resolvedSource: row.resolvedSource
 					};
 				})
 			)
@@ -1617,8 +1622,8 @@ export const adminGenerateSimilarQuestions = action({
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const context: AnswerGenerationContext | null = await ctx.runQuery(
 			internal.chatKnowledge.getAnswerGenerationContext,
 			{ answerId: args.answerId }
@@ -1652,8 +1657,8 @@ export const adminCreateAnswerFromUnknown = action({
 		generateSimilar: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const created: { answerId: Id<'chatAnswers'>; questionId: Id<'chatQuestions'> } =
 			await ctx.runMutation(internal.chatKnowledge.createAnswerFromUnknown, {
 				unknownQuestionId: args.unknownQuestionId,
@@ -1695,8 +1700,8 @@ export const adminResolveUnknownWithAnswer = action({
 		generateSimilar: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const resolved: { answerId: Id<'chatAnswers'>; questionId: Id<'chatQuestions'> } =
 			await ctx.runMutation(internal.chatKnowledge.resolveUnknownWithAnswer, {
 				unknownQuestionId: args.unknownQuestionId,
@@ -1809,11 +1814,12 @@ export const continueDeleteAnswer = internalMutation({
 	}
 });
 
-/** Permanently deletes an archived answer with its questions, scopes and topic links. */
+/** Legacy archives are read-only: permanent deletion is retired. */
 export const adminDeleteAnswer = mutation({
 	args: { answerId: v.id('chatAnswers') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const answer = await ctx.db.get(args.answerId);
 		if (!answer) throw new Error('Answer not found');
 		if (answer.status !== 'archived') throw new Error('Archive the answer before deleting it');
@@ -1824,11 +1830,12 @@ export const adminDeleteAnswer = mutation({
 	}
 });
 
-/** Deletes one question variant. The primary question stays until another one is made primary. */
+/** Legacy archives are read-only: deleting a question variant is retired. */
 export const adminDeleteQuestion = mutation({
 	args: { questionId: v.id('chatQuestions') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const question = await ctx.db.get(args.questionId);
 		if (!question) throw new Error('Question not found');
 		if (question.status === 'approved' && question.isPrimary) {
@@ -1848,8 +1855,8 @@ export const adminApproveQuestion = mutation({
 		isAiTrigger: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const question = await ctx.db.get(args.questionId);
 		if (!question) throw new Error('Question not found');
 		const answer = await ctx.db.get(question.answerId);
@@ -2028,10 +2035,11 @@ export const adminListUnknownGroups = query({
 		const groups = await Promise.all(
 			groupUnknownQuestions(rows).map(async (group) => {
 				const latest = group.latest;
-				const [groupChannels, property, resolvedAnswer] = await Promise.all([
+				const [groupChannels, property, resolvedAnswer, resolvedFact] = await Promise.all([
 					Promise.all(group.rows.map((row) => (row.sessionId ? channelFor(row.sessionId) : undefined))),
 					latest.propertyId ? ctx.db.get(latest.propertyId) : Promise.resolve(null),
-					latest.resolvedAnswerId ? ctx.db.get(latest.resolvedAnswerId) : Promise.resolve(null)
+					latest.resolvedAnswerId ? ctx.db.get(latest.resolvedAnswerId) : Promise.resolve(null),
+					latest.resolvedFactId ? ctx.db.get(latest.resolvedFactId) : Promise.resolve(null)
 				]);
 				return {
 					normalizedQuestion: group.normalizedQuestion,
@@ -2043,7 +2051,9 @@ export const adminListUnknownGroups = query({
 						...latest,
 						propertyName: property?.name,
 						propertySlug: latest.propertySlug ?? property?.slug,
-						resolvedAnswerTitle: resolvedAnswer?.title
+						resolvedAnswerTitle: resolvedAnswer?.title,
+						resolvedFactTitle: resolvedFact?.title,
+						resolvedSource: latest.resolvedSource
 					}
 				};
 			})
@@ -2136,8 +2146,8 @@ export const adminLinkUnknownGroups = mutation({
 		generateSimilar: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const answer = await ctx.db.get(args.answerId);
 		if (!answer) throw new Error('Answer not found');
 		if (answer.status === 'archived') throw new Error('Cannot link to an archived answer');
@@ -2216,8 +2226,8 @@ export const adminUndoLinkUnknownGroups = mutation({
 		)
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const changes = new Map(args.questionChanges.map((change) => [change.questionId, change.previousStatus]));
 		bulkIds([...changes.keys()], BULK_GROUP_LIMIT);
 		let reopened = 0;
@@ -2339,8 +2349,8 @@ async function setQuestionsStatus(
 export const adminApproveQuestions = mutation({
 	args: { questionIds: v.array(v.id('chatQuestions')) },
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		return { approved: await setQuestionsStatus(ctx, args.questionIds, 'approved', admin.email) };
 	}
 });
@@ -2357,8 +2367,8 @@ export const adminRejectQuestions = mutation({
 export const adminUnreviewQuestions = mutation({
 	args: { questionIds: v.array(v.id('chatQuestions')) },
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		return { reset: await setQuestionsStatus(ctx, args.questionIds, 'suggested', admin.email) };
 	}
 });
@@ -2367,8 +2377,8 @@ export const adminUnreviewQuestions = mutation({
 export const adminSetAnswersStatus = mutation({
 	args: { answerIds: v.array(v.id('chatAnswers')), status: answerStatusValidator },
 	handler: async (ctx, args) => {
-		if (args.status !== 'archived') assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		if (args.status !== 'archived') assertLegacyQaWritable();
 		const now = Date.now();
 		const changed: { answerId: Id<'chatAnswers'>; previousStatus: AnswerStatus }[] = [];
 		for (const answerId of bulkIds(args.answerIds)) {

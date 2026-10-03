@@ -37,19 +37,15 @@
   },
   "include": [
     "next-env.d.ts",
-    "src/app/**/*.ts",
-    "src/app/**/*.tsx",
-    "src/components/**/*.ts",
-    "src/components/**/*.tsx",
-    "src/lib/**/*.ts",
-    "src/lib/**/*.tsx",
-    "src/lib/utils.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
     ".next/types/**/*.ts",
     "convex/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
+    "convex/**/*.test.ts",
     "opensrc",
     "archive"
   ]

@@ -68,4 +68,18 @@ describe("localized chat fallback responses", () => {
     ] as never[];
     expect(getFallbackResponse("price", null, "en", villas)).not.toContain("All prices include");
   });
+
+  it("no longer asserts retired policy benefits that are not in settings or property records", () => {
+    // The retirement removed hardcoded free airport pickup / welcome basket / late checkout
+    // claims from the coded fallback: they are not owner-approved facts.
+    const booking = getFallbackResponse("book my dates", property, "en");
+    expect(booking).toContain("15% off");
+    for (const retired of ["airport pickup", "welcome basket", "late checkout", "breakfast"]) {
+      expect(booking.toLowerCase()).not.toContain(retired);
+    }
+    // Localized presets must not reintroduce the claims either.
+    expect(getFallbackResponse("book dates", null, "th")).not.toContain("รับสนามบิน");
+    expect(getFallbackResponse("book dates", null, "ko")).not.toContain("공항 픽업");
+    expect(getFallbackResponse("book dates", null, "ja")).not.toContain("空港送迎");
+  });
 });

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
 import { AIChatPage } from "@/components/chat/AIChatWidget";
-import { getPublicMessages } from "@/lib/i18n/public-content";
+import { getPublicMessages } from "@/lib/i18n/server-content";
 import { getVillaCatalog } from "@/lib/server/villas";
 import { resort } from "@/lib/data/resort-config";
 

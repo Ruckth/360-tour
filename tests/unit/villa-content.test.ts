@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { properties } from "@/lib/data/properties";
-import { localizePropertyLike } from "@/lib/i18n/public-content";
+import { getPublicMessages } from "@/lib/i18n/messages-loader";
+import { localizePropertyLike } from "@/lib/i18n/server-content";
 import { catalogFrom, summarizeRatings, type DbVillaList } from "@/lib/villas";
+
+// The catalog helpers now take the active locale's message object; these tests exercise
+// the English catalog, so bind the English dictionary once.
+const enMessages = getPublicMessages("en");
+const catalogEn = (list: DbVillaList | undefined) => catalogFrom(list, enMessages, "en");
 
 const seededPool = properties.find((property) => property.id === "pool-villa")!;
 
@@ -66,24 +72,23 @@ describe("villa copy locale resolution", () => {
 describe("villa catalog fallback", () => {
   it("uses bundled villas when Convex is unavailable or empty", () => {
     for (const list of [undefined, { hasProperties: false, villas: [] }]) {
-      const catalog = catalogFrom(list, "en");
+      const catalog = catalogEn(list);
       expect(catalog.source).toBe("static");
       expect(catalog.villas.map((villa) => villa.id)).toEqual(properties.map((property) => property.id));
     }
   });
 
   it("computes bundled ratings from the reviews shown, not invented totals", () => {
-    const pool = catalogFrom(undefined, "en").villas.find((villa) => villa.id === "pool-villa");
+    const pool = catalogEn(undefined).villas.find((villa) => villa.id === "pool-villa");
     expect(pool?.rating?.count).toBe(6);
     expect(pool?.rating?.average).toBeCloseTo(4.83, 2);
   });
 
   it("serves DB villas once the database has properties, even if none are active", () => {
-    expect(catalogFrom({ hasProperties: true, villas: [] }, "en")).toEqual({ source: "db", villas: [] });
+    expect(catalogEn({ hasProperties: true, villas: [] })).toEqual({ source: "db", villas: [] });
 
-    const catalog = catalogFrom(
+    const catalog = catalogEn(
       { hasProperties: true, villas: [dbVilla({ reviewCount: 2, averageRating: 4.5 }), dbVilla({ slug: "new", name: "New" })] },
-      "en",
     );
     expect(catalog.source).toBe("db");
     expect(catalog.villas[0]).toMatchObject({ id: "pool-villa", pricePerNight: 9000, directDiscountPercent: 10, rating: { average: 4.5, count: 2 } });

@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await bypassDemoDisclaimer(page);
 });
 
-test("villa detail page renders gallery, 360 entry, and chat trigger", async ({ page }) => {
+test("@smoke villa detail page renders gallery, 360 entry, and chat trigger", async ({ page }) => {
   await page.goto("/rooms/pool-villa");
 
   await expect(page.getByRole("heading", { name: "Tideglass Pool Residence" })).toBeVisible();
@@ -15,7 +15,7 @@ test("villa detail page renders gallery, 360 entry, and chat trigger", async ({ 
   await expect(page.getByRole("button", { name: "Open concierge chat" })).toBeVisible();
 });
 
-test("home villa 360 opens the tour overlay without leaving home", async ({ page }) => {
+test("@smoke home villa 360 opens the tour overlay without leaving home", async ({ page }) => {
   await page.goto("/");
 
   const poolCard = page

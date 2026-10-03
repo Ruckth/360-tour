@@ -51,8 +51,8 @@ export const seedCuratedQuestionBank = mutation({
 		dryRun: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
+		assertLegacyQaWritable();
 		const dryRun = args.dryRun ?? false;
 		const now = Date.now();
 		let created = 0;

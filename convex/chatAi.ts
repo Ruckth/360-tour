@@ -14,6 +14,7 @@ import { resortLocalParts } from './lib/serviceSlots';
 import { asksForStaff } from './chatKnowledge';
 import { capabilityReply, checkTimeReply, isCheckTimeQuestion, isCancellationPolicyQuestion, cancellationPolicyReply } from './lib/conciergePolicy';
 import { runConciergeTurn } from './lib/conciergeTurn';
+import { startTurnMetrics, recordStage, addPromptChars, recordModelRequest, recordTool, emitConciergeTurnLog, createTurnId, type TurnMetrics } from './lib/turnMetrics';
 import type { PublicProperty } from './properties';
 
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
@@ -43,12 +44,8 @@ export type GenerateConciergeReplyArgs = {
 	channel?: 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
 	siteUrl?: string;
 	bookingFlow?: boolean;
-	questionBankHint?: {
-		question: string;
-		topic: string;
-		dynamicIntent?: 'availability' | 'pricing' | 'property_details' | 'booking_help' | 'contact';
-		source?: 'exact' | 'semantic';
-	};
+	/** Correlation id for turn metrics; generated here when absent. */
+	turnId?: string;
 	/** Collects each tool call of this turn (used by the booking eval). */
 	toolTrace?: Array<{ name: string; args: Record<string, unknown>; result: string }>;
 	/** Internal eval only; deliberately absent from the public action validator. */
@@ -353,16 +350,32 @@ async function policyReply(ctx: ActionCtx, userMessage: string, siteUrl?: string
 	return checkTimeReply(userMessage, settings) ?? cancellationPolicyReply(userMessage, settings);
 }
 
+/** committed is present when a booking/service/cancellation write succeeded in this turn. */
+export type ConciergeReply = { response: string; model: string; committed?: { tool: string } };
+
 export async function generateConciergeReply(
 	ctx: ActionCtx,
 	args: GenerateConciergeReplyArgs,
 	session: Doc<'chatSessions'>
-): Promise<{ response: string; model: string }> {
-	const guardrail = await policyReply(ctx, args.userMessage, args.siteUrl);
-	if (guardrail) return { response: guardrail, model: 'guardrail' };
+): Promise<ConciergeReply> {
+	const turnId = args.turnId ?? createTurnId();
+	const metrics: TurnMetrics = startTurnMetrics(turnId, args.channel ?? session.channel);
 	const turnStartedAt = Date.now();
+	const emit = (outcome: string, model?: string) => {
+		recordStage(metrics, 'total', Date.now() - turnStartedAt);
+		emitConciergeTurnLog({ metrics, outcome, model });
+	};
+
+	const guardrailStartedAt = Date.now();
+	const guardrail = await policyReply(ctx, args.userMessage, args.siteUrl);
+	recordStage(metrics, 'guardrail', Date.now() - guardrailStartedAt);
+	if (guardrail) {
+		emit('guardrail', 'guardrail');
+		return { response: guardrail, model: 'guardrail' };
+	}
 	const deadlineAt = turnStartedAt + 20_000;
 	// Independent reads, fetched together; no writes happen between them.
+	const contextStartedAt = Date.now();
 	const [properties, settings, recentHistory]: [
 		PublicProperty[],
 		EffectiveSettings,
@@ -372,6 +385,7 @@ export async function generateConciergeReply(
 		ctx.runQuery(internal.settings.effective, {}),
 		ctx.runQuery(internal.chat.getRecentMessages, { sessionId: args.sessionId, limit: 10 })
 	]);
+	recordStage(metrics, 'context', Date.now() - contextStartedAt);
 	const propertyContext = properties.map(p => `- ${p.name} (slug: ${p.slug})`).join('\n');
 
 	const effectivePropertySlug = args.propertySlug ?? session.propertySlug;
@@ -386,6 +400,7 @@ export async function generateConciergeReply(
 	}
 	const realityDisclosure = getResortRealityDisclosure(args.userMessage, args.siteUrl);
 	if (realityDisclosure) {
+		emit('guardrail', 'guardrail');
 		return { response: realityDisclosure, model: 'guardrail' };
 	}
 
@@ -446,6 +461,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	if (lastHistoryMessage?.role !== 'user' || lastHistoryMessage.content !== args.userMessage) {
 		apiMessages.push({ role: 'user', content: args.userMessage });
 	}
+	// A size only — never the prompt text; keeps the turn log leak-free.
+	addPromptChars(metrics, apiMessages.reduce((sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0));
 
 	const complexity = classifyComplexity(args.userMessage);
 
@@ -456,6 +473,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 
 	if (!apiKey) {
 		const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale, properties);
+		emit('fallback', 'fallback');
 		return { response: fallbackResponse, model: 'fallback' };
 	}
 
@@ -468,6 +486,10 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 		request: (messages, requestTools, timeoutMs) => callAI(apiBase, apiKey, selectedModel, messages, requestTools, trace => args.llmTrace?.push(trace), { timeoutMs }),
 		invalidateProposal: async name => { await ctx.runMutation(internal.bookings.invalidateChatProposal, { sessionId: args.sessionId, kind: name === 'prepare_booking' ? 'villa' : 'service', deadlineAt }); },
 		execute: (name, toolArgs) => executeTool(ctx, name, toolArgs, properties, { sessionId: args.sessionId, siteUrl: args.siteUrl, turnStartedAt, deadlineAt, bookingProposal: proposalIdentity(session.pendingBookingQuote), serviceProposal: proposalIdentity(session.pendingServiceQuote) }),
+		metrics: {
+			recordModelRequest: ms => recordModelRequest(metrics, ms),
+			recordTool: (name, ms, ok) => recordTool(metrics, name, ms, ok)
+		},
 		onTool: async trace => {
 			args.toolTrace?.push(trace);
 			if (trace.result.includes('Offer to connect the guest with the host.')) {
@@ -483,12 +505,17 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 		}).catch((error) => console.error('Could not queue staff handoff alert:', error));
 	}
 	if (!response.content?.trim() || response.content.includes('[[UNKNOWN]]')) {
+		emit('unknown_fallback', 'unknown_fallback');
 		return await recordUnknownFallback(ctx, args, session);
 	}
 
+	const finalModel = response.failed ? 'tool_fallback' : selectedModel;
+	emit(response.failed ? 'tool_fallback' : 'ai', finalModel);
 	return {
 		response: response.content,
-		model: response.failed ? 'tool_fallback' : selectedModel
+		model: finalModel,
+		// Lets a messaging adapter that already timed out see that a write committed.
+		...(response.committedTool ? { committed: { tool: response.committedTool } } : {})
 	};
 }
 
@@ -501,24 +528,10 @@ export const generateReply = action({
 		channel: v.optional(chatChannelValidator),
 		siteUrl: v.optional(v.string()),
 		bookingFlow: v.optional(v.boolean()),
-		questionBankHint: v.optional(
-			v.object({
-				question: v.string(),
-				topic: v.string(),
-				dynamicIntent: v.optional(
-					v.union(
-						v.literal('availability'),
-						v.literal('pricing'),
-						v.literal('property_details'),
-						v.literal('booking_help'),
-						v.literal('contact')
-					)
-				),
-				source: v.optional(v.union(v.literal('exact'), v.literal('semantic')))
-			})
-		)
+		// Correlation id for turn metrics; generated server-side when the adapter omits it.
+		turnId: v.optional(v.string())
 	},
-	handler: async (ctx, args): Promise<{ response: string; model: string }> => {
+	handler: async (ctx, args): Promise<ConciergeReply> => {
 		if (args.userMessage.length > 2000) throw new Error('Message is too long');
 		await ctx.runMutation(internal.chatAi.consumeChatLimit, { sessionId: args.sessionId });
 		const session: Doc<'chatSessions'> | null = await ctx.runQuery(internal.chat.getSessionInternal, {

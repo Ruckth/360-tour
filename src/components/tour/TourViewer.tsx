@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { api } from "convex/_generated/api";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
@@ -11,6 +11,7 @@ import { TourConclusion } from "@/components/tour/TourConclusion";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { useConvexQuery } from "@/lib/react/convex";
 import { resolveTourRooms, type DbTourRooms } from "@/lib/tour/rooms";
@@ -27,7 +28,7 @@ export function TourViewer({
   property: Property;
   onClose: () => void;
 }) {
-  const locale = useLocale();
+  const messages = usePublicMessages();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
   const liveRooms = useConvexQuery<DbTourRooms>(tourRoomsQuery, { slug: property.id }, null);
@@ -36,8 +37,8 @@ export function TourViewer({
   // if Convex does not answer in time, fall back to the bundled rooms.
   const roomsReady = !liveRooms.loading || timedOut;
   const activeRooms = useMemo(
-    () => (roomsReady ? resolveTourRooms(property.tourRoomIds, liveRooms.data, locale) : []),
-    [liveRooms.data, locale, property.tourRoomIds, roomsReady],
+    () => (roomsReady ? resolveTourRooms(property.tourRoomIds, liveRooms.data, messages) : []),
+    [liveRooms.data, messages, property.tourRoomIds, roomsReady],
   );
   const [phase, setPhase] = useState<Phase>("intro");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -47,19 +48,18 @@ export function TourViewer({
   const [previousRoomId, setPreviousRoomId] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const [texturesLoaded, setTexturesLoaded] = useState(false);
-  const [minimumReached, setMinimumReached] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
 
   useBodyScrollLock(true);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setMinimumReached(true), 1100);
+    // The DB-rooms fallback is still time-bounded; the intro no longer waits a fixed minimum —
+    // it advances as soon as the current room's texture is ready (see the effect below).
     const roomsTimer = window.setTimeout(() => setTimedOut(true), ROOMS_TIMEOUT_MS);
-    return () => {
-      window.clearTimeout(timer);
-      window.clearTimeout(roomsTimer);
-    };
+    return () => window.clearTimeout(roomsTimer);
   }, []);
 
   useEffect(() => {
@@ -74,18 +74,26 @@ export function TourViewer({
   }, [onClose, phase]);
 
   useEffect(() => {
-    if (texturesLoaded && minimumReached && phase === "intro") {
-      const timer = window.setTimeout(() => setPhase("tour"), 400);
-      return () => window.clearTimeout(timer);
-    }
-  }, [minimumReached, phase, texturesLoaded]);
+    // Readiness-driven: enter the tour the moment the current room's texture is ready, with no
+    // fixed minimum intro and no artificial transition delay. The intro-overlay opacity transition
+    // (CSS, reduced-motion aware) is the only visual easing.
+    if (texturesLoaded && phase === "intro") setPhase("tour");
+  }, [phase, texturesLoaded]);
 
   useEffect(() => {
     if (!currentRoomId) return;
     setVisited((items) => new Set(items).add(currentRoomId));
   }, [currentRoomId]);
 
-  const handleLoaded = useCallback(() => setTexturesLoaded(true), []);
+  const handleLoaded = useCallback(() => {
+    setTexturesLoaded(true);
+    setLoadFailed(false);
+  }, []);
+  const handleLoadError = useCallback((failed: boolean) => setLoadFailed(failed), []);
+  const handleRetry = useCallback(() => {
+    setLoadFailed(false);
+    setRetryNonce((nonce) => nonce + 1);
+  }, []);
   const completeTransition = useCallback(() => {
     setTransitioning(false);
     setPreviousRoomId(null);
@@ -112,6 +120,8 @@ export function TourViewer({
 
   const viewer = (
     <div data-testid="tour-viewer" className="fixed inset-0 z-[70] bg-black" style={{ touchAction: "none" }}>
+      {/* Keeps the villa identity available to assistive tech once the intro gives way to the tour. */}
+      <h2 className="sr-only">{property.name}</h2>
       <div
         className={cn(
           "absolute inset-0 transition-[filter,opacity] duration-700",
@@ -127,7 +137,9 @@ export function TourViewer({
             transitioning={transitioning}
             onTransitionComplete={completeTransition}
             onLoaded={handleLoaded}
+            onLoadError={handleLoadError}
             onNavigate={navigateTo}
+            retrySignal={retryNonce}
           />
         ) : null}
       </div>
@@ -148,10 +160,39 @@ export function TourViewer({
           <div className="mt-6 h-px w-32 overflow-hidden bg-white/10">
             <div
               className="h-full bg-gold transition-all duration-200"
-              style={{ width: texturesLoaded && minimumReached ? "100%" : "62%" }}
+              style={{ width: texturesLoaded ? "100%" : "62%" }}
             />
           </div>
-          {!texturesLoaded ? <p className="mt-3 text-xs text-white/30">{tourT("loading")}</p> : null}
+          {!texturesLoaded && !loadFailed ? (
+            <p className="mt-3 text-xs text-white/30">{tourT("loading")}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {loadFailed ? (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/80 px-6 text-center"
+        >
+          <p className="font-serif text-xl font-semibold text-white md:text-2xl">
+            {tourT("loadFailed")}
+          </p>
+          <Button
+            type="button"
+            variant="gold"
+            onClick={handleRetry}
+            className="rounded-full px-6 shadow-lg shadow-black/30"
+          >
+            {tourT("retry")}
+          </Button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs text-white/50 underline-offset-4 hover:text-white hover:underline"
+          >
+            {a11y("close")}
+          </button>
         </div>
       ) : null}
 

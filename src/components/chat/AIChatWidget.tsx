@@ -281,6 +281,8 @@ export function AIChatWidget(props: {
   lineId?: string;
   lineUrl?: string;
   lineQrImage?: string;
+  /** Open as soon as the lazily loaded widget mounts (it was loaded by a launcher activation). */
+  initialOpen?: boolean;
 }) {
   return <ChatExperience {...props} mode="overlay" />;
 }

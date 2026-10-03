@@ -15,7 +15,7 @@ function isoDaysFromNow(days: number) {
   ].join("-");
 }
 
-test("booking flow validates steps and reaches demo payment", async ({ page }) => {
+test("@smoke booking flow validates steps and reaches demo payment", async ({ page }) => {
   const checkIn = isoDaysFromNow(45);
   await page.goto(`/booking?checkin=${checkIn}&nights=2&adults=2&children=0&unit=garden-suite`);
 

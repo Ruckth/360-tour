@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("demo disclaimer appears once per browser session on public pages", async ({ page }) => {
+test("@smoke demo disclaimer appears once per browser session on public pages", async ({ page }) => {
   await page.goto("/");
 
   const dialog = page.getByRole("dialog", { name: "Demo website only" });

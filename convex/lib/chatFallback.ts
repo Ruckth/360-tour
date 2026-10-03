@@ -192,7 +192,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`We have ${count} luxury properties:\n${lines}\n\n${discountNote}Which property interests you?`,
 		discountNote: (percent) => `All prices include a **${percent}% direct booking discount**. `,
 		booking: (percent) =>
-			`Use the booking card below to choose a villa and dates, then continue to secure direct booking. Direct booking gives you **${percent}% off** plus free airport pickup, welcome basket, and late checkout.`,
+			`Use the booking card below to choose a villa and dates, then continue to secure direct booking. Direct booking gives you **${percent}% off**. Ask the host about any current extras.`,
 		details: (property) =>
 			`**${property.name}** includes: ${localizedAmenities(property, 'en')}. It's ${property.area}m² with ${property.bedrooms} bedroom(s) and ${property.bathrooms} bathroom(s), perfect for up to ${property.maxGuests} guests. Take the **360° virtual tour** to explore every room!`,
 		generic: (names) =>
@@ -206,7 +206,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`เรามีที่พักหรู ${count} แบบ:\n${lines}\n\n${discountNote}สนใจที่พักแบบไหนเป็นพิเศษไหม?`,
 		discountNote: (percent) => `ราคาทั้งหมดรวม **ส่วนลดจองตรง ${percent}%** แล้ว `,
 		booking: (percent) =>
-			`ใช้การ์ดจองด้านล่างเลือกวิลล่าและวันที่ แล้วไปจองตรงอย่างปลอดภัยได้เลย จองตรงรับ **ส่วนลด ${percent}%** พร้อมบริการรับสนามบิน ของต้อนรับ และเช็กเอาต์สาย`,
+			`ใช้การ์ดจองด้านล่างเลือกวิลล่าและวันที่ แล้วไปจองตรงอย่างปลอดภัยได้เลย จองตรงรับ **ส่วนลด ${percent}%** หากต้องการสิทธิพิเศษเพิ่มเติม สอบถามเจ้าหน้าที่ได้เลยครับ`,
 		details: (property) =>
 			`**${property.name}** มีสิ่งอำนวยความสะดวก: ${localizedAmenities(property, 'th')} พื้นที่ ${property.area}m² มี ${property.bedrooms} ห้องนอน และ ${property.bathrooms} ห้องน้ำ รองรับผู้เข้าพักสูงสุด ${property.maxGuests} คน ลองชม **ทัวร์เสมือนจริง 360°** เพื่อดูทุกห้องได้เลย`,
 		generic: (names) =>
@@ -220,7 +220,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`我们有 ${count} 间豪华房源：\n${lines}\n\n${discountNote}您对哪间房源感兴趣？`,
 		discountNote: (percent) => `所有价格均包含 **${percent}% 直接预订折扣**。`,
 		booking: (percent) =>
-			`请使用下方预订卡选择别墅和日期，然后继续安全的直接预订。直接预订可享 **${percent}% 折扣**，并包含免费机场接送、欢迎礼遇和延迟退房。`,
+			`请使用下方预订卡选择别墅和日期，然后继续安全的直接预订。直接预订可享 **${percent}% 折扣**。如需了解当前的其他优惠，请咨询房东。`,
 		details: (property) =>
 			`**${property.name}** 包含：${localizedAmenities(property, 'zh-CN')}。面积 ${property.area}m²，设有 ${property.bedrooms} 间卧室和 ${property.bathrooms} 间浴室，最多适合 ${property.maxGuests} 位住客。您可以通过 **360° 虚拟导览** 查看每个房间！`,
 		generic: (names) =>
@@ -234,7 +234,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`${count}つのラグジュアリー宿泊施設があります：\n${lines}\n\n${discountNote}どの施設に興味がありますか？`,
 		discountNote: (percent) => `すべて **${percent}% の直接予約割引**込みです。`,
 		booking: (percent) =>
-			`下の予約カードでヴィラと日付を選び、安全な直接予約へ進んでください。直接予約では **${percent}% オフ**に加え、無料空港送迎、ウェルカムバスケット、レイトチェックアウトが含まれます。`,
+			`下の予約カードでヴィラと日付を選び、安全な直接予約へ進んでください。直接予約では **${percent}% オフ**になります。その他の特典については、ホストにお問い合わせください。`,
 		details: (property) =>
 			`**${property.name}** には ${localizedAmenities(property, 'ja')} が含まれます。広さは ${property.area}m²、${property.bedrooms} ベッドルーム、${property.bathrooms} バスルームで、最大 ${property.maxGuests} 名に最適です。**360° バーチャルツアー**で全室をご覧ください！`,
 		generic: (names) =>
@@ -248,7 +248,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`고급 숙소 ${count}곳이 있습니다:\n${lines}\n\n${discountNote}어떤 숙소가 궁금하신가요?`,
 		discountNote: (percent) => `모든 가격에는 **${percent}% 직접 예약 할인**이 포함됩니다. `,
 		booking: (percent) =>
-			`아래 예약 카드에서 빌라와 날짜를 선택한 뒤 안전한 직접 예약으로 진행하세요. 직접 예약 시 **${percent}% 할인**과 무료 공항 픽업, 웰컴 바스켓, 레이트 체크아웃이 제공됩니다.`,
+			`아래 예약 카드에서 빌라와 날짜를 선택한 뒤 안전한 직접 예약으로 진행하세요. 직접 예약 시 **${percent}% 할인**이 적용됩니다. 추가 혜택은 담당자에게 문의해 주세요.`,
 		details: (property) =>
 			`**${property.name}** 포함 사항: ${localizedAmenities(property, 'ko')}. ${property.area}m², 침실 ${property.bedrooms}개, 욕실 ${property.bathrooms}개이며 최대 ${property.maxGuests}명에게 적합합니다. **360° 가상 투어**로 모든 방을 둘러보세요!`,
 		generic: (names) =>
@@ -262,7 +262,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`Nous avons ${count} hébergements de luxe :\n${lines}\n\n${discountNote}Quel hébergement vous intéresse ?`,
 		discountNote: (percent) => `Tous les prix incluent une **remise directe de ${percent}%**. `,
 		booking: (percent) =>
-			`Utilisez la carte de réservation ci-dessous pour choisir la villa et les dates, puis continuez vers la réservation directe sécurisée. La réservation directe offre **${percent}% de réduction**, le transfert aéroport gratuit, un panier de bienvenue et le départ tardif.`,
+			`Utilisez la carte de réservation ci-dessous pour choisir la villa et les dates, puis continuez vers la réservation directe sécurisée. La réservation directe offre **${percent}% de réduction**. Demandez à l'hôte les éventuels avantages en cours.`,
 		details: (property) =>
 			`**${property.name}** inclut : ${localizedAmenities(property, 'fr')}. C’est un espace de ${property.area}m² avec ${property.bedrooms} chambre(s) et ${property.bathrooms} salle(s) de bain, parfait pour jusqu’à ${property.maxGuests} hôtes. Lancez la **visite virtuelle 360°** pour tout explorer !`,
 		generic: (names) =>
@@ -276,7 +276,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`Wir haben ${count} Luxusunterkünfte:\n${lines}\n\n${discountNote}Welche Unterkunft interessiert Sie?`,
 		discountNote: (percent) => `Alle Preise enthalten **${percent}% Direktbuchungsrabatt**. `,
 		booking: (percent) =>
-			`Wählen Sie Villa und Daten in der Buchungskarte unten und fahren Sie mit der sicheren Direktbuchung fort. Direktbuchung bietet **${percent}% Rabatt** plus kostenlosen Flughafentransfer, Willkommenskorb und späten Checkout.`,
+			`Wählen Sie Villa und Daten in der Buchungskarte unten und fahren Sie mit der sicheren Direktbuchung fort. Direktbuchung bietet **${percent}% Rabatt**. Fragen Sie den Gastgeber nach aktuellen Extras.`,
 		details: (property) =>
 			`**${property.name}** umfasst: ${localizedAmenities(property, 'de')}. Sie hat ${property.area}m², ${property.bedrooms} Schlafzimmer und ${property.bathrooms} Badezimmer, ideal für bis zu ${property.maxGuests} Gäste. Erkunden Sie alles in der **360°-Tour**!`,
 		generic: (names) =>
@@ -290,7 +290,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`Tenemos ${count} propiedades de lujo:\n${lines}\n\n${discountNote}¿Qué propiedad le interesa?`,
 		discountNote: (percent) => `Todos los precios incluyen **${percent}% de descuento directo**. `,
 		booking: (percent) =>
-			`Use la tarjeta de reserva de abajo para elegir villa y fechas, y continúe con la reserva directa segura. La reserva directa ofrece **${percent}% de descuento**, traslado gratuito desde el aeropuerto, cesta de bienvenida y salida tardía.`,
+			`Use la tarjeta de reserva de abajo para elegir villa y fechas, y continúe con la reserva directa segura. La reserva directa ofrece **${percent}% de descuento**. Pregunte al anfitrión por cualquier extra vigente.`,
 		details: (property) =>
 			`**${property.name}** incluye: ${localizedAmenities(property, 'es')}. Tiene ${property.area}m², ${property.bedrooms} dormitorio(s) y ${property.bathrooms} baño(s), perfecto para hasta ${property.maxGuests} huéspedes. ¡Explore cada habitación con el **tour virtual 360°**!`,
 		generic: (names) =>
@@ -304,7 +304,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`У нас есть ${count} роскошных объекта:\n${lines}\n\n${discountNote}Какой объект вас интересует?`,
 		discountNote: (percent) => `Все цены включают **${percent}% скидку за прямое бронирование**. `,
 		booking: (percent) =>
-			`Выберите виллу и даты в карточке бронирования ниже, затем перейдите к безопасному прямому бронированию. Прямое бронирование дает **скидку ${percent}%**, бесплатный трансфер из аэропорта, приветственный набор и поздний выезд.`,
+			`Выберите виллу и даты в карточке бронирования ниже, затем перейдите к безопасному прямому бронированию. Прямое бронирование дает **скидку ${percent}%**. Уточните у хозяина о текущих дополнительных предложениях.`,
 		details: (property) =>
 			`**${property.name}** включает: ${localizedAmenities(property, 'ru')}. Площадь ${property.area}m², ${property.bedrooms} спальни и ${property.bathrooms} ванные, подходит до ${property.maxGuests} гостей. Посмотрите все комнаты в **виртуальном туре 360°**!`,
 		generic: (names) =>
@@ -318,7 +318,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`Abbiamo ${count} proprietà di lusso:\n${lines}\n\n${discountNote}Quale proprietà ti interessa?`,
 		discountNote: (percent) => `Tutti i prezzi includono **${percent}% di sconto diretto**. `,
 		booking: (percent) =>
-			`Usa la scheda di prenotazione sotto per scegliere villa e date, poi continua con la prenotazione diretta sicura. La prenotazione diretta offre **${percent}% di sconto**, transfer aeroportuale gratuito, welcome basket e late checkout.`,
+			`Usa la scheda di prenotazione sotto per scegliere villa e date, poi continua con la prenotazione diretta sicura. La prenotazione diretta offre **${percent}% di sconto**. Chiedi all'host eventuali extra attuali.`,
 		details: (property) =>
 			`**${property.name}** include: ${localizedAmenities(property, 'it')}. È di ${property.area}m² con ${property.bedrooms} camera/e e ${property.bathrooms} bagno/i, perfetta per fino a ${property.maxGuests} ospiti. Esplora ogni stanza con il **tour virtuale 360°**!`,
 		generic: (names) =>
@@ -332,7 +332,7 @@ const fallbackCopies: Record<LocaleCode, FallbackCopy> = {
 			`हमारे पास ${count} लक्जरी प्रॉपर्टी हैं:\n${lines}\n\n${discountNote}आपको कौन सी प्रॉपर्टी पसंद है?`,
 		discountNote: (percent) => `सभी कीमतों में **${percent}% सीधी बुकिंग छूट** शामिल है। `,
 		booking: (percent) =>
-			`नीचे बुकिंग कार्ड से विला और तारीखें चुनें, फिर सुरक्षित सीधी बुकिंग पर जाएँ। सीधी बुकिंग में **${percent}% छूट**, मुफ्त एयरपोर्ट पिकअप, वेलकम बास्केट और लेट चेकआउट मिलता है।`,
+			`नीचे बुकिंग कार्ड से विला और तारीखें चुनें, फिर सुरक्षित सीधी बुकिंग पर जाएँ। सीधी बुकिंग में **${percent}% छूट** मिलती है। किसी भी मौजूदा अतिरिक्त सुविधा के लिए होस्ट से पूछें।`,
 		details: (property) =>
 			`**${property.name}** में शामिल हैं: ${localizedAmenities(property, 'hi')}। यह ${property.area}m² है, इसमें ${property.bedrooms} बेडरूम और ${property.bathrooms} बाथरूम हैं, और अधिकतम ${property.maxGuests} मेहमानों के लिए उपयुक्त है। हर कमरे को देखने के लिए **360° वर्चुअल टूर** लें!`,
 		generic: (names) =>
