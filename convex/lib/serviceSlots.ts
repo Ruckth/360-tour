@@ -251,14 +251,14 @@ export type AppointmentInput = {
 	source: Doc<'serviceAppointments'>['source'];
 };
 
-/** Trimmed guest details; throws on a missing name or phone, a bad email or long notes. */
-export function guestDetails(input: { guestName: string; guestPhone: string; guestEmail?: string; notes?: string }) {
+/** Admin appointments may reserve a slot before guest details are known. Chat bookings still require contact details. */
+export function guestDetails(input: { guestName: string; guestPhone: string; guestEmail?: string; notes?: string }, { requireContact = true } = {}) {
 	const guestName = input.guestName.trim();
 	const guestPhone = input.guestPhone.trim();
 	const guestEmail = input.guestEmail?.trim() || undefined;
 	const notes = input.notes?.trim() || undefined;
-	if (!guestName) throw new Error('Guest name is required');
-	if (!guestPhone) throw new Error('Guest phone is required');
+	if (requireContact && !guestName) throw new Error('Guest name is required');
+	if (requireContact && !guestPhone) throw new Error('Guest phone is required');
 	if (guestEmail) assertValidEmail(guestEmail);
 	if (notes && notes.length > 2000) throw new Error('Notes must be at most 2000 characters');
 	return { guestName, guestPhone, guestEmail, notes };
@@ -266,7 +266,7 @@ export function guestDetails(input: { guestName: string; guestPhone: string; gue
 
 export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput) {
 	assertAppointmentStart(input.start);
-	const { guestName, guestPhone, guestEmail } = guestDetails(input);
+	const { guestName, guestPhone, guestEmail } = guestDetails(input, { requireContact: input.source !== 'admin' || Boolean(input.chatSessionId) });
 	const service = await ctx.db.get(input.serviceId);
 	if (!service || service.status !== 'active') throw new Error('Service unavailable');
 	const blockedUntil = input.start + (service.durationMin + service.bufferMin) * MINUTE;

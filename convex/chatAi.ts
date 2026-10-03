@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import type { EffectiveSettings } from './lib/siteSettings';
-import { callAI, classifyComplexity, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL, DEFAULT_COMPLEX_AI_MODEL } from './lib/chatLlm';
+import { callAI, classifyComplexity, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL } from './lib/chatLlm';
 import type { ChatMessage, LlmCallTrace } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
 import { CHAT_BOOKING_TTL_MS } from './bookings';
@@ -468,8 +468,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 
 	const apiKey = process.env.AI_API_KEY;
 	const apiBase = process.env.AI_API_BASE_URL || DEFAULT_AI_API_BASE_URL;
-	const simpleModel = process.env.AI_SIMPLE_MODEL || DEFAULT_AI_MODEL;
-	const complexModel = process.env.AI_COMPLEX_MODEL || DEFAULT_COMPLEX_AI_MODEL;
+	const simpleModel = process.env.AI_SIMPLE_MODEL?.trim() || DEFAULT_AI_MODEL;
+	const complexModel = process.env.AI_COMPLEX_MODEL?.trim() || simpleModel;
 
 	if (!apiKey) {
 		const fallbackResponse = getSupportedFallbackResponse(args.userMessage, currentProperty, args.locale, properties, channel, normalizeSiteUrl(args.siteUrl));

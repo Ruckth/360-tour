@@ -52,6 +52,7 @@ export type RosterConflict = {
 	start: number;
 	end: number;
 	guestName: string;
+	confirmationCode: string;
 	serviceName: string;
 };
 
@@ -172,7 +173,7 @@ async function describeConflicts(ctx: ReadCtx, items: Array<{ staff: Staff; date
 			if (!serviceNames.has(a.serviceId)) serviceNames.set(a.serviceId, (await ctx.db.get(a.serviceId))?.name ?? 'Service');
 			conflicts.push({
 				staffId: staff._id, staffName: staff.name, date, appointmentId: a._id,
-				start: a.start, end: a.end, guestName: a.guestName, serviceName: serviceNames.get(a.serviceId)!
+				start: a.start, end: a.end, guestName: a.guestName, confirmationCode: a.confirmationCode, serviceName: serviceNames.get(a.serviceId)!
 			});
 		}
 	}

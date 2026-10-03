@@ -14,6 +14,7 @@ import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { appointmentGuestLabel } from "@/lib/staff-bookings";
 import { endTime, timeRange } from "@/lib/schedule-changes";
 
 /** This appointment's cleanup/travel time after the service; it stays attached to the service end. */
@@ -39,7 +40,7 @@ export function TurnaroundDialog({
 
   return (
     <ChangeConfirmDialog
-      title={`Change turnaround for ${original.guestName}?`}
+      title={`Change turnaround for ${appointmentGuestLabel(original)}?`}
       description="This appointment only. The turnaround starts when the service ends and moves with it."
       rows={[
         { label: "Service", before: timeRange(original.start, original.end), after: timeRange(original.start, original.end) },

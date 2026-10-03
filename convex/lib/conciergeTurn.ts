@@ -1,4 +1,4 @@
-import type { ChatMessage, LlmResponse, ToolDef } from './chatLlm';
+import { InvalidAiResponseError, type ChatMessage, type LlmResponse, type ToolDef } from './chatLlm';
 import { bookingStatusReply, committedReply, hasTransactionCompletionClaim, isCancellationRequest, isGuestConfirmation, proposalReply, toolFailureReply } from './conciergePolicy';
 import { toolError } from './chatTools';
 
@@ -42,6 +42,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 	};
 	try {
 		let response = await request(tools);
+		if (response.finishReason === 'length') return { content: toolFailureReply(message), failed: true };
 		for (let round = 0; response.tool_calls?.length && round < 3; round++) {
 			if (response.finishReason === 'length') return { content: toolFailureReply(message), failed: true };
 			if (response.tool_calls.length > 12) return { content: toolFailureReply(message), failed: true };
@@ -61,6 +62,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 						await options.invalidateProposal?.(name);
 					}
 					args = JSON.parse(call.function.arguments);
+					if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Tool arguments must be an object');
 					if (name.startsWith('confirm_')) {
 						if (prepared.has(name.replace('confirm_', 'prepare_'))) throw new Error('Ask the guest to confirm the summary first; confirm after they reply yes.');
 						if (!isGuestConfirmation(message)) throw new Error('Ask the guest to explicitly confirm the current summary first.');
@@ -106,7 +108,14 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 			return { content: toolFailureReply(message), failed: true };
 		}
 		return { content: response.content, failed: false };
-	} catch {
+	} catch (error) {
+		// A rejected replacement must not leave an old draft available for a later yes.
+		if (error instanceof InvalidAiResponseError) {
+			for (const name of error.preparationTools) {
+				if (!allowed.has(name)) continue;
+				try { await options.invalidateProposal?.(name); } catch { /* Keep the original failure response. */ }
+			}
+		}
 		return committed ? { content: committed, failed: false, committedTool } : { content: toolFailureReply(message), failed: true };
 	}
 }

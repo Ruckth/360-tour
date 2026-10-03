@@ -69,7 +69,7 @@ export function ChangeConfirmDialog({
     <Dialog open onOpenChange={(open) => !open && !submitting.current && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="pe-8">{title}</DialogTitle>
           <DialogDescription className={description ? undefined : "sr-only"}>
             {description ?? "Review the change before saving it."}
           </DialogDescription>

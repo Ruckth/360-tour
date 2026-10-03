@@ -132,6 +132,33 @@ describe('tool inputs and honest outcomes', () => {
 		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
 	});
 
+	it.each([
+		{ model: 'openai/gpt-6-luna', truncated: false },
+		{ model: 'openai/gpt-6.1-sol', truncated: false },
+		{ model: 'openai/gpt-6-luna', truncated: true },
+		{ model: 'openai/gpt-6.1-sol', truncated: true }
+	])('rejects the $model batch while invalidating the replaced draft (truncated: $truncated)', async ({ model, truncated }) => {
+		const { t, sessionId, stay } = await setup();
+		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		vi.stubEnv('AI_API_KEY', 'test-key');
+		vi.stubEnv('AI_SIMPLE_MODEL', model);
+		const calls = [
+			{ id: 'call-1', type: 'function', function: { name: 'confirm_booking', arguments: '{}' } },
+			{ id: 'call-2', type: 'function', function: { name: 'prepare_booking', arguments: truncated ? '{}' : '{broken' } }
+		];
+		const envelope = model === 'openai/gpt-6.1-sol'
+			? { status: truncated ? 'incomplete' : 'completed', output: calls.map(call => ({ type: 'function_call', call_id: call.id, ...call.function })) }
+			: { choices: [{ finish_reason: truncated ? 'length' : 'tool_calls', message: { content: null, tool_calls: calls } }] };
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify(envelope)));
+		vi.stubGlobal('fetch', fetchMock);
+		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes' });
+		expect(reply.model).toBe('tool_fallback');
+		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
+		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
+	});
+
 	it('does not treat a refusal to cancel as consent when cancellation is already pending', async () => {
 		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		const booked = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });

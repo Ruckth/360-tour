@@ -59,7 +59,7 @@ test.each([
 	'Plan a quiet stay for a family for 3 nights, considering wheelchair access.',
 	'ช่วยวางแผนพัก 3 คืน ผู้ใหญ่ 4 คน งบไม่เกิน 25000 บาท พร้อมนวด',
 	'성인 4명, 3박, 예산 25000 바트 이하로 숙소와 스파 계획을 비교해 추천해주세요.'
-])('routes planning with multiple constraints to Sol: %s', message => {
+])('identifies planning for an optional complex-model override: %s', message => {
 	expect(classifyComplexity(message)).toBe('complex');
 });
 
@@ -113,4 +113,58 @@ test('Sol provider errors and timeouts use the same bounded failure path', async
 		options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
 	})));
 	await expect(callAI('https://ai.test', 'test-key', 'openai/gpt-6.1-sol', [], [], undefined, { timeoutMs: 10 })).rejects.toThrow('aborted');
+});
+
+const malformedCalls = [
+	{ arguments: '{invalid' },
+	{ arguments: 'null' },
+	{ arguments: '[]' },
+	{ call_id: '' },
+	{ name: '' },
+	{ status: 'incomplete' },
+	{ call_id: 'call-1' }
+];
+
+test.each(malformedCalls)('rejects the entire Sol batch before any tool or proposal invalidation: %j', override => {
+	const output = [solOutput[1], { ...solOutput[1], id: 'fc-2', call_id: 'call-2', ...override }];
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'completed', output }))));
+	const execute = vi.fn();
+	const invalidateProposal = vi.fn();
+	return runConciergeTurn({ message: 'yes', messages: [], tools, deadlineAt: Date.now() + 20000,
+		request: (history, offered, timeoutMs) => callAI('https://ai.test', 'test-key', 'openai/gpt-6.1-sol', history, offered, undefined, { timeoutMs }),
+		execute, invalidateProposal
+	}).then(result => {
+		expect(result.failed).toBe(true);
+		expect(execute).not.toHaveBeenCalled();
+		expect(invalidateProposal).not.toHaveBeenCalled();
+	});
+});
+
+
+test.each(['{invalid', 'null', '[]'])('rejects a malformed Luna batch before any tool runs: %s', argumentsText => {
+	const calls = [
+		{ id: 'call-1', type: 'function', function: { name: 'list_services', arguments: '{}' } },
+		{ id: 'call-2', type: 'function', function: { name: 'prepare_booking', arguments: argumentsText } }
+	];
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: null, tool_calls: calls } }] }))));
+	const execute = vi.fn();
+	const invalidateProposal = vi.fn();
+	return runConciergeTurn({ message: 'yes', messages: [], tools, deadlineAt: Date.now() + 20000,
+		request: (history, offered, timeoutMs) => callAI('https://ai.test', 'test-key', 'openai/gpt-6-luna', history, offered, undefined, { timeoutMs }),
+		execute, invalidateProposal
+	}).then(result => {
+		expect(result.failed).toBe(true);
+		expect(execute).not.toHaveBeenCalled();
+		expect(invalidateProposal).not.toHaveBeenCalled();
+	});
+});
+
+test('incomplete Sol output with no tool calls fails without another provider request', async () => {
+	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'incomplete', output: [] })));
+	vi.stubGlobal('fetch', fetchMock);
+	const result = await runConciergeTurn({ message: 'help', messages: [], tools, deadlineAt: Date.now() + 20000,
+		request: (history, offered, timeoutMs) => callAI('https://ai.test', 'test-key', 'openai/gpt-6.1-sol', history, offered, undefined, { timeoutMs }), execute: vi.fn()
+	});
+	expect(result.failed).toBe(true);
+	expect(fetchMock).toHaveBeenCalledTimes(1);
 });
