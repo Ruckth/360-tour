@@ -633,7 +633,8 @@ export const generateReply = action({
 export const getGuardrailReply = action({
 	args: {
 		userMessage: v.string(),
-		siteUrl: v.optional(v.string())
+		siteUrl: v.optional(v.string()),
+		locale: v.optional(v.string())
 	},
 	handler: async (ctx, args): Promise<string | null> => {
 		return await policyReply(ctx, args.userMessage, args.siteUrl, args.locale);
