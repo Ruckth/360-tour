@@ -64,6 +64,7 @@ import type * as lib_siteSettings from "../lib/siteSettings.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as lib_socialProof from "../lib/socialProof.js";
 import type * as lib_stayOverlap from "../lib/stayOverlap.js";
+import type * as lib_unknownReply from "../lib/unknownReply.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as line from "../line.js";
 import type * as migrations from "../migrations.js";
@@ -149,6 +150,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slug": typeof lib_slug;
   "lib/socialProof": typeof lib_socialProof;
   "lib/stayOverlap": typeof lib_stayOverlap;
+  "lib/unknownReply": typeof lib_unknownReply;
   "lib/validation": typeof lib_validation;
   line: typeof line;
   migrations: typeof migrations;

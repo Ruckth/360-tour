@@ -56,7 +56,7 @@ it("records unknown questions and returns the safe fallback from chatAi.respond"
     expect(result).toMatchObject({
       model: "unknown_fallback",
       response:
-        "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+        "I do not have verified information about that yet. Please contact the host here for help.",
     });
     expect(unknownRows).toHaveLength(1);
     expect(unknownRows[0]).toMatchObject({

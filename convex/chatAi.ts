@@ -1,3 +1,4 @@
+import { unknownReply } from "./lib/unknownReply";
 import { factRetrievalEnabled } from "./lib/factRetrieval";
 import { proposalIdentity } from "./lib/chatWriteGuard";
 import { action, internalMutation, type ActionCtx } from "./_generated/server";
@@ -24,6 +25,7 @@ import {
   isCheckTimeQuestion,
   isCancellationPolicyQuestion,
   cancellationPolicyReply,
+  replyLocale,
 } from "./lib/conciergePolicy";
 import { runConciergeTurn } from "./lib/conciergeTurn";
 import type { PublicProperty } from "./properties";
@@ -240,12 +242,8 @@ export function getResortRealityDisclosure(message: string, siteUrl?: string) {
   return realityDisclosureByLocale[locale](linkText);
 }
 
-export function getUnknownFallbackResponse(message: string) {
-  if (isThaiText(message)) {
-    return "ผมยังไม่มั่นใจคำตอบนี้ครับ เดี๋ยวผมถามทีมงานให้แล้วจะติดต่อกลับไปโดยเร็ว";
-  }
-
-  return "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.";
+export function getUnknownFallbackResponse(message: string, locale?: string) {
+  return unknownReply(locale ?? detectRealityGuardrailLocale(message));
 }
 
 function lineChannelGuidance(siteUrl?: string) {
@@ -423,7 +421,7 @@ async function recordUnknownFallback(
   ctx: ActionCtx,
   args: Pick<
     GenerateConciergeReplyArgs,
-    "sessionId" | "userMessage" | "propertySlug"
+    "sessionId" | "userMessage" | "propertySlug" | "locale"
   >,
   session: Doc<"chatSessions">,
 ) {
@@ -435,7 +433,7 @@ async function recordUnknownFallback(
   });
 
   return {
-    response: getUnknownFallbackResponse(args.userMessage),
+    response: getUnknownFallbackResponse(args.userMessage, args.locale),
     model: "unknown_fallback",
   };
 }
@@ -444,6 +442,7 @@ async function policyReply(
   ctx: ActionCtx,
   userMessage: string,
   siteUrl?: string,
+  locale?: string,
 ): Promise<string | null> {
   const reply =
     getResortRealityDisclosure(userMessage, siteUrl) ??
@@ -458,10 +457,34 @@ async function policyReply(
     internal.settings.effective,
     {},
   );
-  return (
-    checkTimeReply(userMessage, settings) ??
-    cancellationPolicyReply(userMessage, settings)
-  );
+  const guestLocale = locale ?? replyLocale(userMessage);
+  // A saved policy is authoritative text; let the concierge translate it when needed.
+  if (
+    isCancellationPolicyQuestion(userMessage) &&
+    guestLocale !== detectRealityGuardrailLocale(settings.cancellationPolicy)
+  )
+    return null;
+  const policy =
+    checkTimeReply(userMessage, settings, guestLocale) ??
+    cancellationPolicyReply(userMessage, settings);
+  const defaultFields =
+    settings.demoDefaultFields ??
+    (settings.updatedAt === null
+      ? ["checkInTime", "checkOutTime", "timezone", "cancellationPolicy"]
+      : []);
+  const usesDefault = isCheckTimeQuestion(userMessage)
+    ? defaultFields.some((field) =>
+        ["checkInTime", "checkOutTime", "timezone"].includes(field),
+      )
+    : defaultFields.includes("cancellationPolicy");
+  if (!usesDefault || !policy) return policy;
+  const label =
+    guestLocale === "th"
+      ? "ค่าเริ่มต้นสำหรับเดโม ยังไม่ใช่นโยบายที่เจ้าของยืนยัน: "
+      : guestLocale === "ko"
+        ? "데모 기본값이며 호스트가 확인한 정책은 아닙니다: "
+        : "Demo default, not a host-confirmed policy: ";
+  return label + policy;
 }
 
 export async function generateConciergeReply(
@@ -469,7 +492,12 @@ export async function generateConciergeReply(
   args: GenerateConciergeReplyArgs,
   session: Doc<"chatSessions">,
 ): Promise<{ response: string; model: string }> {
-  const guardrail = await policyReply(ctx, args.userMessage, args.siteUrl);
+  const guardrail = await policyReply(
+    ctx,
+    args.userMessage,
+    args.siteUrl,
+    args.locale,
+  );
   if (guardrail) return { response: guardrail, model: "guardrail" };
   const turnStartedAt = Date.now();
   const deadlineAt = turnStartedAt + 20_000;
@@ -536,6 +564,7 @@ ${currentProperty ? `The guest is currently viewing: ${currentProperty.name} (${
 ${resortTodayLine()}
 
 BUSINESS PROFILE (demo defaults apply to fields not yet saved by staff):
+- Demo default fields: ${settings.demoDefaultFields?.join(", ") || "none"}. Label these values as demo defaults, not host-confirmed policy, whenever answering from them.
 - Business: ${settings.businessName}
 - Address: ${settings.address}
 - Contact: ${settings.contactEmail}, ${settings.contactPhone}
@@ -597,6 +626,7 @@ ${
     args.evalModel ?? (complexity === "simple" ? simpleModel : complexModel);
   const calls: LlmCallTrace[] = [];
   const toolsUsed: string[] = [];
+  let answerPropertySlug = args.propertySlug ?? session.propertySlug;
   const factRevisions: Array<{ factId: string; revision: number }> = [];
   const response = await runConciergeTurn({
     message: args.userMessage,
@@ -637,8 +667,11 @@ ${
       toolsUsed.push(trace.name);
       if (trace.name === "search_business_facts") {
         const evidence = JSON.parse(trace.result) as {
+          error?: string;
           facts?: Array<{ factId: string; revision: number }>;
         };
+        if (!evidence.error && typeof trace.args.propertySlug === "string")
+          answerPropertySlug = trace.args.propertySlug;
         factRevisions.push(
           ...(evidence.facts ?? []).map(({ factId, revision }) => ({
             factId,
@@ -699,7 +732,11 @@ ${
       );
   }
   if (!response.content?.trim() || response.content.includes("[[UNKNOWN]]")) {
-    return await recordUnknownFallback(ctx, args, session);
+    return await recordUnknownFallback(
+      ctx,
+      { ...args, propertySlug: answerPropertySlug },
+      session,
+    );
   }
 
   return {
@@ -762,9 +799,10 @@ export const getGuardrailReply = action({
   args: {
     userMessage: v.string(),
     siteUrl: v.optional(v.string()),
+    locale: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<string | null> => {
-    return await policyReply(ctx, args.userMessage, args.siteUrl);
+    return await policyReply(ctx, args.userMessage, args.siteUrl, args.locale);
   },
 });
 

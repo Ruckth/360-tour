@@ -20,9 +20,9 @@ export function isCheckTimeQuestion(message: string) {
 	return remaining.length === 0;
 }
 
-export function checkTimeReply(message: string, settings: EffectiveSettings) {
+export function checkTimeReply(message: string, settings: EffectiveSettings, requestedLocale?: string) {
 	if (!isCheckTimeQuestion(message)) return null;
-	const locale = replyLocale(message);
+	const locale = requestedLocale ?? replyLocale(message);
 	if (locale === 'th') return `เช็กอินตั้งแต่ ${settings.checkInTime} น. และเช็กเอาต์ภายใน ${settings.checkOutTime} น. ตามเวลา ${settings.timezone} ครับ`;
 	if (locale === 'ko') return `체크인은 ${settings.checkInTime}부터, 체크아웃은 ${settings.checkOutTime}까지입니다. 시간대는 ${settings.timezone}입니다.`;
 	return `Check-in is from ${settings.checkInTime}; check-out is by ${settings.checkOutTime} (${settings.timezone}).`;

@@ -46,6 +46,7 @@ export type EmailSettings = { fromName: string; ownerNotificationEmail: string; 
 export type EffectiveSettings = BusinessSettings & {
 	ai: AiSettings;
 	email: EmailSettings;
+	demoDefaultFields?: BusinessField[];
 	updatedAt: number | null;
 	updatedByEmail: string | null;
 };
@@ -56,6 +57,7 @@ export function mergeSiteSettings(row: Doc<'siteSettings'> | null): EffectiveSet
 	for (const field of BUSINESS_FIELDS) business[field] = row?.[field] ?? SITE_DEFAULTS[field];
 	return {
 		...business,
+		demoDefaultFields: BUSINESS_FIELDS.filter(field => row?.[field] === undefined),
 		ai: {
 			tone: row?.ai?.tone || SITE_DEFAULTS.ai.tone,
 			extraInstructions: row?.ai?.extraInstructions ?? SITE_DEFAULTS.ai.extraInstructions,

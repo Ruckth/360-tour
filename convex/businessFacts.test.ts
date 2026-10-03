@@ -360,3 +360,99 @@ describe("business fact evidence", () => {
     ).toEqual([]);
   });
 });
+
+it("attributes a missing policy to the explicitly looked-up villa rather than the viewed page", async () => {
+  const { t, sessionId, garden } = await setup();
+  vi.stubEnv("AI_API_KEY", "test-key");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      const messages = JSON.parse(String(init?.body)).messages;
+      const tool = messages.find((m: { role: string }) => m.role === "tool");
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: tool
+                ? { content: "[[UNKNOWN]]" }
+                : {
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: "read",
+                        type: "function",
+                        function: {
+                          name: "search_business_facts",
+                          arguments:
+                            '{"query":"breakfast","propertySlug":"garden-villa"}',
+                        },
+                      },
+                    ],
+                  },
+            },
+          ],
+        }),
+      );
+    }),
+  );
+  const result = await t.action(api.chatAi.respond, {
+    sessionId,
+    userMessage: "가든 빌라에 조식이 포함되나요?",
+    locale: "ko",
+  });
+  expect(result.response).toContain("확인된 정보");
+  expect(result.response).not.toContain("shortly");
+  expect(
+    (await t.run((ctx) => ctx.db.query("chatUnknownQuestions").take(10)))[0],
+  ).toMatchObject({ propertyId: garden, propertySlug: "garden-villa" });
+});
+
+it("labels partial unsaved settings as demo defaults and respects localized policy menus", async () => {
+  const { t, sessionId } = await setup();
+  await t.run((ctx) =>
+    ctx.db.insert("siteSettings", {
+      key: "default",
+      businessName: "Test resort",
+      updatedAt: Date.now(),
+      updatedByEmail: "admin@example.com",
+    }),
+  );
+  const demo = await t.action(api.chatAi.respond, {
+    sessionId,
+    userMessage: "What is your cancellation policy?",
+  });
+  expect(demo.response).toContain("Demo default, not a host-confirmed policy");
+  const check = await t.action(api.chatAi.respond, {
+    sessionId,
+    userMessage: "Check-in time?",
+    locale: "ko",
+  });
+  expect(check.response).toContain("데모 기본값");
+  expect(check.response).toContain("체크인");
+  vi.stubEnv("AI_API_KEY", "test-key");
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const prompt = JSON.parse(String(init?.body)).messages[0].content;
+    expect(prompt).toContain("cancellationPolicy");
+    expect(prompt).toContain("guest locale th");
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content:
+                "นี่เป็นนโยบายค่าเริ่มต้นของเดโม กรุณายืนยันกับเจ้าของที่พัก",
+            },
+          },
+        ],
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const translated = await t.action(api.chatAi.generateReply, {
+    sessionId,
+    userMessage: "What is the cancellation policy?",
+    locale: "th",
+  });
+  expect(translated.response).toContain("ค่าเริ่มต้น");
+  expect(fetchMock).toHaveBeenCalledOnce();
+});

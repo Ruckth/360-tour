@@ -103,7 +103,7 @@ async function claimStaffAlertSlot(ctx: MutationCtx, now: number) {
 
 export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'chatSessions'>, message: string) {
 	const session = await ctx.db.get(sessionId);
-	if (!session) return false;
+	if (!session || session.visitorId?.startsWith("eval:")) return false;
 	const now = Date.now();
 	if (session.lastStaffAlertAt && now - session.lastStaffAlertAt < 30 * 60 * 1000) return false;
 	// Sessions are created by anonymous clients, so enforce a rolling global hour as well.
