@@ -58,3 +58,7 @@ describe("LINE presentation copy after Q&A retirement", () => {
     expect(localizedUnknownFallbackReply("not-supported")).toContain("I do not have verified information");
   });
 });
+
+it.each([['Voir la visite 360','fr'],['visite 360','fr'],['360-Tour ansehen','de'],['kontakt','de'],['Vedi tour 360','it']])('preserves language-only hints for %s', (text,locale) => {
+ expect(detectQuickAnswerLocale(text)).toBe(locale);
+});

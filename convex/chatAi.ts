@@ -66,9 +66,7 @@ function normalizeSiteUrl(siteUrl?: string) {
 	}
 }
 
-function isThaiText(text: string) {
-	return /[\u0E00-\u0E7F]/u.test(text);
-}
+
 
 type RealityGuardrailLocale =
 	| 'en'

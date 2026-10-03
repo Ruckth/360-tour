@@ -340,7 +340,11 @@ export function normalizeQuickAnswerLocale(locale?: string | null): QuickAnswerL
   return locale && isLocale(locale) ? locale : defaultLocale;
 }
 
-export function detectQuickAnswerLocale(text?: string): QuickAnswerLocale | undefined { return detectReplyLocale(text); }
+export function detectQuickAnswerLocale(text?: string): QuickAnswerLocale | undefined {
+ const clean = text?.trim();
+ if (!clean) return undefined;
+ return localeHints.get(normalizeLineQuestion(clean)) ?? detectReplyLocale(clean);
+}
 
 export function parseLineLocaleFromPostback(data?: string) {
   if (!data?.trim()) return undefined;
