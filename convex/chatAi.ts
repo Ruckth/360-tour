@@ -556,8 +556,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 
 	const apiKey = process.env.AI_API_KEY;
 	const apiBase = process.env.AI_API_BASE_URL || DEFAULT_AI_API_BASE_URL;
-	const simpleModel = process.env.AI_SIMPLE_MODEL || DEFAULT_AI_MODEL;
-	const complexModel = process.env.AI_COMPLEX_MODEL || DEFAULT_AI_MODEL;
+	const simpleModel = process.env.AI_SIMPLE_MODEL?.trim() || DEFAULT_AI_MODEL;
+	const complexModel = process.env.AI_COMPLEX_MODEL?.trim() || simpleModel;
 
 	if (!apiKey) {
 		const fallbackResponse = getFallbackResponse(args.userMessage, currentProperty, args.locale, properties);

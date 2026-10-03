@@ -15,6 +15,35 @@ declare global {
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
 
+describe('concierge model routing', () => {
+  it.each([
+    { message: 'Which villa is best for 4 adults?', simple: '', complex: '', model: 'openai/gpt-6-luna', endpoint: '/chat/completions' },
+    { message: 'Compare a 3-night stay for 4 adults under THB 25000 with massage options and recommend the best plan.', simple: '', complex: '', model: 'openai/gpt-6-luna', endpoint: '/chat/completions' },
+    { message: 'Compare a 3-night stay for 4 adults under THB 25000 with massage options and recommend the best plan.', simple: 'z-ai/glm-5.3-flash', complex: '  ', model: 'z-ai/glm-5.3-flash', endpoint: '/chat/completions' },
+    { message: 'Compare a 3-night stay for 4 adults under THB 25000 with massage options and recommend the best plan.', simple: '', complex: ' openai/gpt-6.1-sol ', model: 'openai/gpt-6.1-sol', endpoint: '/responses' },
+    { message: 'Which villa is best for 4 adults?', simple: '', complex: 'openai/gpt-6.1-sol', model: 'openai/gpt-6-luna', endpoint: '/chat/completions' },
+  ])('selects $model with complex override "$complex" for $message', async ({ message, simple, complex, model, endpoint }) => {
+    vi.stubEnv('AI_API_KEY', 'test-key');
+    vi.stubEnv('AI_API_BASE_URL', 'https://ai.example.test/v1');
+    vi.stubEnv('AI_SIMPLE_MODEL', simple);
+    vi.stubEnv('AI_COMPLEX_MODEL', complex);
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () => new Response(JSON.stringify(endpoint === '/responses'
+      ? { status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'The host can help with your villa choices.' }] }] }
+      : { choices: [{ message: { content: 'The host can help with your villa choices.' } }] })));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await createWebSession(t);
+      const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: message });
+      expect(result.model).toBe(model);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://ai.example.test/v1${endpoint}`);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 function adminTest(t: ReturnType<typeof convexTest>) {
   return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
 }
