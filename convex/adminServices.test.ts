@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { localDateTimeUtc } from './lib/serviceSlots';
+import { createAppointmentRecord, localDateTimeUtc } from './lib/serviceSlots';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -38,6 +38,74 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('admin services', () => {
+	it.each([
+		['', '', undefined],
+		['  ', '  ', '  '],
+		[' Ann ', '', undefined],
+		['', ' +66111 ', undefined],
+		['', '', ' ann@example.com '],
+		[' Ann ', ' +66111 ', ' ann@example.com '],
+	])('reserves an admin appointment with partial guest details (%j, %j, %j)', async (guestName, guestPhone, guestEmail) => {
+		const { admin, booking, appointment } = await setup();
+		const result = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), guestName, guestPhone, guestEmail });
+		expect(await appointment(result.appointmentId)).toMatchObject({ guestName: guestName.trim(), guestPhone: guestPhone.trim(), source: 'admin', status: 'booked' });
+		expect((await appointment(result.appointmentId)).guestEmail).toBe(guestEmail?.trim() || undefined);
+		expect(result.confirmationCode).toMatch(/^SVC-/);
+		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), guestName: '', guestPhone: '' })).rejects.toThrow('That time was just taken');
+	});
+
+	it('adds and clears guest details later, preserving the slot and recording history', async () => {
+		const { admin, booking, appointment, revision } = await setup();
+		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), guestName: '', guestPhone: '' });
+		await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, expectedRevision: 0, guestName: ' Ann ', guestPhone: ' +66111 ', guestEmail: 'ann@example.com' });
+		await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, expectedRevision: await revision(appointmentId), guestName: ' ', guestPhone: ' ', guestEmail: '' });
+		expect(await appointment(appointmentId)).toMatchObject({ guestName: '', guestPhone: '', start: at('09:00'), staffId: booking.staffId, serviceId: booking.serviceId });
+		expect((await appointment(appointmentId)).guestEmail).toBeUndefined();
+		const history = await admin.query(api.adminServices.listAppointmentHistory, { appointmentId });
+		expect(history).toHaveLength(2);
+		expect(history[0].changes).toEqual(expect.arrayContaining([{ field: 'guestName', from: 'Ann', to: '' }, { field: 'guestPhone', from: '+66111', to: '' }]));
+	});
+
+	it('cancels and rebooks anonymous appointments as linked, distinct records', async () => {
+		const { admin, booking, appointment } = await setup();
+		const original = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), guestName: '', guestPhone: '' });
+		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: original.appointmentId, expectedRevision: 0 });
+		const rebooked = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), guestName: '', guestPhone: '', rebookedFromId: original.appointmentId });
+		expect(await appointment(rebooked.appointmentId)).toMatchObject({ guestName: '', guestPhone: '', rebookedFromId: original.appointmentId });
+		expect(rebooked.appointmentId).not.toBe(original.appointmentId);
+		expect(rebooked.confirmationCode).toMatch(/^SVC-/);
+		expect((await appointment(original.appointmentId)).status).toBe('cancelled');
+	});
+
+	it('keeps shared appointment writes strict for chat sources and validates supplied emails', async () => {
+		const { t, admin, booking } = await setup();
+		await expect(t.run((ctx) => createAppointmentRecord(ctx, { ...booking, start: at('09:00'), source: 'whatsapp', guestName: '' }))).rejects.toThrow('Guest name is required');
+		await expect(t.run((ctx) => createAppointmentRecord(ctx, { ...booking, start: at('09:00'), source: 'messenger', guestPhone: ' ' }))).rejects.toThrow('Guest phone is required');
+		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), guestName: '', guestPhone: '', guestEmail: 'invalid' })).rejects.toThrow();
+	});
+
+	it('preserves contact details for chat-linked appointments when staff create or edit them', async () => {
+		const { t, admin, booking } = await setup();
+		const chatSessionId = await t.run((ctx) => ctx.db.insert('chatSessions', { channel: 'web', visitorId: 'visitor', createdAt: Date.now() }));
+		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), chatSessionId, guestName: '', guestPhone: '' })).rejects.toThrow('Guest name is required');
+		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), chatSessionId });
+		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, expectedRevision: 0, guestName: 'Guest', guestPhone: '' })).rejects.toThrow('Guest phone is required');
+	});
+
+	it.each(['whatsapp', 'messenger'] as const)('keeps contact details required when admins edit %s appointments without a chat link', async (source) => {
+		const { t, admin, booking, appointment } = await setup();
+		const { appointmentId } = await t.run((ctx) => createAppointmentRecord(ctx, { ...booking, start: at('09:00'), source }));
+		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, expectedRevision: 0, guestName: '', guestPhone: booking.guestPhone })).rejects.toThrow('Guest name is required');
+		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, expectedRevision: 0, guestName: booking.guestName, guestPhone: '' })).rejects.toThrow('Guest phone is required');
+		expect(await appointment(appointmentId)).toMatchObject({ guestName: booking.guestName, guestPhone: booking.guestPhone, source });
+	});
+
+	it('loads original appointment references only for authenticated admins', async () => {
+		const { t, admin, booking } = await setup();
+		const original = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), guestName: '', guestPhone: '' });
+		expect(await admin.query(api.adminServices.getAppointmentReference, { appointmentId: original.appointmentId })).toBe(original.confirmationCode);
+		await expect(t.query(api.adminServices.getAppointmentReference, { appointmentId: original.appointmentId })).rejects.toThrow('Not authenticated');
+	});
 	it('requires an admin for reads and writes', async () => {
 		const { t, serviceId } = await setup();
 		await expect(t.query(api.adminServices.listStaff, {})).rejects.toThrow('Not authenticated');
@@ -237,7 +305,8 @@ describe('admin services', () => {
 		const cleared = await find();
 		expect(cleared?.guestEmail).toBeUndefined();
 		expect(cleared?.notes).toBeUndefined();
-		await expect(edit({ guestName: ' ', guestPhone: '+66111' })).rejects.toThrow('Guest name is required');
+		await edit({ guestName: ' ', guestPhone: '+66111' });
+		expect(await find()).toMatchObject({ guestName: '', guestPhone: '+66111' });
 		await expect(edit({ guestName: 'Ann', guestPhone: '+66111', guestEmail: 'nope' })).rejects.toThrow();
 
 		await edit({ guestName: 'Ann', guestPhone: '+66111', serviceId: facialId });

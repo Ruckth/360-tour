@@ -87,6 +87,11 @@ export function formatTimeOff(range: { start: number; end: number }) {
 export type AppointmentStatus = Doc<"serviceAppointments">["status"];
 export type PaymentStatus = Doc<"serviceAppointments">["paymentStatus"];
 
+/** Keep anonymous appointments distinct without storing a placeholder as the guest's name. */
+export function appointmentGuestLabel(appointment: Pick<Doc<"serviceAppointments">, "guestName" | "confirmationCode">) {
+  return appointment.guestName.trim() || `Unnamed guest · ${appointment.confirmationCode}`;
+}
+
 const { unpaid, paid, refunded } = STATUS_LABELS.payment;
 export const PAYMENT_LABELS: Record<PaymentStatus, string> = { unpaid, paid, refunded };
 

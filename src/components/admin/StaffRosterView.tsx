@@ -39,7 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { errorText, formatResortDate, formatResortTime, resortIsoDate } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, errorText, formatResortDate, formatResortTime, resortIsoDate } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
 type Week = FunctionReturnType<typeof api.roster.getWeek>;
@@ -950,7 +950,7 @@ function ConflictsDialog({ state, busy, onClose }: { state: ConflictState | null
                 {formatResortDate(c.start)}, {formatResortTime(c.start)}–{formatResortTime(c.end)}
               </span>
               <span className="min-w-0 flex-1 truncate">
-                {c.guestName} · {c.serviceName}
+                {appointmentGuestLabel(c)} · {c.serviceName}
               </span>
             </li>
           ))}
