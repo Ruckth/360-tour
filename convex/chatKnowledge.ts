@@ -1,3 +1,4 @@
+import { assertLegacyQaWritable, legacyQaRetired } from './lib/legacyQa';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import {
@@ -735,6 +736,7 @@ export const resolveExact = query({
 		messageText: v.string()
 	},
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return null;
 		if (requiresLiveFacts(args.messageText) || capabilityReply(args.messageText)) return null;
 		const normalizedQuestion = normalizeQuestion(args.messageText);
 		if (!normalizedQuestion) return null;
@@ -848,6 +850,7 @@ export async function approvedContextFor(ctx: QueryCtx, session: Doc<'chatSessio
 export const getApprovedContext = internalQuery({
 	args: { sessionId: v.id('chatSessions') },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return [];
 		const session = await ctx.db.get(args.sessionId);
 		return session ? await approvedContextFor(ctx, session) : [];
 	}
@@ -955,6 +958,7 @@ export const adminListPropertyScopes = query({
 export const adminCreatePropertyScope = mutation({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const slug = sanitizePropertySlug(args.slug);
 		const property = await getPropertyBySlug(ctx, slug);
@@ -1203,6 +1207,7 @@ export const adminCreateAnswer = mutation({
 		topicNames: v.optional(v.array(v.string()))
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const propertyScopes = await resolvePropertyScopeSelections(ctx, args, admin.email);
 		const propertyId = primaryPropertyIdForScopes(propertyScopes);
@@ -1253,6 +1258,7 @@ export const adminUpdateAnswer = mutation({
 		topicNames: v.optional(v.array(v.string()))
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const existing = await ctx.db.get(args.answerId);
 		if (!existing) throw new Error('Answer not found');
@@ -1355,6 +1361,7 @@ export const adminListUnknownQuestions = query({
 export const getAnswerGenerationContext = internalQuery({
 	args: { answerId: v.id('chatAnswers') },
 	handler: async (ctx, args): Promise<AnswerGenerationContext | null> => {
+		if (legacyQaRetired()) return null;
 		const answer = await ctx.db.get(args.answerId);
 		if (!answer) return null;
 		const questions = await ctx.db
@@ -1379,6 +1386,7 @@ export const storeSuggestedQuestions = internalMutation({
 		linkQuestionId: v.optional(v.id('chatQuestions'))
 	},
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return { insertedQuestionIds: [] };
 		if (args.linkUnknownQuestionId && args.linkQuestionId &&
 			!(await isLinkActive(ctx, args.linkUnknownQuestionId, args.linkQuestionId))) {
 			return { insertedQuestionIds: [] };
@@ -1428,6 +1436,7 @@ export const createAnswerFromUnknown = internalMutation({
 		adminEmail: v.string()
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const unknown = await ctx.db.get(args.unknownQuestionId);
 		if (!unknown) throw new Error('Unknown question not found');
 		const propertyScopes = await resolvePropertyScopeSelections(
@@ -1479,6 +1488,7 @@ export const resolveUnknownWithAnswer = internalMutation({
 		adminEmail: v.string()
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const [unknown, answer] = await Promise.all([
 			ctx.db.get(args.unknownQuestionId),
 			ctx.db.get(args.answerId)
@@ -1607,6 +1617,7 @@ export const adminGenerateSimilarQuestions = action({
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const context: AnswerGenerationContext | null = await ctx.runQuery(
 			internal.chatKnowledge.getAnswerGenerationContext,
@@ -1641,6 +1652,7 @@ export const adminCreateAnswerFromUnknown = action({
 		generateSimilar: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const created: { answerId: Id<'chatAnswers'>; questionId: Id<'chatQuestions'> } =
 			await ctx.runMutation(internal.chatKnowledge.createAnswerFromUnknown, {
@@ -1683,6 +1695,7 @@ export const adminResolveUnknownWithAnswer = action({
 		generateSimilar: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const resolved: { answerId: Id<'chatAnswers'>; questionId: Id<'chatQuestions'> } =
 			await ctx.runMutation(internal.chatKnowledge.resolveUnknownWithAnswer, {
@@ -1835,6 +1848,7 @@ export const adminApproveQuestion = mutation({
 		isAiTrigger: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const question = await ctx.db.get(args.questionId);
 		if (!question) throw new Error('Question not found');
@@ -2046,6 +2060,7 @@ export const adminListUnknownGroups = query({
 export const adminSuggestAnswersForUnknownGroups = query({
 	args: { groups: v.array(v.object({ normalizedQuestion: v.string(), userQuestion: v.string() })) },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return {};
 		await requireAdmin(ctx);
 		if (args.groups.length > UNKNOWN_GROUP_SCAN_LIMIT) throw new Error('Too many groups');
 		if (args.groups.length === 0) return {};
@@ -2121,6 +2136,7 @@ export const adminLinkUnknownGroups = mutation({
 		generateSimilar: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const answer = await ctx.db.get(args.answerId);
 		if (!answer) throw new Error('Answer not found');
@@ -2200,6 +2216,7 @@ export const adminUndoLinkUnknownGroups = mutation({
 		)
 	},
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		await requireAdmin(ctx);
 		const changes = new Map(args.questionChanges.map((change) => [change.questionId, change.previousStatus]));
 		bulkIds([...changes.keys()], BULK_GROUP_LIMIT);
@@ -2247,6 +2264,7 @@ export const isLinkActiveForGeneration = internalQuery({
 export const generateSuggestedVariants = internalAction({
 	args: { answerId: v.id('chatAnswers'), adminEmail: v.string(), linkUnknownQuestionId: v.id('chatUnknownQuestions'), linkQuestionId: v.id('chatQuestions') },
 	handler: async (ctx, args) => {
+		if (legacyQaRetired()) return null;
 		if (!(await ctx.runQuery(internal.chatKnowledge.isLinkActiveForGeneration, { unknownQuestionId: args.linkUnknownQuestionId, questionId: args.linkQuestionId }))) return null;
 		const context: AnswerGenerationContext | null = await ctx.runQuery(
 			internal.chatKnowledge.getAnswerGenerationContext,
@@ -2321,6 +2339,7 @@ async function setQuestionsStatus(
 export const adminApproveQuestions = mutation({
 	args: { questionIds: v.array(v.id('chatQuestions')) },
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		return { approved: await setQuestionsStatus(ctx, args.questionIds, 'approved', admin.email) };
 	}
@@ -2338,6 +2357,7 @@ export const adminRejectQuestions = mutation({
 export const adminUnreviewQuestions = mutation({
 	args: { questionIds: v.array(v.id('chatQuestions')) },
 	handler: async (ctx, args) => {
+		assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		return { reset: await setQuestionsStatus(ctx, args.questionIds, 'suggested', admin.email) };
 	}
@@ -2347,6 +2367,7 @@ export const adminUnreviewQuestions = mutation({
 export const adminSetAnswersStatus = mutation({
 	args: { answerIds: v.array(v.id('chatAnswers')), status: answerStatusValidator },
 	handler: async (ctx, args) => {
+		if (args.status !== 'archived') assertLegacyQaWritable();
 		const admin = await requireAdmin(ctx);
 		const now = Date.now();
 		const changed: { answerId: Id<'chatAnswers'>; previousStatus: AnswerStatus }[] = [];

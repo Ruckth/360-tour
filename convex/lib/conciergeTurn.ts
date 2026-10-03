@@ -34,7 +34,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 		for (let round = 0; response.tool_calls?.length && round < 3; round++) {
 			if (response.finishReason === 'length') return { content: toolFailureReply(message), failed: true };
 			if (response.tool_calls.length > 12) return { content: toolFailureReply(message), failed: true };
-			messages.push({ role: 'assistant', content: response.content, tool_calls: response.tool_calls });
+			messages.push({ role: 'assistant', content: response.content, tool_calls: response.tool_calls, ...(response.responsesOutput ? { responsesOutput: response.responsesOutput } : {}) });
 			for (const call of response.tool_calls) {
 				const name = call.function.name;
 				let args: unknown;

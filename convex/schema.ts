@@ -997,6 +997,17 @@ export default defineSchema({
 		.index('by_topicId', ['topicId'])
 		.index('by_propertyId', ['propertyId']),
 
+	// Owner-maintained evidence, independent from the retired question/answer bank.
+	businessFacts: defineTable({
+		title: v.string(), body: v.string(), searchText: v.string(), source: v.string(),
+		propertyId: v.optional(v.id('properties')),
+		status: v.union(v.literal('draft'), v.literal('approved'), v.literal('archived')),
+		revision: v.number(), createdAt: v.number(), updatedAt: v.number(),
+		createdByAdminEmail: v.string(), updatedByAdminEmail: v.string()
+	})
+		.index('by_status_and_updatedAt', ['status', 'updatedAt'])
+		.searchIndex('search_text', { searchField: 'searchText', filterFields: ['status', 'propertyId'] }),
+
 	chatUnknownQuestions: defineTable({
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
@@ -1008,6 +1019,7 @@ export default defineSchema({
 		pageUrl: v.optional(v.string()),
 		status: v.union(v.literal('new'), v.literal('resolved'), v.literal('ignored')),
 		adminNotified: v.boolean(),
+		resolvedFactId: v.optional(v.id('businessFacts')),
 		resolvedAnswerId: v.optional(v.id('chatAnswers')),
 		resolvedQuestionId: v.optional(v.id('chatQuestions')),
 		createdAt: v.number(),
