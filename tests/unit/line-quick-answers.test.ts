@@ -1,113 +1,55 @@
 import { describe, expect, it } from "vitest";
 import { locales, type Locale } from "@/i18n/routing";
+import * as quickAnswers from "@/lib/line/quick-answers";
 import {
+  buildLineQuickReplyItems,
   detectQuickAnswerLocale,
+  localizedGreetingReply,
   localizedTimeoutFallbackReply,
   localizedUnknownFallbackReply,
-  resolveLineQuickAnswer,
-  type LinePropertySummary,
 } from "@/lib/line/quick-answers";
 
-const properties: LinePropertySummary[] = [
-  {
-    slug: "pool-villa",
-    name: "Pool Villa",
-    tagline: "Private pool retreat",
-    pricePerNight: 12000,
-    currency: "THB",
-    maxGuests: 4,
-    bedrooms: 2,
-    bathrooms: 2,
-    area: 140,
-    amenities: ["Private pool", "Kitchen"],
-    directDiscountPercent: 15,
-  },
-];
+/** Retired coded policy claims that must never come back as LINE copy in any language. */
+const RETIRED_POLICY_PATTERNS = [/48/, /฿/, /\d+\s*%/, /cancel|annul|storn|cancela|отмен|キャンセル|취소|取消|ยกเลิก|रद्द/iu];
 
-describe("LINE quick answers", () => {
-  it("resolves hardcoded exact quick answers before question-bank fallback would run", () => {
-    const answer = resolveLineQuickAnswer({
-      eventType: "message",
-      messageText: "See prices",
-      properties,
-      siteUrl: "https://tour.helpgueststay.com",
-    });
-
-    expect(answer).toMatchObject({
-      mode: "exact",
-      intent: "pricing",
-    });
-    expect(answer?.text).toContain("Current direct booking prices");
+describe("LINE presentation copy after Q&A retirement", () => {
+  it("no longer exports a coded quick-answer resolver", () => {
+    expect("resolveLineQuickAnswer" in quickAnswers).toBe(false);
   });
 
-  it("answers Thai exact quick answers in Thai", () => {
-    const answer = resolveLineQuickAnswer({
-      eventType: "message",
-      messageText: "ราคาเท่าไหร่",
-      properties,
-      siteUrl: "https://tour.helpgueststay.com",
-    });
-
-    expect(answer).toMatchObject({
-      mode: "exact",
-      intent: "pricing",
-    });
-    expect(answer?.text).toContain("ราคาจองตรงตอนนี้");
-    expect(answer?.text).toContain("฿12,000/คืน");
-    expect(answer?.text).toContain("จองตรง ฿10,200");
-  });
-
-  it("answers pricing exact quick answers in every supported locale", () => {
-    const pricingScenarios = [
-      { locale: "en", question: "See prices", fragment: "Current direct booking prices" },
-      { locale: "th", question: "ราคาเท่าไหร่", fragment: "ราคาจองตรงตอนนี้" },
-      { locale: "zh-CN", question: "价格是多少", fragment: "当前直接预订价格" },
-      { locale: "ja", question: "料金はいくらですか", fragment: "現在の直接予約料金" },
-      { locale: "ko", question: "가격이 얼마인가요", fragment: "현재 직접 예약 가격" },
-      { locale: "fr", question: "Quel est le prix", fragment: "Prix actuels en reservation directe" },
-      { locale: "de", question: "Wie viel kostet es", fragment: "Aktuelle Direktbuchungspreise" },
-      { locale: "es", question: "Cuanto cuesta", fragment: "Precios actuales de reserva directa" },
-      { locale: "ru", question: "Сколько стоит", fragment: "Текущие цены" },
-      { locale: "it", question: "Quanto costa", fragment: "Prezzi attuali" },
-      { locale: "hi", question: "कीमत कितनी है", fragment: "मौजूदा सीधी बुकिंग कीमतें" },
-    ] satisfies Array<{ locale: Locale; question: string; fragment: string }>;
-
-    expect(pricingScenarios.map((scenario) => scenario.locale).sort()).toEqual([...locales].sort());
-
-    for (const scenario of pricingScenarios) {
-      const answer = resolveLineQuickAnswer({
-        eventType: "message",
-        messageText: scenario.question,
-        properties,
-        siteUrl: "https://tour.helpgueststay.com",
-      });
-
-      expect(answer, scenario.locale).toMatchObject({
-        mode: "exact",
-        intent: "pricing",
-      });
-      expect(answer?.text, scenario.locale).toContain(scenario.fragment);
-      expect(answer?.text, scenario.locale).toContain("฿12,000");
-      expect(answer?.text, scenario.locale).toContain("฿10,200");
-      expect(detectQuickAnswerLocale(scenario.question), scenario.locale).toBe(scenario.locale);
+  it("keeps greeting, menu, timeout and unknown copy free of policy claims in every locale", () => {
+    for (const locale of locales) {
+      const copy = [
+        localizedGreetingReply(locale),
+        localizedTimeoutFallbackReply(locale),
+        localizedUnknownFallbackReply(locale),
+        ...buildLineQuickReplyItems(locale).map((item) => item.action.label),
+      ];
+      for (const text of copy) {
+        expect(text.trim(), locale).not.toBe("");
+        for (const pattern of RETIRED_POLICY_PATTERNS) expect(text, `${locale}: ${text}`).not.toMatch(pattern);
+      }
     }
   });
 
-  it("keeps localized postback payloads and replies", () => {
-    const answer = resolveLineQuickAnswer({
-      eventType: "postback",
-      postbackData: "intent=pricing&locale=ja",
-      properties,
-      siteUrl: "https://tour.helpgueststay.com",
-    });
-
-    expect(answer).toMatchObject({
-      mode: "postback",
-      intent: "pricing",
-    });
-    expect(answer?.text).toContain("現在の直接予約料金");
-    expect(answer?.quickReplyItems[0]?.action.data).toContain("locale=ja");
-    expect(answer?.quickReplyItems[0]?.action.label).toBe("日程を確認");
+  it("detects the guest's language from short menu phrases and scripts", () => {
+    const scenarios = [
+      { locale: "en", question: "See prices" },
+      { locale: "th", question: "ราคาเท่าไหร่" },
+      { locale: "zh-CN", question: "价格是多少" },
+      { locale: "ja", question: "料金はいくらですか" },
+      { locale: "ko", question: "가격이 얼마인가요" },
+      { locale: "fr", question: "Quel est le prix" },
+      { locale: "de", question: "Wie viel kostet es" },
+      { locale: "es", question: "Cuanto cuesta" },
+      { locale: "ru", question: "Сколько стоит" },
+      { locale: "it", question: "Quanto costa" },
+      { locale: "hi", question: "कीमत कितनी है" },
+    ] satisfies Array<{ locale: Locale; question: string }>;
+    expect(scenarios.map((scenario) => scenario.locale).sort()).toEqual([...locales].sort());
+    for (const scenario of scenarios) {
+      expect(detectQuickAnswerLocale(scenario.question), scenario.locale).toBe(scenario.locale);
+    }
   });
 
   it("localizes timeout and unknown fallbacks", () => {

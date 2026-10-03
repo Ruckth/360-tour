@@ -2,13 +2,14 @@
 
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { useMutation, useQuery } from "convex/react";
-import { Link2, MessageSquare, Plus, RotateCcw, Sparkles } from "lucide-react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { MessageSquare, Plus, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BusinessFactFormDialog, type FactFormTarget } from "@/components/admin/BusinessFactFormDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import {
@@ -24,20 +25,25 @@ import {
   useUndoNotice,
 } from "@/components/admin/admin-bulk";
 import { ChannelIcon, formatDateTime, truncate } from "@/components/admin/admin-chat-format";
-import type {
-  AdminUnknownGroup,
-  AdminUnknownGroupSuggestion,
-  AdminUnknownQuestion,
-  UnknownQuestionFilter,
-} from "@/components/admin/admin-knowledge-types";
+import {
+  STRUCTURED_SOURCES,
+  compatibleFacts,
+  structuredSourceLabel,
+  type AdminBusinessFact,
+  type AdminFactProperty,
+  type StructuredSource,
+} from "@/components/admin/business-facts-form";
+import type { AdminUnknownGroup } from "@/components/admin/admin-knowledge-types";
 import { STATUS_LABELS, sourceLabel } from "@/components/admin/labels";
 import type { Tone } from "@/components/admin/status-tones";
 import { cn } from "@/lib/utils";
 
 const UNKNOWN_STATUSES = ["new", "resolved", "ignored"] as const;
+type MissingInfoFilter = (typeof UNKNOWN_STATUSES)[number] | "all";
+/** How a report can be resolved from a dropdown: a structured source or an approved fact. */
+const STRUCTURED_PREFIX = "source:";
+const FACT_PREFIX = "fact:";
 
-/** What adminUndoLinkUnknownGroups needs to restore the questions and the answer's question list. */
-/** "New", or "2 New · 1 Resolved" for groups whose questions are in different states. */
 function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } {
   const label = UNKNOWN_STATUSES.filter((status) => group.counts[status] > 0)
     .map((status) =>
@@ -51,42 +57,41 @@ function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } 
 }
 
 /**
- * Unknown questions grouped by identical text. Each group is answered, ignored or reopened as a whole,
- * one at a time or many at once, with the best-matching existing answer pre-selected.
+ * Reports of information the concierge could not answer, grouped by identical question. Staff
+ * resolve a group by linking an approved business fact, pointing to a structured source, or
+ * creating a fact prefilled from the question. Groups can also be ignored and reopened.
  */
-export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (question: AdminUnknownQuestion) => void }) {
-  const [status, setStatus] = useState<UnknownQuestionFilter>("new");
+export function MissingInformationPanel({ properties }: { properties: readonly AdminFactProperty[] }) {
+  const [status, setStatus] = useState<MissingInfoFilter>("new");
   const [searchInput, setSearchInput] = useState("");
   const search = useDebounced(searchInput.trim());
   const [pendingAction, setPendingAction] = useState("");
   const [actionError, setActionError] = useState("");
-  const [rowAnswerIds, setRowAnswerIds] = useState<Record<string, string>>({});
-  const [bulkAnswerId, setBulkAnswerId] = useState("");
+  const [rowResolution, setRowResolution] = useState<Record<string, string>>({});
+  const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
+
   const result = useQuery(api.chatKnowledge.adminListUnknownGroups, { status, search: search || undefined }) as
     | { groups: AdminUnknownGroup[]; truncated: boolean }
     | undefined;
-  const answerOptions = useQuery(api.chatKnowledge.adminListAnswerOptions, {});
+  // Approved facts are the pool for the "link a fact" picker; paginated so the picker stays bounded.
+  const approvedFacts = usePaginatedQuery(
+    api.businessFacts.adminList,
+    { status: "approved" },
+    { initialNumItems: 100 },
+  );
+  const facts = approvedFacts.results as AdminBusinessFact[];
+  const resolveGroups = useMutation(api.businessFacts.adminResolveUnknownGroups);
   const ignoreGroups = useMutation(api.chatKnowledge.adminIgnoreUnknownGroups);
   const reopenGroups = useMutation(api.chatKnowledge.adminReopenUnknownGroups);
-  const linkGroups = useMutation(api.chatKnowledge.adminLinkUnknownGroups);
-  const undoLinkGroups = useMutation(api.chatKnowledge.adminUndoLinkUnknownGroups);
   const undo = useUndoNotice();
-  const [leftover, setLeftover] = useState<{ remaining: number; rerun: () => void } | null>(null);
+  const [leftover, setLeftover] = useState<{ remaining: number; remainingIsLowerBound: boolean; rerun: () => void } | null>(null);
+
   const groups = result?.groups ?? [];
-  // Loaded separately so a new guest question doesn't rerun the answer matching for every group.
-  const suggestions = useQuery(api.chatKnowledge.adminSuggestAnswersForUnknownGroups, {
-    groups: groups
-      .filter((group) => group.counts.new > 0)
-      .map((group) => ({ normalizedQuestion: group.normalizedQuestion, userQuestion: group.latest.userQuestion })),
-  }) as Record<string, AdminUnknownGroupSuggestion> | undefined;
   const selection = useSelection(groups.map((group) => group.normalizedQuestion));
   const selectedGroups = groups.filter((group) => selection.isSelected(group.normalizedQuestion));
   const selectedNew = selectedGroups.filter((group) => group.counts.new > 0);
   const selectedClosed = selectedGroups.filter((group) => group.counts.new < group.count);
-  const answers = answerOptions ?? [];
-  const answersLoading = answerOptions === undefined;
-  const hasAnswers = answers.length > 0;
-  const answerTitle = (answerId: string) => answers.find((answer) => answer._id === answerId)?.title ?? "the answer";
+  const reopenIds = (ids: Id<"chatUnknownQuestions">[]) => () => reopenGroups({ unknownQuestionIds: ids });
 
   async function run(key: string, fallback: string, action: () => Promise<void>) {
     setPendingAction(key);
@@ -101,55 +106,47 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
     }
   }
 
-  /** Bulk actions stop at a per-call limit; offer to repeat the action for whatever is left. */
-  function offerRerun(remaining: number | undefined, rerun: () => void) {
-    if (remaining && remaining > 0) setLeftover({ remaining, rerun });
+  function offerRerun(remaining: number | undefined, rerun: () => void, remainingIsLowerBound = false) {
+    if (remaining && remaining > 0) setLeftover({ remaining, remainingIsLowerBound, rerun });
   }
 
-  const reopenIds = (ids: Id<"chatUnknownQuestions">[]) => () => reopenGroups({ unknownQuestionIds: ids });
-
   async function ignore(keys: string[]) {
-    await run(`ignore:${keys.join("|")}`, "Unable to ignore the questions.", async () => {
+    await run(`ignore:${keys.join("|")}`, "Unable to ignore the reports.", async () => {
       const done = await ignoreGroups({ normalizedQuestions: keys });
       selection.clear();
-      undo.show(`Ignored ${pluralize(done.ignored, "question")}.`, reopenIds(done.unknownQuestionIds));
-      offerRerun(done.remaining, () => void ignore(keys));
+      undo.show(`Ignored ${pluralize(done.ignored, "report")}.`, reopenIds(done.unknownQuestionIds));
+      offerRerun(done.remaining, () => void ignore(keys), done.remainingIsLowerBound);
     });
   }
 
   async function reopen(keys: string[]) {
-    await run(`reopen:${keys.join("|")}`, "Unable to reopen the questions.", async () => {
+    await run(`reopen:${keys.join("|")}`, "Unable to reopen the reports.", async () => {
       const done = await reopenGroups({ normalizedQuestions: keys });
       selection.clear();
-      undo.show(`Reopened ${pluralize(done.reopened, "question")}.`);
-      offerRerun(done.remaining, () => void reopen(keys));
+      undo.show(`Reopened ${pluralize(done.reopened, "report")}.`);
+      offerRerun(done.remaining, () => void reopen(keys), done.remainingIsLowerBound);
     });
   }
 
-  async function link(keys: string[], answerId: string) {
-    if (!answerId) return;
-    await run(`link:${keys.join("|")}`, "Unable to link the answer.", async () => {
-      const done = await linkGroups({
-        normalizedQuestions: keys,
-        answerId: answerId as Id<"chatAnswers">,
-        generateSimilar: true,
-      });
+  /** Resolve one group by the value chosen in its dropdown (an approved fact or a structured source). */
+  async function resolve(group: AdminUnknownGroup, value: string) {
+    if (!value) return;
+    const key = group.normalizedQuestion;
+    await run(`resolve:${key}`, "Unable to resolve the report.", async () => {
+      const args: {
+        normalizedQuestions: string[];
+        factId?: Id<"businessFacts">;
+        structuredSource?: StructuredSource;
+      } = { normalizedQuestions: [key] };
+      if (value.startsWith(FACT_PREFIX)) args.factId = value.slice(FACT_PREFIX.length) as Id<"businessFacts">;
+      else if (value.startsWith(STRUCTURED_PREFIX))
+        args.structuredSource = value.slice(STRUCTURED_PREFIX.length) as StructuredSource;
+      const done = await resolveGroups(args);
       selection.clear();
-      undo.show(
-        `Linked ${pluralize(done.linked, "question")} to "${answerTitle(answerId)}".`,
-        () => undoLinkGroups(done.undo),
-      );
-      offerRerun(done.remaining, () => void link(keys, answerId));
+      undo.show(`Resolved ${pluralize(done.resolved, "report")}.`, reopenIds(done.unknownQuestionIds));
+      offerRerun(done.remaining, () => void resolve(group, value), done.remainingIsLowerBound);
     });
   }
-
-  const answerSelectItems = answers.map((answer) => (
-    <SelectItem key={answer._id} value={answer._id}>
-      {answer.title}
-    </SelectItem>
-  ));
-  const noAnswersHint = answersLoading ? "Loading answers" : hasAnswers ? undefined : "Add an approved answer first";
-  const linkHint = (answerId: string) => (answerId ? undefined : (noAnswersHint ?? "Choose an answer to link first"));
 
   function emptyState() {
     if (search) {
@@ -161,7 +158,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
             </Button>
           }
         >
-          No unknown questions match &quot;{search}&quot;.
+          No missing-information reports match &quot;{search}&quot;.
         </EmptyState>
       );
     }
@@ -170,34 +167,57 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
         <EmptyState
           action={
             <Button type="button" size="sm" variant="outline" onClick={() => setStatus("all")}>
-              Show handled questions
+              Show handled reports
             </Button>
           }
         >
-          No new unknown questions. The chatbot answered everything it was asked.
+          No new missing-information reports. The concierge answered everything it was asked.
         </EmptyState>
       );
     }
-    if (status === "all") return <EmptyState>No unknown questions yet.</EmptyState>;
+    if (status === "all") return <EmptyState>No missing-information reports yet.</EmptyState>;
     return (
       <EmptyState
         action={
           <Button type="button" size="sm" variant="outline" onClick={() => setStatus("new")}>
-            Show new questions
+            Show new reports
           </Button>
         }
       >
-        No {STATUS_LABELS.unknownQuestion[status].toLowerCase()} unknown questions.
+        No {STATUS_LABELS.unknownQuestion[status].toLowerCase()} reports.
       </EmptyState>
+    );
+  }
+
+  /** Options for a group's resolve dropdown: compatible approved facts, then structured sources. */
+  function resolveOptions(reportPropertyId: Id<"properties"> | undefined) {
+    const usable = compatibleFacts(facts, reportPropertyId);
+    return (
+      <SelectContent>
+        {usable.length > 0 ? (
+          <>
+            {usable.map((fact) => (
+              <SelectItem key={fact._id} value={`${FACT_PREFIX}${fact._id}`}>
+                {fact.title}
+              </SelectItem>
+            ))}
+          </>
+        ) : null}
+        {STRUCTURED_SOURCES.map((source) => (
+          <SelectItem key={source.value} value={`${STRUCTURED_PREFIX}${source.value}`}>
+            From {source.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
     );
   }
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <SearchBox value={searchInput} onChange={setSearchInput} label="Search unknown questions" />
-        <Select value={status} onValueChange={(value) => setStatus(value as UnknownQuestionFilter)}>
-          <SelectTrigger className="h-9 w-[10rem] rounded-lg" aria-label="Unknown status">
+        <SearchBox value={searchInput} onChange={setSearchInput} label="Search missing-information reports" />
+        <Select value={status} onValueChange={(value) => setStatus(value as MissingInfoFilter)}>
+          <SelectTrigger className="h-9 w-[10rem] rounded-lg" aria-label="Report status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -220,7 +240,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
       {leftover ? (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2 text-sm">
           <span className="text-foreground">
-            {pluralize(leftover.remaining, "more matching question")}{" "}
+            {leftover.remainingIsLowerBound ? "At least " : ""}{pluralize(leftover.remaining, "more matching report")}{" "}
             {leftover.remaining === 1 ? "wasn't" : "weren't"} updated.
           </span>
           <Button type="button" size="sm" variant="outline" disabled={pendingAction !== ""} onClick={leftover.rerun}>
@@ -230,41 +250,21 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
         </div>
       ) : null}
 
-      <BulkActionBar count={selectedGroups.length} noun={selectedGroups.length === 1 ? "group" : "groups"} onClear={selection.clear}>
+      <BulkActionBar
+        count={selectedGroups.length}
+        noun={selectedGroups.length === 1 ? "report" : "reports"}
+        onClear={selection.clear}
+      >
         {selectedNew.length > 0 ? (
-          <>
-            <Select value={bulkAnswerId} onValueChange={setBulkAnswerId} disabled={answersLoading || !hasAnswers}>
-              <SelectTrigger
-                className="h-9 w-[14rem] rounded-lg bg-background"
-                aria-label="Link selected to answer"
-                title={noAnswersHint}
-              >
-                <SelectValue placeholder={hasAnswers || answersLoading ? "Link to answer…" : "No approved answers"} />
-              </SelectTrigger>
-              {hasAnswers ? <SelectContent>{answerSelectItems}</SelectContent> : null}
-            </Select>
-            <DisabledReason reason={linkHint(bulkAnswerId)}>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!bulkAnswerId || pendingAction.startsWith("link:")}
-                onClick={() => void link(selectedNew.map((group) => group.normalizedQuestion), bulkAnswerId)}
-              >
-                <Link2 aria-hidden="true" className="h-4 w-4" />
-                Link
-              </Button>
-            </DisabledReason>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={pendingAction.startsWith("ignore:")}
-              onClick={() => void ignore(selectedNew.map((group) => group.normalizedQuestion))}
-            >
-              Ignore
-            </Button>
-          </>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pendingAction.startsWith("ignore:")}
+            onClick={() => void ignore(selectedNew.map((group) => group.normalizedQuestion))}
+          >
+            Ignore
+          </Button>
         ) : null}
         {selectedClosed.length > 0 ? (
           <Button
@@ -281,7 +281,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
       </BulkActionBar>
 
       {result === undefined ? (
-        <SkeletonRows label="Loading unknown questions" />
+        <SkeletonRows label="Loading missing-information reports" />
       ) : groups.length === 0 ? (
         emptyState()
       ) : (
@@ -294,12 +294,12 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
                     onChange={selection.toggleAll}
-                    label="Select all questions"
+                    label="Select all reports"
                   />
                 </th>
                 <th className={STACKED_TABLE.th}>Question</th>
                 <th className={STACKED_TABLE.th}>Context</th>
-                <th className={STACKED_TABLE.th}>Answer</th>
+                <th className={STACKED_TABLE.th}>Resolve</th>
                 <th className={STACKED_TABLE.th}>Status</th>
                 <th className={STACKED_TABLE.th}>Actions</th>
               </tr>
@@ -309,9 +309,8 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                 const key = group.normalizedQuestion;
                 const question = group.latest;
                 const hasNew = group.counts.new > 0;
-                const suggestion = hasNew ? suggestions?.[key] : undefined;
-                const rowAnswerId = rowAnswerIds[key] ?? suggestion?.answerId ?? "";
-                const suggested = suggestion && rowAnswerId === suggestion.answerId;
+                const reportPropertyId = question.propertyId;
+                const value = rowResolution[key] ?? "";
                 return (
                   <tr key={key} className={cn(STACKED_TABLE.row, STACKED_TABLE.selectableRow)}>
                     <td className={STACKED_TABLE.cell}>
@@ -351,7 +350,7 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                     </td>
                     <td
                       data-label="Context"
-                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground lg:max-w-[260px]")}
+                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground lg:max-w-[220px]")}
                     >
                       <p>{question.propertyName ?? question.propertySlug ?? "General"}</p>
                       <p className="mt-1 line-clamp-1 text-xs">
@@ -359,56 +358,41 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                       </p>
                     </td>
                     <td
-                      data-label="Answer"
+                      data-label="Resolve"
                       className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "lg:min-w-[280px]")}
                     >
                       {hasNew ? (
-                        <div className="grid gap-1">
-                          <div className="flex gap-2">
-                            <Select
-                              value={rowAnswerId}
-                              disabled={answersLoading || !hasAnswers}
-                              onValueChange={(value) => setRowAnswerIds((current) => ({ ...current, [key]: value }))}
+                        <div className="flex flex-wrap gap-2">
+                          <Select
+                            value={value}
+                            onValueChange={(next) => setRowResolution((current) => ({ ...current, [key]: next }))}
+                          >
+                            <SelectTrigger
+                              className="h-9 min-w-0 flex-1 rounded-lg lg:min-w-[180px]"
+                              aria-label={`Resolve "${question.userQuestion}" with a fact or source`}
                             >
-                              <SelectTrigger
-                                className="h-9 min-w-0 flex-1 rounded-lg lg:min-w-[180px]"
-                                aria-label="Answer to link"
-                                title={noAnswersHint}
-                              >
-                                <SelectValue
-                                  placeholder={
-                                    answersLoading
-                                      ? "Loading answers"
-                                      : hasAnswers
-                                        ? "Select answer"
-                                        : "No approved answers"
-                                  }
-                                />
-                              </SelectTrigger>
-                              {hasAnswers ? <SelectContent>{answerSelectItems}</SelectContent> : null}
-                            </Select>
-                            <DisabledReason reason={linkHint(rowAnswerId)}>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant={suggested ? "default" : "secondary"}
-                                disabled={!rowAnswerId || pendingAction === `link:${key}`}
-                                onClick={() => void link([key], rowAnswerId)}
-                              >
-                                Link
-                              </Button>
-                            </DisabledReason>
-                          </div>
-                          {suggested && suggestion ? (
-                            <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Sparkles className="h-3 w-3" aria-hidden="true" />
-                              Best match ({suggestion.score}%)
-                            </p>
-                          ) : null}
+                              <SelectValue placeholder="Link a fact or source…" />
+                            </SelectTrigger>
+                            {resolveOptions(reportPropertyId)}
+                          </Select>
+                          <DisabledReason reason={value ? undefined : "Choose a fact or source to resolve with"}>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              disabled={!value || pendingAction === `resolve:${key}`}
+                              onClick={() => void resolve(group, value)}
+                            >
+                              Resolve
+                            </Button>
+                          </DisabledReason>
                         </div>
                       ) : (
                         <span className="text-muted-foreground">
-                          {question.resolvedAnswerTitle ?? "No linked answer"}
+                          {question.resolvedFactTitle ??
+                            (question.resolvedSource
+                              ? `From ${structuredSourceLabel(question.resolvedSource as StructuredSource)}`
+                              : "Resolved")}
                         </span>
                       )}
                     </td>
@@ -419,9 +403,21 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
                       <div className="flex flex-wrap items-center gap-2">
                         {hasNew ? (
                           <>
-                            <Button type="button" size="sm" onClick={() => onCreateAnswer(question)}>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() =>
+                                setFactTarget({
+                                  fromUnknown: {
+                                    unknownQuestionId: question._id,
+                                    question: question.userQuestion,
+                                    propertyId: reportPropertyId,
+                                  },
+                                })
+                              }
+                            >
                               <Plus aria-hidden="true" className="h-4 w-4" />
-                              Create answer
+                              Create fact
                             </Button>
                             <Button
                               type="button"
@@ -455,11 +451,13 @@ export function UnknownQuestionsPanel({ onCreateAnswer }: { onCreateAnswer: (que
           </table>
           {result.truncated ? (
             <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">
-              Showing the newest 500 questions. Handle these to see older ones, or search.
+              Showing the newest 500 reports. Handle these to see older ones, or search.
             </p>
           ) : null}
         </div>
       )}
+
+      <BusinessFactFormDialog target={factTarget} properties={properties} onClose={() => setFactTarget(null)} />
     </div>
   );
 }

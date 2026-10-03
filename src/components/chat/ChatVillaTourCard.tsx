@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { BookingProperty } from "@/lib/booking/booking";
 import { resort } from "@/lib/data/resort-config";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { listLiveProperties } from "@/lib/react/convex-api";
 
@@ -24,8 +25,9 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
   const bookingT = useTranslations("Booking");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
+  const messages = usePublicMessages();
   const router = useRouter();
-  const fallbackProperties = useMemo(() => getDemoChatProperties(locale), [locale]);
+  const fallbackProperties = useMemo(() => getDemoChatProperties(messages, locale), [messages, locale]);
   const convex = useOptionalConvex();
   const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
 
@@ -42,7 +44,7 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
       try {
         const rows = await listLiveProperties(client);
         if (!active) return;
-        const liveProperties = getLiveChatProperties(rows, locale);
+        const liveProperties = getLiveChatProperties(rows, messages, locale);
         setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
       } catch {
         if (active) setProperties(fallbackProperties);
@@ -53,7 +55,7 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
     return () => {
       active = false;
     };
-  }, [convex, fallbackProperties, locale]);
+  }, [convex, fallbackProperties, locale, messages]);
 
   const orderedProperties = useMemo(() => {
     if (!propertySlug) return properties;

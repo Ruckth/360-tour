@@ -17,6 +17,7 @@ import type * as adminServices from "../adminServices.js";
 import type * as aiEval from "../aiEval.js";
 import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
+import type * as businessFacts from "../businessFacts.js";
 import type * as chat from "../chat.js";
 import type * as chatAi from "../chatAi.js";
 import type * as chatEval from "../chatEval.js";
@@ -42,16 +43,22 @@ import type * as lib_chatPresence from "../lib/chatPresence.js";
 import type * as lib_chatReuse from "../lib/chatReuse.js";
 import type * as lib_chatSuggestions from "../lib/chatSuggestions.js";
 import type * as lib_chatTools from "../lib/chatTools.js";
+import type * as lib_chatWriteGuard from "../lib/chatWriteGuard.js";
 import type * as lib_codes from "../lib/codes.js";
+import type * as lib_conciergePolicy from "../lib/conciergePolicy.js";
+import type * as lib_conciergeTurn from "../lib/conciergeTurn.js";
 import type * as lib_curatedVariants from "../lib/curatedVariants.js";
 import type * as lib_dates from "../lib/dates.js";
+import type * as lib_ical from "../lib/ical.js";
 import type * as lib_imageUploads from "../lib/imageUploads.js";
 import type * as lib_imageUrls from "../lib/imageUrls.js";
-import type * as lib_ical from "../lib/ical.js";
+import type * as lib_knowledgeGrouping from "../lib/knowledgeGrouping.js";
+import type * as lib_legacyQa from "../lib/legacyQa.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
-import type * as lib_serviceSlots from "../lib/serviceSlots.js";
+import type * as lib_readBudget from "../lib/readBudget.js";
 import type * as lib_serverSecret from "../lib/serverSecret.js";
+import type * as lib_serviceSlots from "../lib/serviceSlots.js";
 import type * as lib_siteSettings from "../lib/siteSettings.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as lib_socialProof from "../lib/socialProof.js";
@@ -94,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   aiEval: typeof aiEval;
   availability: typeof availability;
   bookings: typeof bookings;
+  businessFacts: typeof businessFacts;
   chat: typeof chat;
   chatAi: typeof chatAi;
   chatEval: typeof chatEval;
@@ -119,16 +127,22 @@ declare const fullApi: ApiFromModules<{
   "lib/chatReuse": typeof lib_chatReuse;
   "lib/chatSuggestions": typeof lib_chatSuggestions;
   "lib/chatTools": typeof lib_chatTools;
+  "lib/chatWriteGuard": typeof lib_chatWriteGuard;
   "lib/codes": typeof lib_codes;
+  "lib/conciergePolicy": typeof lib_conciergePolicy;
+  "lib/conciergeTurn": typeof lib_conciergeTurn;
   "lib/curatedVariants": typeof lib_curatedVariants;
   "lib/dates": typeof lib_dates;
+  "lib/ical": typeof lib_ical;
   "lib/imageUploads": typeof lib_imageUploads;
   "lib/imageUrls": typeof lib_imageUrls;
-  "lib/ical": typeof lib_ical;
+  "lib/knowledgeGrouping": typeof lib_knowledgeGrouping;
+  "lib/legacyQa": typeof lib_legacyQa;
   "lib/pricing": typeof lib_pricing;
   "lib/rateLimit": typeof lib_rateLimit;
-  "lib/serviceSlots": typeof lib_serviceSlots;
+  "lib/readBudget": typeof lib_readBudget;
   "lib/serverSecret": typeof lib_serverSecret;
+  "lib/serviceSlots": typeof lib_serviceSlots;
   "lib/siteSettings": typeof lib_siteSettings;
   "lib/slug": typeof lib_slug;
   "lib/socialProof": typeof lib_socialProof;
@@ -183,5 +197,91 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+  migrations: {
+    lib: {
+      cancel: FunctionReference<
+        "mutation",
+        "internal",
+        { name: string },
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }
+      >;
+      cancelAll: FunctionReference<
+        "mutation",
+        "internal",
+        { sinceTs?: number },
+        Array<{
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }>
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getStatus: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; names?: Array<string> },
+        Array<{
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }>
+      >;
+      migrate: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          dryRun: boolean;
+          fnHandle: string;
+          name: string;
+          next?: Array<{ fnHandle: string; name: string }>;
+          oneBatchOnly?: boolean;
+          reset?: boolean;
+        },
+        {
+          batchSize?: number;
+          cursor?: string | null;
+          error?: string;
+          isDone: boolean;
+          latestEnd?: number;
+          latestStart: number;
+          name: string;
+          next?: Array<string>;
+          processed: number;
+          state: "inProgress" | "success" | "failed" | "canceled" | "unknown";
+        }
+      >;
+    };
+  };
 };

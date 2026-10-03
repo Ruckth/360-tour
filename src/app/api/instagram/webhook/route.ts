@@ -1,22 +1,11 @@
 import { createHash } from "node:crypto";
 import { api } from "convex/_generated/api";
-import { looksLikeBookingMessage } from "@/lib/chat/ai-booking-route";
 import { verifyMetaSignature } from "@/lib/meta/signature";
-import {
-  detectQuickAnswerLocale,
-  localizedTimeoutFallbackReply,
-  localizedUnknownFallbackReply,
-  parseLineLocaleFromPostback,
-  resolveLineQuickAnswer,
-  type LinePropertySummary,
-} from "@/lib/line/quick-answers";
+import { measureMessagingStage, startMessagingEventMetrics, recordLateMessagingResult, resolveMessagingReply, storedReplyMode } from "@/lib/chat/messaging-reply";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AI_REPLY_TIMEOUT_MS = 25_000;
-const GUARDRAIL_REPLY_TIMEOUT_MS = 3_000;
-const QUESTION_BANK_SEMANTIC_TIMEOUT_MS = 8_000;
 const DEFAULT_SITE_URL = "https://tour.helpgueststay.com";
 const DEFAULT_GRAPH_API_VERSION = "v25.0";
 
@@ -58,48 +47,6 @@ type ClaimedInstagramEvent = {
   sessionId?: string;
   duplicate: boolean;
   status: string;
-};
-
-type GeneratedReply = {
-  response?: string;
-  model?: string;
-};
-
-type QuestionBankMatch = {
-  source: "exact" | "semantic";
-  suggestionId: string;
-  question: string;
-  answer?: string;
-  answerMode: "static" | "dynamic";
-  dynamicIntent?: "availability" | "pricing" | "property_details" | "booking_help" | "contact";
-  topic: string;
-};
-
-type ApprovedKnowledgeMatch = {
-  source: "approved_exact";
-  answerId: string;
-  questionId: string;
-  title: string;
-  answer: string;
-  questionText: string;
-  normalizedQuestion: string;
-  propertyId?: string;
-};
-
-type InstagramEventReplyMode =
-  | "exact"
-  | "approved_exact"
-  | "question_bank_exact"
-  | "question_bank_semantic"
-  | "ai"
-  | "unknown_fallback"
-  | "postback"
-  | "failed";
-
-type ResolvedInstagramReply = {
-  responseText: string;
-  replyMode: InstagramEventReplyMode;
-  questionBankMatch: QuestionBankMatch | null;
 };
 
 type InstagramConvexClient = {
@@ -233,41 +180,6 @@ async function fetchInstagramProfileName(accessToken: string, instagramUserId: s
   }
 }
 
-function timeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(fallback()), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(fallback());
-      },
-    );
-  });
-}
-
-function timeoutFallbackReply(locale?: string) {
-  return {
-    response: localizedTimeoutFallbackReply(locale),
-    model: "timeout",
-  };
-}
-
-function detectInstagramLocale(messageText?: string) {
-  return detectQuickAnswerLocale(messageText);
-}
-
-function questionBankReplyMode(match: Pick<QuestionBankMatch, "source">): InstagramEventReplyMode {
-  return match.source === "exact" ? "question_bank_exact" : "question_bank_semantic";
-}
-
-function instagramChannelCopy(text: string) {
-  return text.replace(/\bLINE\b/g, "Instagram");
-}
-
 async function sendInstagramTextMessage({
   accessToken,
   recipientId,
@@ -298,187 +210,6 @@ async function sendInstagramTextMessage({
   return response.status;
 }
 
-async function resolveInstagramReply({
-  client,
-  eventType,
-  messageText,
-  postbackData,
-  sessionId,
-  siteUrl,
-}: {
-  client: InstagramConvexClient;
-  eventType: Exclude<InstagramEventType, "unsupported">;
-  messageText?: string;
-  postbackData?: string;
-  sessionId: string;
-  siteUrl: string;
-}): Promise<ResolvedInstagramReply> {
-  const locale =
-    eventType === "postback"
-      ? parseLineLocaleFromPostback(postbackData)
-      : detectInstagramLocale(messageText);
-  const guardrailReply =
-    eventType === "message" && messageText
-      ? await timeout(
-          client.action(api.chatAi.getGuardrailReply, {
-            userMessage: messageText,
-            siteUrl,
-          } as never) as Promise<string | null>,
-          GUARDRAIL_REPLY_TIMEOUT_MS,
-          () => null,
-        )
-      : null;
-
-  if (guardrailReply) {
-    return {
-      responseText: guardrailReply,
-      replyMode: "ai",
-      questionBankMatch: null,
-    };
-  }
-
-  if (eventType === "message" && messageText) {
-    const approvedKnowledgeMatch = (await client.query(api.chatKnowledge.resolveExact, {
-      sessionId,
-      messageText,
-    } as never)) as ApprovedKnowledgeMatch | null;
-
-    if (approvedKnowledgeMatch) {
-      return {
-        responseText: approvedKnowledgeMatch.answer.trim(),
-        replyMode: "approved_exact",
-        questionBankMatch: null,
-      };
-    }
-  }
-
-  const properties = (await client.query(api.properties.list, {})) as LinePropertySummary[];
-  const quickAnswer = resolveLineQuickAnswer({
-    eventType,
-    ...(locale ? { locale } : {}),
-    messageText,
-    postbackData,
-    properties,
-    siteUrl,
-  });
-
-  if (quickAnswer) {
-    return {
-      responseText: instagramChannelCopy(quickAnswer.text),
-      replyMode: quickAnswer.mode === "postback" ? "postback" : "exact",
-      questionBankMatch: null,
-    };
-  }
-
-  if (
-    eventType === "message" && messageText &&
-    (looksLikeBookingMessage(messageText) ||
-      (await client.query(api.bookings.isChatBookingFlowActive, { sessionId } as never)))
-  ) {
-    const generated = await timeout(
-      client.action(api.chatAi.generateReply, {
-        sessionId,
-        userMessage: messageText,
-        channel: "instagram",
-        siteUrl,
-        bookingFlow: true,
-        ...(locale ? { locale } : {}),
-      } as never) as Promise<GeneratedReply>,
-      AI_REPLY_TIMEOUT_MS,
-      () => timeoutFallbackReply(locale),
-    );
-
-    return {
-      responseText: generated.response ?? timeoutFallbackReply(locale).response,
-      replyMode: generated.model === "timeout" ? "failed" : "ai",
-      questionBankMatch: null,
-    };
-  }
-
-  let questionBankMatch: QuestionBankMatch | null = null;
-  if (eventType === "message" && messageText) {
-    const exactMatch = (await client.query(api.chatSuggestions.resolveCuratedExact, {
-      sessionId,
-      messageText,
-      ...(locale ? { locale } : {}),
-    } as never)) as QuestionBankMatch | null;
-
-    questionBankMatch =
-      exactMatch ??
-      ((await timeout(
-        client.action(api.chatSuggestions.resolveCuratedSemantic, {
-          sessionId,
-          messageText,
-          ...(locale ? { locale } : {}),
-        } as never) as Promise<QuestionBankMatch | null>,
-        QUESTION_BANK_SEMANTIC_TIMEOUT_MS,
-        () => null,
-      )) as QuestionBankMatch | null);
-  }
-
-  if (questionBankMatch?.answerMode === "static" && questionBankMatch.answer?.trim()) {
-    return {
-      responseText: questionBankMatch.answer.trim(),
-      replyMode: questionBankReplyMode(questionBankMatch),
-      questionBankMatch,
-    };
-  }
-
-  if (questionBankMatch) {
-    const generated = await timeout(
-      client.action(api.chatAi.generateReply, {
-        sessionId,
-        userMessage: messageText ?? postbackData ?? "Instagram message",
-        channel: "instagram",
-        siteUrl,
-        ...(locale ? { locale } : {}),
-        questionBankHint: {
-          question: questionBankMatch.question,
-          topic: questionBankMatch.topic,
-          ...(questionBankMatch.dynamicIntent
-            ? { dynamicIntent: questionBankMatch.dynamicIntent }
-            : {}),
-          source: questionBankMatch.source,
-        },
-      } as never) as Promise<GeneratedReply>,
-      AI_REPLY_TIMEOUT_MS,
-      () => timeoutFallbackReply(locale),
-    );
-
-    return {
-      responseText: generated.response ?? timeoutFallbackReply(locale).response,
-      replyMode:
-        generated.model === "timeout" ? "failed" : questionBankReplyMode(questionBankMatch),
-      questionBankMatch,
-    };
-  }
-
-  if (eventType === "message" && messageText) {
-    const generated = await timeout(
-      client.action(api.chatAi.generateReply, {
-        sessionId,
-        userMessage: messageText,
-        channel: "instagram",
-        siteUrl,
-        ...(locale ? { locale } : {}),
-      } as never) as Promise<GeneratedReply>,
-      AI_REPLY_TIMEOUT_MS,
-      () => timeoutFallbackReply(locale),
-    );
-    return {
-      responseText: generated.response ?? timeoutFallbackReply(locale).response,
-      replyMode: generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai",
-      questionBankMatch: null,
-    };
-  }
-
-  return {
-    responseText: localizedUnknownFallbackReply(locale),
-    replyMode: "unknown_fallback",
-    questionBankMatch: null,
-  };
-}
-
 async function handleInstagramEvent({
   accessToken,
   client,
@@ -500,9 +231,10 @@ async function handleInstagramEvent({
 
   if (!instagramUserId || eventType === "unsupported") return;
 
+  const turnMetrics = startMessagingEventMetrics("instagram");
   let claimed: ClaimedInstagramEvent;
   try {
-    claimed = (await client.mutation(api.instagram.claimEvent, {
+    claimed = (await measureMessagingStage(turnMetrics, "claim", async () => client.mutation(api.instagram.claimEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       instagramUserId,
@@ -512,7 +244,7 @@ async function handleInstagramEvent({
       messageText,
       postbackData,
       eventTimestamp: event.timestamp,
-    } as never)) as ClaimedInstagramEvent;
+    } as never))) as ClaimedInstagramEvent;
   } catch (error) {
     console.error("Instagram webhook failed to claim event", {
       eventKey,
@@ -556,14 +288,15 @@ async function handleInstagramEvent({
       return;
     }
 
-    const { responseText, replyMode, questionBankMatch } = await resolveInstagramReply({
-      client,
-      eventType,
-      messageText,
-      postbackData,
-      sessionId: claimed.sessionId,
+    const { responseText, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client, {
+      channel: "instagram",
+      sessionId: claimed.sessionId!,
       siteUrl: getSiteUrl(request),
-    });
+      kind: eventType,
+      ...(messageText ? { text: messageText } : {}),
+      ...(postbackData ? { postbackData } : {}),
+      turnId: turnMetrics.turnId,
+    }));
 
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
       await client.mutation(api.instagram.markEventIgnored, {
@@ -574,31 +307,15 @@ async function handleInstagramEvent({
       return;
     }
 
-    instagramReplyStatus = await sendInstagramTextMessage({
+    instagramReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => sendInstagramTextMessage({
       accessToken,
       recipientId: instagramUserId,
       text: responseText,
-    });
+    }));
 
-    if (questionBankMatch) {
-      await client
-        .mutation(api.chatSuggestions.markClicked, {
-          sessionId: claimed.sessionId,
-          suggestion: {
-            source: "curated",
-            suggestionId: questionBankMatch.suggestionId,
-          },
-        } as never)
-        .catch((markClickedError) => {
-          console.warn("Instagram webhook failed to mark question-bank match clicked", {
-            eventKey,
-            suggestionId: questionBankMatch?.suggestionId,
-            error:
-              markClickedError instanceof Error
-                ? markClickedError.message
-                : "Unknown Convex failure",
-          });
-        });
+    // Exactly-once delivery: a late concierge result is recorded, never delivered.
+    if (timedOut && lateResult) {
+      void recordLateMessagingResult(lateResult, { turnId: turnMetrics.turnId, channel: "instagram" });
     }
 
     await client.mutation(api.instagram.completeEvent, {
@@ -607,7 +324,7 @@ async function handleInstagramEvent({
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
-      replyMode,
+      replyMode: storedReplyMode(replyMode),
       instagramReplyStatus,
     } as never);
   } catch (error) {

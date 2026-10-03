@@ -186,7 +186,7 @@ async function seedChatMessageCache(
   );
 }
 
-test("home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
+test("@smoke home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByText("Auralis Cove Retreat").first()).toBeVisible();
@@ -205,7 +205,12 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   ).toHaveCount(0);
 
   await page.getByRole("button", { name: /How many guests can each villa sleep/i }).click();
-  await expect(page.getByText(/Tideglass Pool Residence sleeps up to 4/i)).toBeVisible();
+  // Suggestion chips are question-only now: disconnected, a non-booking chip gets
+  // the honest "live chat will connect once Convex is configured" notice rather than
+  // a canned policy answer. The chip set still rotates to follow-up questions.
+  await expect(
+    page.getByText(/live chat will connect once Convex is configured/i),
+  ).toBeVisible();
   await expect(
     chatMessages.getByRole("button", { name: /Which villa is best for a family or group/i }),
   ).toBeVisible();
@@ -216,7 +221,9 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
 
   await page.getByPlaceholder("Ask a question").fill("What do I get when I book direct?");
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByText(/Direct booking saves about 15%/i)).toBeVisible();
+  // A booking-intent question still surfaces the booking card via the action hint,
+  // but the reply is the booking prompt (no retired "saves 15%" policy claim).
+  await expect(page.getByText(/Use the booking card below/i)).toBeVisible();
   await expect(page.getByTestId("chat-booking-card")).toBeVisible();
   await expect(chatMessages.getByRole("button", { name: /What will my stay cost/i })).toBeVisible();
   await expect(
@@ -226,11 +233,9 @@ test("home page opens chat, shows fallback replies, and exposes contact capture"
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText("Do you have airport pickup?")).toBeVisible();
-  await expect(
-    page.getByText(
-      /live chat will connect once Convex is configured|Welcome to Auralis Cove Retreat|trouble connecting/i,
-    ),
-  ).toBeVisible();
+  // Disconnected, a policy question gets the same honest notice as the earlier chip (no coded
+  // airport-pickup claim), so the notice now appears twice.
+  await expect(chatMessages.getByText(/live chat will connect once Convex is configured/i)).toHaveCount(2);
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
   await expect(page.getByText("Do you have airport pickup?")).toHaveCount(0);
@@ -902,7 +907,11 @@ test("thai availability suggestion shows the booking card and keeps it attached"
   const bookingCard = page.getByTestId("chat-booking-card");
   await expect(bookingCard).toBeVisible();
   await expect(page.getByTestId("chat-tour-card")).toHaveCount(0);
-  await expect(page.getByText(/เลือกวิลล่า วันเช็กอิน และวันเช็กเอาต์/)).toBeVisible();
+  // Chip is question-only now; the availability chip still shows the booking card
+  // via its action hint, with the booking prompt as the reply.
+  await expect(
+    page.getByText("ยินดีช่วยค่ะ ใช้การ์ดด้านล่างเลือกวิลล่า วันที่เช็กอิน และเช็กเอาต์ได้เลยนะคะ", { exact: true }),
+  ).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-selector")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-booking-check-in")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-booking-check-out")).toBeVisible();
@@ -1063,7 +1072,9 @@ test("thai chat initializes with six question chips before regular chat", async 
 
   await initialSuggestions.getByRole("button", { name: "แต่ละวิลล่าพักได้กี่คน?" }).click();
   await expect(chatMessages.getByText("แต่ละวิลล่าพักได้กี่คน?")).toBeVisible();
-  await expect(chatMessages.getByText(/Tideglass Pool Residence พักได้สูงสุด 4 คน/)).toBeVisible();
+  // Question-only chip: disconnected, a non-booking chip now returns the honest
+  // "live chat connects once Convex is configured" notice, not a canned sleeps-count.
+  await expect(chatMessages.getByText(/แชตสดจะเชื่อมต่อเมื่อกำหนดค่า Convex/)).toBeVisible();
   await expect(chatMessages.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(2);
   await expect(
     chatMessages.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" }),
@@ -1089,7 +1100,11 @@ test("german chat suggestions float under assistant messages and update", async 
   ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Welche Vorteile habe ich bei Direktbuchung?" }).click();
-  await expect(page.getByText(/Direktbuchung spart etwa 15%/i)).toBeVisible();
+  // Question-only chip: the direct-booking chip still surfaces the booking card
+  // through its action hint, but the reply is the booking prompt — no retired
+  // "Direktbuchung spart etwa 15%" discount claim.
+  await expect(page.getByText(/Buchungskarte/i)).toBeVisible();
+  await expect(page.getByTestId("chat-booking-card")).toBeVisible();
   await expect(
     chatMessages.getByRole("button", { name: "Was kostet mein Aufenthalt?" }),
   ).toBeVisible();
@@ -1166,7 +1181,7 @@ test("mobile language switcher stays compact while opening full options", async 
   expect(menuBox?.height).toBeLessThan(240);
 });
 
-test("locale routing handles canonical English, removed Arabic, and sampled deep links", async ({ page }) => {
+test("@smoke locale routing handles canonical English, removed Arabic, and sampled deep links", async ({ page }) => {
   await page.goto("/en");
   await expect(page).toHaveURL(/\/$/);
 

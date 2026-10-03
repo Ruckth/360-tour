@@ -13,7 +13,7 @@ function graphVersion(value?: string) {
 
 export async function deliverAdminReply(
   reply: ReplyDelivery,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Readonly<Record<string, string | undefined>> = process.env,
   send: typeof fetch = fetch,
 ) {
   if (reply.channel === "web") return;

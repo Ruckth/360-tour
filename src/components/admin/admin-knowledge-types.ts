@@ -2,11 +2,7 @@ import type { Id } from "convex/_generated/dataModel";
 import type { SessionChannelFilter } from "@/components/admin/admin-chat-types";
 
 export type KnowledgeAnswerStatus = "draft" | "approved" | "archived";
-export type KnowledgeAnswerFilter = KnowledgeAnswerStatus | "all";
 export type UnknownQuestionStatus = "new" | "resolved" | "ignored";
-export type UnknownQuestionFilter = UnknownQuestionStatus | "all";
-export const KNOWLEDGE_VIEW_MODES = ["answers", "unknown", "variants", "suggestions"] as const;
-export type KnowledgeViewMode = (typeof KNOWLEDGE_VIEW_MODES)[number];
 
 export type AdminKnowledgeQuestion = {
   _id: Id<"chatQuestions">;
@@ -56,9 +52,14 @@ export type AdminKnowledgeAnswer = {
   topics: AdminKnowledgeTopic[];
 };
 
+/**
+ * A missing-information report: a question the concierge could not answer. Resolved by linking an
+ * approved business fact or a structured source (see MissingInformationPanel).
+ */
 export type AdminUnknownQuestion = {
   _id: Id<"chatUnknownQuestions">;
   sessionId?: Id<"chatSessions">;
+  propertyId?: Id<"properties">;
   propertyName?: string;
   propertySlug?: string;
   userQuestion: string;
@@ -68,12 +69,14 @@ export type AdminUnknownQuestion = {
   pageUrl?: string;
   status: UnknownQuestionStatus;
   adminNotified: boolean;
-  resolvedAnswerTitle?: string;
+  /** How a handled report was resolved (set by businessFacts.adminResolveUnknownGroups / adminSave). */
+  resolvedFactTitle?: string;
+  resolvedSource?: string;
   createdAt: number;
   updatedAt: number;
 };
 
-/** Identical unknown questions (same normalized text) shown as one row. */
+/** Identical missing-information reports (same normalized text) shown as one row. */
 export type AdminUnknownGroup = {
   normalizedQuestion: string;
   count: number;
@@ -83,37 +86,10 @@ export type AdminUnknownGroup = {
   latest: AdminUnknownQuestion;
 };
 
-/** Best existing answer for an unknown group (adminSuggestAnswersForUnknownGroups), keyed by normalizedQuestion. */
-export type AdminUnknownGroupSuggestion = { answerId: Id<"chatAnswers">; title: string; score: number };
-
-export type AdminPendingVariant = {
-  _id: Id<"chatQuestions">;
-  questionText: string;
-  createdAt: number;
-  answerId: Id<"chatAnswers">;
-  answerTitle: string;
-};
-
 export type CuratedSuggestionStatus = "active" | "archived";
 export type CuratedAnswerMode = "static" | "dynamic";
-export const CURATED_TOPICS = [
-  "villa_fit",
-  "direct_booking",
-  "tour",
-  "availability",
-  "booking",
-  "amenities",
-  "contact",
-] as const;
-export const CURATED_DYNAMIC_INTENTS = [
-  "availability",
-  "pricing",
-  "property_details",
-  "booking_help",
-  "contact",
-] as const;
-export type CuratedDynamicIntent = (typeof CURATED_DYNAMIC_INTENTS)[number];
 
+/** Retired curated suggestion, shown read-only in the Legacy archive. */
 export type AdminCuratedSuggestion = {
   _id: Id<"curatedChatQuestions">;
   question: string;
@@ -121,7 +97,7 @@ export type AdminCuratedSuggestion = {
   answer?: string;
   answerTranslations?: Record<string, string>;
   answerMode?: CuratedAnswerMode;
-  dynamicIntent?: CuratedDynamicIntent;
+  dynamicIntent?: string;
   propertySlug?: string;
   topic: string;
   score: number;

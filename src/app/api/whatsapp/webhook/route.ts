@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { api } from "convex/_generated/api";
 import { verifyMetaSignature } from "@/lib/meta/signature";
 import { resolveWhatsAppReply, type WhatsAppConvexClient } from "@/lib/whatsapp/reply";
+import { measureMessagingStage, startMessagingEventMetrics, recordLateMessagingResult, storedReplyMode } from "@/lib/chat/messaging-reply";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -223,9 +224,10 @@ async function handleWhatsAppMessage({
 
   if (!whatsappUserId) return;
 
+  const turnMetrics = startMessagingEventMetrics("whatsapp");
   let claimed: ClaimedWhatsAppEvent;
   try {
-    claimed = (await client.mutation(api.whatsapp.claimEvent, {
+    claimed = (await measureMessagingStage(turnMetrics, "claim", async () => client.mutation(api.whatsapp.claimEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       whatsappUserId,
@@ -234,7 +236,7 @@ async function handleWhatsAppMessage({
       eventType,
       messageText,
       eventTimestamp,
-    } as never)) as ClaimedWhatsAppEvent;
+    } as never))) as ClaimedWhatsAppEvent;
   } catch (error) {
     console.error("WhatsApp webhook failed to claim event", {
       eventKey,
@@ -287,12 +289,13 @@ async function handleWhatsAppMessage({
       return;
     }
 
-    const { responseText, replyMode, questionBankMatch } = await resolveWhatsAppReply({
+    const { responseText, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveWhatsAppReply({
       client,
       messageText,
-      sessionId: claimed.sessionId,
+      sessionId: claimed.sessionId!,
       siteUrl: getSiteUrl(request),
-    });
+      turnId: turnMetrics.turnId,
+    }));
 
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
       await client.mutation(api.whatsapp.markEventIgnored, {
@@ -303,33 +306,12 @@ async function handleWhatsAppMessage({
       return;
     }
 
-    whatsappReplyStatus = await sendWhatsAppTextMessage({
+    whatsappReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => sendWhatsAppTextMessage({
       accessToken,
       phoneNumberId: phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() ?? "",
       recipientId: whatsappUserId,
       text: responseText,
-    });
-
-    if (questionBankMatch) {
-      await client
-        .mutation(api.chatSuggestions.markClicked, {
-          sessionId: claimed.sessionId,
-          suggestion: {
-            source: "curated",
-            suggestionId: questionBankMatch.suggestionId,
-          },
-        } as never)
-        .catch((markClickedError) => {
-          console.warn("WhatsApp webhook failed to mark question-bank match clicked", {
-            eventKey,
-            suggestionId: questionBankMatch?.suggestionId,
-            error:
-              markClickedError instanceof Error
-                ? markClickedError.message
-                : "Unknown Convex failure",
-          });
-        });
-    }
+    }));
 
     await client.mutation(api.whatsapp.completeEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
@@ -337,9 +319,15 @@ async function handleWhatsAppMessage({
       sessionId: claimed.sessionId,
       userContent: messageText,
       assistantContent: responseText,
-      replyMode,
+      replyMode: storedReplyMode(replyMode),
       whatsappReplyStatus,
     } as never);
+
+    // Exactly-once delivery: a late concierge result (after the outer timeout) is RECORDED,
+    // never delivered. We only note its model/committed outcome — no guest-derived text.
+    if (timedOut && lateResult) {
+      void recordLateMessagingResult(lateResult, { turnId: turnMetrics.turnId, channel: "whatsapp" });
+    }
   } catch (error) {
     const failedWhatsAppReplyStatus =
       error instanceof WhatsAppReplyError ? error.status : whatsappReplyStatus;

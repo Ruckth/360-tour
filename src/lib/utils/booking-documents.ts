@@ -4,7 +4,7 @@ import { PDFDocument, type PDFFont, type PDFPage, StandardFonts, rgb } from 'pdf
 import {
 	getBookingDocumentMessages,
 	normalizePublicLocale
-} from '@/lib/i18n/public-content';
+} from '@/lib/i18n/server-content';
 import type { Locale } from '@/i18n/routing';
 
 export type BookingDocumentData = {

@@ -1,29 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLineQuickReplyItems,
-  parseLineLocaleFromPostback,
   normalizeLineQuestion,
   parseLineIntentFromPostback,
-  resolveLineQuickAnswer,
-  type LinePropertySummary,
+  parseLineLocaleFromPostback,
+  questionFromLinePostback,
 } from "@/lib/line/quick-answers";
 import { createLineSignature, verifyLineSignature } from "@/lib/line/signature";
-
-const properties: LinePropertySummary[] = [
-  {
-    slug: "pool-villa",
-    name: "Tideglass Pool Residence",
-    tagline: "Private paradise with infinity pool",
-    pricePerNight: 8500,
-    currency: "THB",
-    maxGuests: 4,
-    bedrooms: 2,
-    bathrooms: 2,
-    area: 145,
-    amenities: ["Private Pool", "WiFi"],
-    directDiscountPercent: 15,
-  },
-];
 
 describe("LINE webhook helpers", () => {
   it("verifies LINE HMAC signatures using the raw body", () => {
@@ -41,120 +24,37 @@ describe("LINE webhook helpers", () => {
     ).toBe(false);
   });
 
-  it("only resolves exact normalized questions before AI fallback", () => {
+  it("normalizes question text for locale hints", () => {
     expect(normalizeLineQuestion("  SEE   PRICES? ")).toBe("see prices");
-
-    const exact = resolveLineQuickAnswer({
-      eventType: "message",
-      messageText: "See prices?",
-      properties,
-      siteUrl: "https://tour.helpgueststay.com",
-    });
-    const nearMiss = resolveLineQuickAnswer({
-      eventType: "message",
-      messageText: "Can you show me your latest price for tomorrow?",
-      properties,
-      siteUrl: "https://tour.helpgueststay.com",
-    });
-
-    expect(exact?.intent).toBe("pricing");
-    expect(exact?.text).toContain("Tideglass Pool Residence");
-    expect(nearMiss).toBeNull();
   });
 
-  it("maps LINE postback data to deterministic answers and quick reply buttons", () => {
+  it("turns LINE postbacks into the question the guest saw, never a fixed answer", () => {
     expect(parseLineIntentFromPostback("intent=tour")).toBe("tour");
     expect(parseLineLocaleFromPostback("intent=tour&locale=fr")).toBe("fr");
     expect(parseLineIntentFromPostback("intent=unknown")).toBeNull();
 
-    const postback = resolveLineQuickAnswer({
-      eventType: "postback",
-      postbackData: "intent=tour&locale=fr",
-      properties,
-      siteUrl: "https://tour.helpgueststay.com",
-    });
+    // Menu postbacks become the localized label the guest tapped (LINE shows it as their message).
+    expect(questionFromLinePostback("intent=tour&locale=fr")).toBe("Voir la visite 360");
+    expect(questionFromLinePostback("intent=pricing&locale=ja")).toBe("料金を見る");
+    // Older rich-menu intents become ordinary questions for the concierge.
+    expect(questionFromLinePostback("intent=cancellation")).toBe("What is the cancellation policy?");
+    // A greeting or unknown postback carries no question.
+    expect(questionFromLinePostback("intent=welcome")).toBeUndefined();
+    expect(questionFromLinePostback("intent=unknown")).toBeUndefined();
+    expect(questionFromLinePostback(undefined)).toBeUndefined();
+  });
 
-    expect(postback).toMatchObject({ intent: "tour", mode: "postback" });
-    expect(postback?.text).toContain("visite 360");
+  it("builds a localized quick-reply menu whose postbacks round-trip to questions", () => {
     expect(buildLineQuickReplyItems().map((item) => item.action.label)).toEqual([
       "Check dates",
       "See prices",
       "View 360 tour",
       "Contact host",
     ]);
-    expect(buildLineQuickReplyItems("fr")[0]?.action.data).toBe("intent=availability&locale=fr");
-  });
-
-  it("builds customer links from the site origin even when SITE_URL includes the webhook path", () => {
-    const answer = resolveLineQuickAnswer({
-      eventType: "message",
-      messageText: "Check dates",
-      properties,
-      siteUrl: "https://tour.helpgueststay.com/api/line/webhook",
-    });
-
-    expect(answer?.text).toContain("https://tour.helpgueststay.com/booking");
-    expect(answer?.text).not.toContain("/api/line/webhook/booking");
-  });
-
-  it("keeps all deterministic customer links on the public site origin", () => {
-    const webhookSiteUrl = "https://tour.helpgueststay.com/api/line/webhook";
-    const scenarios = [
-      { eventType: "follow" as const },
-      { eventType: "message" as const, messageText: "Check dates" },
-      { eventType: "message" as const, messageText: "See prices" },
-      { eventType: "message" as const, messageText: "Direct booking" },
-      { eventType: "message" as const, messageText: "Villa details" },
-      { eventType: "message" as const, messageText: "View 360 tour" },
-      { eventType: "message" as const, messageText: "Where are you located" },
-      { eventType: "postback" as const, postbackData: "intent=availability" },
-      { eventType: "postback" as const, postbackData: "intent=pricing" },
-      { eventType: "postback" as const, postbackData: "intent=direct_booking" },
-      { eventType: "postback" as const, postbackData: "intent=villa_details" },
-      { eventType: "postback" as const, postbackData: "intent=tour" },
-      { eventType: "postback" as const, postbackData: "intent=contact" },
-    ];
-
-    for (const scenario of scenarios) {
-      const answer = resolveLineQuickAnswer({
-        eventType: scenario.eventType,
-        messageText: "messageText" in scenario ? scenario.messageText : undefined,
-        postbackData: "postbackData" in scenario ? scenario.postbackData : undefined,
-        properties,
-        siteUrl: webhookSiteUrl,
-      });
-
-      expect(answer, JSON.stringify(scenario)).not.toBeNull();
-      expect(answer?.text, JSON.stringify(scenario)).not.toContain("/api/line/webhook");
-      expect(answer?.text, JSON.stringify(scenario)).not.toContain("tour.helpgueststay.com/api");
-    }
-  });
-
-  it("does not append sentence punctuation to deterministic customer links", () => {
-    const scenarios = [
-      { eventType: "follow" as const },
-      { eventType: "message" as const, messageText: "Check dates" },
-      { eventType: "message" as const, messageText: "See prices" },
-      { eventType: "message" as const, messageText: "Direct booking" },
-      { eventType: "message" as const, messageText: "Villa details" },
-      { eventType: "message" as const, messageText: "View 360 tour" },
-      { eventType: "message" as const, messageText: "Where are you located" },
-      { eventType: "postback" as const, postbackData: "intent=availability&locale=zh-CN" },
-      { eventType: "postback" as const, postbackData: "intent=pricing&locale=ja" },
-      { eventType: "postback" as const, postbackData: "intent=tour&locale=ko" },
-    ];
-
-    for (const scenario of scenarios) {
-      const answer = resolveLineQuickAnswer({
-        eventType: scenario.eventType,
-        messageText: "messageText" in scenario ? scenario.messageText : undefined,
-        postbackData: "postbackData" in scenario ? scenario.postbackData : undefined,
-        properties,
-        siteUrl: "https://tour.helpgueststay.com",
-      });
-
-      expect(answer, JSON.stringify(scenario)).not.toBeNull();
-      expect(answer?.text, JSON.stringify(scenario)).not.toMatch(/https?:\/\/\S+[.。](?=\s|$)/u);
+    const french = buildLineQuickReplyItems("fr");
+    expect(french[0]?.action.data).toBe("intent=availability&locale=fr");
+    for (const item of french) {
+      expect(questionFromLinePostback(item.action.data)).toBe(item.action.displayText);
     }
   });
 });

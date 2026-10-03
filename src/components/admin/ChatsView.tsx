@@ -17,14 +17,14 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AdminDateTimeFilterField } from "@/components/admin/AdminDateTimeFilterField";
 import { AdminSessionActions } from "@/components/admin/AdminSessionActions";
 import { AdminSessionDetail, chronologicalTranscriptMessages } from "@/components/admin/AdminSessionDetail";
-import { AnswerFormDialog, type AnswerFormTarget } from "@/components/admin/AnswerFormDialog";
+import { BusinessFactFormDialog, type FactFormTarget } from "@/components/admin/BusinessFactFormDialog";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { SetupBanner } from "@/components/admin/SetupChecklist";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { sourceLabel } from "@/components/admin/labels";
 import { TONES, statusMeta } from "@/components/admin/status-tones";
-import type { AdminKnowledgePropertyScope } from "@/components/admin/admin-knowledge-types";
+import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 import {
   ChannelIcon,
   formatDateTime,
@@ -198,11 +198,11 @@ export function ChatsView() {
     if (sessionId === selectedSessionId) return;
     updateParams({ session: sessionId });
   }
-  const [answerTarget, setAnswerTarget] = useState<AnswerFormTarget | null>(null);
-  const propertyScopes = useQuery(
-    api.chatKnowledge.adminListPropertyScopes,
-    answerTarget ? {} : "skip",
-  ) as AdminKnowledgePropertyScope[] | undefined;
+  // Saved answers are retired: a guest question can seed a draft business fact instead.
+  const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
+  const factProperties = useQuery(api.properties.adminList, factTarget ? {} : "skip") as
+    | AdminFactProperty[]
+    | undefined;
   const selectedSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [replyPending, setReplyPending] = useState(false);
@@ -375,7 +375,7 @@ export function ChatsView() {
     replyError,
     replyStatus,
     replyWindow: sessionDetail?.replyWindow,
-    onSaveAsAnswer: (message: AdminMessage) => setAnswerTarget({ question: message.content }),
+    onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content } }),
     actions: selectedSession ? (
       <AdminSessionActions session={selectedSession} onDeleted={() => selectSession(null)} />
     ) : null,
@@ -809,10 +809,10 @@ export function ChatsView() {
           <AdminSessionDetail key={selectedSession?._id ?? "none"} compact {...detailProps} />
         </DialogContent>
       </Dialog>
-      <AnswerFormDialog
-        target={answerTarget}
-        propertyScopes={propertyScopes ?? []}
-        onClose={() => setAnswerTarget(null)}
+      <BusinessFactFormDialog
+        target={factTarget}
+        properties={factProperties ?? []}
+        onClose={() => setFactTarget(null)}
       />
       <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
         <DialogContent className="max-w-sm">

@@ -1,0 +1,168 @@
+{
+  "baseURL": "http://localhost:3104",
+  "villaPath": "/rooms/pool-villa",
+  "profile": "390x844 DPR2 touch, CPU 4x, 1.6 Mbps/150 ms RTT, headless Chromium (SwiftShader WebGL)",
+  "measuredAt": "2026-10-03T09:06:10.461Z",
+  "cold": {
+    "runs": 5,
+    "clickToUsableMs": {
+      "median": 6628,
+      "min": 6475,
+      "max": 6771
+    },
+    "panoramaBytesBeforeUsable": {
+      "median": 710658,
+      "min": 710658,
+      "max": 710658
+    },
+    "panoramaTransferBytesBeforeUsable": {
+      "median": 710958,
+      "min": 710958,
+      "max": 710958
+    },
+    "panoramaRequestsBeforeUsable": {
+      "median": 1,
+      "min": 1,
+      "max": 1
+    },
+    "idleDrawCallsPerSecond": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    }
+  },
+  "warm": {
+    "runs": 5,
+    "clickToUsableMs": {
+      "median": 1860,
+      "min": 1800,
+      "max": 2313
+    },
+    "panoramaBytesBeforeUsable": {
+      "median": 0,
+      "min": 0,
+      "max": 1311108
+    },
+    "panoramaTransferBytesBeforeUsable": {
+      "median": 0,
+      "min": 0,
+      "max": 1311408
+    },
+    "panoramaRequestsBeforeUsable": {
+      "median": 0,
+      "min": 0,
+      "max": 1
+    },
+    "idleDrawCallsPerSecond": {
+      "median": 1,
+      "min": 0,
+      "max": 1
+    }
+  },
+  "samples": [
+    {
+      "kind": "cold",
+      "clickToUsableMs": 6628.10000000149,
+      "panoramaRequestsBeforeUsable": 1,
+      "panoramaBytesBeforeUsable": 710658,
+      "panoramaTransferBytesBeforeUsable": 710958,
+      "panoramaNamesBeforeUsable": [
+        "/pool-villa-living.webp"
+      ],
+      "idleDrawCallsPerSecond": 0
+    },
+    {
+      "kind": "cold",
+      "clickToUsableMs": 6474.900000002235,
+      "panoramaRequestsBeforeUsable": 1,
+      "panoramaBytesBeforeUsable": 710658,
+      "panoramaTransferBytesBeforeUsable": 710958,
+      "panoramaNamesBeforeUsable": [
+        "/pool-villa-living.webp"
+      ],
+      "idleDrawCallsPerSecond": 0
+    },
+    {
+      "kind": "cold",
+      "clickToUsableMs": 6547.699999999255,
+      "panoramaRequestsBeforeUsable": 1,
+      "panoramaBytesBeforeUsable": 710658,
+      "panoramaTransferBytesBeforeUsable": 710958,
+      "panoramaNamesBeforeUsable": [
+        "/pool-villa-living.webp"
+      ],
+      "idleDrawCallsPerSecond": 0
+    },
+    {
+      "kind": "cold",
+      "clickToUsableMs": 6742.199999999255,
+      "panoramaRequestsBeforeUsable": 1,
+      "panoramaBytesBeforeUsable": 710658,
+      "panoramaTransferBytesBeforeUsable": 710958,
+      "panoramaNamesBeforeUsable": [
+        "/pool-villa-living.webp"
+      ],
+      "idleDrawCallsPerSecond": 0
+    },
+    {
+      "kind": "cold",
+      "clickToUsableMs": 6771.20000000298,
+      "panoramaRequestsBeforeUsable": 1,
+      "panoramaBytesBeforeUsable": 710658,
+      "panoramaTransferBytesBeforeUsable": 710958,
+      "panoramaNamesBeforeUsable": [
+        "/pool-villa-living.webp"
+      ],
+      "idleDrawCallsPerSecond": 0
+    },
+    {
+      "kind": "warm",
+      "clickToUsableMs": 2313,
+      "panoramaRequestsBeforeUsable": 1,
+      "panoramaBytesBeforeUsable": 1311108,
+      "panoramaTransferBytesBeforeUsable": 1311408,
+      "panoramaNamesBeforeUsable": [
+        "/pool-villa-pool.webp"
+      ],
+      "idleDrawCallsPerSecond": 0
+    },
+    {
+      "kind": "warm",
+      "clickToUsableMs": 2032.5,
+      "panoramaRequestsBeforeUsable": 0,
+      "panoramaBytesBeforeUsable": 0,
+      "panoramaTransferBytesBeforeUsable": 0,
+      "panoramaNamesBeforeUsable": [],
+      "idleDrawCallsPerSecond": 0
+    },
+    {
+      "kind": "warm",
+      "clickToUsableMs": 1800,
+      "panoramaRequestsBeforeUsable": 0,
+      "panoramaBytesBeforeUsable": 0,
+      "panoramaTransferBytesBeforeUsable": 0,
+      "panoramaNamesBeforeUsable": [],
+      "idleDrawCallsPerSecond": 0.5
+    },
+    {
+      "kind": "warm",
+      "clickToUsableMs": 1860,
+      "panoramaRequestsBeforeUsable": 0,
+      "panoramaBytesBeforeUsable": 0,
+      "panoramaTransferBytesBeforeUsable": 0,
+      "panoramaNamesBeforeUsable": [],
+      "idleDrawCallsPerSecond": 0.5
+    },
+    {
+      "kind": "warm",
+      "clickToUsableMs": 1826.7000000029802,
+      "panoramaRequestsBeforeUsable": 1,
+      "panoramaBytesBeforeUsable": 1311108,
+      "panoramaTransferBytesBeforeUsable": 0,
+      "panoramaNamesBeforeUsable": [
+        "/pool-villa-pool.webp"
+      ],
+      "idleDrawCallsPerSecond": 0.5
+    }
+  ]
+}

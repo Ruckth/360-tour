@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import type { Review } from "@/lib/data/reviews";
 import { getLocalizedResort } from "@/lib/i18n/public-content";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import type { PublicVilla } from "@/lib/villas";
 import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
 
@@ -36,7 +37,7 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
   const chatContext = useChatPageContext();
   const setChatContext = chatContext?.setContext;
   const clearChatContext = chatContext?.clearContext;
-  const resort = getLocalizedResort(locale);
+  const resort = getLocalizedResort(usePublicMessages());
   const images = property.images.length ? property.images : [resort.heroImage];
 
   useEffect(() => {

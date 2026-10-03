@@ -27,6 +27,7 @@ import {
   getLiveChatProperties,
 } from "@/components/chat/chat-villa-data";
 import { resort } from "@/lib/data/resort-config";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { listLiveProperties } from "@/lib/react/convex-api";
 import { cn } from "@/lib/utils";
@@ -38,7 +39,8 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const villaT = useTranslations("Villa");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
-  const fallbackProperties = useMemo(() => getDemoChatProperties(locale), [locale]);
+  const messages = usePublicMessages();
+  const fallbackProperties = useMemo(() => getDemoChatProperties(messages, locale), [messages, locale]);
   const convex = useOptionalConvex();
   const today = todayIsoLocal();
   const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
@@ -66,7 +68,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
         const rows = await listLiveProperties(client);
         if (!active) return;
 
-        const liveProperties = getLiveChatProperties(rows, locale);
+        const liveProperties = getLiveChatProperties(rows, messages, locale);
         setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
       } catch {
         if (!active) return;
@@ -80,7 +82,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     return () => {
       active = false;
     };
-  }, [convex, fallbackProperties, locale]);
+  }, [convex, fallbackProperties, locale, messages]);
 
   useEffect(() => {
     setSelectedPropertySlug(context.propertySlug ?? "");

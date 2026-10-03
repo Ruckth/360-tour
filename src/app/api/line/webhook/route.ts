@@ -1,24 +1,13 @@
 import { createHash } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
-import { looksLikeBookingMessage } from "@/lib/chat/ai-booking-route";
 import { verifyLineSignature } from "@/lib/line/signature";
-import {
-  detectQuickAnswerLocale,
-  localizedTimeoutFallbackReply,
-  localizedUnknownFallbackReply,
-  parseLineLocaleFromPostback,
-  resolveLineQuickAnswer,
-  type LinePropertySummary,
-  type LineQuickReplyItem,
-} from "@/lib/line/quick-answers";
+import { measureMessagingStage, startMessagingEventMetrics, recordLateMessagingResult, resolveMessagingReply, storedReplyMode, type MessagingClient } from "@/lib/chat/messaging-reply";
+import { type LineQuickReplyItem } from "@/lib/line/quick-answers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const AI_REPLY_TIMEOUT_MS = 25_000;
-const GUARDRAIL_REPLY_TIMEOUT_MS = 3_000;
-const QUESTION_BANK_SEMANTIC_TIMEOUT_MS = 8_000;
 const DEFAULT_SITE_URL = "https://tour.helpgueststay.com";
 
 type LineSource = {
@@ -62,43 +51,6 @@ type ClaimedLineEvent = {
   duplicate: boolean;
   status: string;
 };
-
-type GeneratedReply = {
-  response?: string;
-  model?: string;
-};
-
-type QuestionBankMatch = {
-  source: "exact" | "semantic";
-  suggestionId: string;
-  question: string;
-  answer?: string;
-  answerMode: "static" | "dynamic";
-  dynamicIntent?: "availability" | "pricing" | "property_details" | "booking_help" | "contact";
-  topic: string;
-};
-
-type ApprovedKnowledgeMatch = {
-  source: "approved_exact";
-  answerId: string;
-  questionId: string;
-  title: string;
-  answer: string;
-  questionText: string;
-  normalizedQuestion: string;
-  propertyId?: string;
-};
-
-type LineEventReplyMode =
-  | "exact"
-  | "approved_exact"
-  | "question_bank_exact"
-  | "question_bank_semantic"
-  | "ai"
-  | "unknown_fallback"
-  | "postback"
-  | "follow"
-  | "failed";
 
 class LineReplyError extends Error {
   status: number;
@@ -242,37 +194,6 @@ async function fetchLineProfileName(accessToken: string, lineUserId?: string) {
   }
 }
 
-function timeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(fallback()), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(fallback());
-      },
-    );
-  });
-}
-
-function timeoutFallbackReply(locale?: string) {
-  return {
-    response: localizedTimeoutFallbackReply(locale),
-    model: "timeout",
-  };
-}
-
-function detectLineLocale(messageText?: string) {
-  return detectQuickAnswerLocale(messageText);
-}
-
-function questionBankReplyMode(match: Pick<QuestionBankMatch, "source">): LineEventReplyMode {
-  return match.source === "exact" ? "question_bank_exact" : "question_bank_semantic";
-}
-
 async function handleLineEvent({
   accessToken,
   client,
@@ -291,9 +212,10 @@ async function handleLineEvent({
   const eventKey = getEventKey(event);
   const userContent = getUserContent(eventType, event);
 
+  const turnMetrics = startMessagingEventMetrics("line");
   let claimed: ClaimedLineEvent;
   try {
-    claimed = (await client.mutation(api.line.claimEvent, {
+    claimed = (await measureMessagingStage(turnMetrics, "claim", async () => client.mutation(api.line.claimEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       eventKey,
       lineUserId,
@@ -303,7 +225,7 @@ async function handleLineEvent({
       messageText,
       postbackData,
       eventTimestamp: event.timestamp,
-    } as never)) as ClaimedLineEvent;
+    } as never))) as ClaimedLineEvent;
   } catch (error) {
     console.error("LINE webhook failed to claim event", {
       eventKey,
@@ -340,6 +262,7 @@ async function handleLineEvent({
       } as never);
       return;
     }
+    const replyToken = event.replyToken;
 
     // Staff took over this chat: the guest message is recorded, no automatic reply.
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
@@ -352,152 +275,16 @@ async function handleLineEvent({
     }
 
     const siteUrl = getSiteUrl(request);
-    const locale =
-      eventType === "postback"
-        ? parseLineLocaleFromPostback(postbackData)
-        : detectLineLocale(messageText);
-    const guardrailReply =
-      eventType === "message" && messageText
-        ? await timeout(
-            client.action(api.chatAi.getGuardrailReply, {
-              userMessage: messageText,
-              siteUrl,
-            } as never) as Promise<string | null>,
-            GUARDRAIL_REPLY_TIMEOUT_MS,
-            () => null,
-          )
-        : null;
-
-    let responseText = guardrailReply ?? "";
-    let quickReplyItems: LineQuickReplyItem[] = [];
-    let replyMode: LineEventReplyMode = "ai";
-    let approvedKnowledgeMatch: ApprovedKnowledgeMatch | null = null;
-    let questionBankMatch: QuestionBankMatch | null = null;
-    let generated: GeneratedReply | null = null;
-
-    if (!guardrailReply) {
-      if (eventType === "message" && messageText) {
-        approvedKnowledgeMatch = (await client.query(api.chatKnowledge.resolveExact, {
-          sessionId: claimed.sessionId,
-          messageText,
-        } as never)) as ApprovedKnowledgeMatch | null;
-      }
-
-      if (approvedKnowledgeMatch) {
-        responseText = approvedKnowledgeMatch.answer.trim();
-        replyMode = "approved_exact";
-      } else {
-        const properties = (await client.query(api.properties.list, {})) as LinePropertySummary[];
-        const quickAnswer = resolveLineQuickAnswer({
-          eventType,
-          ...(locale ? { locale } : {}),
-          messageText,
-          postbackData,
-          properties,
-          siteUrl,
-        });
-
-        if (quickAnswer) {
-          responseText = quickAnswer.text;
-          quickReplyItems = quickAnswer.quickReplyItems;
-          replyMode = quickAnswer.mode;
-        } else if (
-          eventType === "message" &&
-          messageText &&
-          (looksLikeBookingMessage(messageText) ||
-            (await client.query(api.bookings.isChatBookingFlowActive, {
-              sessionId: claimed.sessionId,
-            } as never)))
-        ) {
-          generated = await timeout(
-            client.action(api.chatAi.generateReply, {
-              sessionId: claimed.sessionId,
-              userMessage: messageText,
-              channel: "line",
-              siteUrl,
-              bookingFlow: true,
-              ...(locale ? { locale } : {}),
-            } as never) as Promise<GeneratedReply>,
-            AI_REPLY_TIMEOUT_MS,
-            () => timeoutFallbackReply(locale),
-          );
-          responseText = generated.response ?? timeoutFallbackReply(locale).response;
-          replyMode = generated.model === "timeout" ? "failed" : "ai";
-        } else {
-          if (eventType === "message" && messageText) {
-            const exactMatch = (await client.query(api.chatSuggestions.resolveCuratedExact, {
-              sessionId: claimed.sessionId,
-              messageText,
-              ...(locale ? { locale } : {}),
-            } as never)) as QuestionBankMatch | null;
-
-            questionBankMatch =
-              exactMatch ??
-              ((await timeout(
-                client.action(api.chatSuggestions.resolveCuratedSemantic, {
-                  sessionId: claimed.sessionId,
-                  messageText,
-                  ...(locale ? { locale } : {}),
-                } as never) as Promise<QuestionBankMatch | null>,
-                QUESTION_BANK_SEMANTIC_TIMEOUT_MS,
-                () => null,
-              )) as QuestionBankMatch | null);
-          }
-
-          if (
-            questionBankMatch?.answerMode === "static" &&
-            questionBankMatch.answer?.trim()
-          ) {
-            responseText = questionBankMatch.answer.trim();
-            replyMode = questionBankReplyMode(questionBankMatch);
-          } else if (questionBankMatch) {
-            generated = await timeout(
-              client.action(api.chatAi.generateReply, {
-                sessionId: claimed.sessionId,
-                userMessage: messageText ?? postbackData ?? "LINE message",
-                channel: "line",
-                siteUrl,
-                ...(locale ? { locale } : {}),
-                questionBankHint: {
-                  question: questionBankMatch.question,
-                  topic: questionBankMatch.topic,
-                  ...(questionBankMatch.dynamicIntent
-                    ? { dynamicIntent: questionBankMatch.dynamicIntent }
-                    : {}),
-                  source: questionBankMatch.source,
-                },
-              } as never) as Promise<GeneratedReply>,
-              AI_REPLY_TIMEOUT_MS,
-              () => timeoutFallbackReply(locale),
-            );
-            responseText = generated.response ?? timeoutFallbackReply(locale).response;
-            replyMode =
-              generated.model === "timeout"
-                ? "failed"
-                : questionBankReplyMode(questionBankMatch);
-          } else {
-            if (eventType === "message" && messageText) {
-              generated = await timeout(
-                client.action(api.chatAi.generateReply, {
-                  sessionId: claimed.sessionId,
-                  userMessage: messageText,
-                  channel: "line",
-                  siteUrl,
-                  ...(locale ? { locale } : {}),
-                } as never) as Promise<GeneratedReply>,
-                AI_REPLY_TIMEOUT_MS,
-                () => timeoutFallbackReply(locale),
-              );
-              responseText = generated.response ?? timeoutFallbackReply(locale).response;
-              replyMode = generated.model === "timeout" ? "failed" : generated.model === "unknown_fallback" ? "unknown_fallback" : "ai";
-            } else {
-              responseText = localizedUnknownFallbackReply(locale);
-              replyMode = "unknown_fallback";
-            }
-          }
-        }
-      }
-    }
+    const { responseText, replyMode, quickReplyItems, timedOut, lateResult } =
+      await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client as unknown as MessagingClient, {
+        channel: "line",
+        sessionId: claimed.sessionId!,
+        siteUrl,
+        kind: eventType,
+        ...(messageText ? { text: messageText } : {}),
+        ...(postbackData ? { postbackData } : {}),
+        turnId: turnMetrics.turnId,
+      }));
 
     if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
       await client.mutation(api.line.markEventIgnored, {
@@ -508,31 +295,15 @@ async function handleLineEvent({
       return;
     }
 
-    lineReplyStatus = await replyToLine({
+    lineReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => replyToLine({
       accessToken,
-      replyToken: event.replyToken,
-      messages: [createLineTextMessage(responseText, quickReplyItems)],
-    });
+      replyToken,
+      messages: [createLineTextMessage(responseText, quickReplyItems ?? [])],
+    }));
 
-    if (questionBankMatch) {
-      await client
-        .mutation(api.chatSuggestions.markClicked, {
-          sessionId: claimed.sessionId,
-          suggestion: {
-            source: "curated",
-            suggestionId: questionBankMatch.suggestionId,
-          },
-        } as never)
-        .catch((markClickedError) => {
-          console.warn("LINE webhook failed to mark question-bank match clicked", {
-            eventKey,
-            suggestionId: questionBankMatch?.suggestionId,
-            error:
-              markClickedError instanceof Error
-                ? markClickedError.message
-                : "Unknown Convex failure",
-          });
-        });
+    // Exactly-once delivery: a late concierge result is recorded, never delivered.
+    if (timedOut && lateResult) {
+      void recordLateMessagingResult(lateResult, { turnId: turnMetrics.turnId, channel: "line" });
     }
 
     await client.mutation(api.line.completeEvent, {
@@ -541,7 +312,7 @@ async function handleLineEvent({
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
-      replyMode,
+      replyMode: storedReplyMode(replyMode),
       lineReplyStatus,
     } as never);
   } catch (error) {

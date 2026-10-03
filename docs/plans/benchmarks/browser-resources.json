@@ -1,0 +1,234 @@
+{
+  "baseline": {
+    "viewport": [
+      390,
+      844
+    ],
+    "reducedMotion": "reduce",
+    "network": "unthrottled localhost",
+    "sampleWindowMs": 3000,
+    "samples": [
+      {
+        "run": 1,
+        "homeEncodedBytes": 564409,
+        "homeDecodedBytes": 1903241,
+        "heroVideoBytes": 4426553,
+        "tourFirstUsableMs": 2671.5999999996275,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 7.100000001490116,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 3.199999999254942,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "homeEncodedBytes": 564409,
+        "homeDecodedBytes": 1903241,
+        "heroVideoBytes": 4426553,
+        "tourFirstUsableMs": 2621.9000000003725,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 2.800000000745058,
+            "encoded": 513844,
+            "decoded": 513844
+          },
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5.100000001490116,
+            "encoded": 3093726,
+            "decoded": 3093726
+          }
+        ]
+      },
+      {
+        "run": 3,
+        "homeEncodedBytes": 564409,
+        "homeDecodedBytes": 1903241,
+        "heroVideoBytes": 4426553,
+        "tourFirstUsableMs": 2629.0999999996275,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5.400000000372529,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 2.899999998509884,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      },
+      {
+        "run": 4,
+        "homeEncodedBytes": 564409,
+        "homeDecodedBytes": 1903241,
+        "heroVideoBytes": 4426553,
+        "tourFirstUsableMs": 2628.89999999851,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 3,
+            "encoded": 513844,
+            "decoded": 513844
+          },
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5.800000000745058,
+            "encoded": 3093726,
+            "decoded": 3093726
+          }
+        ]
+      },
+      {
+        "run": 5,
+        "homeEncodedBytes": 564409,
+        "homeDecodedBytes": 1903241,
+        "heroVideoBytes": 4426553,
+        "tourFirstUsableMs": 2636.2999999988824,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5.699999999254942,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 2.699999999254942,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      }
+    ]
+  },
+  "final": {
+    "viewport": [
+      390,
+      844
+    ],
+    "reducedMotion": "reduce",
+    "network": "unthrottled localhost",
+    "sampleWindowMs": 3000,
+    "samples": [
+      {
+        "run": 1,
+        "homeEncodedBytes": 323517,
+        "homeDecodedBytes": 1091388,
+        "heroVideoBytes": 0,
+        "tourFirstUsableMs": 1283.8999999985099,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 8.199999999254942,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 2.800000000745058,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "homeEncodedBytes": 323517,
+        "homeDecodedBytes": 1091388,
+        "heroVideoBytes": 0,
+        "tourFirstUsableMs": 1280.8999999985099,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5.599999997764826,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 1.5,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      },
+      {
+        "run": 3,
+        "homeEncodedBytes": 323517,
+        "homeDecodedBytes": 1091388,
+        "heroVideoBytes": 0,
+        "tourFirstUsableMs": 1269.3999999985099,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 1.800000000745058,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      },
+      {
+        "run": 4,
+        "homeEncodedBytes": 323517,
+        "homeDecodedBytes": 1091388,
+        "heroVideoBytes": 0,
+        "tourFirstUsableMs": 1268.300000000745,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5.699999999254942,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 2.099999997764826,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      },
+      {
+        "run": 5,
+        "homeEncodedBytes": 323517,
+        "homeDecodedBytes": 1091388,
+        "heroVideoBytes": 0,
+        "tourFirstUsableMs": 1277,
+        "panoramasBeforeControls": [
+          {
+            "name": "/garden-villa-360.webp",
+            "duration": 5.199999999254942,
+            "encoded": 3093726,
+            "decoded": 3093726
+          },
+          {
+            "name": "/garden-dining360.webp",
+            "duration": 1.5999999977648258,
+            "encoded": 513844,
+            "decoded": 513844
+          }
+        ]
+      }
+    ]
+  }
+}

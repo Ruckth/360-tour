@@ -1,0 +1,17 @@
+{
+  "deployment": "https://wary-toad-189.convex.cloud",
+  "verifiedAt": "2026-10-01T15:44:25.699063+00:00",
+  "answersArchived": 5,
+  "linkedQuestionsRejected": 22,
+  "curatedQuestionsArchived": 16,
+  "approvedContextEmpty": true,
+  "oldAnswerExactMatchAbsent": true,
+  "oldCuratedExactMatchAbsent": true,
+  "productionAiSimpleModel": "z-ai/glm-5.3-flash",
+  "productionAiComplexModel": "z-ai/glm-5.3-flash",
+  "productionAiBaseUrl": "https://openrouter.ai/api/v1",
+  "backupPath": "/Users/macbook/.local/share/360-tour/backups/qa-retirement-20261001/production-before.zip",
+  "manifestPath": "/Users/macbook/.local/share/360-tour/backups/qa-retirement-20261001/cleanup-manifest.json",
+  "sourceDeploymentPerformed": false,
+  "hardDeletesPerformed": false
+}

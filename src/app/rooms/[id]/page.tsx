@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { RoomDetailClient } from "@/components/rooms/RoomDetailClient";
 import { defaultLocale } from "@/i18n/routing";
-import { getLocalizedResort } from "@/lib/i18n/public-content";
+import { getLocalizedResort } from "@/lib/i18n/server-content";
 import { getVilla, getVillaCatalog } from "@/lib/server/villas";
 
 export async function generateStaticParams() {

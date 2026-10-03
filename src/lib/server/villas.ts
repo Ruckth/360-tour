@@ -3,6 +3,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import type { Review } from "@/lib/data/reviews";
+import { getPublicMessages, normalizePublicLocale } from "@/lib/i18n/messages-loader";
 import {
   catalogFrom,
   reviewFromDb,
@@ -88,7 +89,7 @@ async function listUnavailable() {
 export async function getVillaCatalog(locale: string): Promise<VillaCatalog> {
   // Show no villas rather than demo ones that can't be booked.
   if (await listUnavailable()) return { source: "db", villas: [] };
-  return catalogFrom(await loadList(), locale);
+  return catalogFrom(await loadList(), getPublicMessages(locale), normalizePublicLocale(locale));
 }
 
 /** A villa with its reviews, or null when it does not exist or is not active (→ 404). */
@@ -103,17 +104,21 @@ export async function getVilla(
     if (await listUnavailable()) throw new Error("Villas are temporarily unavailable.");
     return null;
   }
-  if (catalog.source === "static") return { villa, reviews: staticReviews(slug, locale) };
+  if (catalog.source === "static") return { villa, reviews: staticReviews(slug, getPublicMessages(locale)) };
 
   const detail = await readConvex(`detail:${slug}`, (url) => cachedDetail(url, slug));
   if (detail === null) return null;
   if (!detail) return { villa, reviews: [] };
-  return { villa: villaFromDb(detail.villa, locale), reviews: detail.reviews.map(reviewFromDb) };
+  return {
+    villa: villaFromDb(detail.villa, getPublicMessages(locale), normalizePublicLocale(locale)),
+    reviews: detail.reviews.map(reviewFromDb),
+  };
 }
 
 export async function getFeaturedReviews(catalog: VillaCatalog, locale: string): Promise<Review[]> {
   if (catalog.source === "static") {
-    return topReviews(catalog.villas.flatMap((villa) => staticReviews(villa.id, locale)));
+    const messages = getPublicMessages(locale);
+    return topReviews(catalog.villas.flatMap((villa) => staticReviews(villa.id, messages)));
   }
   const rows = await loadFeaturedReviews();
   return (rows ?? []).map(reviewFromDb);

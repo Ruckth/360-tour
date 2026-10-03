@@ -12,7 +12,7 @@ import {
 import {
   getLocalizedResort,
   getPublicMessages,
-} from "@/lib/i18n/public-content";
+} from "@/lib/i18n/server-content";
 
 const experienceIcons = {
   car: Car,

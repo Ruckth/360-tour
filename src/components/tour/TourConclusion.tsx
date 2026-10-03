@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
 import { localizeHref } from "@/i18n/routing";
 import { getLocalizedTourConclusion } from "@/lib/i18n/public-content";
+import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 
 export function TourConclusion({
   property,
@@ -23,7 +24,7 @@ export function TourConclusion({
   const t = useTranslations("Booking");
   const navT = useTranslations("Nav");
   // Villas without bundled closing copy (e.g. created in the admin) reuse their own description.
-  const conclusion = getLocalizedTourConclusion(property.id, locale) ?? {
+  const conclusion = getLocalizedTourConclusion(property.id, usePublicMessages()) ?? {
     headline: property.tagline || property.name,
     summary: property.description,
     highlights: property.amenities.slice(0, 4),

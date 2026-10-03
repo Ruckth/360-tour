@@ -1,6 +1,6 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import createMiddleware from "next-intl/middleware";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { adminRedirectPath } from "@/components/admin/admin-routes";
 import { routing } from "@/i18n/routing";
 import { isClerkConfigured } from "@/lib/clerk-config";
@@ -8,7 +8,7 @@ import { isClerkConfigured } from "@/lib/clerk-config";
 const handleI18nRouting = createMiddleware(routing);
 const clerkEnabled = isClerkConfigured();
 
-function handleRequest(request: Request & { nextUrl: URL }) {
+function handleRequest(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
@@ -31,7 +31,7 @@ function handleRequest(request: Request & { nextUrl: URL }) {
 
 const proxy = clerkEnabled
   ? clerkMiddleware((_auth, request) => handleRequest(request))
-  : (request: Request & { nextUrl: URL }) => handleRequest(request);
+  : (request: NextRequest) => handleRequest(request);
 
 export default proxy;
 

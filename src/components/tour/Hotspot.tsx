@@ -20,6 +20,7 @@ export function Hotspot({
     <Html position={position} center distanceFactor={18}>
       <button
         type="button"
+        data-testid="tour-hotspot"
         onClick={onClick}
         onPointerDown={onPointerDown}
         className={cn(
