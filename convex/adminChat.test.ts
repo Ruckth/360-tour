@@ -1389,3 +1389,23 @@ describe("chat.touchSession heartbeat", () => {
     vi.useRealTimers();
   });
 });
+
+it("returns the same Waiting eligibility in a deep-linked detail as in the queue", async () => {
+  vi.stubEnv("ADMIN_EMAILS", adminEmail);
+  const t = convexTest(schema, modules);
+  const admin = adminTest(t);
+  const sessionId = await insertAdminSession(t, { visitorName: "Older waiting guest", messageCount: 1 });
+  const messageId = await t.run(async (ctx) =>
+    ctx.db.insert("chatMessages", {
+      sessionId,
+      role: "user",
+      content: "Is late check-in available?",
+      timestamp: 1,
+    }),
+  );
+  const detail = await admin.query(api.adminChat.getSessionDetail, { sessionId });
+  expect(detail?.session.needsReply).toBe(true);
+  expect(detail?.session.latestMessage?._id).toBe(messageId);
+  await admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId });
+  expect((await admin.query(api.adminChat.getSessionDetail, { sessionId }))?.session.needsReply).toBe(false);
+});

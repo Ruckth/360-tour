@@ -618,7 +618,7 @@ export const getSessionDetail = query({
 		// Deep links may point at a deleted chat.
 		if (!session) return null;
 
-		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property, replyWindow] = await Promise.all([
+		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property, replyWindow, latestMessage] = await Promise.all([
 			session.channel === 'line'
 				? ctx.db
 						.query('lineWebhookEvents')
@@ -648,13 +648,17 @@ export const getSessionDetail = query({
 						.take(10)
 				: [],
 			session.propertyId ? ctx.db.get(session.propertyId) : null,
-			getChannelReplyWindow(ctx, session)
+			getChannelReplyWindow(ctx, session),
+			createSessionLookups(ctx).latestMessage(session._id)
 		]);
 
 		return {
 			session: {
 				...session,
 				propertyName: property?.name,
+				latestMessage,
+				messageCount: Math.max(getAdminChatMessageCount(session), latestMessage ? 1 : 0),
+				needsReply: sessionNeedsReply(session, latestMessage),
 				isActive: isChatSessionActive(session, now)
 			},
 			replyWindow,

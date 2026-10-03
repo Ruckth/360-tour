@@ -1,10 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import {
-  AdminSessionDetail,
-  chronologicalTranscriptMessages,
-} from "@/components/admin/AdminSessionDetail";
+import { AdminSessionDetail, chronologicalTranscriptMessages } from "@/components/admin/AdminSessionDetail";
 
 type DetailProps = Parameters<typeof AdminSessionDetail>[0];
 
@@ -46,9 +43,25 @@ describe("admin transcript", () => {
 
   it("replaces the composer with the channel window state even on a reopened chat", () => {
     const props: DetailProps = {
-      canLoadOlderMessages: false, loadOlderMessages: () => {}, loadingTranscript: false, loadingOlderMessages: false, messages: [], now: 100,
-      selectedSession: { _id: "session", channel: "whatsapp", createdAt: 1, isActive: false, adminStatus: "open" } as DetailProps["selectedSession"],
-      replyDraft: "An unsent draft", onReplyDraftChange: () => {}, onSendReply: async () => {}, replyPending: false, replyError: null, replyStatus: null,
+      canLoadOlderMessages: false,
+      loadOlderMessages: () => {},
+      loadingTranscript: false,
+      loadingOlderMessages: false,
+      messages: [],
+      now: 100,
+      selectedSession: {
+        _id: "session",
+        channel: "whatsapp",
+        createdAt: 1,
+        isActive: false,
+        adminStatus: "open",
+      } as DetailProps["selectedSession"],
+      replyDraft: "An unsent draft",
+      onReplyDraftChange: () => {},
+      onSendReply: async () => {},
+      replyPending: false,
+      replyError: null,
+      replyStatus: null,
       replyWindow: { applies: true, closesAt: 99, lastGuestMessageAt: 1 },
     };
     const html = renderToStaticMarkup(createElement(AdminSessionDetail, props));
@@ -59,9 +72,25 @@ describe("admin transcript", () => {
 
   it("does not treat offline presence as a closed reply window", () => {
     const props: DetailProps = {
-      canLoadOlderMessages: false, loadOlderMessages: () => {}, loadingTranscript: false, loadingOlderMessages: false, messages: [], now: 100,
-      selectedSession: { _id: "session", channel: "web", createdAt: 1, isActive: false } as DetailProps["selectedSession"],
-      replyDraft: "A reply", onReplyDraftChange: () => {}, onSendReply: async () => {}, replyPending: false, replyError: null, replyStatus: null, replyWindow: { applies: false },
+      canLoadOlderMessages: false,
+      loadOlderMessages: () => {},
+      loadingTranscript: false,
+      loadingOlderMessages: false,
+      messages: [],
+      now: 100,
+      selectedSession: {
+        _id: "session",
+        channel: "web",
+        createdAt: 1,
+        isActive: false,
+      } as DetailProps["selectedSession"],
+      replyDraft: "A reply",
+      onReplyDraftChange: () => {},
+      onSendReply: async () => {},
+      replyPending: false,
+      replyError: null,
+      replyStatus: null,
+      replyWindow: { applies: false },
     };
     const html = renderToStaticMarkup(createElement(AdminSessionDetail, props));
     expect(html).toContain("<textarea");
@@ -81,7 +110,12 @@ describe("admin transcript", () => {
         { _id: "staff", role: "assistant", source: "admin", content: "Happy to help!", timestamp: 3 },
       ] as DetailProps["messages"],
       now: 3,
-      selectedSession: { _id: "session", channel: "web", createdAt: 1, isActive: false } as DetailProps["selectedSession"],
+      selectedSession: {
+        _id: "session",
+        channel: "web",
+        createdAt: 1,
+        isActive: false,
+      } as DetailProps["selectedSession"],
       replyDraft: "",
       onReplyDraftChange: () => {},
       onSendReply: async () => {},
@@ -91,7 +125,8 @@ describe("admin transcript", () => {
     };
 
     const html = renderToStaticMarkup(createElement(AdminSessionDetail, props));
-    const bubble = (author: string) => html.slice(html.indexOf(`data-author="${author}"`) - 200, html.indexOf(`data-author="${author}"`));
+    const bubble = (author: string) =>
+      html.slice(html.indexOf(`data-author="${author}"`) - 200, html.indexOf(`data-author="${author}"`));
     expect(bubble("guest")).toContain("mr-auto");
     expect(bubble("ai")).toContain("ml-auto");
     expect(bubble("staff")).toContain("ml-auto");

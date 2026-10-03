@@ -491,8 +491,8 @@ export function AdminSessionDetail({
               <div>
                 <p className="text-sm font-semibold">{sourceLabel(session.channel)} reply window has ended</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Free-text replies are available for 24 hours after the guest’s last message. You can reply when they
-                  message again.
+                  Standard replies in this inbox are available for 24 hours after the guest’s last message. Other
+                  messaging options require a separate setup. A new guest message opens the reply window again.
                 </p>
                 {replyWindow?.applies && replyWindow.lastGuestMessageAt ? (
                   <p className="mt-2 text-xs text-muted-foreground">

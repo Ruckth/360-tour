@@ -171,6 +171,10 @@ function channelFilterLabel(channel: SessionChannelFilter) {
 export function ChatsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const navigationQueryRef = useRef(searchParams.toString());
+  useEffect(() => {
+    navigationQueryRef.current = searchParams.toString();
+  }, [searchParams]);
   const { getToken } = useAuth();
   const now = usePresenceClock();
   const presenceMinute = Math.floor(now / 60_000) * 60_000;
@@ -188,6 +192,7 @@ export function ChatsView() {
         else params.set(key, value);
       }
       const query = params.toString();
+      navigationQueryRef.current = query;
       router.replace(`/admin/chats${query ? `?${query}` : ""}`, {
         scroll: false,
       });
@@ -292,6 +297,19 @@ export function ChatsView() {
     { initialNumItems: 10 },
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
+  const unqualifiedDeepLink = Boolean(selectedSessionId) && !searchParams.has("view") && !searchParams.has("state");
+  useEffect(() => {
+    // Links from staff alerts and Missing Information have no queue. Open their actual conversation.
+    if (!unqualifiedDeepLink || !sessionDetail?.session || navigationQueryRef.current !== searchParams.toString())
+      return;
+    const selectedStatus = sessionDetail.session.adminStatus ?? "open";
+    if (selectedStatus === "open" && sessionDetail.session.needsReply) return;
+    updateParams({
+      view: "all",
+      state: selectedStatus === "open" ? "open" : "done",
+      session: selectedSessionId,
+    });
+  }, [unqualifiedDeepLink, sessionDetail, searchParams, selectedSessionId, updateParams]);
   const transcriptMessages = useMemo(
     () => chronologicalTranscriptMessages(transcriptPagination.results),
     [transcriptPagination.results],
@@ -299,20 +317,19 @@ export function ChatsView() {
   const loadingSessions = !invalidMessageDateRange && liveSessionsResult === undefined && sessionsResult === undefined;
   const loadingTranscript =
     Boolean(selectedSessionId) &&
-    (liveSessionDetail === undefined || transcriptPagination.status === "LoadingFirstPage") &&
-    sessionDetail === undefined &&
+    (sessionDetail === undefined || transcriptPagination.status === "LoadingFirstPage") &&
     transcriptMessages.length === 0;
   const selectedSession = useMemo(() => {
-    if (!loadingSessions && sessions.length === 0) return null;
     const candidate =
       sessions.find((session) => session._id === selectedSessionId) ??
       (sessionDetail?.session ? withLivePresence(sessionDetail.session, now) : null);
     if (!candidate) return null;
+    if (unqualifiedDeepLink) return candidate;
     const candidateStatus = candidate.adminStatus ?? "open";
     if (adminStatus === "done" ? candidateStatus === "open" : candidateStatus !== adminStatus) return null;
     if (status === "needs_reply" && !candidate.needsReply) return null;
     return candidate;
-  }, [selectedSessionId, sessions, sessionDetail, now, loadingSessions, adminStatus, status]);
+  }, [selectedSessionId, sessions, sessionDetail, now, adminStatus, status, unqualifiedDeepLink]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
@@ -358,7 +375,11 @@ export function ChatsView() {
         },
       }));
       // A reply leaves Waiting. Keep it visible in Open, including its delivery feedback.
-      if (selectedSessionIdRef.current === sessionId && status === "needs_reply")
+      if (
+        selectedSessionIdRef.current === sessionId &&
+        navigationQueryRef.current === searchParams.toString() &&
+        status === "needs_reply"
+      )
         updateParams({ view: "all", state: "open", session: sessionId });
     } catch (error) {
       setReplyFeedback((feedback) => ({
@@ -421,15 +442,19 @@ export function ChatsView() {
     actions: selectedSession ? (
       <AdminSessionActions
         session={selectedSession}
-        onDeleted={() => selectSession(null)}
+        onDeleted={() => {
+          if (navigationQueryRef.current === searchParams.toString()) selectSession(null);
+        }}
         onStatusChanged={(nextStatus) => {
+          // A completed mutation must not replace navigation requested while it was pending.
+          if (navigationQueryRef.current !== searchParams.toString()) return;
           if (nextStatus === "open")
             updateParams({
               view: "all",
               state: "open",
               session: selectedSession._id,
             });
-          else if (adminStatus === "open" || (adminStatus === "resolved" && nextStatus === "archived")) {
+          else {
             const next = sessions.find((session) => session._id !== selectedSession._id);
             selectSession(isLargeViewport ? (next?._id ?? null) : null);
           }
