@@ -91,7 +91,7 @@ describe("concierge without AI credentials", () => {
       expect(await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10))).toHaveLength(0);
       const policy = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "Is helicopter transfer included?" });
       expect(policy.model).toBe("unknown_fallback");
-      expect(policy.response).toContain("not fully sure");
+      expect(policy.response).toContain("verified information");
       const reports = await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10));
       expect(reports).toHaveLength(1);
       expect(reports[0].userQuestion).toBe("Is helicopter transfer included?");

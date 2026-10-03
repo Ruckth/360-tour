@@ -1,3 +1,4 @@
+import { factRetrievalEnabled } from './lib/factRetrieval';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { internalQuery, mutation, query, type MutationCtx } from './_generated/server';
@@ -58,7 +59,7 @@ export const adminSave = mutation({
 		if (existing && args.expectedRevision !== existing.revision) throw new Error('This fact changed. Reload before saving.');
 		if (args.propertyId) {
 			const property = await ctx.db.get(args.propertyId);
-			if (!property || property.status !== 'active') throw new Error('Choose an active property');
+			if (!property || (args.status !== 'archived' && property.status !== 'active')) throw new Error('Choose an active property');
 		}
 		const fields = {
 			title: text(args.title, 'Title', 160), body: text(args.body, 'Fact', 2400),
@@ -90,6 +91,7 @@ export const search = internalQuery({
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session || session.aiPaused) throw new Error('No active AI session');
+		if (!factRetrievalEnabled(args.sessionId)) return { facts: [], noMatch: true };
 		const queryText = text(args.query, 'Search query', 500);
 		const terms = queryText.match(/[\p{L}\p{N}]+/gu)?.filter(term => term.length <= 32).slice(0, 16).join(' ') ?? '';
 		if (!terms) return { facts: [], noMatch: true };

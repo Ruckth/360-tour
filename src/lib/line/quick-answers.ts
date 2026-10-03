@@ -1,3 +1,4 @@
+import { unknownReply, detectReplyLocale } from "convex/lib/unknownReply";
 import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
 
 /**
@@ -340,34 +341,9 @@ export function normalizeQuickAnswerLocale(locale?: string | null): QuickAnswerL
 }
 
 export function detectQuickAnswerLocale(text?: string): QuickAnswerLocale | undefined {
-  const clean = text?.trim();
-  if (!clean) return undefined;
-
-  const hinted = localeHints.get(normalizeLineQuestion(clean));
-  if (hinted) return hinted;
-
-  if (/[\u0E00-\u0E7F]/u.test(clean)) return "th";
-  if (/[ऀ-ॿ]/u.test(clean)) return "hi";
-  if (/[А-Яа-яЁё]/u.test(clean)) return "ru";
-  if (/[가-힣]/u.test(clean)) return "ko";
-  if (/[ぁ-ゟ゠-ヿ]/u.test(clean)) return "ja";
-  if (/\p{Script=Han}/u.test(clean)) return "zh-CN";
-
-  const normalized = normalizeLineQuestion(clean);
-  if (/[ñáéíóúü¿¡]/u.test(normalized) || /\b(precio|precios|disponibilidad|reservar|cuanto|cuesta|anfitrion)\b/u.test(normalized)) {
-    return "es";
-  }
-  if (/[àâçéèêëîïôûùüÿœ]/u.test(normalized) || /\b(prix|disponibilites|reservation|combien|hote|annulation)\b/u.test(normalized)) {
-    return "fr";
-  }
-  if (/[äöüß]/u.test(normalized) || /\b(preis|preise|verfuegbarkeit|verfügbarkeit|buchen|kostet|wieviel|stornierung)\b/u.test(normalized)) {
-    return "de";
-  }
-  if (/\b(prezzo|prezzi|disponibilita|disponibilità|prenotazione|quanto costa|cancellazione)\b/u.test(normalized)) {
-    return "it";
-  }
-
-  return "en";
+ const clean = text?.trim();
+ if (!clean) return undefined;
+ return localeHints.get(normalizeLineQuestion(clean)) ?? detectReplyLocale(clean);
 }
 
 export function parseLineLocaleFromPostback(data?: string) {
@@ -381,11 +357,8 @@ export function localizedTimeoutFallbackReply(locale?: string | null) {
   return localeCopy[normalizeQuickAnswerLocale(locale)].timeout;
 }
 
-export function localizedUnknownFallbackReply(locale?: string | null) {
-  return localeCopy[normalizeQuickAnswerLocale(locale)].unknown;
-}
+export function localizedUnknownFallbackReply(locale?: string | null) { return unknownReply(normalizeQuickAnswerLocale(locale)); }
 
-/** The follow/greeting text: a policy-free welcome in the guest's language. */
 export function localizedGreetingReply(locale?: string | null) {
   return localeCopy[normalizeQuickAnswerLocale(locale)].welcome;
 }

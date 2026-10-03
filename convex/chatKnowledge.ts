@@ -103,7 +103,7 @@ async function claimStaffAlertSlot(ctx: MutationCtx, now: number) {
 
 export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'chatSessions'>, message: string) {
 	const session = await ctx.db.get(sessionId);
-	if (!session) return false;
+	if (!session || session.visitorId?.startsWith("eval:")) return false;
 	const now = Date.now();
 	if (session.lastStaffAlertAt && now - session.lastStaffAlertAt < 30 * 60 * 1000) return false;
 	// Sessions are created by anonymous clients, so enforce a rolling global hour as well.
@@ -344,13 +344,13 @@ async function resolveSessionProperty(
 	session: Doc<'chatSessions'> | null,
 	propertySlug?: string
 ) {
-	if (session?.propertyId) {
+	if (!propertySlug?.trim() && session?.propertyId) {
 		return {
 			propertyId: session.propertyId,
 			propertySlug: session.propertySlug
 		};
 	}
-	const slug = session?.propertySlug ?? propertySlug?.trim();
+	const slug = propertySlug?.trim() || session?.propertySlug;
 	if (!slug) return { propertyId: undefined, propertySlug: session?.propertySlug ?? propertySlug };
 	const property = await ctx.db
 		.query('properties')

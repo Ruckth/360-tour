@@ -8,7 +8,8 @@ import { generateConciergeReply, type GenerateConciergeReplyArgs } from './chatA
 
 export const createSession = internalMutation({
 	args: {
-		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('facebook'), v.literal('line')),
+		channel: v.union(v.literal('web'), v.literal('whatsapp'), v.literal('facebook'), v.literal('line'), v.literal('instagram')),
+		propertySlug: v.optional(v.string()),
 		visitorPhone: v.optional(v.string()),
 		visitorName: v.optional(v.string())
 	},
@@ -16,6 +17,7 @@ export const createSession = internalMutation({
 		await ctx.db.insert('chatSessions', {
 			channel: args.channel,
 			visitorId: `eval:${args.channel}:${crypto.randomUUID()}`,
+			...(args.propertySlug ? { propertySlug: args.propertySlug } : {}),
 			...(args.visitorPhone ? { visitorPhone: args.visitorPhone } : {}),
 			...(args.visitorName ? { visitorName: args.visitorName } : {}),
 			createdAt: Date.now()

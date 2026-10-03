@@ -53,8 +53,12 @@ describe("LINE presentation copy after Q&A retirement", () => {
   });
 
   it("localizes timeout and unknown fallbacks", () => {
-    expect(localizedUnknownFallbackReply("fr")).toContain("pas encore totalement certain");
+    expect(localizedUnknownFallbackReply("fr")).toContain("information vérifiée");
     expect(localizedTimeoutFallbackReply("ja")).toContain("確認中");
-    expect(localizedUnknownFallbackReply("not-supported")).toContain("I'm not fully sure");
+    expect(localizedUnknownFallbackReply("not-supported")).toContain("I do not have verified information");
   });
+});
+
+it.each([['Voir la visite 360','fr'],['visite 360','fr'],['360-Tour ansehen','de'],['kontakt','de'],['Vedi tour 360','it']])('preserves language-only hints for %s', (text,locale) => {
+ expect(detectQuickAnswerLocale(text)).toBe(locale);
 });

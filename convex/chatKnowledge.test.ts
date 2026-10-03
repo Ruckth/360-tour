@@ -358,7 +358,7 @@ describe("unknown-question loop is preserved", () => {
 
       expect(result).toMatchObject({
         model: "unknown_fallback",
-        response: "I'm not fully sure about that yet. I'll ask the team and get back to you shortly.",
+        response: "I do not have verified information about that yet. Please contact the host here for help.",
       });
       expect(unknownRows).toHaveLength(1);
       expect(unknownRows[0]).toMatchObject({ userQuestion: "Can I bring two cats?", status: "new" });

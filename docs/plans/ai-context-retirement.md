@@ -1,6 +1,6 @@
 # Retire saved answers and retrieve context per question
 
-Date: 2026-10-01. Scope: production cleanup now; replacement architecture planned for a later implementation.
+Plan: 2026-10-01. Implementation: 2026-10-03. Scope: retire all saved Q&A and ship question-based context retrieval across web and messaging.
 
 ## Decision
 
@@ -29,9 +29,9 @@ Preserve conversation history, bookings, the 17 unknown-question inbox records, 
 
 Cleanup uses existing deployed admin mutations; it does not deploy source changes or permanently delete records. A private production export and exact original rows are saved outside the repository at `/Users/macbook/.local/share/360-tour/backups/qa-retirement-20261001/`. See [the cleanup verification report](ai-context-retirement-production-cleanup.json) for results.
 
-Archival removes the current data from eligibility. The old authoring/restoration endpoints still exist until the implementation below disables them; archival alone is not permanent retirement of the feature.
+Archival removed the production data from eligibility. The implementation now disables old readers, authoring, restoration, seeding and queued generation on the server. Legacy schemas and admin archive/export operations remain compatible.
 
-## What the current source does
+## Audit before refactor
 
 - `convex/chatAi.ts`: web responses try approved exact answers, then curated exact/semantic matching, before concierge generation. General concierge context contains all property summaries and up to 30 approved answers.
 - `convex/chatKnowledge.ts`: `getApprovedContext` accepts only a session ID. It selects eligible property/global answers by recency, without using the question. Its scope and read-budget protections already exist and should not be rebuilt unnecessarily.
@@ -43,7 +43,7 @@ Archival removes the current data from eligibility. The old authoring/restoratio
 
 These are local source findings. Production function metadata confirms that the cleanup mutations and query entry points exist, but does not establish complete source parity.
 
-Production currently sets both model routes to `z-ai/glm-5.3-flash` through OpenRouter. Local source defaults to `openai/gpt-6-luna`. Keep the production configuration during this change and benchmark the actual deployed model. Do not combine retrieval retirement with an unmeasured model migration. Deployment documentation also needs correction where it still lists Grok defaults.
+At cleanup time, production used GLM overrides. Separate model-routing work added optional Sol support while keeping Luna as the source default; see [model routing](ai-model-routing.md). This refactor preserves those existing working-tree changes and provider compatibility, so deploying retirement does not lose support for the configured optional complex model. It does not change production model environment settings.
 
 ## Target flow
 
@@ -87,7 +87,7 @@ For “Is breakfast included?”, search approved breakfast facts. For “How mu
 
 Start with a new `businessFacts` table: title, body, canonical search text/keywords, optional real property ID, approved/draft/archived status, revision, source reference, and admin authorship/timestamps. Absence of a property ID means global. This initially supports global or one real property per fact; custom/multiple scopes require an explicit later design rather than silently treating them as global.
 
-Add a search index with status and property ID as filter fields. Search the requested property and global facts separately, with bounded reads, then apply specific-over-global precedence and return a compact result. Start with at most 6 facts and about 2,000 tokens total, with input length/read budgets. These are initial limits to validate, not measured optima. A conflict should prompt clarification or staff review, not an invented reconciliation.
+Add a search index with status and property ID as filter fields. Search the requested property and global facts separately, with bounded reads, then apply specific-over-global precedence and return a compact result. Start with at most 6 facts and 8,000 evidence characters total, with input length/read budgets. These are initial limits to validate, not measured optima. A conflict should prompt clarification or staff review, not an invented reconciliation.
 
 Convex full-text search uses whitespace/punctuation tokenization and works best with Latin-script languages. Have the concierge supply canonical English search terms for TH/KO questions in the same tool call; maintain corresponding approved search text on facts. Test Thai, Korean, synonyms, and follow-up questions explicitly. If recall fails the release gate, add multilingual embeddings over approved facts and combine semantic and lexical retrieval before release. Do not assume raw Thai keyword search is sufficient. [Convex full-text search documentation](https://docs.convex.dev/search/text-search).
 
@@ -95,12 +95,12 @@ Search results are evidence, not instructions. Settings/current tools outrank pr
 
 ## Implementation sequence
 
-1. **Disable retirement writers and readers.** Introduce one server-controlled retirement setting. Check it inside legacy create/update/restore/link/generation/seed endpoints and scheduled worker mutations. Disable `resolveExact`, curated exact/semantic routing, question-bank hints, and approved-answer prompt injection. Guard workers that were queued before retirement. Keep archive/export and private rollback capabilities available. Do not hide the UI while leaving callable writers active.
+1. **Disable retirement writers and readers.** Use one permanent server retirement guard (`lib/legacyQa.ts`); the user authorized complete retirement, so no runtime switch can re-enable saved answers. Check it inside legacy create/update/restore/link/generation/seed endpoints and scheduled worker mutations. Disable `resolveExact`, curated exact/semantic routing, question-bank hints, and approved-answer prompt injection. Guard workers that were queued before retirement. Keep archive/export and private rollback capabilities available. Do not hide the UI while leaving callable writers active.
 2. **Add authoritative fact retrieval.** Add the optional fact storage/indexes, staff fact editor, and search tool. Reuse settings/catalog/booking reads. Seed no retired answers; populate only independently verified facts. Test that an empty fact store leads to supported live answers or honest missing-context responses.
 3. **Use one responder across channels.** Route web and the four messaging channels through it. Preserve channel-specific permissions, guardrails, rate limits, server write guards, and delivery behavior. Drop the semantic matching request. Allow tool rounds when needed; this is one concierge orchestration, not a promise of one HTTP model request per turn.
 4. **Replace admin authoring.** Replace Auto Answers/Q&A/variant review with Business facts and Missing information. Staff can add/edit/approve facts and resolve missing-information reports by linking a fact or structured source. Preserve staff handoff. Legacy records are read-only archives and cannot be restored into the new retrieval path.
 5. **Simplify guest suggestions and fallbacks.** Keep useful question-only chips; clicking sends ordinary question text through the same responder. Remove fixed answers and question matching from the chip data. Convert LINE fact postbacks to normal questions; greeting/menu presentation may remain. Audit every coded fallback and translated preset so deleted policy claims cannot reappear when AI is unavailable or the client is disconnected.
-6. **Deploy and evaluate.** Ship backend compatibility first, then channel/UI callers. Roll out question-based retrieval to a deterministic cohort of sessions, with a separate reversible switch for answer routing. Legacy authoring remains disabled even if retrieval is rolled back. Track cost, latency, retrieval sources, and unknowns; expand after correctness gates pass.
+6. **Deploy and evaluate.** Ship backend compatibility first, then channel/UI callers. Control fact search with `AI_FACT_RETRIEVAL_PERCENT` (0–100, default 100), a deterministic session cohort. Set 0 to roll back fact lookup while retaining current structured tools and honest unknown responses. Legacy authoring remains disabled even if retrieval is rolled back. Track cost, latency, retrieval sources, and unknowns; expand after correctness gates pass.
 7. **Remove the legacy schema later.** Keep deprecated tables/fields while old callers or original rows remain. Inventory references in sessions, unknown records, interactions, variants, scopes, and topics. After the observation window, use the existing migrations component for resumable batched removal, then remove compatible code/schema. Do not hard-delete parent rows ahead of dependent references or revive archived data during a backfill. [Convex migrations component](https://github.com/get-convex/migrations).
 
 Implement steps 1–2 together for the first deploy, so disabling answer paths has a useful replacement. If it must be split, a temporarily empty fact store is preferable to using the retired test data.
@@ -119,6 +119,22 @@ Implement steps 1–2 together for the first deploy, so disabling answer paths h
 
 ## Recovery and completion
 
-The private manifest contains exact original rows and operation results. For accidental archival, restore only selected IDs using the existing admin status functions; restore each question's original primary/trigger flags with `adminApproveQuestion`. Do not import the entire backup over current production, which could overwrite newer conversations or bookings. Archived test answers are excluded from normal retrieval rollback.
+The private manifest contains exact original rows and operation results. For accidental archival of verified information, inspect selected IDs in the private export and re-enter independently verified facts with their sources. The retired public status/approval APIs cannot restore Q&A. A historical data restoration would require a separately reviewed internal migration. Do not import the entire backup over current production, which could overwrite newer conversations or bookings. Archived test answers are excluded from normal retrieval rollback.
 
 Feature retirement is complete when all channels use the shared responder, business facts have replaced Q&A authoring, legacy generation/restoration cannot repopulate the old system, suggestions contain no fixed answers, and the release gates pass. Permanent row/table deletion is a later housekeeping step after compatibility and retention checks.
+
+## Implementation evidence and remaining operations
+
+The core refactor implements steps 1–5 and rollout controls from step 6. `businessFacts` is additive; no legacy row/table is deleted or imported into it. Admins maintain sourced facts and link missing-information reports directly. All four messaging adapters share one resolver; web uses the same concierge. Current property details, services, quotes and availability are tool reads. Empty knowledge falls back honestly.
+
+Structured `concierge_context` logs include prompt version, channel, model, initial prompt characters, elapsed time, tool names, selected fact IDs/revisions and provider token/cost fields when supplied. They exclude raw queries, evidence bodies, transcripts and guest contacts. Eval helpers retain detailed traces for controlled test sessions. This is instrumentation, not a claim of measured savings or production accuracy.
+
+Verification includes retained booking/consent/ownership/pause/idempotency/price-change tests; new indexed fact retrieval and retired-writer tests; mocked EN/TH/KO tool rounds; all four messaging resolvers; and a real development admin draft-create flow. Obsolete publishing/matcher success tests are replaced by retirement invariants; archive cascade and inbox tests remain.
+
+Production monitoring, larger labeled live-model recall evaluation, paired p95 latency/cost measurements and the later schema removal remain operational follow-ups. Embeddings are intentionally deferred until measured lexical recall requires them. Do not claim those experiments or real external channel delivery have passed. The production cleanup report is historical evidence, separate from this source deployment.
+
+Live development smoke: four Luna turns (EN, TH, KO cross-property while viewing another villa, and an EN follow-up) each called `search_business_facts`, selected the expected approved scope and answered with the labeled fixture's inclusion/exclusion meaning. Each required two provider calls; summed provider latency ranged 2.15–2.61 seconds. Fixtures were archived afterward. Full controlled traces are local at `output/qa-retirement-2026-10-03/live-smoke.json`. This four-case smoke is not a recall benchmark or p95 estimate.
+
+Audit corrections: missing-information scope now follows successful explicit fact lookups; unknown copy is shared and localized without promising a callback; deterministic policy replies identify unsaved demo defaults; translated policy menus use the concierge for translation of current settings. Tests cover these regressions. Eval sessions suppress staff alert delivery.
+
+Integration with main preserves PR23 public/tour optimizations, missing-information grouping/structured source resolution, shared messaging deadline/committed-result protections, current Luna defaults and optional Sol safety. Canonical `concierge_turn` metrics remain alongside fact/source metadata logs.
