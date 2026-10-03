@@ -336,6 +336,17 @@ function StaffCalendar() {
       const { appointment } = eventData;
       const service = serviceById.get(appointment.serviceId);
       const staffName = currentView === "resource" ? null : staffById.get(occurrence.event.resourceId ?? appointment.staffId)?.name;
+      // Short timed chips only have room for one row. Keep their identity visible.
+      if (!appointment.guestName && currentView !== "agenda" && occurrence.event.end.getTime() - occurrence.event.start.getTime() < 45 * 60_000) {
+        return (
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-xs leading-4 text-muted-foreground">
+            <span className="truncate">Unnamed</span>
+            <span className="shrink-0 font-mono text-[10px]" title={appointment.confirmationCode}>
+              {appointment.confirmationCode.slice(-6)}
+            </span>
+          </span>
+        );
+      }
       return (
         <span className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
           <span className="flex min-w-0 items-center gap-1.5">
