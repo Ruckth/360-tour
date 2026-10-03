@@ -16,6 +16,7 @@ export type WhatsAppConvexClient = MessagingClient & {
 };
 
 type ResolvedWhatsAppReply = {
+  outcome?: 'answered' | 'awaiting_guest' | 'needs_staff';
   responseText: string;
   replyMode: MessagingReplyMode;
   model?: string;
@@ -28,18 +29,21 @@ export async function resolveWhatsAppReply({
   client,
   messageText,
   sessionId,
+  replyToMessageId,
   siteUrl,
   turnId,
 }: {
   client: WhatsAppConvexClient;
   messageText: string;
   sessionId: string;
+  replyToMessageId?: string;
   siteUrl: string;
   turnId?: string;
 }): Promise<ResolvedWhatsAppReply> {
   const result = await resolveMessagingReply(client, {
     channel: "whatsapp",
     sessionId,
+    ...(replyToMessageId ? { replyToMessageId } : {}),
     siteUrl,
     kind: "message",
     text: messageText,
@@ -48,6 +52,7 @@ export async function resolveWhatsAppReply({
 
   return {
     responseText: result.responseText,
+    ...(result.outcome ? { outcome: result.outcome } : {}),
     replyMode: result.replyMode,
     ...(result.model ? { model: result.model } : {}),
     timedOut: result.timedOut,

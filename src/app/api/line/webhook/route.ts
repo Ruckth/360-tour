@@ -239,15 +239,17 @@ async function handleLineEvent({
   if (claimed.duplicate) return;
 
   let lineReplyStatus: number | undefined;
+  let replyToMessageId: string | undefined;
 
   try {
     if (claimed.sessionId) {
-      await client.mutation(api.line.recordInboundEvent, {
+      const inbound = await client.mutation(api.line.recordInboundEvent, {
         serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
       } as never);
+      replyToMessageId = (inbound as { userMessageId?: string }).userMessageId;
     }
 
     if (!event.replyToken || !claimed.sessionId || eventType === "unsupported") {
@@ -275,10 +277,11 @@ async function handleLineEvent({
     }
 
     const siteUrl = getSiteUrl(request);
-    const { responseText, replyMode, quickReplyItems, timedOut, lateResult } =
+    const { responseText, outcome, replyMode, quickReplyItems, timedOut, lateResult } =
       await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client as unknown as MessagingClient, {
         channel: "line",
         sessionId: claimed.sessionId!,
+        ...(replyToMessageId ? { replyToMessageId } : {}),
         siteUrl,
         kind: eventType,
         ...(messageText ? { text: messageText } : {}),
@@ -312,6 +315,7 @@ async function handleLineEvent({
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
+      ...(outcome ? { outcome } : {}),
       replyMode: storedReplyMode(replyMode),
       lineReplyStatus,
     } as never);

@@ -1,8 +1,10 @@
 import { mutation } from './_generated/server';
+import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import { patchSessionAfterMessages } from './lib/adminChatMetadata';
 import { requireAdmin } from './lib/adminAuth';
 import { getChannelReplyWindow } from './lib/channelReplyWindow';
+import { answerAccepted, latestGuestId, sendFailed } from './lib/inboxLifecycle';
 
 const MAX_REPLY_LENGTH = 1000;
 
@@ -24,6 +26,7 @@ export const claim = mutation({
     sessionId: v.id('chatSessions'),
     requestId: v.string(),
     content: v.string(),
+    replyToMessageId: v.optional(v.id('chatMessages')),
   },
   handler: async (ctx, args) => {
     const { email } = await requireAdmin(ctx);
@@ -47,6 +50,10 @@ export const claim = mutation({
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new Error('Chat session not found');
+    const replyToMessageId = await latestGuestId(ctx, session);
+    if (args.replyToMessageId && args.replyToMessageId !== replyToMessageId) {
+      throw new Error('A new guest message arrived. Read it before sending this reply.');
+    }
     const recipient = recipientForSession(session);
     if (session.channel !== 'web' && !recipient) {
       throw new Error('This chat has no channel recipient to reply to');
@@ -65,8 +72,13 @@ export const claim = mutation({
       adminEmail: email,
       content,
       status: 'pending',
+      replyToMessageId,
       createdAt: Date.now(),
     });
+    await ctx.db.patch(args.sessionId, { inboxState: 'processing', inboxReason: 'sending',
+      inboxSendRequestId: requestId, inboxSendError: undefined, aiPaused: true, assignedAdminEmail: email,
+      adminStatus: undefined, resolvedAt: undefined });
+    await ctx.scheduler.runAfter(90_000, internal.inboxLifecycle.expireStaffSend, { requestId });
     return { state: 'new' as const, channel: session.channel, recipient: recipient ?? null };
   },
 });
@@ -88,6 +100,7 @@ export const complete = mutation({
       sessionId: attempt.sessionId,
       role: 'assistant',
       source: 'admin',
+      replyToMessageId: attempt.replyToMessageId,
       content: attempt.content,
       timestamp,
     });
@@ -96,11 +109,8 @@ export const complete = mutation({
       latestMessageAt: timestamp,
       fromAdmin: true,
     });
-    // Staff replied, so the AI stops answering this guest until an admin resumes it.
-    await ctx.db.patch(attempt.sessionId, {
-      aiPaused: true,
-      assignedAdminEmail: attempt.adminEmail,
-    });
+    await answerAccepted(ctx, { sessionId: attempt.sessionId, replyToMessageId: attempt.replyToMessageId,
+      messageId, source: 'staff', outcome: 'answered', requestId: attempt.requestId });
     await ctx.db.patch(attempt._id, { status: 'sent', completedAt: timestamp });
     return messageId;
   },
@@ -115,6 +125,7 @@ export const fail = mutation({
       .withIndex('by_requestId', (q) => q.eq('requestId', args.requestId))
       .unique();
     if (!attempt || attempt.status !== 'pending') return null;
+    await sendFailed(ctx, attempt.sessionId, attempt.replyToMessageId, args.error, args.requestId);
     await ctx.db.patch(attempt._id, {
       status: 'failed',
       completedAt: Date.now(),

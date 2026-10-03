@@ -22,7 +22,7 @@ export type AdminReplyComposer = {
 };
 
 /** Staff reply composer, kept per conversation so a slow reply in one chat never blocks or clears another. */
-export function useAdminReplyComposer(sessionId: SessionId | null): AdminReplyComposer {
+export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessageId?: Id<'chatMessages'>): AdminReplyComposer {
   const { getToken } = useAuth();
   const [entries, setEntries] = useState<Partial<Record<SessionId, ReplyEntry>>>({});
   // State lags a render behind; this guards a double submit before React commits `pending`.
@@ -53,6 +53,7 @@ export function useAdminReplyComposer(sessionId: SessionId | null): AdminReplyCo
           sessionId: id,
           requestId: crypto.randomUUID(),
           content,
+          ...(replyToMessageId ? { replyToMessageId } : {}),
         }),
       });
       const result = (await response.json()) as {

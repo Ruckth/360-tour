@@ -65,8 +65,9 @@ describe("admin replies", () => {
     ]);
     const session = await t.run((ctx) => ctx.db.get(sessionId));
     expect(session?.messageCount).toBe(1);
-    // Replying takes the chat over from the AI.
-    expect(session).toMatchObject({ aiPaused: true, assignedAdminEmail: adminEmail });
+    // A completed issue releases takeover so AI can handle the next guest turn.
+    expect(session).toMatchObject({ adminStatus: "resolved", inboxState: "done", resolutionSource: "staff" });
+    expect(session?.aiPaused).toBeUndefined();
   });
 
   it("allows a Facebook reply inside the 24-hour window", async () => {

@@ -258,15 +258,17 @@ async function handleFacebookEvent({
   if (claimed.duplicate) return;
 
   let facebookReplyStatus: number | undefined;
+  let replyToMessageId: string | undefined;
 
   try {
     if (claimed.sessionId) {
-      await client.mutation(api.facebook.recordInboundEvent, {
+      const inbound = await client.mutation(api.facebook.recordInboundEvent, {
         serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(userContent ? { userContent } : {}),
       } as never);
+      replyToMessageId = (inbound as { userMessageId?: string }).userMessageId;
     }
 
     if (!claimed.sessionId) {
@@ -288,9 +290,10 @@ async function handleFacebookEvent({
       return;
     }
 
-    const { responseText, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client, {
+    const { responseText, outcome, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client, {
       channel: "facebook",
       sessionId: claimed.sessionId!,
+      ...(replyToMessageId ? { replyToMessageId } : {}),
       siteUrl: getSiteUrl(request),
       kind: eventType,
       ...(messageText ? { text: messageText } : {}),
@@ -324,6 +327,7 @@ async function handleFacebookEvent({
       sessionId: claimed.sessionId,
       ...(userContent ? { userContent } : {}),
       assistantContent: responseText,
+      ...(outcome ? { outcome } : {}),
       replyMode: storedReplyMode(replyMode),
       facebookReplyStatus,
     } as never);

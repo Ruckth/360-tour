@@ -983,7 +983,8 @@ describe("admin chat unanswered warning", () => {
     await admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId: secondGuestMessageId });
     expect(await needsReply()).toBe(false);
 
-    await insertMessage("user", 4_000);
+    await admin.mutation(api.adminChat.setKeepWithStaff, { sessionId, keep: true });
+    await t.mutation(api.chat.addMessage, { sessionId, role: "user", content: "Another staff question" });
     expect(await needsReply()).toBe(true);
   });
 
@@ -1077,13 +1078,13 @@ describe("adminChat inbox lifecycle", () => {
 
     await admin.mutation(api.adminChat.setSessionStatus, { sessionId: waiting, status: "resolved" });
     const open = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "open", now: base });
-    expect(open.sessions.map((session) => session.visitorName)).toEqual(["Answered", "Settled"]);
+    expect(open.sessions.map((session) => session.visitorName)).toEqual(["Answered"]);
     const resolved = await admin.query(api.adminChat.listSessions, {
       status: "all",
       adminStatus: "resolved",
       now: base,
     });
-    expect(resolved.sessions).toMatchObject([{ visitorName: "Waiting", adminStatus: "resolved" }]);
+    expect(resolved.sessions).toMatchObject([{ visitorName: "Waiting", adminStatus: "resolved" }, { visitorName: "Settled", adminStatus: "resolved" }]);
     expect(typeof resolved.sessions[0].resolvedAt).toBe("number");
 
     await admin.mutation(api.adminChat.setSessionStatus, { sessionId: waiting, status: "open" });
@@ -1117,7 +1118,7 @@ describe("adminChat inbox lifecycle", () => {
     expect(search.sessions.every((session) => session.adminStatus !== undefined)).toBe(true);
   });
 
-  it("reopens a resolved or archived chat when the guest writes again, but not on admin replies", async () => {
+  it("resolves a staff reply automatically and reopens when the guest writes again", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
     const admin = adminTest(t);
@@ -1126,7 +1127,7 @@ describe("adminChat inbox lifecycle", () => {
     await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: "archived" });
     await admin.mutation(api.adminReply.claim, { sessionId, requestId: "r-1", content: "Following up" });
     await admin.mutation(api.adminReply.complete, { requestId: "r-1" });
-    expect((await t.run((ctx) => ctx.db.get(sessionId)))?.adminStatus).toBe("archived");
+    expect((await t.run((ctx) => ctx.db.get(sessionId)))?.adminStatus).toBe("resolved");
 
     await t.mutation(api.chat.addMessage, { sessionId, role: "user", content: "Hello again" });
     const session = await t.run((ctx) => ctx.db.get(sessionId));
