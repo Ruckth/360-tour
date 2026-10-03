@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
   if (!convexUrl) {
     return Response.json({ error: "Chat service is unavailable" }, { status: 503 });
   }

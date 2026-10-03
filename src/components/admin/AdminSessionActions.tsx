@@ -2,33 +2,35 @@
 
 import { api } from "convex/_generated/api";
 import { useMutation } from "convex/react";
-import { Archive, Bot, CheckCircle2, Hand, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, Bot, CheckCircle2, Hand, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import { StatusBadge } from "@/components/admin/StatusBadge";
-import type { AdminSession } from "@/components/admin/admin-chat-types";
-import { TONES, statusMeta } from "@/components/admin/status-tones";
+import type { AdminSession, AdminSessionStatus } from "@/components/admin/admin-chat-types";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-/** Inbox status (open / resolved / archived / delete) and AI takeover controls for one chat. */
+/** One primary action; occasional actions stay in the conversation menu. */
 export function AdminSessionActions({
   session,
   onDeleted,
+  onStatusChanged,
 }: {
   session: AdminSession;
   onDeleted: () => void;
+  onStatusChanged?: (status: AdminSessionStatus) => void;
 }) {
   const confirm = useConfirm();
   const setSessionStatus = useMutation(api.adminChat.setSessionStatus);
   const setAiPaused = useMutation(api.adminChat.setAiPaused);
   const deleteArchivedSession = useMutation(api.adminChat.deleteArchivedSession);
   const [pending, setPending] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const status = session.adminStatus ?? "open";
   const sessionId = session._id;
 
   async function run(action: () => Promise<unknown>) {
+    setMenuOpen(false);
     setPending(true);
     setError(null);
     try {
@@ -40,7 +42,13 @@ export function AdminSessionActions({
     }
   }
 
+  async function changeStatus(nextStatus: AdminSessionStatus) {
+    await setSessionStatus({ sessionId, status: nextStatus });
+    onStatusChanged?.(nextStatus);
+  }
+
   async function deleteChat() {
+    setMenuOpen(false);
     const confirmed = await confirm({
       title: "Delete this chat?",
       description: "The transcript and its suggestion history are deleted for good. Webhook delivery logs are kept.",
@@ -55,93 +63,79 @@ export function AdminSessionActions({
   }
 
   return (
-    <>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <StatusBadge {...statusMeta("chatSession", status)} />
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <Button
+        type="button"
+        size="sm"
+        variant={status === "open" ? "default" : "outline"}
+        disabled={pending}
+        onClick={() => void run(() => changeStatus(status === "open" ? "resolved" : "open"))}
+      >
         {status === "open" ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={() => run(() => setSessionStatus({ sessionId, status: "resolved" }))}
-          >
-            <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-            Resolve
-          </Button>
+          <CheckCircle2 aria-hidden="true" className="size-4" />
         ) : (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={() => run(() => setSessionStatus({ sessionId, status: "open" }))}
-          >
-            <RotateCcw aria-hidden="true" className="h-4 w-4" />
-            Reopen
-          </Button>
+          <RotateCcw aria-hidden="true" className="size-4" />
         )}
-        {status === "archived" ? (
-          <Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void deleteChat()}>
-            <Trash2 aria-hidden="true" className="h-4 w-4" />
-            Delete
-          </Button>
-        ) : (
+        {status === "open" ? "Resolve" : "Reopen"}
+      </Button>
+      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+        <PopoverTrigger asChild>
           <Button
             type="button"
-            size="sm"
-            variant="outline"
+            variant="ghost"
+            size="icon"
+            className="size-9 text-muted-foreground"
+            aria-label="More conversation actions"
             disabled={pending}
-            onClick={() => run(() => setSessionStatus({ sessionId, status: "archived" }))}
           >
-            <Archive aria-hidden="true" className="h-4 w-4" />
-            Archive
+            <MoreHorizontal aria-hidden="true" className="size-4" />
           </Button>
-        )}
-        {!session.aiPaused ? (
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-64 space-y-1 p-1.5" aria-label="Conversation actions">
           <Button
             type="button"
-            size="sm"
-            variant="outline"
+            variant="ghost"
+            className="w-full justify-start text-sm"
             disabled={pending}
-            onClick={() => run(() => setAiPaused({ sessionId, paused: true }))}
-            title="Stop automatic replies on every channel so you can reply yourself"
+            onClick={() => void run(() => setAiPaused({ sessionId, paused: !session.aiPaused }))}
           >
-            <Hand aria-hidden="true" className="h-4 w-4" />
-            Take over
+            {session.aiPaused ? (
+              <Bot className="size-4" aria-hidden="true" />
+            ) : (
+              <Hand className="size-4" aria-hidden="true" />
+            )}
+            {session.aiPaused ? "Resume AI" : "Take over from AI"}
           </Button>
-        ) : null}
-      </div>
-      {session.aiPaused ? (
-        <div
-          role="status"
-          className={cn(
-            "mt-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm text-foreground",
-            TONES.accent.bg,
-            TONES.accent.border,
+          {status === "archived" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full justify-start text-destructive"
+              disabled={pending}
+              onClick={() => void deleteChat()}
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+              Delete conversation
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full justify-start"
+              disabled={pending}
+              onClick={() => void run(() => changeStatus("archived"))}
+            >
+              <Archive className="size-4" aria-hidden="true" />
+              Archive conversation
+            </Button>
           )}
-        >
-          <Hand className={cn("h-4 w-4 shrink-0", TONES.accent.text)} aria-hidden="true" />
-          <span className="min-w-0 flex-1">
-            AI paused: {session.assignedAdminEmail ?? "staff"} is replying. The guest gets no automatic replies.
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={() => run(() => setAiPaused({ sessionId, paused: false }))}
-          >
-            <Bot aria-hidden="true" className="h-4 w-4" />
-            Resume AI
-          </Button>
-        </div>
-      ) : null}
+        </PopoverContent>
+      </Popover>
       {error ? (
-        <p role="alert" className="mt-2 text-sm font-medium text-destructive">
+        <p role="alert" className="basis-full text-right text-xs text-destructive">
           {error}
         </p>
       ) : null}
-    </>
+    </div>
   );
 }

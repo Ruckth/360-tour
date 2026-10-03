@@ -1092,6 +1092,31 @@ describe("adminChat inbox lifecycle", () => {
     expect(reopened?.resolvedAt).toBeUndefined();
   });
 
+  it("paginates resolved and archived chats together in Done without including open chats", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const base = 1_700_000_000_000;
+    for (let index = 0; index < 12; index++) {
+      const sessionId = await insertAdminSession(t, { visitorName: `Completed ${index}`, messageCount: 1, latestMessageAt: base + index, channel: index % 2 ? "line" : "web" });
+      await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: index % 2 ? "archived" : "resolved" });
+    }
+    await insertAdminSession(t, { visitorName: "Still open", messageCount: 1, latestMessageAt: base + 100 });
+    const first = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", now: base });
+    expect(first.sessions).toHaveLength(10);
+    expect(first.sessions.every((session) => session.adminStatus === "resolved" || session.adminStatus === "archived")).toBe(true);
+    const second = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", paginationOpts: { numItems: 10, cursor: first.continueCursor }, now: base });
+    expect(second.sessions).toHaveLength(2);
+    expect(second.isDone).toBe(true);
+    expect(new Set([...first.sessions, ...second.sessions].map((session) => session._id)).size).toBe(12);
+    const lineOnly = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", channel: "line", now: base });
+    expect(lineOnly.sessions).toHaveLength(6);
+    expect(lineOnly.sessions.every((session) => session.channel === "line")).toBe(true);
+    const search = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", searchQuery: "Completed", now: base });
+    expect(search.sessions).toHaveLength(10);
+    expect(search.sessions.every((session) => session.adminStatus !== undefined)).toBe(true);
+  });
+
   it("reopens a resolved or archived chat when the guest writes again, but not on admin replies", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
@@ -1362,5 +1387,234 @@ describe("chat.touchSession heartbeat", () => {
     expect(moved).toMatchObject({ propertyId, propertySlug: "pool-villa", currentPath: "/villas/pool-villa" });
     expect(moved?.adminSearchText).toContain("pool-villa");
     vi.useRealTimers();
+  });
+});
+
+it("returns the same Waiting eligibility in a deep-linked detail as in the queue", async () => {
+  vi.stubEnv("ADMIN_EMAILS", adminEmail);
+  const t = convexTest(schema, modules);
+  const admin = adminTest(t);
+  const sessionId = await insertAdminSession(t, { visitorName: "Older waiting guest", messageCount: 1 });
+  const messageId = await t.run(async (ctx) =>
+    ctx.db.insert("chatMessages", {
+      sessionId,
+      role: "user",
+      content: "Is late check-in available?",
+      timestamp: 1,
+    }),
+  );
+  const detail = await admin.query(api.adminChat.getSessionDetail, { sessionId });
+  expect(detail?.session.needsReply).toBe(true);
+  expect(detail?.session.latestMessage?._id).toBe(messageId);
+  await admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId });
+  expect((await admin.query(api.adminChat.getSessionDetail, { sessionId }))?.session.needsReply).toBe(false);
+});
+
+describe("adminChat read optimizations", () => {
+  const eventTables = {
+    line: "lineWebhookEvents",
+    facebook: "facebookWebhookEvents",
+    whatsapp: "whatsappWebhookEvents",
+    instagram: "instagramWebhookEvents",
+  } as const;
+  const eventKeys = {
+    line: "lineEvents",
+    facebook: "facebookEvents",
+    whatsapp: "whatsappEvents",
+    instagram: "instagramEvents",
+  } as const;
+  type EventChannel = keyof typeof eventTables;
+  const eventChannels = Object.keys(eventTables) as EventChannel[];
+
+  async function insertMessage(
+    t: ReturnType<typeof convexTest>,
+    sessionId: Id<"chatSessions">,
+    role: "user" | "assistant",
+    timestamp: number,
+  ) {
+    return await t.run((ctx) =>
+      ctx.db.insert("chatMessages", { sessionId, role, content: `${role} ${timestamp}`, timestamp }),
+    );
+  }
+
+  /** Inserts `count` events into every channel's event table; returns each table's newest id. */
+  async function insertEventsInEveryTable(
+    t: ReturnType<typeof convexTest>,
+    sessionId: Id<"chatSessions">,
+    count: number,
+  ) {
+    return await t.run(async (ctx) => {
+      const newest = {} as Record<EventChannel, string>;
+      for (const channel of eventChannels) {
+        for (let index = 0; index < count; index++) {
+          newest[channel] = await ctx.db.insert(eventTables[channel], {
+            eventKey: `${channel}-${sessionId}-${index}`,
+            sessionId,
+            eventType: "message",
+            messageText: `${channel} event ${index}`,
+            status: "replied",
+            eventTimestamp: 1_000 + index,
+            processingStartedAt: 1_000 + index,
+            createdAt: 1_000 + index,
+            updatedAt: 1_000 + index,
+          });
+        }
+      }
+      return newest;
+    });
+  }
+
+  it.each(eventChannels)(
+    "getSessionDetail returns only the newest %s event and leaves other channels and the reply window unchanged",
+    async (channel) => {
+      vi.stubEnv("ADMIN_EMAILS", adminEmail);
+      const t = convexTest(schema, modules);
+      const admin = adminTest(t);
+      const guestAt = 1_700_000_000_000;
+      const sessionId = await insertAdminSession(t, { channel, messageCount: 2, latestMessageAt: guestAt + 5 });
+      await insertMessage(t, sessionId, "user", guestAt);
+      await insertMessage(t, sessionId, "assistant", guestAt + 5);
+      // Events in every table, so a wrong table or limit shows up on any channel.
+      const newest = await insertEventsInEveryTable(t, sessionId, 12);
+
+      const detail = await admin.query(api.adminChat.getSessionDetail, { sessionId });
+      for (const other of eventChannels) {
+        expect(detail?.[eventKeys[other]].map((event) => event._id)).toEqual(
+          other === channel ? [newest[other]] : [],
+        );
+      }
+      expect(detail?.[eventKeys[channel]][0]?.messageText).toBe(`${channel} event 11`);
+      expect(detail?.replyWindow).toEqual(
+        channel === "line"
+          ? { applies: false }
+          : { applies: true, lastGuestMessageAt: guestAt, closesAt: guestAt + 24 * 60 * 60 * 1000 },
+      );
+
+      // The legacy transcript keeps its 10 newest events.
+      const transcript = await admin.query(api.adminChat.getTranscript, { sessionId });
+      for (const other of eventChannels) {
+        const events = transcript[eventKeys[other]];
+        expect(events).toHaveLength(other === channel ? 10 : 0);
+        if (other === channel) {
+          expect(events[0]?._id).toBe(newest[other]);
+          expect(events.map((event) => event.messageText)).toEqual(
+            Array.from({ length: 10 }, (_, index) => `${channel} event ${11 - index}`),
+          );
+        }
+      }
+    },
+  );
+
+  it("keeps source order and overflow across filtered pages, and dedupes a chat that moved", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const base = 1_700_000_000_000;
+    // 105 chats, newest first; the Waiting matches are spread over the first 100-row source page
+    // so page 1 overflows, and one more match sits in the second source page.
+    const waitingIndexes = new Set([0, 3, 4, 9, 17, 18, 30, 44, 61, 62, 77, 90, 99, 102]);
+    const ids: Id<"chatSessions">[] = [];
+    for (let index = 0; index < 105; index++) {
+      const latestMessageAt = base + 10_000 - index * 10;
+      const sessionId = await insertAdminSession(t, {
+        visitorName: `Chat ${index}`,
+        messageCount: 1,
+        latestMessageAt,
+      });
+      ids.push(sessionId);
+      await insertMessage(t, sessionId, waitingIndexes.has(index) ? "user" : "assistant", latestMessageAt);
+    }
+    const names = (indexes: number[]) => indexes.map((index) => `Chat ${index}`);
+    const listWaiting = (cursor: string | null) =>
+      admin.query(api.adminChat.listSessions, {
+        status: "needs_reply",
+        now: base,
+        paginationOpts: { numItems: 10, cursor },
+      });
+
+    const first = await listWaiting(null);
+    expect(first.sessions.map((session) => session.visitorName)).toEqual(
+      names([0, 3, 4, 9, 17, 18, 30, 44, 61, 62]),
+    );
+    expect(first.isDone).toBe(false);
+    expect(JSON.parse(first.continueCursor ?? "{}").overflowIds).toEqual([ids[77], ids[90], ids[99]]);
+
+    // Chat 99 (in the overflow) gets older and moves into the unread part of the source.
+    await t.run((ctx) => ctx.db.patch(ids[99], { latestMessageAt: base + 10_000 - 1_035 }));
+
+    const second = await listWaiting(first.continueCursor);
+    expect(second.sessions.map((session) => session.visitorName)).toEqual(names([77, 90, 99, 102]));
+    expect(second.isDone).toBe(true);
+    expect(second.continueCursor).toBeNull();
+  });
+
+  it("serves overflow-only pages in order until the overflow drains", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const base = 1_700_000_000_000;
+    for (let index = 0; index < 30; index++) {
+      const latestMessageAt = base + 1_000 - index;
+      const sessionId = await insertAdminSession(t, {
+        visitorName: `Guest ${index}`,
+        messageCount: 1,
+        latestMessageAt,
+      });
+      await insertMessage(t, sessionId, index % 6 === 5 ? "assistant" : "user", latestMessageAt);
+    }
+    const expected = Array.from({ length: 30 }, (_, index) => index)
+      .filter((index) => index % 6 !== 5)
+      .map((index) => `Guest ${index}`);
+
+    const pages: string[][] = [];
+    let cursor: string | null = null;
+    for (let call = 0; call < 5; call++) {
+      const page: { sessions: { visitorName?: string }[]; continueCursor: string | null; isDone: boolean } =
+        await admin.query(api.adminChat.listSessions, {
+          status: "needs_reply",
+          now: base,
+          paginationOpts: { numItems: 10, cursor },
+        });
+      pages.push(page.sessions.map((session) => session.visitorName ?? ""));
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+
+    expect(pages).toEqual([expected.slice(0, 10), expected.slice(10, 20), expected.slice(20)]);
+  });
+
+  it("keeps filtered search pages in score and recency order across offset cursors", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const base = 1_700_000_000_000;
+    for (let index = 0; index < 14; index++) {
+      const latestMessageAt = base + 1_000 - index;
+      const sessionId = await insertAdminSession(t, {
+        visitorName: `Searched ${index}`,
+        propertySlug: "orderedquery",
+        messageCount: 1,
+        latestMessageAt,
+      });
+      await insertMessage(t, sessionId, index === 2 || index === 7 ? "assistant" : "user", latestMessageAt);
+    }
+    const search = (cursor: string | null) =>
+      admin.query(api.adminChat.listSessions, {
+        status: "needs_reply",
+        searchQuery: "orderedquery",
+        now: base,
+        paginationOpts: { numItems: 10, cursor },
+      });
+    const expected = Array.from({ length: 14 }, (_, index) => index)
+      .filter((index) => index !== 2 && index !== 7)
+      .map((index) => `Searched ${index}`);
+
+    const first = await search(null);
+    const second = await search(first.continueCursor);
+
+    expect(first.sessions.map((session) => session.visitorName)).toEqual(expected.slice(0, 10));
+    expect(first.isDone).toBe(false);
+    expect(second.sessions.map((session) => session.visitorName)).toEqual(expected.slice(10));
+    expect(second.isDone).toBe(true);
   });
 });

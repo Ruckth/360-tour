@@ -17,6 +17,7 @@ const SEARCH_SESSION_LIMIT = 50;
 const SEARCH_MESSAGE_LIMIT = 100;
 const FUZZY_SCAN_LIMIT = 200;
 const FILTER_SOURCE_PAGE_SIZE = 100;
+const DETAIL_CHANNEL_EVENT_LIMIT = 1;
 
 type FilterCursor = {
 	sourceCursor: string | null;
@@ -37,7 +38,7 @@ const adminStatusValidator = v.union(
 	v.literal('archived')
 );
 
-const adminStatusFilterValidator = v.union(v.literal('all'), adminStatusValidator);
+const adminStatusFilterValidator = v.union(v.literal('all'), v.literal('done'), adminStatusValidator);
 
 const emptyFilterValidator = v.union(
 	v.literal('all'),
@@ -55,7 +56,7 @@ const channelFilterValidator = v.union(
 );
 
 type SessionStatus = 'all' | 'active' | 'inactive' | 'needs_reply';
-type AdminStatusFilter = 'all' | 'open' | 'resolved' | 'archived';
+type AdminStatusFilter = 'all' | 'open' | 'done' | 'resolved' | 'archived';
 type EmptyFilter = 'all' | 'empty' | 'non_empty';
 type ChannelFilter = 'all' | 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
 
@@ -242,7 +243,8 @@ async function sessionMatchesFilters(
 	if (options.status === 'active' && !active) return false;
 	if (options.status === 'inactive' && active) return false;
 	if (options.channel !== 'all' && session.channel !== options.channel) return false;
-	if (options.adminStatus !== 'all' && (session.adminStatus ?? 'open') !== options.adminStatus) {
+	const adminStatus = session.adminStatus ?? 'open';
+	if (options.adminStatus === 'done' ? adminStatus === 'open' : options.adminStatus !== 'all' && adminStatus !== options.adminStatus) {
 		return false;
 	}
 	if (
@@ -284,6 +286,21 @@ async function sessionMatchesFilters(
 	}
 
 	return true;
+}
+
+/**
+ * Checks a bounded batch of sessions concurrently and returns the matches in input order. The
+ * shared lookups memoize each read, so the documents read are the same as checking one at a time.
+ */
+async function filterMatchingSessions(
+	lookups: SessionLookups,
+	sessions: Doc<'chatSessions'>[],
+	options: Parameters<typeof sessionMatchesFilters>[2]
+) {
+	const matches = await Promise.all(
+		sessions.map((session) => sessionMatchesFilters(lookups, session, options))
+	);
+	return sessions.filter((_, index) => matches[index]);
 }
 
 async function decorateSession(
@@ -414,11 +431,13 @@ async function searchSessions(
 	).filter((session): session is Doc<'chatSessions'> => Boolean(session));
 
 	const lookups = createSessionLookups(ctx);
-	const filtered: Doc<'chatSessions'>[] = [];
-	for (const session of hydrated) {
-		if (options.propertySlug && session.propertySlug !== options.propertySlug) continue;
-		if (await sessionMatchesFilters(lookups, session, options)) filtered.push(session);
-	}
+	const filtered = await filterMatchingSessions(
+		lookups,
+		hydrated.filter(
+			(session) => !options.propertySlug || session.propertySlug === options.propertySlug
+		),
+		options
+	);
 
 	filtered.sort((a, b) => {
 		const scoreDelta = (scored.get(b._id) ?? 0) - (scored.get(a._id) ?? 0);
@@ -466,19 +485,22 @@ async function listFilteredSessions(
 	const matched: Doc<'chatSessions'>[] = [];
 	const seen = new Set<Id<'chatSessions'>>();
 
-	const addIfMatches = async (session: Doc<'chatSessions'>) => {
-		if (seen.has(session._id)) return;
-		seen.add(session._id);
-		if (options.propertySlug && session.propertySlug !== options.propertySlug) return;
-		if (!(await sessionMatchesFilters(lookups, session, options))) return;
-		matched.push(session);
+	// Dedupes synchronously in input order, checks the remaining rows concurrently, then appends
+	// matches in input order, so the page and its overflow keep the source order.
+	const addMatches = async (sessions: (Doc<'chatSessions'> | null)[]) => {
+		const candidates: Doc<'chatSessions'>[] = [];
+		for (const session of sessions) {
+			if (!session || seen.has(session._id)) continue;
+			seen.add(session._id);
+			if (options.propertySlug && session.propertySlug !== options.propertySlug) continue;
+			candidates.push(session);
+		}
+		matched.push(...(await filterMatchingSessions(lookups, candidates, options)));
 	};
 
-	for (const sessionId of parsedCursor.overflowIds) {
-		const session = await ctx.db.get(sessionId);
-		if (!session) continue;
-		await addIfMatches(session);
-	}
+	await addMatches(
+		await Promise.all(parsedCursor.overflowIds.map((sessionId) => ctx.db.get(sessionId)))
+	);
 
 	if (matched.length < PAGE_SIZE && !sourceDone) {
 		const paginationOpts = { numItems: FILTER_SOURCE_PAGE_SIZE, cursor };
@@ -526,9 +548,7 @@ async function listFilteredSessions(
 		cursor = page.continueCursor;
 		sourceDone = page.isDone;
 
-		for (const session of page.page) {
-			await addIfMatches(session);
-		}
+		await addMatches(page.page);
 	}
 
 	const pageSessions = matched.slice(0, PAGE_SIZE);
@@ -617,43 +637,49 @@ export const getSessionDetail = query({
 		// Deep links may point at a deleted chat.
 		if (!session) return null;
 
-		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property, replyWindow] = await Promise.all([
+		// The detail view only shows each channel's newest delivery event (`events[0]`), so read one.
+		// `getTranscript` keeps its 10-event lists.
+		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property, replyWindow, latestMessage] = await Promise.all([
 			session.channel === 'line'
 				? ctx.db
 						.query('lineWebhookEvents')
 						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 						.order('desc')
-						.take(10)
+						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
 			session.channel === 'facebook'
 				? ctx.db
 						.query('facebookWebhookEvents')
 						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 						.order('desc')
-						.take(10)
+						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
 			session.channel === 'whatsapp'
 				? ctx.db
 						.query('whatsappWebhookEvents')
 						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 						.order('desc')
-						.take(10)
+						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
 			session.channel === 'instagram'
 				? ctx.db
 						.query('instagramWebhookEvents')
 						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 						.order('desc')
-						.take(10)
+						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
 			session.propertyId ? ctx.db.get(session.propertyId) : null,
-			getChannelReplyWindow(ctx, session)
+			getChannelReplyWindow(ctx, session),
+			createSessionLookups(ctx).latestMessage(session._id)
 		]);
 
 		return {
 			session: {
 				...session,
 				propertyName: property?.name,
+				latestMessage,
+				messageCount: Math.max(getAdminChatMessageCount(session), latestMessage ? 1 : 0),
+				needsReply: sessionNeedsReply(session, latestMessage),
 				isActive: isChatSessionActive(session, now)
 			},
 			replyWindow,
