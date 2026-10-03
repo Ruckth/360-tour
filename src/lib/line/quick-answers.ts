@@ -1,4 +1,4 @@
-import { unknownReply } from "convex/lib/unknownReply";
+import { unknownReply, detectReplyLocale } from "convex/lib/unknownReply";
 import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
 
 export type LineIntent =
@@ -206,50 +206,7 @@ export function normalizeQuickAnswerLocale(
 export function detectQuickAnswerLocale(
   text?: string,
 ): QuickAnswerLocale | undefined {
-  const clean = text?.trim();
-  if (!clean) return undefined;
-
-  if (/[\u0E00-\u0E7F]/u.test(clean)) return "th";
-  if (/[ऀ-ॿ]/u.test(clean)) return "hi";
-  if (/[А-Яа-яЁё]/u.test(clean)) return "ru";
-  if (/[가-힣]/u.test(clean)) return "ko";
-  if (/[ぁ-ゟ゠-ヿ]/u.test(clean)) return "ja";
-  if (/\p{Script=Han}/u.test(clean)) return "zh-CN";
-
-  const normalized = normalizeLineQuestion(clean);
-  if (
-    /[ñáéíóúü¿¡]/u.test(normalized) ||
-    /\b(precio|precios|disponibilidad|reservar|cuanto|cuesta|anfitrion)\b/u.test(
-      normalized,
-    )
-  ) {
-    return "es";
-  }
-  if (
-    /[àâçéèêëîïôûùüÿœ]/u.test(normalized) ||
-    /\b(prix|disponibilites|reservation|combien|hote|annulation)\b/u.test(
-      normalized,
-    )
-  ) {
-    return "fr";
-  }
-  if (
-    /[äöüß]/u.test(normalized) ||
-    /\b(preis|preise|verfuegbarkeit|verfügbarkeit|buchen|kostet|wieviel|stornierung)\b/u.test(
-      normalized,
-    )
-  ) {
-    return "de";
-  }
-  if (
-    /\b(prezzo|prezzi|disponibilita|disponibilità|prenotazione|quanto costa|cancellazione)\b/u.test(
-      normalized,
-    )
-  ) {
-    return "it";
-  }
-
-  return "en";
+  return detectReplyLocale(text);
 }
 
 export function parseLineLocaleFromPostback(data?: string) {

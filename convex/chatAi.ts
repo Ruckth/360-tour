@@ -1,4 +1,4 @@
-import { unknownReply } from "./lib/unknownReply";
+import { unknownReply, detectReplyLocale } from "./lib/unknownReply";
 import { factRetrievalEnabled } from "./lib/factRetrieval";
 import { proposalIdentity } from "./lib/chatWriteGuard";
 import { action, internalMutation, type ActionCtx } from "./_generated/server";
@@ -243,7 +243,7 @@ export function getResortRealityDisclosure(message: string, siteUrl?: string) {
 }
 
 export function getUnknownFallbackResponse(message: string, locale?: string) {
-  return unknownReply(locale ?? detectRealityGuardrailLocale(message));
+  return unknownReply(locale ?? detectReplyLocale(message));
 }
 
 function lineChannelGuidance(siteUrl?: string) {
@@ -461,7 +461,7 @@ async function policyReply(
   // A saved policy is authoritative text; let the concierge translate it when needed.
   if (
     isCancellationPolicyQuestion(userMessage) &&
-    guestLocale !== detectRealityGuardrailLocale(settings.cancellationPolicy)
+    guestLocale !== (detectReplyLocale(settings.cancellationPolicy) ?? "en")
   )
     return null;
   const policy =

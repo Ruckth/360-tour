@@ -344,13 +344,13 @@ async function resolveSessionProperty(
 	session: Doc<'chatSessions'> | null,
 	propertySlug?: string
 ) {
-	if (session?.propertyId) {
+	if (!propertySlug?.trim() && session?.propertyId) {
 		return {
 			propertyId: session.propertyId,
 			propertySlug: session.propertySlug
 		};
 	}
-	const slug = session?.propertySlug ?? propertySlug?.trim();
+	const slug = propertySlug?.trim() || session?.propertySlug;
 	if (!slug) return { propertyId: undefined, propertySlug: session?.propertySlug ?? propertySlug };
 	const property = await ctx.db
 		.query('properties')

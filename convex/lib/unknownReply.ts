@@ -16,3 +16,50 @@ export function unknownReply(locale?: string | null) {
   const reply = locale ? unknownCopy[locale] : undefined;
   return typeof reply === "string" ? reply : unknownCopy.en;
 }
+
+export function detectReplyLocale(text?: string) {
+  const clean = text?.trim();
+  if (!clean) return undefined;
+
+  if (/[\u0E00-\u0E7F]/u.test(clean)) return "th";
+  if (/[ऀ-ॿ]/u.test(clean)) return "hi";
+  if (/[А-Яа-яЁё]/u.test(clean)) return "ru";
+  if (/[가-힣]/u.test(clean)) return "ko";
+  if (/[ぁ-ゟ゠-ヿ]/u.test(clean)) return "ja";
+  if (/\p{Script=Han}/u.test(clean)) return "zh-CN";
+
+  const normalized = clean.normalize("NFKC").toLowerCase();
+  if (
+    /[ñáéíóúü¿¡]/u.test(normalized) ||
+    /\b(precio|precios|disponibilidad|reservar|cuanto|cuesta|anfitrion)\b/u.test(
+      normalized,
+    )
+  ) {
+    return "es";
+  }
+  if (
+    /[àâçéèêëîïôûùüÿœ]/u.test(normalized) ||
+    /\b(prix|disponibilites|reservation|combien|hote|annulation)\b/u.test(
+      normalized,
+    )
+  ) {
+    return "fr";
+  }
+  if (
+    /[äöüß]/u.test(normalized) ||
+    /\b(preis|preise|verfuegbarkeit|verfügbarkeit|buchen|kostet|wieviel|stornierung)\b/u.test(
+      normalized,
+    )
+  ) {
+    return "de";
+  }
+  if (
+    /\b(prezzo|prezzi|disponibilita|disponibilità|prenotazione|quanto costa|cancellazione)\b/u.test(
+      normalized,
+    )
+  ) {
+    return "it";
+  }
+
+  return "en";
+}
