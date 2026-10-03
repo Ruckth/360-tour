@@ -1092,6 +1092,31 @@ describe("adminChat inbox lifecycle", () => {
     expect(reopened?.resolvedAt).toBeUndefined();
   });
 
+  it("paginates resolved and archived chats together in Done without including open chats", async () => {
+    vi.stubEnv("ADMIN_EMAILS", adminEmail);
+    const t = convexTest(schema, modules);
+    const admin = adminTest(t);
+    const base = 1_700_000_000_000;
+    for (let index = 0; index < 12; index++) {
+      const sessionId = await insertAdminSession(t, { visitorName: `Completed ${index}`, messageCount: 1, latestMessageAt: base + index, channel: index % 2 ? "line" : "web" });
+      await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: index % 2 ? "archived" : "resolved" });
+    }
+    await insertAdminSession(t, { visitorName: "Still open", messageCount: 1, latestMessageAt: base + 100 });
+    const first = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", now: base });
+    expect(first.sessions).toHaveLength(10);
+    expect(first.sessions.every((session) => session.adminStatus === "resolved" || session.adminStatus === "archived")).toBe(true);
+    const second = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", paginationOpts: { numItems: 10, cursor: first.continueCursor }, now: base });
+    expect(second.sessions).toHaveLength(2);
+    expect(second.isDone).toBe(true);
+    expect(new Set([...first.sessions, ...second.sessions].map((session) => session._id)).size).toBe(12);
+    const lineOnly = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", channel: "line", now: base });
+    expect(lineOnly.sessions).toHaveLength(6);
+    expect(lineOnly.sessions.every((session) => session.channel === "line")).toBe(true);
+    const search = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", searchQuery: "Completed", now: base });
+    expect(search.sessions).toHaveLength(10);
+    expect(search.sessions.every((session) => session.adminStatus !== undefined)).toBe(true);
+  });
+
   it("reopens a resolved or archived chat when the guest writes again, but not on admin replies", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);

@@ -37,7 +37,7 @@ const adminStatusValidator = v.union(
 	v.literal('archived')
 );
 
-const adminStatusFilterValidator = v.union(v.literal('all'), adminStatusValidator);
+const adminStatusFilterValidator = v.union(v.literal('all'), v.literal('done'), adminStatusValidator);
 
 const emptyFilterValidator = v.union(
 	v.literal('all'),
@@ -55,7 +55,7 @@ const channelFilterValidator = v.union(
 );
 
 type SessionStatus = 'all' | 'active' | 'inactive' | 'needs_reply';
-type AdminStatusFilter = 'all' | 'open' | 'resolved' | 'archived';
+type AdminStatusFilter = 'all' | 'open' | 'done' | 'resolved' | 'archived';
 type EmptyFilter = 'all' | 'empty' | 'non_empty';
 type ChannelFilter = 'all' | 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
 
@@ -242,7 +242,8 @@ async function sessionMatchesFilters(
 	if (options.status === 'active' && !active) return false;
 	if (options.status === 'inactive' && active) return false;
 	if (options.channel !== 'all' && session.channel !== options.channel) return false;
-	if (options.adminStatus !== 'all' && (session.adminStatus ?? 'open') !== options.adminStatus) {
+	const adminStatus = session.adminStatus ?? 'open';
+	if (options.adminStatus === 'done' ? adminStatus === 'open' : options.adminStatus !== 'all' && adminStatus !== options.adminStatus) {
 		return false;
 	}
 	if (

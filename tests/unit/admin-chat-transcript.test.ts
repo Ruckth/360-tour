@@ -44,6 +44,31 @@ describe("admin transcript", () => {
     expect(html.indexOf("Load older messages")).toBeLessThan(html.indexOf("Oldest guest message"));
   });
 
+  it("replaces the composer with the channel window state even on a reopened chat", () => {
+    const props: DetailProps = {
+      canLoadOlderMessages: false, loadOlderMessages: () => {}, loadingTranscript: false, loadingOlderMessages: false, messages: [], now: 100,
+      selectedSession: { _id: "session", channel: "whatsapp", createdAt: 1, isActive: false, adminStatus: "open" } as DetailProps["selectedSession"],
+      replyDraft: "An unsent draft", onReplyDraftChange: () => {}, onSendReply: async () => {}, replyPending: false, replyError: null, replyStatus: null,
+      replyWindow: { applies: true, closesAt: 99, lastGuestMessageAt: 1 },
+    };
+    const html = renderToStaticMarkup(createElement(AdminSessionDetail, props));
+    expect(html).toContain("WhatsApp reply window has ended");
+    expect(html).not.toContain("<textarea");
+    expect(html).not.toContain('type="submit"');
+  });
+
+  it("does not treat offline presence as a closed reply window", () => {
+    const props: DetailProps = {
+      canLoadOlderMessages: false, loadOlderMessages: () => {}, loadingTranscript: false, loadingOlderMessages: false, messages: [], now: 100,
+      selectedSession: { _id: "session", channel: "web", createdAt: 1, isActive: false } as DetailProps["selectedSession"],
+      replyDraft: "A reply", onReplyDraftChange: () => {}, onSendReply: async () => {}, replyPending: false, replyError: null, replyStatus: null, replyWindow: { applies: false },
+    };
+    const html = renderToStaticMarkup(createElement(AdminSessionDetail, props));
+    expect(html).toContain("<textarea");
+    expect(html).not.toContain("reply window has ended");
+    expect(html).not.toContain('disabled=""');
+  });
+
   it("puts the guest on the left and labels AI and staff replies differently", () => {
     const props: DetailProps = {
       canLoadOlderMessages: false,
