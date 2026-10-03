@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import {
@@ -96,6 +96,7 @@ export function AppointmentSheet({
   const updateStatus = useMutation(api.adminServices.updateAppointmentStatus);
   const markPaid = useMutation(api.adminServices.markAppointmentPaid);
   const refund = useMutation(api.adminServices.refundAppointment);
+  const originalReference = useQuery(api.adminServices.getAppointmentReference, appointment?.rebookedFromId ? { appointmentId: appointment.rebookedFromId } : "skip");
   const [pending, setPending] = useState<StatusAction | null>(null);
   const [editing, setEditing] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -160,7 +161,7 @@ export function AppointmentSheet({
         {appointment && status ? (
           <div className="grid gap-5">
             <div>
-              <SheetTitle className="pe-8">Appointment · {appointment.guestName}</SheetTitle>
+              <SheetTitle className="pe-8">Appointment · {appointment.guestName || "Unnamed guest"}</SheetTitle>
               <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
                 <StatusBadge {...status} />
                 <span className="font-mono text-xs">{appointment.confirmationCode}</span>
@@ -210,13 +211,13 @@ export function AppointmentSheet({
                       ) : null}
                     </Detail>
                   ) : null}
-                  <Detail label="Phone">{appointment.guestPhone}</Detail>
+                  <Detail label="Phone">{appointment.guestPhone || "—"}</Detail>
                   <Detail label="Email">{appointment.guestEmail ?? "—"}</Detail>
                   <Detail label="Notes">
                     <span className="whitespace-pre-wrap">{appointment.notes ?? "—"}</span>
                   </Detail>
                   <Detail label="Villa stay">{appointment.bookingId ? "Linked to a villa booking" : "—"}</Detail>
-                  {appointment.rebookedFromId ? <Detail label="Booked again">From a cancelled or no-show appointment</Detail> : null}
+                  {appointment.rebookedFromId ? <Detail label="Booked again">{originalReference === undefined ? "Loading original reference…" : originalReference ? `From ${originalReference}` : "Original appointment unavailable"}</Detail> : null}
                   <Detail label="Source">
                     <Badge variant="outline">{sourceLabel(appointment.source)}</Badge>
                   </Detail>
@@ -308,6 +309,7 @@ function AppointmentEditForm({
 }) {
   const updateDetails = useMutation(api.adminServices.updateAppointmentDetails);
   const [original] = useState(appointment);
+  const contactRequired = original.source !== "admin" || Boolean(original.chatSessionId);
   const revision = appointmentRevision(original);
   const confirm = useConfirm();
   const [serviceId, setServiceId] = useState<Id<"services">>(appointment.serviceId);
@@ -380,19 +382,20 @@ function AppointmentEditForm({
           </p>
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="ap-name">Guest name</Label>
-          <Input id="ap-name" name="guestName" defaultValue={appointment.guestName} required />
+          <Label htmlFor="ap-name">Guest name{contactRequired ? "" : " (optional)"}</Label>
+          <Input id="ap-name" name="guestName" required={contactRequired} aria-describedby={contactRequired ? undefined : "ap-guest-hint"} defaultValue={appointment.guestName} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
-            <Label htmlFor="ap-phone">Phone</Label>
-            <Input id="ap-phone" name="guestPhone" type="tel" defaultValue={appointment.guestPhone} required />
+            <Label htmlFor="ap-phone">Phone{contactRequired ? "" : " (optional)"}</Label>
+            <Input id="ap-phone" name="guestPhone" type="tel" required={contactRequired} aria-describedby={contactRequired ? undefined : "ap-guest-hint"} defaultValue={appointment.guestPhone} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="ap-email">Email (optional)</Label>
-            <Input id="ap-email" name="guestEmail" type="email" defaultValue={appointment.guestEmail} />
+            <Input id="ap-email" name="guestEmail" type="email" aria-describedby={contactRequired ? undefined : "ap-guest-hint"} defaultValue={appointment.guestEmail} />
           </div>
         </div>
+        {!contactRequired ? <p id="ap-guest-hint" className="text-sm text-muted-foreground">Guest details can be added later.</p> : null}
         <div className="grid gap-2">
           <Label htmlFor="ap-notes">Notes (optional)</Label>
           <Textarea

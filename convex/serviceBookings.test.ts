@@ -3,7 +3,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
-import { localDateTimeUtc } from './lib/serviceSlots';
+import { createAppointmentRecord, localDateTimeUtc } from './lib/serviceSlots';
 import schema from './schema';
 import { proposalIdentity } from './lib/chatWriteGuard';
 
@@ -68,6 +68,13 @@ function mockAi(calls: Array<{ name: string; args?: Record<string, unknown> }>, 
 }
 
 describe('AI service booking', () => {
+	it('never matches an anonymous admin appointment through an empty guest phone', async () => {
+		const s = await setup();
+		await s.t.run((ctx) => createAppointmentRecord(ctx, { serviceId: s.serviceId, staffId: s.staffId, start: at('09:00'), source: 'admin', guestName: '', guestPhone: '' }));
+		expect(await s.t.query(internal.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
+		await s.t.run((ctx) => ctx.db.patch(s.sessionId, { visitorPhone: ' ' }));
+		expect(await s.t.query(internal.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
+	});
 	it('lists active services and open local times, then prepares without creating an appointment', async () => {
 		const s = await setup();
 		expect(await s.t.query(internal.serviceBookings.listActiveServices, {})).toMatchObject([

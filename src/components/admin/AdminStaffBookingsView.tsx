@@ -42,6 +42,7 @@ import {
   type ScheduleData,
 } from "@/lib/schedule-changes";
 import {
+  appointmentGuestLabel,
   APPOINTMENT_STATUSES,
   DAY_MS,
   RESORT_ZONE,
@@ -237,7 +238,7 @@ function StaffCalendar() {
       const staff = staffById.get(ghost?.staffId ?? appointment.staffId);
       return {
         id: appointment._id,
-        title: `${appointment.guestName} · ${service?.name ?? "Service"}${staff ? ` · ${staff.name}` : ""}`,
+        title: `${appointmentGuestLabel(appointment)} · ${service?.name ?? "Service"}${staff ? ` · ${staff.name}` : ""}`,
         start: new Date(ghost?.start ?? appointment.start),
         end: new Date(ghost?.end ?? appointment.end),
         resourceId: ghost?.staffId ?? appointment.staffId,
@@ -338,9 +339,12 @@ function StaffCalendar() {
       return (
         <span className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-sm font-semibold">{appointment.guestName}</span>
+            <span className={cn("truncate text-sm font-semibold", !appointment.guestName && "text-muted-foreground")}>
+              {appointment.guestName || "Unnamed guest"}
+            </span>
             <StatusBadge {...appointmentStatus(displayStatus(appointment))} className="hidden @[12rem]:inline-flex" />
           </span>
+          {!appointment.guestName ? <span className="font-mono text-[10px] text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
           <span className="truncate text-xs text-muted-foreground">
             {formatResortTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
             {staffName ? ` · ${staffName}` : ""}

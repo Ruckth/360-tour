@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { moveProposal, scheduleRows, type ScheduleProposal } from "@/lib/schedule-changes";
 import {
+  appointmentGuestLabel,
   errorText,
   formatResortTime,
   resortDateTime,
@@ -66,7 +67,7 @@ export function RescheduleDialog({
         : !staffChoices.some((s) => s._id === staffId)
           ? `${staffName(staffId)} doesn't perform ${serviceName}.`
           : !proposal
-            ? "Choose a different date, time or staff member."
+            ? null
             : !open
               ? `${staffName(staffId)} isn't free at ${formatResortTime(start)} for the full service and turnaround. Pick an open time.`
               : null;
@@ -90,7 +91,7 @@ export function RescheduleDialog({
 
   return (
     <ChangeConfirmDialog
-      title={`Reschedule ${original.guestName} — ${serviceName}?`}
+      title={`Reschedule ${appointmentGuestLabel(original)} — ${serviceName}?`}
       description="Same service length, turnaround and price. Available times are checked again when you confirm."
       rows={scheduleRows({ ...original, staffName: staffName(original.staffId) }, { ...after, staffName: staffName(staffId) })}
       footnote={<p>The guest isn&apos;t notified automatically. Let them know about the new time.</p>}
@@ -137,6 +138,7 @@ export function RescheduleDialog({
         </div>
       </div>
       {problem ? <p className="text-sm text-destructive">{problem}</p> : null}
+      {!proposal && !problem ? <p className="text-sm text-muted-foreground">Choose a different date, time or staff member.</p> : null}
     </ChangeConfirmDialog>
   );
 }

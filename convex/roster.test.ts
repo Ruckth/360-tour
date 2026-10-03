@@ -122,6 +122,16 @@ describe('staff roster', () => {
 		expect(await admin.mutation(api.roster.resetCells, { cells: [cell(staffIds[0], TUE)] })).toMatchObject({ ok: true, changed: 1 });
 	});
 
+	it('identifies anonymous appointment conflicts by their booking reference', async () => {
+		const { admin, staffIds, serviceId, cell, rows } = await setup();
+		const { appointmentId, confirmationCode } = await admin.mutation(api.adminServices.createAppointment, {
+			serviceId, staffId: staffIds[0], start: localDateTimeUtc(TUE, '10:00'), guestName: '', guestPhone: ''
+		});
+		const result = await admin.mutation(api.roster.applyCells, { cells: [cell(staffIds[0], TUE)], ...evening });
+		expect(result).toMatchObject({ ok: false, conflicts: [{ appointmentId, guestName: '', confirmationCode }] });
+		expect(await rows()).toHaveLength(0);
+	});
+
 	it('copies a week forward with a dry-run preview, skip vs overwrite, and appointment guard', async () => {
 		const { admin, staffIds, book, rows, cell } = await setup();
 		await admin.mutation(api.roster.applyCells, { cells: [cell(staffIds[0], MON)], ...evening });

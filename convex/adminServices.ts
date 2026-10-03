@@ -473,6 +473,15 @@ export const findOpenSlots = query({
 });
 
 
+/** The original booking reference for rebooked appointments, including ones outside the visible calendar dates. */
+export const getAppointmentReference = query({
+	args: { appointmentId: v.id('serviceAppointments') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		return (await ctx.db.get(args.appointmentId))?.confirmationCode ?? null;
+	}
+});
+
 export const createAppointment = mutation({
 	args: {
 		serviceId: v.id('services'), start: v.number(), staffId: v.optional(v.id('staff')), guestName: v.string(), guestPhone: v.string(),
@@ -617,7 +626,7 @@ export const updateAppointmentDetails = mutation({
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
-		const details = guestDetails(args);
+		const details = guestDetails(args, { requireContact: appointment.source !== 'admin' || Boolean(appointment.chatSessionId) });
 		const newServiceId = args.serviceId !== undefined && args.serviceId !== appointment.serviceId ? args.serviceId : null;
 		const service = newServiceId ? await serviceChange(ctx, appointment, newServiceId, args.expectedService) : {};
 		await recordAppointmentChange(ctx, appointment, { ...details, ...service }, { actor: admin.email, kind: newServiceId ? 'service' : 'details' });
