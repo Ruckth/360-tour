@@ -19,7 +19,8 @@ vi.mock("convex/browser", () => ({
         return { eventId: "evt_1", sessionId: "sess_1", duplicate, status: duplicate ? "completed" : "processing" };
       }
       if (name === "chat:isAiPaused" || name === "bookings:isChatBookingFlowActive") return false;
-      if (name === "chatAi:generateReply") return { response: "Here is the host's policy.", model: "openai/test-model" };
+      if (name === "line:recordInboundEvent") return { recorded: true, duplicate: false, userMessageId: "msg_1" };
+      if (name === "chatAi:generateReply") return { response: "Here is the host's policy.", model: "openai/test-model", outcome: "answered" };
       return null;
     }
     query(reference: unknown, args: Record<string, unknown>) { return this.call(reference, args); }
@@ -66,6 +67,7 @@ describe("LINE handler turn correlation", () => {
     expect((await POST(request())).status).toBe(200);
     const generated = backend.calls.filter(call => call.name === "chatAi:generateReply");
     expect(generated).toHaveLength(1);
+    expect(generated[0].args.replyToMessageId).toBe("msg_1");
     const turnId = generated[0].args.turnId;
     expect(turnId).toEqual(expect.any(String));
     const stages = logs.mock.calls.map(([line]) => JSON.parse(String(line)));
@@ -77,6 +79,7 @@ describe("LINE handler turn correlation", () => {
     }
     expect(replies).toHaveLength(1);
     expect(backend.calls.filter(call => call.name === "line:completeEvent")).toHaveLength(1);
+    expect(backend.calls.find(call => call.name === "line:completeEvent")?.args.outcome).toBe("answered");
 
     expect((await POST(request())).status).toBe(200);
     expect(replies).toHaveLength(1);

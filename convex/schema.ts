@@ -1,4 +1,5 @@
 import { defineSchema, defineTable } from 'convex/server';
+import { inboxReasonValidator } from './lib/inboxTypes';
 import { v } from 'convex/values';
 
 export default defineSchema({
@@ -513,6 +514,18 @@ export default defineSchema({
 		adminSearchText: v.optional(v.string()),
 		// Guest message an admin marked as settled; clears the unanswered warning.
 		settledGuestMessageId: v.optional(v.id('chatMessages')),
+		// Automatic responder lifecycle; optional while existing rows are reviewed/backfilled.
+		latestGuestMessageId: v.optional(v.id('chatMessages')),
+		answeredGuestMessageId: v.optional(v.id('chatMessages')),
+		inboxState: v.optional(v.union(v.literal('needs_staff'), v.literal('processing'), v.literal('done'))),
+		inboxReason: v.optional(inboxReasonValidator),
+		inboxHandoff: v.optional(v.boolean()),
+		staffTask: v.optional(v.string()),
+		keepWithStaff: v.optional(v.boolean()),
+		inboxSendRequestId: v.optional(v.string()),
+		inboxSendError: v.optional(v.string()),
+		resolutionSource: v.optional(v.union(v.literal('ai'), v.literal('staff'), v.literal('manual'))),
+		resolutionMessageId: v.optional(v.id('chatMessages')),
 		// Inbox lifecycle set by admins; undefined = open. A new guest message reopens it.
 		adminStatus: v.optional(
 			v.union(v.literal('open'), v.literal('resolved'), v.literal('archived'))
@@ -598,6 +611,7 @@ export default defineSchema({
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
 		source: v.optional(v.literal('admin')),
+		replyToMessageId: v.optional(v.id('chatMessages')),
 		content: v.string(),
 		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
 		timestamp: v.number()
@@ -612,6 +626,7 @@ export default defineSchema({
 		requestId: v.string(),
 		sessionId: v.id('chatSessions'),
 		adminEmail: v.string(),
+		replyToMessageId: v.optional(v.id('chatMessages')),
 		content: v.string(),
 		status: v.union(v.literal('pending'), v.literal('sent'), v.literal('failed')),
 		createdAt: v.number(),

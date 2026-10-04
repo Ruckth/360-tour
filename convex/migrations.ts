@@ -9,6 +9,9 @@ import { guestLookupFields } from './lib/bookingWrites';
 import { syncCuratedVariants } from './lib/curatedVariants';
 import { readBudget, readRangeWithinBudget, reserveWrites } from './lib/readBudget';
 import { recomputeSocialProof } from './lib/socialProof';
+import { inboxBackfillPatch } from './lib/inboxBackfill';
+import { internalQuery } from './_generated/server';
+import { paginationOptsValidator } from 'convex/server';
 
 // Data migrations run on the @convex-dev/migrations component: it pages through the table in
 // batches, records progress (resume after a failure picks up where it stopped), supports dry runs
@@ -25,6 +28,20 @@ export const migrations = new Migrations<DataModel>(components.migrations);
 
 /** Runs any migration by name: `{"fn": "migrations:<name>"}`. */
 export const run = migrations.runner();
+
+export const previewInboxLifecycle = internalQuery({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const page = await ctx.db.query('chatSessions').order('desc').paginate({ ...args.paginationOpts, numItems: Math.min(20, args.paginationOpts.numItems) });
+		const proposed = await Promise.all(page.page.map(async session => ({ sessionId: session._id, before: session.adminStatus ?? 'open', patch: await inboxBackfillPatch(ctx, session) })));
+		return { proposed, continueCursor: page.continueCursor, isDone: page.isDone };
+	}
+});
+
+export const backfillInboxLifecycle = migrations.define({
+	table: 'chatSessions', batchSize: 10,
+	migrateOne: async (ctx, session) => await inboxBackfillPatch(ctx, session) ?? undefined
+});
 
 /** Copies legacy chatSessions.messages arrays into chatMessages, then clears the legacy field. */
 export const backfillChatMessages = migrations.define({

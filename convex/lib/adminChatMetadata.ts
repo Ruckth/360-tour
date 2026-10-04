@@ -126,8 +126,5 @@ export async function patchSessionAfterMessages(
 			lastSeenAt: nextLastSeenAt,
 		}),
 		...(typeof nextLastSeenAt === 'number' ? { lastSeenAt: nextLastSeenAt } : {}),
-		...(!options.fromAdmin && session.adminStatus && session.adminStatus !== 'open'
-			? { adminStatus: undefined, resolvedAt: undefined, archivedAt: undefined }
-			: {}),
 	});
 }

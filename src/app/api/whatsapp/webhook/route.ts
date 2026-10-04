@@ -250,15 +250,17 @@ async function handleWhatsAppMessage({
   if (claimed.duplicate) return;
 
   let whatsappReplyStatus: number | undefined;
+  let replyToMessageId: string | undefined;
 
   try {
     if (claimed.sessionId) {
-      await client.mutation(api.whatsapp.recordInboundEvent, {
+      const inbound = await client.mutation(api.whatsapp.recordInboundEvent, {
         serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
         eventId: claimed.eventId,
         sessionId: claimed.sessionId,
         ...(messageText ? { userContent: messageText } : {}),
       } as never);
+      replyToMessageId = (inbound as { userMessageId?: string }).userMessageId;
     }
 
     if (!claimed.sessionId) {
@@ -289,10 +291,11 @@ async function handleWhatsAppMessage({
       return;
     }
 
-    const { responseText, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveWhatsAppReply({
+    const { responseText, outcome, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveWhatsAppReply({
       client,
       messageText,
       sessionId: claimed.sessionId!,
+      ...(replyToMessageId ? { replyToMessageId } : {}),
       siteUrl: getSiteUrl(request),
       turnId: turnMetrics.turnId,
     }));
@@ -319,6 +322,7 @@ async function handleWhatsAppMessage({
       sessionId: claimed.sessionId,
       userContent: messageText,
       assistantContent: responseText,
+      ...(outcome ? { outcome } : {}),
       replyMode: storedReplyMode(replyMode),
       whatsappReplyStatus,
     } as never);

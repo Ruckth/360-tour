@@ -2,12 +2,14 @@
 
 import { api } from "convex/_generated/api";
 import { useMutation } from "convex/react";
-import { Archive, Bot, CheckCircle2, Hand, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, Bot, CheckCircle2, Hand, MoreHorizontal, RotateCcw, Trash2, ListTodo } from "lucide-react";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import type { AdminSession, AdminSessionStatus } from "@/components/admin/admin-chat-types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 /** One primary action; occasional actions stay in the conversation menu. */
 export function AdminSessionActions({
@@ -23,6 +25,10 @@ export function AdminSessionActions({
   const setSessionStatus = useMutation(api.adminChat.setSessionStatus);
   const setAiPaused = useMutation(api.adminChat.setAiPaused);
   const deleteArchivedSession = useMutation(api.adminChat.deleteArchivedSession);
+  const setStaffTask = useMutation(api.adminChat.setStaffTask);
+  const setKeepWithStaff = useMutation(api.adminChat.setKeepWithStaff);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [task, setTask] = useState("");
   const [pending, setPending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +49,8 @@ export function AdminSessionActions({
   }
 
   async function changeStatus(nextStatus: AdminSessionStatus) {
-    await setSessionStatus({ sessionId, status: nextStatus });
+    await setSessionStatus({ sessionId, status: nextStatus,
+      ...(nextStatus === "resolved" ? { expectedGuestMessageId: session.latestGuestMessageId ?? null } : {}) });
     onStatusChanged?.(nextStatus);
   }
 
@@ -64,20 +71,16 @@ export function AdminSessionActions({
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
-      <Button
+      {status !== "open" ? <Button
         type="button"
         size="sm"
-        variant={status === "open" ? "default" : "outline"}
+        variant="outline"
         disabled={pending}
-        onClick={() => void run(() => changeStatus(status === "open" ? "resolved" : "open"))}
+        onClick={() => void run(() => changeStatus("open"))}
       >
-        {status === "open" ? (
-          <CheckCircle2 aria-hidden="true" className="size-4" />
-        ) : (
-          <RotateCcw aria-hidden="true" className="size-4" />
-        )}
-        {status === "open" ? "Resolve" : "Reopen"}
-      </Button>
+        <RotateCcw aria-hidden="true" className="size-4" />
+        {session.resolutionSource && session.resolutionSource !== 'manual' ? "Undo" : "Reopen"}
+      </Button> : null}
       <Popover open={menuOpen} onOpenChange={setMenuOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -92,6 +95,22 @@ export function AdminSessionActions({
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 space-y-1 p-1.5" aria-label="Conversation actions">
+          <Button type="button" variant="ghost" className="w-full justify-start" disabled={pending}
+            onClick={() => { setMenuOpen(false); setTask(session.staffTask ?? ''); setTaskOpen(true); }}>
+            <ListTodo className="size-4" aria-hidden="true" />{session.staffTask ? 'Edit follow-up' : 'Add follow-up / Keep open'}
+          </Button>
+          {session.staffTask ? <Button type="button" variant="ghost" className="w-full justify-start" disabled={pending}
+            onClick={() => void run(() => setStaffTask({ sessionId, task: null }))}>
+            <CheckCircle2 className="size-4" aria-hidden="true" />Complete follow-up
+          </Button> : null}
+          {status === 'open' ? <Button type="button" variant="ghost" className="w-full justify-start" disabled={pending}
+            onClick={() => void run(() => changeStatus('resolved'))}>
+            <CheckCircle2 className="size-4" aria-hidden="true" />No reply needed
+          </Button> : null}
+          <Button type="button" variant="ghost" className="w-full justify-start" disabled={pending}
+            onClick={() => void run(() => setKeepWithStaff({ sessionId, keep: !session.keepWithStaff }))}>
+            <Hand className="size-4" aria-hidden="true" />{session.keepWithStaff ? 'Let AI handle the next issue' : 'Keep with staff'}
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -131,7 +150,18 @@ export function AdminSessionActions({
           )}
         </PopoverContent>
       </Popover>
-      {error ? (
+      <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Staff follow-up</DialogTitle><DialogDescription>The chat stays In progress until this task is completed and the guest has an answer.</DialogDescription></DialogHeader>
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void run(async () => { await setStaffTask({ sessionId, task }); setTaskOpen(false); }); }}>
+            <label htmlFor={`follow-up-${sessionId}`} className="text-sm font-medium">What needs to be done?</label>
+            <Input id={`follow-up-${sessionId}`} value={task} onChange={event => setTask(event.target.value)} maxLength={300} placeholder="Check with housekeeping and update the guest" autoFocus required />
+            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+            <Button type="submit" disabled={pending || !task.trim()}>Save follow-up</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {error && !taskOpen ? (
         <p role="alert" className="basis-full text-right text-xs text-destructive">
           {error}
         </p>

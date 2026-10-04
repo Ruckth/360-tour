@@ -65,6 +65,7 @@ describe("Instagram webhook events", () => {
     });
     const event = await t.run(async (ctx) => await ctx.db.get(firstClaim.eventId));
 
+    expect(session).toMatchObject({ adminStatus: "resolved", inboxState: "done", resolutionSource: "ai" });
     expect(session).toMatchObject({
       channel: "instagram",
       visitorId: "instagram:ig-user-123",

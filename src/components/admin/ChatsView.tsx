@@ -42,7 +42,7 @@ import type {
 import { shortcutKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
-type SessionStatus = "needs_reply" | "active" | "all" | "inactive";
+type SessionStatus = "needs_reply" | "in_progress" | "active" | "all" | "inactive";
 type EmptyChatFilter = "non_empty" | "empty";
 
 const statusTabs = [
@@ -50,16 +50,16 @@ const statusTabs = [
   { value: "all", label: "All" },
   { value: "inactive", label: "Inactive" },
 ] satisfies { value: SessionStatus; label: string }[];
-const statusOptions: SessionStatus[] = ["needs_reply", "active", "all", "inactive"];
+const statusOptions: SessionStatus[] = ["needs_reply", "in_progress", "active", "all", "inactive"];
 type InboxStateFilter = AdminSessionStatus | "done";
 type InboxQueue = "waiting" | "open" | "done";
 const queueTabs = [
-  { value: "waiting", label: "Waiting" },
-  { value: "open", label: "Open" },
+  { value: "waiting", label: "Needs you" },
+  { value: "open", label: "In progress" },
   { value: "done", label: "Done" },
 ] satisfies { value: InboxQueue; label: string }[];
 function queueParams(queue: InboxQueue): { view: SessionStatus; state: InboxStateFilter } {
-  return { view: queue === "waiting" ? "needs_reply" : "all", state: queue === "done" ? "done" : "open" };
+  return { view: queue === "waiting" ? "needs_reply" : queue === "open" ? "in_progress" : "all", state: queue === "done" ? "done" : "open" };
 }
 const adminStatusOptions: InboxStateFilter[] = ["open", "done", "resolved", "archived"];
 const adminStatusTabs = adminStatusOptions.map((value) => ({
@@ -179,11 +179,6 @@ export function ChatsView() {
   useEffect(() => {
     navigationQueryRef.current = searchParams.toString();
   }, [searchParams]);
-  // A late action result may navigate only if nothing else has since: call at action start, check when it ends.
-  function captureNavigation() {
-    const query = searchParams.toString();
-    return () => navigationQueryRef.current === query;
-  }
   const now = usePresenceClock();
   const presenceMinute = Math.floor(now / 60_000) * 60_000;
   const largeViewport = useMediaQuery("(min-width: 1024px)");
@@ -247,11 +242,6 @@ export function ChatsView() {
   const factProperties = useQuery(api.properties.adminList, factTarget ? {} : "skip") as
     | AdminFactProperty[]
     | undefined;
-  const reply = useAdminReplyComposer(selectedSessionId);
-  const [retainedReply, setRetainedReply] = useState<{ sessionId: Id<"chatSessions">; query: string } | null>(null);
-  useEffect(() => {
-    setRetainedReply((current) => (current?.query === searchParams.toString() ? current : null));
-  }, [searchParams]);
   const settleGuestMessageMutation = useMutation(api.adminChat.settleGuestMessage);
   // The ref guards repeat clicks and `e` before React commits; the state drives the buttons.
   const settlingRef = useRef(new Set<Id<"chatMessages">>());
@@ -308,6 +298,7 @@ export function ChatsView() {
     { initialNumItems: 10 },
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
+  const reply = useAdminReplyComposer(selectedSessionId, sessionDetail?.session.latestGuestMessageId);
   const unqualifiedDeepLink =
     Boolean(selectedSessionId) &&
     incomingSessionId === selectedSessionId &&
@@ -329,7 +320,7 @@ export function ChatsView() {
     }
     // Keep the incoming transcript visible until the matching queue URL commits.
     updateParams({
-      view: "all",
+      view: selectedStatus === "open" && sessionDetail.session.inboxState === "processing" ? "in_progress" : "all",
       state: selectedStatus === "open" ? "open" : "done",
       session: selectedSessionId,
     });
@@ -348,13 +339,10 @@ export function ChatsView() {
       sessions.find((session) => session._id === selectedSessionId) ??
       (sessionDetail?.session ? withLivePresence(sessionDetail.session, now) : null);
     if (!candidate) return null;
-    if (unqualifiedDeepLink) return candidate;
+    if (unqualifiedDeepLink || candidate.inboxState) return candidate;
     const candidateStatus = candidate.adminStatus ?? "open";
     if (adminStatus === "done" ? candidateStatus === "open" : candidateStatus !== adminStatus) return null;
-    const awaitingReplyNavigation =
-      reply.pending ||
-      (retainedReply?.sessionId === selectedSessionId && retainedReply.query === searchParams.toString());
-    if (status === "needs_reply" && !candidate.needsReply && !awaitingReplyNavigation) return null;
+    if (status === "needs_reply" && !candidate.needsReply && !reply.pending) return null;
     return candidate;
   }, [
     selectedSessionId,
@@ -365,21 +353,11 @@ export function ChatsView() {
     status,
     unqualifiedDeepLink,
     reply.pending,
-    retainedReply,
-    searchParams,
   ]);
 
   function sendAdminReply() {
-    const isCurrentNavigation = captureNavigation();
-    const leavesWaiting = status === "needs_reply";
-    return reply.send((sessionId) => {
-      // A reply leaves Waiting. Keep it visible in Open, including its delivery feedback.
-      if (leavesWaiting && isCurrentNavigation()) {
-        // Convex can mark the guest answered before the response/URL arrives. Keep this transcript mounted.
-        setRetainedReply({ sessionId, query: searchParams.toString() });
-        updateParams({ ...queueParams("open"), session: sessionId });
-      }
-    });
+    // The transcript stays on screen while the backend moves the conversation to its new queue.
+    return reply.send();
   }
 
   async function settleGuestMessage(sessionId: Id<"chatSessions">, messageId: Id<"chatMessages">) {
@@ -433,7 +411,8 @@ export function ChatsView() {
     onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content } }),
     actions: selectedSession ? (
       <AdminSessionActions
-        session={selectedSession}
+        session={{ ...selectedSession, latestGuestMessageId:
+          selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
         onDeleted={() => {
           if (navigationQueryRef.current === searchParams.toString()) selectSession(null);
         }}
@@ -441,7 +420,9 @@ export function ChatsView() {
           // A completed mutation must not replace navigation requested while it was pending.
           if (navigationQueryRef.current !== searchParams.toString()) return;
           if (nextStatus === "open") updateParams({ ...queueParams("open"), session: selectedSession._id });
-          else {
+          else if (nextStatus === "resolved") {
+            // Keep the transcript and its completion feedback visible.
+          } else {
             const index = sessions.findIndex((session) => session._id === selectedSession._id);
             const next = sessions[index + 1] ?? sessions[index - 1];
             selectSession(isLargeViewport ? (next?._id ?? null) : null);
@@ -573,7 +554,7 @@ export function ChatsView() {
       if (!session?.needsReply || !session.latestMessage || settlingRef.current.has(session.latestMessage._id)) return;
       // Settled chats leave the "Needs reply" list, so move on to the next one.
       if (status === "needs_reply") moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
-      void settleGuestMessage(session._id, session.latestMessage._id);
+      void settleGuestMessage(session._id, session.latestGuestMessageId ?? session.latestMessage._id);
     }
   });
 
@@ -811,7 +792,7 @@ export function ChatsView() {
                 <EmptyState action={emptyList.action}>{emptyList.message}</EmptyState>
               ) : null}
               {sessions.map((session) => {
-                const unansweredMessage = session.needsReply ? session.latestMessage : undefined;
+                const unansweredMessageId = session.needsReply ? (session.latestGuestMessageId ?? session.latestMessage?._id) : undefined;
                 const selected = selectedSessionId === session._id;
                 return (
                   <div
@@ -844,7 +825,7 @@ export function ChatsView() {
                         {session.needsReply && (session.adminStatus ?? "open") === "open" ? (
                           <span
                             className="size-1.5 shrink-0 rounded-full bg-gold-text"
-                            aria-label="Waiting for reply"
+                            aria-label="Needs staff attention"
                           />
                         ) : null}
                         <ChannelIcon channel={session.channel} className="h-3.5 w-3.5 shrink-0" />
@@ -854,13 +835,13 @@ export function ChatsView() {
                         </span>
                       </span>
                     </button>
-                    {unansweredMessage ? (
+                    {unansweredMessageId ? (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => settleGuestMessage(session._id, unansweredMessage._id)}
-                        disabled={settlingMessageIds.has(unansweredMessage._id)}
+                        onClick={() => settleGuestMessage(session._id, unansweredMessageId)}
+                        disabled={settlingMessageIds.has(unansweredMessageId)}
                         aria-label={`Mark the message from ${visitorLabel(session)} as settled`}
                         title="Mark as settled: no reply needed (e)"
                         className={cn(

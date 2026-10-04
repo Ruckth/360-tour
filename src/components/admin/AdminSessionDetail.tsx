@@ -356,7 +356,16 @@ export function AdminSessionDetail({
               {session.adminStatus === "archived"
                 ? "Archived conversation"
                 : session.adminStatus === "resolved"
-                  ? "Conversation completed"
+                  ? session.inboxReason === 'awaiting_guest' ? 'Done automatically · Waiting for guest'
+                    : session.resolutionSource === 'ai' ? 'Done automatically · AI answered'
+                    : session.resolutionSource === 'staff' ? 'Done automatically · Staff answered'
+                    : session.inboxReason === 'no_reply_needed' ? 'No reply needed' : 'Marked Done'
+                  : session.inboxReason === 'handoff' ? 'Staff handoff · A person needs to help'
+                  : session.inboxReason === 'send_failed' ? 'Reply failed · Staff attention needed'
+                  : session.inboxReason === 'sending' ? 'Sending reply…'
+                  : session.inboxReason === 'answering' ? 'AI is answering…'
+                  : session.inboxReason === 'review_required' ? 'Previous conversation · Staff review needed'
+                  : session.staffTask ? 'Staff follow-up in progress'
                   : session.aiPaused
                     ? "Staff is replying · AI paused"
                     : "AI is active · Your reply takes over"}
@@ -377,11 +386,13 @@ export function AdminSessionDetail({
                   : session.adminStatus === "resolved"
                     ? "Done"
                     : session.needsReply
-                      ? "Waiting"
-                      : "Open"
+                      ? "Needs you"
+                      : "In progress"
               }
             />
           </div>
+          {session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null}
+          {session.inboxSendError ? <p role="alert" className="border-t border-border/40 px-4 py-2 text-xs text-destructive sm:px-6">{session.inboxSendError}</p> : null}
         </div>
 
         <div

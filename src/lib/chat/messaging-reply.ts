@@ -31,6 +31,7 @@ export type MessagingEventKind = "message" | "postback" | "follow";
 export type IncomingMessage = {
   channel: MessagingChannel;
   sessionId: string;
+  replyToMessageId?: string;
   siteUrl: string;
   kind: MessagingEventKind;
   text?: string;
@@ -71,6 +72,7 @@ export type MessagingReplyMetrics = {
 };
 
 export type MessagingReplyResult = {
+  outcome?: 'answered' | 'awaiting_guest' | 'needs_staff';
   responseText: string;
   replyMode: MessagingReplyMode;
   model?: string;
@@ -110,6 +112,7 @@ export function storedReplyMode(mode: MessagingReplyMode): "ai" | "unknown_fallb
 }
 
 type GeneratedReply = {
+  outcome?: 'answered' | 'awaiting_guest' | 'needs_staff';
   response?: string;
   model?: string;
   committed?: CommittedOutcome;
@@ -254,6 +257,7 @@ export async function resolveMessagingReply(
     generation = client.action(api.chatAi.generateReply, {
       sessionId: incoming.sessionId,
       userMessage: message,
+      ...(incoming.replyToMessageId ? { replyToMessageId: incoming.replyToMessageId } : {}),
       channel: incoming.channel,
       siteUrl: incoming.siteUrl,
       turnId,
@@ -303,6 +307,7 @@ export async function resolveMessagingReply(
 
     return {
       responseText: reply.response ?? localizedTimeoutFallbackReply(locale),
+      ...(reply.outcome ? { outcome: reply.outcome } : {}),
       replyMode,
       ...(reply.model ? { model: reply.model } : {}),
       timedOut: false,

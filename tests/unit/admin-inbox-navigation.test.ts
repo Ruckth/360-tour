@@ -190,52 +190,35 @@ describe("inbox navigation", () => {
       });
       const destination = new URL(mocks.replace.mock.calls.at(-1)![0], "https://example.test");
       for (const key of ["q", "channel", "from", "to"]) expect(destination.searchParams.has(key)).toBe(false);
-      expect(destination.searchParams.get("view")).toBe("all");
+      expect(destination.searchParams.get("view")).toBe("in_progress");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it.each([true, false])(
-    "keeps a replying Waiting transcript visible until Open commits (desktop: %s)",
-    async (desktop) => {
-      mocks.desktop = desktop;
-      mocks.search = new URLSearchParams("view=needs_reply&session=session-a");
-      const pending = deferred<Response>();
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(() => pending.promise),
-      );
-      await render();
-      await act(async () => {
-        latestDetail().onReplyDraftChange("Thanks for waiting.");
-      });
-      let sending!: Promise<void>;
-      await act(async () => {
-        sending = latestDetail().onSendReply();
-      });
-      // Convex updates arrive before the HTTP response: the guest no longer needs a reply.
-      mocks.page = [];
-      mocks.detail = { session: { ...session("session-a"), needsReply: false }, replyWindow: { applies: false } };
-      await render();
-      expect(document.querySelector('[data-selected="session-a"]')).not.toBeNull();
-      await act(async () => {
-        pending.resolve(replyResponse());
-        await sending;
-      });
-      expect(latestDetail().replyPending).toBe(false);
-      expect(document.querySelector('[data-selected="session-a"]')).not.toBeNull();
-      const destination = mocks.replace.mock.calls.at(-1)![0] as string;
-      expect(destination).toContain("view=all");
-      mocks.search = new URLSearchParams(destination.split("?")[1]);
-      await render();
-      expect(document.querySelector('[data-selected="session-a"]')).not.toBeNull();
-      // Re-visiting Waiting later must not inherit the completed operation's exemption.
-      mocks.search = new URLSearchParams("view=needs_reply&session=session-a");
-      await render();
-      expect(document.querySelector('[data-selected="session-a"]')).toBeNull();
-    },
-  );
+  it.each([true, false])("keeps the transcript visible after automatic Done without changing queues (desktop: %s)", async desktop => {
+    mocks.desktop = desktop;
+    mocks.search = new URLSearchParams("view=needs_reply&session=session-a");
+    mocks.page = [{ ...session("session-a"), inboxState: "needs_staff" }];
+    const pending = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+    await render();
+    await act(async () => { latestDetail().onReplyDraftChange("Thanks for waiting."); });
+    let sending!: Promise<void>;
+    await act(async () => { sending = latestDetail().onSendReply(); });
+    mocks.page = [];
+    mocks.detail = { session: { ...session("session-a", "resolved"), inboxState: "done", resolutionSource: "staff", needsReply: false }, replyWindow: { applies: false } };
+    await render();
+    expect(document.querySelector('[data-selected="session-a"]')).not.toBeNull();
+    mocks.replace.mockClear();
+    await act(async () => { pending.resolve(replyResponse()); await sending; });
+    expect(latestDetail().replyPending).toBe(false);
+    expect(document.querySelector('[data-selected="session-a"]')).not.toBeNull();
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(buttonByText("Undo")).toBeDefined();
+    await click("Undo");
+    expect(mocks.replace.mock.calls.at(-1)?.[0]).toContain("view=in_progress");
+  });
 
   it.each(["done", "resolved", "archived"])("uses all activity for old %s URLs without view", async (state) => {
     mocks.search = new URLSearchParams(`state=${state}&session=session-a`);
@@ -275,15 +258,32 @@ describe("inbox navigation", () => {
     expect(document.querySelector('[data-selected="session-a"]')).toBeNull();
   });
 
-  it.each(["session-b", "session-c"])("resolves %s to its adjacent conversation", async (id) => {
-    mocks.search = new URLSearchParams(`view=all&session=${id}`);
-    mocks.page = [session("session-a"), session("session-b"), session("session-c")];
-    mocks.detail = { session: session(id), replyWindow: { applies: false } };
+  it("keeps a conversation visible after No reply needed", async () => {
+    mocks.detail = { session: { ...session("session-a"), latestGuestMessageId: "guest-a" }, replyWindow: { applies: false } };
     await render();
-    await click("Resolve");
-    expect(mocks.replace.mock.calls.at(-1)?.[0]).toContain(
-      id === "session-b" ? "session=session-c" : "session=session-b",
-    );
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
+    mocks.replace.mockClear();
+    await click("No reply needed");
+    expect(mocks.mutation).toHaveBeenCalledWith({ sessionId: "session-a", status: "resolved", expectedGuestMessageId: "guest-a" });
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows follow-up save errors inside the open dialog and keeps the task", async () => {
+    await render();
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
+    await click("Add follow-up / Keep open");
+    const input = document.querySelector<HTMLInputElement>('input[id="follow-up-session-a"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Check housekeeping");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    mocks.mutation.mockRejectedValueOnce(new Error("Connection lost. Try again."));
+    await act(async () => {
+      input.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("Connection lost. Try again.");
+    expect(input.value).toBe("Check housekeeping");
   });
 
   it("queries only the debounced search", async () => {
@@ -344,6 +344,18 @@ describe("inbox navigation", () => {
     },
   );
 
+  it("opens a processing lifecycle deep link in the In progress queue", async () => {
+    mocks.search = new URLSearchParams("session=session-a");
+    mocks.page = [];
+    mocks.detail = {
+      session: { ...session("session-a"), needsReply: false, inboxState: "processing" },
+      replyWindow: { applies: false },
+    };
+    await render();
+    expect(document.querySelector('[data-selected="session-a"]')).not.toBeNull();
+    expect(mocks.replace.mock.calls.at(-1)?.[0]).toContain("view=in_progress");
+  });
+
   it("keeps an explicitly filtered Waiting view scoped to unanswered conversations", async () => {
     mocks.search = new URLSearchParams("view=needs_reply&session=session-a");
     mocks.page = [];
@@ -360,7 +372,8 @@ describe("inbox navigation", () => {
     const pending = deferred();
     mocks.mutation.mockReturnValueOnce(pending.promise);
     await render();
-    await click("Resolve");
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
+    await click("Archive conversation");
     mocks.search = new URLSearchParams(
       navigation === "selection" ? "view=all&session=session-b" : "view=all&state=done",
     );
@@ -405,7 +418,7 @@ describe("inbox replies", () => {
     });
   }
 
-  it("keeps each conversation's reply independent and lets only the current one navigate", async () => {
+  it("keeps each conversation's reply independent without moving either transcript", async () => {
     const replies = [deferred<Response>(), deferred<Response>()];
     const fetchMock = vi.fn().mockReturnValueOnce(replies[0].promise).mockReturnValueOnce(replies[1].promise);
     vi.stubGlobal("fetch", fetchMock);
@@ -439,9 +452,8 @@ describe("inbox replies", () => {
     });
     expect(buttonByText("Send").disabled).toBe(false);
     expect(latestDetail().replyStatus).toBe("Reply accepted by LINE. Delivery is not confirmed.");
-    // B replied from Waiting, so it stays visible in Open.
-    expect(mocks.replace).toHaveBeenCalledTimes(1);
-    expect(mocks.replace.mock.calls[0][0]).toBe("/admin/chats?view=all&session=session-b");
+    // Completion leaves the responder on the same conversation.
+    expect(mocks.replace).not.toHaveBeenCalled();
 
     // A kept its own result.
     mocks.search = new URLSearchParams("view=needs_reply&session=session-a");

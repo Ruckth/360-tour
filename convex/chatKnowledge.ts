@@ -18,6 +18,7 @@ import { requiresLiveFacts, capabilityReply } from './lib/conciergePolicy';
 import { requireAdmin } from './lib/adminAuth';
 import { readBudget, ReadBudgetExceeded, readRangeWithinBudget } from './lib/readBudget';
 import { normalizeSuggestedQuestion } from './lib/chatSuggestions';
+import { staffNeeded } from './lib/inboxLifecycle';
 import { createAnswerMatcher, groupUnknownQuestions } from './lib/knowledgeGrouping';
 
 const answerStatusValidator = v.union(
@@ -101,9 +102,10 @@ async function claimStaffAlertSlot(ctx: MutationCtx, now: number) {
 	return true;
 }
 
-export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'chatSessions'>, message: string) {
+export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'chatSessions'>, message: string, replyToMessageId?: Id<'chatMessages'>) {
 	const session = await ctx.db.get(sessionId);
 	if (!session || session.visitorId?.startsWith("eval:")) return false;
+	if (!await staffNeeded(ctx, sessionId, replyToMessageId)) return false;
 	const now = Date.now();
 	if (session.lastStaffAlertAt && now - session.lastStaffAlertAt < 30 * 60 * 1000) return false;
 	// Sessions are created by anonymous clients, so enforce a rolling global hour as well.
@@ -122,8 +124,8 @@ export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'chatSessi
 }
 
 export const alertStaffForHandoff = internalMutation({
-	args: { sessionId: v.id('chatSessions'), lastMessage: v.string() },
-	handler: async (ctx, args) => await queueStaffAlert(ctx, args.sessionId, args.lastMessage)
+	args: { sessionId: v.id('chatSessions'), lastMessage: v.string(), replyToMessageId: v.optional(v.id('chatMessages')) },
+	handler: async (ctx, args) => await queueStaffAlert(ctx, args.sessionId, args.lastMessage, args.replyToMessageId)
 });
 
 function normalizeTopicName(value: string) {
@@ -862,6 +864,7 @@ export const getApprovedContext = internalQuery({
 export const recordUnknownQuestion = mutation({
 	args: {
 		sessionId: v.optional(v.id('chatSessions')),
+		replyToMessageId: v.optional(v.id('chatMessages')),
 		userQuestion: v.string(),
 		detectedTopic: v.optional(v.string()),
 		pageUrl: v.optional(v.string()),
@@ -875,7 +878,7 @@ export const recordUnknownQuestion = mutation({
 		const session = args.sessionId ? await ctx.db.get(args.sessionId) : null;
 		const { propertyId, propertySlug } = await resolveSessionProperty(ctx, session, args.propertySlug);
 		const now = Date.now();
-		if (args.sessionId && session) await queueStaffAlert(ctx, args.sessionId, userQuestion);
+		if (args.sessionId && session) await queueStaffAlert(ctx, args.sessionId, userQuestion, args.replyToMessageId);
 
 		if (args.sessionId) {
 			const existingRows = await ctx.db

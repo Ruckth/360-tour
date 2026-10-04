@@ -26,12 +26,13 @@ export async function POST(request: Request) {
   if (!payload || typeof payload !== "object") {
     return Response.json({ error: "Invalid reply request" }, { status: 400 });
   }
-  const { sessionId, requestId, content } = payload as Record<string, unknown>;
+  const { sessionId, requestId, content, replyToMessageId } = payload as Record<string, unknown>;
   if (
     typeof sessionId !== "string" ||
     typeof requestId !== "string" ||
     !UUID_PATTERN.test(requestId) ||
     typeof content !== "string" ||
+    (replyToMessageId !== undefined && typeof replyToMessageId !== "string") ||
     content.trim().length < 1 ||
     content.trim().length > MAX_REPLY_LENGTH
   ) {
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
       sessionId: sessionId as Id<"chatSessions">,
       requestId,
       content,
+      ...(typeof replyToMessageId === 'string' ? { replyToMessageId: replyToMessageId as Id<'chatMessages'> } : {}),
     });
     if (reply.state === "sent") return Response.json({ ok: true, channel: reply.channel });
     if (reply.state !== "new") {
@@ -75,8 +77,8 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, channel: reply.channel });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to send reply";
-    if (claimed && !delivered) {
-      await client.mutation(api.adminReply.fail, { requestId, error: message }).catch(() => null);
+    if (claimed) {
+      await client.mutation(api.adminReply.fail, { requestId, error: delivered ? 'Channel accepted the reply; transcript confirmation failed. Check before resending.' : message }).catch(() => null);
     }
     return Response.json(
       {
