@@ -6,7 +6,13 @@ import { useRef, useState } from "react";
 import { sourceLabel } from "@/components/admin/labels";
 
 type SessionId = Id<"chatSessions">;
-type ReplyEntry = { draft: string; pending?: boolean; error?: string; status?: string };
+type ReplyEntry = {
+  draft: string;
+  replyToMessageId?: Id<"chatMessages">;
+  pending?: boolean;
+  error?: string;
+  status?: string;
+};
 
 export type AdminReplyComposer = {
   draft: string;
@@ -37,8 +43,17 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
     const id = sessionId;
     const content = entry?.draft.trim() ?? "";
     if (!id || !content || pendingSessions.current.has(id)) return;
+    if (entry?.replyToMessageId !== replyToMessageId) {
+      update(id, (current) => ({
+        ...current,
+        error: "A new guest message arrived. Read it and edit your draft before sending.",
+        status: undefined,
+      }));
+      return;
+    }
+    const targetMessageId = entry?.replyToMessageId;
     pendingSessions.current.add(id);
-    update(id, ({ draft }) => ({ draft, pending: true }));
+    update(id, (current) => ({ ...current, pending: true, error: undefined, status: undefined }));
     let sent = false;
     try {
       const token = await getToken({ template: "convex" });
@@ -53,7 +68,7 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
           sessionId: id,
           requestId: crypto.randomUUID(),
           content,
-          ...(replyToMessageId ? { replyToMessageId } : {}),
+          ...(targetMessageId ? { replyToMessageId: targetMessageId } : {}),
         }),
       });
       const result = (await response.json()) as {
@@ -61,9 +76,11 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
         channel?: string;
       };
       if (!response.ok) throw new Error(result.error || "Unable to send reply");
-      update(id, ({ draft }) => ({
+      update(id, (current) => ({
+        ...current,
         // Keep anything typed while the reply was in flight.
-        draft: draft.trim() === content ? "" : draft,
+        draft: current.draft.trim() === content && current.replyToMessageId === targetMessageId
+          ? "" : current.draft,
         status:
           result.channel === "web"
             ? "Reply sent"
@@ -71,8 +88,8 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
       }));
       sent = true;
     } catch (error) {
-      update(id, ({ draft }) => ({
-        draft,
+      update(id, (current) => ({
+        ...current,
         error: error instanceof Error ? error.message : "Unable to send reply",
       }));
     } finally {
@@ -89,7 +106,13 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
     error: entry?.error ?? null,
     status: entry?.status ?? null,
     setDraft: (value) => {
-      if (sessionId) update(sessionId, (current) => ({ ...current, draft: value }));
+      if (sessionId) update(sessionId, (current) => ({
+        ...current,
+        draft: value,
+        replyToMessageId,
+        error: undefined,
+        status: undefined,
+      }));
     },
     send,
   };

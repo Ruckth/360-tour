@@ -13,8 +13,8 @@ import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getSupportedFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';
-import { asksForStaff } from './chatKnowledge';
 import type { ReplyOutcome } from './lib/inboxLifecycle';
+import { conciergeReplyOutcome } from './lib/conciergeReplyOutcome';
 import { capabilityReply, checkTimeReply, isCheckTimeQuestion, isCancellationPolicyQuestion, cancellationPolicyReply, replyLocale } from './lib/conciergePolicy';
 import { runConciergeTurn } from './lib/conciergeTurn';
 import { startTurnMetrics, recordStage, addPromptChars, recordModelRequest, recordTool, emitConciergeTurnLog, createTurnId, type TurnMetrics } from './lib/turnMetrics';
@@ -397,12 +397,7 @@ async function policyReply(
 export type ConciergeReply = { response: string; model: string; outcome?: ReplyOutcome; committed?: { tool: string } };
 
 function withReplyOutcome(reply: ConciergeReply): ConciergeReply {
-  const needsStaff = reply.model === 'unknown_fallback' || reply.model === 'tool_fallback' ||
-    reply.response.includes('[[NEEDS_STAFF]]') || asksForStaff(reply.response) ||
-    /\b(?:ask|check with|contact|connect|confirm with)\b.{0,50}\b(?:staff|host|team|kitchen)\b/i.test(reply.response);
-  const awaitingGuest = reply.response.includes('[[AWAITING_GUEST]]') || /[?？]\s*$/.test(reply.response);
-  return { ...reply, response: reply.response.replace(/\[\[(?:NEEDS_STAFF|AWAITING_GUEST|ANSWERED)\]\]/g, '').trim(),
-    outcome: needsStaff ? 'needs_staff' : awaitingGuest ? 'awaiting_guest' : 'answered' };
+  return { ...reply, ...conciergeReplyOutcome(reply.response, reply.model) };
 }
 
 export async function generateConciergeReply(
@@ -594,7 +589,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
       })),
     }),
   );
-	if (asksForStaff(response.content ?? '') || /\bput you in touch\b.{0,60}\b(host|staff|human|person|team)\b/i.test(response.content ?? '')) {
+	const finalModel = response.failed ? 'tool_fallback' : selectedModel;
+	if (conciergeReplyOutcome(response.content ?? '', finalModel).outcome === 'needs_staff') {
 		await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
 			sessionId: args.sessionId,
 			lastMessage: args.userMessage,
@@ -606,7 +602,6 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 		return await recordUnknownFallback(ctx, {...args, propertySlug: answerPropertySlug}, session);
 	}
 
-	const finalModel = response.failed ? 'tool_fallback' : selectedModel;
 	emit(response.failed ? 'tool_fallback' : 'ai', finalModel);
 	return {
 		response: response.content,

@@ -49,7 +49,8 @@ export function AdminSessionActions({
   }
 
   async function changeStatus(nextStatus: AdminSessionStatus) {
-    await setSessionStatus({ sessionId, status: nextStatus });
+    await setSessionStatus({ sessionId, status: nextStatus,
+      ...(nextStatus === "resolved" ? { expectedGuestMessageId: session.latestGuestMessageId ?? null } : {}) });
     onStatusChanged?.(nextStatus);
   }
 
@@ -155,11 +156,12 @@ export function AdminSessionActions({
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void run(async () => { await setStaffTask({ sessionId, task }); setTaskOpen(false); }); }}>
             <label htmlFor={`follow-up-${sessionId}`} className="text-sm font-medium">What needs to be done?</label>
             <Input id={`follow-up-${sessionId}`} value={task} onChange={event => setTask(event.target.value)} maxLength={300} placeholder="Check with housekeeping and update the guest" autoFocus required />
+            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <Button type="submit" disabled={pending || !task.trim()}>Save follow-up</Button>
           </form>
         </DialogContent>
       </Dialog>
-      {error ? (
+      {error && !taskOpen ? (
         <p role="alert" className="basis-full text-right text-xs text-destructive">
           {error}
         </p>

@@ -681,6 +681,8 @@ export const getSessionDetail = query({
 				...session,
 				propertyName: property?.name,
 				latestMessage,
+				latestGuestMessageId: session.latestGuestMessageId ??
+					(latestMessage?.role === 'user' ? latestMessage._id : await latestGuestId(ctx, session)),
 				messageCount: Math.max(getAdminChatMessageCount(session), latestMessage ? 1 : 0),
 				needsReply: sessionNeedsReply(session, latestMessage),
 				isActive: isChatSessionActive(session, now)
@@ -791,7 +793,8 @@ export const getTranscript = query({
 });
 
 export const setSessionStatus = mutation({
-	args: { sessionId: v.id('chatSessions'), status: adminStatusValidator },
+	args: { sessionId: v.id('chatSessions'), status: adminStatusValidator,
+		expectedGuestMessageId: v.optional(v.union(v.id('chatMessages'), v.null())) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);
@@ -799,6 +802,10 @@ export const setSessionStatus = mutation({
 
 		const now = Date.now();
 		if (args.status === 'resolved') {
+			if (args.expectedGuestMessageId !== undefined &&
+				(await latestGuestId(ctx, session) ?? null) !== args.expectedGuestMessageId) {
+				throw new Error('A new guest message arrived. Read it before marking No reply needed.');
+			}
 			await finishWithoutReply(ctx, args.sessionId);
 			return null;
 		}

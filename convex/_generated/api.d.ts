@@ -47,6 +47,7 @@ import type * as lib_chatTools from "../lib/chatTools.js";
 import type * as lib_chatWriteGuard from "../lib/chatWriteGuard.js";
 import type * as lib_codes from "../lib/codes.js";
 import type * as lib_conciergePolicy from "../lib/conciergePolicy.js";
+import type * as lib_conciergeReplyOutcome from "../lib/conciergeReplyOutcome.js";
 import type * as lib_conciergeTurn from "../lib/conciergeTurn.js";
 import type * as lib_curatedVariants from "../lib/curatedVariants.js";
 import type * as lib_dates from "../lib/dates.js";
@@ -138,6 +139,7 @@ declare const fullApi: ApiFromModules<{
   "lib/chatWriteGuard": typeof lib_chatWriteGuard;
   "lib/codes": typeof lib_codes;
   "lib/conciergePolicy": typeof lib_conciergePolicy;
+  "lib/conciergeReplyOutcome": typeof lib_conciergeReplyOutcome;
   "lib/conciergeTurn": typeof lib_conciergeTurn;
   "lib/curatedVariants": typeof lib_curatedVariants;
   "lib/dates": typeof lib_dates;

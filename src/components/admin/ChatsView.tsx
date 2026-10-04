@@ -411,7 +411,8 @@ export function ChatsView() {
     onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content } }),
     actions: selectedSession ? (
       <AdminSessionActions
-        session={selectedSession}
+        session={{ ...selectedSession, latestGuestMessageId:
+          selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
         onDeleted={() => {
           if (navigationQueryRef.current === searchParams.toString()) selectSession(null);
         }}

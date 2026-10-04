@@ -16,7 +16,9 @@ All five channels use the same mutation helpers in `convex/lib/inboxLifecycle.ts
 
 Staff takeover is released after successful completion unless **Keep with staff** is explicitly enabled. Pending sends, handoffs and follow-ups block Resume AI. Editing or completing a task preserves pending sending/failure state. Undo creates an explicit Review conversation task. The selected transcript stays visible when its queue changes; manually choosing another queue clears the previous selection.
 
-The AI prompt requests answered / awaiting-guest / needs-staff outcome markers. The server removes them before sending and conservatively treats unknown/tool fallbacks and staff promises as handoffs. Staff set an explicit follow-up before sending an acknowledgement that promises further work. The system does not infer that a real-world task has finished from message wording.
+The AI prompt requests answered / awaiting-guest / needs-staff outcome markers. Generated answers without a marker remain Needs you rather than guessing that work is finished. The shared classifier removes markers before sending, treats unknown/tool fallbacks and explicit staff promises as handoffs, and allows optional staff-contact guidance in an otherwise completed answer. Authored local policy/fallback answers have a separate deterministic path. Staff set an explicit follow-up before sending an acknowledgement that promises further work. The system does not infer that a real-world task has finished from message wording.
+
+Drafts remain attached to the guest message present when edited. A newer guest message requires staff to read it and edit the draft before sending. No reply needed checks the guest turn again inside its mutation; older conversations expose their derived guest ID before backfill. Follow-up save errors stay visible inside the dialog, with the entered task retained.
 
 ## Existing data and deployment
 
@@ -42,7 +44,7 @@ Use the CLI's `--prod` flag only for a deliberate production rollout. Do not nar
 
 ## Verification and visual evidence
 
-Verification passed: `pnpm verify` completed all application/test/Convex typechecks, 101 test files with 979 tests, and a production build of 147 routes. A final ESLint run after removing an unused hook dependency passed without warnings. Two independent code reviews reported no remaining blockers after the timing and failure regressions were fixed.
+Verification passed: `pnpm verify` completed all application/test/Convex typechecks, ESLint without warnings, 101 test files with 990 tests, and a production build of 147 routes. Two independent code reviews reported no remaining blockers after the timing, outcome classification, draft correlation and accessible error regressions were fixed.
 
 Backend regressions cover immediate completion, waiting for guest, all four messaging adapters, handoff visibility, failed send and retry, task completion, ownership pinning, stale drafted replies, older events, concurrent newer guest turns, duplicate sends, watchdog recovery, manual completion, archive and Undo. UI regressions cover retained desktop/mobile transcripts, navigation during pending work, queue switches and per-conversation drafts.
 

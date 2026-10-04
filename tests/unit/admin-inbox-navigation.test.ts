@@ -259,12 +259,31 @@ describe("inbox navigation", () => {
   });
 
   it("keeps a conversation visible after No reply needed", async () => {
+    mocks.detail = { session: { ...session("session-a"), latestGuestMessageId: "guest-a" }, replyWindow: { applies: false } };
     await render();
     await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
     mocks.replace.mockClear();
     await click("No reply needed");
-    expect(mocks.mutation).toHaveBeenCalledWith({ sessionId: "session-a", status: "resolved" });
+    expect(mocks.mutation).toHaveBeenCalledWith({ sessionId: "session-a", status: "resolved", expectedGuestMessageId: "guest-a" });
     expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows follow-up save errors inside the open dialog and keeps the task", async () => {
+    await render();
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
+    await click("Add follow-up / Keep open");
+    const input = document.querySelector<HTMLInputElement>('input[id="follow-up-session-a"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Check housekeeping");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    mocks.mutation.mockRejectedValueOnce(new Error("Connection lost. Try again."));
+    await act(async () => {
+      input.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("Connection lost. Try again.");
+    expect(input.value).toBe("Check housekeeping");
   });
 
   it("queries only the debounced search", async () => {

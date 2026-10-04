@@ -61,6 +61,35 @@ async function createWebSession(t: ReturnType<typeof convexTest>, propertySlug?:
   });
 }
 
+describe("reply outcome evidence", () => {
+  it.each([
+    { text: "I'll look into this and get back to you.", outcome: "needs_staff" },
+    { text: "ขอตรวจสอบก่อนแล้วจะแจ้งให้ทราบครับ", outcome: "needs_staff" },
+    { text: "I'll check with the team. [[ANSWERED]]", outcome: "needs_staff" },
+    { text: "Wi-Fi is included. You can contact our staff for further assistance. [[ANSWERED]]", outcome: "answered" },
+    { text: "What date would you like? [[AWAITING_GUEST]]", outcome: "awaiting_guest" },
+    { text: "Let me know if you want to check availability. [[AWAITING_GUEST]]", outcome: "awaiting_guest" },
+  ])("keeps $outcome work visible for $text", async ({ text, outcome }) => {
+    vi.stubEnv("AI_API_KEY", "test-key");
+    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: text } }],
+    }))));
+    try {
+      const t = convexTest(schema, modules);
+      const sessionId = await createWebSession(t);
+      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Do you have Wi-Fi?" });
+      expect(result).toMatchObject({ outcome });
+      expect(result.response).not.toMatch(/\[\[(ANSWERED|AWAITING_GUEST|NEEDS_STAFF)\]\]/);
+      const session = await t.run(ctx => ctx.db.get(sessionId));
+      expect(session?.inboxState).toBe(outcome === "needs_staff" ? "needs_staff" : "done");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe("concierge without AI credentials", () => {
   it.each(["line", "facebook", "instagram", "whatsapp"] as const)("[%s] uses a booking link and cannot claim a committed booking", async channel => {
     vi.stubEnv("AI_API_KEY", "");

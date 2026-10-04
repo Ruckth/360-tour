@@ -15,16 +15,19 @@ const B = "session-b" as Id<"chatSessions">;
 let root: Root;
 let composer: AdminReplyComposer;
 
-function Harness({ sessionId }: { sessionId: Id<"chatSessions"> | null }) {
-  const current = useAdminReplyComposer(sessionId);
+function Harness({ sessionId, replyToMessageId }: {
+  sessionId: Id<"chatSessions"> | null;
+  replyToMessageId?: Id<"chatMessages">;
+}) {
+  const current = useAdminReplyComposer(sessionId, replyToMessageId);
   useEffect(() => {
     composer = current;
   });
   return null;
 }
-async function render(sessionId: Id<"chatSessions"> | null) {
+async function render(sessionId: Id<"chatSessions"> | null, replyToMessageId?: Id<"chatMessages">) {
   await act(async () => {
-    root.render(createElement(Harness, { sessionId }));
+    root.render(createElement(Harness, { sessionId, replyToMessageId }));
   });
 }
 function deferred<T>() {
@@ -54,6 +57,48 @@ afterEach(async () => {
 });
 
 describe("useAdminReplyComposer", () => {
+  it("preserves an older draft and requires review when a new guest message arrives", async () => {
+    const first = "guest-first" as Id<"chatMessages">;
+    const next = "guest-next" as Id<"chatMessages">;
+    const fetchMock = vi.fn().mockResolvedValue(response(true, { channel: "web" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await render(A, first);
+    await act(async () => composer.setDraft("Check-in is at 3 PM."));
+    await render(B, "guest-b" as Id<"chatMessages">);
+    await render(A, next);
+    await act(async () => composer.send());
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(composer).toMatchObject({
+      draft: "Check-in is at 3 PM.",
+      pending: false,
+      error: "A new guest message arrived. Read it and edit your draft before sending.",
+    });
+    await act(async () => composer.setDraft("Check-in is at 3 PM. Checkout is at 11 AM."));
+    await act(async () => composer.send());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ replyToMessageId: next });
+    expect(composer.draft).toBe("");
+  });
+
+  it("keeps a draft for a newer guest turn when an earlier identical reply finishes", async () => {
+    const first = "guest-first" as Id<"chatMessages">;
+    const next = "guest-next" as Id<"chatMessages">;
+    const reply = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValue(reply.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    await render(A, first);
+    await act(async () => composer.setDraft("Yes."));
+    let sending!: Promise<void>;
+    await act(async () => { sending = composer.send(); });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ replyToMessageId: first });
+    await render(A, next);
+    await act(async () => composer.setDraft("Yes."));
+    await act(async () => {
+      reply.resolve(response(true, { channel: "web" }));
+      await sending;
+    });
+    expect(composer).toMatchObject({ draft: "Yes.", pending: false });
+  });
+
   it("posts the trimmed draft with the Clerk token and reports channel feedback", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response(true, { channel: "whatsapp" }));
     vi.stubGlobal("fetch", fetchMock);

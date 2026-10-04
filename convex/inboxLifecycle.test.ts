@@ -33,6 +33,35 @@ async function setup() {
   return { t, admin, sessionId, guestId, detail };
 }
 describe("automatic responder lifecycle", () => {
+  it("exposes the guest turn for guarded completion of an unmigrated legacy chat", async () => {
+    const s = await setup();
+    await s.t.run(async ctx => {
+      await ctx.db.patch(s.sessionId, { latestGuestMessageId: undefined, inboxState: undefined, inboxReason: undefined });
+      await ctx.db.insert("chatMessages", {
+        sessionId: s.sessionId, role: "assistant", content: "Historical reply", timestamp: Date.now(),
+      });
+    });
+    const detail = await s.detail();
+    expect(detail.latestGuestMessageId).toBe(s.guestId);
+    await s.admin.mutation(api.adminChat.setSessionStatus, {
+      sessionId: s.sessionId, status: "resolved", expectedGuestMessageId: detail.latestGuestMessageId,
+    });
+    expect(await s.detail()).toMatchObject({ inboxState: "done", inboxReason: "no_reply_needed" });
+  });
+  it("rejects No reply needed when a new guest turn arrived after the action was chosen", async () => {
+    const s = await setup();
+    const newer = await s.t.mutation(api.chat.addMessage, {
+      sessionId: s.sessionId, role: "user", content: "Can I bring a pet?",
+    });
+    await expect(s.admin.mutation(api.adminChat.setSessionStatus, {
+      sessionId: s.sessionId, status: "resolved", expectedGuestMessageId: s.guestId,
+    })).rejects.toThrow("A new guest message arrived");
+    expect(await s.detail()).toMatchObject({ latestGuestMessageId: newer, inboxState: "processing" });
+    await s.admin.mutation(api.adminChat.setSessionStatus, {
+      sessionId: s.sessionId, status: "resolved", expectedGuestMessageId: newer,
+    });
+    expect(await s.detail()).toMatchObject({ inboxState: "done", inboxReason: "no_reply_needed" });
+  });
   it.each(["answered", "awaiting_guest"] as const)(
     "resolves a successful AI %s and reopens on another guest turn",
     async (outcome) => {
