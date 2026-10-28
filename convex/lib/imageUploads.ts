@@ -12,3 +12,13 @@ export function uploadProblem(kind: UploadKind, contentType: string | undefined,
 	if (size > max) return `${kind === 'panorama' ? 'Panoramas' : 'Photos'} must be ${max / MB} MB or smaller`;
 	return null;
 }
+
+/** Staff and service photos are optimized in the browser (WebP, or JPEG where WebP encoding is missing), so only those are stored. */
+export const AVATAR_UPLOAD_TYPES = ['image/webp', 'image/jpeg'] as const;
+export const MAX_AVATAR_BYTES = 400 * 1024;
+
+export function avatarUploadProblem(contentType: string | undefined, size: number): string | null {
+	if (!(AVATAR_UPLOAD_TYPES as readonly string[]).includes(contentType ?? '')) return 'Photos must be optimized WebP or JPEG';
+	if (size > MAX_AVATAR_BYTES) return `Photos must be ${MAX_AVATAR_BYTES / 1024} KB or smaller`;
+	return null;
+}

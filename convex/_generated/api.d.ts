@@ -33,6 +33,7 @@ import type * as instagram from "../instagram.js";
 import type * as leads from "../leads.js";
 import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminChatMetadata from "../lib/adminChatMetadata.js";
+import type * as lib_adminPhotos from "../lib/adminPhotos.js";
 import type * as lib_appointmentChanges from "../lib/appointmentChanges.js";
 import type * as lib_appointmentWindow from "../lib/appointmentWindow.js";
 import type * as lib_availabilityWrites from "../lib/availabilityWrites.js";
@@ -125,6 +126,7 @@ declare const fullApi: ApiFromModules<{
   leads: typeof leads;
   "lib/adminAuth": typeof lib_adminAuth;
   "lib/adminChatMetadata": typeof lib_adminChatMetadata;
+  "lib/adminPhotos": typeof lib_adminPhotos;
   "lib/appointmentChanges": typeof lib_appointmentChanges;
   "lib/appointmentWindow": typeof lib_appointmentWindow;
   "lib/availabilityWrites": typeof lib_availabilityWrites;

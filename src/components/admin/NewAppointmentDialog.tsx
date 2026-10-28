@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { useRef, useState, type FormEvent } from "react";
+import { ServicePicker } from "@/components/admin/ServicePicker";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -194,27 +195,19 @@ export function NewAppointmentDialog({
           <div className="min-h-0 overflow-y-auto">
             <fieldset disabled={saving} className="grid min-w-0 gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label>Service</Label>
-                  <Select
+                <div className="grid gap-2 sm:col-span-2">
+                  <Label id="na-service-label" htmlFor="na-service">Service</Label>
+                  <ServicePicker
+                    id="na-service"
+                    labelId="na-service-label"
+                    services={services}
                     value={serviceId}
                     disabled={saving}
-                    onValueChange={(value) => {
-                      setServiceId(value as Id<"services">);
+                    onChange={(value) => {
+                      setServiceId(value);
                       setStart(null);
                     }}
-                  >
-                    <SelectTrigger className="rounded-lg" aria-label="Service">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {services.map((s) => (
-                        <SelectItem key={s._id} value={s._id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="na-date">Date</Label>

@@ -12,6 +12,10 @@ import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
+import { ServiceThumb, ServiceThumbZoom } from "@/components/admin/ServicePhoto";
+import { StaffAvatarPhotoButton, StaffListPhotoButton } from "@/components/admin/StaffAvatarPhoto";
+import { PhotoPickerButton } from "@/components/admin/PhotoPickerButton";
+import { usePhotoDraft } from "@/components/admin/usePhotoDraft";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -254,7 +258,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                   <Row
                     key={s._id}
                     archived={s.status === "archived"}
-                    leading={<StaffAvatar staff={s} className="size-10" />}
+                    leading={<StaffListPhotoButton staff={s} onError={setError} />}
                     title={s.name}
                     subtitle={`${s.role} · ${hoursSummary(s)}`}
                     onEdit={() => setEditing({ kind: "staff", staff: s })}
@@ -268,11 +272,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                   <Row
                     key={s._id}
                     archived={s.status === "archived"}
-                    leading={
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold text-muted-foreground">
-                        {s.durationMin}′
-                      </span>
-                    }
+                    leading={<ServiceThumbZoom service={s} className="size-10" />}
                     title={s.name}
                     subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${formatMoney(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
                     onEdit={() => setEditing({ kind: "service", service: s })}
@@ -396,6 +396,9 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
   const [error, setError] = useState("");
   // Set once a new person is saved, so retrying a failed time off updates them instead of adding them again.
   const [createdId, setCreatedId] = useState<Id<"staff"> | null>(null);
+  const photo = usePhotoDraft(staff?.avatarUrl);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState("");
   const today = resortIsoDate(useNow());
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -406,7 +409,6 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     const profile = {
       name: text("name"),
       role: text("role"),
-      avatarUrl: text("avatarUrl"),
       color: text("color"),
     };
     const schedule = {
@@ -432,16 +434,20 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     setError("");
     try {
       const existingId = staff?._id ?? createdId;
-      if (existingId) {
-        // Profile and hours first: saving them again is harmless, so a retry after a
-        // failed time-off insert (e.g. a clash with a booking) can't duplicate the time off.
-        await updateStaff({ staffId: existingId, ...profile, ...(simpleSchedule ? schedule : {}) });
-        if (offFrom) await timeOff(existingId);
-      } else {
-        const staffId = await createStaff({ ...profile, avatarUrl: profile.avatarUrl || undefined, ...schedule });
+      // Profile and hours first: saving them again is harmless, so a retry after a
+      // failed time-off insert (e.g. a clash with a booking) can't duplicate the time off.
+      // No photo argument keeps the current photo, including one set by URL.
+      const saveStaff = async (avatarStorageId?: Id<"_storage"> | null) => {
+        if (existingId) {
+          await updateStaff({ staffId: existingId, ...profile, ...(simpleSchedule ? schedule : {}), avatarStorageId });
+          return existingId;
+        }
+        const staffId = await createStaff({ ...profile, ...schedule, avatarStorageId: avatarStorageId ?? undefined });
         setCreatedId(staffId);
-        if (offFrom) await timeOff(staffId);
-      }
+        return staffId;
+      };
+      const staffId = await photo.save(saveStaff);
+      if (offFrom) await timeOff(staffId);
       onClose();
     } catch (err) {
       setError(errorText(err, "Could not save."));
@@ -450,8 +456,11 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
     }
   }
 
+  // Closing mid-save would hide whether the save (and its photo upload) went through.
+  const busy = saving || photoBusy;
+
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{staff ? `Edit ${staff.name}` : "Add staff"}</DialogTitle>
@@ -469,9 +478,30 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
               <Input id="st-color" name="color" type="color" defaultValue={staff?.color ?? "#8EAB8B"} className="p-1" />
             </Field>
           </div>
-          <Field label="Photo URL (optional)" htmlFor="st-avatar">
-            <Input id="st-avatar" name="avatarUrl" type="url" defaultValue={staff?.avatarUrl} />
-          </Field>
+          <div className="grid justify-items-start gap-2">
+            <p className="text-sm font-medium">Photo (optional)</p>
+            <StaffAvatarPhotoButton
+              label
+              staff={{
+                name: staff?.name ?? "",
+                color: staff?.color ?? "#8EAB8B",
+                avatarUrl: photo.url,
+              }}
+              avatarClassName="size-14"
+              disabled={saving}
+              onPhoto={photo.choose}
+              onRemove={photo.remove}
+              onError={setPhotoError}
+              onBusyChange={setPhotoBusy}
+            />
+            {photoError ? (
+              <p role="alert" className="text-sm text-destructive">{photoError}</p>
+            ) : photo.changed ? (
+              <p className="text-xs text-muted-foreground">
+                {photo.removing ? "The photo is removed when you save." : "The new photo is saved when you save."}
+              </p>
+            ) : null}
+          </div>
           {simpleSchedule ? (
             <>
               <fieldset className="grid gap-2">
@@ -540,10 +570,10 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
           ) : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || (simpleSchedule && days.size === 0)}>
+            <Button type="submit" disabled={busy || (simpleSchedule && days.size === 0)}>
               {saving ? <Spinner className="text-current" /> : null}
               Save
             </Button>
@@ -565,6 +595,10 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const photo = usePhotoDraft(service?.imageUrl);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const busy = saving || photoBusy;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -604,8 +638,11 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
     setSaving(true);
     setError("");
     try {
-      if (service) await updateService({ serviceId: service._id, ...fields });
-      else await createService(fields);
+      const save = (imageStorageId?: Id<"_storage"> | null) =>
+        service
+          ? updateService({ serviceId: service._id, ...fields, imageStorageId })
+          : createService({ ...fields, imageStorageId: imageStorageId ?? undefined });
+      await photo.save(save);
       onClose();
     } catch (err) {
       setError(errorText(err, "Could not save."));
@@ -615,7 +652,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{service ? `Edit ${service.name}` : "Add service"}</DialogTitle>
@@ -633,6 +670,31 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
           <Field label="Description" htmlFor="sv-description">
             <Input id="sv-description" name="description" defaultValue={service?.description} />
           </Field>
+          <div className="grid justify-items-start gap-2">
+            <p className="text-sm font-medium">Photo (optional)</p>
+            <PhotoPickerButton
+              label
+              shape="rounded-lg"
+              photoUrl={photo.url}
+              name={service?.name ?? ""}
+              unnamed="new service"
+              thumb={<ServiceThumb service={{ name: service?.name ?? "", category: service?.category ?? "", imageUrl: photo.url }} className="size-14" />}
+              title={service ? `${service.name} photo` : "Service photo"}
+              description="Shown in the service picker when booking. Tap it there to see it large."
+              disabled={saving}
+              onPhoto={photo.choose}
+              onRemove={photo.remove}
+              onError={setPhotoError}
+              onBusyChange={setPhotoBusy}
+            />
+            {photoError ? (
+              <p role="alert" className="text-sm text-destructive">{photoError}</p>
+            ) : photo.changed ? (
+              <p className="text-xs text-muted-foreground">
+                {photo.removing ? "The photo is removed when you save." : "The new photo is saved when you save."}
+              </p>
+            ) : null}
+          </div>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Duration (min)" htmlFor="sv-duration">
               <Input id="sv-duration" name="durationMin" type="number" min={15} step={15} defaultValue={service?.durationMin ?? 60} required />
@@ -672,10 +734,10 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
           {staffIds.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one person to save.</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || staffIds.size === 0}>
+            <Button type="submit" disabled={busy || staffIds.size === 0}>
               {saving ? <Spinner className="text-current" /> : null}
               Save
             </Button>
