@@ -5,7 +5,7 @@ import { ChevronDown, Layers, Link2, Plus, Search, UserRound } from "lucide-reac
 import { useDeferredValue, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -43,82 +43,85 @@ export function CustomerStrip({
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 sm:px-6">
-      <Button variant="outline" onClick={() => setPanel("guest")} className="max-w-[60vw]">
-        <UserRound aria-hidden className="size-4" />
-        <span className="truncate">{label}</span>
-        <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
-      </Button>
+      {/* Each button is its dialog's trigger, so closing the dialog puts focus back on it. */}
+      <Dialog open={panel === "guest"} onOpenChange={(open) => setPanel(open ? "guest" : null)}>
+        <DialogTrigger asChild>
+          <Button variant="outline" className="max-w-[60vw]">
+            <UserRound aria-hidden className="size-4" />
+            <span className="truncate">{label}</span>
+            <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
+          {panel === "guest" ? <GuestPicker hasGuest={Boolean(guest)} onPick={pickGuest} /> : null}
+        </DialogContent>
+      </Dialog>
       {guest ? (
-        <Button variant="ghost" onClick={() => setPanel("attach")}>
-          <Link2 aria-hidden className="size-4" /> Attach booking
-        </Button>
+        <Dialog open={panel === "attach"} onOpenChange={(open) => setPanel(open ? "attach" : null)}>
+          <DialogTrigger asChild>
+            <Button variant="ghost">
+              <Link2 aria-hidden className="size-4" /> Attach booking
+            </Button>
+          </DialogTrigger>
+          <DialogContent className={cn("max-w-lg", TOUCH_TARGETS)}>
+            {panel === "attach" ? <AttachList guest={guest} billId={bill?._id} run={run} onDone={close} /> : null}
+          </DialogContent>
+        </Dialog>
       ) : null}
       <div className="ml-auto flex gap-2">
-        <Button
-          variant="ghost"
-          onClick={() => setPanel("held")}
-          aria-label={`Held bills${otherBills.length ? `, ${otherBills.length} other unpaid ${otherBills.length === 1 ? "bill" : "bills"}` : ""}`}
-        >
-          <Layers aria-hidden className="size-4" />
-          <span className="hidden sm:inline">Held bills</span>
-          {otherBills.length ? <span aria-hidden className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{otherBills.length}</span> : null}
-        </Button>
+        <Dialog open={panel === "held"} onOpenChange={(open) => setPanel(open ? "held" : null)}>
+          <DialogTrigger asChild>
+            <Button
+              variant="ghost"
+              aria-label={`Held bills${otherBills.length ? `, ${otherBills.length} other unpaid ${otherBills.length === 1 ? "bill" : "bills"}` : ""}`}
+            >
+              <Layers aria-hidden className="size-4" />
+              <span className="hidden sm:inline">Held bills</span>
+              {otherBills.length ? <span aria-hidden className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{otherBills.length}</span> : null}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
+            <DialogHeader>
+              <DialogTitle>Held bills</DialogTitle>
+              <DialogDescription>Unpaid bills from any device. Open one to carry on.</DialogDescription>
+            </DialogHeader>
+            {openBills === undefined ? (
+              <Spinner label="Loading bills" />
+            ) : otherBills.length ? (
+              <ul className="grid gap-2">
+                {otherBills.map((b) => (
+                  <li key={b._id}>
+                    <button
+                      type="button"
+                      onClick={() => { close(); onBillChange(b._id); }}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left hover:bg-muted"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{b.label}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {b.itemCount} {b.itemCount === 1 ? "item" : "items"} · {b.status === "held" ? "held" : "open"} ·{" "}
+                          {heldAt(b.updatedAt)}
+                        </span>
+                      </span>
+                      {/* The bill total; deposits already paid come off what is due once it is open. */}
+                      <span className="shrink-0 text-right">
+                        <span className="block text-[11px] text-muted-foreground">Total</span>
+                        <span className="block text-sm font-semibold tabular-nums">{formatMoney(b.total, b.currency)}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">No other unpaid bills.</p>
+            )}
+          </DialogContent>
+        </Dialog>
         <Button variant="outline" onClick={() => onBillChange(null)} disabled={!bill} aria-label="New bill">
           <Plus aria-hidden className="size-4" />
           <span className="hidden sm:inline">New bill</span>
         </Button>
       </div>
-
-      <Dialog open={panel === "guest"} onOpenChange={(open) => !open && close()}>
-        <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
-          {panel === "guest" ? <GuestPicker hasGuest={Boolean(guest)} onPick={pickGuest} /> : null}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={panel === "attach"} onOpenChange={(open) => !open && close()}>
-        <DialogContent className={cn("max-w-lg", TOUCH_TARGETS)}>
-          {panel === "attach" && guest ? <AttachList guest={guest} billId={bill?._id} run={run} onDone={close} /> : null}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={panel === "held"} onOpenChange={(open) => !open && close()}>
-        <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
-          <DialogHeader>
-            <DialogTitle>Held bills</DialogTitle>
-            <DialogDescription>Unpaid bills from any device. Open one to carry on.</DialogDescription>
-          </DialogHeader>
-          {openBills === undefined ? (
-            <Spinner label="Loading bills" />
-          ) : otherBills.length ? (
-            <ul className="grid gap-2">
-              {otherBills.map((b) => (
-                <li key={b._id}>
-                  <button
-                    type="button"
-                    onClick={() => { close(); onBillChange(b._id); }}
-                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left hover:bg-muted"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold">{b.label}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {b.itemCount} {b.itemCount === 1 ? "item" : "items"} · {b.status === "held" ? "held" : "open"} ·{" "}
-                        {heldAt(b.updatedAt)}
-                      </span>
-                    </span>
-                    {/* The bill total; deposits already paid come off what is due once it is open. */}
-                    <span className="shrink-0 text-right">
-                      <span className="block text-[11px] text-muted-foreground">Total</span>
-                      <span className="block text-sm font-semibold tabular-nums">{formatMoney(b.total, b.currency)}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">No other unpaid bills.</p>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

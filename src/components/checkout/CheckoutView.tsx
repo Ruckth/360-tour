@@ -3,7 +3,7 @@
 import { ChevronUp, ReceiptText, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type BillId, type CatalogItem } from "./backend";
@@ -139,19 +139,21 @@ export function CheckoutView({
         </aside>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setSheetOpen(true)}
-        aria-label={`${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the bill`}
-        className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 rounded-full bg-primary px-5 py-3.5 text-primary-foreground shadow-xl lg:hidden"
-      >
-        <ReceiptText aria-hidden className="size-5" />
-        <span className="flex-1 text-left text-sm font-semibold">
-          {count} {count === 1 ? "item" : "items"} · {formatMoney(view?.totals.due ?? 0)}
-        </span>
-        <ChevronUp aria-hidden className="size-5" />
-      </button>
+      {/* The pill is the sheet's trigger, so closing the sheet puts focus back on it. */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            aria-label={`${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the bill`}
+            className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 rounded-full bg-primary px-5 py-3.5 text-primary-foreground shadow-xl lg:hidden"
+          >
+            <ReceiptText aria-hidden className="size-5" />
+            <span className="flex-1 text-left text-sm font-semibold">
+              {count} {count === 1 ? "item" : "items"} · {formatMoney(view?.totals.due ?? 0)}
+            </span>
+            <ChevronUp aria-hidden className="size-5" />
+          </button>
+        </SheetTrigger>
         <SheetContent side="bottom" showCloseButton={false} className={cn("h-[94dvh] gap-0 rounded-t-2xl p-0 lg:hidden", TOUCH_TARGETS)}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">Bill</SheetTitle>
