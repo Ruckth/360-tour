@@ -484,7 +484,7 @@ function EventCalendarDatePicker({
       </NavTooltip>
       <PopoverContent
         align="start"
-        className={cn("w-auto p-0!", viewConfig.classNames?.datePickerContent)}
+        className={cn("w-auto p-3!", viewConfig.classNames?.datePickerContent)}
       >
         {resolved === "range" ? (
           <Calendar

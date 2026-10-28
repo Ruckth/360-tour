@@ -51,7 +51,7 @@ export function AdminCalendarHeader({ children }: { children?: ReactNode }) {
             <div
               role="group"
               aria-label="Calendar view"
-              className="flex h-9 w-full rounded-lg border border-border bg-muted/40 p-0.5 sm:ms-auto sm:w-auto"
+              className="flex h-9 w-full rounded-lg border border-border bg-muted p-1 sm:ms-auto sm:w-auto"
             >
               {availableViews.map((option) => (
                 <button
@@ -61,7 +61,7 @@ export function AdminCalendarHeader({ children }: { children?: ReactNode }) {
                   onClick={() => setView(option)}
                   className={cn(
                     "flex-1 rounded-md px-3 text-xs font-semibold whitespace-nowrap text-muted-foreground transition outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none",
-                    view === option ? "bg-background text-foreground shadow-sm" : "hover:text-foreground",
+                    view === option ? "bg-card text-foreground shadow-sm ring-1 ring-border" : "hover:text-foreground",
                   )}
                 >
                   {option === "days" ? i18n.viewNames.days(dayCount) : i18n.viewNames[option]}
