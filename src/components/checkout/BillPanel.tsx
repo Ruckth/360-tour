@@ -3,9 +3,9 @@
 import { format } from "date-fns";
 import { ChevronDown, Minus, Pause, Plus, ReceiptText, Trash2, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,8 +13,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { MERGES_QTY, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type BillId, type BillLine, type BillView, type Catalog } from "./backend";
-import { amountInput } from "./checkout-ui";
-import { PayPanel, TENDER_LABELS } from "./PayPanel";
+import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
+import { PayPanel } from "./PayPanel";
 
 /** Runs a bill write in order; the task gets the current bill id (undefined before the first item). */
 export type Run = (task: (billId: BillId | undefined) => Promise<unknown>) => Promise<boolean>;
@@ -44,7 +44,7 @@ export function BillPanel({
   onClose?: () => void;
 }) {
   const actions = useCheckoutBackend().useActions();
-  const confirm = useConfirm();
+  const [confirmClear, setConfirmClear] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(null);
   const lines = view?.lines ?? [];
@@ -58,14 +58,8 @@ export function BillPanel({
   }
 
   async function clear() {
-    if (!billId) return;
-    const ok = await confirm({
-      title: "Clear this bill?",
-      description: "Removes every item and the guest from the bill. Price changes stay in the audit log.",
-      confirmLabel: "Clear bill",
-      destructive: true,
-    });
-    if (ok) await run(() => actions.clearBill({ billId }));
+    setConfirmClear(false);
+    if (billId) await run(() => actions.clearBill({ billId }));
   }
 
   return (
@@ -84,9 +78,25 @@ export function BillPanel({
             <Button size="sm" variant="outline" onClick={hold} disabled={!itemCount}>
               <Pause aria-hidden className="size-3.5" /> Hold
             </Button>
-            <Button size="icon" variant="ghost" className="size-9" onClick={clear} disabled={!billId || (!itemCount && !view?.bill.guestName)} aria-label="Clear bill">
-              <Trash2 aria-hidden className="size-4" />
-            </Button>
+            {/* A local dialog rather than useConfirm: on phones it nests in the bill sheet, which a
+                dialog from outside would dismiss, and it gets the touch sizes. */}
+            <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
+              <DialogTrigger asChild>
+                <Button size="icon" variant="ghost" className="size-9" disabled={!billId || (!itemCount && !view?.bill.guestName)} aria-label="Clear bill">
+                  <Trash2 aria-hidden className="size-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent role="alertdialog" showCloseButton={false} className={cn("max-w-md", TOUCH_TARGETS)}>
+                <DialogHeader>
+                  <DialogTitle>Clear this bill?</DialogTitle>
+                  <DialogDescription>Removes every item and the guest from the bill. Price changes stay in the audit log.</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setConfirmClear(false)}>Cancel</Button>
+                  <Button variant="destructive" onClick={clear}>Clear bill</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </>
         )}
         {onClose ? (

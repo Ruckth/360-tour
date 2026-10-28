@@ -12,14 +12,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_TENDERS, TENDER_METHODS, round2, type Tender, type TenderMethod } from "convex/lib/billMath";
 import { newAttemptKey, useCheckoutBackend, type BillId, type BillView } from "./backend";
-import { amountInput } from "./checkout-ui";
-
-export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
-  cash: { short: "Cash", long: "Cash", hint: "" },
-  promptpay: { short: "PromptPay", long: "PromptPay QR", hint: "Show the shop's PromptPay QR. Confirm only once the transfer shows in the bank app." },
-  card: { short: "Card", long: "Card", hint: "Charge the amount on the card terminal, then confirm here." },
-  transfer: { short: "Transfer", long: "Bank transfer", hint: "Confirm once the transfer has arrived in the account." },
-};
+import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
 
 const CASH_STEPS = [100, 500, 1000];
 
@@ -150,7 +143,7 @@ function SplitForm({ due, submitting, onPay }: { due: number; submitting: boolea
           <li key={index} className="flex items-center gap-2">
             <Select value={row.method} onValueChange={(method) => update(index, { method: method as TenderMethod })}>
               <SelectTrigger className="w-32" aria-label={`Payment ${index + 1} method`}><SelectValue /></SelectTrigger>
-              <SelectContent>
+              <SelectContent className={TOUCH_TARGETS}>
                 {/* Short labels: the long ones ("PromptPay QR") truncate in the narrow trigger. */}
                 {TENDER_METHODS.map((method) => <SelectItem key={method} value={method}>{TENDER_LABELS[method].short}</SelectItem>)}
               </SelectContent>

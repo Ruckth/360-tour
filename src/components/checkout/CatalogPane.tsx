@@ -5,11 +5,11 @@ import { useMemo, useState, type FormEvent } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { BillLine, Catalog, CatalogItem } from "./backend";
 import { TOUCH_TARGETS, amountInput } from "./checkout-ui";
@@ -77,7 +77,6 @@ export function CatalogPane({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [groups, setGroups] = useState<string[]>([]);
   const [maxPrice, setMaxPrice] = useState("");
-  const [customOpen, setCustomOpen] = useState(false);
 
   const tiles = useMemo(() => (catalog ? catalogTiles(catalog)[tab] : []), [catalog, tab]);
   const tabGroups = useMemo(() => [...new Set(tiles.map((t) => t.group))], [tiles]);
@@ -109,11 +108,46 @@ export function CatalogPane({
             <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items" aria-label="Search items" className="pl-9" />
           </div>
-          <Button variant="outline" onClick={() => setFiltersOpen(true)} aria-label={`Filters${filterCount ? ` (${filterCount} on)` : ""}`}>
-            <SlidersHorizontal aria-hidden className="size-4" />
-            <span className="hidden sm:inline">Filters</span>
-            {filterCount ? <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{filterCount}</span> : null}
-          </Button>
+          {/* The button is the sheet's trigger, so closing the sheet puts focus back on it. */}
+          <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <SheetTrigger asChild>
+              <Button variant="outline" aria-label={`Filters${filterCount ? ` (${filterCount} on)` : ""}`}>
+                <SlidersHorizontal aria-hidden className="size-4" />
+                <span className="hidden sm:inline">Filters</span>
+                {filterCount ? <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{filterCount}</span> : null}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className={cn("w-80", TOUCH_TARGETS)}>
+              <SheetHeader>
+                <SheetTitle>Filters</SheetTitle>
+                <SheetDescription>Narrow the {TABS.find((t) => t.value === tab)?.label.toLowerCase()} tab.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Group</p>
+                <div className="flex flex-wrap gap-2">
+                  {tabGroups.map((group) => {
+                    const on = activeGroups.includes(group);
+                    return (
+                      <button
+                        key={group}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setGroups(on ? groups.filter((g) => g !== group) : [...groups, group])}
+                        className={cn("rounded-full border px-3 py-1.5 text-xs font-medium", on ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted")}
+                      >
+                        {group}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="checkout-max-price">Price up to (฿)</Label>
+                <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value))} placeholder="Any price" />
+              </div>
+              <Button variant="outline" onClick={() => { setGroups([]); setMaxPrice(""); }} disabled={!filterCount}>Reset filters</Button>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
 
@@ -142,54 +176,10 @@ export function CatalogPane({
                 ) : null}
               </div>
             ) : null}
-            {tab === "extras" ? (
-              <button
-                type="button"
-                onClick={() => setCustomOpen(true)}
-                className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border p-2 text-left text-sm font-semibold text-muted-foreground transition hover:border-primary hover:text-foreground sm:w-auto sm:pr-6"
-              >
-                <span className="flex size-12 items-center justify-center rounded-lg bg-muted"><Plus aria-hidden className="size-5" /></span>
-                Custom item
-              </button>
-            ) : null}
+            {tab === "extras" ? <CustomItemDialog onAdd={onAdd} /> : null}
           </>
         )}
       </div>
-
-      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <SheetContent side="right" className={cn("w-80", TOUCH_TARGETS)}>
-          <SheetHeader>
-            <SheetTitle>Filters</SheetTitle>
-            <SheetDescription>Narrow the {TABS.find((t) => t.value === tab)?.label.toLowerCase()} tab.</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Group</p>
-            <div className="flex flex-wrap gap-2">
-              {tabGroups.map((group) => {
-                const on = activeGroups.includes(group);
-                return (
-                  <button
-                    key={group}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setGroups(on ? groups.filter((g) => g !== group) : [...groups, group])}
-                    className={cn("rounded-full border px-3 py-1.5 text-xs font-medium", on ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted")}
-                  >
-                    {group}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="checkout-max-price">Price up to (฿)</Label>
-            <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value))} placeholder="Any price" />
-          </div>
-          <Button variant="outline" onClick={() => { setGroups([]); setMaxPrice(""); }} disabled={!filterCount}>Reset filters</Button>
-        </SheetContent>
-      </Sheet>
-
-      <CustomItemDialog open={customOpen} onOpenChange={setCustomOpen} onAdd={onAdd} />
     </section>
   );
 }
@@ -239,7 +229,9 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
   );
 }
 
-function CustomItemDialog({ open, onOpenChange, onAdd }: { open: boolean; onOpenChange: (open: boolean) => void; onAdd: (item: CatalogItem) => void }) {
+/** The Custom item tile on the Extras tab and its form; the tile is the trigger, so focus returns to it. */
+function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const valid = name.trim() && price !== "" && Number(price) >= 0;
@@ -250,11 +242,20 @@ function CustomItemDialog({ open, onOpenChange, onAdd }: { open: boolean; onOpen
     onAdd({ kind: "extra", name: name.trim(), price: Number(price) });
     setName("");
     setPrice("");
-    onOpenChange(false);
+    setOpen(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border p-2 text-left text-sm font-semibold text-muted-foreground transition hover:border-primary hover:text-foreground sm:w-auto sm:pr-6"
+        >
+          <span className="flex size-12 items-center justify-center rounded-lg bg-muted"><Plus aria-hidden className="size-5" /></span>
+          Custom item
+        </button>
+      </DialogTrigger>
       <DialogContent className={cn("max-w-sm", TOUCH_TARGETS)}>
         <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
@@ -270,7 +271,7 @@ function CustomItemDialog({ open, onOpenChange, onAdd }: { open: boolean; onOpen
             <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value))} />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="submit" disabled={!valid}>Add to bill</Button>
           </DialogFooter>
         </form>

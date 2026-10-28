@@ -5,7 +5,7 @@ import { Ban, Copy, Plus, Printer, Share2 } from "lucide-react";
 import { useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,30 +13,10 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
 import { changeDue, formatReceiptNumber, lineGross, linePrice } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
-import { useCheckoutBackend, type BillId, type BillView } from "./backend";
-import { TENDER_LABELS } from "./PayPanel";
-import { TOUCH_TARGETS } from "./checkout-ui";
+import { useCheckoutBackend, type BillId } from "./backend";
+import { TENDER_LABELS, TOUCH_TARGETS, receiptText } from "./checkout-ui";
 
 type Paper = "58" | "80";
-
-/** Plain-text receipt for share and copy. */
-function receiptText(view: BillView, business: string) {
-  const { bill, lines, payments, totals } = view;
-  const row = (left: string, right: string) => `${left}  ${right}`;
-  return [
-    business,
-    `Receipt ${formatReceiptNumber(bill.receiptNumber ?? 0)}${bill.status === "void" ? " (VOID)" : ""}`,
-    bill.paidAt ? format(bill.paidAt, "d MMM yyyy, HH:mm") : "",
-    bill.label,
-    "",
-    ...lines.map((line) => row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(line.net))),
-    "",
-    row("Total", formatMoney(totals.total)),
-    row("VAT 7% included", formatMoney(totals.vat)),
-    ...(totals.deposit ? [row("Paid before", formatMoney(-totals.deposit))] : []),
-    ...payments.map((p) => row(TENDER_LABELS[p.method].long, formatMoney(p.amount))),
-  ].join("\n");
-}
 
 /** Receipt after payment: thermal print (58/80mm), share or copy, and void with a reason. */
 export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId; onNewSale: () => void; onOpenBill: (billId: BillId) => void }) {
@@ -45,7 +25,6 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
   const business = backend.useBusinessName() ?? "";
   const [paper, setPaper] = useState<Paper>("80");
   const [notice, setNotice] = useState("");
-  const [voiding, setVoiding] = useState(false);
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   if (view === null) return <p className="p-10 text-center text-sm text-muted-foreground">Receipt not found.</p>;
@@ -160,19 +139,17 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
 
       <div className="flex w-full max-w-sm flex-wrap gap-2 print:hidden">
         <Button className="flex-1" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
-        {!isVoid ? (
-          <Button variant="outline" className="text-destructive" onClick={() => setVoiding(true)}><Ban aria-hidden className="size-4" /> Void…</Button>
-        ) : null}
+        {!isVoid ? <VoidDialog billId={billId} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} /> : null}
       </div>
       {isVoid ? <p className="max-w-sm text-center text-xs text-muted-foreground print:hidden">Voided by {bill.voidedBy}{bill.voidedAt ? ` on ${format(bill.voidedAt, "d MMM, HH:mm")}` : ""}. The receipt number stays on record.</p> : null}
-
-      <VoidDialog open={voiding} onOpenChange={setVoiding} billId={billId} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} />
     </div>
   );
 }
 
-function VoidDialog({ open, onOpenChange, billId, hasAttached }: { open: boolean; onOpenChange: (open: boolean) => void; billId: BillId; hasAttached: boolean }) {
+/** The Void… button and its dialog; the button is the trigger, so Cancel puts focus back on it. */
+function VoidDialog({ billId, hasAttached }: { billId: BillId; hasAttached: boolean }) {
   const actions = useCheckoutBackend().useActions();
+  const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -182,7 +159,7 @@ function VoidDialog({ open, onOpenChange, billId, hasAttached }: { open: boolean
     setError("");
     try {
       await actions.voidBill({ billId, reason });
-      onOpenChange(false);
+      setOpen(false);
     } catch (err) {
       setError(errorText(err, "Couldn't void the bill."));
     } finally {
@@ -191,7 +168,10 @@ function VoidDialog({ open, onOpenChange, billId, hasAttached }: { open: boolean
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="text-destructive"><Ban aria-hidden className="size-4" /> Void…</Button>
+      </DialogTrigger>
       <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
         <DialogHeader>
           <DialogTitle>Void this receipt?</DialogTitle>
@@ -206,7 +186,7 @@ function VoidDialog({ open, onOpenChange, billId, hasAttached }: { open: boolean
         </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button variant="destructive" disabled={!reason.trim() || saving} onClick={submit}>
             {saving ? <Spinner className="text-current" /> : null}
             Void receipt
