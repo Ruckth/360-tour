@@ -92,8 +92,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
 function AdminFrame({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
   const pathname = usePathname();
-  // The chat inbox fills the viewport and scrolls its panes; other views scroll the page.
-  const fitsViewport = pathname.startsWith("/admin/chats");
+  // The chat inbox and checkout fill the viewport and scroll their panes; other views scroll the page.
+  const fitsViewport = pathname.startsWith("/admin/chats") || pathname.startsWith("/admin/checkout");
 
   return (
     <SidebarProvider

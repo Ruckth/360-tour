@@ -1,0 +1,202 @@
+"use client";
+
+import type { Id } from "convex/_generated/dataModel";
+import { ChevronDown, Layers, Link2, Plus, Search, UserRound } from "lucide-react";
+import { useDeferredValue, useState } from "react";
+import { formatMoney } from "@/components/admin/labels";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { useCheckoutBackend, type Attachable, type BillId, type BillView, type Guest } from "./backend";
+import type { Run } from "./BillPanel";
+
+type Panel = "guest" | "attach" | "held" | null;
+
+/** Who the bill is for (walk-in by default), attaching their unpaid bookings, and held bills. */
+export function CustomerStrip({
+  view,
+  label,
+  run,
+  onBillChange,
+}: {
+  view: BillView | null | undefined;
+  label: string;
+  run: Run;
+  onBillChange: (billId: BillId | null) => void;
+}) {
+  const backend = useCheckoutBackend();
+  const actions = backend.useActions();
+  const openBills = backend.useOpenBills();
+  const [panel, setPanel] = useState<Panel>(null);
+  const bill = view?.bill;
+  const guest: Guest | null = bill?.guestName ? { name: bill.guestName, phone: bill.guestPhone, email: bill.guestEmail } : null;
+  const otherBills = (openBills ?? []).filter((b) => b._id !== bill?._id);
+  const close = () => setPanel(null);
+
+  function pickGuest(next: Guest | null) {
+    close();
+    void run((billId) => actions.setCustomer({ billId, guest: next }));
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 sm:px-6">
+      <Button variant="outline" onClick={() => setPanel("guest")} className="max-w-[60vw]">
+        <UserRound aria-hidden className="size-4" />
+        <span className="truncate">{label}</span>
+        <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+      </Button>
+      {guest ? (
+        <Button variant="ghost" onClick={() => setPanel("attach")}>
+          <Link2 aria-hidden className="size-4" /> Attach booking
+        </Button>
+      ) : null}
+      <div className="ml-auto flex gap-2">
+        <Button variant="ghost" onClick={() => setPanel("held")}>
+          <Layers aria-hidden className="size-4" />
+          <span className="hidden sm:inline">Held bills</span>
+          {otherBills.length ? <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{otherBills.length}</span> : null}
+        </Button>
+        <Button variant="outline" onClick={() => onBillChange(null)} disabled={!bill} aria-label="New bill">
+          <Plus aria-hidden className="size-4" />
+          <span className="hidden sm:inline">New bill</span>
+        </Button>
+      </div>
+
+      <Dialog open={panel === "guest"} onOpenChange={(open) => !open && close()}>
+        <DialogContent className="max-w-md">
+          {panel === "guest" ? <GuestPicker hasGuest={Boolean(guest)} onPick={pickGuest} /> : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={panel === "attach"} onOpenChange={(open) => !open && close()}>
+        <DialogContent className="max-w-lg">
+          {panel === "attach" && guest ? <AttachList guest={guest} billId={bill?._id} run={run} onDone={close} /> : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={panel === "held"} onOpenChange={(open) => !open && close()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Held bills</DialogTitle>
+            <DialogDescription>Unpaid bills from any device. Open one to carry on.</DialogDescription>
+          </DialogHeader>
+          {openBills === undefined ? (
+            <Spinner label="Loading bills" />
+          ) : otherBills.length ? (
+            <ul className="grid gap-2">
+              {otherBills.map((b) => (
+                <li key={b._id}>
+                  <button
+                    type="button"
+                    onClick={() => { close(); onBillChange(b._id); }}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left hover:bg-muted"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">{b.label}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {b.itemCount} {b.itemCount === 1 ? "item" : "items"} · {b.status === "held" ? "held" : "open"} ·{" "}
+                        {new Date(b.updatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </span>
+                    <span className="text-sm font-semibold tabular-nums">{formatMoney(b.total, b.currency)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No other unpaid bills.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function GuestPicker({ hasGuest, onPick }: { hasGuest: boolean; onPick: (guest: Guest | null) => void }) {
+  const [query, setQuery] = useState("");
+  const deferred = useDeferredValue(query);
+  const results = useCheckoutBackend().useGuestSearch(deferred);
+  const typed = query.trim();
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Customer</DialogTitle>
+        <DialogDescription>Find a guest by name, phone, email or booking code.</DialogDescription>
+      </DialogHeader>
+      <div className="relative">
+        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search guests" aria-label="Search guests" className="pl-9" autoFocus />
+      </div>
+      <ul className="grid max-h-72 gap-1 overflow-y-auto">
+        {(typed.length >= 2 ? results ?? [] : []).map((guest) => (
+          <li key={`${guest.name}|${guest.phone ?? guest.email ?? ""}`}>
+            <button type="button" onClick={() => onPick(guest)} className="w-full rounded-lg px-3 py-2 text-left hover:bg-muted">
+              <span className="block text-sm font-semibold">{guest.name}</span>
+              <span className="block text-xs text-muted-foreground">{[guest.phone, guest.email].filter(Boolean).join(" · ") || "No contact details"}</span>
+            </button>
+          </li>
+        ))}
+        {typed.length >= 2 && results === undefined ? <li className="px-3 py-2"><Spinner label="Searching" /></li> : null}
+        {typed ? (
+          <li>
+            <button type="button" onClick={() => onPick({ name: typed })} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted">
+              Use “{typed}” as the guest name
+            </button>
+          </li>
+        ) : null}
+      </ul>
+      {hasGuest ? (
+        <Button variant="outline" onClick={() => onPick(null)}>Back to walk-in</Button>
+      ) : null}
+    </>
+  );
+}
+
+function AttachList({ guest, billId, run, onDone }: { guest: Guest; billId: BillId | undefined; run: Run; onDone: () => void }) {
+  const backend = useCheckoutBackend();
+  const actions = backend.useActions();
+  const rows = backend.useAttachable(guest);
+
+  async function attach(row: Attachable) {
+    const target = row.kind === "booking" ? { bookingId: row.id as Id<"bookings"> } : { appointmentId: row.id as Id<"serviceAppointments"> };
+    if (await run((current) => actions.attach({ billId: current, ...target }))) onDone();
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Attach to {guest.name}&apos;s bill</DialogTitle>
+        <DialogDescription>Unpaid stays and appointments for this guest. Only what you attach is charged.</DialogDescription>
+      </DialogHeader>
+      {rows === undefined ? (
+        <Spinner label="Loading bookings" />
+      ) : rows.length ? (
+        <ul className="grid gap-2">
+          {rows.map((row) => {
+            const here = row.onBill !== null && row.onBill === billId;
+            const elsewhere = row.onBill !== null && !here;
+            return (
+              <li key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{row.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{row.detail}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {formatMoney(row.price)}
+                    {row.deposit ? ` · ${formatMoney(row.deposit)} already paid` : ""}
+                  </span>
+                </span>
+                <Button size="sm" variant={here || elsewhere ? "ghost" : "default"} disabled={here || elsewhere} onClick={() => attach(row)}>
+                  {here ? "On this bill" : elsewhere ? "On another bill" : "Attach"}
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">No unpaid bookings or appointments found for this guest.</p>
+      )}
+    </>
+  );
+}

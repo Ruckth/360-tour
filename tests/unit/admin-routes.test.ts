@@ -8,6 +8,8 @@ describe("admin routes", () => {
     ["/admin/staff/calendar", "Staff bookings"],
     ["/admin/staff/staff", "Staff bookings"],
     ["/admin/staff/services", "Staff bookings"],
+    ["/admin/checkout", "Checkout"],
+    ["/admin/receipt/abc123", "Checkout"],
     ["/admin/questions", "Business facts"],
     ["/admin/properties", "Properties"],
     ["/admin/properties/abc123", "Properties"],
@@ -33,6 +35,9 @@ describe("admin routes", () => {
     ["/admin/staff/roster", null],
     ["/admin/properties", null],
     ["/admin/properties/abc123", null],
+    ["/admin/checkout", null],
+    ["/admin/receipt/abc123", null],
+    ["/admin/receipt", "/admin/chats"],
   ] as const)("redirects %s to %s", (path, target) => {
     expect(adminRedirectPath(path)).toBe(target);
   });
