@@ -328,6 +328,84 @@ export default defineSchema({
 		}))
 	}).index('by_appointmentId_and_at', ['appointmentId', 'at']),
 
+	/** A staff checkout bill (convex/pos.ts). Drafts and held bills live on the server so any device can resume them. */
+	bills: defineTable({
+		status: v.union(v.literal('draft'), v.literal('held'), v.literal('paid'), v.literal('void')),
+		/** "Walk-in #N", counted per resort-local day; shown until a guest is chosen. */
+		walkInNumber: v.number(),
+		guestName: v.optional(v.string()),
+		guestPhone: v.optional(v.string()),
+		guestEmail: v.optional(v.string()),
+		currency: v.string(),
+		// Kept in step with the lines so the held-bills list needs no line reads.
+		itemCount: v.number(),
+		total: v.number(),
+		/** Sequential, issued once when paid and never reused (also not after a void). */
+		receiptNumber: v.optional(v.number()),
+		/** Idempotency key of the payment attempt that settled the bill. */
+		settleKey: v.optional(v.string()),
+		paidAt: v.optional(v.number()),
+		paidBy: v.optional(v.string()),
+		voidedAt: v.optional(v.number()),
+		voidedBy: v.optional(v.string()),
+		voidReason: v.optional(v.string()),
+		createdBy: v.string(),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	}).index('by_status_and_updatedAt', ['status', 'updatedAt']),
+
+	billLines: defineTable({
+		billId: v.id('bills'),
+		kind: v.union(v.literal('service'), v.literal('room'), v.literal('extra'), v.literal('booking'), v.literal('appointment')),
+		serviceId: v.optional(v.id('services')),
+		propertyId: v.optional(v.id('properties')),
+		bookingId: v.optional(v.id('bookings')),
+		appointmentId: v.optional(v.id('serviceAppointments')),
+		name: v.string(),
+		/** Short second line, e.g. "60 min" or "12 Oct – 15 Oct". */
+		detail: v.optional(v.string()),
+		unitPrice: v.number(),
+		qty: v.number(),
+		/** Absent = any therapist. */
+		staffId: v.optional(v.id('staff')),
+		/** Absent = now. */
+		startAt: v.optional(v.number()),
+		discount: v.optional(v.object({ type: v.union(v.literal('amount'), v.literal('percent')), value: v.number() })),
+		priceOverride: v.optional(v.object({ price: v.number(), note: v.string(), by: v.string(), at: v.number() })),
+		/** Paid before checkout (an attached booking's online payment); deducted from what is due. */
+		deposit: v.optional(v.number()),
+		createdAt: v.number()
+	})
+		.index('by_billId', ['billId'])
+		.index('by_bookingId', ['bookingId'])
+		.index('by_appointmentId', ['appointmentId']),
+
+	billPayments: defineTable({
+		billId: v.id('bills'),
+		method: v.union(v.literal('cash'), v.literal('promptpay'), v.literal('card'), v.literal('transfer')),
+		amount: v.number(),
+		/** Cash handed over; the change is received - amount. */
+		received: v.optional(v.number()),
+		idempotencyKey: v.string(),
+		createdBy: v.string(),
+		createdAt: v.number()
+	}).index('by_billId', ['billId']),
+
+	/** Price overrides, payments and voids on a bill: who, when, why, old and new price. */
+	billAudit: defineTable({
+		billId: v.id('bills'),
+		lineId: v.optional(v.id('billLines')),
+		at: v.number(),
+		actor: v.string(),
+		kind: v.union(v.literal('price_override'), v.literal('cleared'), v.literal('paid'), v.literal('void')),
+		fromPrice: v.optional(v.number()),
+		toPrice: v.optional(v.number()),
+		note: v.optional(v.string())
+	}).index('by_billId_and_at', ['billId', 'at']),
+
+	/** Running numbers: "receipt" (per tenant) and "walkin:YYYY-MM-DD". */
+	billCounters: defineTable({ key: v.string(), value: v.number() }).index('by_key', ['key']),
+
 	reviews: defineTable({
 		propertyId: v.id('properties'),
 		authorName: v.string(),
