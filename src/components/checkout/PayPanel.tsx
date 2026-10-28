@@ -12,6 +12,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_TENDERS, TENDER_METHODS, round2, type Tender, type TenderMethod } from "convex/lib/billMath";
 import { newAttemptKey, useCheckoutBackend, type BillId, type BillView } from "./backend";
+import { amountInput } from "./checkout-ui";
 
 export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
   cash: { short: "Cash", long: "Cash", hint: "" },
@@ -21,7 +22,6 @@ export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; 
 };
 
 const CASH_STEPS = [100, 500, 1000];
-const amountInput = (value: string) => value.replace(/[^\d.]/g, "");
 
 /**
  * Takes the payment. One idempotency key per attempt (this panel's lifetime): a retry after a
@@ -151,7 +151,8 @@ function SplitForm({ due, submitting, onPay }: { due: number; submitting: boolea
             <Select value={row.method} onValueChange={(method) => update(index, { method: method as TenderMethod })}>
               <SelectTrigger className="w-32" aria-label={`Payment ${index + 1} method`}><SelectValue /></SelectTrigger>
               <SelectContent>
-                {TENDER_METHODS.map((method) => <SelectItem key={method} value={method}>{TENDER_LABELS[method].long}</SelectItem>)}
+                {/* Short labels: the long ones ("PromptPay QR") truncate in the narrow trigger. */}
+                {TENDER_METHODS.map((method) => <SelectItem key={method} value={method}>{TENDER_LABELS[method].short}</SelectItem>)}
               </SelectContent>
             </Select>
             <Input inputMode="decimal" aria-label={`Payment ${index + 1} amount`} className="min-w-0 flex-1 tabular-nums" value={row.amount} onChange={(e) => update(index, { amount: amountInput(e.target.value) })} placeholder="0" />

@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type Attachable, type BillId, type BillView, type Guest } from "./backend";
 import type { Run } from "./BillPanel";
+import { TOUCH_TARGETS, heldAt } from "./checkout-ui";
 
 type Panel = "guest" | "attach" | "held" | null;
 
@@ -52,10 +54,14 @@ export function CustomerStrip({
         </Button>
       ) : null}
       <div className="ml-auto flex gap-2">
-        <Button variant="ghost" onClick={() => setPanel("held")}>
+        <Button
+          variant="ghost"
+          onClick={() => setPanel("held")}
+          aria-label={`Held bills${otherBills.length ? `, ${otherBills.length} other unpaid ${otherBills.length === 1 ? "bill" : "bills"}` : ""}`}
+        >
           <Layers aria-hidden className="size-4" />
           <span className="hidden sm:inline">Held bills</span>
-          {otherBills.length ? <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{otherBills.length}</span> : null}
+          {otherBills.length ? <span aria-hidden className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{otherBills.length}</span> : null}
         </Button>
         <Button variant="outline" onClick={() => onBillChange(null)} disabled={!bill} aria-label="New bill">
           <Plus aria-hidden className="size-4" />
@@ -64,19 +70,19 @@ export function CustomerStrip({
       </div>
 
       <Dialog open={panel === "guest"} onOpenChange={(open) => !open && close()}>
-        <DialogContent className="max-w-md">
+        <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
           {panel === "guest" ? <GuestPicker hasGuest={Boolean(guest)} onPick={pickGuest} /> : null}
         </DialogContent>
       </Dialog>
 
       <Dialog open={panel === "attach"} onOpenChange={(open) => !open && close()}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className={cn("max-w-lg", TOUCH_TARGETS)}>
           {panel === "attach" && guest ? <AttachList guest={guest} billId={bill?._id} run={run} onDone={close} /> : null}
         </DialogContent>
       </Dialog>
 
       <Dialog open={panel === "held"} onOpenChange={(open) => !open && close()}>
-        <DialogContent className="max-w-md">
+        <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
           <DialogHeader>
             <DialogTitle>Held bills</DialogTitle>
             <DialogDescription>Unpaid bills from any device. Open one to carry on.</DialogDescription>
@@ -96,10 +102,14 @@ export function CustomerStrip({
                       <span className="block truncate text-sm font-semibold">{b.label}</span>
                       <span className="block text-xs text-muted-foreground">
                         {b.itemCount} {b.itemCount === 1 ? "item" : "items"} · {b.status === "held" ? "held" : "open"} ·{" "}
-                        {new Date(b.updatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                        {heldAt(b.updatedAt)}
                       </span>
                     </span>
-                    <span className="text-sm font-semibold tabular-nums">{formatMoney(b.total, b.currency)}</span>
+                    {/* The bill total; deposits already paid come off what is due once it is open. */}
+                    <span className="shrink-0 text-right">
+                      <span className="block text-[11px] text-muted-foreground">Total</span>
+                      <span className="block text-sm font-semibold tabular-nums">{formatMoney(b.total, b.currency)}</span>
+                    </span>
                   </button>
                 </li>
               ))}
@@ -159,9 +169,13 @@ function AttachList({ guest, billId, run, onDone }: { guest: Guest; billId: Bill
   const actions = backend.useActions();
   const rows = backend.useAttachable(guest);
 
+  // Stays open while the guest has more to attach, so a stay and an appointment take one visit.
+  // A failed attach closes the list so the page's error banner isn't hidden behind it.
   async function attach(row: Attachable) {
     const target = row.kind === "booking" ? { bookingId: row.id as Id<"bookings"> } : { appointmentId: row.id as Id<"serviceAppointments"> };
-    if (await run((current) => actions.attach({ billId: current, ...target }))) onDone();
+    const more = rows?.some((other) => other.id !== row.id && other.onBill === null);
+    const ok = await run((current) => actions.attach({ billId: current, ...target }));
+    if (!ok || !more) onDone();
   }
 
   return (
@@ -197,6 +211,7 @@ function AttachList({ guest, billId, run, onDone }: { guest: Guest; billId: Bill
       ) : (
         <p className="text-sm text-muted-foreground">No unpaid bookings or appointments found for this guest.</p>
       )}
+      <Button variant="outline" onClick={onDone}>Done</Button>
     </>
   );
 }

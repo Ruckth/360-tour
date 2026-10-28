@@ -5,9 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { errorText } from "@/lib/staff-bookings";
+import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type BillId, type CatalogItem } from "./backend";
 import { BillPanel, type Run } from "./BillPanel";
 import { CatalogPane } from "./CatalogPane";
+import { TOUCH_TARGETS } from "./checkout-ui";
 import { CustomerStrip } from "./CustomerStrip";
 
 /**
@@ -98,33 +100,49 @@ export function CheckoutView({
     if (paidAlready && view) toReceipt(view.bill._id);
   }, [paidAlready, view, toReceipt]);
 
-  const panel = (
-    <BillPanel view={missing ? null : view} label={label} catalog={catalog} run={run} onBillChange={changeBill} onPaid={toReceipt} />
+  // The bill sheet is for narrow screens only. Rotating an iPad to landscape while it is open
+  // would hide the sheet but leave its overlay blocking the page, so close it there.
+  useEffect(() => {
+    const wide = window.matchMedia("(min-width: 64rem)");
+    const onChange = () => {
+      if (wide.matches) setSheetOpen(false);
+    };
+    wide.addEventListener("change", onChange);
+    return () => wide.removeEventListener("change", onChange);
+  }, []);
+
+  const panel = (onClose?: () => void) => (
+    <BillPanel view={missing ? null : view} label={label} catalog={catalog} run={run} onBillChange={changeBill} onPaid={toReceipt} onClose={onClose} />
   );
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <CustomerStrip view={view} label={label} run={run} onBillChange={changeBill} />
-      {notice || error || missing ? (
-        <div role="alert" className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6">
-          <span className="flex-1">{error || notice || "That bill doesn't exist. Start a new one."}</span>
-          {error ? (
-            <button type="button" onClick={() => setError("")} aria-label="Dismiss" className="rounded p-0.5 hover:bg-destructive/10">
-              <X aria-hidden className="size-4" />
-            </button>
-          ) : null}
-        </div>
+  // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).
+  const alert = (message: string) => (
+    <div role="alert" className="flex items-start gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 sm:px-6 dark:border-red-400/30 dark:bg-red-400/15 dark:text-red-300">
+      <span className="flex-1 self-center">{message}</span>
+      {error ? (
+        <button type="button" onClick={() => setError("")} aria-label="Dismiss" className="grid place-items-center rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-400/20">
+          <X aria-hidden className="size-4" />
+        </button>
       ) : null}
+    </div>
+  );
+  const message = error || notice || (missing ? "That bill doesn't exist. Start a new one." : "");
+
+  return (
+    <div className={cn("flex min-h-0 flex-1 flex-col", TOUCH_TARGETS)}>
+      <CustomerStrip view={view} label={label} run={run} onBillChange={changeBill} />
+      {message ? alert(message) : null}
       <div className="flex min-h-0 flex-1">
         <CatalogPane catalog={catalog} lines={lines} onAdd={add} className="min-w-0 flex-1" />
         <aside aria-label="Bill" className="hidden w-[360px] shrink-0 border-l border-border bg-card lg:flex lg:flex-col">
-          {panel}
+          {panel()}
         </aside>
       </div>
 
       <button
         type="button"
         onClick={() => setSheetOpen(true)}
+        aria-label={`${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the bill`}
         className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 rounded-full bg-primary px-5 py-3.5 text-primary-foreground shadow-xl lg:hidden"
       >
         <ReceiptText aria-hidden className="size-5" />
@@ -134,11 +152,13 @@ export function CheckoutView({
         <ChevronUp aria-hidden className="size-5" />
       </button>
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="bottom" showCloseButton={false} className="h-[94dvh] gap-0 rounded-t-2xl p-0 lg:hidden">
-          <button type="button" onClick={() => setSheetOpen(false)} aria-label="Close bill" className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
+        <SheetContent side="bottom" showCloseButton={false} className={cn("h-[94dvh] gap-0 rounded-t-2xl p-0 lg:hidden", TOUCH_TARGETS)}>
+          <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">Bill</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>
-          {panel}
+          {/* The page banner sits under the sheet's overlay, so errors repeat here. */}
+          {error ? alert(error) : null}
+          {panel(() => setSheetOpen(false))}
         </SheetContent>
       </Sheet>
     </div>

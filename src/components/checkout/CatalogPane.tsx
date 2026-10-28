@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { BillLine, Catalog, CatalogItem } from "./backend";
+import { TOUCH_TARGETS, amountInput } from "./checkout-ui";
 
 type Tab = "frequent" | "services" | "rooms" | "extras";
 type Tile = {
@@ -131,6 +132,16 @@ export function CatalogPane({
                 </div>
               </div>
             ))}
+            {!sections.length && (tab !== "extras" || text || filterCount) ? (
+              <div className="grid justify-items-center gap-2 py-10 text-center text-sm text-muted-foreground">
+                <p>{text || filterCount ? "Nothing matches the search or filters." : "Nothing to sell here yet."}</p>
+                {text || filterCount ? (
+                  <Button variant="outline" size="sm" onClick={() => { setSearch(""); setGroups([]); setMaxPrice(""); }}>
+                    Clear search and filters
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             {tab === "extras" ? (
               <button
                 type="button"
@@ -141,15 +152,12 @@ export function CatalogPane({
                 Custom item
               </button>
             ) : null}
-            {!sections.length && tab !== "extras" ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">{text || filterCount ? "Nothing matches the search or filters." : "Nothing to sell here yet."}</p>
-            ) : null}
           </>
         )}
       </div>
 
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <SheetContent side="right" className="w-80">
+        <SheetContent side="right" className={cn("w-80", TOUCH_TARGETS)}>
           <SheetHeader>
             <SheetTitle>Filters</SheetTitle>
             <SheetDescription>Narrow the {TABS.find((t) => t.value === tab)?.label.toLowerCase()} tab.</SheetDescription>
@@ -175,7 +183,7 @@ export function CatalogPane({
           </div>
           <div className="space-y-2">
             <Label htmlFor="checkout-max-price">Price up to (฿)</Label>
-            <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Any price" />
+            <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value))} placeholder="Any price" />
           </div>
           <Button variant="outline" onClick={() => { setGroups([]); setMaxPrice(""); }} disabled={!filterCount}>Reset filters</Button>
         </SheetContent>
@@ -205,7 +213,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
           ) : null}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cn("line-clamp-2 text-sm leading-tight font-semibold", tile.description && "pr-5")}>{tile.name}</span>
+          <span className={cn("line-clamp-3 text-sm leading-tight font-semibold", tile.description && "pr-5")}>{tile.name}</span>
           <span className="mt-1 flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
             <span className="truncate">{tile.meta}</span>
             <span className="font-semibold text-foreground tabular-nums">{formatMoney(tile.price, tile.currency)}</span>
@@ -215,8 +223,9 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
       {tile.description ? (
         <Popover>
           <PopoverTrigger asChild>
-            <button type="button" aria-label={`About ${tile.name}`} className="absolute top-1 right-1 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
-              <Info aria-hidden className="size-3.5" />
+            {/* A bigger hit area in the corner (44px on touch screens); the visible icon stays small. */}
+            <button type="button" aria-label={`About ${tile.name}`} className="group absolute top-0 right-0 flex size-8 items-start justify-end p-1 text-muted-foreground hover:text-foreground pointer-coarse:size-11">
+              <span className="rounded-full p-1 group-hover:bg-muted"><Info aria-hidden className="size-3.5" /></span>
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-64 text-sm">
@@ -246,7 +255,7 @@ function CustomItemDialog({ open, onOpenChange, onAdd }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className={cn("max-w-sm", TOUCH_TARGETS)}>
         <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Custom item</DialogTitle>
@@ -258,7 +267,7 @@ function CustomItemDialog({ open, onOpenChange, onAdd }: { open: boolean; onOpen
           </div>
           <div className="grid gap-2">
             <Label htmlFor="custom-item-price">Price (฿, VAT included)</Label>
-            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} />
+            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value))} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
