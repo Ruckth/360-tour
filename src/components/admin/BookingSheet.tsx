@@ -11,7 +11,7 @@ import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -256,6 +256,9 @@ function BookingDetails({
             {pending === "confirm" ? <Spinner className="text-current" /> : null}
             Confirm
           </Button>
+        ) : null}
+        {editable && !isPaid ? (
+          <ButtonLink href={`/admin/checkout?booking=${booking._id}`}>Checkout</ButtonLink>
         ) : null}
         {editable && !isPaid ? (
           <Button variant="secondary" onClick={() => act("markPaid", () => updateBooking({ bookingId: booking._id, action: "markPaid" }))} disabled={pending !== null}>
