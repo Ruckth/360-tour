@@ -21,7 +21,7 @@ import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { formatMoney, sourceLabel } from "@/components/admin/labels";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -235,6 +235,11 @@ export function AppointmentSheet({
                       {ACTION_LABELS[action]}
                     </Button>
                   ))}
+                  {appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" && appointment.status !== "no_show" ? (
+                    <ButtonLink href={`/admin/checkout?appointment=${appointment._id}`} variant="secondary">
+                      Checkout
+                    </ButtonLink>
+                  ) : null}
                   {canReschedule(appointment, now) ? (
                     <Button variant="outline" onClick={() => setDialog("reschedule")} disabled={pending !== null}>
                       <CalendarClock aria-hidden className="size-4" />
