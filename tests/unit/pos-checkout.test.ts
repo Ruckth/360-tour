@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assertPriceOverride, assertTenders, billTotals, changeDue, formatReceiptNumber, lineNet } from "convex/lib/billMath";
 import { parseCheckoutSource } from "@/components/checkout/checkout-source";
+import { amountInput, heldAt } from "@/components/checkout/checkout-ui";
 
 describe("bill math", () => {
   it("shows the 7% VAT already included in the total", () => {
@@ -50,5 +51,22 @@ describe("checkout source", () => {
 
   it.each(["bill=k17abc123def&booking=k17abc123def", "booking=k17abc123def&booking=k17abc999def", "booking=", "bill=../x"])("refuses %s", (query) => {
     expect(parse(query).kind).toBe("invalid");
+  });
+});
+
+describe("checkout inputs and labels", () => {
+  it("keeps typed money to digits, one decimal point and two decimals", () => {
+    expect(amountInput("1,200")).toBe("1200");
+    expect(amountInput("฿ 99.5")).toBe("99.5");
+    expect(amountInput("1.2.3")).toBe("1.23");
+    expect(amountInput("10.999")).toBe("10.99");
+    expect(amountInput(".5")).toBe(".5");
+    expect(amountInput("abc")).toBe("");
+  });
+
+  it("dates held bills from other days, since walk-in numbers restart daily", () => {
+    const now = new Date(2026, 9, 29, 9, 30).getTime();
+    expect(heldAt(new Date(2026, 9, 29, 8, 5).getTime(), now)).toBe("08:05");
+    expect(heldAt(new Date(2026, 9, 28, 23, 56).getTime(), now)).toBe("28 Oct, 23:56");
   });
 });

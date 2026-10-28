@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { ChevronDown, Minus, Pause, Plus, ReceiptText, Trash2 } from "lucide-react";
+import { ChevronDown, Minus, Pause, Plus, ReceiptText, Trash2, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { formatMoney } from "@/components/admin/labels";
@@ -13,6 +13,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { MERGES_QTY, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type BillId, type BillLine, type BillView, type Catalog } from "./backend";
+import { amountInput } from "./checkout-ui";
 import { PayPanel, TENDER_LABELS } from "./PayPanel";
 
 /** Runs a bill write in order; the task gets the current bill id (undefined before the first item). */
@@ -23,7 +24,7 @@ const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, total: 0, vat: 0, d
 /**
  * The bill: rows (tap to edit inline), totals with the VAT included, and the tender buttons
  * in the footer. Paying swaps the rows for the payment panel. Used beside the catalog on
- * wide screens and inside the bottom sheet on phones.
+ * wide screens and inside the bottom sheet on phones (which passes `onClose`).
  */
 export function BillPanel({
   view,
@@ -32,6 +33,7 @@ export function BillPanel({
   run,
   onBillChange,
   onPaid,
+  onClose,
 }: {
   view: BillView | null | undefined;
   label: string;
@@ -39,6 +41,7 @@ export function BillPanel({
   run: Run;
   onBillChange: (billId: BillId | null) => void;
   onPaid: (billId: BillId) => void;
+  onClose?: () => void;
 }) {
   const actions = useCheckoutBackend().useActions();
   const confirm = useConfirm();
@@ -86,6 +89,11 @@ export function BillPanel({
             </Button>
           </>
         )}
+        {onClose ? (
+          <Button size="icon" variant="ghost" className="size-9" onClick={onClose} aria-label="Close bill">
+            <X aria-hidden className="size-4" />
+          </Button>
+        ) : null}
       </div>
 
       {paying && view ? (
@@ -279,12 +287,12 @@ function LineEditor({ line, catalog, run }: { line: BillLine; catalog: Catalog |
       ) : null}
 
       <Field label="Discount">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ToggleGroup value={discountType} onValueChange={setDiscountType} aria-label="Discount type" className="p-0.5">
             <ToggleGroupItem value="amount" className="px-2.5 py-1.5">฿</ToggleGroupItem>
             <ToggleGroupItem value="percent" className="px-2.5 py-1.5">%</ToggleGroupItem>
           </ToggleGroup>
-          <Input inputMode="decimal" aria-label="Discount" className="h-9 w-24" value={discountValue} onChange={(e) => setDiscountValue(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" />
+          <Input inputMode="decimal" aria-label="Discount" className="h-9 w-24" value={discountValue} onChange={(e) => setDiscountValue(amountInput(e.target.value))} placeholder="0" />
           <Button size="sm" variant="outline" disabled={discountValue === ""} onClick={() => run(() => actions.updateLine({ lineId, discount: { type: discountType, value: Number(discountValue) } }))}>
             Apply
           </Button>
@@ -310,7 +318,7 @@ function LineEditor({ line, catalog, run }: { line: BillLine; catalog: Catalog |
           <div className="grid gap-2">
             <div className="flex items-center gap-2">
               <Label htmlFor={`price-${lineId}`} className="sr-only">New unit price</Label>
-              <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder={String(line.unitPrice)} autoFocus />
+              <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value))} placeholder={String(line.unitPrice)} autoFocus />
               <span className="text-xs text-muted-foreground">was {formatMoney(line.unitPrice)}</span>
             </div>
             <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />

@@ -12,8 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
 import { changeDue, formatReceiptNumber, lineGross, linePrice } from "convex/lib/billMath";
+import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type BillId, type BillView } from "./backend";
 import { TENDER_LABELS } from "./PayPanel";
+import { TOUCH_TARGETS } from "./checkout-ui";
 
 type Paper = "58" | "80";
 
@@ -84,7 +86,7 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-4 px-4 py-6">
+    <div className={cn("flex flex-1 flex-col items-center gap-4 px-4 py-6", TOUCH_TARGETS)}>
       <style>{`
         @media print {
           @page { size: ${paper}mm auto; margin: 0; }
@@ -190,7 +192,7 @@ function VoidDialog({ open, onOpenChange, billId, hasAttached }: { open: boolean
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
         <DialogHeader>
           <DialogTitle>Void this receipt?</DialogTitle>
           <DialogDescription>
