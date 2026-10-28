@@ -19,7 +19,7 @@ import type {
 import { AdminStaffServicesManager, TimeOffDialog } from "@/components/admin/AdminStaffServicesManager";
 import { AppointmentSheet } from "@/components/admin/AppointmentSheet";
 import { BreakEditDialog } from "@/components/admin/BreakEditDialog";
-import { adminStaffTabPath, isAdminStaffTab, type AdminStaffTab } from "@/components/admin/admin-routes";
+import { ADMIN_STAFF_TABS, ADMIN_STAFF_TAB_LABELS, adminStaffTabPath, isAdminStaffTab, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { NewAppointmentDialog, type AppointmentDraft } from "@/components/admin/NewAppointmentDialog";
@@ -85,12 +85,7 @@ function todayRange() {
   return { from, to: from + DAY_MS };
 }
 
-const TABS = [
-  ["calendar", "Calendar"],
-  ["roster", "Roster"],
-  ["staff", "Staff"],
-  ["services", "Services"],
-] as const satisfies ReadonlyArray<readonly [AdminStaffTab, string]>;
+const TABS = ADMIN_STAFF_TABS.map((tab) => [tab, ADMIN_STAFF_TAB_LABELS[tab]] as const);
 
 /**
  * The Staff bookings tab strip and panel. It lives in the staff layout, so it stays mounted

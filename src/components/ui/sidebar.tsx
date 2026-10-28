@@ -211,6 +211,16 @@ const Sidebar = React.forwardRef<
               } as React.CSSProperties
             }
             side={side}
+            // Focus the panel, not its first field: a focused search box would pop up the phone keyboard.
+            onOpenAutoFocus={(event) => {
+              event.preventDefault()
+              ;(event.currentTarget as HTMLElement).focus()
+            }}
+            // Escape in a filled field (the search) clears it first instead of closing the panel.
+            onEscapeKeyDown={(event) => {
+              const target = event.target
+              if (target instanceof HTMLInputElement && target.value) event.preventDefault()
+            }}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>
@@ -281,7 +291,7 @@ const SidebarTrigger = React.forwardRef<
       data-sidebar="trigger"
       variant="ghost"
       size="icon"
-      className={cn("h-7 w-7", className)}
+      className={cn("h-10 w-10 md:h-7 md:w-7", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()

@@ -169,13 +169,21 @@ export default defineSchema({
 		name: v.string(),
 		role: v.string(),
 		avatarUrl: v.optional(v.string()),
+		/** Set when `avatarUrl` is a photo uploaded from the staff admin, so replacing or removing it can delete the file. */
+		avatarStorageId: v.optional(v.id('_storage')),
 		color: v.string(),
 		status: v.union(v.literal('active'), v.literal('archived')),
 		workingHours: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string() })),
 		breaks: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string(), label: v.string() })),
 		createdAt: v.number(),
 		updatedAt: v.number()
-	}).index('by_status', ['status']),
+	}).index('by_status', ['status']).index('by_avatarUrl', ['avatarUrl']),
+
+	/** Staff and service photo uploads not yet attached to a record. Attaching removes the row; a cron deletes stale ones. */
+	staffAvatarUploads: defineTable({
+		storageId: v.id('_storage'),
+		createdAt: v.number()
+	}).index('by_storageId', ['storageId']).index('by_createdAt', ['createdAt']),
 
 	services: defineTable({
 		slug: v.string(),
@@ -187,6 +195,9 @@ export default defineSchema({
 		price: v.number(),
 		currency: v.string(),
 		staffIds: v.array(v.id('staff')),
+		/** Optional photo shown in the admin service picker; `imageStorageId` is set when it was uploaded here. */
+		imageUrl: v.optional(v.string()),
+		imageStorageId: v.optional(v.id('_storage')),
 		status: v.union(v.literal('active'), v.literal('archived')),
 		createdAt: v.number(),
 		updatedAt: v.number()
