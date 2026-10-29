@@ -35,7 +35,7 @@ export function PayPanel({
   const due = view.totals.due;
   const [attemptKey] = useState(newAttemptKey);
   // The bill as it was when this panel opened; a change made since (even at the same total) is refused.
-  const [revision] = useState(view.bill.revision ?? 0);
+  const [revision] = useState(view.bill.revision);
   const lock = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -111,7 +111,7 @@ function CashForm({ due, submitting, onPay }: { due: number; submitting: boolean
       <div className="grid grid-cols-4 gap-2">
         <Button variant="secondary" onClick={() => setReceived(String(due))}>Exact</Button>
         {CASH_STEPS.map((step) => (
-          <Button key={step} variant="secondary" onClick={() => setReceived(String(round2(value + step)))}>+{formatMoney(step)}</Button>
+          <Button key={step} variant="secondary" onClick={() => setReceived(amountInput(String(round2(value + step))))}>+{formatMoney(step)}</Button>
         ))}
       </div>
       <div className={cn("flex items-baseline justify-between rounded-xl border p-3", value >= due && change > 0 ? "border-primary" : "border-border")} aria-live="polite">

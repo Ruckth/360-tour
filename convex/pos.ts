@@ -6,13 +6,17 @@ import { markBookingPaid } from './bookings';
 import { requireAdmin } from './lib/adminAuth';
 import { recordAppointmentChange } from './lib/appointmentChanges';
 import {
+	MAX_QTY,
 	MERGES_QTY,
 	NOTE_MAX,
+	assertBillSize,
 	assertDiscount,
 	assertPrice,
 	assertPriceOverride,
 	assertTenders,
 	billTotals,
+	bookingBalance,
+	bookingPayable,
 	lineNet,
 	round2
 } from './lib/billMath';
@@ -25,10 +29,7 @@ import { resortLocalParts } from './lib/serviceSlots';
  */
 
 const MAX_LINES = 100;
-const MAX_QTY = 99;
 const OPEN_BILLS = 20;
-/** Bills saved before `hasItems` read per status when listing open bills; empty ones are skipped. */
-const LEGACY_BILL_SCAN = 500;
 const FREQUENT_SCAN = 300;
 const FREQUENT_COUNT = 8;
 const CURRENCY = 'THB';
@@ -48,11 +49,11 @@ const itemValidator = v.union(
 type ReadCtx = QueryCtx | MutationCtx;
 type Bill = Doc<'bills'>;
 type Line = Doc<'billLines'>;
+type Guest = { guestName: string; guestPhone: string; guestEmail?: string };
 
 const billLabel = (bill: Pick<Bill, 'guestName' | 'walkInNumber'>) => bill.guestName || `Walk-in #${bill.walkInNumber}`;
 const isOpen = (bill: Bill) => bill.status === 'draft' || bill.status === 'held';
 const walkInKey = (now: number) => `walkin:${resortLocalParts(now).date}`;
-const revisionOf = (bill: Pick<Bill, 'revision'>) => bill.revision ?? 0;
 const ATTACHED_PRICE = "A stay is charged at its booked price. Change the price on the booking itself, then attach it again.";
 
 /** Bills are in baht; a price in another currency is refused rather than read as baht. */
@@ -104,11 +105,13 @@ async function editableLine(ctx: MutationCtx, lineId: Id<'billLines'>, actor: st
 /** Keeps the bill's item count and total in step with its lines, and marks it changed. */
 async function refreshBill(ctx: MutationCtx, billId: Id<'bills'>) {
 	const [bill, lines] = await Promise.all([ctx.db.get(billId), billLines(ctx, billId)]);
+	const totals = billTotals(lines);
+	assertBillSize(totals);
 	await ctx.db.patch(billId, {
 		itemCount: lines.reduce((n, line) => n + line.qty, 0),
-		total: billTotals(lines).total,
+		total: totals.total,
 		hasItems: lines.length > 0,
-		revision: revisionOf(bill!) + 1,
+		revision: bill!.revision + 1,
 		updatedAt: Date.now()
 	});
 }
@@ -121,16 +124,6 @@ function cleanText(value: string | undefined, label: string, max = 200) {
 	const trimmed = value?.trim();
 	if (trimmed && trimmed.length > max) throw new Error(`${label} must be at most ${max} characters`);
 	return trimmed || undefined;
-}
-
-/** What is still owed on a booking, and what was already paid (online or recorded). */
-function bookingBalance(booking: Doc<'bookings'>) {
-	const paid = booking.paymentStatus === 'paid' ? (booking.amountPaid ?? booking.total) : (booking.amountPaid ?? 0);
-	return { paid, owed: round2(booking.total - paid) };
-}
-
-function bookingAttachable(booking: Doc<'bookings'>) {
-	return booking.status !== 'cancelled' && booking.paymentStatus !== 'refunded' && booking.paymentStatus !== 'failed' && bookingBalance(booking).owed > 0;
 }
 
 function appointmentAttachable(appointment: Doc<'serviceAppointments'>) {
@@ -187,11 +180,11 @@ async function attachTo(ctx: MutationCtx, bill: Bill, target: { bookingId?: Id<'
 	if (Boolean(target.bookingId) === Boolean(target.appointmentId)) throw new Error('Choose one booking or appointment');
 	await assertRoom(ctx, bill._id);
 	let line;
-	let guest: { guestName: string; guestPhone: string; guestEmail?: string };
+	let guest: Guest;
 	if (target.bookingId) {
 		const booking = await ctx.db.get(target.bookingId);
 		if (!booking) throw new Error('Booking not found');
-		if (!bookingAttachable(booking)) throw new Error('This booking has nothing left to pay');
+		if (!bookingPayable(booking)) throw new Error('This booking has nothing left to pay');
 		assertBaht(booking.currency, 'This booking');
 		const other = await openBillWith(ctx, { bookingId: booking._id });
 		if (other) throw new Error(other._id === bill._id ? 'This booking is already on the bill' : `This booking is already on ${billLabel(other)}'s bill`);
@@ -276,31 +269,15 @@ export const getBill = query({
 	}
 });
 
-/**
- * Bills saved before `hasItems` existed (undefined) that have items, newest first. Empty ones are
- * skipped while reading, so they can't fill the page; the scan stops at LEGACY_BILL_SCAN rows.
- */
-async function legacyOpenBills(ctx: QueryCtx, status: 'held' | 'draft') {
-	const found: Bill[] = [];
-	let read = 0;
-	const rows = ctx.db.query('bills').withIndex('by_status_and_hasItems_and_updatedAt', (q) => q.eq('status', status).eq('hasItems', undefined)).order('desc');
-	for await (const bill of rows) {
-		if (bill.itemCount > 0) found.push(bill);
-		if (found.length >= OPEN_BILLS || ++read >= LEGACY_BILL_SCAN) break;
-	}
-	return found;
-}
-
 /** Draft and held bills with items, newest first, to resume. */
 export const listOpenBills = query({
 	args: {},
 	handler: async (ctx) => {
 		await requireAdmin(ctx);
 		const pages = await Promise.all(
-			(['held', 'draft'] as const).flatMap((status) => [
-				ctx.db.query('bills').withIndex('by_status_and_hasItems_and_updatedAt', (q) => q.eq('status', status).eq('hasItems', true)).order('desc').take(OPEN_BILLS),
-				legacyOpenBills(ctx, status)
-			])
+			(['held', 'draft'] as const).map((status) =>
+				ctx.db.query('bills').withIndex('by_status_and_hasItems_and_updatedAt', (q) => q.eq('status', status).eq('hasItems', true)).order('desc').take(OPEN_BILLS)
+			)
 		);
 		return pages.flat()
 			.sort((a, b) => b.updatedAt - a.updatedAt)
@@ -321,29 +298,30 @@ export const listAttachable = query({
 		const digits = phone.replace(/\D/g, '');
 		const email = args.guestEmail?.trim().toLowerCase() ?? '';
 		const name = args.guestName?.trim() ?? '';
-		const [byDigits, byPhone, byEmail, byName, appointmentsByPhone] = await Promise.all([
+		const [byDigits, byPhone, byEmail, byName, appointmentsByPhone, appointmentsByName] = await Promise.all([
 			digits.length >= 4 ? ctx.db.query('bookings').withIndex('by_guestPhoneDigits', (q) => q.eq('guestPhoneDigits', digits)).order('desc').take(20) : [],
 			// Raw phone and the name search also find bookings saved before the lookup fields
 			// (migrations:backfillBookingGuestLookup), like adminBookings.findGuests.
 			phone ? ctx.db.query('bookings').withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone)).order('desc').take(20) : [],
 			email.includes('@') ? ctx.db.query('bookings').withIndex('by_guestEmailNormalized', (q) => q.eq('guestEmailNormalized', email)).order('desc').take(20) : [],
 			name.length >= 2 ? ctx.db.query('bookings').withSearchIndex('search_guestName', (q) => q.search('guestName', name)).take(20) : [],
-			phone ? ctx.db.query('serviceAppointments').withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone)).order('desc').take(20) : []
+			phone ? ctx.db.query('serviceAppointments').withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone)).order('desc').take(20) : [],
+			name.length >= 2 ? ctx.db.query('serviceAppointments').withSearchIndex('search_guestName', (q) => q.search('guestName', name)).take(20) : []
 		]);
-		// A same-name booking counts only if its contact details match the ones given, if any.
-		const sameGuest = (b: Doc<'bookings'>) =>
+		// A same-name booking or appointment counts only if its contact details match the ones given, if any.
+		const sameGuest = (b: Guest) =>
 			b.guestName.trim().toLowerCase() === name.toLowerCase() &&
 			((!digits && !email) || (digits.length >= 4 && b.guestPhone.replace(/\D/g, '') === digits) || (email.includes('@') && b.guestEmail?.trim().toLowerCase() === email));
 		const bookings = new Map<Id<'bookings'>, Doc<'bookings'>>();
 		for (const booking of [...byDigits, ...byPhone, ...byEmail, ...byName.filter(sameGuest)]) bookings.set(booking._id, booking);
-		const appointments = new Map(appointmentsByPhone.map((a) => [a._id, a]));
+		const appointments = new Map([...appointmentsByPhone, ...appointmentsByName.filter(sameGuest)].map((a) => [a._id, a]));
 		for (const booking of bookings.values()) {
 			for (const appointment of await ctx.db.query('serviceAppointments').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).take(20)) appointments.set(appointment._id, appointment);
 		}
 
 		const rows = [];
 		for (const booking of bookings.values()) {
-			if (!bookingAttachable(booking)) continue;
+			if (!bookingPayable(booking)) continue;
 			const property = await ctx.db.get(booking.propertyId);
 			rows.push({
 				kind: 'booking' as const,
@@ -372,6 +350,24 @@ export const listAttachable = query({
 			});
 		}
 		return rows;
+	}
+});
+
+/**
+ * Guests who booked an appointment, by name or exact phone, for the checkout customer search
+ * (stays come from adminBookings.searchBookings). Covers guests with no villa booking.
+ */
+export const searchAppointmentGuests = query({
+	args: { query: v.string() },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const text = args.query.trim();
+		if (text.length < 2) return [];
+		const [byPhone, byName] = await Promise.all([
+			ctx.db.query('serviceAppointments').withIndex('by_guestPhone', (q) => q.eq('guestPhone', text)).order('desc').take(20),
+			ctx.db.query('serviceAppointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(20)
+		]);
+		return [...byPhone, ...byName].map((a) => ({ guestName: a.guestName, guestPhone: a.guestPhone, guestEmail: a.guestEmail }));
 	}
 });
 
@@ -538,7 +534,7 @@ export const setCustomer = mutation({
 			guestName: name,
 			guestPhone: cleanText(args.guest?.phone, 'Phone', 40),
 			guestEmail: cleanText(args.guest?.email, 'Email', 200),
-			revision: revisionOf(bill) + 1,
+			revision: bill.revision + 1,
 			updatedAt: Date.now()
 		});
 		return { billId: bill._id };
@@ -588,21 +584,15 @@ export const settleBill = mutation({
 		const lines = await billLines(ctx, bill._id);
 		if (!lines.length) throw new Error('Add an item first');
 		const totals = billTotals(lines);
-		if (totals.due !== round2(args.expectedDue) || revisionOf(bill) !== args.expectedRevision) throw new Error('The bill changed. Check the total and pay again.');
+		if (totals.due !== round2(args.expectedDue) || bill.revision !== args.expectedRevision) throw new Error('The bill changed. Check the total and pay again.');
 		assertTenders(args.tenders, totals.due);
 
 		const now = Date.now();
 		const changed = (line: Line) => new Error(`${line.name} changed since it was added. Remove it and attach it again.`);
 		for (const line of lines) {
-			// Lines saved before they recorded a currency were priced from the service or villa as it was.
-			if (!line.currency && (line.kind === 'service' || line.kind === 'room')) {
-				const source = line.serviceId ? await ctx.db.get(line.serviceId) : line.propertyId ? await ctx.db.get(line.propertyId) : null;
-				if (!source) throw changed(line);
-				assertBaht(source.currency, line.name);
-			}
 			if (line.bookingId) {
 				const booking = await ctx.db.get(line.bookingId);
-				if (!booking || !bookingAttachable(booking) || booking.currency !== CURRENCY) throw changed(line);
+				if (!booking || !bookingPayable(booking) || booking.currency !== CURRENCY) throw changed(line);
 				// Same villa, dates, price and deposit as the row staff reviewed (and the receipt prints).
 				const fresh = await bookingLine(ctx, booking);
 				if (fresh.name !== line.name || fresh.detail !== line.detail || fresh.unitPrice !== line.unitPrice || (fresh.deposit ?? 0) !== (line.deposit ?? 0)) throw changed(line);

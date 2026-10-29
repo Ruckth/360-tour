@@ -2,7 +2,7 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CheckoutBackendProvider, type BillId } from "@/components/checkout/backend";
+import { CheckoutBackendProvider, type BillId, type CheckoutBackend } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { useBillWrites } from "@/components/checkout/useBillWrites";
@@ -20,6 +20,10 @@ function Harness({ billId }: { billId: BillId | null }) {
   return null;
 }
 const render = (billId: BillId | null) => act(async () => root.render(createElement(Harness, { billId })));
+const showBill = (backend: CheckoutBackend, billId: BillId) =>
+  act(async () =>
+    root.render(createElement(CheckoutBackendProvider, { backend }, createElement(CheckoutView, { billId, onBillChange: () => {}, onPaid: () => {} }))),
+  );
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -109,10 +113,7 @@ describe("checkout bill writes", () => {
       return (await added).billId;
     };
     const [a, b] = [await create("Water"), await create("Tea")];
-    const show = (billId: BillId) =>
-      act(async () =>
-        root.render(createElement(CheckoutBackendProvider, { backend, children: createElement(CheckoutView, { billId, onBillChange: () => {}, onPaid: () => {} }) })),
-      );
+    const show = (billId: BillId) => showBill(backend, billId);
     const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text)!;
     await show(a);
     await act(async () => button("Cash").click());
@@ -121,6 +122,40 @@ describe("checkout bill writes", () => {
     await show(b);
     expect(document.querySelector("#cash-received")).toBeNull();
     expect(document.body.textContent).toContain("Tea");
+  });
+
+  it("keeps the cash shortcuts within what the till takes (R6-01)", async () => {
+    vi.useFakeTimers();
+    const backend = createFixtureBackend();
+    const actions = backend.useActions();
+    const added = actions.addItem({ item: { kind: "extra", name: "Wedding", price: 1_000_000 } });
+    await vi.advanceTimersByTimeAsync(200);
+    const { billId, lineId } = await added;
+    const step = actions.updateLine({ lineId, qtyChange: 9 });
+    await vi.advanceTimersByTimeAsync(200);
+    await step;
+    await showBill(backend, billId);
+    const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text)!;
+    await act(async () => button("Cash").click());
+    await act(async () => button("Exact").click());
+    await act(async () => button("+฿100").click());
+    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("10000000");
+    expect(button("Confirm cash").disabled).toBe(false);
+  });
+
+  it("shows no struck-out list price on an undiscounted row with satang (K6-02)", async () => {
+    vi.useFakeTimers();
+    const backend = createFixtureBackend();
+    const actions = backend.useActions();
+    const added = actions.addItem({ item: { kind: "extra", name: "Tea", price: 10.1 } });
+    await vi.advanceTimersByTimeAsync(200);
+    const { billId, lineId } = await added;
+    const step = actions.updateLine({ lineId, qtyChange: 2 });
+    await vi.advanceTimersByTimeAsync(200);
+    await step;
+    await showBill(backend, billId);
+    expect(document.body.textContent).toContain("฿30.30");
+    expect(document.querySelector(".line-through")).toBeNull();
   });
 
   it("adds up quick quantity taps (C4-07)", async () => {

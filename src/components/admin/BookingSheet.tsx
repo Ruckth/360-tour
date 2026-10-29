@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
+import { bookingPayable } from "convex/lib/billMath";
 import { calculateDirectQuote } from "convex/lib/pricing";
 import { format } from "date-fns";
 import { useState, type FormEvent, type ReactNode } from "react";
@@ -257,7 +258,8 @@ function BookingDetails({
             Confirm
           </Button>
         ) : null}
-        {editable && !isPaid ? (
+        {/* Also for a paid stay that was extended and now owes the difference, as checkout counts it. */}
+        {bookingPayable(booking) ? (
           <ButtonLink href={`/admin/checkout?booking=${booking._id}`}>Checkout</ButtonLink>
         ) : null}
         {editable && !isPaid ? (

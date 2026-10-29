@@ -300,7 +300,9 @@ export default defineSchema({
 		.index('by_start', ['start'])
 		.index('by_booking', ['bookingId'])
 		.index('by_chatSession', ['chatSessionId'])
-		.index('by_guestPhone', ['guestPhone']),
+		.index('by_guestPhone', ['guestPhone'])
+		// Checkout's customer search and attach list find guests who booked only an appointment.
+		.searchIndex('search_guestName', { searchField: 'guestName' }),
 
 	/** Who changed an appointment, when, and the old and new value of each changed field. */
 	appointmentChanges: defineTable({
@@ -340,10 +342,10 @@ export default defineSchema({
 		// Kept in step with the lines so the held-bills list needs no line reads.
 		itemCount: v.number(),
 		total: v.number(),
-		/** itemCount > 0, indexed so empty drafts can't push unpaid bills out of the resume list. Missing on older bills. */
-		hasItems: v.optional(v.boolean()),
-		/** Bumped on every change to the lines or guest; settleBill refuses a payment reviewed on an older one. Missing = 0. */
-		revision: v.optional(v.number()),
+		/** itemCount > 0, indexed so empty drafts can't push unpaid bills out of the resume list. */
+		hasItems: v.boolean(),
+		/** Bumped on every change to the lines or guest; settleBill refuses a payment reviewed on an older one. */
+		revision: v.number(),
 		/** Sequential, issued once when paid and never reused (also not after a void). */
 		receiptNumber: v.optional(v.number()),
 		/** Idempotency key of the payment attempt that settled the bill. */
@@ -369,8 +371,8 @@ export default defineSchema({
 		/** Short second line, e.g. "60 min" or "12 Oct – 15 Oct". */
 		detail: v.optional(v.string()),
 		unitPrice: v.number(),
-		/** Currency of unitPrice when the row was added (always THB). Missing on older rows. */
-		currency: v.optional(v.string()),
+		/** Currency of unitPrice when the row was added (always THB). */
+		currency: v.string(),
 		qty: v.number(),
 		/** Absent = any therapist. */
 		staffId: v.optional(v.id('staff')),

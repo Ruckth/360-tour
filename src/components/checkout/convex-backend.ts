@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { useMemo } from "react";
-import { guestsFromBookings, type CheckoutBackend } from "./backend";
+import { distinctGuests, type CheckoutBackend } from "./backend";
 
 /** The live checkout: Convex queries and mutations from convex/pos.ts. */
 export const convexCheckoutBackend: CheckoutBackend = {
@@ -11,9 +11,12 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useBill: (billId) => useQuery(api.pos.getBill, billId ? { billId } : "skip"),
   useOpenBills: () => useQuery(api.pos.listOpenBills, {}),
   useNextWalkIn: () => useQuery(api.pos.nextWalkInNumber, {}),
+  // Stay guests, then guests who only booked an appointment.
   useGuestSearch: (query) => {
-    const rows = useQuery(api.adminBookings.searchBookings, query.trim().length >= 2 ? { query } : "skip");
-    return useMemo(() => rows && guestsFromBookings(rows), [rows]);
+    const args = query.trim().length >= 2 ? { query } : "skip";
+    const bookings = useQuery(api.adminBookings.searchBookings, args);
+    const appointments = useQuery(api.pos.searchAppointmentGuests, args);
+    return useMemo(() => bookings && appointments && distinctGuests([...bookings, ...appointments]), [bookings, appointments]);
   },
   useAttachable: (guest) =>
     useQuery(api.pos.listAttachable, guest ? { guestName: guest.name, guestPhone: guest.phone, guestEmail: guest.email } : "skip"),

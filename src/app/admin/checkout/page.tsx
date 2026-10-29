@@ -22,19 +22,24 @@ function CheckoutPage() {
   const params = useSearchParams();
   const source = parseCheckoutSource(params);
   const { openFor } = convexCheckoutBackend.useActions();
-  const [openError, setOpenError] = useState("");
+  // The refused link's message, shown only while that link is the page's URL.
+  const [openError, setOpenError] = useState<{ target: string; message: string } | null>(null);
   const opened = useRef<string | null>(null);
+  const current = useRef<string | null>(null);
 
   // ?booking= / ?appointment=: open (or reuse) that guest's bill, then switch the URL to ?bill=.
+  // If the cashier opens another bill meanwhile (the URL changes), the late result is dropped.
   const target = source.kind === "booking" || source.kind === "appointment" ? `${source.kind}:${source.id}` : null;
   useEffect(() => {
+    current.current = target;
     if (!target || opened.current === target) return;
     opened.current = target;
     const [kind, id] = target.split(":");
     const args = kind === "booking" ? { bookingId: id as Id<"bookings"> } : { appointmentId: id as Id<"serviceAppointments"> };
-    openFor(args)
-      .then(({ billId }) => router.replace(`/admin/checkout?bill=${billId}`))
-      .catch((err: unknown) => setOpenError(errorText(err, "Couldn't open that booking at checkout.")));
+    openFor(args).then(
+      ({ billId }) => current.current === target && router.replace(`/admin/checkout?bill=${billId}`),
+      (err: unknown) => current.current === target && setOpenError({ target, message: errorText(err, "Couldn't open that booking at checkout.") }),
+    );
   }, [target, openFor, router]);
 
   const onBillChange = useCallback(
@@ -48,7 +53,7 @@ function CheckoutPage() {
       billId={source.kind === "bill" ? (source.id as BillId) : null}
       onBillChange={onBillChange}
       onPaid={onPaid}
-      notice={source.kind === "invalid" ? source.reason : openError || undefined}
+      notice={source.kind === "invalid" ? source.reason : openError?.target === target ? openError.message : undefined}
     />
   );
 }

@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { assertPriceOverride, assertTenders, billTotals, changeDue, formatReceiptNumber, lineNet, round2 } from "convex/lib/billMath";
+import {
+  MAX_BILL,
+  MAX_PRICE,
+  MAX_QTY,
+  assertBillSize,
+  assertPriceOverride,
+  assertTenders,
+  billTotals,
+  bookingPayable,
+  changeDue,
+  formatReceiptNumber,
+  lineDiscount,
+  lineNet,
+  round2,
+} from "convex/lib/billMath";
 import { parseCheckoutSource } from "@/components/checkout/checkout-source";
 import { amountInput, heldAt, receiptText } from "@/components/checkout/checkout-ui";
 
@@ -56,6 +70,32 @@ describe("bill math", () => {
     expect(() => assertPriceOverride(1e12, "Typo")).toThrow("at most");
   });
 
+  it("keeps percent discounts exact up to the till limits (K5-02)", () => {
+    // Exact half-up satang, independently: gross satang × hundredths of a percent / 10,000.
+    const exact = (satang: bigint, bp: bigint) => Number((BigInt(2) * satang * bp + BigInt(10000)) / BigInt(20000)) / 100;
+    for (const [unitPrice, qty, percent] of [[101010.1, 99, 97.11], [101010.09, 99, 97.11], [MAX_PRICE, 10, 33.33], [99999.99, 99, 0.01], [100000.01, 99, 99.99]] as const) {
+      const gross = round2(unitPrice * qty);
+      expect(gross).toBeLessThanOrEqual(MAX_BILL);
+      const discount = lineDiscount({ unitPrice, qty, discount: { type: "percent", value: percent } });
+      expect(discount).toBe(exact(BigInt(Math.round(gross * 100)), BigInt(Math.round(percent * 100))));
+    }
+    // The round 6 case (999,999,999.82 × 99) can't be entered any more.
+    expect(() => assertPriceOverride(999_999_999.82, "x")).toThrow("at most 1,000,000");
+    expect(() => assertBillSize(billTotals([{ unitPrice: MAX_PRICE, qty: MAX_QTY }]))).toThrow("A bill is at most 10,000,000");
+    expect(() => assertBillSize(billTotals([{ unitPrice: MAX_PRICE, qty: 10 }]))).not.toThrow();
+    expect(() => assertTenders([{ method: "cash", amount: MAX_BILL, received: MAX_BILL + 100 }], MAX_BILL)).toThrow("at most 10,000,000");
+  });
+
+  it("counts what an extended paid stay still owes, like checkout does (C6-01)", () => {
+    const stay = { status: "confirmed", paymentStatus: "paid", total: 20000, amountPaid: 10000 };
+    expect(bookingPayable(stay)).toBe(true);
+    expect(bookingPayable({ ...stay, amountPaid: 20000 })).toBe(false);
+    expect(bookingPayable({ ...stay, amountPaid: undefined })).toBe(false);
+    expect(bookingPayable({ ...stay, paymentStatus: "pending", amountPaid: undefined })).toBe(true);
+    expect(bookingPayable({ ...stay, status: "cancelled" })).toBe(false);
+    expect(bookingPayable({ ...stay, paymentStatus: "refunded" })).toBe(false);
+  });
+
   it("requires a note for a price override", () => {
     expect(() => assertPriceOverride(900, "   ")).toThrow("Add a note");
     expect(() => assertPriceOverride(-1, "x")).toThrow("zero or more");
@@ -88,8 +128,11 @@ describe("checkout inputs and labels", () => {
     expect(amountInput("10.999")).toBe("10.99");
     expect(amountInput(".5")).toBe(".5");
     expect(amountInput("abc")).toBe("");
-    // Nine whole digits at most, so a held-down key can't turn into Infinity.
-    expect(amountInput("9".repeat(400))).toBe("999999999");
+    // Never above the till limits, so a held-down key or a shortcut can't make an amount the server refuses.
+    expect(amountInput("9".repeat(400))).toBe("10000000");
+    expect(amountInput("10000099.99")).toBe("10000000");
+    expect(amountInput("9999999.99")).toBe("9999999.99");
+    expect(amountInput("1000000.01", MAX_PRICE)).toBe("1000000");
   });
 
   it("dates held bills from other days, since walk-in numbers restart daily", () => {

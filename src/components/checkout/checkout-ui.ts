@@ -1,6 +1,6 @@
 import { format, isSameDay } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
-import { changeDue, formatReceiptNumber, type TenderMethod } from "convex/lib/billMath";
+import { MAX_BILL, changeDue, formatReceiptNumber, type TenderMethod } from "convex/lib/billMath";
 import type { BillView } from "./backend";
 
 export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
@@ -18,11 +18,12 @@ export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; 
 export const TOUCH_TARGETS =
   "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_[role=option]]:min-h-11";
 
-/** Money typed at the till: digits and one decimal point, at most nine whole digits and two decimals (see MAX_AMOUNT). */
-export function amountInput(value: string) {
+/** Money typed at the till (or set by a shortcut): digits, one decimal point, two decimals, and at most `max`. */
+export function amountInput(value: string, max = MAX_BILL) {
   const [whole, ...rest] = value.replace(/[^\d.]/g, "").split(".");
-  const digits = whole.slice(0, 9);
-  return rest.length ? `${digits}.${rest.join("").slice(0, 2)}` : digits;
+  const digits = whole.slice(0, String(max).length);
+  const text = rest.length ? `${digits}.${rest.join("").slice(0, 2)}` : digits;
+  return Number(text) > max ? String(max) : text;
 }
 
 /** When a held bill was last touched: the time today, with the date on other days (walk-in numbers restart daily). */
