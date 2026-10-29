@@ -20,6 +20,7 @@ import type { Attachable, BillView, Catalog, CheckoutActions, CheckoutBackend, G
  */
 
 const ACTOR = "preview@example.com";
+const ATTACHED_PRICE = "A stay is charged at its booked price. Change the price on the booking itself, then attach it again.";
 const LATENCY_MS = 150;
 
 type Bill = Doc<"bills">;
@@ -137,7 +138,8 @@ export function createFixtureBackend(): CheckoutBackend {
   };
   const refresh = (billId: Id<"bills">) => {
     const lines = linesOf(billId);
-    patchBill(billId, { itemCount: lines.reduce((n, l) => n + l.qty, 0), total: billTotals(lines).total, updatedAt: Date.now() });
+    const revision = (state.bills.get(billId)!.revision ?? 0) + 1;
+    patchBill(billId, { itemCount: lines.reduce((n, l) => n + l.qty, 0), total: billTotals(lines).total, hasItems: lines.length > 0, revision, updatedAt: Date.now() });
   };
   const audit = (entry: Omit<Doc<"billAudit">, "_id" | "_creationTime" | "at" | "actor">) =>
     state.audit.push({ _id: nextId("audit"), _creationTime: Date.now(), at: Date.now(), actor: ACTOR, ...entry });
@@ -147,7 +149,7 @@ export function createFixtureBackend(): CheckoutBackend {
     if (!billId) {
       const bill: Bill = {
         _id: nextId("bill"), _creationTime: now, status: "draft", walkInNumber: nextNumber("walkin"), currency: "THB",
-        itemCount: 0, total: 0, createdBy: ACTOR, createdAt: now, updatedAt: now,
+        itemCount: 0, total: 0, hasItems: false, revision: 0, createdBy: ACTOR, createdAt: now, updatedAt: now,
       };
       state.bills.set(bill._id, bill);
       return bill;
@@ -243,7 +245,7 @@ export function createFixtureBackend(): CheckoutBackend {
       attachTo(bill, target);
       return { billId: bill._id };
     }),
-    updateLine: ({ lineId, staffId: staff, startAt, qty, discount }) => later(() => {
+    updateLine: ({ lineId, staffId: staff, startAt, qtyChange, discount }) => later(() => {
       const { line, bill } = editableLine(lineId);
       const patch: Partial<Line> = {};
       if (staff !== undefined) {
@@ -252,11 +254,13 @@ export function createFixtureBackend(): CheckoutBackend {
         patch.staffId = staff ?? undefined;
       }
       if (startAt !== undefined) patch.startAt = startAt ?? undefined;
-      if (qty !== undefined) {
-        if (!Number.isInteger(qty) || qty < 1 || qty > 99) throw new Error("Quantity must be 1–99");
-        patch.qty = qty;
+      if (qtyChange !== undefined) {
+        if (!MERGES_QTY[line.kind]) throw new Error("Add another row instead: each service is its own row");
+        if (!Number.isInteger(qtyChange)) throw new Error("Invalid quantity change");
+        patch.qty = Math.min(Math.max(line.qty + qtyChange, 1), 99);
       }
       if (discount !== undefined) {
+        if (line.kind === "booking" && discount) throw new Error(ATTACHED_PRICE);
         if (discount) assertDiscount(discount);
         patch.discount = discount && discount.value > 0 ? discount : undefined;
       }
@@ -266,6 +270,7 @@ export function createFixtureBackend(): CheckoutBackend {
     }),
     overrideLinePrice: ({ lineId, price, note }) => later(() => {
       const { line, bill } = editableLine(lineId);
+      if (line.kind === "booking" && price !== null) throw new Error(ATTACHED_PRICE);
       const fromPrice = line.priceOverride?.price ?? line.unitPrice;
       if (price === null) {
         if (!line.priceOverride) return null;
@@ -288,7 +293,7 @@ export function createFixtureBackend(): CheckoutBackend {
     setCustomer: ({ billId, guest }) => later(() => {
       const bill = editableBill(billId);
       if (guest && !guest.name.trim()) throw new Error("Enter the guest name");
-      patchBill(bill._id, { guestName: guest?.name.trim(), guestPhone: guest?.phone, guestEmail: guest?.email, updatedAt: Date.now() });
+      patchBill(bill._id, { guestName: guest?.name.trim(), guestPhone: guest?.phone, guestEmail: guest?.email, revision: (bill.revision ?? 0) + 1, updatedAt: Date.now() });
       return { billId: bill._id };
     }),
     holdBill: ({ billId }) => later(() => {
@@ -305,7 +310,7 @@ export function createFixtureBackend(): CheckoutBackend {
       refresh(billId);
       return null;
     }),
-    settleBill: ({ billId, idempotencyKey, expectedDue, tenders }) => later(() => {
+    settleBill: ({ billId, idempotencyKey, expectedDue, expectedRevision, tenders }) => later(() => {
       const bill = state.bills.get(billId);
       if (!bill) throw new Error("Bill not found");
       if (!isOpen(bill)) {
@@ -315,7 +320,7 @@ export function createFixtureBackend(): CheckoutBackend {
       const lines = linesOf(billId);
       if (!lines.length) throw new Error("Add an item first");
       const totals = billTotals(lines);
-      if (totals.due !== round2(expectedDue)) throw new Error("The bill changed. Check the total and pay again.");
+      if (totals.due !== round2(expectedDue) || (bill.revision ?? 0) !== expectedRevision) throw new Error("The bill changed. Check the total and pay again.");
       assertTenders(tenders, totals.due);
       for (const line of lines) {
         const item = state.bookings.find((b) => b.id === line.bookingId) ?? state.appointments.find((a) => a.appointmentId === line.appointmentId);
@@ -388,10 +393,10 @@ export function createFixtureBackend(): CheckoutBackend {
         if (!guest) return undefined;
         const rows: Attachable[] = [];
         for (const b of state.bookings) {
-          if (!b.paid && matches(guest, b.guest)) rows.push({ kind: "booking", id: b.id, name: b.name, detail: b.detail, price: b.price, deposit: b.deposit, onBill: openBillWith({ bookingId: b.id })?._id ?? null });
+          if (!b.paid && matches(guest, b.guest)) rows.push({ kind: "booking", id: b.id, name: b.name, detail: b.detail, price: b.price, currency: "THB", deposit: b.deposit, onBill: openBillWith({ bookingId: b.id })?._id ?? null });
         }
         for (const a of state.appointments) {
-          if (!a.paid && matches(guest, a.guest)) rows.push({ kind: "appointment", id: a.appointmentId, name: a.name, detail: a.detail, price: a.price, deposit: 0, onBill: openBillWith({ appointmentId: a.appointmentId })?._id ?? null });
+          if (!a.paid && matches(guest, a.guest)) rows.push({ kind: "appointment", id: a.appointmentId, name: a.name, detail: a.detail, price: a.price, currency: "THB", deposit: 0, onBill: openBillWith({ appointmentId: a.appointmentId })?._id ?? null });
         }
         return rows;
         // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version

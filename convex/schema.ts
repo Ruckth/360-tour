@@ -340,6 +340,10 @@ export default defineSchema({
 		// Kept in step with the lines so the held-bills list needs no line reads.
 		itemCount: v.number(),
 		total: v.number(),
+		/** itemCount > 0, indexed so empty drafts can't push unpaid bills out of the resume list. Missing on older bills. */
+		hasItems: v.optional(v.boolean()),
+		/** Bumped on every change to the lines or guest; settleBill refuses a payment reviewed on an older one. Missing = 0. */
+		revision: v.optional(v.number()),
 		/** Sequential, issued once when paid and never reused (also not after a void). */
 		receiptNumber: v.optional(v.number()),
 		/** Idempotency key of the payment attempt that settled the bill. */
@@ -352,7 +356,7 @@ export default defineSchema({
 		createdBy: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number()
-	}).index('by_status_and_updatedAt', ['status', 'updatedAt']),
+	}).index('by_status_and_hasItems_and_updatedAt', ['status', 'hasItems', 'updatedAt']),
 
 	billLines: defineTable({
 		billId: v.id('bills'),

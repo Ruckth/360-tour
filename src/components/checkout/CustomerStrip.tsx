@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type Attachable, type BillId, type BillView, type Guest } from "./backend";
-import type { Run } from "./BillPanel";
+import type { Run } from "./useBillWrites";
 import { TOUCH_TARGETS, heldAt } from "./checkout-ui";
 
 type Panel = "guest" | "attach" | "held" | null;
@@ -200,8 +200,8 @@ function AttachList({ guest, billId, run, onDone }: { guest: Guest; billId: Bill
                   <span className="block text-sm font-semibold">{row.name}</span>
                   <span className="block truncate text-xs text-muted-foreground">{row.detail}</span>
                   <span className="block text-xs text-muted-foreground">
-                    {formatMoney(row.price)}
-                    {row.deposit ? ` · ${formatMoney(row.deposit)} already paid` : ""}
+                    {formatMoney(row.price, row.currency)}
+                    {row.deposit ? ` · ${formatMoney(row.deposit, row.currency)} already paid` : ""}
                   </span>
                 </span>
                 <Button size="sm" variant={here || elsewhere ? "ghost" : "default"} disabled={here || elsewhere} onClick={() => attach(row)}>

@@ -15,9 +15,7 @@ import { MERGES_QTY, type BillTotals, type TenderMethod } from "convex/lib/billM
 import { useCheckoutBackend, type BillId, type BillLine, type BillView, type Catalog } from "./backend";
 import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
 import { PayPanel } from "./PayPanel";
-
-/** Runs a bill write in order; the task gets the current bill id (undefined before the first item). */
-export type Run = (task: (billId: BillId | undefined) => Promise<unknown>) => Promise<boolean>;
+import type { Run } from "./useBillWrites";
 
 const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
@@ -285,64 +283,71 @@ function LineEditor({ line, catalog, run }: { line: BillLine; catalog: Catalog |
       {MERGES_QTY[line.kind] ? (
         <Field label={line.kind === "room" ? "Nights" : "Quantity"}>
           <div className="flex items-center gap-3">
-            <Button size="icon" variant="outline" className="size-9" aria-label="One less" disabled={line.qty <= 1} onClick={() => run(() => actions.updateLine({ lineId, qty: line.qty - 1 }))}>
+            <Button size="icon" variant="outline" className="size-9" aria-label="One less" disabled={line.qty <= 1} onClick={() => run(() => actions.updateLine({ lineId, qtyChange: -1 }))}>
               <Minus aria-hidden className="size-4" />
             </Button>
             <span className="w-6 text-center text-sm font-semibold tabular-nums">{line.qty}</span>
-            <Button size="icon" variant="outline" className="size-9" aria-label="One more" onClick={() => run(() => actions.updateLine({ lineId, qty: line.qty + 1 }))}>
+            <Button size="icon" variant="outline" className="size-9" aria-label="One more" onClick={() => run(() => actions.updateLine({ lineId, qtyChange: 1 }))}>
               <Plus aria-hidden className="size-4" />
             </Button>
           </div>
         </Field>
       ) : null}
 
-      <Field label="Discount">
-        <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup value={discountType} onValueChange={setDiscountType} aria-label="Discount type" className="p-0.5">
-            <ToggleGroupItem value="amount" className="px-2.5 py-1.5">฿</ToggleGroupItem>
-            <ToggleGroupItem value="percent" className="px-2.5 py-1.5">%</ToggleGroupItem>
-          </ToggleGroup>
-          <Input inputMode="decimal" aria-label="Discount" className="h-9 w-24" value={discountValue} onChange={(e) => setDiscountValue(amountInput(e.target.value))} placeholder="0" />
-          <Button size="sm" variant="outline" disabled={discountValue === ""} onClick={() => run(() => actions.updateLine({ lineId, discount: { type: discountType, value: Number(discountValue) } }))}>
-            Apply
-          </Button>
-          {line.discount ? (
-            <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => actions.updateLine({ lineId, discount: null }))) setDiscountValue(""); }}>
-              Remove
-            </Button>
-          ) : null}
-        </div>
-      </Field>
+      {line.kind === "booking" ? (
+        // The booking records the stay as paid in full, so its price is changed on the booking.
+        <p className="text-xs text-muted-foreground">A stay is charged at its booked price. To change it, edit the booking, then attach it again.</p>
+      ) : (
+        <>
+          <Field label="Discount">
+            <div className="flex flex-wrap items-center gap-2">
+              <ToggleGroup value={discountType} onValueChange={setDiscountType} aria-label="Discount type" className="p-0.5">
+                <ToggleGroupItem value="amount" className="px-2.5 py-1.5">฿</ToggleGroupItem>
+                <ToggleGroupItem value="percent" className="px-2.5 py-1.5">%</ToggleGroupItem>
+              </ToggleGroup>
+              <Input inputMode="decimal" aria-label="Discount" className="h-9 w-24" value={discountValue} onChange={(e) => setDiscountValue(amountInput(e.target.value))} placeholder="0" />
+              <Button size="sm" variant="outline" disabled={discountValue === ""} onClick={() => run(() => actions.updateLine({ lineId, discount: { type: discountType, value: Number(discountValue) } }))}>
+                Apply
+              </Button>
+              {line.discount ? (
+                <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => actions.updateLine({ lineId, discount: null }))) setDiscountValue(""); }}>
+                  Remove
+                </Button>
+              ) : null}
+            </div>
+          </Field>
 
-      <Field label="Price">
-        {line.priceOverride ? (
-          <div className="flex items-start justify-between gap-2 rounded-lg bg-amber-50 p-2 text-xs dark:bg-amber-400/10">
-            <span>
-              {formatMoney(line.priceOverride.price)} instead of {formatMoney(line.unitPrice)} · “{line.priceOverride.note}”
-            </span>
-            <Button size="sm" variant="ghost" className="h-7" onClick={() => run(() => actions.overrideLinePrice({ lineId, price: null, note: "" }))}>
-              Restore
-            </Button>
-          </div>
-        ) : priceOpen ? (
-          <div className="grid gap-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor={`price-${lineId}`} className="sr-only">New unit price</Label>
-              <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value))} placeholder={String(line.unitPrice)} autoFocus />
-              <span className="text-xs text-muted-foreground">was {formatMoney(line.unitPrice)}</span>
-            </div>
-            <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
-            <div className="flex gap-2">
-              <Button size="sm" disabled={price === "" || !note.trim()} onClick={applyPrice}>Apply price</Button>
-              <Button size="sm" variant="ghost" onClick={() => setPriceOpen(false)}>Cancel</Button>
-            </div>
-          </div>
-        ) : (
-          <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setPriceOpen(true)}>
-            Change price
-          </Button>
-        )}
-      </Field>
+          <Field label="Price">
+            {line.priceOverride ? (
+              <div className="flex items-start justify-between gap-2 rounded-lg bg-amber-50 p-2 text-xs dark:bg-amber-400/10">
+                <span>
+                  {formatMoney(line.priceOverride.price)} instead of {formatMoney(line.unitPrice)} · “{line.priceOverride.note}”
+                </span>
+                <Button size="sm" variant="ghost" className="h-7" onClick={() => run(() => actions.overrideLinePrice({ lineId, price: null, note: "" }))}>
+                  Restore
+                </Button>
+              </div>
+            ) : priceOpen ? (
+              <div className="grid gap-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={`price-${lineId}`} className="sr-only">New unit price</Label>
+                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value))} placeholder={String(line.unitPrice)} autoFocus />
+                  <span className="text-xs text-muted-foreground">was {formatMoney(line.unitPrice)}</span>
+                </div>
+                <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={price === "" || !note.trim()} onClick={applyPrice}>Apply price</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setPriceOpen(false)}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setPriceOpen(true)}>
+                Change price
+              </Button>
+            )}
+          </Field>
+        </>
+      )}
 
       <Button size="sm" variant="ghost" className="justify-self-start text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
         <Trash2 aria-hidden className="size-3.5" /> Remove item
