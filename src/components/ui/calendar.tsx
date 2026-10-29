@@ -47,7 +47,7 @@ export function Calendar({
             ? "rounded-md bg-primary text-primary-foreground [&>button]:bg-primary [&>button]:text-primary-foreground hover:[&>button]:bg-primary"
             : "text-foreground",
         today:
-          "rounded-md border border-gold bg-transparent font-semibold text-foreground",
+          "rounded-md border border-gold bg-transparent font-semibold text-foreground data-[selected]:border-transparent",
         outside: "text-muted-foreground opacity-45",
         disabled: "text-muted-foreground opacity-30",
         hidden: "invisible",
