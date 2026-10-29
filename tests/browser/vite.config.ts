@@ -11,8 +11,8 @@ export default defineConfig({
       },
       { find: "@", replacement: path.resolve("src") },
       {
-        find: /^convex\/_generated\/(.*)$/,
-        replacement: path.resolve("convex/_generated/$1"),
+        find: /^convex\/(?!server$|values$|browser$|react$)(.*)$/,
+        replacement: path.resolve("convex/$1"),
       },
     ],
   },

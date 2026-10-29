@@ -29,22 +29,25 @@ export function stayMonths(checkIn: string, checkOut: string): string[] {
 
 /**
  * Months the booking calendar needs: the one on screen and the next (prefetch), plus every month of
- * the chosen stay. Months before today's are skipped because those days can't be picked.
+ * the chosen stay. Public calendars skip past months; admin calendars can explicitly include them.
  */
 export function calendarMonths({
   visibleMonth,
   checkIn,
   checkOut,
   today,
+  allowPast = false,
 }: {
   visibleMonth: string;
   checkIn: string;
   checkOut: string;
   today: string;
+  allowPast?: boolean;
 }): string[] {
   const first = monthOf(today);
   const months = new Set([visibleMonth, shiftMonth(visibleMonth, 1), ...stayMonths(checkIn, checkOut)]);
-  return [...months].filter((month) => month >= first).sort();
+  if (allowPast) months.add(shiftMonth(visibleMonth, -1));
+  return [...months].filter((month) => allowPast || month >= first).sort();
 }
 
 /** Most villa-nights one `getBlockedDatesByProperty` call may cover (MAX_PROPERTY_DAYS in convex/availability.ts). */

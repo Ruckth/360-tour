@@ -26,14 +26,9 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  addDaysIso,
-  dateToIso,
-  isDateInIsoList,
-  nightsBetweenIso,
-  rangeIntersectsDates,
-  todayIsoLocal,
-} from "@/lib/booking/dates";
+import { nightsBetweenIso } from "@/lib/booking/dates";
+import { useAdminBookingDates } from "./useAdminBookingDates";
+import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
 import { errorText } from "@/lib/staff-bookings";
 import { DisabledReason } from "./DisabledReason";
 import { StatusBadge } from "./StatusBadge";
@@ -44,7 +39,6 @@ import {
   cancelConfirmOptions,
   displayDate,
   hotelStatus,
-  isoNights,
   payLink,
   paymentText,
   statusKey,
@@ -332,19 +326,10 @@ function EditBookingDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const today = todayIsoLocal();
   const villas = properties.filter((p) => p.status === "active" || p._id === booking.propertyId);
   const property = properties.find((p) => p._id === propertyId);
-  const blockedDates =
-    useQuery(
-      api.availability.getBlockedDates,
-      property ? { propertyId: property._id, startDate: today, endDate: addDaysIso(today, 365) } : "skip",
-    ) ?? [];
-  // This booking's own nights are not a conflict.
-  const ownNights = new Set(propertyId === booking.propertyId ? isoNights(booking.checkIn, booking.checkOut) : []);
-  const otherBlocked = blockedDates.filter((date) => !ownNights.has(date));
-  const otherBlockedSet = new Set(otherBlocked);
-  const conflicts = rangeIntersectsDates(otherBlocked, dates.checkIn, dates.checkOut);
+  const availability = useAdminBookingDates(property?._id, dates, booking._id);
+  const { conflicts } = availability;
 
   const stayChanged =
     propertyId !== booking.propertyId || dates.checkIn !== booking.checkIn || dates.checkOut !== booking.checkOut;
@@ -355,6 +340,7 @@ function EditBookingDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!availability.canSubmit || saving) return;
     setSaving(true);
     setError("");
     try {
@@ -393,13 +379,12 @@ function EditBookingDialog({
             checkIn={dates.checkIn}
             checkOut={dates.checkOut}
             onChange={setDates}
-            // An in-house guest keeps their past check-in date.
-            isDateDisabled={(date) => {
-              const iso = dateToIso(date);
-              return (iso < today && iso !== booking.checkIn) || isDateInIsoList(date, otherBlockedSet);
-            }}
-            unavailableDates={otherBlocked}
+            isDateDisabled={availability.isDateDisabled}
+            unavailableDates={availability.blockedDates}
+            onMonthChange={availability.onMonthChange}
+            markPastUnavailable
           />
+          <BookingAvailabilityNotice {...availability} />
           {conflicts ? (
             <p className="text-sm text-destructive">These dates overlap another booking or block.</p>
           ) : null}
@@ -460,7 +445,7 @@ function EditBookingDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
-            <Button type="submit" disabled={saving || !dates.checkIn || !dates.checkOut || conflicts}>
+            <Button type="submit" disabled={saving || !availability.canSubmit}>
               {saving ? <Spinner className="text-current" /> : null}
               Save changes
             </Button>

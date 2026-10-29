@@ -160,7 +160,7 @@ describe('AI service booking', () => {
 		expect(await appointments(s.t)).toHaveLength(1);
 	});
 
-	it('takes WhatsApp phone from the session and links an upcoming villa stay', async () => {
+	it.each(['66956823432', '+66956823432'])('takes WhatsApp phone from the session and links a stay saved as %s', async (guestPhone) => {
 		const s = await setup();
 		const bookingId = await s.t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', {
@@ -168,7 +168,7 @@ describe('AI service booking', () => {
 				bedrooms: 1, bathrooms: 1, area: 80, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 			});
 			return await ctx.db.insert('bookings', {
-				propertyId, guestName: 'Rugby', guestPhone: '66956823432', checkIn: date, checkOut: '2026-09-27',
+				propertyId, guestName: 'Rugby', guestPhone, checkIn: date, checkOut: '2026-09-27',
 				guests: 1, nights: 2, subtotal: 2000, discountAmount: 0, total: 2000, currency: 'THB',
 				paymentStatus: 'paid', status: 'confirmed', createdAt: Date.now()
 			});

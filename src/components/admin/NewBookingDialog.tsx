@@ -19,7 +19,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { addDaysIso, dateToIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
+import { PhoneInput } from "@/components/reui/phone-input";
+import { isPossiblePhoneNumber } from "libphonenumber-js/min";
+import { normalizeGuestPhone } from "@/lib/booking/phone";
+import { useAdminBookingDates } from "./useAdminBookingDates";
+import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
 import { errorText } from "@/lib/staff-bookings";
 import { displayDate, type AdminProperty } from "./admin-bookings-shared";
 import { formatMoney } from "./labels";
@@ -56,19 +60,13 @@ export function NewBookingDialog({
   const [guest, setGuest] = useState({ name: "", phone: "", email: "" });
   const [guests, setGuests] = useState("2");
   const [pickedGuest, setPickedGuest] = useState("");
+  const [phoneToCheck, setPhoneToCheck] = useState("");
   const [confirmed, setConfirmed] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // Same date rules as the public booking flow: no past dates, no blocked nights.
-  const today = todayIsoLocal();
   const property = properties.find((p) => p.slug === propertySlug);
-  const blockedDates =
-    useQuery(
-      api.availability.getBlockedDates,
-      property ? { propertyId: property._id, startDate: today, endDate: addDaysIso(today, 365) } : "skip",
-    ) ?? [];
-  const blockedDateSet = new Set(blockedDates);
-  const conflicts = rangeIntersectsDates(blockedDates, dates.checkIn, dates.checkOut);
+  const availability = useAdminBookingDates(property?._id, dates);
+  const { conflicts } = availability;
 
   // Returning guests: suggest previous bookings matching the phone or email typed so far.
   const phone = useDebounced(guest.phone.trim());
@@ -81,6 +79,11 @@ export function NewBookingDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!availability.canSubmit || saving) return;
+    if (!isPossiblePhoneNumber(guest.phone)) {
+      setError("Enter a complete phone number for the selected country.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -133,15 +136,30 @@ export function NewBookingDialog({
             checkIn={dates.checkIn}
             checkOut={dates.checkOut}
             onChange={setDates}
-            isDateDisabled={(date) => dateToIso(date) < today || isDateInIsoList(date, blockedDateSet)}
-            unavailableDates={blockedDates}
+            isDateDisabled={availability.isDateDisabled}
+            unavailableDates={availability.blockedDates}
+            onMonthChange={availability.onMonthChange}
+            markPastUnavailable
           />
+          <BookingAvailabilityNotice {...availability} />
           {conflicts ? (
             <p role="alert" className="text-sm text-destructive">These dates overlap an existing booking or block.</p>
           ) : null}
           <div className="grid gap-2">
             <Label htmlFor="nb-phone">Phone</Label>
-            <Input id="nb-phone" type="tel" autoComplete="off" required {...field("phone")} />
+            <PhoneInput
+              id="nb-phone"
+              defaultCountry="TH"
+              autoComplete="off"
+              required
+              value={guest.phone}
+              onChange={(phone) => setGuest((current) => ({ ...current, phone: phone ?? "" }))}
+            />
+            {phoneToCheck ? (
+              <p className="text-sm text-muted-foreground">
+                Saved phone: {phoneToCheck}. Select the country and re-enter this number before booking.
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="nb-email">Email (optional)</Label>
@@ -156,7 +174,10 @@ export function NewBookingDialog({
                   type="button"
                   className="flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-background focus-visible:bg-background focus-visible:outline-none"
                   onClick={() => {
-                    setGuest({ name: s.guestName, phone: s.guestPhone, email: s.guestEmail ?? "" });
+                    const e164 = normalizeGuestPhone(s.guestPhone);
+                    // Ambiguous saved numbers are shown verbatim for the host to re-enter.
+                    setPhoneToCheck(e164 ? "" : s.guestPhone);
+                    setGuest({ name: s.guestName, phone: e164 ?? "", email: s.guestEmail ?? "" });
                     setPickedGuest(`${s.guestPhone}|${s.guestEmail ?? ""}`);
                   }}
                 >
@@ -225,7 +246,7 @@ export function NewBookingDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
-            <Button type="submit" disabled={saving || !propertySlug || !dates.checkIn || !dates.checkOut || conflicts}>
+            <Button type="submit" disabled={saving || !availability.canSubmit}>
               {saving ? <Spinner className="text-current" /> : null}
               Create booking
             </Button>

@@ -2,6 +2,7 @@ import { mutation, query } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 import { internal } from './_generated/api';
 import { markBookingPaid, queueBookingEmails, queueCancellationEmail } from './bookings';
 import { requireAdmin } from './lib/adminAuth';
@@ -217,16 +218,23 @@ export const findGuests = query({
 		const phone = (args.phone ?? '').trim();
 		const digits = phone.replace(/\D/g, '');
 		const email = (args.email ?? '').trim().toLowerCase();
+		const parsed = parsePhoneNumberFromString(phone);
+		const national = parsed?.formatNational();
+		const rawForms = [...new Set([phone, national, national?.replace(/\D/g, '')])]
+			.filter((value): value is string => Boolean(value));
+		// Country-aware input emits E.164; older bookings may hold national numbers.
+		const digitForms = [...new Set([digits, parsed?.nationalNumber, national?.replace(/\D/g, '')])]
+			.filter((value): value is string => Boolean(value && value.length >= 4));
 		if (digits.length < 4 && email.length < 3) return [];
 
 		const [exactPhone, exactDigits, exactEmail, recent] = await Promise.all([
-			// Raw phone as typed: also covers bookings saved before guestPhoneDigits existed.
-			phone
-				? ctx.db.query('bookings').withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone)).order('desc').take(50)
-				: [],
-			digits.length >= 4
-				? ctx.db.query('bookings').withIndex('by_guestPhoneDigits', (q) => q.eq('guestPhoneDigits', digits)).order('desc').take(50)
-				: [],
+			// Raw national forms also find old contacts without guestPhoneDigits.
+			Promise.all(rawForms.map((form) =>
+				ctx.db.query('bookings').withIndex('by_guestPhone', (q) => q.eq('guestPhone', form)).order('desc').take(50)
+			)).then((rows) => rows.flat()),
+			Promise.all(digitForms.map((form) =>
+				ctx.db.query('bookings').withIndex('by_guestPhoneDigits', (q) => q.eq('guestPhoneDigits', form)).order('desc').take(50)
+			)).then((rows) => rows.flat()),
 			email.includes('@')
 				? ctx.db.query('bookings').withIndex('by_guestEmailNormalized', (q) => q.eq('guestEmailNormalized', email)).order('desc').take(50)
 				: [],
@@ -240,9 +248,10 @@ export const findGuests = query({
 			const bookingDigits = booking.guestPhone.replace(/\D/g, '');
 			const bookingEmail = (booking.guestEmail ?? '').toLowerCase();
 			const matches =
-				(digits.length >= 4 && bookingDigits.includes(digits)) || (email.length >= 3 && bookingEmail.includes(email));
+				digitForms.some((form) => bookingDigits.includes(form)) || (email.length >= 3 && bookingEmail.includes(email));
 			if (!matches) continue;
-			const key = bookingDigits || bookingEmail;
+			const contact = parsePhoneNumberFromString(booking.guestPhone, 'TH');
+			const key = contact?.isValid() && !contact.ext ? contact.number : bookingDigits || bookingEmail;
 			const guest = guests.get(key);
 			if (guest) {
 				guest.stays++;
@@ -331,7 +340,7 @@ export const createBooking = mutation({
 	},
 	handler: async (ctx, { confirmed, ...args }) => {
 		await requireAdmin(ctx);
-		const { bookingId } = await createBookingRecord(ctx, { ...args, source: 'admin' });
+		const { bookingId } = await createBookingRecord(ctx, { ...args, source: 'admin' }, { allowPastCheckIn: true });
 		await ctx.db.patch(bookingId, { confirmationCode: demoCode('CONF', bookingId as string) });
 		if (confirmed) {
 			const booking = (await ctx.db.get(bookingId))!;
@@ -381,8 +390,8 @@ export const editBooking = mutation({
 		}
 		if (stayChanged && property.status !== 'active') throw new Error('Property is not available for booking');
 		assertCapacity(property, args.guests);
-		// An in-house guest can still extend or shorten their stay.
-		const nights = assertStayDates(args.checkIn, args.checkOut, { allowPastCheckIn: args.checkIn === booking.checkIn });
+		// Authenticated hosts can correct historical dates and ongoing stays.
+		const nights = assertStayDates(args.checkIn, args.checkOut, { allowPastCheckIn: true });
 
 		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed';
 		await releaseBookingDates(ctx, booking);

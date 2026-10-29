@@ -1,3 +1,4 @@
+import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
@@ -384,10 +385,7 @@ async function guestBookingsForSession(ctx: QueryCtx | MutationCtx, session: Doc
 		.take(20);
 	const phone = session.channel === 'whatsapp' ? session.visitorPhone?.trim() : undefined;
 	const byPhone = phone
-		? await ctx.db
-				.query('bookings')
-				.withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone))
-				.take(20)
+		? await bookingsByPhone(ctx, phone, 20)
 		: [];
 	const unique = new Map([...fromChat, ...byPhone].map((b) => [b._id, b]));
 	return [...unique.values()].sort((a, b) => b.createdAt - a.createdAt);

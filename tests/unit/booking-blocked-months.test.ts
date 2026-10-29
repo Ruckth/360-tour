@@ -30,6 +30,12 @@ describe("blocked-night months", () => {
     ]);
   });
 
+  it("loads only historical visible neighbors and every selected month for admins", () => {
+    expect(calendarMonths({
+      visibleMonth: "2025-02", checkIn: "2024-11-30", checkOut: "2025-01-01", today: "2030-05-20", allowPast: true,
+    })).toEqual(["2024-11", "2024-12", "2025-01", "2025-02", "2025-03"]);
+  });
+
   it("splits villas so each call stays inside the villa-nights budget", () => {
     const ids = Array.from({ length: 100 }, (_, index) => index);
     expect(villaBatches(ids, 3)).toHaveLength(1);
