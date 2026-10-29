@@ -18,10 +18,11 @@ export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; 
 export const TOUCH_TARGETS =
   "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_[role=option]]:min-h-11";
 
-/** Money typed at the till: digits and one decimal point, at most two decimals. */
+/** Money typed at the till: digits and one decimal point, at most nine whole digits and two decimals (see MAX_AMOUNT). */
 export function amountInput(value: string) {
   const [whole, ...rest] = value.replace(/[^\d.]/g, "").split(".");
-  return rest.length ? `${whole}.${rest.join("").slice(0, 2)}` : whole;
+  const digits = whole.slice(0, 9);
+  return rest.length ? `${digits}.${rest.join("").slice(0, 2)}` : digits;
 }
 
 /** When a held bill was last touched: the time today, with the date on other days (walk-in numbers restart daily). */

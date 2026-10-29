@@ -50,6 +50,12 @@ describe("bill math", () => {
     expect(() => assertTenders([{ method: "cash", amount: 0.1 }, { method: "card", amount: 0.2 }], 0.3)).not.toThrow();
   });
 
+  it("refuses cash received that is infinite or beyond any till amount (C5-02)", () => {
+    expect(() => assertTenders([{ method: "cash", amount: 90, received: Infinity }], 90)).toThrow("Cash received");
+    expect(() => assertTenders([{ method: "cash", amount: 90, received: 1e12 }], 90)).toThrow("at most");
+    expect(() => assertPriceOverride(1e12, "Typo")).toThrow("at most");
+  });
+
   it("requires a note for a price override", () => {
     expect(() => assertPriceOverride(900, "   ")).toThrow("Add a note");
     expect(() => assertPriceOverride(-1, "x")).toThrow("zero or more");
@@ -82,6 +88,8 @@ describe("checkout inputs and labels", () => {
     expect(amountInput("10.999")).toBe("10.99");
     expect(amountInput(".5")).toBe(".5");
     expect(amountInput("abc")).toBe("");
+    // Nine whole digits at most, so a held-down key can't turn into Infinity.
+    expect(amountInput("9".repeat(400))).toBe("999999999");
   });
 
   it("dates held bills from other days, since walk-in numbers restart daily", () => {

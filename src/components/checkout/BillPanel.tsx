@@ -52,7 +52,8 @@ export function BillPanel({
 
   async function hold() {
     if (!billId) return;
-    if (await run(() => actions.holdBill({ billId }))) onBillChange(null);
+    // Leaves the bill only if it is still the one on screen when Hold finishes.
+    await run(() => actions.holdBill({ billId }), () => onBillChange(null));
   }
 
   async function clear() {
@@ -105,7 +106,7 @@ export function BillPanel({
       </div>
 
       {paying && view ? (
-        <PayPanel key={`${paying}:${totals.due}`} mode={paying} view={view} onBack={() => setPaying(null)} onPaid={onPaid} />
+        <PayPanel key={`${view.bill._id}:${paying}:${totals.due}`} mode={paying} view={view} onBack={() => setPaying(null)} onPaid={onPaid} />
       ) : (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">

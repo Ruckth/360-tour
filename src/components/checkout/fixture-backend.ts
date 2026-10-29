@@ -4,6 +4,7 @@ import type { Doc, Id, TableNames } from "convex/_generated/dataModel";
 import {
   MERGES_QTY,
   assertDiscount,
+  assertPrice,
   assertPriceOverride,
   assertTenders,
   billTotals,
@@ -229,7 +230,7 @@ export function createFixtureBackend(): CheckoutBackend {
         line = { kind: "room", propertyId: room._id, name: room.name, detail: "per night", unitPrice: room.price, qty: 1 };
       } else {
         if (!item.name.trim()) throw new Error("Name the item");
-        if (!Number.isFinite(item.price) || item.price < 0) throw new Error("Price must be zero or more");
+        assertPrice(item.price);
         line = { kind: "extra", name: item.name.trim(), unitPrice: round2(item.price), qty: 1 };
       }
       const same = MERGES_QTY[line.kind]

@@ -81,8 +81,9 @@ export function CheckoutView({
     return () => wide.removeEventListener("change", onChange);
   }, []);
 
+  // Keyed by bill, so opening another bill starts from its rows, never a payment begun on the last one.
   const panel = (onClose?: () => void) => (
-    <BillPanel view={missing ? null : view} label={label} catalog={catalog} run={run} onBillChange={changeBill} onPaid={toReceipt} onClose={onClose} />
+    <BillPanel key={billId ?? "new"} view={missing ? null : view} label={label} catalog={catalog} run={run} onBillChange={changeBill} onPaid={toReceipt} onClose={onClose} />
   );
 
   // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).
