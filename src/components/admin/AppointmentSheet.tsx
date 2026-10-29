@@ -13,6 +13,7 @@ import {
 import { CalendarClock, Hourglass, Pencil, Repeat } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentHistory } from "@/components/admin/AppointmentHistory";
+import { BookingOrders } from "@/components/admin/BookingOrders";
 import { CancelAppointmentDialog } from "@/components/admin/CancelAppointmentDialog";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { RescheduleDialog } from "@/components/admin/RescheduleDialog";
@@ -21,7 +22,7 @@ import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { formatMoney, sourceLabel } from "@/components/admin/labels";
 import { Badge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -202,6 +203,13 @@ export function AppointmentSheet({
                     {PAYMENT_LABELS[appointment.paymentStatus]}
                     {appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : ""}
                   </Detail>
+                  <Detail label="Orders">
+                    <BookingOrders
+                      source={{ appointmentId: appointment._id }}
+                      currency={appointment.currency}
+                      closed={appointment.status === "cancelled" || appointment.status === "no_show" || appointment.paymentStatus === "refunded"}
+                    />
+                  </Detail>
                   {appointment.cancelledAt ? (
                     <Detail label="Cancelled">
                       {formatResortDateTime(appointment.cancelledAt)}
@@ -235,11 +243,6 @@ export function AppointmentSheet({
                       {ACTION_LABELS[action]}
                     </Button>
                   ))}
-                  {appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" && appointment.status !== "no_show" ? (
-                    <ButtonLink href={`/admin/checkout?appointment=${appointment._id}`} variant="secondary">
-                      Checkout
-                    </ButtonLink>
-                  ) : null}
                   {canReschedule(appointment, now) ? (
                     <Button variant="outline" onClick={() => setDialog("reschedule")} disabled={pending !== null}>
                       <CalendarClock aria-hidden className="size-4" />

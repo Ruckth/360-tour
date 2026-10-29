@@ -1,7 +1,7 @@
 import { format, isSameDay } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
 import { MAX_BILL, changeDue, formatReceiptNumber, type TenderMethod } from "convex/lib/billMath";
-import type { BillView } from "./backend";
+import type { OrderView } from "./backend";
 
 export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
   cash: { short: "Cash", long: "Cash", hint: "" },
@@ -26,21 +26,42 @@ export function amountInput(value: string, max = MAX_BILL) {
   return Number(text) > max ? String(max) : text;
 }
 
-/** When a held bill was last touched: the time today, with the date on other days (walk-in numbers restart daily). */
-export function heldAt(at: number, now = Date.now()) {
+/** When an order was last changed: the time today, with the date on other days. */
+export function orderTime(at: number, now = Date.now()) {
   return format(at, isSameDay(at, now) ? "HH:mm" : "d MMM, HH:mm");
 }
 
+/** Who a receipt is issued to: the name frozen at payment (or a legacy order's copied name). */
+export function receiptName(view: Pick<OrderView, "receiptCustomer" | "legacyGuest">) {
+  return view.receiptCustomer?.name ?? view.legacyGuest?.name;
+}
+
+type BookingRefs = Pick<OrderView, "source"> & Partial<Pick<OrderView, "sources">>;
+
+/**
+ * The receipt's booking line: every booking the order is for, its own first (see
+ * orderSourceRefs in convex/pos.ts), e.g. "Booking: CONF-A" or "Bookings: CONF-A, SVC-7". Null for none.
+ */
+export function receiptBookings(view: BookingRefs) {
+  const refs = view.sources?.length ? view.sources : view.source ? [view.source] : [];
+  if (!refs.length) return null;
+  return `${refs.length > 1 ? "Bookings" : "Booking"}: ${refs.map((ref) => ref.reference).join(", ")}`;
+}
+
 /** Plain-text receipt for share and copy. Tenders show what was handed over, plus change, like the printed receipt. */
-export function receiptText(view: Pick<BillView, "bill" | "lines" | "payments" | "totals">, business: string) {
-  const { bill, lines, payments, totals } = view;
+export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer" | "legacyGuest"> & BookingRefs, business: string) {
+  const { order, lines, payments, totals } = view;
   const row = (left: string, right: string) => `${left}  ${right}`;
   const change = changeDue(payments);
+  const name = receiptName(view);
+  const bookings = receiptBookings(view);
   return [
     business,
-    `Receipt ${formatReceiptNumber(bill.receiptNumber ?? 0)}${bill.status === "void" ? " (VOID)" : ""}`,
-    bill.paidAt ? format(bill.paidAt, "d MMM yyyy, HH:mm") : "",
-    bill.label,
+    `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}${order.status === "void" ? " (VOID)" : ""}`,
+    order.title,
+    order.paidAt ? format(order.paidAt, "d MMM yyyy, HH:mm") : "",
+    ...(name ? [`Customer: ${name}`] : []),
+    ...(bookings ? [bookings] : []),
     "",
     ...lines.map((line) => row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(line.net))),
     "",

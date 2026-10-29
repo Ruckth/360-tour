@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_TENDERS, TENDER_METHODS, round2, type Tender, type TenderMethod } from "convex/lib/billMath";
-import { newAttemptKey, useCheckoutBackend, type BillId, type BillView } from "./backend";
+import { newAttemptKey, useCheckoutBackend, type OrderId, type OrderView } from "./backend";
 import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
 
 const CASH_STEPS = [100, 500, 1000];
@@ -27,29 +27,30 @@ export function PayPanel({
   onPaid,
 }: {
   mode: TenderMethod | "split" | "none";
-  view: BillView;
+  view: OrderView;
   onBack: () => void;
-  onPaid: (billId: BillId) => void;
+  onPaid: (orderId: OrderId) => void;
 }) {
   const actions = useCheckoutBackend().useActions();
   const [due] = useState(view.totals.due);
   const [attemptKey] = useState(newAttemptKey);
-  // The bill as it was when this panel opened; a change made since (even at the same total) is refused.
-  const [revision] = useState(view.bill.revision);
+  // The order as it was when this panel opened; a change made since (even at the same total, or only
+  // its customer) is refused, and so is a booking row whose source changed meanwhile.
+  const [revision] = useState(view.order.revision);
   const lock = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const billChanged = view.bill.revision !== revision || view.totals.due !== due;
+  const orderChanged = view.order.revision !== revision || view.totals.due !== due || view.lines.some((line) => line.sourceIssue);
 
   async function pay(tenders: Tender[]) {
-    if (lock.current || billChanged) return;
+    if (lock.current || orderChanged) return;
     lock.current = true;
     setSubmitting(true);
     setError("");
     try {
-      await actions.settleBill({ billId: view.bill._id, idempotencyKey: attemptKey, expectedDue: due, expectedRevision: revision, tenders });
+      await actions.settleOrder({ orderId: view.order._id, idempotencyKey: attemptKey, expectedDue: due, expectedRevision: revision, tenders });
       // Stay locked: the page moves on to the receipt.
-      onPaid(view.bill._id);
+      onPaid(view.order._id);
     } catch (err) {
       lock.current = false;
       setSubmitting(false);
@@ -57,11 +58,11 @@ export function PayPanel({
     }
   }
 
-  if (billChanged && !submitting) {
+  if (orderChanged && !submitting) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-        <p role="alert" className="text-sm text-destructive">The bill changed while payment was open. Review the updated bill before confirming payment.</p>
-        <Button className="h-12" onClick={onBack}>Review updated bill</Button>
+        <p role="alert" className="text-sm text-destructive">The order changed while payment was open. Review the updated order before confirming payment.</p>
+        <Button className="h-12" onClick={onBack} autoFocus>Review updated order</Button>
       </div>
     );
   }
@@ -69,7 +70,7 @@ export function PayPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
       <button type="button" onClick={onBack} disabled={submitting} className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">
-        <ArrowLeft aria-hidden className="size-4" /> Back to bill
+        <ArrowLeft aria-hidden className="size-4" /> Back to order
       </button>
       <div className="rounded-xl bg-muted p-4">
         <p className="text-xs font-medium text-muted-foreground">{mode === "split" ? "Split payment" : mode === "none" ? "Nothing due" : TENDER_LABELS[mode].long} · due</p>
@@ -82,8 +83,8 @@ export function PayPanel({
         <SplitForm due={due} submitting={submitting} onPay={pay} />
       ) : mode === "none" ? (
         <>
-          <p className="text-sm text-muted-foreground">Everything on this bill was paid before checkout. Close it to issue the receipt.</p>
-          <PayButton submitting={submitting} onClick={() => pay([])}>Close bill</PayButton>
+          <p className="text-sm text-muted-foreground">Nothing is left to pay on this order. Close it to issue the receipt.</p>
+          <PayButton submitting={submitting} onClick={() => pay([])}>Close order</PayButton>
         </>
       ) : (
         <>

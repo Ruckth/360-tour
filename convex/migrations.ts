@@ -10,6 +10,8 @@ import { syncCuratedVariants } from './lib/curatedVariants';
 import { readBudget, readRangeWithinBudget, reserveWrites } from './lib/readBudget';
 import { recomputeSocialProof } from './lib/socialProof';
 import { inboxBackfillPatch } from './lib/inboxBackfill';
+import { orderBackfillPatch, orderBackfillPlan, unfrozenStaffNames } from './lib/orderBackfill';
+import { appointmentLookupFields } from './lib/serviceSlots';
 import { internalQuery } from './_generated/server';
 import { paginationOptsValidator } from 'convex/server';
 
@@ -147,6 +149,26 @@ export const backfillBookingGuestLookup = migrations.define({
 });
 
 /**
+ * Fills serviceAppointments.guestPhoneDigits / guestEmailNormalized on appointments written
+ * before those fields, so checkout's Add booking finds them by phone digits or email through the
+ * index. New and edited appointments already write them. Until this finishes, Add booking also
+ * checks up to LEGACY_LOOKUP_SCAN older unpaid appointments directly, and says so when there are more
+ * (pos.attachLookupStatus).
+ *
+ *   npx convex run migrations:run '{"fn": "migrations:backfillAppointmentGuestLookup", "dryRun": true}'
+ *   npx convex run migrations:run '{"fn": "migrations:backfillAppointmentGuestLookup"}'
+ */
+export const backfillAppointmentGuestLookup = migrations.define({
+	table: 'serviceAppointments',
+	batchSize: 100,
+	migrateOne: (_ctx, appointment) => {
+		const fields = appointmentLookupFields(appointment);
+		if (appointment.guestPhoneDigits === fields.guestPhoneDigits && appointment.guestEmailNormalized === fields.guestEmailNormalized) return;
+		return fields;
+	}
+});
+
+/**
  * Writes curatedChatQuestionVariants rows for curated questions saved before that table existed,
  * so exact matches on translations stop depending on the score-ordered candidate scan.
  */
@@ -162,6 +184,90 @@ export const backfillCuratedQuestionVariants = migrations.define({
 		);
 		reserveWrites(ctx, 30);
 		await syncCuratedVariants(ctx, question);
+	}
+});
+
+/**
+ * Order identity for bills written before orders (see lib/orderBackfill.ts): order numbers in
+ * creation order, held → draft, `due`, unambiguous booking links, frozen receipt names, and
+ * frozen therapist names on paid rows (added as `staffName` + `staffNameBackfilledAt`; the rest of
+ * each row is untouched). Payments, receipt numbers and audit entries are untouched. Idempotent.
+ *
+ *   npx convex run migrations:previewOrderBackfill '{"paginationOpts": {"numItems": 20, "cursor": null}}'
+ *   npx convex run migrations:run '{"fn": "migrations:backfillOrders", "dryRun": true}'
+ *   npx convex run migrations:run '{"fn": "migrations:backfillOrders"}'
+ *   npx convex run migrations:verifyOrderBackfill '{"paginationOpts": {"numItems": 100, "cursor": null}}'
+ */
+export const backfillOrders = migrations.define({
+	table: 'bills',
+	// ≤ 101 line reads, a few source reads and one counter write per row.
+	batchSize: 20,
+	migrateOne: async (ctx, order) => await orderBackfillPatch(ctx, order)
+});
+
+/** What backfillOrders would change, page by page, without writing (order numbers show as "next"). */
+export const previewOrderBackfill = internalQuery({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const page = await ctx.db.query('bills').paginate({ ...args.paginationOpts, numItems: Math.min(50, args.paginationOpts.numItems) });
+		const proposed = [];
+		for (const order of page.page) {
+			const plan = await orderBackfillPlan(ctx, order);
+			if (!plan.needsNumber && !Object.keys(plan.patch).length && !plan.lineStaffNames.length && !plan.notes.length) continue;
+			proposed.push({
+				orderId: order._id, status: order.status, receiptNumber: order.receiptNumber, orderNumber: plan.needsNumber ? 'next' : order.orderNumber,
+				patch: plan.patch,
+				/** Rows that get `staffName` (the therapist's current name) added; nothing else on them changes. */
+				lineStaffNames: plan.lineStaffNames,
+				notes: plan.notes
+			});
+		}
+		return { proposed, continueCursor: page.continueCursor, isDone: page.isDone };
+	}
+});
+
+/**
+ * Checks a page of bills after backfillOrders: every row numbered with a unique number at or
+ * below the counter, none still held, `due` set, and every paid or void therapist row with a
+ * frozen name unless its staff record is gone (`therapistUnknown`, reported, not a problem).
+ * `staffNamesBackfilled` counts rows whose name was copied by the migration rather than at payment.
+ * Page through until isDone; `problems` should be empty.
+ */
+export const verifyOrderBackfill = internalQuery({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const counter = (await ctx.db.query('billCounters').withIndex('by_key', (q) => q.eq('key', 'order')).unique())?.value ?? 0;
+		const page = await ctx.db.query('bills').paginate({ ...args.paginationOpts, numItems: Math.min(50, args.paginationOpts.numItems) });
+		const problems: Array<{ orderId: string; problem: string }> = [];
+		let unlinkedWithSources = 0;
+		let therapistUnknown = 0;
+		let staffNamesBackfilled = 0;
+		for (const order of page.page) {
+			const settled = order.status === 'paid' || order.status === 'void';
+			const lines = settled || (!order.bookingId && !order.appointmentId)
+				? await ctx.db.query('billLines').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(101)
+				: [];
+			if (settled) {
+				const { names, unknown } = await unfrozenStaffNames(ctx, lines);
+				therapistUnknown += unknown;
+				staffNamesBackfilled += lines.filter((line) => line.staffNameBackfilledAt !== undefined).length;
+				if (names.length) problems.push({ orderId: order._id, problem: `${names.length} paid therapist row(s) without a frozen name` });
+			}
+			if (order.orderNumber === undefined) problems.push({ orderId: order._id, problem: 'no order number' });
+			else {
+				const same = await ctx.db.query('bills').withIndex('by_orderNumber', (q) => q.eq('orderNumber', order.orderNumber)).take(2);
+				if (same.length > 1) problems.push({ orderId: order._id, problem: `order number ${order.orderNumber} is not unique` });
+				if (order.orderNumber > counter) problems.push({ orderId: order._id, problem: `order number ${order.orderNumber} is above the counter (${counter})` });
+			}
+			if (order.status === 'held') problems.push({ orderId: order._id, problem: 'still held' });
+			if (order.due === undefined) problems.push({ orderId: order._id, problem: 'no due' });
+			if ((order.status === 'paid' || order.status === 'void') && order.receiptNumber === undefined) problems.push({ orderId: order._id, problem: 'paid without a receipt number' });
+			if (!order.bookingId && !order.appointmentId && lines.some((line) => line.bookingId || line.appointmentId)) unlinkedWithSources++;
+		}
+		return {
+			checked: page.page.length, counter, problems, unlinkedWithSources, therapistUnknown, staffNamesBackfilled,
+			continueCursor: page.continueCursor, isDone: page.isDone
+		};
 	}
 });
 

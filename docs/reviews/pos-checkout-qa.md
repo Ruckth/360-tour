@@ -1,3 +1,5 @@
+> Superseded by [Order checkout QA](pos-orders-qa.md). This document records the earlier Hold/Resume design, not the current UI.
+
 # Checkout QA: bill list and Hold/Resume
 
 Date: 29 October 2026. Follow-up to PR #29 after design feedback.

@@ -13,39 +13,41 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
 import { changeDue, formatReceiptNumber, lineGross, linePrice } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
-import { useCheckoutBackend, type BillId } from "./backend";
-import { TENDER_LABELS, TOUCH_TARGETS, receiptText } from "./checkout-ui";
+import { useCheckoutBackend, type OrderId } from "./backend";
+import { TENDER_LABELS, TOUCH_TARGETS, receiptBookings, receiptName, receiptText } from "./checkout-ui";
 
 type Paper = "58" | "80";
 
 /** Receipt after payment: thermal print (58/80mm), share or copy, and void with a reason. */
-export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId; onNewSale: () => void; onOpenBill: (billId: BillId) => void }) {
+export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
   const backend = useCheckoutBackend();
-  const view = backend.useBill(billId);
+  const view = backend.useOrder(orderId);
   const business = backend.useBusinessName() ?? "";
   const [paper, setPaper] = useState<Paper>("80");
   const [notice, setNotice] = useState("");
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   if (view === null) return <p className="p-10 text-center text-sm text-muted-foreground">Receipt not found.</p>;
-  if (view.bill.status === "draft" || view.bill.status === "held") {
+  if (view.order.state === "unpaid") {
     return (
       <div className="grid flex-1 place-items-center gap-3 p-10 text-center">
-        <p className="text-sm text-muted-foreground">This bill isn&apos;t paid yet.</p>
-        <Button onClick={() => onOpenBill(billId)}>Open the bill</Button>
+        <p className="text-sm text-muted-foreground">{view.order.title} isn&apos;t paid yet.</p>
+        <Button onClick={() => onOpenOrder(orderId)}>Open the order</Button>
       </div>
     );
   }
 
-  const { bill, lines, payments, totals } = view;
-  const isVoid = bill.status === "void";
+  const { order, lines, payments, totals } = view;
+  const isVoid = order.status === "void";
+  const customerName = receiptName(view);
+  const bookings = receiptBookings(view);
   const change = changeDue(payments);
 
   async function share() {
     const text = receiptText(view!, business);
     try {
       if (navigator.share) {
-        await navigator.share({ title: `Receipt ${formatReceiptNumber(bill.receiptNumber ?? 0)}`, text });
+        await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text });
         return;
       }
       await navigator.clipboard.writeText(text);
@@ -92,14 +94,16 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
       <article className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
         {isVoid ? (
           <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
-            Void · {bill.voidReason}
+            Void · {order.voidReason}
           </p>
         ) : null}
         <header className="text-center">
           <p className="text-base font-bold">{business}</p>
-          <p>Receipt {formatReceiptNumber(bill.receiptNumber ?? 0)}</p>
-          <p className="text-xs">{bill.paidAt ? format(bill.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
-          <p className="text-xs">{bill.label}</p>
+          <p>Receipt {formatReceiptNumber(order.receiptNumber ?? 0)}</p>
+          <p className="text-xs">{order.title}</p>
+          <p className="text-xs">{order.paidAt ? format(order.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
+          {customerName ? <p className="text-xs">Customer: {customerName}</p> : null}
+          {bookings ? <p className="text-xs [overflow-wrap:anywhere]">{bookings}</p> : null}
         </header>
         <hr className="my-3 border-dashed border-border" />
         <ul className="space-y-2">
@@ -139,15 +143,15 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
 
       <div className="flex w-full max-w-sm flex-wrap gap-2 print:hidden">
         <Button className="flex-1" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
-        {!isVoid ? <VoidDialog billId={billId} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} /> : null}
+        {!isVoid ? <VoidDialog orderId={orderId} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} /> : null}
       </div>
-      {isVoid ? <p className="max-w-sm text-center text-xs text-muted-foreground print:hidden">Voided by {bill.voidedBy}{bill.voidedAt ? ` on ${format(bill.voidedAt, "d MMM, HH:mm")}` : ""}. The receipt number stays on record.</p> : null}
+      {isVoid ? <p className="max-w-sm text-center text-xs text-muted-foreground print:hidden">Voided by {order.voidedBy}{order.voidedAt ? ` on ${format(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p> : null}
     </div>
   );
 }
 
 /** The Void… button and its dialog; the button is the trigger, so Cancel puts focus back on it. */
-function VoidDialog({ billId, hasAttached }: { billId: BillId; hasAttached: boolean }) {
+function VoidDialog({ orderId, hasAttached }: { orderId: OrderId; hasAttached: boolean }) {
   const actions = useCheckoutBackend().useActions();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -158,10 +162,10 @@ function VoidDialog({ billId, hasAttached }: { billId: BillId; hasAttached: bool
     setSaving(true);
     setError("");
     try {
-      await actions.voidBill({ billId, reason });
+      await actions.voidOrder({ orderId, reason });
       setOpen(false);
     } catch (err) {
-      setError(errorText(err, "Couldn't void the bill."));
+      setError(errorText(err, "Couldn't void the receipt."));
     } finally {
       setSaving(false);
     }
@@ -176,8 +180,8 @@ function VoidDialog({ billId, hasAttached }: { billId: BillId; hasAttached: bool
         <DialogHeader>
           <DialogTitle>Void this receipt?</DialogTitle>
           <DialogDescription>
-            The receipt stays on record, marked void, with its number. Give back any money at the desk.
-            {hasAttached ? " Attached bookings and appointments stay marked paid; record a refund on them if needed." : ""}
+            The order and receipt stay on record, marked void, with their numbers and payments. Give back any money at the desk.
+            {hasAttached ? " Its bookings and appointments stay marked paid; record a refund on them if needed." : ""}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2">

@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { bookingPayable } from "convex/lib/billMath";
 import { calculateDirectQuote } from "convex/lib/pricing";
 import { format } from "date-fns";
 import { useState, type FormEvent, type ReactNode } from "react";
@@ -12,7 +11,7 @@ import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +30,7 @@ import { nightsBetweenIso } from "@/lib/booking/dates";
 import { useAdminBookingDates } from "./useAdminBookingDates";
 import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
 import { errorText } from "@/lib/staff-bookings";
+import { BookingOrders } from "./BookingOrders";
 import { DisabledReason } from "./DisabledReason";
 import { StatusBadge } from "./StatusBadge";
 import { formatMoney, sourceLabel } from "./labels";
@@ -217,6 +217,13 @@ function BookingDetails({
           ) : null}
           {booking.checkoutLive ? <span className="block text-muted-foreground">Guest has a Stripe checkout open</span> : null}
         </Detail>
+        <Detail label="Orders">
+          <BookingOrders
+            source={{ bookingId: booking._id }}
+            currency={booking.currency}
+            closed={booking.status === "cancelled" || booking.paymentStatus === "refunded" || booking.paymentStatus === "failed"}
+          />
+        </Detail>
         <Detail label="Phone">{booking.guestPhone}</Detail>
         <Detail label="Email">{booking.guestEmail ?? "—"}</Detail>
         <Detail label="Source">
@@ -257,10 +264,6 @@ function BookingDetails({
             {pending === "confirm" ? <Spinner className="text-current" /> : null}
             Confirm
           </Button>
-        ) : null}
-        {/* Also for a paid stay that was extended and now owes the difference, as checkout counts it. */}
-        {bookingPayable(booking) ? (
-          <ButtonLink href={`/admin/checkout?booking=${booking._id}`}>Checkout</ButtonLink>
         ) : null}
         {editable && !isPaid ? (
           <Button variant="secondary" onClick={() => act("markPaid", () => updateBooking({ bookingId: booking._id, action: "markPaid" }))} disabled={pending !== null}>

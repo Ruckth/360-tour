@@ -125,7 +125,8 @@ export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'
 		paymentStatus: 'paid',
 		status: 'confirmed',
 		paidAt: booking.paidAt ?? Date.now(),
-		amountPaid: booking.amountPaid ?? booking.total,
+		// Paid in full: a deposit taken earlier is part of the total, not on top of it.
+		amountPaid: booking.total,
 		paymentMethod: booking.paymentMethod ?? paymentMethod,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),

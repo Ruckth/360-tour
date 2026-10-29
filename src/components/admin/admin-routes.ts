@@ -49,7 +49,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
       keywords: STAFF_TAB_KEYWORDS[tab],
     })),
   },
-  { href: "/admin/checkout", label: "Checkout", icon: ShoppingBag, keywords: ["POS", "pay", "bill", "receipt"] },
+  { href: "/admin/checkout", label: "Checkout", icon: ShoppingBag, keywords: ["POS", "pay", "orders", "receipt"] },
   { href: "/admin/questions", label: "Business facts", icon: HelpCircle, keywords: ["questions", "answers", "FAQ"] },
   { href: "/admin/properties", label: "Properties", icon: Building2, keywords: ["villas"] },
   { href: "/admin/leads", label: "Leads", icon: Mail },

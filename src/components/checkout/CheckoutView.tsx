@@ -5,53 +5,55 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { useCheckoutBackend, type BillId, type CatalogItem } from "./backend";
-import { BillPanel } from "./BillPanel";
+import { useCheckoutBackend, type CatalogItem, type OrderId } from "./backend";
 import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
-import { CustomerStrip } from "./CustomerStrip";
-import { useBillWrites } from "./useBillWrites";
+import { OrderPanel } from "./OrderPanel";
+import { OrderStrip } from "./OrderStrip";
+import { useOrderWrites } from "./useOrderWrites";
 
 /**
- * Staff checkout: customer strip on top, catalog on the left, the bill on the right (wide
- * screens) or in a bottom sheet behind a floating total (phones). Data comes from the
- * CheckoutBackend in context, so the admin page and the dev preview render the same UI.
+ * Staff checkout: the order strip on top (order, booking, customer, Orders), the catalog on the
+ * left, the order's items on the right (wide screens) or in a bottom sheet behind a floating
+ * total (phones). Data comes from the CheckoutBackend in context, so the admin page and the dev
+ * preview render the same UI.
  */
 export function CheckoutView({
-  billId,
-  onBillChange,
+  orderId,
+  onOrderChange,
   onPaid,
   notice,
 }: {
-  billId: BillId | null;
-  onBillChange: (billId: BillId | null) => void;
-  onPaid: (billId: BillId) => void;
+  orderId: OrderId | null;
+  onOrderChange: (orderId: OrderId | null) => void;
+  onPaid: (orderId: OrderId) => void;
   /** Shown above the catalog, e.g. a refused `?booking=` link. */
   notice?: string;
 }) {
   const backend = useCheckoutBackend();
   const catalog = backend.useCatalog();
-  const view = backend.useBill(billId);
-  const nextWalkIn = backend.useNextWalkIn();
+  const view = backend.useOrder(orderId);
   const actions = backend.useActions();
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { run, switchTo } = useBillWrites(billId, onBillChange, setError);
+  const { run, switchTo } = useOrderWrites(orderId, onOrderChange, setError);
 
-  const add = useCallback((item: CatalogItem) => void run((id) => actions.addItem({ billId: id, item })), [run, actions]);
+  const add = useCallback((item: CatalogItem) => void run((id) => actions.addItem({ orderId: id, item })), [run, actions]);
 
-  const changeBill = useCallback(
-    (next: BillId | null) => {
+  const changeOrder = useCallback(
+    (next: OrderId | null) => {
       setSheetOpen(false);
+      setSaved("");
       switchTo(next);
     },
     [switchTo],
   );
 
-  // Paying and then seeing the bill turn paid both lead to the receipt; go there once.
-  const shownReceipt = useRef<BillId | null>(null);
+  // Paying and then seeing the order turn paid both lead to the receipt; go there once.
+  const shownReceipt = useRef<OrderId | null>(null);
   const toReceipt = useCallback(
-    (id: BillId) => {
+    (id: OrderId) => {
       if (shownReceipt.current === id) return;
       shownReceipt.current = id;
       onPaid(id);
@@ -59,18 +61,18 @@ export function CheckoutView({
     [onPaid],
   );
 
-  const missing = billId !== null && view === null;
-  const label = view?.bill.label ?? (nextWalkIn ? `Walk-in #${nextWalkIn}` : "Walk-in");
+  const missing = orderId !== null && view === null;
+  const title = view?.order.title ?? (orderId && view === undefined ? "Loading order…" : "New order");
   const lines = view?.lines ?? [];
   const count = lines.reduce((n, line) => n + line.qty, 0);
-  const paidAlready = view && view.bill.status !== "draft" && view.bill.status !== "held";
+  const settled = view && view.order.state !== "unpaid";
 
-  // A paid or void bill opened by link goes straight to its receipt.
+  // A paid or void order opened by link goes straight to its receipt.
   useEffect(() => {
-    if (paidAlready && view) toReceipt(view.bill._id);
-  }, [paidAlready, view, toReceipt]);
+    if (settled && view) toReceipt(view.order._id);
+  }, [settled, view, toReceipt]);
 
-  // The bill sheet is for narrow screens only. Rotating an iPad to landscape while it is open
+  // The order sheet is for narrow screens only. Rotating an iPad to landscape while it is open
   // would hide the sheet but leave its overlay blocking the page, so close it there.
   useEffect(() => {
     const wide = window.matchMedia("(min-width: 64rem)");
@@ -81,9 +83,17 @@ export function CheckoutView({
     return () => wide.removeEventListener("change", onChange);
   }, []);
 
-  // Keyed by bill, so opening another bill starts from its rows, never a payment begun on the last one.
+  const onSaved = useCallback(
+    (savedTitle: string) => {
+      changeOrder(null);
+      setSaved(`${savedTitle} saved. Reopen it from Orders.`);
+    },
+    [changeOrder],
+  );
+
+  // Keyed by order, so opening another order starts from its rows, never a payment begun on the last one.
   const panel = (onClose?: () => void) => (
-    <BillPanel key={billId ?? "new"} view={missing ? null : view} label={label} catalog={catalog} run={run} onBillChange={changeBill} onPaid={toReceipt} onClose={onClose} />
+    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} onSaved={onSaved} onPaid={toReceipt} onClose={onClose} />
   );
 
   // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).
@@ -97,15 +107,18 @@ export function CheckoutView({
       ) : null}
     </div>
   );
-  const message = error || notice || (missing ? "That bill doesn't exist. Start a new one." : "");
+  const message = error || notice || (missing ? "That order doesn't exist. Start a new one." : "");
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", TOUCH_TARGETS)}>
-      <CustomerStrip view={view} label={label} run={run} onBillChange={changeBill} />
+      <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} />
       {message ? alert(message) : null}
+      {saved && !message ? (
+        <p role="status" className="border-b border-border bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>
+      ) : null}
       <div className="flex min-h-0 flex-1">
         <CatalogPane catalog={catalog} lines={lines} onAdd={add} className="min-w-0 flex-1" />
-        <aside aria-label="Bill" className="hidden w-[360px] shrink-0 border-l border-border bg-card lg:flex lg:flex-col">
+        <aside aria-label="Order" className="hidden w-[360px] shrink-0 border-l border-border bg-card lg:flex lg:flex-col">
           {panel()}
         </aside>
       </div>
@@ -115,7 +128,7 @@ export function CheckoutView({
         <SheetTrigger asChild>
           <button
             type="button"
-            aria-label={`${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the bill`}
+            aria-label={`${title} · ${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the order`}
             className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 rounded-full bg-primary px-5 py-3.5 text-primary-foreground shadow-xl lg:hidden"
           >
             <ReceiptText aria-hidden className="size-5" />
@@ -127,7 +140,7 @@ export function CheckoutView({
         </SheetTrigger>
         <SheetContent side="bottom" showCloseButton={false} className={cn("h-[94dvh] gap-0 rounded-t-2xl p-0 lg:hidden", TOUCH_TARGETS)}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
-          <SheetTitle className="sr-only">Bill</SheetTitle>
+          <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>
           {/* The page banner sits under the sheet's overlay, so errors repeat here. */}
           {error ? alert(error) : null}
