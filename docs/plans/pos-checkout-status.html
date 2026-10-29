@@ -1,0 +1,84 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{color-scheme:light dark}
+body{margin:0;font-family:var(--font-sans);font-size:13px;line-height:1.5}
+.wrap{display:flex;flex-direction:column;gap:14px}
+.lead{margin:0;color:var(--muted-foreground);font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;background:var(--card)}
+.stat b{display:block;font-size:22px;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted-foreground);font-size:11.5px}
+.box{border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;background:var(--card);color:var(--card-foreground)}
+h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.ok{background:var(--success,#16a34a)}.part{background:var(--warning,#d97706)}.no{background:var(--muted-foreground)}
+table{width:100%;border-collapse:collapse}
+td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--border);vertical-align:top}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);border-top:0}
+td:first-child{width:34%;font-weight:500}
+.s{white-space:nowrap;font-size:11.5px}
+.s i{font-style:normal;padding:1px 7px;border-radius:999px;font-weight:600}
+.s .d{background:var(--success-surface,var(--secondary));color:var(--success,var(--foreground))}
+.s .p{background:var(--warning-surface,var(--secondary));color:var(--warning,var(--foreground))}
+.s .n{background:var(--secondary);color:var(--muted-foreground)}
+.m{color:var(--muted-foreground)}
+code{font-family:var(--font-mono);font-size:11.5px;background:var(--code-background);padding:1px 4px;border-radius:4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ul{margin:0;padding-left:18px}li{margin:2px 0}
+</style></head><body><div class="wrap">
+<p class="lead">POS checkout on <code>feat/pos-checkout</code>, rebased onto <code>origin/main</code> (<code>dde6ec0</code>). The checks pass. It hasn't been pushed, and Convex hasn't been deployed.</p>
+<div class="stats">
+<div class="stat"><b>10</b><span>commits on top of main</span></div>
+<div class="stat"><b>1,087</b><span>unit tests passing</span></div>
+<div class="stat"><b>7</b><span>audit rounds (Codex + Kiro)</span></div>
+<div class="stat"><b>0</b><span>open findings after round 7</span></div>
+</div>
+
+<div class="box"><h3><span class="dot ok"></span>Phase 1: bill builder</h3>
+<table><tr><th>Item</th><th>Status</th><th>Notes</th></tr>
+<tr><td>Tabs, search, filter sheet, grouped grid</td><td class="s"><i class="d">Done</i></td><td>Frequent / Spa / Rooms / Extras; a no-results message shows on every tab</td></tr>
+<tr><td>Tap a tile to add; each service is its own row</td><td class="s"><i class="d">Done</i></td><td>Extras and nights merge into a quantity</td></tr>
+<tr><td>Bill panel on the right (desktop, iPad)</td><td class="s"><i class="d">Done</i></td><td>Like Ease, the right panel is the bill</td></tr>
+<tr><td>Mobile floating bill button and full-height sheet</td><td class="s"><i class="d">Done</i></td><td>44px touch targets; the sheet closes when an iPad rotates to landscape</td></tr>
+<tr><td>Row edit: therapist, time, discount ฿/%</td><td class="s"><i class="d">Done</i></td><td>Therapists limited to eligible staff, plus "Any"</td></tr>
+<tr><td>Price override with required note and audit log</td><td class="s"><i class="d">Done</i></td><td>Stored in <code>billAudit</code></td></tr>
+<tr><td>Customer strip: Walk-in #N, guest search</td><td class="s"><i class="d">Done</i></td><td>Finds booking guests and guests who only have an appointment</td></tr>
+<tr><td>Attach bookings and appointments</td><td class="s"><i class="d">Done</i></td><td>Nothing is attached automatically. Attached stays are charged at their booked price (no discount or override); an extended paid stay can collect its balance</td></tr>
+<tr><td>Held bills saved on the server, resumable</td><td class="s"><i class="d">Done</i></td><td>Shows date and time for earlier days</td></tr>
+<tr><td>Open checkout from a link (<code>?booking=</code>, <code>?appointment=</code>, <code>?bill=</code>)</td><td class="s"><i class="d">Done</i></td><td>Appointments use their own parameter; ambiguous links are refused</td></tr>
+<tr><td>Checkout entry in the sidebar, booking sheet and appointment sheet</td><td class="s"><i class="d">Done</i></td><td>Merged with main's new sidebar search</td></tr>
+<tr><td>Extras catalog (real data)</td><td class="s"><i class="n">Not done</i></td><td>The schema has no extras table; the live page only has "Custom item"</td></tr>
+</table></div>
+
+<div class="box"><h3><span class="dot part"></span>Phase 2: pay and receipt</h3>
+<table><tr><th>Item</th><th>Status</th><th>Notes</th></tr>
+<tr><td>Payment buttons in the bill footer</td><td class="s"><i class="d">Done</i></td><td>Cash, PromptPay, Card, Transfer; THB only. Limits: ฿1M per item price, 99 per quantity, ฿10M per bill</td></tr>
+<tr><td>Cash quick amounts and change due</td><td class="s"><i class="d">Done</i></td><td>Exact, +100, +500, +1000, or a custom amount</td></tr>
+<tr><td>Split payment (up to 3)</td><td class="s"><i class="d">Done</i></td><td>"Rest" fills the remainder; the parts must add up to the total</td></tr>
+<tr><td>Safe to retry <code>settleBill</code></td><td class="s"><i class="d">Done</i></td><td>Each payment attempt has a key; refused if the bill changed since it was reviewed, or if an attached stay or appointment changed (price, dates, therapist)</td></tr>
+<tr><td>Receipt numbers assigned in the same step as payment</td><td class="s"><i class="d">Done</i></td><td>Kept after a void; one global counter</td></tr>
+<tr><td>Attached bookings and appointments marked paid</td><td class="s"><i class="d">Done</i></td><td>Uses the existing paid logic</td></tr>
+<tr><td>VAT 7% included; online deposit deducted</td><td class="s"><i class="d">Done</i></td><td>Two-decimal formatting</td></tr>
+<tr><td>Receipt page: 58/80mm print, share or copy text, void with reason</td><td class="s"><i class="d">Done</i></td><td>Shared text matches the printed receipt</td></tr>
+<tr><td>PromptPay QR image</td><td class="s"><i class="p">Partial</i></td><td>Staff confirm the payment by hand; there's no PromptPay ID setting</td></tr>
+<tr><td>Send receipt by LINE; share as image</td><td class="s"><i class="n">Not done</i></td><td>Needs a product decision</td></tr>
+<tr><td>VAT mode setting, card surcharge</td><td class="s"><i class="n">Not done</i></td><td>VAT is fixed at 7% included</td></tr>
+<tr><td>Void un-pays attached bookings</td><td class="s"><i class="n">Not done</i></td><td>On purpose: the dialog tells staff to record a refund</td></tr>
+</table></div>
+
+<div class="cols">
+<div class="box"><h3><span class="dot no"></span>Not started (later phases)</h3><ul>
+<li>Phase 3: therapist commission (rows already store the therapist)</li>
+<li>Phase 4: AI catalog admin (Luna)</li>
+<li>Phase 5: packages, vouchers, loyalty, pay now and book later, gateway QR, tax invoice</li></ul></div>
+<div class="box"><h3><span class="dot part"></span>Not verified yet</h3><ul>
+<li>Real <code>/admin/checkout</code> with sign-in and live Convex: so far only the sample-data preview has been tested</li>
+<li>Convex schema not deployed, because the dev deployment is shared</li>
+<li>Hand-edited <code>convex/_generated/api.d.ts</code>; run codegen when deploying</li>
+<li>Main's new service picker and photo features haven't been checked against checkout tiles</li></ul></div>
+</div>
+
+<div class="box"><h3>Open product questions</h3><ul>
+<li>Send by LINE or share as an image: worth building?</li>
+<li>Deposit larger than a discounted stay: should the extra pay down the rest of the bill, or become a credit?</li>
+<li>One receipt counter for everything, or one per property?</li></ul></div>
+</div></body></html>
