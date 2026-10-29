@@ -24,11 +24,12 @@ import type { Attachable, BillView, Catalog, CheckoutActions, CheckoutBackend, G
 
 const ACTOR = "preview@example.com";
 const ATTACHED_PRICE = "A stay is charged at its booked price. Change the price on the booking itself, then attach it again.";
+const ONLINE_CHECKOUT = "Online checkout is in progress. Wait for it to finish or expire before taking payment at the desk.";
 const LATENCY_MS = 150;
 
 type Bill = Doc<"bills">;
 type Line = Doc<"billLines">;
-type FixtureBooking = { id: Id<"bookings">; guest: Guest; name: string; detail: string; price: number; deposit: number; paid: boolean };
+type FixtureBooking = { id: Id<"bookings">; guest: Guest; name: string; detail: string; price: number; deposit: number; paid: boolean; checkoutInProgress?: boolean };
 type FixtureAppointment = FixtureBooking & { appointmentId: Id<"serviceAppointments">; serviceId: Id<"services">; staffId: Id<"staff">; start: number };
 
 const fid = <T extends TableNames>(prefix: string, n: number) => `fx${prefix}${String(n).padStart(6, "0")}` as Id<T>;
@@ -72,7 +73,8 @@ const CATALOG: Catalog = {
 
 const ANNA: Guest = { name: "Anna Schmidt", phone: "+49 151 2345 6789", email: "anna@example.com" };
 const SOMCHAI: Guest = { name: "Somchai Prasert", phone: "+66 81 555 0101" };
-const GUESTS: Guest[] = [ANNA, SOMCHAI, { name: "Mia Tanaka", phone: "+81 90 1234 5678" }];
+const MIA: Guest = { name: "Mia Tanaka", phone: "+81 90 1234 5678" };
+const GUESTS: Guest[] = [ANNA, SOMCHAI, MIA];
 
 function todayAt(hour: number) {
   const date = new Date();
@@ -87,6 +89,7 @@ function createState() {
   const bookings: FixtureBooking[] = [
     // Deposit taken online by Stripe; the rest is paid at checkout.
     { id: fid("bkg", 1), guest: ANNA, name: "Stay · Lagoon Pool Villa", detail: "3 nights · CONF-2026-A1B2C3", price: 36000, deposit: 10000, paid: false },
+    { id: fid("bkg", 2), guest: MIA, name: "Stay · Sunrise Suite", detail: "1 night · CONF-2026-MIA", price: 6200, deposit: 0, paid: false, checkoutInProgress: true },
   ];
   const appointments: FixtureAppointment[] = [
     { id: fid("bkg", 0), appointmentId: fid("appt", 1), guest: ANNA, serviceId: serviceId(5), staffId: staffId(3), start: todayAt(16), name: "Hot stone 60", detail: "", price: 1500, deposit: 0, paid: false },
@@ -186,6 +189,7 @@ export function createFixtureBackend(): CheckoutBackend {
     const item = booking ?? appointment;
     if (!item) throw new Error("Booking not found");
     if (item.paid) throw new Error("This booking has nothing left to pay");
+    if (booking?.checkoutInProgress) throw new Error(ONLINE_CHECKOUT);
     const other = openBillWith(target);
     if (other) throw new Error(other._id === bill._id ? "This booking is already on the bill" : `This booking is already on ${label(other)}'s bill`);
     if (booking) {
@@ -400,10 +404,10 @@ export function createFixtureBackend(): CheckoutBackend {
         if (!guest) return undefined;
         const rows: Attachable[] = [];
         for (const b of state.bookings) {
-          if (!b.paid && matches(guest, b.guest)) rows.push({ kind: "booking", id: b.id, name: b.name, detail: b.detail, price: b.price, currency: "THB", deposit: b.deposit, onBill: openBillWith({ bookingId: b.id })?._id ?? null });
+          if (!b.paid && matches(guest, b.guest)) rows.push({ kind: "booking", id: b.id, name: b.name, detail: b.detail, price: b.price, currency: "THB", deposit: b.deposit, unavailableReason: b.checkoutInProgress ? ONLINE_CHECKOUT : null, onBill: openBillWith({ bookingId: b.id })?._id ?? null });
         }
         for (const a of state.appointments) {
-          if (!a.paid && matches(guest, a.guest)) rows.push({ kind: "appointment", id: a.appointmentId, name: a.name, detail: a.detail, price: a.price, currency: "THB", deposit: 0, onBill: openBillWith({ appointmentId: a.appointmentId })?._id ?? null });
+          if (!a.paid && matches(guest, a.guest)) rows.push({ kind: "appointment", id: a.appointmentId, name: a.name, detail: a.detail, price: a.price, currency: "THB", deposit: 0, unavailableReason: null, onBill: openBillWith({ appointmentId: a.appointmentId })?._id ?? null });
         }
         return rows;
         // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version

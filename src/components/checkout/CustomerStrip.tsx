@@ -176,7 +176,7 @@ function AttachList({ guest, billId, run, onDone }: { guest: Guest; billId: Bill
   // A failed attach closes the list so the page's error banner isn't hidden behind it.
   async function attach(row: Attachable) {
     const target = row.kind === "booking" ? { bookingId: row.id as Id<"bookings"> } : { appointmentId: row.id as Id<"serviceAppointments"> };
-    const more = rows?.some((other) => other.id !== row.id && other.onBill === null);
+    const more = rows?.some((other) => other.id !== row.id && other.onBill === null && !other.unavailableReason);
     const ok = await run((current) => actions.attach({ billId: current, ...target }));
     if (!ok || !more) onDone();
   }
@@ -203,8 +203,9 @@ function AttachList({ guest, billId, run, onDone }: { guest: Guest; billId: Bill
                     {formatMoney(row.price, row.currency)}
                     {row.deposit ? ` · ${formatMoney(row.deposit, row.currency)} already paid` : ""}
                   </span>
+                  {row.unavailableReason ? <span className="mt-1 block text-xs text-destructive">{row.unavailableReason}</span> : null}
                 </span>
-                <Button size="sm" variant={here || elsewhere ? "ghost" : "default"} disabled={here || elsewhere} onClick={() => attach(row)}>
+                <Button size="sm" variant={here || elsewhere ? "ghost" : "default"} disabled={here || elsewhere || Boolean(row.unavailableReason)} onClick={() => attach(row)}>
                   {here ? "On this bill" : elsewhere ? "On another bill" : "Attach"}
                 </Button>
               </li>

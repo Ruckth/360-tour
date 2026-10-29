@@ -153,6 +153,11 @@ export function CatalogPane({
       </div>
 
       <div id="checkout-catalog" className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-28 sm:px-6 lg:pb-6">
+        {tab === "rooms" ? (
+          <p className="mb-4 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+            Room items record charges only. To reserve dates, create a booking and attach it to the bill.
+          </p>
+        ) : null}
         {!catalog ? (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }, (_, i) => <div key={i} className="h-[68px] animate-pulse rounded-xl bg-muted" />)}
