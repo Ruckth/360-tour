@@ -130,11 +130,14 @@ function appointmentAttachable(appointment: Doc<'serviceAppointments'>) {
 	return appointment.paymentStatus === 'unpaid' && appointment.status !== 'cancelled' && appointment.status !== 'no_show';
 }
 
-/** An open bill (other than `exceptBillId`) that already carries this booking or appointment. */
+/**
+ * An open bill (other than `exceptBillId`) that already carries this booking or appointment.
+ * Newest lines first: a source is on at most one open bill, and it is newer than the source's paid history.
+ */
 async function openBillWith(ctx: ReadCtx, target: { bookingId: Id<'bookings'> } | { appointmentId: Id<'serviceAppointments'> }, exceptBillId?: Id<'bills'>) {
 	const lines = 'bookingId' in target
-		? await ctx.db.query('billLines').withIndex('by_bookingId', (q) => q.eq('bookingId', target.bookingId)).take(20)
-		: await ctx.db.query('billLines').withIndex('by_appointmentId', (q) => q.eq('appointmentId', target.appointmentId)).take(20);
+		? await ctx.db.query('billLines').withIndex('by_bookingId', (q) => q.eq('bookingId', target.bookingId)).order('desc').take(20)
+		: await ctx.db.query('billLines').withIndex('by_appointmentId', (q) => q.eq('appointmentId', target.appointmentId)).order('desc').take(20);
 	for (const line of lines) {
 		if (line.billId === exceptBillId) continue;
 		const bill = await ctx.db.get(line.billId);

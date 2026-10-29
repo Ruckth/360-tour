@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, useEffect } from "react";
+import { act, createElement, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type BillId, type CheckoutBackend } from "@/components/checkout/backend";
@@ -22,7 +22,7 @@ function Harness({ billId }: { billId: BillId | null }) {
 const render = (billId: BillId | null) => act(async () => root.render(createElement(Harness, { billId })));
 const showBill = (backend: CheckoutBackend, billId: BillId) =>
   act(async () =>
-    root.render(createElement(CheckoutBackendProvider, { backend }, createElement(CheckoutView, { billId, onBillChange: () => {}, onPaid: () => {} }))),
+    root.render(createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { billId, onBillChange: () => {}, onPaid: () => {} }))),
   );
 function deferred<T>() {
   let resolve!: (value: T) => void;

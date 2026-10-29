@@ -48,6 +48,27 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('pos checkout', () => {
+	it('finds the open bill for a source even after many paid bills carried it', async () => {
+		const { t, admin, bookingId } = await setup();
+		// 25 earlier settlements of the same stay (e.g. extended night by night).
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 25; i++) {
+				const now = Date.now() - (25 - i) * 60_000;
+				const billId = await ctx.db.insert('bills', {
+					status: 'paid', walkInNumber: i + 1, currency: 'THB', itemCount: 1, total: 100, hasItems: true, revision: 1,
+					receiptNumber: i + 1, createdBy: 'admin@example.com', createdAt: now, updatedAt: now
+				});
+				await ctx.db.insert('billLines', {
+					billId, kind: 'booking', bookingId, name: 'Pool Villa', unitPrice: 100, currency: 'THB', qty: 1, createdAt: now
+				});
+			}
+		});
+		const { billId } = await admin.mutation(api.pos.openFor, { bookingId });
+		expect(await admin.mutation(api.pos.openFor, { bookingId })).toEqual({ billId });
+		const [attachable] = await admin.query(api.pos.listAttachable, { guestPhone: '+66 81 234 5678' });
+		expect(attachable.onBill).toBe(billId);
+	});
+
 	it('keeps each service its own row and stacks nights into a quantity', async () => {
 		const { admin, serviceId, propertyId, bill } = await setup();
 		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
