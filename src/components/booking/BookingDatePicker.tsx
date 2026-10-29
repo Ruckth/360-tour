@@ -24,6 +24,7 @@ type BookingRangePickerProps = {
   unavailableDates?: string[];
   helperText?: string;
   compact?: boolean;
+  markPastUnavailable?: boolean;
   className?: string;
   contentClassName?: string;
   onRangeChange?: () => void;
@@ -69,6 +70,7 @@ export function BookingRangePicker({
   unavailableDates = [],
   helperText,
   compact = false,
+  markPastUnavailable = false,
   className,
   contentClassName,
   onRangeChange,
@@ -84,7 +86,6 @@ export function BookingRangePicker({
   const checkOutLabel = checkOut ? formatPickerDate(checkOut, locale) : t("checkOut");
   const checkInDate = isoToDate(checkIn);
   const checkOutDate = isoToDate(checkOut);
-  const todayIso = todayIsoLocal();
   const unavailableDateSet = new Set(unavailableDates);
   const selectedRange: DateRange | undefined = checkInDate
     ? { from: checkInDate, to: checkOutDate ?? checkInDate }
@@ -100,7 +101,7 @@ export function BookingRangePicker({
 
   function isUnavailableDate(date: Date) {
     const iso = dateToIso(date);
-    return iso >= todayIso && unavailableDateSet.has(iso);
+    return (markPastUnavailable || iso >= todayIsoLocal()) && unavailableDateSet.has(iso);
   }
 
   function updateRange(range: BookingRange) {
@@ -143,6 +144,7 @@ export function BookingRangePicker({
   }
 
   function openPicker(field: ActiveDateField) {
+    onMonthChange?.(checkOutDate ?? checkInDate ?? isoToDate(todayIsoLocal())!);
     setActiveField(field);
     setOpen(true);
   }

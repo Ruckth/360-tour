@@ -549,3 +549,173 @@ describe("villa picker photos", () => {
     expect(result.properties[0]).not.toHaveProperty("images");
   });
 });
+
+describe("historical admin bookings", () => {
+  it.each([
+    { label: "historical pending", from: -40, to: -37, confirmed: false },
+    { label: "historical confirmed", from: -40, to: -37, confirmed: true },
+    { label: "ongoing confirmed", from: -2, to: 2, confirmed: true },
+  ])("creates $label with the usual quote and payment behavior", async ({ from, to, confirmed }) => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, {
+      ...stay, checkIn: isoInDays(from), checkOut: isoInDays(to), confirmed, guestEmail: "guest@example.com",
+    });
+    const booking = await t.run(ctx => ctx.db.get(bookingId));
+    expect(booking).toMatchObject({
+      source: "admin", checkIn: isoInDays(from), checkOut: isoInDays(to), nights: to - from,
+      subtotal: (to - from) * 10000, total: (to - from) * 8500,
+      status: confirmed ? "confirmed" : "pending", paymentStatus: "pending",
+    });
+    expect(Boolean(booking?.confirmationEmailsQueuedAt)).toBe(confirmed);
+    expect(await bookedDates(t)).toBe(confirmed ? to - from : 0);
+    await t.mutation(internal.crons.expirePending, {});
+    expect((await t.run(ctx => ctx.db.get(bookingId)))?.status).toBe(confirmed ? "confirmed" : "pending");
+  });
+
+  it("corrects completed paid stays and ongoing check-in, preserving money and holding only the new nights", async () => {
+    const { t, admin } = await setup();
+    const propertyId = await propertyIdOf(t);
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, {
+      ...stay, checkIn: isoInDays(-10), checkOut: isoInDays(-7), confirmed: true,
+    });
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "markPaid" });
+    await t.run(ctx => ctx.db.patch(bookingId, { status: "completed" }));
+    const edit = { bookingId, propertyId, guestName: stay.guestName, guestPhone: stay.guestPhone, guests: 2 };
+    await admin.mutation(api.adminBookings.editBooking, { ...edit, checkIn: isoInDays(-11), checkOut: isoInDays(-7) });
+    expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({
+      status: "completed", paymentStatus: "paid", amountPaid: 25500, nights: 4, total: 34000,
+    });
+    expect(await bookedDates(t)).toBe(4);
+    await admin.mutation(api.adminBookings.editBooking, { ...edit, checkIn: isoInDays(-2), checkOut: isoInDays(2) });
+    const rows = await t.run(ctx => ctx.db.query("availability").collect());
+    expect(rows.map(row => row.date).sort()).toEqual([-2, -1, 0, 1].map(isoInDays));
+  });
+
+  it.each([
+    { checkIn: isoInDays(-3), checkOut: isoInDays(-3), error: "after check-in" },
+    { checkIn: isoInDays(-3), checkOut: isoInDays(-4), error: "after check-in" },
+    { checkIn: isoInDays(-400), checkOut: isoInDays(-34), error: "365 nights" },
+    { checkIn: "2025-02-30", checkOut: "2025-03-02", error: "YYYY-MM-DD" },
+    { checkIn: isoInDays(-3), checkOut: isoInDays(-1), guests: 9, error: "max capacity" },
+  ])("keeps date/capacity validation for create and edit: $error", async ({ error, ...dates }) => {
+    const { t, admin } = await setup();
+    const propertyId = await propertyIdOf(t);
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
+    await expect(admin.mutation(api.adminBookings.createBooking, { ...stay, ...dates })).rejects.toThrow(error);
+    await expect(admin.mutation(api.adminBookings.editBooking, {
+      bookingId, propertyId, guestName: stay.guestName, guestPhone: stay.guestPhone, guests: 2, ...dates,
+    })).rejects.toThrow(error);
+  });
+
+  it("refuses historical booking and external-block conflicts atomically, including legacy holds", async () => {
+    const { t, admin } = await setup();
+    const propertyId = await propertyIdOf(t);
+    const past = { checkIn: "2025-01-30", checkOut: "2025-02-03" };
+    const occupied = await admin.mutation(api.adminBookings.createBooking, { ...stay, ...past, confirmed: true });
+    // A legacy completed booking without its availability mirror must still conflict.
+    await t.run(async ctx => {
+      await ctx.db.patch(occupied, { status: "completed" });
+      for (const row of await ctx.db.query("availability").collect()) await ctx.db.delete(row._id);
+    });
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
+    const before = await t.run(ctx => ctx.db.get(bookingId));
+    await expect(admin.mutation(api.adminBookings.createBooking, { ...stay, ...past })).rejects.toThrow("no longer available");
+    const edit = { bookingId, propertyId, guestName: stay.guestName, guestPhone: stay.guestPhone, guests: 2 };
+    await expect(admin.mutation(api.adminBookings.editBooking, { ...edit, ...past })).rejects.toThrow("no longer available");
+    expect(await t.run(ctx => ctx.db.get(bookingId))).toEqual(before);
+    expect(await bookedDates(t)).toBe(3);
+    await t.run(ctx => ctx.db.insert("availability", { propertyId, date: "2025-03-01", status: "blocked", source: "airbnb" }));
+    const blockedStay = { checkIn: "2025-02-28", checkOut: "2025-03-03" };
+    await expect(admin.mutation(api.adminBookings.createBooking, { ...stay, ...blockedStay })).rejects.toThrow("blocked");
+    await expect(admin.mutation(api.adminBookings.editBooking, { ...edit, ...blockedStay })).rejects.toThrow("blocked");
+    expect(await bookedDates(t)).toBe(3);
+  });
+
+  it("requires admin authentication and keeps public create rejecting past dates even for an admin caller", async () => {
+    const { t, admin } = await setup();
+    const past = { ...stay, checkIn: isoInDays(-3), checkOut: isoInDays(-1) };
+    const visitor = t.withIdentity({ email: "guest@example.com", tokenIdentifier: "guest-token" });
+    await expect(t.mutation(api.adminBookings.createBooking, past)).rejects.toThrow();
+    await expect(visitor.mutation(api.adminBookings.createBooking, past)).rejects.toThrow("Not authorized");
+    for (const client of [t, visitor, admin]) {
+      await expect(client.mutation(api.bookings.create, { ...past, guestEmail: "guest@example.com" })).rejects.toThrow("in the past");
+    }
+    const propertyId = await propertyIdOf(t);
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, past);
+    await expect(visitor.mutation(api.adminBookings.editBooking, {
+      bookingId, propertyId, checkIn: isoInDays(-4), checkOut: isoInDays(-1), guests: 2,
+      guestName: stay.guestName, guestPhone: stay.guestPhone,
+    })).rejects.toThrow("Not authorized");
+    const injected = { ...past, guestEmail: "guest@example.com", allowPastCheckIn: true };
+    await expect(t.mutation(api.bookings.create, injected)).rejects.toThrow();
+  });
+
+  it("reads bounded historical availability with exact booking exclusion and coexisting blocks", async () => {
+    const { t, admin } = await setup();
+    const propertyId = await propertyIdOf(t);
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, {
+      ...stay, checkIn: "2025-01-30", checkOut: "2025-02-03", confirmed: true,
+    });
+    const window = { propertyId, startDate: "2025-02-01", endDate: "2025-02-28" };
+    expect(await admin.query(api.availability.getAdminBlockedDates, window)).toEqual(["2025-02-01", "2025-02-02"]);
+    expect(await admin.query(api.availability.getAdminBlockedDates, { ...window, excludeBookingId: bookingId })).toEqual([]);
+    await t.run(ctx => ctx.db.insert("availability", { propertyId, date: "2025-02-01", status: "blocked", source: "airbnb" }));
+    expect(await admin.query(api.availability.getAdminBlockedDates, { ...window, excludeBookingId: bookingId })).toEqual(["2025-02-01"]);
+    // Legacy booking remains visible even after all its own availability rows are missing.
+    await t.run(async ctx => {
+      for (const row of await ctx.db.query("availability").collect()) if (row.bookingId) await ctx.db.delete(row._id);
+    });
+    expect(await admin.query(api.availability.getAdminBlockedDates, window)).toEqual(["2025-02-01", "2025-02-02"]);
+    await expect(t.query(api.availability.getAdminBlockedDates, window)).rejects.toThrow();
+    await expect(admin.query(api.availability.getAdminBlockedDates, { ...window, endDate: "2027-02-01" })).rejects.toThrow("366 days");
+  });
+
+  it("finds legacy national phone contacts when the country input emits E.164", async () => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone: "0812345678" });
+    await t.run(async ctx => {
+      await ctx.db.patch(bookingId, { guestPhoneDigits: undefined });
+      const booking = (await ctx.db.get(bookingId))!;
+      // Put this pre-index national contact outside the recent-booking fallback.
+      const { _id, _creationTime, ...fields } = booking;
+      void _id; void _creationTime;
+      for (let index = 0; index < 1001; index++) {
+        await ctx.db.insert("bookings", { ...fields, guestPhone: "+12025550123" });
+      }
+    });
+    expect(await admin.query(api.adminBookings.findGuests, { phone: "+66812345678" })).toEqual([
+      expect.objectContaining({ guestPhone: "0812345678", guestName: stay.guestName }),
+    ]);
+  });
+});
+
+
+describe("international booking phone compatibility", () => {
+  it("finds admin stays from a verified WhatsApp number with either international representation only", async () => {
+    const { t, admin } = await setup();
+    const ids = [];
+    for (const guestPhone of ["+66812345678", "66812345678"]) {
+      ids.push(await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone }));
+    }
+    // Never infer a country or use partial matches when authorizing chat access.
+    await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone: "0812345678" });
+    await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone: "+44812345678" });
+    const sessionId = await t.run(ctx => ctx.db.insert("chatSessions", {
+      channel: "whatsapp", visitorId: "whatsapp:66812345678", visitorPhone: "66812345678", createdAt: Date.now(),
+    }));
+    const found = await t.query(internal.bookings.listChatGuestBookings, { sessionId });
+    expect(found.map(booking => booking.bookingId).sort()).toEqual(ids.sort());
+    await t.run(ctx => ctx.db.patch(sessionId, { channel: "web" }));
+    expect(await t.query(internal.bookings.listChatGuestBookings, { sessionId })).toEqual([]);
+  });
+
+  it("groups national and international representations in returning guest suggestions", async () => {
+    const { admin } = await setup();
+    for (const guestPhone of ["0812345678", "66812345678", "+66812345678"]) {
+      await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone });
+    }
+    const suggestions = await admin.query(api.adminBookings.findGuests, { phone: "+66812345678" });
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].stays).toBe(3);
+  });
+});

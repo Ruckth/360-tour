@@ -99,23 +99,26 @@ export function guestLookupFields(guest: { guestPhone: string; guestEmail?: stri
 	};
 }
 
+/** Server-only policy: callers must authenticate the admin before enabling historical dates. */
+type StayDatePolicy = { allowPastCheckIn?: boolean };
+
 /** Validates a stay (dates, capacity, overlap, blocked dates) and prices it. */
-export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: StayInput) {
+export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: StayInput, policy: StayDatePolicy = {}) {
 	assertValidIsoDate(input.checkIn, 'Check-in date');
 	assertValidIsoDate(input.checkOut, 'Check-out date');
 	assertPositiveInt(input.guests, 'Guest count');
 
 	const property = await loadProperty(ctx, input.propertySlug);
 	assertCapacity(property, input.guests);
-	const nights = assertStayDates(input.checkIn, input.checkOut);
+	const nights = assertStayDates(input.checkIn, input.checkOut, policy);
 	await assertStayFree(ctx, property._id, input.checkIn, input.checkOut);
 
 	return { property, nights, quote: calculateDirectQuote(property, nights) };
 }
 
-export async function createBookingRecord(ctx: MutationCtx, input: BookingInput) {
+export async function createBookingRecord(ctx: MutationCtx, input: BookingInput, policy: StayDatePolicy = {}) {
 	const { guestName, guestPhone, guestEmail } = cleanGuestDetails(input);
-	const { property, nights, quote } = await quoteBookableStay(ctx, input);
+	const { property, nights, quote } = await quoteBookableStay(ctx, input, policy);
 
 	const accessToken = crypto.randomUUID();
 	const { guestPhoneDigits, guestEmailNormalized } = guestLookupFields({ guestPhone, guestEmail });

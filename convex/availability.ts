@@ -2,7 +2,8 @@ import { query, type QueryCtx } from './_generated/server';
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { assertValidIsoDate } from './lib/validation';
-import { nightsBetween } from './lib/dates';
+import { nightsBetween, stayDates } from './lib/dates';
+import { requireAdmin } from './lib/adminAuth';
 import { readBudget, ReadBudgetExceeded } from './lib/readBudget';
 import {
 	blocksNewBookings,
@@ -98,6 +99,38 @@ export const getBlockedDates = query({
 	handler: async (ctx, args) => {
 		const days = rangeDays(args.startDate, args.endDate);
 		return await blockedDates(ctx, args.propertyId, args.startDate, args.endDate, days);
+	}
+});
+
+/** Admin calendars include historical and legacy bookings, excluding only the edited booking. */
+export const getAdminBlockedDates = query({
+	args: {
+		propertyId: v.id('properties'),
+		startDate: v.string(),
+		endDate: v.string(),
+		excludeBookingId: v.optional(v.id('bookings'))
+	},
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const days = rangeDays(args.startDate, args.endDate);
+		const dates = new Set<string>();
+		for await (const row of availabilityRows(ctx, args.propertyId, args.startDate, args.endDate, days)) {
+			if (row.status !== 'available' && (!args.excludeBookingId || row.bookingId !== args.excludeBookingId)) {
+				dates.add(row.date);
+			}
+		}
+		const end = new Date(`${args.endDate}T00:00:00Z`);
+		end.setUTCDate(end.getUTCDate() + 1);
+		const exclusiveEnd = end.toISOString().slice(0, 10);
+		const bookings = await findOverlappingBookings(ctx, args.propertyId, args.startDate, exclusiveEnd);
+		for (const booking of bookings) {
+			if (booking._id === args.excludeBookingId || !blocksNewBookings(booking)) continue;
+			// Clamp legacy stays to the requested window before enumerating nights.
+			const start = booking.checkIn > args.startDate ? booking.checkIn : args.startDate;
+			const stop = booking.checkOut < exclusiveEnd ? booking.checkOut : exclusiveEnd;
+			for (const date of stayDates(start, stop)) dates.add(date);
+		}
+		return [...dates].sort();
 	}
 });
 

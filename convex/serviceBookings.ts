@@ -1,3 +1,4 @@
+import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
@@ -167,7 +168,7 @@ export const confirmChatServiceBooking = internalMutation({
 			return { error: 'The service details changed. Call prepare_service_booking again.', alternatives: [] };
 		}
 		const date = resortLocalParts(quote.start).date;
-		const stays = await ctx.db.query('bookings').withIndex('by_guestPhone', (q) => q.eq('guestPhone', quote.guestPhone)).order('desc').take(100);
+		const stays = await bookingsByPhone(ctx, quote.guestPhone, 100);
 		// Link only a stay that covers the service date (arrival and departure days included).
 		const stay = stays.filter((booking) => booking.status !== 'cancelled' && booking.checkIn <= date && booking.checkOut >= date)
 			.sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0];

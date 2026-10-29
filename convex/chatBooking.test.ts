@@ -59,6 +59,27 @@ async function listBookings(t: ReturnType<typeof convexTest>) {
 }
 
 describe("AI chat booking", () => {
+  it.each([-30, -2])("rejects historical and ongoing check-ins during preparation (%i days)", async (days) => {
+    const { t, sessionId } = await setup();
+    await expect(t.mutation(internal.bookings.prepareChatBooking, {
+      sessionId, ...stay, checkIn: isoInDays(days), checkOut: isoInDays(days + 4),
+    })).rejects.toThrow("in the past");
+    expect(await listBookings(t)).toEqual([]);
+  });
+
+  it("revalidates past dates at chat confirmation", async () => {
+    const { t, sessionId } = await setup();
+    await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+    await t.run(async ctx => {
+      const session = await ctx.db.get(sessionId);
+      await ctx.db.patch(sessionId, {
+        pendingBookingQuote: { ...session!.pendingBookingQuote!, checkIn: isoInDays(-2), checkOut: isoInDays(1) },
+      });
+    });
+    await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow("in the past");
+    expect(await listBookings(t)).toEqual([]);
+  });
+
   it("rejects an inactive property when preparing or confirming a chat booking", async () => {
     const { t, sessionId, propertyId } = await setup();
     await t.run(ctx => ctx.db.patch(propertyId, { status: "draft" }));

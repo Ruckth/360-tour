@@ -1,3 +1,6 @@
+import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
+import { BookingSheet } from "@/components/admin/BookingSheet";
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { useState } from "react";
 import { NewAppointmentDialog } from "@/components/admin/NewAppointmentDialog";
 import { VillaPicker } from "@/components/admin/VillaPicker";
@@ -56,6 +59,10 @@ const services: Doc<"services">[] = Array.from({ length: 30 }, (_, index) => ({
 
 function Fixture() {
   const [filter, setFilter] = useState("all");
+  if (params.get("mode") === "public-calendar") return (
+    <BookingRangePicker checkIn="2025-02-14" checkOut="2025-02-17" onChange={() => {}}
+      unavailableDates={["2025-02-15"]} isDateDisabled={() => true} />
+  );
   if (params.get("mode") === "filter")
     return (
       <div className="p-8">
@@ -79,10 +86,13 @@ function Fixture() {
         onCreated={() => {}}
       />
     );
+  if (params.get("mode") === "edit") return <ConfirmProvider>
+    <BookingSheet bookingId={"booking-id" as Id<"bookings">} properties={properties} onClose={() => {}} />
+  </ConfirmProvider>;
   return (
     <NewBookingDialog
       properties={params.has("empty") ? [] : properties}
-      prefill={{ checkIn: "2027-11-27", checkOut: "2027-11-30" }}
+      prefill={{ checkIn: params.get("checkIn") ?? "2027-11-27", checkOut: params.get("checkOut") ?? "2027-11-30" }}
       onClose={() => {}}
       onCreated={() => {}}
       onBlockInstead={() => {}}
