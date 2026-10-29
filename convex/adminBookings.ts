@@ -122,6 +122,7 @@ export const listForAdmin = query({
 				_id: p._id,
 				slug: p.slug,
 				name: p.name,
+				...(p.images[0] ? { imageUrl: p.images[0] } : {}),
 				maxGuests: p.maxGuests,
 				status: p.status,
 				pricePerNight: p.pricePerNight,

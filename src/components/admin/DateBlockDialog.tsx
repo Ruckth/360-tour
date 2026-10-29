@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useState, type FormEvent } from "react";
+import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
 import { errorText } from "@/lib/staff-bookings";
@@ -208,22 +208,11 @@ function HostBlockForm({
             Close a villa for an owner stay, maintenance or similar. Blocked nights cannot be booked and are shared with OTA calendars.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4">
+        <form onSubmit={submit} className="grid min-w-0 gap-4">
           {block ? (
             <div className="grid gap-2">
-              <Label>Villa</Label>
-              <Select value={propertyId} onValueChange={(id) => setPropertyIds([id])}>
-                <SelectTrigger className="rounded-lg" aria-label="Villa">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {properties.map((p) => (
-                    <SelectItem key={p._id} value={p._id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label id="block-villa-label" htmlFor="block-villa">Villa</Label>
+              <VillaPicker id="block-villa" labelId="block-villa-label" properties={properties} value={propertyId} onChange={(id) => setPropertyIds([id])} disabled={busy} />
             </div>
           ) : (
             <div role="group" aria-labelledby="block-villas" className="grid gap-2">

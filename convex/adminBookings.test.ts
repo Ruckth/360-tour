@@ -536,3 +536,16 @@ describe("block dates across villas", () => {
     await expect(t.mutation(api.adminBookings.addDateBlocks, { propertyIds: [garden], start: isoInDays(40), end: isoInDays(41), reason: "x" })).rejects.toThrow();
   });
 });
+
+describe("villa picker photos", () => {
+  it("returns the cover photo without sending the full gallery", async () => {
+    const { t, admin } = await setup();
+    await t.run(async (ctx) => {
+      const property = (await ctx.db.query("properties").first())!;
+      await ctx.db.patch(property._id, { images: ["https://example.com/cover.jpg", "https://example.com/bedroom.jpg"] });
+    });
+    const result = await admin.query(api.adminBookings.listForAdmin, { from: checkIn, to: checkOut });
+    expect(result.properties[0].imageUrl).toBe("https://example.com/cover.jpg");
+    expect(result.properties[0]).not.toHaveProperty("images");
+  });
+});

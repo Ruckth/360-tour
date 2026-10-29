@@ -7,6 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { calculateDirectQuote } from "convex/lib/pricing";
 import { format } from "date-fns";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -384,21 +384,10 @@ function EditBookingDialog({
             Changing the villa or dates recalculates the price. The guest is emailed about stay changes.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4">
+        <form onSubmit={submit} className="grid min-w-0 gap-4">
           <div className="grid gap-2">
-            <Label>Villa</Label>
-            <Select value={propertyId} onValueChange={setPropertyId}>
-              <SelectTrigger className="rounded-lg" aria-label="Villa">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {villas.map((p) => (
-                  <SelectItem key={p._id} value={p._id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label id="edit-villa-label" htmlFor="edit-villa">Villa</Label>
+            <VillaPicker id="edit-villa" labelId="edit-villa-label" properties={villas} value={propertyId} onChange={setPropertyId} disabled={saving} />
           </div>
           <BookingRangePicker
             checkIn={dates.checkIn}

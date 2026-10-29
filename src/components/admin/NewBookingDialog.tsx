@@ -5,6 +5,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { UserRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, dateToIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
 import { errorText } from "@/lib/staff-bookings";
@@ -114,21 +114,20 @@ export function NewBookingDialog({
           <DialogTitle>New booking</DialogTitle>
           <DialogDescription>For phone or walk-in guests. Manual bookings never expire automatically.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4">
+        <form onSubmit={submit} className="grid min-w-0 gap-4">
           <div className="grid gap-2">
-            <Label>Villa</Label>
-            <Select value={propertySlug} onValueChange={setPropertySlug}>
-              <SelectTrigger className="rounded-lg" aria-label="Villa">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {properties.map((p) => (
-                  <SelectItem key={p._id} value={p.slug}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label id="nb-villa-label" htmlFor="nb-villa">Villa</Label>
+            <VillaPicker
+              id="nb-villa"
+              labelId="nb-villa-label"
+              properties={properties}
+              value={property?._id}
+              onChange={(id) => {
+                const next = properties.find((p) => p._id === id);
+                if (next) setPropertySlug(next.slug);
+              }}
+              disabled={saving}
+            />
           </div>
           <BookingRangePicker
             checkIn={dates.checkIn}
@@ -212,12 +211,12 @@ export function NewBookingDialog({
             </p>
           ) : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 sm:flex-wrap">
             {property && dates.checkIn && dates.checkOut ? (
               <Button
                 type="button"
                 variant="ghost"
-                className="sm:me-auto"
+                className="sm:basis-full sm:justify-start"
                 onClick={() => onBlockInstead({ propertyId: property._id, start: dates.checkIn, end: dates.checkOut })}
               >
                 Block these dates instead
