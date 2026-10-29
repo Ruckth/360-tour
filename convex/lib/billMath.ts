@@ -6,6 +6,9 @@
 export const VAT_RATE = 0.07;
 export const MAX_TENDERS = 3;
 export const NOTE_MAX = 500;
+/** Largest price or payment the till takes; keeps satang arithmetic exact. */
+export const MAX_AMOUNT = 1_000_000_000;
+const TOO_LARGE = `Amounts are at most ${MAX_AMOUNT.toLocaleString('en-US')}`;
 export const TENDER_METHODS = ['cash', 'promptpay', 'card', 'transfer'] as const;
 export type TenderMethod = (typeof TENDER_METHODS)[number];
 
@@ -74,11 +77,18 @@ export function billTotals(lines: readonly PricedLine[]): BillTotals {
 export function assertDiscount(discount: LineDiscount) {
 	if (!Number.isFinite(discount.value) || discount.value < 0) throw new Error('Discount must be zero or more');
 	if (discount.type === 'percent' && discount.value > 100) throw new Error('A percent discount is at most 100%');
+	if (discount.value > MAX_AMOUNT) throw new Error(TOO_LARGE);
+}
+
+/** A typed price: finite, zero or more, and within MAX_AMOUNT. */
+export function assertPrice(price: number) {
+	if (!Number.isFinite(price) || price < 0) throw new Error('Price must be zero or more');
+	if (price > MAX_AMOUNT) throw new Error(TOO_LARGE);
 }
 
 /** A one-off price change needs a reason for the audit trail. Returns the trimmed note. */
 export function assertPriceOverride(price: number, note: string) {
-	if (!Number.isFinite(price) || price < 0) throw new Error('Price must be zero or more');
+	assertPrice(price);
 	const trimmed = note.trim();
 	if (!trimmed) throw new Error('Add a note explaining the price change');
 	if (trimmed.length > NOTE_MAX) throw new Error(`Note must be at most ${NOTE_MAX} characters`);
@@ -93,9 +103,12 @@ export function assertTenders(tenders: readonly Tender[], due: number) {
 	for (const tender of tenders) {
 		if (!TENDER_METHODS.includes(tender.method)) throw new Error('Unknown payment method');
 		if (!Number.isFinite(tender.amount) || tender.amount <= 0) throw new Error('Each payment must be more than zero');
+		if (tender.amount > MAX_AMOUNT) throw new Error(TOO_LARGE);
 		if (round2(tender.amount) !== tender.amount) throw new Error('Payments are in whole satang (at most 2 decimals)');
 		if (tender.received !== undefined) {
 			if (tender.method !== 'cash') throw new Error('Only cash can have an amount received');
+			if (!Number.isFinite(tender.received)) throw new Error('Cash received must be an amount');
+			if (tender.received > MAX_AMOUNT) throw new Error(TOO_LARGE);
 			if (round2(tender.received) !== tender.received) throw new Error('Cash received is in whole satang (at most 2 decimals)');
 			if (!(tender.received >= tender.amount)) throw new Error('Cash received is less than the amount');
 		}

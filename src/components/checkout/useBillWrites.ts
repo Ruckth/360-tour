@@ -4,8 +4,11 @@ import { useCallback, useEffect, useRef } from "react";
 import { errorText } from "@/lib/staff-bookings";
 import type { BillId } from "./backend";
 
-/** Runs a bill write in order; the task gets its sale's bill id (undefined before the first item). */
-export type Run = (task: (billId: BillId | undefined) => Promise<unknown>) => Promise<boolean>;
+/**
+ * Runs a bill write in order; the task gets its sale's bill id (undefined before the first item).
+ * `then` runs after it succeeds, only if that sale is still on screen (e.g. leaving a bill after Hold).
+ */
+export type Run = (task: (billId: BillId | undefined) => Promise<unknown>, then?: () => void) => Promise<boolean>;
 
 /** One sale on screen. A write belongs to the sale that was showing when it was tapped. */
 type Sale = { billId: BillId | null };
@@ -23,7 +26,7 @@ export function useBillWrites(billId: BillId | null, onBillChange: (billId: Bill
   }, [billId]);
 
   const run = useCallback<Run>(
-    (task) => {
+    (task, then) => {
       const mine = sale.current;
       const next = queue.current.then(async () => {
         try {
@@ -34,6 +37,7 @@ export function useBillWrites(billId: BillId | null, onBillChange: (billId: Bill
             mine.billId = created;
             if (sale.current === mine) onBillChange(created);
           }
+          if (then && sale.current === mine) then();
           return true;
         } catch (err) {
           onError(errorText(err, "That didn't save. Try again."));

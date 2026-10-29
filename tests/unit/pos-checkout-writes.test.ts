@@ -2,7 +2,8 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BillId } from "@/components/checkout/backend";
+import { CheckoutBackendProvider, type BillId } from "@/components/checkout/backend";
+import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { useBillWrites } from "@/components/checkout/useBillWrites";
 
@@ -79,6 +80,47 @@ describe("checkout bill writes", () => {
     await act(async () => { await Promise.all([add, next]); });
     expect(changes).toEqual([B]);
     expect(seen).toEqual([B]);
+  });
+
+  it("doesn't leave the bill opened while Hold was still saving (C4-08)", async () => {
+    const B = "bill-b" as BillId;
+    await render(A);
+    const holding = deferred<null>();
+    const left: string[] = [];
+    const hold = writes.run(() => holding.promise, () => left.push("A"));
+    await act(async () => writes.switchTo(B));
+    await render(B);
+    holding.resolve(null);
+    await act(async () => { await hold; });
+    expect(left).toEqual([]);
+    expect(changes).toEqual([B]);
+    // Holding the bill that is still on screen does leave it.
+    await act(async () => { await writes.run(async () => null, () => left.push("B")); });
+    expect(left).toEqual(["B"]);
+  });
+
+  it("starts a fresh payment when another bill with the same total is opened (C5-01)", async () => {
+    vi.useFakeTimers();
+    const backend = createFixtureBackend();
+    const actions = backend.useActions();
+    const create = async (name: string) => {
+      const added = actions.addItem({ item: { kind: "extra", name, price: 100 } });
+      await vi.advanceTimersByTimeAsync(200);
+      return (await added).billId;
+    };
+    const [a, b] = [await create("Water"), await create("Tea")];
+    const show = (billId: BillId) =>
+      act(async () =>
+        root.render(createElement(CheckoutBackendProvider, { backend, children: createElement(CheckoutView, { billId, onBillChange: () => {}, onPaid: () => {} }) })),
+      );
+    const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text)!;
+    await show(a);
+    await act(async () => button("Cash").click());
+    await act(async () => button("Exact").click());
+    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("100");
+    await show(b);
+    expect(document.querySelector("#cash-received")).toBeNull();
+    expect(document.body.textContent).toContain("Tea");
   });
 
   it("adds up quick quantity taps (C4-07)", async () => {

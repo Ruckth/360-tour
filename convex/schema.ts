@@ -369,6 +369,8 @@ export default defineSchema({
 		/** Short second line, e.g. "60 min" or "12 Oct – 15 Oct". */
 		detail: v.optional(v.string()),
 		unitPrice: v.number(),
+		/** Currency of unitPrice when the row was added (always THB). Missing on older rows. */
+		currency: v.optional(v.string()),
 		qty: v.number(),
 		/** Absent = any therapist. */
 		staffId: v.optional(v.id('staff')),

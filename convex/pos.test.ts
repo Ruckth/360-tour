@@ -249,6 +249,71 @@ describe('pos checkout', () => {
 		})).rejects.toThrow('satang');
 	});
 
+	it('refuses to settle a line saved before the THB check from a foreign-currency price (C4-01)', async () => {
+		const { t, admin, nok, serviceId, settle } = await setup();
+		const usd = await admin.mutation(api.adminServices.createService, {
+			slug: 'usd-massage', name: 'USD massage', description: '', category: 'Massage',
+			durationMin: 60, bufferMin: 0, price: 100, currency: 'USD', staffIds: [nok]
+		});
+		// An old-format draft: no currency on the line, priced from a USD service.
+		const legacy = await t.run(async (ctx) => {
+			const billId = await ctx.db.insert('bills', { status: 'draft', walkInNumber: 1, currency: 'THB', itemCount: 1, total: 100, createdBy: 'x', createdAt: Date.now(), updatedAt: Date.now() });
+			await ctx.db.insert('billLines', { billId, kind: 'service', serviceId: usd, name: 'USD massage', unitPrice: 100, qty: 1, createdAt: Date.now() });
+			return billId;
+		});
+		await expect(settle({ billId: legacy, idempotencyKey: 'attempt-0001', expectedDue: 100, tenders: [{ method: 'card', amount: 100 }] })).rejects.toThrow('USD');
+		// A line added at a baht price keeps that price even if the service later moves to another currency.
+		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
+		await t.run((ctx) => ctx.db.patch(serviceId, { currency: 'USD' }));
+		await expect(settle({ billId, idempotencyKey: 'attempt-0002', expectedDue: 1200, tenders: [{ method: 'card', amount: 1200 }] })).resolves.toMatchObject({ replayed: false });
+	});
+
+	it('lists an older unpaid bill behind more than 20 old-format empty drafts (C4-02)', async () => {
+		const { t, admin } = await setup();
+		const legacy = (itemCount: number) => t.run((ctx) => ctx.db.insert('bills', {
+			status: 'draft', walkInNumber: 1, currency: 'THB', itemCount, total: itemCount * 100, createdBy: 'x', createdAt: Date.now(), updatedAt: Date.now()
+		}));
+		const unpaid = await legacy(1);
+		for (let i = 0; i < 25; i++) {
+			vi.advanceTimersByTime(1000);
+			await legacy(0);
+		}
+		expect((await admin.query(api.pos.listOpenBills, {})).map((b) => b._id)).toEqual([unpaid]);
+	});
+
+	it('refuses to settle an appointment that moved to another therapist or time (C4-04)', async () => {
+		const { t, admin, nok, ploy, serviceId, settle } = await setup();
+		const start = Date.now() + 3_600_000;
+		const appointmentId = await t.run((ctx) => ctx.db.insert('serviceAppointments', {
+			serviceId, staffId: nok, start, end: start + 3_600_000, blockedUntil: start + 4_500_000, guestName: 'Eve', guestPhone: '+66 82 000 1111',
+			source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-1', accessToken: 'tok', createdAt: Date.now()
+		}));
+		const { billId } = await admin.mutation(api.pos.openFor, { appointmentId });
+		const pay = (key: string) => settle({ billId, idempotencyKey: key, expectedDue: 1200, tenders: [{ method: 'card', amount: 1200 }] });
+		await t.run((ctx) => ctx.db.patch(appointmentId, { staffId: ploy }));
+		await expect(pay('attempt-0001')).rejects.toThrow('changed since it was added');
+		await t.run((ctx) => ctx.db.patch(appointmentId, { staffId: nok, start: start + 86_400_000 }));
+		await expect(pay('attempt-0002')).rejects.toThrow('changed since it was added');
+		expect(await t.run((ctx) => ctx.db.get(appointmentId))).toMatchObject({ paymentStatus: 'unpaid' });
+	});
+
+	it('refuses to settle a stay that moved to other dates at the same price (K5-01)', async () => {
+		const { t, admin, bookingId, settle } = await setup();
+		const { billId } = await admin.mutation(api.pos.openFor, { bookingId });
+		await t.run((ctx) => ctx.db.patch(bookingId, { checkIn: '2026-10-05', checkOut: '2026-10-08' }));
+		await expect(settle({ billId, idempotencyKey: 'attempt-0001', expectedDue: 20000, tenders: [{ method: 'card', amount: 20000 }] })).rejects.toThrow('changed since it was added');
+		expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'pending' });
+	});
+
+	it('refuses cash received that is not a finite amount (C5-02)', async () => {
+		const { admin, settle } = await setup();
+		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 90 } });
+		for (const received of [Infinity, NaN, 1e12]) {
+			await expect(settle({ billId, idempotencyKey: `attempt-${received}`, expectedDue: 90, tenders: [{ method: 'cash', amount: 90, received }] })).rejects.toThrow();
+		}
+		await expect(admin.mutation(api.pos.addItem, { billId, item: { kind: 'extra', name: 'Huge', price: 1e12 } })).rejects.toThrow('at most');
+	});
+
 	it('holds a bill, lists it for resuming, and clears it', async () => {
 		const { admin, serviceId, bill } = await setup();
 		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
