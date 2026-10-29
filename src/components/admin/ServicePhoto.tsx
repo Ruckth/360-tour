@@ -28,9 +28,10 @@ function tileTone(category: string) {
 
 /** The service photo as a square, or its initials on a category-coloured tile. */
 export function ServiceThumb({ service, className }: { service: ServiceLike; className?: string }) {
-  return service.imageUrl ? (
+  const [failedUrl, setFailedUrl] = useState<string>();
+  return service.imageUrl && failedUrl !== service.imageUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={service.imageUrl} alt="" className={cn("size-9 shrink-0 rounded-lg bg-muted object-cover", className)} />
+    <img src={service.imageUrl} alt="" onError={() => setFailedUrl(service.imageUrl)} className={cn("size-9 shrink-0 rounded-lg bg-muted object-cover", className)} />
   ) : (
     <span
       aria-hidden

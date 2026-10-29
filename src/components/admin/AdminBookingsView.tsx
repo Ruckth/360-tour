@@ -8,6 +8,7 @@ import { calculateDirectQuote } from "convex/lib/pricing";
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { VillaPicker } from "@/components/admin/VillaPicker";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
 import type {
@@ -20,7 +21,6 @@ import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
 import { errorText } from "@/lib/staff-bookings";
@@ -289,19 +289,11 @@ export function AdminBookingsView() {
         >
           <AdminCalendarHeader>
             <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />
-            <Select value={villa} onValueChange={setVilla}>
-              <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg sm:w-48 sm:flex-none" aria-label="Villa">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All villas</SelectItem>
-                {data?.properties.map((p) => (
-                  <SelectItem key={p._id} value={p._id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <VillaPicker
+              properties={data?.properties ?? []} value={villa} onChange={setVilla}
+              includeAll compact disabled={!data}
+              className="flex-1 sm:w-48 sm:flex-none"
+            />
             <Button
               size="sm"
               variant={showCancelled ? "secondary" : "outline"}

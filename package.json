@@ -23,6 +23,7 @@
     "lint": "eslint .",
     "test": "pnpm test:unit && pnpm test:e2e",
     "test:unit": "vitest run",
+    "test:booking-ui": "playwright test -c playwright.booking.config.ts",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep @smoke",
     "e2e:server": "node scripts/e2e-server.mjs",
@@ -53,6 +54,7 @@
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "typescript": "^5.9.3",
+    "vite": "8.0.13",
     "vitest": "^4.1.6"
   },
   "dependencies": {

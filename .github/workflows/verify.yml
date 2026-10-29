@@ -21,6 +21,8 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: placeholder
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Booking component browser tests
+        run: pnpm test:booking-ui
       # Disconnected demo build: scripts/e2e-server.mjs forces placeholder backend settings and
       # never runs Convex, so this cannot sync or deploy a deployment.
       - name: Browser smoke tests

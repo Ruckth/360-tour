@@ -15,11 +15,4 @@ export function groupServices<T extends { name: string; category: string }>(serv
     );
 }
 
-/** Plain substring match on name and category; cmdk's fuzzy default also matched letters of the ID. */
-export function matchServiceSearch(_value: string, search: string, keywords?: string[]) {
-  const query = search.trim().toLowerCase();
-  return !query ||
-    (keywords ?? []).some((word) => word.toLowerCase().includes(query))
-    ? 1
-    : 0;
-}
+export { matchPickerSearch as matchServiceSearch } from "./picker";
