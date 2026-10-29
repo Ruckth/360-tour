@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE } from "convex/lib/billMath";
-import type { BillLine, Catalog, CatalogItem } from "./backend";
+import type { Catalog, CatalogItem, OrderLine } from "./backend";
 import { TOUCH_TARGETS, amountInput } from "./checkout-ui";
 
 type Tab = "frequent" | "services" | "rooms" | "extras";
@@ -69,7 +69,7 @@ export function CatalogPane({
   className,
 }: {
   catalog: Catalog | undefined;
-  lines: readonly BillLine[];
+  lines: readonly OrderLine[];
   onAdd: (item: CatalogItem) => void;
   className?: string;
 }) {
@@ -90,8 +90,8 @@ export function CatalogPane({
   const sections = tabGroups.map((group) => ({ group, tiles: shown.filter((t) => t.group === group) })).filter((s) => s.tiles.length);
   const filterCount = activeGroups.length + (priceCap < Infinity ? 1 : 0);
 
-  // How many of each tile are on the bill, shown as a badge.
-  const onBill = useMemo(() => {
+  // How many of each tile are on the order, shown as a badge.
+  const onOrder = useMemo(() => {
     const counts = new Map<string, number>();
     for (const line of lines) {
       const key = line.kind === "service" ? `service:${line.serviceId}` : line.kind === "room" ? `room:${line.propertyId}` : line.kind === "extra" ? `extra:${line.name}` : "";
@@ -155,7 +155,7 @@ export function CatalogPane({
       <div id="checkout-catalog" className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-28 sm:px-6 lg:pb-6">
         {tab === "rooms" ? (
           <p className="mb-4 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
-            Room items record charges only. To reserve dates, create a booking and attach it to the bill.
+            Room items record charges only. To reserve dates, create a booking and add it to the order.
           </p>
         ) : null}
         {!catalog ? (
@@ -168,7 +168,7 @@ export function CatalogPane({
               <div key={group} className="mb-4">
                 <h3 className="mb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{group}</h3>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-                  {groupTiles.map((tile) => <CatalogTile key={tile.key} tile={tile} count={onBill.get(tile.key) ?? 0} onAdd={onAdd} />)}
+                  {groupTiles.map((tile) => <CatalogTile key={tile.key} tile={tile} count={onOrder.get(tile.key) ?? 0} onAdd={onAdd} />)}
                 </div>
               </div>
             ))}
@@ -204,7 +204,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
           <Icon aria-hidden className="size-5" />
           {count ? (
             <span className="absolute -top-1.5 -right-1.5 min-w-5 rounded-full bg-primary px-1 text-center text-[11px] leading-5 font-semibold text-primary-foreground">
-              {count}<span className="sr-only"> on the bill</span>
+              {count}<span className="sr-only"> on the order</span>
             </span>
           ) : null}
         </span>
@@ -278,7 +278,7 @@ function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={!valid}>Add to bill</Button>
+            <Button type="submit" disabled={!valid}>Add to order</Button>
           </DialogFooter>
         </form>
       </DialogContent>

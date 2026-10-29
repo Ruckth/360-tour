@@ -1,6 +1,6 @@
 /**
- * POS bill math, shared by Convex and the checkout UI. Prices include 7% VAT (the receipt
- * shows the VAT portion); there is no service charge. Amounts are in the bill currency.
+ * POS order math, shared by Convex and the checkout UI. Prices include 7% VAT (the receipt
+ * shows the VAT portion); there is no service charge. Amounts are in the order currency.
  */
 
 export const VAT_RATE = 0.07;
@@ -92,9 +92,9 @@ export function assertPrice(price: number) {
 	if (price > MAX_PRICE) throw new Error(atMost(MAX_PRICE));
 }
 
-/** Every write to a bill checks its subtotal, which also bounds booked stays and catalog prices. */
+/** Every write to an order checks its subtotal, which also bounds booked stays and catalog prices. */
 export function assertBillSize(totals: Pick<BillTotals, 'subtotal'>) {
-	if (totals.subtotal > MAX_BILL) throw new Error(`A bill is at most ${MAX_BILL.toLocaleString('en-US')}. Split it into two bills.`);
+	if (totals.subtotal > MAX_BILL) throw new Error(`An order is at most ${MAX_BILL.toLocaleString('en-US')}. Split it into two orders.`);
 }
 
 /** A one-off price change needs a reason for the audit trail. Returns the trimmed note. */
@@ -147,4 +147,14 @@ export function bookingPayable(booking: BookingMoney) {
 
 export function formatReceiptNumber(n: number) {
 	return `R-${String(n).padStart(6, '0')}`;
+}
+
+/** The permanent order number, separate from the receipt number issued at payment. */
+export function formatOrderNumber(n: number) {
+	return `#${n}`;
+}
+
+/** "Order #42"; a legacy order not yet numbered by migrations:backfillOrders is just "Order". */
+export function orderTitle(orderNumber: number | undefined) {
+	return orderNumber === undefined ? 'Order' : `Order ${formatOrderNumber(orderNumber)}`;
 }

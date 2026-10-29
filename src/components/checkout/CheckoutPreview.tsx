@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckoutBackendProvider, type BillId } from "./backend";
+import { CheckoutBackendProvider, type OrderId } from "./backend";
 import { CheckoutView } from "./CheckoutView";
 import { createFixtureBackend } from "./fixture-backend";
 import { ReceiptView } from "./ReceiptView";
@@ -9,8 +9,8 @@ import { ReceiptView } from "./ReceiptView";
 /** Dev-only: the real checkout and receipt on in-memory fixtures, no sign-in or Convex needed. */
 export function CheckoutPreview() {
   const [backend] = useState(createFixtureBackend);
-  const [billId, setBillId] = useState<BillId | null>(null);
-  const [receiptId, setReceiptId] = useState<BillId | null>(null);
+  const [orderId, setOrderId] = useState<OrderId | null>(null);
+  const [receiptId, setReceiptId] = useState<OrderId | null>(null);
 
   return (
     <CheckoutBackendProvider backend={backend}>
@@ -22,13 +22,13 @@ export function CheckoutPreview() {
         {receiptId ? (
           <div className="flex min-h-0 flex-1 overflow-y-auto">
             <ReceiptView
-              billId={receiptId}
-              onNewSale={() => { setReceiptId(null); setBillId(null); }}
-              onOpenBill={(id) => { setReceiptId(null); setBillId(id); }}
+              orderId={receiptId}
+              onNewSale={() => { setReceiptId(null); setOrderId(null); }}
+              onOpenOrder={(id) => { setReceiptId(null); setOrderId(id); }}
             />
           </div>
         ) : (
-          <CheckoutView billId={billId} onBillChange={setBillId} onPaid={setReceiptId} />
+          <CheckoutView orderId={orderId} onOrderChange={setOrderId} onPaid={setReceiptId} />
         )}
       </div>
     </CheckoutBackendProvider>

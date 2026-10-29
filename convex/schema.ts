@@ -260,6 +260,12 @@ export default defineSchema({
 		guestName: v.string(),
 		guestPhone: v.string(),
 		guestEmail: v.optional(v.string()),
+		// Exact-lookup forms of the guest's phone (digits only, '' when it has none) and email
+		// (trimmed, lower case), written with every appointment (lib/serviceSlots.ts
+		// appointmentLookupFields). Missing guestPhoneDigits means a row saved before these fields;
+		// migrations:backfillAppointmentGuestLookup fills them.
+		guestPhoneDigits: v.optional(v.string()),
+		guestEmailNormalized: v.optional(v.string()),
 		bookingId: v.optional(v.id('bookings')),
 		chatSessionId: v.optional(v.id('chatSessions')),
 		source: v.union(
@@ -301,7 +307,13 @@ export default defineSchema({
 		.index('by_booking', ['bookingId'])
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone'])
-		// Checkout's customer search and attach list find guests who booked only an appointment.
+		// Checkout's "Add booking" finds unpaid appointments by the guest's phone digits or email.
+		// `eq('guestPhoneDigits', undefined)` lists rows not yet backfilled.
+		.index('by_guestPhoneDigits_and_paymentStatus', ['guestPhoneDigits', 'paymentStatus'])
+		.index('by_guestEmailNormalized_and_paymentStatus', ['guestEmailNormalized', 'paymentStatus'])
+		// Checkout's "Add booking" search finds appointments by their reference too.
+		.index('by_confirmationCode', ['confirmationCode'])
+		// Checkout's attach search finds guests who booked only an appointment.
 		.searchIndex('search_guestName', { searchField: 'guestName' }),
 
 	/** Who changed an appointment, when, and the old and new value of each changed field. */
@@ -330,21 +342,42 @@ export default defineSchema({
 		}))
 	}).index('by_appointmentId_and_at', ['appointmentId', 'at']),
 
-	/** A staff checkout bill (convex/pos.ts). Drafts and held bills live on the server so any device can resume them. */
+	/**
+	 * An order (convex/pos.ts): the persistent commercial record with a permanent order number,
+	 * its items, payments and receipt. The table keeps its original name so existing ids, payments
+	 * and audit rows stay valid. An order may link to a booking or appointment and, separately,
+	 * to a reusable customer; it may also have neither.
+	 */
 	bills: defineTable({
+		/** draft = unpaid. `held` is legacy (the old Hold button); migrations:backfillOrders turns it into draft. */
 		status: v.union(v.literal('draft'), v.literal('held'), v.literal('paid'), v.literal('void')),
-		/** "Walk-in #N", counted per resort-local day; shown until a guest is chosen. */
-		walkInNumber: v.number(),
+		/** Permanent "Order #N", issued when the order is created and never changed. Optional only until migrations:backfillOrders numbers legacy rows. */
+		orderNumber: v.optional(v.number()),
+		/** Deprecated: the old per-day "Walk-in #N". Kept on legacy rows only; never written or shown. */
+		walkInNumber: v.optional(v.number()),
+		/** Deprecated: a copied guest name/contact from before customers existed. Read only for legacy rows; never written. */
 		guestName: v.optional(v.string()),
 		guestPhone: v.optional(v.string()),
 		guestEmail: v.optional(v.string()),
+		/** The reusable customer (payer) this order is for, if any. Not the booking's guest. */
+		customerId: v.optional(v.id('customers')),
+		/** The stay this order belongs to. Its checkout reuses the open order rather than starting another. */
+		bookingId: v.optional(v.id('bookings')),
+		/** The standalone appointment (not part of a stay) this order belongs to. */
+		appointmentId: v.optional(v.id('serviceAppointments')),
+		/** For a later charge on a booking whose earlier order was already paid: that earlier order. */
+		parentOrderId: v.optional(v.id('bills')),
+		/** Who the receipt was issued to, frozen when the order is paid so later profile edits don't rewrite it. */
+		customerSnapshot: v.optional(v.object({ name: v.string(), phone: v.optional(v.string()), email: v.optional(v.string()) })),
 		currency: v.string(),
-		// Kept in step with the lines so the held-bills list needs no line reads.
+		// Kept in step with the lines so the orders list needs no line reads.
 		itemCount: v.number(),
 		total: v.number(),
-		/** itemCount > 0, indexed so empty drafts can't push unpaid bills out of the resume list. */
+		/** What is still to pay: total less deposits paid before checkout. 0 once paid. Optional until backfilled. */
+		due: v.optional(v.number()),
+		/** itemCount > 0, indexed so empty orders (e.g. one created with a booking) stay out of the orders list. */
 		hasItems: v.boolean(),
-		/** Bumped on every change to the lines or guest; settleBill refuses a payment reviewed on an older one. */
+		/** Bumped on every change to the lines or customer; settleOrder refuses a payment reviewed on an older one. */
 		revision: v.number(),
 		/** Sequential, issued once when paid and never reused (also not after a void). */
 		receiptNumber: v.optional(v.number()),
@@ -358,7 +391,36 @@ export default defineSchema({
 		createdBy: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number()
-	}).index('by_status_and_hasItems_and_updatedAt', ['status', 'hasItems', 'updatedAt']),
+	})
+		// The orders list: orders with items by status, newest change first. Status is a range so
+		// Unpaid covers `draft` and legacy `held` (adjacent in index order) in one paginated read.
+		.index('by_hasItems_and_status_and_updatedAt', ['hasItems', 'status', 'updatedAt'])
+		.index('by_orderNumber', ['orderNumber'])
+		.index('by_bookingId_and_status', ['bookingId', 'status'])
+		.index('by_appointmentId_and_status', ['appointmentId', 'status'])
+		.index('by_customerId_and_updatedAt', ['customerId', 'updatedAt'])
+		.index('by_customerId_and_status', ['customerId', 'status']),
+
+	/**
+	 * A reusable customer profile. Orders link to it by id; nothing is matched or merged by name,
+	 * so two people with the same name stay two customers.
+	 */
+	customers: defineTable({
+		name: v.string(),
+		phone: v.optional(v.string()),
+		/** Digits of `phone`, for exact lookup. */
+		phoneDigits: v.optional(v.string()),
+		email: v.optional(v.string()),
+		/** Trimmed, lower-case `email`, for exact lookup. */
+		emailNormalized: v.optional(v.string()),
+		notes: v.optional(v.string()),
+		createdBy: v.string(),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_phoneDigits', ['phoneDigits'])
+		.index('by_emailNormalized', ['emailNormalized'])
+		.searchIndex('search_name', { searchField: 'name' }),
 
 	billLines: defineTable({
 		billId: v.id('bills'),
@@ -376,6 +438,14 @@ export default defineSchema({
 		qty: v.number(),
 		/** Absent = any therapist. */
 		staffId: v.optional(v.id('staff')),
+		/** The therapist's name as printed on the receipt, frozen when the order is paid. */
+		staffName: v.optional(v.string()),
+		/**
+		 * Set only when migrations:backfillOrders copied `staffName` onto a row paid before names
+		 * were frozen. It is the therapist's name at migration time, not proven to be the name at
+		 * payment. Absent on rows frozen at payment.
+		 */
+		staffNameBackfilledAt: v.optional(v.number()),
 		/** Absent = now. */
 		startAt: v.optional(v.number()),
 		discount: v.optional(v.object({ type: v.union(v.literal('amount'), v.literal('percent')), value: v.number() })),
@@ -385,6 +455,8 @@ export default defineSchema({
 		createdAt: v.number()
 	})
 		.index('by_billId', ['billId'])
+		// The booking and appointment rows of an order, for the booking references the orders list shows.
+		.index('by_billId_and_kind', ['billId', 'kind'])
 		.index('by_bookingId', ['bookingId'])
 		.index('by_appointmentId', ['appointmentId']),
 
@@ -399,19 +471,29 @@ export default defineSchema({
 		createdAt: v.number()
 	}).index('by_billId', ['billId']),
 
-	/** Price overrides, payments and voids on a bill: who, when, why, old and new price. */
+	/** Price overrides, customer links, source updates, payments and voids on an order: who, when, why, old and new price. */
 	billAudit: defineTable({
 		billId: v.id('bills'),
 		lineId: v.optional(v.id('billLines')),
 		at: v.number(),
 		actor: v.string(),
-		kind: v.union(v.literal('price_override'), v.literal('cleared'), v.literal('paid'), v.literal('void')),
+		kind: v.union(
+			v.literal('price_override'),
+			v.literal('cleared'),
+			v.literal('paid'),
+			v.literal('void'),
+			v.literal('customer_linked'),
+			v.literal('customer_unlinked'),
+			v.literal('source_updated'),
+			v.literal('source_removed')
+		),
+		customerId: v.optional(v.id('customers')),
 		fromPrice: v.optional(v.number()),
 		toPrice: v.optional(v.number()),
 		note: v.optional(v.string())
 	}).index('by_billId_and_at', ['billId', 'at']),
 
-	/** Running numbers: "receipt" (per tenant) and "walkin:YYYY-MM-DD". */
+	/** Running numbers: "order" and "receipt". Legacy rows "walkin:YYYY-MM-DD" are no longer used. */
 	billCounters: defineTable({ key: v.string(), value: v.number() }).index('by_key', ['key']),
 
 	reviews: defineTable({

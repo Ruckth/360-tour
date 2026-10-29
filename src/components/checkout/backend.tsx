@@ -8,32 +8,48 @@ import { createContext, useContext, type ReactNode } from "react";
 /**
  * Everything the checkout UI reads and writes. The admin page implements it with Convex
  * (convex-backend.ts); the dev preview with in-memory fixtures (fixture-backend.ts). The shapes
- * are the Convex functions' own, so both stay in step with convex/pos.ts.
+ * are the Convex functions' own, so both stay in step with convex/pos.ts and convex/customers.ts.
  */
 
 type Pos = typeof api.pos;
+type Customers = typeof api.customers;
 export type Catalog = FunctionReturnType<Pos["catalog"]>;
-export type BillView = NonNullable<FunctionReturnType<Pos["getBill"]>>;
-export type BillLine = BillView["lines"][number];
-export type OpenBill = FunctionReturnType<Pos["listOpenBills"]>[number];
+export type OrderView = NonNullable<FunctionReturnType<Pos["getOrder"]>>;
+export type OrderLine = OrderView["lines"][number];
+export type OrderRow = FunctionReturnType<Pos["listOrders"]>["page"][number];
+export type OrderFilter = FunctionArgs<Pos["listOrders"]>["filter"];
 export type Attachable = FunctionReturnType<Pos["listAttachable"]>[number];
+export type AttachLookupStatus = FunctionReturnType<Pos["attachLookupStatus"]>;
 export type CatalogItem = FunctionArgs<Pos["addItem"]>["item"];
-export type Guest = { name: string; phone?: string; email?: string };
-export type BillId = Id<"bills">;
+export type Customer = FunctionReturnType<Customers["searchCustomers"]>[number];
+export type NewCustomer = FunctionArgs<Customers["createCustomer"]>;
+export type OrderId = Id<"bills">;
+export type CustomerId = Id<"customers">;
 
-type ActionName =
-  | "openFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine"
-  | "setCustomer" | "holdBill" | "clearBill" | "settleBill" | "voidBill";
-export type CheckoutActions = { [K in ActionName]: (args: FunctionArgs<Pos[K]>) => Promise<FunctionReturnType<Pos[K]>> };
+/** One page-at-a-time list, the same shape as Convex's usePaginatedQuery. */
+export type OrdersPage = {
+  results: OrderRow[];
+  status: "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted";
+  loadMore: (numItems: number) => void;
+};
+
+type PosAction =
+  | "openOrderFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine" | "updateSourceLine"
+  | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder";
+export type CheckoutActions = { [K in PosAction]: (args: FunctionArgs<Pos[K]>) => Promise<FunctionReturnType<Pos[K]>> } & {
+  createCustomer: (args: NewCustomer) => Promise<CustomerId>;
+};
 
 export type CheckoutBackend = {
   useCatalog(): Catalog | undefined;
-  /** undefined while loading, null when the bill doesn't exist. */
-  useBill(billId: BillId | null): BillView | null | undefined;
-  useOpenBills(): OpenBill[] | undefined;
-  useNextWalkIn(): number | undefined;
-  useGuestSearch(query: string): Guest[] | undefined;
-  useAttachable(guest: Guest | null): Attachable[] | undefined;
+  /** undefined while loading, null when the order doesn't exist. */
+  useOrder(orderId: OrderId | null): OrderView | null | undefined;
+  useOrders(filter: OrderFilter): OrdersPage;
+  /** undefined while loading; [] for a query under two characters. */
+  useCustomerSearch(query: string): Customer[] | undefined;
+  useAttachable(args: { orderId: OrderId | null; query: string }): Attachable[] | undefined;
+  /** Whether phone and email search reaches every unpaid appointment yet (false only mid-rollout). */
+  useAttachLookupStatus(): AttachLookupStatus | undefined;
   useBusinessName(): string | undefined;
   useActions(): CheckoutActions;
 };
@@ -48,16 +64,6 @@ export function useCheckoutBackend(): CheckoutBackend {
   const backend = useContext(BackendContext);
   if (!backend) throw new Error("useCheckoutBackend must be used inside <CheckoutBackendProvider>.");
   return backend;
-}
-
-/** Distinct guests among booking and appointment search results, in order. */
-export function distinctGuests(rows: ReadonlyArray<{ guestName: string; guestPhone: string; guestEmail?: string }>): Guest[] {
-  const guests = new Map<string, Guest>();
-  for (const row of rows) {
-    const key = row.guestPhone.replace(/\D/g, "") || row.guestEmail?.toLowerCase() || row.guestName.trim().toLowerCase();
-    if (!guests.has(key)) guests.set(key, { name: row.guestName, phone: row.guestPhone || undefined, email: row.guestEmail });
-  }
-  return [...guests.values()];
 }
 
 /** A key per payment attempt, reused if that attempt is retried. randomUUID needs a secure context. */

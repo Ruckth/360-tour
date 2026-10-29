@@ -1,7 +1,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { demoCode } from '../lib/codes';
-import { localDateTimeUtc, resortLocalParts, staffBusyRanges } from '../lib/serviceSlots';
+import { appointmentLookupFields, localDateTimeUtc, resortLocalParts, staffBusyRanges } from '../lib/serviceSlots';
 
 const days = [0, 1, 2, 3, 4, 5, 6];
 const staffSeeds = [
@@ -73,7 +73,7 @@ export async function seedStaffServicesData(ctx: MutationCtx) {
 			serviceId: serviceIds[sample.service], staffId, start,
 			end: start + service.durationMin * 60_000,
 			blockedUntil: start + (service.durationMin + service.bufferMin) * 60_000,
-			guestName: sample.guestName, guestPhone: sample.guestPhone, source: 'admin',
+			guestName: sample.guestName, guestPhone: sample.guestPhone, guestPhoneDigits: appointmentLookupFields(sample).guestPhoneDigits, source: 'admin',
 			status: 'booked', paymentStatus: 'unpaid', price: service.price, currency: 'THB',
 			confirmationCode: '', accessToken: crypto.randomUUID(), createdAt: now
 		});

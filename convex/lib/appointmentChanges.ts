@@ -1,6 +1,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { appointmentRevision } from './appointmentWindow';
+import { appointmentLookupFields } from './serviceSlots';
 
 /**
  * Shared recording for calendar edits and guest cancellations. Each tracked change
@@ -41,7 +42,13 @@ export async function recordAppointmentChange(ctx: MutationCtx, appointment: App
 		.filter((field) => field in patch && (patch[field] ?? null) !== (appointment[field] ?? null))
 		.map((field) => ({ field, from: appointment[field] ?? null, to: patch[field] ?? null }));
 	if (!changes.length) return false;
-	await ctx.db.patch(appointment._id, { ...patch, revision: appointmentRevision(appointment) + 1 });
+	// Keeps the exact-lookup fields in step with the guest's phone and email (and fills them on a
+	// row saved before they existed). A removed email clears its lookup form.
+	const lookup = appointmentLookupFields({
+		guestPhone: 'guestPhone' in patch ? patch.guestPhone ?? '' : appointment.guestPhone,
+		guestEmail: 'guestEmail' in patch ? patch.guestEmail : appointment.guestEmail
+	});
+	await ctx.db.patch(appointment._id, { ...patch, ...lookup, revision: appointmentRevision(appointment) + 1 });
 	await ctx.db.insert('appointmentChanges', {
 		appointmentId: appointment._id, at: Date.now(), actor: entry.actor, kind: entry.kind,
 		currencyBefore: appointment.currency, currencyAfter: patch.currency ?? appointment.currency,

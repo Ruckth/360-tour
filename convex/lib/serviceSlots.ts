@@ -1,6 +1,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { demoCode } from './codes';
+import { ensureLinkedOrder } from './orderLinks';
 import { assertValidIsoDate, assertValidEmail } from './validation';
 
 const MINUTE = 60_000;
@@ -249,6 +250,8 @@ export type AppointmentInput = {
 	chatSessionId?: Id<'chatSessions'>;
 	rebookedFromId?: Id<'serviceAppointments'>;
 	source: Doc<'serviceAppointments'>['source'];
+	/** Who created it (an admin's email), recorded on its order. Defaults to the channel. */
+	actor?: string;
 };
 
 /** Admin appointments may reserve a slot before guest details are known. Chat bookings still require contact details. */
@@ -262,6 +265,18 @@ export function guestDetails(input: { guestName: string; guestPhone: string; gue
 	if (guestEmail) assertValidEmail(guestEmail);
 	if (notes && notes.length > 2000) throw new Error('Notes must be at most 2000 characters');
 	return { guestName, guestPhone, guestEmail, notes };
+}
+
+/**
+ * The exact-lookup forms stored with an appointment's guest details (schema `guestPhoneDigits`).
+ * `guestPhoneDigits` is always written ('' for no phone) so a missing value only ever means a row
+ * saved before these fields; `guestEmailNormalized` is cleared when the email is removed.
+ */
+export function appointmentLookupFields(guest: { guestPhone: string; guestEmail?: string }) {
+	return {
+		guestPhoneDigits: guest.guestPhone.replace(/\D/g, ''),
+		guestEmailNormalized: guest.guestEmail?.trim().toLowerCase() || undefined
+	};
 }
 
 export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput) {
@@ -291,6 +306,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const chosen = free[0]?.staff;
 	if (!chosen) throw new Error(SLOT_CONFLICT);
 	const accessToken = crypto.randomUUID();
+	const lookup = appointmentLookupFields({ guestPhone, guestEmail });
 	const appointmentId = await ctx.db.insert('serviceAppointments', {
 		serviceId: service._id,
 		staffId: chosen._id,
@@ -300,6 +316,8 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 		guestName,
 		guestPhone,
 		...(guestEmail ? { guestEmail } : {}),
+		guestPhoneDigits: lookup.guestPhoneDigits,
+		...(lookup.guestEmailNormalized ? { guestEmailNormalized: lookup.guestEmailNormalized } : {}),
 		...(input.bookingId ? { bookingId: input.bookingId } : {}),
 		...(input.chatSessionId ? { chatSessionId: input.chatSessionId } : {}),
 		...(input.rebookedFromId ? { rebookedFromId: input.rebookedFromId } : {}),
@@ -314,5 +332,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	});
 	const confirmationCode = demoCode('SVC', appointmentId);
 	await ctx.db.patch(appointmentId, { confirmationCode });
+	// Its order from the start (the stay's order for an appointment that is part of a stay), empty until opened at checkout.
+	await ensureLinkedOrder(ctx, input.bookingId ? { bookingId: input.bookingId } : { appointmentId }, input.actor ?? `system:${input.source}`);
 	return { appointmentId, staffId: chosen._id, confirmationCode, accessToken };
 }
