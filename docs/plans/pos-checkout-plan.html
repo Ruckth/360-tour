@@ -1,0 +1,285 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{color-scheme:light dark}
+body{margin:0;font-family:var(--font-sans);line-height:1.5;font-size:13px}
+.wrap{display:flex;flex-direction:column;gap:16px}
+.lead{color:var(--muted-foreground);font-size:14px;margin:0}
+.flow{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}
+.flow span{padding:4px 10px;border-radius:999px;background:var(--secondary);color:var(--secondary-foreground)}
+.flow span.now{background:var(--primary);color:var(--primary-foreground)}
+.box{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card);color:var(--card-foreground)}
+.ph-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.num{font-family:var(--font-mono);font-size:12px;color:var(--muted-foreground)}
+h3{margin:0;font-size:16px}
+.tag{margin-left:auto;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted-foreground);white-space:nowrap}
+.tag.mvp{background:var(--primary);color:var(--primary-foreground);border-color:transparent}
+.goal{color:var(--muted-foreground);margin:0 0 12px}
+h4{margin:12px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground)}
+ul{margin:0;padding-left:18px}li{margin:2px 0}
+code{font-family:var(--font-mono);font-size:11.5px;background:var(--code-background);padding:1px 5px;border-radius:4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.done{margin-top:12px;font-size:12.5px;padding:8px 10px;border-radius:calc(var(--radius) - 2px);background:var(--secondary)}
+.cap{font-size:11px;color:var(--muted-foreground);margin:0 0 6px}
+.screen{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--background);font-size:11px}
+.bar{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.bar b{font-size:12px}
+.pill{padding:3px 9px;border-radius:999px;background:var(--secondary)}
+.pill.cust{background:var(--primary);color:var(--primary-foreground)}
+.search{flex:1;border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--muted-foreground)}
+.desk{display:grid;grid-template-columns:1fr 250px;min-height:380px}
+.left{padding:8px 10px;border-right:1px solid var(--border)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:6px}
+.tabs i{font-style:normal;padding:4px 8px;color:var(--muted-foreground);border-bottom:2px solid transparent}
+.tabs i.on{color:var(--foreground);border-color:var(--primary);font-weight:600}
+.srow{display:flex;gap:6px;margin-bottom:6px}
+.grp{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin:6px 0 4px}
+.items{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.it{border:1px solid var(--border);border-radius:8px;display:flex;gap:6px;padding:5px;align-items:center}
+.th{width:28px;height:28px;border-radius:6px;flex:none;background:linear-gradient(135deg,var(--chart-1),var(--chart-3));opacity:.65}
+.th.b{background:linear-gradient(135deg,var(--chart-2),var(--chart-4))}
+.th.c{background:linear-gradient(135deg,var(--chart-5),var(--chart-6))}
+.it .n{font-weight:600;font-size:10.5px;line-height:1.2}
+.it .p{display:flex;justify-content:space-between;color:var(--muted-foreground);font-size:9.5px;gap:4px}
+.it .p b{color:var(--foreground);font-weight:600}
+.right{padding:8px;display:flex;flex-direction:column;gap:5px;background:var(--card)}
+.rh{display:flex;justify-content:space-between;font-weight:600}
+.line{border:1px solid var(--border);border-radius:7px;padding:5px 7px}
+.line.open{border-color:var(--primary)}
+.lt{display:flex;justify-content:space-between;font-weight:600}
+.ls{color:var(--muted-foreground);font-size:10px}
+.ed{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;margin-top:5px;padding-top:5px;border-top:1px dashed var(--border);font-size:10px}
+.ed span:nth-child(odd){color:var(--muted-foreground)}
+.chips{display:flex;gap:3px;flex-wrap:wrap}
+.chips i{font-style:normal;padding:0 6px;border-radius:999px;border:1px solid var(--border)}
+.chips i.on{border-color:var(--primary);color:var(--primary)}
+.row{display:flex;justify-content:space-between;color:var(--muted-foreground)}
+.foot{margin-top:auto;border-top:1px solid var(--border);padding-top:6px}
+.due{display:flex;justify-content:space-between;font-weight:700;font-size:13px;color:var(--foreground);margin:3px 0 5px}
+.tend{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}
+.tend i{font-style:normal;text-align:center;padding:5px 2px;border-radius:5px;background:var(--primary);color:var(--primary-foreground);font-weight:600}
+.tend i.g{background:var(--secondary);color:var(--foreground);font-weight:500}
+.btn{background:var(--primary);color:var(--primary-foreground);border-radius:7px;padding:6px 8px;text-align:center;font-weight:600}
+.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--foreground);font-weight:500}
+.mobrow{display:grid;grid-template-columns:210px 210px 1fr;gap:12px;align-items:start}
+.phone{width:210px;height:400px;border:1px solid var(--border);border-radius:22px;overflow:hidden;position:relative;background:var(--background);font-size:10.5px}
+.phone .items{grid-template-columns:1fr 1fr;padding:0 8px}
+.phone .tabs{padding:0 6px}
+.float{position:absolute;left:10px;right:10px;bottom:12px;background:var(--foreground);color:var(--background);border-radius:999px;padding:8px 12px;display:flex;justify-content:space-between;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:34px;background:var(--card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;padding:8px;display:flex;flex-direction:column;gap:5px;box-shadow:0 -8px 24px rgba(0,0,0,.3)}
+.grab{width:34px;height:4px;border-radius:4px;background:var(--border);margin:0 auto 2px}
+.notes{font-size:12.5px}
+.cash{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin:4px 0}
+.cash i{font-style:normal;text-align:center;padding:6px 2px;border-radius:5px;background:var(--secondary)}
+.chat{display:flex;flex-direction:column;gap:8px;padding:10px}
+.u{align-self:flex-end;background:var(--primary);color:var(--primary-foreground);padding:6px 10px;border-radius:12px 12px 2px 12px;max-width:75%}
+.a{align-self:flex-start;max-width:88%;border:1px solid var(--border);border-radius:12px 12px 12px 2px;padding:8px 10px;background:var(--card)}
+.diff{margin:6px 0;border:1px solid var(--border);border-radius:7px;overflow:hidden}
+.diff div{display:grid;grid-template-columns:1.3fr 1fr 1fr;padding:3px 8px;border-top:1px solid var(--border)}
+.diff div:first-child{border-top:0;color:var(--muted-foreground);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.old{color:var(--muted-foreground);text-decoration:line-through}
+.new{color:var(--success,var(--primary));font-weight:600}
+.acts{display:flex;gap:6px}.acts .btn{padding:4px 10px}
+.warn{color:var(--warning,var(--muted-foreground))}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--border);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);border-top:0}
+.k{font-family:var(--font-mono);font-size:11px}
+.ph{white-space:nowrap}
+.chg{display:grid;grid-template-columns:1fr 18px 1fr;gap:4px 8px;font-size:12.5px;align-items:start}
+.chg .was{color:var(--muted-foreground);text-decoration:line-through}
+.chg .ar{color:var(--muted-foreground);text-align:center}
+.flag{border:1px solid var(--warning,var(--border));background:var(--warning-surface,var(--secondary));border-radius:var(--radius);padding:12px 14px;font-size:12.5px}
+</style></head><body><div class="wrap">
+
+<p class="lead">Updated after Kiro read the Ease POS checkout code (<code>ease-international/src/app/(app)/checkout/</code>, origin/main <code>2b0c174e4</code>). This version follows how Ease actually works: <b>tapping a tile adds it to the bill, the right panel is the bill</b>, and you edit each row there. Bills are saved on the server, and payment happens in the bill footer.</p>
+
+<div class="flag"><b>⚠ Decide:</b> You asked for <i>item details on the right</i>, but in Ease the right panel is <b>the bill</b>. I've matched Ease, and tapping a row expands its details (therapist, time, price, discount) inside the bill. If you still want a separate item-detail panel, an ⓘ on each tile could open it.</div>
+
+<div class="box"><h3 style="margin-bottom:8px">What changed from the last plan</h3>
+<div class="chg">
+<span class="was">Detail panel → "Add to bill"</span><span class="ar">→</span><span>Tap a tile to add; edit on the bill row</span>
+<span class="was">Qty stepper on services</span><span class="ar">→</span><span>Each service is its own row with its own therapist; qty only for nights and products</span>
+<span class="was">Long-press quick add</span><span class="ar">→</span><span>Dropped, since a tap already adds</span>
+<span class="was">"Review &amp; charge" step</span><span class="ar">→</span><span>Payment buttons sit in the bill footer</span>
+<span class="was">Bill in URL/localStorage</span><span class="ar">→</span><span>Server draft bills, with held bills you can resume</span>
+<span class="was">Auto-pull unpaid bookings</span><span class="ar">→</span><span>Customer strip plus an explicit "attach booking" list</span>
+<span class="was">Category chips</span><span class="ar">→</span><span>Tabs by type, group headings, filter sheet</span>
+<span class="was">AI for one-off prices</span><span class="ar">→</span><span>Price override at the till with a note and audit; AI only for catalog edits</span>
+<span>—</span><span class="ar">+</span><span>Settle with idempotency key, receipt number in the same transaction, void with reason, deposits, VAT mode, therapist commission</span>
+</div></div>
+
+<div class="flow"><span class="now">1 · Bill builder</span><span class="now">2 · Pay + receipt</span><span>3 · Therapist commission</span><span>4 · AI catalog admin</span><span>5 · Packages, vouchers, more</span></div>
+
+<!-- PHASE 1 -->
+<div class="box">
+<div class="ph-head"><span class="num">01</span><h3>Bill builder</h3><span class="tag mvp">MVP</span></div>
+<p class="goal"><code>/admin/checkout</code>. Grid on the left, and a 360px bill that's always visible on the right.</p>
+<p class="cap">Desktop and iPad landscape</p>
+<div class="screen">
+<div class="bar"><span class="pill cust">👤 Kim Minji · Villa 3 ▾</span><span class="pill">Held bills (2)</span><span class="pill">Attach booking +</span><span style="margin-left:auto;color:var(--muted-foreground)">Main villa ▾</span></div>
+<div class="desk">
+<div class="left">
+<div class="tabs"><i>★ Frequent</i><i class="on">Spa</i><i>Rooms</i><i>Extras</i><i>Packages</i></div>
+<div class="srow"><span class="search">Search…</span><span class="pill">Filter ⚙</span></div>
+<div class="grp">Massage</div>
+<div class="items">
+<div class="it"><div class="th"></div><div style="flex:1"><div class="n">Thai massage</div><div class="p"><span>90m</span><b>฿1,200</b></div></div></div>
+<div class="it"><div class="th b"></div><div style="flex:1"><div class="n">Hot stone</div><div class="p"><span>60m</span><b>฿1,500</b></div></div></div>
+<div class="it"><div class="th c"></div><div style="flex:1"><div class="n">Aromatherapy</div><div class="p"><span>60m</span><b>฿1,300</b></div></div></div>
+<div class="it"><div class="th"></div><div style="flex:1"><div class="n">4-hand</div><div class="p"><span>60m</span><b>฿2,400</b></div></div></div>
+</div>
+<div class="grp">Body &amp; face</div>
+<div class="items">
+<div class="it"><div class="th b"></div><div style="flex:1"><div class="n">Foot spa</div><div class="p"><span>45m</span><b>฿600</b></div></div></div>
+<div class="it"><div class="th c"></div><div style="flex:1"><div class="n">Facial</div><div class="p"><span>60m</span><b>฿1,100</b></div></div></div>
+</div></div>
+<div class="right">
+<div class="rh"><span>Bill · 3 items</span><span style="color:var(--muted-foreground);font-weight:400">Clear</span></div>
+<div class="line"><div class="lt"><span>Pool Villa · 3 nights</span><span>฿18,000</span></div><div class="ls">Booking #2381 attached</div></div>
+<div class="line open"><div class="lt"><span>Thai massage 90</span><span>฿1,200</span></div>
+<div class="ed"><span>Therapist</span><span class="chips"><i class="on">Nok</i><i>Ploy</i><i>+2nd</i></span>
+<span>Time</span><span>Now ▾ / book later</span>
+<span>Discount</span><span>฿ / % ▾</span>
+<span>Price</span><span>Override (note required) ✎</span></div></div>
+<div class="line"><div class="lt"><span>Airport transfer</span><span>฿800</span></div></div>
+<div class="foot">
+<div class="row"><span>Subtotal</span><span>฿20,000</span></div>
+<div class="row"><span>Deposit paid online</span><span>−฿18,000</span></div>
+<div class="row"><span>VAT 7% (included)</span><span>฿131</span></div>
+<div class="due"><span>Due</span><span>฿2,000</span></div>
+<div class="tend"><i>Cash</i><i>QR</i><i class="g">Card</i><i class="g">Split</i></div>
+</div></div></div></div>
+
+<p class="cap" style="margin-top:14px">Mobile: same catalog, a floating pill, and the bill opens in a full-height sheet</p>
+<div class="mobrow">
+<div class="phone">
+<div class="bar"><span class="pill cust">👤 Walk-in #14 ▾</span></div>
+<div class="tabs"><i class="on">Spa</i><i>Rooms</i><i>Extras</i></div>
+<div style="padding:0 8px 6px"><div class="search">Search…</div></div>
+<div class="items">
+<div class="it"><div class="th"></div><div style="flex:1"><div class="n">Thai massage</div><div class="p"><b>฿1,200</b></div></div></div>
+<div class="it"><div class="th b"></div><div style="flex:1"><div class="n">Hot stone</div><div class="p"><b>฿1,500</b></div></div></div>
+<div class="it"><div class="th c"></div><div style="flex:1"><div class="n">Aroma</div><div class="p"><b>฿1,300</b></div></div></div>
+<div class="it"><div class="th b"></div><div style="flex:1"><div class="n">Foot spa</div><div class="p"><b>฿600</b></div></div></div>
+</div>
+<div class="float"><span>🧾 2 items</span><span>฿1,800 →</span></div>
+</div>
+<div class="phone" style="background:var(--muted)">
+<div class="sheet"><div class="grab"></div>
+<div class="rh"><span>Bill · Walk-in #14</span><span>✕</span></div>
+<div class="line open"><div class="lt"><span>Thai massage 90</span><span>฿1,200</span></div>
+<div class="ed"><span>Therapist</span><span class="chips"><i class="on">Nok</i><i>Ploy</i></span><span>Discount</span><span>—</span></div></div>
+<div class="line"><div class="lt"><span>Foot spa 45</span><span>฿600</span></div><div class="ls">Ploy</div></div>
+<div class="foot"><div class="due"><span>Due</span><span>฿1,800</span></div>
+<div class="tend"><i>Cash</i><i>QR</i><i class="g">Card</i><i class="g">Split</i></div></div>
+</div></div>
+<div class="notes"><h4 style="margin-top:0">Flow (like Ease)</h4><ul>
+<li>The customer strip defaults to <b>Walk-in #N</b>; tap it to search for a guest</li>
+<li>Tapping a tile adds a row (a service adds one unit; products and nights merge into a quantity)</li>
+<li>Tap a row to expand its details: therapist (eligible staff only), time, discount and price override</li>
+<li>"Attach booking" lists the guest's unpaid stays and appointments; nothing is added automatically</li>
+<li>Entry via <code>?booking=</code> or <code>?bill=</code>; ambiguous URLs are refused</li>
+<li>"Clear bill" asks for confirmation</li></ul>
+<h4>Build</h4><ul>
+<li><code>CheckoutGrid</code>, <code>BillPanel</code> (reused in <code>BillSheet</code>), <code>FloatingBill</code>, <code>CustomerStrip</code></li>
+<li>Convex <code>bills</code> (status draft, held, paid, void) and <code>billLines</code></li>
+<li><code>billAudit</code> rows for price overrides (who, why, old and new price)</li></ul></div>
+</div>
+<div class="done"><b>Done when:</b> staff can build a bill for a walk-in or a guest, give each massage its own therapist, override a price with a note, and hold the bill, then resume it on another device.</div>
+</div>
+
+<!-- PHASE 2 -->
+<div class="box">
+<div class="ph-head"><span class="num">02</span><h3>Pay + receipt</h3><span class="tag mvp">MVP</span></div>
+<p class="goal">Pay straight from the bill footer, safe against double charges.</p>
+<div class="cols">
+<div><div class="screen"><div class="bar"><b>Cash · Due ฿2,000</b></div>
+<div style="padding:8px">
+<div class="cash"><i>Exact</i><i>฿100</i><i>฿500</i><i>฿1,000</i><i>฿2,500</i><i>Custom</i></div>
+<div class="row"><span>Received</span><span style="color:var(--foreground)">฿2,500</span></div>
+<div class="due"><span>Change</span><span>฿500</span></div>
+<div class="btn">Confirm cash</div></div></div></div>
+<div><div class="screen"><div class="bar"><b>Receipt #R-000142</b><span style="margin-left:auto" class="pill">Paid</span></div>
+<div style="padding:8px;display:flex;flex-direction:column;gap:4px">
+<div class="row"><span>Cash</span><span>฿1,000</span></div>
+<div class="row"><span>PromptPay QR</span><span>฿1,000</span></div>
+<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px"><span class="btn ghost" style="padding:3px 8px">Print 58/80</span><span class="btn ghost" style="padding:3px 8px">Send LINE</span><span class="btn ghost" style="padding:3px 8px">Share image</span><span class="btn ghost" style="padding:3px 8px">Void…</span></div>
+</div></div></div></div>
+<div class="cols" style="margin-top:8px"><div><h4>Backend</h4><ul>
+<li>A single <code>settleBill</code> mutation that takes an <b>idempotency key per payment attempt</b></li>
+<li>Assigns a per-tenant receipt number in the same transaction; numbers are never reused, even after a void</li>
+<li>Marks the attached bookings and appointments paid</li>
+<li>Deducts the deposit (Stripe online payment or a manual deposit)</li>
+<li>VAT mode setting: included, added or exempt; optional card surcharge</li>
+<li>Void with reason; voided receipts stay on record</li></ul></div>
+<div><h4>Frontend</h4><ul>
+<li>Payment types: cash, PromptPay QR (staff confirms), card, transfer; split up to 3 methods</li>
+<li>Cash panel with quick amounts and change due</li>
+<li>Mutation lock, so a double tap doesn't charge twice</li>
+<li>After paying, redirect to <code>/admin/receipt/[billId]</code></li>
+<li>Thermal print styles for 58mm and 80mm paper</li></ul></div></div>
+<div class="done"><b>Done when:</b> a split cash plus QR payment settles once even if retried, the receipt number has no gaps, and void keeps the record.</div>
+</div>
+
+<!-- PHASE 3 -->
+<div class="box">
+<div class="ph-head"><span class="num">03</span><h3>Therapist commission</h3><span class="tag">next</span></div>
+<ul>
+<li>Save each row's therapist and commission when the bill is paid, so later rate changes don't alter past pay</li>
+<li>Up to 2 therapists per row (4-hand massage); a manager can override a therapist's amount</li>
+<li>"Discount reduces commission" toggle per discount</li>
+<li>Commission preview on the row, managers only</li></ul>
+<div class="done"><b>Done when:</b> a 4-hand massage with a 10% discount pays both therapists correctly, and the amounts don't change after rates are edited.</div>
+</div>
+
+<!-- PHASE 4 -->
+<div class="box">
+<div class="ph-head"><span class="num">04</span><h3>AI catalog admin (Luna)</h3><span class="tag">next</span></div>
+<p class="goal">For rare catalog edits only. One-off prices stay at the till (phase 1).</p>
+<div class="screen"><div class="bar"><b>✦ AI settings assistant</b><span style="margin-left:auto;color:var(--muted-foreground)">Luna</span></div>
+<div class="chat">
+<div class="u">Raise all massages 10% from 1 Dec, and Nok is leaving end of month, take her off everything</div>
+<div class="a">Here's the plan. Nothing changes until you apply it.
+<div class="diff">
+<div><span>Item</span><span>Now</span><span>After</span></div>
+<div><span>Thai massage 90</span><span class="old">฿1,200</span><span class="new">฿1,320 · 1 Dec</span></div>
+<div><span>Hot stone 60</span><span class="old">฿1,500</span><span class="new">฿1,650 · 1 Dec</span></div>
+<div><span>Nok → services</span><span class="old">4 services</span><span class="new">removed · 30 Nov</span></div>
+</div>
+<div class="warn">⚠ Nok has 3 appointments after 30 Nov, and 1 held bill names her.</div>
+<div class="acts" style="margin-top:6px"><span class="btn">Apply 3 changes</span><span class="btn ghost">Show affected</span></div>
+</div></div></div>
+<table style="margin-top:8px">
+<tr><th>Ask</th><th>Tool</th></tr>
+<tr><td>"Raise massages 10% from 1 Dec" / "Songkran ฿990 until 15 Apr"</td><td class="k">schedulePrice</td></tr>
+<tr><td>"Use this photo for hot stone"</td><td class="k">setServiceImage</td></tr>
+<tr><td>"Ploy can do aromatherapy" / "Nok is leaving 30 Nov"</td><td class="k">setServiceStaff</td></tr>
+<tr><td>"Hide airport transfer" / "Add foot spa 45m ฿600"</td><td class="k">archiveService · createService</td></tr>
+<tr><td>"Move 4-hand to the top of Frequent"</td><td class="k">setTileOrder</td></tr>
+<tr><td>"Undo that"</td><td class="k">revertChange</td></tr>
+</table>
+<ul style="margin-top:6px"><li><code>POST /api/admin-ai</code>: a Convex HTTP action that requires an admin sign-in and reuses <code>convex/lib/chatLlm.ts</code></li>
+<li>Plan, then confirm, then apply, with every change logged in <code>adminAiChanges</code> so it can be undone. Paid bills and held bills are never changed.</li></ul>
+</div>
+
+<!-- PHASE 5 -->
+<div class="box">
+<div class="ph-head"><span class="num">05</span><h3>Later: what else Ease has</h3><span class="tag">later</span></div>
+<div class="cols"><ul>
+<li>Spa packages and courses: sell them, then redeem sessions</li>
+<li>Gift vouchers: sell them, accept them as payment, PIN</li>
+<li>Punch cards and loyalty points</li>
+<li>Pay now, book later</li></ul>
+<ul>
+<li>Gateway QR with status polling, plus recovering a payment if the page reloads mid-sale</li>
+<li>Full tax invoice (ใบกำกับภาษี)</li>
+<li>Barcode scan for products</li>
+<li>✦ AI from LINE and by voice</li></ul></div>
+<p class="cap" style="margin:8px 0 0">The bill panel keeps empty slots for these, so they can be added without redesigning the layout.</p>
+</div>
+
+<div class="box"><h3 style="margin-bottom:6px">To confirm</h3><ul>
+<li><b>Right panel:</b> the bill, like Ease (as drawn), or your original item-detail panel?</li>
+<li><b>Model ID:</b> the code uses <code>openai/gpt-6-luna</code>. What's the exact ID for Luna 6.1?</li>
+<li>Service charge 10%? Ease has no service-charge model, so we'd design our own.</li>
+<li>Is phase 3 (commission) needed now, or do therapists get a fixed salary?</li></ul></div>
+</div></body></html>
