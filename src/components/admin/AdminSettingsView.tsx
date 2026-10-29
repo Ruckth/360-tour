@@ -22,20 +22,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
+import { ADMIN_SETTINGS_TABS, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
 import { SetupChecklistCard } from "./SetupChecklist";
 import { StatusBadge } from "./StatusBadge";
 import { sourceLabel } from "./labels";
 import { TONES, statusMeta, type StatusMeta } from "./status-tones";
 import { useChannelConfig, type ChannelConfig } from "./useChannelConfig";
 
-const TABS = [
-  { id: "business", label: "Business" },
-  { id: "ai", label: "AI assistant" },
-  { id: "email", label: "Email" },
-  { id: "channels", label: "Channels" },
-  { id: "admins", label: "Admins" },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
+const TABS = ADMIN_SETTINGS_TABS;
+type Tab = AdminSettingsTab;
 
 function PanelSpinner({ label }: { label: string }) {
   return (
@@ -50,7 +45,7 @@ export function AdminSettingsView() {
   const searchParams = useSearchParams();
   // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
   const tab: Tab = TABS.find(({ id }) => id === searchParams.get("tab"))?.id ?? "business";
-  const setTab = (next: Tab) => router.replace(next === "business" ? "/admin/settings" : `/admin/settings?tab=${next}`, { scroll: false });
+  const setTab = (next: Tab) => router.replace(adminSettingsTabPath(next), { scroll: false });
   const settings = useQuery(api.settings.get, {});
 
   return (

@@ -1,8 +1,11 @@
 import { v } from 'convex/values';
-import { mutation, query } from './_generated/server';
+import { action, internalMutation, mutation, query } from './_generated/server';
+import { internal } from './_generated/api';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
+import { avatarUploadProblem } from './lib/imageUploads';
+import { attachPhotoUpload, deleteStoredFile, deleteUnreferencedPhoto, pendingAvatarUpload } from './lib/adminPhotos';
 import {
 	APPOINTMENT_LOOKBACK,
 	TIME_OFF_LOOKBACK,
@@ -141,27 +144,79 @@ export const listStaff = query({
 	}
 });
 
-export const createStaff = mutation({
-	args: { name: v.string(), role: v.string(), avatarUrl: v.optional(v.string()), color: v.string(), workingHours: v.array(hour), breaks: v.array(rest) },
+// The browser sends optimized bytes to an action that creates a new file and registers it as pending.
+// Public callers cannot register an existing storage ID, so property files cannot become deletable avatars.
+
+async function attachAvatarUpload(ctx: MutationCtx, storageId: Id<'_storage'>) {
+	return { avatarUrl: await attachPhotoUpload(ctx, storageId), avatarStorageId: storageId };
+}
+
+async function attachServiceImage(ctx: MutationCtx, storageId: Id<'_storage'>) {
+	return { imageUrl: await attachPhotoUpload(ctx, storageId), imageStorageId: storageId };
+}
+
+export const registerStaffAvatarUpload = internalMutation({
+	args: { storageId: v.id('_storage') },
+	handler: async (ctx, args) => {
+		await ctx.db.insert('staffAvatarUploads', { storageId: args.storageId, createdAt: Date.now() });
+		return null;
+	}
+});
+
+export const uploadStaffAvatar = action({
+	args: { bytes: v.bytes(), contentType: v.string() },
+	handler: async (ctx, args): Promise<Id<'_storage'>> => {
+		await requireAdmin(ctx);
+		const problem = avatarUploadProblem(args.contentType, args.bytes.byteLength);
+		if (problem) throw new Error(problem);
+		const storageId = await ctx.storage.store(new Blob([args.bytes], { type: args.contentType }));
+		try {
+			await ctx.runMutation(internal.adminServices.registerStaffAvatarUpload, { storageId });
+			return storageId;
+		} catch (error) {
+			await ctx.storage.delete(storageId);
+			throw error;
+		}
+	}
+});
+
+/** Drops an upload whose save failed or was cancelled. Does nothing once the photo is attached. */
+export const discardStaffAvatarUpload = mutation({
+	args: { storageId: v.id('_storage') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
+		const pending = await pendingAvatarUpload(ctx, args.storageId);
+		if (!pending) return null;
+		await ctx.db.delete(pending._id);
+		await deleteStoredFile(ctx, args.storageId);
+		return null;
+	}
+});
+
+export const createStaff = mutation({
+	args: { name: v.string(), role: v.string(), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.id('_storage')), color: v.string(), workingHours: v.array(hour), breaks: v.array(rest) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		if (args.avatarStorageId !== undefined && args.avatarUrl !== undefined) throw new Error('Send either a photo upload or a photo URL');
 		validateHours(args.workingHours);
 		validateHours(args.breaks);
 		const now = Date.now();
 		return await ctx.db.insert('staff', {
 			...args, name: required(args.name, 'Name'), role: required(args.role, 'Role'), color: required(args.color, 'Color'),
+			...(args.avatarStorageId ? await attachAvatarUpload(ctx, args.avatarStorageId) : {}),
 			status: 'active', createdAt: now, updatedAt: now
 		});
 	}
 });
 
 export const updateStaff = mutation({
-	args: { staffId: v.id('staff'), name: v.optional(v.string()), role: v.optional(v.string()), avatarUrl: v.optional(v.string()), color: v.optional(v.string()), status: v.optional(staffStatus), workingHours: v.optional(v.array(hour)), breaks: v.optional(v.array(rest)) },
+	// `avatarStorageId`: an uploaded photo to attach, or null to remove the photo. `avatarUrl` sets an external URL.
+	args: { staffId: v.id('staff'), name: v.optional(v.string()), role: v.optional(v.string()), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.union(v.id('_storage'), v.null())), color: v.optional(v.string()), status: v.optional(staffStatus), workingHours: v.optional(v.array(hour)), breaks: v.optional(v.array(rest)) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
-		const { staffId, ...changes } = args;
+		const { staffId, avatarStorageId, avatarUrl, ...changes } = args;
 		if (changes.status === 'archived' && staff.status !== 'archived') await archiveStaffRecord(ctx, staff);
 		validateHours(changes.workingHours ?? staff.workingHours);
 		validateHours(changes.breaks ?? staff.breaks);
@@ -178,15 +233,28 @@ export const updateStaff = mutation({
 				}
 			}
 		}
+		if (avatarStorageId !== undefined && avatarUrl !== undefined) throw new Error('Send either a photo upload or a photo URL');
+		// Omitting both keeps the current photo, as does re-sending what is already saved.
+		let photo: { avatarUrl?: string; avatarStorageId?: Id<'_storage'> } | null = null;
+		if (avatarStorageId === null) photo = { avatarUrl: undefined, avatarStorageId: undefined };
+		else if (avatarStorageId !== undefined) {
+			if (avatarStorageId !== staff.avatarStorageId) photo = await attachAvatarUpload(ctx, avatarStorageId);
+		} else if (avatarUrl !== undefined && (avatarUrl.trim() || undefined) !== staff.avatarUrl) {
+			// A blank photo URL clears the photo.
+			photo = { avatarUrl: avatarUrl.trim() || undefined, avatarStorageId: undefined };
+		}
 		await ctx.db.patch(staffId, {
 			...changes,
 			...(changes.name !== undefined ? { name: required(changes.name, 'Name') } : {}),
 			...(changes.role !== undefined ? { role: required(changes.role, 'Role') } : {}),
 			...(changes.color !== undefined ? { color: required(changes.color, 'Color') } : {}),
-			// A blank photo URL clears the photo; omitting it keeps the current one.
-			...(changes.avatarUrl !== undefined ? { avatarUrl: changes.avatarUrl.trim() || undefined } : {}),
+			...photo,
 			updatedAt: Date.now()
 		});
+		// Last, and in this transaction: a failed save rolls the delete back and keeps the old photo.
+		if (photo && staff.avatarStorageId) {
+			await deleteUnreferencedPhoto(ctx, staff.avatarStorageId, staff.avatarUrl, staffId);
+		}
 	}
 });
 
@@ -222,7 +290,7 @@ export const listServices = query({
 });
 
 export const createService = mutation({
-	args: { slug: v.string(), name: v.string(), description: v.string(), category: v.string(), durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string(), staffIds: v.array(v.id('staff')) },
+	args: { slug: v.string(), name: v.string(), description: v.string(), category: v.string(), durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string(), staffIds: v.array(v.id('staff')), imageStorageId: v.optional(v.id('_storage')) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const slug = required(args.slug, 'Slug').toLowerCase();
@@ -233,18 +301,21 @@ export const createService = mutation({
 		return await ctx.db.insert('services', {
 			...args, slug, name: required(args.name, 'Name'), description: args.description.trim(),
 			category: required(args.category, 'Category'), currency: required(args.currency, 'Currency'),
+			...(args.imageStorageId ? await attachServiceImage(ctx, args.imageStorageId) : {}),
 			status: 'active', createdAt: now, updatedAt: now
 		});
 	}
 });
 
 export const updateService = mutation({
-	args: { serviceId: v.id('services'), slug: v.optional(v.string()), name: v.optional(v.string()), description: v.optional(v.string()), category: v.optional(v.string()), durationMin: v.optional(v.number()), bufferMin: v.optional(v.number()), price: v.optional(v.number()), currency: v.optional(v.string()), staffIds: v.optional(v.array(v.id('staff'))), status: v.optional(serviceStatus) },
+	args: { serviceId: v.id('services'), slug: v.optional(v.string()), name: v.optional(v.string()), description: v.optional(v.string()), category: v.optional(v.string()), durationMin: v.optional(v.number()), bufferMin: v.optional(v.number()), price: v.optional(v.number()), currency: v.optional(v.string()), staffIds: v.optional(v.array(v.id('staff'))), status: v.optional(serviceStatus),
+		// An uploaded photo to attach, or null to remove the photo. Omitted keeps the current one.
+		imageStorageId: v.optional(v.union(v.id('_storage'), v.null())) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const service = await ctx.db.get(args.serviceId);
 		if (!service) throw new Error('Service not found');
-		const { serviceId, ...changes } = args;
+		const { serviceId, imageStorageId, ...changes } = args;
 		const slug = changes.slug !== undefined ? required(changes.slug, 'Slug').toLowerCase() : service.slug;
 		const duplicate = await ctx.db.query('services').withIndex('by_slug', (q) => q.eq('slug', slug)).first();
 		if (duplicate && duplicate._id !== serviceId) throw new Error('Service slug already exists');
@@ -254,14 +325,19 @@ export const updateService = mutation({
 			const staff = await Promise.all((changes.staffIds ?? service.staffIds).map((id) => ctx.db.get(id)));
 			if (!staff.some((person) => person?.status === 'active')) throw new Error('Assign at least one active staff member before restoring this service');
 		}
+		let photo: { imageUrl?: string; imageStorageId?: Id<'_storage'> } | null = null;
+		if (imageStorageId === null) photo = { imageUrl: undefined, imageStorageId: undefined };
+		else if (imageStorageId !== undefined && imageStorageId !== service.imageStorageId) photo = await attachServiceImage(ctx, imageStorageId);
 		await ctx.db.patch(serviceId, {
-			...changes, slug,
+			...changes, slug, ...photo,
 			...(changes.name !== undefined ? { name: required(changes.name, 'Name') } : {}),
 			...(changes.category !== undefined ? { category: required(changes.category, 'Category') } : {}),
 			...(changes.currency !== undefined ? { currency: required(changes.currency, 'Currency') } : {}),
 			...(changes.description !== undefined ? { description: changes.description.trim() } : {}),
 			updatedAt: Date.now()
 		});
+		// Last, and in this transaction: a failed save rolls the delete back and keeps the old photo.
+		if (photo && service.imageStorageId) await deleteUnreferencedPhoto(ctx, service.imageStorageId, service.imageUrl);
 	}
 });
 
