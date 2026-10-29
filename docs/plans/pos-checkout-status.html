@@ -25,12 +25,12 @@ code{font-family:var(--font-mono);font-size:11.5px;background:var(--code-backgro
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 ul{margin:0;padding-left:18px}li{margin:2px 0}
 </style></head><body><div class="wrap">
-<p class="lead">POS checkout on <code>feat/pos-checkout</code>, rebased onto <code>origin/main</code> (<code>51fd73a</code>) and open as PR #29. The checks pass; Convex hasn't been deployed.</p>
+<p class="lead">POS checkout on <code>feat/pos-checkout</code>, rebased onto <code>origin/main</code> (<code>51fd73a</code>) and open as PR #29. Shared dev is deployed; authenticated desktop and mobile QA passed on 29 October 2026.</p>
 <div class="stats">
-<div class="stat"><b>11</b><span>commits on top of main</span></div>
-<div class="stat"><b>1,087</b><span>unit tests passing</span></div>
-<div class="stat"><b>7</b><span>audit rounds (Codex + Kiro)</span></div>
-<div class="stat"><b>0</b><span>open findings after round 7</span></div>
+<div class="stat"><b>2</b><span>independent audit agents completed</span></div>
+<div class="stat"><b>1,093</b><span>unit tests passing</span></div>
+<div class="stat"><b>4</b><span>live QA receipts verified</span></div>
+<div class="stat"><b>0</b><span>unresolved implementation defects in final audit</span></div>
 </div>
 
 <div class="box"><h3><span class="dot ok"></span>Phase 1: bill builder</h3>
@@ -54,7 +54,7 @@ ul{margin:0;padding-left:18px}li{margin:2px 0}
 <tr><td>Payment buttons in the bill footer</td><td class="s"><i class="d">Done</i></td><td>Cash, PromptPay, Card, Transfer; THB only. Limits: ฿1M per item price, 99 per quantity, ฿10M per bill</td></tr>
 <tr><td>Cash quick amounts and change due</td><td class="s"><i class="d">Done</i></td><td>Exact, +100, +500, +1000, or a custom amount</td></tr>
 <tr><td>Split payment (up to 3)</td><td class="s"><i class="d">Done</i></td><td>"Rest" fills the remainder; the parts must add up to the total</td></tr>
-<tr><td>Safe to retry <code>settleBill</code></td><td class="s"><i class="d">Done</i></td><td>Each payment attempt has a key; refused if the bill changed since it was reviewed, or if an attached stay or appointment changed (price, dates, therapist)</td></tr>
+<tr><td>Safe to retry <code>settleBill</code></td><td class="s"><i class="d">Done</i></td><td>Each payment attempt has a key; requires a new UI review if the bill changes and is refused by the server if it changed since review, or if an attached stay or appointment changed (price, dates, therapist)</td></tr>
 <tr><td>Receipt numbers assigned in the same step as payment</td><td class="s"><i class="d">Done</i></td><td>Kept after a void; one global counter</td></tr>
 <tr><td>Attached bookings and appointments marked paid</td><td class="s"><i class="d">Done</i></td><td>Uses the existing paid logic</td></tr>
 <tr><td>VAT 7% included; online deposit deducted</td><td class="s"><i class="d">Done</i></td><td>Two-decimal formatting</td></tr>
@@ -68,13 +68,14 @@ ul{margin:0;padding-left:18px}li{margin:2px 0}
 <div class="cols">
 <div class="box"><h3><span class="dot no"></span>Not started (later phases)</h3><ul>
 <li>Phase 3: therapist commission (rows already store the therapist)</li>
-<li>Phase 4: AI catalog admin (Luna)</li>
+<li>Phase 4: AI catalog admin</li>
 <li>Phase 5: packages, vouchers, loyalty, pay now and book later, gateway QR, tax invoice</li></ul></div>
-<div class="box"><h3><span class="dot part"></span>Not verified yet</h3><ul>
-<li>Real <code>/admin/checkout</code> with sign-in and live Convex: so far only the sample-data preview has been tested</li>
-<li>Convex schema not deployed, because the dev deployment is shared</li>
-<li>Hand-edited <code>convex/_generated/api.d.ts</code>; run codegen when deploying</li>
-<li>Main's new service picker and photo features haven't been checked against checkout tiles</li></ul></div>
+<div class="box"><h3><span class="dot ok"></span>Final verification</h3><ul>
+<li>Shared dev deployed; Convex codegen and generated API validation completed.</li>
+<li>Authenticated cash, split, card and transfer records; hold/reload/resume; void; booking deposit and appointment settlement passed.</li>
+<li>A second tab changing an open payment requires a fresh bill review. Long item names fit mobile receipts.</li>
+<li>Desktop 1440×900 and mobile 390×844 screenshots captured; sample-data scroll and payment video retained.</li>
+<li>Physical thermal printing, real touch gestures and actual banking/gateway transfers were not tested.</li></ul></div>
 </div>
 
 <div class="box"><h3>Open product questions</h3><ul>
