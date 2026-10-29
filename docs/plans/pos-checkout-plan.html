@@ -144,7 +144,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute
 <div class="foot">
 <div class="row"><span>Subtotal</span><span>฿20,000</span></div>
 <div class="row"><span>Deposit paid online</span><span>−฿18,000</span></div>
-<div class="row"><span>VAT 7% (included)</span><span>฿131</span></div>
+<div class="row"><span>VAT 7% (included)</span><span>฿1,308.41</span></div>
 <div class="due"><span>Due</span><span>฿2,000</span></div>
 <div class="tend"><i>Cash</i><i>QR</i><i class="g">Card</i><i class="g">Split</i></div>
 </div></div></div></div>
@@ -177,6 +177,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute
 <li>Tapping a tile adds a row (a service adds one unit; products and nights merge into a quantity)</li>
 <li>Tap a row to expand its details: therapist (eligible staff only), time, discount and price override</li>
 <li>"Attach booking" lists the guest's unpaid stays and appointments; nothing is added automatically</li>
+<li>Room tiles record room charges only; create a booking to reserve dates, then attach it to the bill</li>
 <li>Entry via <code>?booking=</code> or <code>?bill=</code>; ambiguous URLs are refused</li>
 <li>"Clear bill" asks for confirmation</li></ul>
 <h4>Build</h4><ul>
@@ -209,6 +210,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute
 <li>Assigns a per-tenant receipt number in the same transaction; numbers are never reused, even after a void</li>
 <li>Marks the attached bookings and appointments paid</li>
 <li>Deducts the deposit (Stripe online payment or a manual deposit)</li>
+<li>The current included-VAT display uses the whole bill total; prior payments reduce the amount due, not the displayed sale total or its included VAT</li>
 <li>VAT mode setting: included, added or exempt; optional card surcharge</li>
 <li>Void with reason; voided receipts stay on record</li></ul></div>
 <div><h4>Frontend</h4><ul>

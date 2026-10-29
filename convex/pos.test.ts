@@ -48,6 +48,21 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('pos checkout', () => {
+	it('blocks an active online checkout before the cashier can attach its stay', async () => {
+		const { t, admin, bookingId, bill } = await setup();
+		await t.run((ctx) => ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() + 30 * 60_000 }));
+		const [row] = await admin.query(api.pos.listAttachable, { guestPhone: '+66 81 234 5678' });
+		expect(row.unavailableReason).toContain('Online checkout is in progress');
+		await expect(admin.mutation(api.pos.openFor, { bookingId })).rejects.toThrow('Online checkout is in progress');
+		const { billId } = await admin.mutation(api.pos.setCustomer, { guest: { name: 'Anna' } });
+		await expect(admin.mutation(api.pos.attach, { billId, bookingId })).rejects.toThrow('Online checkout is in progress');
+		expect((await bill(billId)).lines).toHaveLength(0);
+		await t.run((ctx) => ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1 }));
+		expect((await admin.query(api.pos.listAttachable, { guestPhone: '+66 81 234 5678' }))[0].unavailableReason).toBeNull();
+		await admin.mutation(api.pos.attach, { billId, bookingId });
+		expect((await bill(billId)).lines).toHaveLength(1);
+	});
+
 	it('finds the open bill for a source even after many paid bills carried it', async () => {
 		const { t, admin, bookingId } = await setup();
 		// 25 earlier settlements of the same stay (e.g. extended night by night).

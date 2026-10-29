@@ -130,6 +130,12 @@ function appointmentAttachable(appointment: Doc<'serviceAppointments'>) {
 	return appointment.paymentStatus === 'unpaid' && appointment.status !== 'cancelled' && appointment.status !== 'no_show';
 }
 
+function bookingCheckoutBlock(booking: Doc<'bookings'>) {
+	return booking.paymentStatus !== 'paid' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now()
+		? 'Online checkout is in progress. Wait for it to finish or expire before taking payment at the desk.'
+		: null;
+}
+
 /**
  * An open bill (other than `exceptBillId`) that already carries this booking or appointment.
  * Newest lines first: a source is on at most one open bill, and it is newer than the source's paid history.
@@ -188,6 +194,8 @@ async function attachTo(ctx: MutationCtx, bill: Bill, target: { bookingId?: Id<'
 		const booking = await ctx.db.get(target.bookingId);
 		if (!booking) throw new Error('Booking not found');
 		if (!bookingPayable(booking)) throw new Error('This booking has nothing left to pay');
+		const blocked = bookingCheckoutBlock(booking);
+		if (blocked) throw new Error(blocked);
 		assertBaht(booking.currency, 'This booking');
 		const other = await openBillWith(ctx, { bookingId: booking._id });
 		if (other) throw new Error(other._id === bill._id ? 'This booking is already on the bill' : `This booking is already on ${billLabel(other)}'s bill`);
@@ -334,6 +342,7 @@ export const listAttachable = query({
 				price: booking.total,
 				currency: booking.currency,
 				deposit: bookingBalance(booking).paid,
+				unavailableReason: bookingCheckoutBlock(booking),
 				onBill: (await openBillWith(ctx, { bookingId: booking._id }))?._id ?? null
 			});
 		}
@@ -349,6 +358,7 @@ export const listAttachable = query({
 				price: appointment.price,
 				currency: appointment.currency,
 				deposit: 0,
+				unavailableReason: null,
 				onBill: (await openBillWith(ctx, { appointmentId: appointment._id }))?._id ?? null
 			});
 		}

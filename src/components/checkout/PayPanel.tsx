@@ -32,16 +32,17 @@ export function PayPanel({
   onPaid: (billId: BillId) => void;
 }) {
   const actions = useCheckoutBackend().useActions();
-  const due = view.totals.due;
+  const [due] = useState(view.totals.due);
   const [attemptKey] = useState(newAttemptKey);
   // The bill as it was when this panel opened; a change made since (even at the same total) is refused.
   const [revision] = useState(view.bill.revision);
   const lock = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const billChanged = view.bill.revision !== revision || view.totals.due !== due;
 
   async function pay(tenders: Tender[]) {
-    if (lock.current) return;
+    if (lock.current || billChanged) return;
     lock.current = true;
     setSubmitting(true);
     setError("");
@@ -54,6 +55,15 @@ export function PayPanel({
       setSubmitting(false);
       setError(errorText(err, "The payment didn't go through. Try again."));
     }
+  }
+
+  if (billChanged && !submitting) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+        <p role="alert" className="text-sm text-destructive">The bill changed while payment was open. Review the updated bill before confirming payment.</p>
+        <Button className="h-12" onClick={onBack}>Review updated bill</Button>
+      </div>
+    );
   }
 
   return (

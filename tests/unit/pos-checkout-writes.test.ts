@@ -45,6 +45,56 @@ afterEach(async () => {
 });
 
 describe("checkout bill writes", () => {
+  it("explains and disables attachment while the guest is paying online", async () => {
+    vi.useFakeTimers();
+    const backend = createFixtureBackend();
+    const added = backend.useActions().setCustomer({ guest: { name: "Mia Tanaka", phone: "+81 90 1234 5678" } });
+    await vi.advanceTimersByTimeAsync(200);
+    const { billId } = await added;
+    await showBill(backend, billId);
+    const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text)!;
+    await act(async () => button("Attach booking").click());
+    expect(document.body.textContent).toContain("Online checkout is in progress");
+    expect(button("Attach").disabled).toBe(true);
+  });
+
+  it.each([
+    ["card", true],
+    ["card", false],
+    ["cash", true],
+    ["split", true],
+  ] as const)("requires a fresh review when an open %s payment changes (total changes: %s)", async (mode, totalChanges) => {
+    vi.useFakeTimers();
+    const backend = createFixtureBackend();
+    const actions = backend.useActions();
+    const added = actions.addItem({ item: { kind: "extra", name: "Gift", price: 1000 } });
+    await vi.advanceTimersByTimeAsync(200);
+    const { billId } = await added;
+    const settle = vi.spyOn(actions, "settleBill");
+    const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text)!;
+    await showBill(backend, billId);
+    await act(async () => button(mode === "card" ? "Card" : mode === "cash" ? "Cash" : "Split payment").click());
+    if (mode === "cash") await act(async () => button("Exact").click());
+
+    // Another cashier changes the bill while this cashier is taking payment.
+    const change = totalChanges
+      ? actions.addItem({ billId, item: { kind: "extra", name: "Water", price: 50 } })
+      : actions.setCustomer({ billId, guest: { name: "Updated guest" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); await change; });
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("The bill changed while payment was open");
+    expect([...document.querySelectorAll("button")].some((el) => el.textContent?.startsWith("Confirm"))).toBe(false);
+    expect(document.querySelector("#cash-received")).toBeNull();
+    expect(settle).not.toHaveBeenCalled();
+
+    // Explicitly reviewing the updated bill starts a new, valid payment attempt.
+    await act(async () => button("Review updated bill").click());
+    await act(async () => button("Card").click());
+    await act(async () => button(`Confirm ฿${totalChanges ? "1,050" : "1,000"} received`).click());
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(settle).toHaveBeenCalledOnce();
+    expect(settle).toHaveBeenCalledWith(expect.objectContaining({ expectedDue: totalChanges ? 1050 : 1000, expectedRevision: 2 }));
+  });
+
   it("joins taps made before the bill exists into the bill the first one creates", async () => {
     await render(null);
     const first = deferred<{ billId: BillId }>();

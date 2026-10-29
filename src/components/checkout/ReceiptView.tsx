@@ -65,7 +65,7 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
   }
 
   return (
-    <div className={cn("flex flex-1 flex-col items-center gap-4 px-4 py-6", TOUCH_TARGETS)}>
+    <div className={cn("flex min-w-0 flex-1 flex-col items-center gap-4 px-4 py-6", TOUCH_TARGETS)}>
       <style>{`
         @media print {
           @page { size: ${paper}mm auto; margin: 0; }
@@ -89,7 +89,7 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
       </div>
       {notice ? <p role="status" className="text-sm text-muted-foreground print:hidden">{notice}</p> : null}
 
-      <article className="pos-receipt relative w-full max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug shadow-sm" aria-label="Receipt">
+      <article className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
         {isVoid ? (
           <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
             Void · {bill.voidReason}
@@ -106,8 +106,8 @@ export function ReceiptView({ billId, onNewSale, onOpenBill }: { billId: BillId;
           {lines.map((line) => (
             <li key={line._id}>
               <div className="flex justify-between gap-2">
-                <span>{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}</span>
-                <span className="tabular-nums">{formatMoney(lineGross(line))}</span>
+                <span className="min-w-0">{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}</span>
+                <span className="shrink-0 tabular-nums">{formatMoney(lineGross(line))}</span>
               </div>
               {line.staffName || line.qty > 1 ? (
                 <p className="text-xs opacity-70">{[line.staffName, line.qty > 1 ? `${formatMoney(linePrice(line))} each` : ""].filter(Boolean).join(" · ")}</p>
