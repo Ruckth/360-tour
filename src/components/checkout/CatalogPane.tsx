@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { MAX_PRICE } from "convex/lib/billMath";
 import type { BillLine, Catalog, CatalogItem } from "./backend";
 import { TOUCH_TARGETS, amountInput } from "./checkout-ui";
 
@@ -143,7 +144,7 @@ export function CatalogPane({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="checkout-max-price">Price up to (฿)</Label>
-                <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value))} placeholder="Any price" />
+                <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value, MAX_PRICE))} placeholder="Any price" />
               </div>
               <Button variant="outline" onClick={() => { setGroups([]); setMaxPrice(""); }} disabled={!filterCount}>Reset filters</Button>
             </SheetContent>
@@ -268,7 +269,7 @@ function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="custom-item-price">Price (฿, VAT included)</Label>
-            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value))} />
+            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

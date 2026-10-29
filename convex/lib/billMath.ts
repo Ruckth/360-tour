@@ -6,9 +6,15 @@
 export const VAT_RATE = 0.07;
 export const MAX_TENDERS = 3;
 export const NOTE_MAX = 500;
-/** Largest price or payment the till takes; keeps satang arithmetic exact. */
-export const MAX_AMOUNT = 1_000_000_000;
-const TOO_LARGE = `Amounts are at most ${MAX_AMOUNT.toLocaleString('en-US')}`;
+/**
+ * Till limits. They keep every intermediate exact in doubles: a bill is at most 1e9 satang, and a
+ * percent discount multiplies a line's satang by hundredths of a percent (at most 1e4), so 1e13.
+ */
+export const MAX_PRICE = 1_000_000;
+export const MAX_QTY = 99;
+/** Largest bill subtotal, and so the largest discount, payment or cash received. */
+export const MAX_BILL = 10_000_000;
+const atMost = (max: number) => `Amounts are at most ${max.toLocaleString('en-US')}`;
 export const TENDER_METHODS = ['cash', 'promptpay', 'card', 'transfer'] as const;
 export type TenderMethod = (typeof TENDER_METHODS)[number];
 
@@ -77,13 +83,18 @@ export function billTotals(lines: readonly PricedLine[]): BillTotals {
 export function assertDiscount(discount: LineDiscount) {
 	if (!Number.isFinite(discount.value) || discount.value < 0) throw new Error('Discount must be zero or more');
 	if (discount.type === 'percent' && discount.value > 100) throw new Error('A percent discount is at most 100%');
-	if (discount.value > MAX_AMOUNT) throw new Error(TOO_LARGE);
+	if (discount.value > MAX_BILL) throw new Error(atMost(MAX_BILL));
 }
 
-/** A typed price: finite, zero or more, and within MAX_AMOUNT. */
+/** A typed price: finite, zero or more, and within MAX_PRICE. */
 export function assertPrice(price: number) {
 	if (!Number.isFinite(price) || price < 0) throw new Error('Price must be zero or more');
-	if (price > MAX_AMOUNT) throw new Error(TOO_LARGE);
+	if (price > MAX_PRICE) throw new Error(atMost(MAX_PRICE));
+}
+
+/** Every write to a bill checks its subtotal, which also bounds booked stays and catalog prices. */
+export function assertBillSize(totals: Pick<BillTotals, 'subtotal'>) {
+	if (totals.subtotal > MAX_BILL) throw new Error(`A bill is at most ${MAX_BILL.toLocaleString('en-US')}. Split it into two bills.`);
 }
 
 /** A one-off price change needs a reason for the audit trail. Returns the trimmed note. */
@@ -103,12 +114,12 @@ export function assertTenders(tenders: readonly Tender[], due: number) {
 	for (const tender of tenders) {
 		if (!TENDER_METHODS.includes(tender.method)) throw new Error('Unknown payment method');
 		if (!Number.isFinite(tender.amount) || tender.amount <= 0) throw new Error('Each payment must be more than zero');
-		if (tender.amount > MAX_AMOUNT) throw new Error(TOO_LARGE);
+		if (tender.amount > MAX_BILL) throw new Error(atMost(MAX_BILL));
 		if (round2(tender.amount) !== tender.amount) throw new Error('Payments are in whole satang (at most 2 decimals)');
 		if (tender.received !== undefined) {
 			if (tender.method !== 'cash') throw new Error('Only cash can have an amount received');
 			if (!Number.isFinite(tender.received)) throw new Error('Cash received must be an amount');
-			if (tender.received > MAX_AMOUNT) throw new Error(TOO_LARGE);
+			if (tender.received > MAX_BILL) throw new Error(atMost(MAX_BILL));
 			if (round2(tender.received) !== tender.received) throw new Error('Cash received is in whole satang (at most 2 decimals)');
 			if (!(tender.received >= tender.amount)) throw new Error('Cash received is less than the amount');
 		}
@@ -119,6 +130,19 @@ export function assertTenders(tenders: readonly Tender[], due: number) {
 
 export function changeDue(tenders: readonly Tender[]) {
 	return sum(tenders.map((tender) => (tender.received ?? tender.amount) - tender.amount));
+}
+
+type BookingMoney = { status: string; paymentStatus: string; total: number; amountPaid?: number };
+
+/** What was paid on a booking (online or recorded) and what is still owed. Paid without an amount means paid in full. */
+export function bookingBalance(booking: BookingMoney) {
+	const paid = booking.paymentStatus === 'paid' ? (booking.amountPaid ?? booking.total) : (booking.amountPaid ?? 0);
+	return { paid, owed: round2(booking.total - paid) };
+}
+
+/** A live booking with money still owed, which checkout can collect (e.g. a paid stay that was extended). */
+export function bookingPayable(booking: BookingMoney) {
+	return booking.status !== 'cancelled' && booking.paymentStatus !== 'refunded' && booking.paymentStatus !== 'failed' && bookingBalance(booking).owed > 0;
 }
 
 export function formatReceiptNumber(n: number) {

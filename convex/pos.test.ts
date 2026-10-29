@@ -37,7 +37,7 @@ async function setup() {
 	const bill = (billId: Id<'bills'>) => admin.query(api.pos.getBill, { billId }).then((view) => view!);
 	/** settleBill with the revision the cashier is looking at now. */
 	const settle = async (args: Omit<FunctionArgs<typeof api.pos.settleBill>, 'expectedRevision'>) =>
-		admin.mutation(api.pos.settleBill, { ...args, expectedRevision: (await bill(args.billId)).bill.revision ?? 0 });
+		admin.mutation(api.pos.settleBill, { ...args, expectedRevision: (await bill(args.billId)).bill.revision });
 	return { t, admin, nok, ploy, serviceId, propertyId, bookingId, bill, settle };
 }
 
@@ -155,6 +155,14 @@ describe('pos checkout', () => {
 		expect((await bill(billId)).bill.currency).toBe('THB');
 	});
 
+	it('keeps a line at the baht price it was added at if the service later changes currency (C4-01)', async () => {
+		const { t, admin, serviceId, bill, settle } = await setup();
+		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
+		expect((await bill(billId)).lines[0].currency).toBe('THB');
+		await t.run((ctx) => ctx.db.patch(serviceId, { currency: 'USD' }));
+		await expect(settle({ billId, idempotencyKey: 'attempt-0001', expectedDue: 1200, tenders: [{ method: 'card', amount: 1200 }] })).resolves.toMatchObject({ replayed: false });
+	});
+
 	it('still lists an unpaid bill behind many newer empty drafts (C4-02)', async () => {
 		const { admin, serviceId } = await setup();
 		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
@@ -192,7 +200,7 @@ describe('pos checkout', () => {
 		const { billId } = await admin.mutation(api.pos.openFor, { appointmentId });
 		await t.run((ctx) => ctx.db.patch(appointmentId, { price: 2000 }));
 		const settle = (due: number, key: string) => admin.query(api.pos.getBill, { billId }).then((view) =>
-			admin.mutation(api.pos.settleBill, { billId, idempotencyKey: key, expectedDue: due, expectedRevision: view!.bill.revision ?? 0, tenders: [{ method: 'cash', amount: due }] }));
+			admin.mutation(api.pos.settleBill, { billId, idempotencyKey: key, expectedDue: due, expectedRevision: view!.bill.revision, tenders: [{ method: 'cash', amount: due }] }));
 		await expect(settle(1200, 'attempt-0001')).rejects.toThrow('changed since it was added');
 		expect(await t.run((ctx) => ctx.db.get(appointmentId))).toMatchObject({ paymentStatus: 'unpaid' });
 
@@ -218,12 +226,12 @@ describe('pos checkout', () => {
 			slug: 'aroma', name: 'Aroma oil', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 1200, currency: 'THB', staffIds: [nok]
 		});
 		const { billId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-		const reviewed = (await bill(billId)).bill.revision ?? 0;
+		const reviewed = (await bill(billId)).bill.revision;
 		await admin.mutation(api.pos.removeLine, { lineId });
 		await admin.mutation(api.pos.addItem, { billId, item: { kind: 'service', serviceId: other } });
 		const args = { billId, expectedDue: 1200, tenders: [{ method: 'card' as const, amount: 1200 }] };
 		await expect(admin.mutation(api.pos.settleBill, { ...args, idempotencyKey: 'attempt-0001', expectedRevision: reviewed })).rejects.toThrow('The bill changed');
-		const current = (await bill(billId)).bill.revision ?? 0;
+		const current = (await bill(billId)).bill.revision;
 		expect(current).toBeGreaterThan(reviewed);
 		await admin.mutation(api.pos.settleBill, { ...args, idempotencyKey: 'attempt-0002', expectedRevision: current });
 		// A retry of the successful attempt still replays, whatever revision it carries.
@@ -242,43 +250,11 @@ describe('pos checkout', () => {
 	it('refuses payment amounts finer than a satang (K4-01)', async () => {
 		const { admin, serviceId, bill } = await setup();
 		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-		const expectedRevision = (await bill(billId)).bill.revision ?? 0;
+		const expectedRevision = (await bill(billId)).bill.revision;
 		await expect(admin.mutation(api.pos.settleBill, {
 			billId, idempotencyKey: 'attempt-0001', expectedDue: 1200, expectedRevision,
 			tenders: [{ method: 'cash', amount: 600.004 }, { method: 'card', amount: 599.996 }]
 		})).rejects.toThrow('satang');
-	});
-
-	it('refuses to settle a line saved before the THB check from a foreign-currency price (C4-01)', async () => {
-		const { t, admin, nok, serviceId, settle } = await setup();
-		const usd = await admin.mutation(api.adminServices.createService, {
-			slug: 'usd-massage', name: 'USD massage', description: '', category: 'Massage',
-			durationMin: 60, bufferMin: 0, price: 100, currency: 'USD', staffIds: [nok]
-		});
-		// An old-format draft: no currency on the line, priced from a USD service.
-		const legacy = await t.run(async (ctx) => {
-			const billId = await ctx.db.insert('bills', { status: 'draft', walkInNumber: 1, currency: 'THB', itemCount: 1, total: 100, createdBy: 'x', createdAt: Date.now(), updatedAt: Date.now() });
-			await ctx.db.insert('billLines', { billId, kind: 'service', serviceId: usd, name: 'USD massage', unitPrice: 100, qty: 1, createdAt: Date.now() });
-			return billId;
-		});
-		await expect(settle({ billId: legacy, idempotencyKey: 'attempt-0001', expectedDue: 100, tenders: [{ method: 'card', amount: 100 }] })).rejects.toThrow('USD');
-		// A line added at a baht price keeps that price even if the service later moves to another currency.
-		const { billId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-		await t.run((ctx) => ctx.db.patch(serviceId, { currency: 'USD' }));
-		await expect(settle({ billId, idempotencyKey: 'attempt-0002', expectedDue: 1200, tenders: [{ method: 'card', amount: 1200 }] })).resolves.toMatchObject({ replayed: false });
-	});
-
-	it('lists an older unpaid bill behind more than 20 old-format empty drafts (C4-02)', async () => {
-		const { t, admin } = await setup();
-		const legacy = (itemCount: number) => t.run((ctx) => ctx.db.insert('bills', {
-			status: 'draft', walkInNumber: 1, currency: 'THB', itemCount, total: itemCount * 100, createdBy: 'x', createdAt: Date.now(), updatedAt: Date.now()
-		}));
-		const unpaid = await legacy(1);
-		for (let i = 0; i < 25; i++) {
-			vi.advanceTimersByTime(1000);
-			await legacy(0);
-		}
-		expect((await admin.query(api.pos.listOpenBills, {})).map((b) => b._id)).toEqual([unpaid]);
 	});
 
 	it('refuses to settle an appointment that moved to another therapist or time (C4-04)', async () => {
@@ -312,6 +288,44 @@ describe('pos checkout', () => {
 			await expect(settle({ billId, idempotencyKey: `attempt-${received}`, expectedDue: 90, tenders: [{ method: 'cash', amount: 90, received }] })).rejects.toThrow();
 		}
 		await expect(admin.mutation(api.pos.addItem, { billId, item: { kind: 'extra', name: 'Huge', price: 1e12 } })).rejects.toThrow('at most');
+	});
+
+	it('caps prices at 1,000,000 and a bill at 10,000,000, so the satang math stays exact (K5-02)', async () => {
+		const { admin, bill, settle } = await setup();
+		await expect(admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Huge', price: 1_000_000.01 } })).rejects.toThrow('at most 1,000,000');
+		const { billId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Event', price: 1_000_000 } });
+		await admin.mutation(api.pos.updateLine, { lineId, qtyChange: 9 });
+		// One more would make the bill 11,000,000: refused, and nothing changes.
+		await expect(admin.mutation(api.pos.updateLine, { lineId, qtyChange: 1 })).rejects.toThrow('A bill is at most 10,000,000');
+		await expect(admin.mutation(api.pos.addItem, { billId, item: { kind: 'extra', name: 'Water', price: 90 } })).rejects.toThrow('A bill is at most');
+		expect((await bill(billId)).totals.due).toBe(10_000_000);
+		await expect(settle({ billId, idempotencyKey: 'attempt-0001', expectedDue: 10_000_000, tenders: [{ method: 'cash', amount: 10_000_000, received: 10_000_100 }] })).rejects.toThrow('at most 10,000,000');
+		await expect(settle({ billId, idempotencyKey: 'attempt-0002', expectedDue: 10_000_000, tenders: [{ method: 'cash', amount: 10_000_000, received: 10_000_000 }] })).resolves.toMatchObject({ replayed: false });
+	});
+
+	it('finds and attaches a guest who booked only an appointment (C6-02)', async () => {
+		const { t, admin, nok, serviceId } = await setup();
+		const start = Date.now() + 3_600_000;
+		const appointmentId = await t.run((ctx) => ctx.db.insert('serviceAppointments', {
+			serviceId, staffId: nok, start, end: start + 3_600_000, blockedUntil: start + 4_500_000, guestName: 'Standalone Guest', guestPhone: '0899990000',
+			source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-9', accessToken: 'tok', createdAt: Date.now()
+		}));
+		const guest = { guestName: 'Standalone Guest', guestPhone: '0899990000', guestEmail: undefined };
+		expect(await admin.query(api.pos.searchAppointmentGuests, { query: 'Standalone' })).toEqual([guest]);
+		expect(await admin.query(api.pos.searchAppointmentGuests, { query: '0899990000' })).toEqual([guest]);
+		// Picked from the search (name and phone), or typed as a name only.
+		expect(await admin.query(api.pos.listAttachable, { guestName: 'Standalone Guest', guestPhone: '0899990000' })).toMatchObject([{ kind: 'appointment', id: appointmentId }]);
+		expect(await admin.query(api.pos.listAttachable, { guestName: 'Standalone Guest' })).toMatchObject([{ kind: 'appointment', id: appointmentId }]);
+		// A namesake with another phone is someone else.
+		expect(await admin.query(api.pos.listAttachable, { guestName: 'Standalone Guest', guestPhone: '+66 80 000 0000' })).toEqual([]);
+		await expect(t.query(api.pos.searchAppointmentGuests, { query: 'Standalone' })).rejects.toThrow();
+	});
+
+	it('attaches the balance of a paid stay that was extended (C6-01)', async () => {
+		const { t, admin, bookingId, bill } = await setup();
+		await t.run((ctx) => ctx.db.patch(bookingId, { paymentStatus: 'paid', amountPaid: 30000, total: 40000, nights: 4, checkOut: '2026-10-05' }));
+		const { billId } = await admin.mutation(api.pos.openFor, { bookingId });
+		expect((await bill(billId)).totals).toMatchObject({ total: 40000, deposit: 30000, due: 10000 });
 	});
 
 	it('holds a bill, lists it for resuming, and clears it', async () => {

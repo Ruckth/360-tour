@@ -50,8 +50,8 @@ export function useCheckoutBackend(): CheckoutBackend {
   return backend;
 }
 
-/** Distinct guests among booking search results, newest first. */
-export function guestsFromBookings(rows: ReadonlyArray<{ guestName: string; guestPhone: string; guestEmail?: string }>): Guest[] {
+/** Distinct guests among booking and appointment search results, in order. */
+export function distinctGuests(rows: ReadonlyArray<{ guestName: string; guestPhone: string; guestEmail?: string }>): Guest[] {
   const guests = new Map<string, Guest>();
   for (const row of rows) {
     const key = row.guestPhone.replace(/\D/g, "") || row.guestEmail?.toLowerCase() || row.guestName.trim().toLowerCase();

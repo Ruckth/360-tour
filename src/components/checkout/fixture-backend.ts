@@ -2,7 +2,9 @@
 
 import type { Doc, Id, TableNames } from "convex/_generated/dataModel";
 import {
+  MAX_QTY,
   MERGES_QTY,
+  assertBillSize,
   assertDiscount,
   assertPrice,
   assertPriceOverride,
@@ -95,11 +97,11 @@ function createState() {
   const heldBillId = fid<"bills">("bill", 1);
   const held: Bill = {
     _id: heldBillId, _creationTime: now - 3_600_000, status: "held", walkInNumber: 12, currency: "THB", itemCount: 3, total: 780,
-    createdBy: ACTOR, createdAt: now - 3_600_000, updatedAt: now - 1_800_000,
+    hasItems: true, revision: 1, createdBy: ACTOR, createdAt: now - 3_600_000, updatedAt: now - 1_800_000,
   };
   const heldLines: Line[] = [
-    { _id: fid("line", 1), _creationTime: now, billId: heldBillId, kind: "service", serviceId: serviceId(7), name: "Foot spa 45", detail: "45 min", unitPrice: 600, qty: 1, staffId: staffId(2), createdAt: now },
-    { _id: fid("line", 2), _creationTime: now, billId: heldBillId, kind: "extra", name: "Coconut water", unitPrice: 90, qty: 2, createdAt: now },
+    { _id: fid("line", 1), _creationTime: now, billId: heldBillId, kind: "service", serviceId: serviceId(7), name: "Foot spa 45", detail: "45 min", unitPrice: 600, currency: "THB", qty: 1, staffId: staffId(2), createdAt: now },
+    { _id: fid("line", 2), _creationTime: now, billId: heldBillId, kind: "extra", name: "Coconut water", unitPrice: 90, currency: "THB", qty: 2, createdAt: now },
   ];
   return {
     bills: new Map<Id<"bills">, Bill>([[heldBillId, held]]),
@@ -139,8 +141,10 @@ export function createFixtureBackend(): CheckoutBackend {
   };
   const refresh = (billId: Id<"bills">) => {
     const lines = linesOf(billId);
-    const revision = (state.bills.get(billId)!.revision ?? 0) + 1;
-    patchBill(billId, { itemCount: lines.reduce((n, l) => n + l.qty, 0), total: billTotals(lines).total, hasItems: lines.length > 0, revision, updatedAt: Date.now() });
+    const totals = billTotals(lines);
+    assertBillSize(totals);
+    const revision = state.bills.get(billId)!.revision + 1;
+    patchBill(billId, { itemCount: lines.reduce((n, l) => n + l.qty, 0), total: totals.total, hasItems: lines.length > 0, revision, updatedAt: Date.now() });
   };
   const audit = (entry: Omit<Doc<"billAudit">, "_id" | "_creationTime" | "at" | "actor">) =>
     state.audit.push({ _id: nextId("audit"), _creationTime: Date.now(), at: Date.now(), actor: ACTOR, ...entry });
@@ -185,27 +189,29 @@ export function createFixtureBackend(): CheckoutBackend {
     const other = openBillWith(target);
     if (other) throw new Error(other._id === bill._id ? "This booking is already on the bill" : `This booking is already on ${label(other)}'s bill`);
     if (booking) {
-      addLine(bill._id, { kind: "booking", bookingId: booking.id, name: booking.name, detail: booking.detail, unitPrice: booking.price, qty: 1, deposit: booking.deposit });
+      addLine(bill._id, { kind: "booking", bookingId: booking.id, name: booking.name, detail: booking.detail, unitPrice: booking.price, currency: "THB", qty: 1, deposit: booking.deposit });
     } else if (appointment) {
       addLine(bill._id, {
         kind: "appointment", appointmentId: appointment.appointmentId, serviceId: appointment.serviceId, name: appointment.name,
-        detail: appointment.detail, unitPrice: appointment.price, qty: 1, staffId: appointment.staffId, startAt: appointment.start,
+        detail: appointment.detail, unitPrice: appointment.price, currency: "THB", qty: 1, staffId: appointment.staffId, startAt: appointment.start,
       });
     }
     if (!state.bills.get(bill._id)!.guestName) patchBill(bill._id, { guestName: item.guest.name, guestPhone: item.guest.phone, guestEmail: item.guest.email });
     refresh(bill._id);
   };
 
-  /** Runs a write after a short delay, like a network round trip, then notifies readers. */
+  /** Runs a write after a short delay, like a network round trip, then notifies readers. Like a mutation, a write that throws leaves nothing behind. */
   const later = <T>(write: () => T) =>
     new Promise<T>((resolve, reject) =>
       setTimeout(() => {
+        const saved = { bills: new Map(state.bills), lines: [...state.lines], counters: new Map(state.counters) };
         try {
           const result = write();
           version++;
           listeners.forEach((listener) => listener());
           resolve(result);
         } catch (error) {
+          Object.assign(state, saved);
           reject(error);
         }
       }, LATENCY_MS),
@@ -224,20 +230,20 @@ export function createFixtureBackend(): CheckoutBackend {
       let line: Omit<Line, "_id" | "_creationTime" | "billId" | "createdAt">;
       if (item.kind === "service") {
         const service = CATALOG.services.find((s) => s._id === item.serviceId)!;
-        line = { kind: "service", serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, qty: 1 };
+        line = { kind: "service", serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, currency: "THB", qty: 1 };
       } else if (item.kind === "room") {
         const room = CATALOG.rooms.find((r) => r._id === item.propertyId)!;
-        line = { kind: "room", propertyId: room._id, name: room.name, detail: "per night", unitPrice: room.price, qty: 1 };
+        line = { kind: "room", propertyId: room._id, name: room.name, detail: "per night", unitPrice: room.price, currency: "THB", qty: 1 };
       } else {
         if (!item.name.trim()) throw new Error("Name the item");
         assertPrice(item.price);
-        line = { kind: "extra", name: item.name.trim(), unitPrice: round2(item.price), qty: 1 };
+        line = { kind: "extra", name: item.name.trim(), unitPrice: round2(item.price), currency: "THB", qty: 1 };
       }
       const same = MERGES_QTY[line.kind]
         ? linesOf(bill._id).find((l) => l.kind === line.kind && !l.priceOverride && !l.discount && l.unitPrice === line.unitPrice &&
             (line.kind === "room" ? l.propertyId === line.propertyId : l.name === line.name))
         : undefined;
-      const lineId = same ? (patchLine(same._id, { qty: same.qty + 1 }), same._id) : addLine(bill._id, line);
+      const lineId = same && same.qty < MAX_QTY ? (patchLine(same._id, { qty: same.qty + 1 }), same._id) : addLine(bill._id, line);
       refresh(bill._id);
       return { billId: bill._id, lineId };
     }),
@@ -258,7 +264,7 @@ export function createFixtureBackend(): CheckoutBackend {
       if (qtyChange !== undefined) {
         if (!MERGES_QTY[line.kind]) throw new Error("Add another row instead: each service is its own row");
         if (!Number.isInteger(qtyChange)) throw new Error("Invalid quantity change");
-        patch.qty = Math.min(Math.max(line.qty + qtyChange, 1), 99);
+        patch.qty = Math.min(Math.max(line.qty + qtyChange, 1), MAX_QTY);
       }
       if (discount !== undefined) {
         if (line.kind === "booking" && discount) throw new Error(ATTACHED_PRICE);
@@ -294,7 +300,7 @@ export function createFixtureBackend(): CheckoutBackend {
     setCustomer: ({ billId, guest }) => later(() => {
       const bill = editableBill(billId);
       if (guest && !guest.name.trim()) throw new Error("Enter the guest name");
-      patchBill(bill._id, { guestName: guest?.name.trim(), guestPhone: guest?.phone, guestEmail: guest?.email, revision: (bill.revision ?? 0) + 1, updatedAt: Date.now() });
+      patchBill(bill._id, { guestName: guest?.name.trim(), guestPhone: guest?.phone, guestEmail: guest?.email, revision: bill.revision + 1, updatedAt: Date.now() });
       return { billId: bill._id };
     }),
     holdBill: ({ billId }) => later(() => {
@@ -321,7 +327,7 @@ export function createFixtureBackend(): CheckoutBackend {
       const lines = linesOf(billId);
       if (!lines.length) throw new Error("Add an item first");
       const totals = billTotals(lines);
-      if (totals.due !== round2(expectedDue) || (bill.revision ?? 0) !== expectedRevision) throw new Error("The bill changed. Check the total and pay again.");
+      if (totals.due !== round2(expectedDue) || bill.revision !== expectedRevision) throw new Error("The bill changed. Check the total and pay again.");
       assertTenders(tenders, totals.due);
       for (const line of lines) {
         const item = state.bookings.find((b) => b.id === line.bookingId) ?? state.appointments.find((a) => a.appointmentId === line.appointmentId);

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
-import { MERGES_QTY, type BillTotals, type TenderMethod } from "convex/lib/billMath";
+import { MAX_PRICE, MAX_QTY, MERGES_QTY, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type BillId, type BillLine, type BillView, type Catalog } from "./backend";
 import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
 import { PayPanel } from "./PayPanel";
@@ -184,7 +184,7 @@ function lineSubtitle(line: BillLine) {
 }
 
 function BillLineRow({ line, catalog, open, onToggle, run }: { line: BillLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run }) {
-  const listPrice = line.unitPrice * line.qty;
+  const listPrice = round2(line.unitPrice * line.qty);
   return (
     <li className={cn("rounded-xl border bg-background", open ? "border-primary" : "border-border")}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-start gap-2 p-3 text-left">
@@ -288,7 +288,7 @@ function LineEditor({ line, catalog, run }: { line: BillLine; catalog: Catalog |
               <Minus aria-hidden className="size-4" />
             </Button>
             <span className="w-6 text-center text-sm font-semibold tabular-nums">{line.qty}</span>
-            <Button size="icon" variant="outline" className="size-9" aria-label="One more" onClick={() => run(() => actions.updateLine({ lineId, qtyChange: 1 }))}>
+            <Button size="icon" variant="outline" className="size-9" aria-label="One more" disabled={line.qty >= MAX_QTY} onClick={() => run(() => actions.updateLine({ lineId, qtyChange: 1 }))}>
               <Plus aria-hidden className="size-4" />
             </Button>
           </div>
@@ -332,7 +332,7 @@ function LineEditor({ line, catalog, run }: { line: BillLine; catalog: Catalog |
               <div className="grid gap-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor={`price-${lineId}`} className="sr-only">New unit price</Label>
-                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value))} placeholder={String(line.unitPrice)} autoFocus />
+                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} placeholder={String(line.unitPrice)} autoFocus />
                   <span className="text-xs text-muted-foreground">was {formatMoney(line.unitPrice)}</span>
                 </div>
                 <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
