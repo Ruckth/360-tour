@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertPriceOverride, assertTenders, billTotals, changeDue, formatReceiptNumber, lineNet } from "convex/lib/billMath";
+import { assertPriceOverride, assertTenders, billTotals, changeDue, formatReceiptNumber, lineNet, round2 } from "convex/lib/billMath";
 import { parseCheckoutSource } from "@/components/checkout/checkout-source";
 import { amountInput, heldAt, receiptText } from "@/components/checkout/checkout-ui";
 
@@ -28,6 +28,26 @@ describe("bill math", () => {
     expect(() => assertTenders([{ method: "card", amount: 10, received: 20 }], 10)).toThrow("Only cash");
     expect(() => assertTenders([], 0)).not.toThrow();
     expect(changeDue([{ method: "cash", amount: 1800, received: 2000 }, { method: "card", amount: 200 }])).toBe(200);
+  });
+
+  it("rounds half-satang amounts up as on paper, not by binary float error", () => {
+    expect(lineNet({ unitPrice: 10.05, qty: 1, discount: { type: "percent", value: 10 } })).toBe(9.04);
+    expect(lineNet({ unitPrice: 30.5, qty: 1, discount: { type: "percent", value: 7 } })).toBe(28.36);
+    expect(lineNet({ unitPrice: 0.15, qty: 1, discount: { type: "percent", value: 50 } })).toBe(0.07);
+    expect(lineNet({ unitPrice: 100, qty: 1, discount: { type: "percent", value: 12.5 } })).toBe(87.5);
+    expect(lineNet({ unitPrice: 100, qty: 1, discount: { type: "percent", value: 150 } })).toBe(0);
+    expect(round2(1.005)).toBe(1.01);
+    expect(round2(-1.005)).toBe(-1.01);
+    expect(round2(0.1 + 0.2)).toBe(0.3);
+    // VAT 7/107 of the total: 99.50 → 6.509… and 31,080 → 2,033.271…
+    expect(billTotals([{ unitPrice: 99.5, qty: 1 }]).vat).toBe(6.51);
+    expect(billTotals([{ unitPrice: 31080, qty: 1 }]).vat).toBe(2033.27);
+  });
+
+  it("refuses payments finer than a satang", () => {
+    expect(() => assertTenders([{ method: "cash", amount: 600.004 }, { method: "card", amount: 599.996 }], 1200)).toThrow("whole satang");
+    expect(() => assertTenders([{ method: "cash", amount: 1200, received: 1500.005 }], 1200)).toThrow("whole satang");
+    expect(() => assertTenders([{ method: "cash", amount: 0.1 }, { method: "card", amount: 0.2 }], 0.3)).not.toThrow();
   });
 
   it("requires a note for a price override", () => {

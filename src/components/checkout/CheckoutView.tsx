@@ -4,13 +4,13 @@ import { ChevronUp, ReceiptText, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type BillId, type CatalogItem } from "./backend";
-import { BillPanel, type Run } from "./BillPanel";
+import { BillPanel } from "./BillPanel";
 import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
 import { CustomerStrip } from "./CustomerStrip";
+import { useBillWrites } from "./useBillWrites";
 
 /**
  * Staff checkout: customer strip on top, catalog on the left, the bill on the right (wide
@@ -36,46 +36,16 @@ export function CheckoutView({
   const actions = backend.useActions();
   const [error, setError] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
-
-  // Writes run one after another, so a second tap before the bill exists joins the same bill.
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
-  const currentBill = useRef(billId);
-  useEffect(() => {
-    currentBill.current = billId;
-  }, [billId]);
-
-  const run = useCallback<Run>(
-    (task) => {
-      const next = queue.current.then(async () => {
-        try {
-          setError("");
-          const result = await task(currentBill.current ?? undefined);
-          const created = result && typeof result === "object" && "billId" in result ? (result.billId as BillId) : undefined;
-          if (created && created !== currentBill.current) {
-            currentBill.current = created;
-            onBillChange(created);
-          }
-          return true;
-        } catch (err) {
-          setError(errorText(err, "That didn't save. Try again."));
-          return false;
-        }
-      });
-      queue.current = next;
-      return next;
-    },
-    [onBillChange],
-  );
+  const { run, switchTo } = useBillWrites(billId, onBillChange, setError);
 
   const add = useCallback((item: CatalogItem) => void run((id) => actions.addItem({ billId: id, item })), [run, actions]);
 
   const changeBill = useCallback(
     (next: BillId | null) => {
-      currentBill.current = next;
       setSheetOpen(false);
-      onBillChange(next);
+      switchTo(next);
     },
-    [onBillChange],
+    [switchTo],
   );
 
   // Paying and then seeing the bill turn paid both lead to the receipt; go there once.

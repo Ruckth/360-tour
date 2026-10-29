@@ -26,7 +26,18 @@ export type PricedLine = {
 export type Tender = { method: TenderMethod; amount: number; received?: number };
 export type BillTotals = { subtotal: number; discount: number; total: number; vat: number; deposit: number; due: number };
 
-export const round2 = (n: number) => Math.round(n * 100) / 100;
+/**
+ * Money rounds to the satang, halves away from zero. `toPrecision(15)` drops binary noise first,
+ * so a decimal half such as 1.005 (stored as 1.00499…) rounds up like it does on paper.
+ */
+export const round2 = (n: number) => {
+	const satang = Math.round(Number((Math.abs(n) * 100).toPrecision(15)));
+	return (n < 0 ? -satang : satang) / 100;
+};
+/** Whole satang as an integer, for exact percentage arithmetic. */
+const toSatang = (n: number) => Math.round(round2(n) * 100);
+/** round(a / b) for non-negative integers, halves up, without floating-point error. */
+const divRound = (a: number, b: number) => Math.floor((2 * a + b) / (2 * b));
 const sum = (values: number[]) => round2(values.reduce((a, b) => a + b, 0));
 
 export function linePrice(line: PricedLine) {
@@ -40,8 +51,10 @@ export function lineGross(line: PricedLine) {
 export function lineDiscount(line: PricedLine) {
 	const gross = lineGross(line);
 	if (!line.discount) return 0;
-	const raw = line.discount.type === 'percent' ? (gross * line.discount.value) / 100 : line.discount.value;
-	return round2(Math.min(Math.max(raw, 0), gross));
+	const value = Math.max(line.discount.value, 0);
+	// Percent: satang × hundredths of a percent, so 10% of 10.05 is exactly 1.005 → 1.01.
+	const raw = line.discount.type === 'percent' ? divRound(toSatang(gross) * toSatang(value), 10000) / 100 : value;
+	return round2(Math.min(raw, gross));
 }
 
 export function lineNet(line: PricedLine) {
@@ -53,7 +66,9 @@ export function billTotals(lines: readonly PricedLine[]): BillTotals {
 	const discount = sum(lines.map(lineDiscount));
 	const total = round2(subtotal - discount);
 	const deposit = Math.min(sum(lines.map((line) => line.deposit ?? 0)), total);
-	return { subtotal, discount, total, vat: round2((total * VAT_RATE) / (1 + VAT_RATE)), deposit, due: round2(total - deposit) };
+	// VAT included at 7%: total × 7/107, in whole satang.
+	const vat = divRound(toSatang(Math.max(total, 0)) * 7, 107) / 100;
+	return { subtotal, discount, total, vat, deposit, due: round2(total - deposit) };
 }
 
 export function assertDiscount(discount: LineDiscount) {
@@ -78,8 +93,10 @@ export function assertTenders(tenders: readonly Tender[], due: number) {
 	for (const tender of tenders) {
 		if (!TENDER_METHODS.includes(tender.method)) throw new Error('Unknown payment method');
 		if (!Number.isFinite(tender.amount) || tender.amount <= 0) throw new Error('Each payment must be more than zero');
+		if (round2(tender.amount) !== tender.amount) throw new Error('Payments are in whole satang (at most 2 decimals)');
 		if (tender.received !== undefined) {
 			if (tender.method !== 'cash') throw new Error('Only cash can have an amount received');
+			if (round2(tender.received) !== tender.received) throw new Error('Cash received is in whole satang (at most 2 decimals)');
 			if (!(tender.received >= tender.amount)) throw new Error('Cash received is less than the amount');
 		}
 	}

@@ -34,6 +34,8 @@ export function PayPanel({
   const actions = useCheckoutBackend().useActions();
   const due = view.totals.due;
   const [attemptKey] = useState(newAttemptKey);
+  // The bill as it was when this panel opened; a change made since (even at the same total) is refused.
+  const [revision] = useState(view.bill.revision ?? 0);
   const lock = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -44,7 +46,7 @@ export function PayPanel({
     setSubmitting(true);
     setError("");
     try {
-      await actions.settleBill({ billId: view.bill._id, idempotencyKey: attemptKey, expectedDue: due, tenders });
+      await actions.settleBill({ billId: view.bill._id, idempotencyKey: attemptKey, expectedDue: due, expectedRevision: revision, tenders });
       // Stay locked: the page moves on to the receipt.
       onPaid(view.bill._id);
     } catch (err) {
