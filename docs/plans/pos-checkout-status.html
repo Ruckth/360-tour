@@ -43,7 +43,7 @@ ul{margin:0;padding-left:18px}li{margin:2px 0}
 <tr><td>Price override with required note and audit log</td><td class="s"><i class="d">Done</i></td><td>Stored in <code>billAudit</code></td></tr>
 <tr><td>Customer strip: Walk-in #N, guest search</td><td class="s"><i class="d">Done</i></td><td>Finds booking guests and guests who only have an appointment</td></tr>
 <tr><td>Attach bookings and appointments</td><td class="s"><i class="d">Done</i></td><td>Nothing is attached automatically. Attached stays are charged at their booked price (no discount or override); an extended paid stay can collect its balance</td></tr>
-<tr><td>Held bills saved on the server, resumable</td><td class="s"><i class="d">Done</i></td><td>Shows date and time for earlier days</td></tr>
+<tr><td>Held bills saved on the server, resumable</td><td class="s"><i class="d">Done</i></td><td>Hold saves the unpaid bill and opens a fresh sale; resume through Held bills. No payment or receipt is created. See docs/reviews/pos-checkout-qa.md.</td></tr>
 <tr><td>Open checkout from a link (<code>?booking=</code>, <code>?appointment=</code>, <code>?bill=</code>)</td><td class="s"><i class="d">Done</i></td><td>Appointments use their own parameter; ambiguous links are refused</td></tr>
 <tr><td>Checkout entry in the sidebar, booking sheet and appointment sheet</td><td class="s"><i class="d">Done</i></td><td>Merged with main's new sidebar search</td></tr>
 <tr><td>Extras catalog (real data)</td><td class="s"><i class="n">Not done</i></td><td>The schema has no extras table; the live page only has "Custom item"</td></tr>

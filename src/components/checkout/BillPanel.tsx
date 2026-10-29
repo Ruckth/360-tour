@@ -74,7 +74,7 @@ export function BillPanel({
         </div>
         {paying ? null : (
           <>
-            <Button size="sm" variant="outline" onClick={hold} disabled={!itemCount}>
+            <Button size="sm" variant="outline" onClick={hold} disabled={!itemCount} title="Save this unpaid bill and start a new one. Resume it from Held bills.">
               <Pause aria-hidden className="size-3.5" /> Hold
             </Button>
             {/* A local dialog rather than useConfirm: on phones it nests in the bill sheet, which a
@@ -109,13 +109,13 @@ export function BillPanel({
         <PayPanel key={`${view.bill._id}:${paying}`} mode={paying} view={view} onBack={() => setPaying(null)} onPaid={onPaid} />
       ) : (
         <>
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {lines.length === 0 ? (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground">
                 <p>Tap an item to add it to the bill.</p>
               </div>
             ) : (
-              <ul className="space-y-2">
+              <ul className="divide-y divide-border">
                 {lines.map((line) => (
                   <BillLineRow
                     key={line._id}
@@ -186,10 +186,10 @@ function lineSubtitle(line: BillLine) {
 function BillLineRow({ line, catalog, open, onToggle, run }: { line: BillLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run }) {
   const listPrice = round2(line.unitPrice * line.qty);
   return (
-    <li className={cn("rounded-xl border bg-background", open ? "border-primary" : "border-border")}>
-      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-start gap-2 p-3 text-left">
+    <li className={cn(open && "bg-muted/40")}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-h-14 w-full items-start gap-2 px-4 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">
+          <span className="block text-sm font-medium [overflow-wrap:anywhere]">
             {line.name}
             {MERGES_QTY[line.kind] && line.qty > 1 ? <span className="text-muted-foreground"> ×{line.qty}</span> : null}
           </span>
@@ -197,7 +197,7 @@ function BillLineRow({ line, catalog, open, onToggle, run }: { line: BillLine; c
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid online</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
         </span>
-        <span className="text-right">
+        <span className="shrink-0 text-right">
           <span className="block text-sm font-semibold tabular-nums">{formatMoney(line.net)}</span>
           {line.net !== listPrice ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{formatMoney(listPrice)}</span> : null}
         </span>
@@ -258,7 +258,7 @@ function LineEditor({ line, catalog, run }: { line: BillLine; catalog: Catalog |
   }
 
   return (
-    <div className="grid gap-4 border-t border-dashed border-border px-3 pt-3 pb-3">
+    <div className="grid gap-4 border-t border-dashed border-border px-4 pt-3 pb-3">
       {line.kind === "service" ? (
         <>
           <Field label="Therapist">

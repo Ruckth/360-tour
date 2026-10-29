@@ -76,25 +76,25 @@ export function CustomerStrip({
               aria-label={`Held bills${otherBills.length ? `, ${otherBills.length} other unpaid ${otherBills.length === 1 ? "bill" : "bills"}` : ""}`}
             >
               <Layers aria-hidden className="size-4" />
-              <span className="hidden sm:inline">Held bills</span>
+              <span>Held bills</span>
               {otherBills.length ? <span aria-hidden className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{otherBills.length}</span> : null}
             </Button>
           </DialogTrigger>
           <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
             <DialogHeader>
               <DialogTitle>Held bills</DialogTitle>
-              <DialogDescription>Unpaid bills from any device. Open one to carry on.</DialogDescription>
+              <DialogDescription>Hold saves an unpaid bill so you can serve another customer. Resume it here from any device. Holding a bill does not record a payment.</DialogDescription>
             </DialogHeader>
             {openBills === undefined ? (
               <Spinner label="Loading bills" />
             ) : otherBills.length ? (
-              <ul className="grid gap-2">
+              <ul className="divide-y divide-border">
                 {otherBills.map((b) => (
                   <li key={b._id}>
                     <button
                       type="button"
                       onClick={() => { close(); onBillChange(b._id); }}
-                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left hover:bg-muted"
+                      className="flex min-h-14 w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold">{b.label}</span>
