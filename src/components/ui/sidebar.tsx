@@ -31,6 +31,8 @@ const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+// Includes iPad landscape; keep the min-[1400px] utilities below in sync.
+const SIDEBAR_DESKTOP_BREAKPOINT = 1400
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -73,8 +75,13 @@ const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const isMobile = useIsMobile()
+    const isMobile = useIsMobile(SIDEBAR_DESKTOP_BREAKPOINT)
     const [openMobile, setOpenMobile] = React.useState(false)
+
+    // Returning to a compact viewport must not resurrect an old open drawer.
+    React.useEffect(() => {
+      setOpenMobile(false)
+    }, [isMobile])
 
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
@@ -182,6 +189,7 @@ const Sidebar = React.forwardRef<
     ref
   ) => {
     const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+    const returnFocus = React.useRef<HTMLElement | null>(null)
 
     if (collapsible === "none") {
       return (
@@ -214,7 +222,12 @@ const Sidebar = React.forwardRef<
             // Focus the panel, not its first field: a focused search box would pop up the phone keyboard.
             onOpenAutoFocus={(event) => {
               event.preventDefault()
+              returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
               ;(event.currentTarget as HTMLElement).focus()
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault()
+              if (returnFocus.current?.isConnected) returnFocus.current.focus()
             }}
             // Escape in a filled field (the search) clears it first instead of closing the panel.
             onEscapeKeyDown={(event) => {
@@ -235,7 +248,7 @@ const Sidebar = React.forwardRef<
     return (
       <div
         ref={ref}
-        className="group peer hidden text-sidebar-foreground md:block"
+        className="group peer hidden text-sidebar-foreground min-[1400px]:block"
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
@@ -254,7 +267,7 @@ const Sidebar = React.forwardRef<
         />
         <div
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear min-[1400px]:flex",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -291,7 +304,7 @@ const SidebarTrigger = React.forwardRef<
       data-sidebar="trigger"
       variant="ghost"
       size="icon"
-      className={cn("h-10 w-10 md:h-7 md:w-7", className)}
+      className={cn("h-10 w-10 min-[1400px]:h-7 min-[1400px]:w-7", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
@@ -320,7 +333,7 @@ const SidebarRail = React.forwardRef<
       onClick={toggleSidebar}
       title="Toggle Sidebar"
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex",
+        "absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 min-[1400px]:flex",
         "[[data-side=left]_&]:cursor-w-resize [[data-side=right]_&]:cursor-e-resize",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
         "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full group-data-[collapsible=offcanvas]:hover:bg-sidebar",
@@ -343,7 +356,7 @@ const SidebarInset = React.forwardRef<
       ref={ref}
       className={cn(
         "relative flex w-full flex-1 flex-col bg-background",
-        "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
+        "min-[1400px]:peer-data-[variant=inset]:m-2 min-[1400px]:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 min-[1400px]:peer-data-[variant=inset]:ml-0 min-[1400px]:peer-data-[variant=inset]:rounded-xl min-[1400px]:peer-data-[variant=inset]:shadow",
         className
       )}
       {...props}
@@ -482,7 +495,7 @@ const SidebarGroupAction = React.forwardRef<
       className={cn(
         "absolute right-3 top-3.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
         // Increases the hit area of the button on mobile.
-        "after:absolute after:-inset-2 after:md:hidden",
+        "after:absolute after:-inset-2 after:min-[1400px]:hidden",
         "group-data-[collapsible=icon]:hidden",
         className
       )}
@@ -628,13 +641,13 @@ const SidebarMenuAction = React.forwardRef<
       className={cn(
         "absolute right-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
         // Increases the hit area of the button on mobile.
-        "after:absolute after:-inset-2 after:md:hidden",
+        "after:absolute after:-inset-2 after:min-[1400px]:hidden",
         "peer-data-[size=sm]/menu-button:top-1",
         "peer-data-[size=default]/menu-button:top-1.5",
         "peer-data-[size=lg]/menu-button:top-2.5",
         "group-data-[collapsible=icon]:hidden",
         showOnHover &&
-          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground md:opacity-0",
+          "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground min-[1400px]:opacity-0",
         className
       )}
       {...props}
