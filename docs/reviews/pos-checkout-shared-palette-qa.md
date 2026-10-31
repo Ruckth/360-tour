@@ -14,7 +14,7 @@ Kiro Opus 5.5 implemented the change. The coordinator reviewed the diff and sepa
 
 ## Validation
 
-- **1,281 unit tests passed** in 121 files; **252 focused tests passed** in 15 files.
+- **1,292 unit tests passed** in 122 files after integrating main; **252 focused tests passed** in 15 files.
 - **27 booking browser tests passed**; app/tests/Convex typecheck and changed-file lint passed.
 - **10 smoke tests and the production build passed** on the completed tree.
 - Coordinator browser checks passed in both themes at **1440×900, 1024×768, 390×844, 320×740 and 844×390**. No horizontal page overflow; all tender and split-payment controls remained in the viewport.
@@ -48,3 +48,11 @@ The images and video below use the real checkout components on `/dev/checkout-pr
 New-head hosted CI and owner/reviewer acceptance must complete before merge. The fresh authenticated receipt screenshot remains blocked by browser capture tooling; live two-tab payment and receipt/void DOM checks passed. This report does not claim all live visual gates are complete, and no merge was performed.
 
 Shared-dev services without photos still use fallback icons. No service photos were fabricated or seeded. No physical device, terminal, printer or physical keyboard testing was performed. Payment methods record tenders manually.
+
+## CI integration follow-up
+
+The Vercel deployment of `acd4e8b` succeeded. GitHub's PR merge test found one failure after main added the responsive-sidebar change in `d58a728` (#32). Merging that main commit locally reproduced the same failure: the desktop rail was absent at the audit test's supposed 1440px width.
+
+The audit had overridden Vitest's `window.innerWidth`, but Happy DOM's `matchMedia` still used its underlying viewport. The new hook reads `MediaQueryList.matches`, exposing the mismatch. The test now resizes Happy DOM with `happyDOM.setWindowSize` and restores the original viewport afterward. It continues to exercise the real hook, shell, navigation and keyboard behavior; no assertion was removed and no app behavior was changed to satisfy the test. All 19 audit/responsive-sidebar tests passed after the fix. The failure was deterministic before the fix, and temporary diagnostic logging was removed.
+
+After integration and the fixture fix: all **1,292 unit tests in 122 files**, app/tests/Convex typecheck, changed-file lint and the production build passed locally. New-head hosted CI still requires its own result.
