@@ -79,15 +79,16 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [focusSearch]);
 
+  // ReUI c-sidebar-1: inset shell, compact workspace header, grouped nav and account footer.
   return (
     <Sidebar variant="inset" collapsible="icon">
-      <SidebarHeader className="gap-2 p-3">
-        <div className="flex h-12 items-center gap-3 rounded-lg px-1 group-data-[collapsible=icon]:justify-center">
+      <SidebarHeader className="gap-2 p-2">
+        <div className="flex h-12 items-center gap-2 rounded-lg px-2 group-data-[collapsible=icon]:justify-center">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
             <Shield aria-hidden="true" className="size-4" />
           </span>
-          <span className="min-w-0 leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="block truncate text-sm font-semibold">{profile?.businessName ?? " "}</span>
+          <span className="grid min-w-0 flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="truncate text-sm font-medium">{profile?.businessName ?? " "}</span>
             <span className="block truncate text-xs text-sidebar-foreground/70">Concierge operations</span>
           </span>
         </div>
@@ -191,9 +192,9 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
+      <SidebarFooter className="p-2">
         <SidebarSeparator className="mx-0" />
-        <div className="flex items-center gap-3 px-1 py-2 group-data-[collapsible=icon]:justify-center">
+        <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:justify-center">
           <UserButton />
           <span className="min-w-0 truncate text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden">
             {userEmail ?? "Admin account"}
