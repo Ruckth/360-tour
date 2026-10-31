@@ -12,7 +12,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_TENDERS, TENDER_METHODS, round2, type Tender, type TenderMethod } from "convex/lib/billMath";
 import { newAttemptKey, useCheckoutBackend, type OrderId, type OrderView } from "./backend";
-import { CHECKOUT_LAYER, TENDER_LABELS, amountInput } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
 
 const CASH_STEPS = [100, 500, 1000];
 
@@ -156,7 +156,7 @@ function SplitForm({ due, submitting, onPay }: { due: number; submitting: boolea
           <li key={index} className="flex items-center gap-2">
             <Select value={row.method} onValueChange={(method) => update(index, { method: method as TenderMethod })}>
               <SelectTrigger className="w-32" aria-label={`Payment ${index + 1} method`}><SelectValue /></SelectTrigger>
-              <SelectContent className={CHECKOUT_LAYER}>
+              <SelectContent className={TOUCH_TARGETS}>
                 {/* Short labels: the long ones ("PromptPay QR") truncate in the narrow trigger. */}
                 {TENDER_METHODS.map((method) => <SelectItem key={method} value={method}>{TENDER_LABELS[method].short}</SelectItem>)}
               </SelectContent>

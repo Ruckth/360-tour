@@ -7,7 +7,6 @@ import { useState, type ReactNode } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { adminNavItem } from "@/components/admin/admin-routes";
-import { CHECKOUT_THEME } from "@/components/checkout/checkout-ui";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -105,9 +104,9 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
     <SidebarProvider
       open={checkout ? checkoutOpen : open}
       onOpenChange={checkout ? setCheckoutOpen : setOpen}
-      className={cn("bg-background", fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen", checkout && CHECKOUT_THEME)}
+      className={cn("bg-background", fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen")}
     >
-      <AdminSidebar userEmail={userEmail} mobileThemeClassName={checkout ? CHECKOUT_THEME : undefined} />
+      <AdminSidebar userEmail={userEmail} />
       <SidebarInset className="min-h-0 min-w-0">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
           <SidebarTrigger className="-ml-1" />

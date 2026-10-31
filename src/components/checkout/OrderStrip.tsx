@@ -22,9 +22,10 @@ import type { Run } from "./useOrderWrites";
 type Panel = "customer" | "booking" | "orders" | null;
 
 /**
- * The order on screen: its number (or "New order"), the booking it belongs to and, separately,
- * the customer who pays, plus Orders (unpaid, paid, voided) and New order. The booking's guest
- * and the customer can be different people; linking a customer never changes the booking.
+ * The order on screen: its number (or "New order", on narrow screens only; wide ones show it in
+ * the order panel), the booking it belongs to and, separately, the customer who pays, plus Orders
+ * (unpaid, paid, voided) and New order. The booking's guest and the customer can be different
+ * people; linking a customer never changes the booking.
  */
 export function OrderStrip({
   view,
@@ -105,7 +106,8 @@ export function OrderStrip({
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-3 pb-2 sm:px-6">
       <div className="min-w-0 max-w-full">
-        <p className="text-sm font-semibold" data-testid="order-title">{title}</p>
+        {/* Wide screens name the order once, in the order panel beside the catalog (shown from lg). */}
+        <p className="text-sm font-semibold lg:hidden" data-testid="order-title">{title}</p>
         <p className="truncate text-xs text-muted-foreground">
           {source ? (
             <>

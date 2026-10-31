@@ -13,7 +13,7 @@ import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "
 import { cn } from "@/lib/utils";
 import { MAX_PRICE } from "convex/lib/billMath";
 import type { Catalog, CatalogItem, OrderLine } from "./backend";
-import { CHECKOUT_THEME, amountInput } from "./checkout-ui";
+import { amountInput } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { CheckoutPhoto, KIND_ICONS } from "./CheckoutPhoto";
 
@@ -128,7 +128,7 @@ export function CatalogPane({
           onValueChange={setTab}
           label="Item type"
           controls="checkout-catalog"
-          className="shrink-0 gap-7 border-border/70 [&_[aria-selected=true]]:border-gold [&_[role=tab]]:pt-2"
+          className="shrink-0 gap-7 border-border/70 [&_[aria-selected=true]]:border-gold-text [&_[role=tab]]:pt-2"
         />
         <div className="flex min-w-0 flex-1 gap-2">
           <div className="relative min-w-0 flex-1">
@@ -264,7 +264,8 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
           <span className="mt-0.5 truncate text-xs text-muted-foreground">{tile.meta}</span>
           <span className="mt-auto flex items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
             <span className="text-sm font-semibold tabular-nums">{price}</span>
-            <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:bg-gold group-hover:text-primary-foreground motion-reduce:transition-none">
+            {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
+            <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
               <Plus aria-hidden className="size-4" />
               <span className="sr-only">Add to order</span>
             </span>
@@ -279,7 +280,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
               <span className="rounded-full p-1 group-hover:bg-muted"><Info aria-hidden className="size-3.5" /></span>
             </button>
           </PopoverTrigger>
-          <PopoverContent className={cn("w-64 text-sm", CHECKOUT_THEME)}>
+          <PopoverContent className="w-64 text-sm">
             <p className="font-semibold">{tile.name}</p>
             <p className="mt-1 text-muted-foreground">{tile.description}</p>
             <p className="mt-2 text-xs text-muted-foreground">{tile.meta} · {price}</p>

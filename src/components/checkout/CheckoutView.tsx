@@ -7,7 +7,7 @@ import { Sheet, SheetDescription, SheetTitle, SheetTrigger } from "@/components/
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type CatalogItem, type OrderId } from "./backend";
 import { CatalogPane } from "./CatalogPane";
-import { CHECKOUT_LAYER } from "./checkout-ui";
+import { TOUCH_TARGETS } from "./checkout-ui";
 import { CheckoutSheetContent } from "./CheckoutLayers";
 import { useLoadablePhoto } from "./CheckoutPhoto";
 import { OrderPanel } from "./OrderPanel";
@@ -112,7 +112,7 @@ export function CheckoutView({
   const message = error || notice || (missing ? "That order doesn't exist. Start a new one." : "");
 
   return (
-    <div className={cn("relative isolate flex min-h-0 flex-1 flex-col bg-background", CHECKOUT_LAYER)}>
+    <div className={cn("relative isolate flex min-h-0 flex-1 flex-col bg-background", TOUCH_TARGETS)}>
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
       <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} />
       {message ? alert(message) : null}
@@ -121,10 +121,11 @@ export function CheckoutView({
       ) : null}
       <div className="flex min-h-0 flex-1">
         <CatalogPane catalog={catalog} lines={lines} onAdd={add} className="min-w-0 flex-1" />
-        {/* An inset panel, wider on bigger screens; the catalog's columns adapt to what is left. */}
+        {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
+            Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         <aside
           aria-label="Order"
-          className="mt-1 mr-4 mb-4 hidden w-[380px] shrink-0 overflow-hidden rounded-2xl border border-border/80 bg-card/80 shadow-2xl shadow-black/30 backdrop-blur-xl lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px]"
+          className="mt-1 mr-4 mb-4 hidden w-[380px] shrink-0 overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
         >
           {panel()}
         </aside>
@@ -136,7 +137,7 @@ export function CheckoutView({
           <button
             type="button"
             aria-label={`${title} · ${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the order`}
-            className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex min-h-14 items-center gap-3 rounded-2xl bg-primary px-5 py-3 text-primary-foreground shadow-2xl shadow-black/40 lg:hidden"
+            className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex min-h-14 items-center gap-3 rounded-2xl bg-primary px-5 py-3 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40"
           >
             <ReceiptText aria-hidden className="size-5 shrink-0" />
             <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold">
@@ -160,18 +161,19 @@ export function CheckoutView({
 }
 
 /**
- * The resort's own first villa photo, blurred to colour behind the panes, under a dark wash so
- * text keeps its contrast. Purely decorative and static; without a photo, only the wash shows.
+ * The resort's own first villa photo, blurred and muted behind the panes, under a wash of the
+ * theme's background so text keeps its contrast in light and dark. Purely decorative and static;
+ * without a photo, only the plain background shows.
  */
 function Backdrop({ src }: { src?: string }) {
   const photo = useLoadablePhoto(src);
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+    <div aria-hidden data-checkout-backdrop="" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
       {photo.src ? (
         // eslint-disable-next-line @next/next/no-img-element -- decorative, any host
-        <img src={photo.src} alt="" decoding="async" onError={photo.onError} className="absolute inset-0 size-full scale-110 object-cover opacity-40 blur-3xl saturate-[0.6]" />
+        <img src={photo.src} alt="" decoding="async" onError={photo.onError} className="absolute inset-0 size-full scale-110 object-cover opacity-30 blur-3xl saturate-50 dark:opacity-40" />
       ) : null}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_15%,oklch(0.32_0.04_150/0.35),transparent_55%),linear-gradient(to_bottom,var(--background)_0%,color-mix(in_oklch,var(--background)_80%,transparent)_40%,color-mix(in_oklch,var(--background)_70%,transparent)_100%)]" />
+      <div className="absolute inset-0 bg-linear-to-b from-background via-background/80 via-40% to-background/70" />
     </div>
   );
 }
