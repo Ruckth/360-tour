@@ -5,15 +5,16 @@ import { useId, useMemo, useState, type FormEvent } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE } from "convex/lib/billMath";
 import type { Catalog, CatalogItem, OrderLine } from "./backend";
-import { CHECKOUT_LAYER, CHECKOUT_THEME, amountInput } from "./checkout-ui";
+import { CHECKOUT_THEME, amountInput } from "./checkout-ui";
+import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { CheckoutPhoto, KIND_ICONS } from "./CheckoutPhoto";
 
 type Tab = "frequent" | "services" | "rooms" | "extras";
@@ -150,7 +151,7 @@ export function CatalogPane({
                 {filterCount ? <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{filterCount}</span> : null}
               </Button>
             </SheetTrigger>
-            <SheetContent overlayClassName={CHECKOUT_THEME} side="right" className={cn("w-80", CHECKOUT_LAYER)}>
+            <CheckoutSheetContent side="right" className="w-80">
               <SheetHeader>
                 <SheetTitle>Filters</SheetTitle>
                 <SheetDescription>Narrow the {TABS.find((t) => t.value === tab)?.label.toLowerCase()} tab.</SheetDescription>
@@ -179,7 +180,7 @@ export function CatalogPane({
                 <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value, MAX_PRICE))} placeholder="Any price" />
               </div>
               <Button variant="outline" onClick={() => { setGroups([]); setMaxPrice(""); }} disabled={!filterCount}>Reset filters</Button>
-            </SheetContent>
+            </CheckoutSheetContent>
           </Sheet>
         </div>
       </div>
@@ -316,7 +317,7 @@ function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
           Custom item
         </button>
       </DialogTrigger>
-      <DialogContent overlayClassName={CHECKOUT_THEME} className={cn("max-w-sm", CHECKOUT_LAYER)}>
+      <CheckoutDialogContent className="max-w-sm">
         <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Custom item</DialogTitle>
@@ -335,7 +336,7 @@ function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
             <Button type="submit" disabled={!valid}>Add to order</Button>
           </DialogFooter>
         </form>
-      </DialogContent>
+      </CheckoutDialogContent>
     </Dialog>
   );
 }

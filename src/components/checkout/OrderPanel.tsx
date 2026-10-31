@@ -5,7 +5,7 @@ import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, Trash2, Triangl
 import { useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,7 +13,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { CHECKOUT_THEME, CHECKOUT_LAYER, TENDER_LABELS, amountInput } from "./checkout-ui";
+import { TENDER_LABELS, amountInput } from "./checkout-ui";
+import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
 import { PayPanel } from "./PayPanel";
 import type { Run } from "./useOrderWrites";
@@ -22,8 +23,9 @@ const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, total: 0, vat: 0, d
 
 /**
  * The order: a compact list of rows with small photos (tap to edit inline; rooms and extras step
- * their quantity in the row), totals with the VAT included, and the tender buttons in the fixed footer. Paying swaps the rows for the payment panel. Used beside
- * the catalog on wide screens and inside the bottom sheet on phones (which passes `onClose`).
+ * their quantity in the row), totals with the VAT included, and the tender buttons in the fixed
+ * footer. Paying swaps the rows for the payment panel. Used beside the catalog on wide screens
+ * and inside the bottom sheet on phones (which passes `onClose`).
  */
 export function OrderPanel({
   view,
@@ -53,6 +55,7 @@ export function OrderPanel({
   const itemCount = lines.reduce((n, line) => n + line.qty, 0);
   // Rows whose booking or appointment changed must be updated (or removed) before payment.
   const stale = lines.filter((line) => line.sourceIssue).length;
+  const cannotPay = !lines.length || stale > 0;
 
   async function saveAndClose() {
     if (!orderId) return;
@@ -94,7 +97,7 @@ export function OrderPanel({
                   <Trash2 aria-hidden className="size-4" />
                 </Button>
               </DialogTrigger>
-              <DialogContent overlayClassName={CHECKOUT_THEME} role="alertdialog" showCloseButton={false} className={cn("max-w-md", CHECKOUT_LAYER)}>
+              <CheckoutDialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Clear this order?</DialogTitle>
                   <DialogDescription>Removes every item. The order keeps its number, customer and booking; price changes stay in the audit log.</DialogDescription>
@@ -103,7 +106,7 @@ export function OrderPanel({
                   <Button variant="outline" onClick={() => setConfirmClear(false)}>Cancel</Button>
                   <Button variant="destructive" onClick={clear}>Clear order</Button>
                 </DialogFooter>
-              </DialogContent>
+              </CheckoutDialogContent>
             </Dialog>
           </>
         )}
@@ -157,33 +160,31 @@ export function OrderPanel({
               </p>
             ) : null}
             {lines.length && totals.due === 0 ? (
-              <Button className="h-12 w-full rounded-xl" disabled={Boolean(stale)} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
+              <Button className="h-12 w-full rounded-xl" disabled={cannotPay} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
             ) : (
-              <>
-                {/* On short screens (phone landscape) Split joins the tender row, leaving room for the items. */}
-                <div className="grid grid-cols-4 gap-2 [@media(max-height:32rem)]:grid-cols-5">
-                  {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
-                    <Button
-                      key={method}
-                      className={cn("h-12 rounded-xl px-1 text-xs sm:text-sm [@media(max-height:32rem)]:h-11", method !== "cash" && "border-border bg-muted/50 hover:bg-muted")}
-                      variant={method === "cash" ? "default" : "outline"}
-                      disabled={!lines.length || Boolean(stale)}
-                      onClick={() => setPaying(method)}
-                    >
-                      {TENDER_LABELS[method].short}
-                    </Button>
-                  ))}
-                  {/* Outlined in gold, so Cash stays the one filled action. */}
+              // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
+              <div className="grid grid-cols-4 gap-2 [@media(max-height:32rem)]:grid-cols-5">
+                {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
                   <Button
-                    variant="outline"
-                    className="col-span-4 h-11 rounded-xl border-gold/60 text-gold-text hover:bg-gold/10 hover:text-gold-text [@media(max-height:32rem)]:col-span-1 [@media(max-height:32rem)]:px-1 [@media(max-height:32rem)]:text-xs"
-                    disabled={!lines.length || Boolean(stale)}
-                    onClick={() => setPaying("split")}
+                    key={method}
+                    className={cn("h-12 rounded-xl px-1 text-xs sm:text-sm [@media(max-height:32rem)]:h-11", method !== "cash" && "border-border bg-muted/50 hover:bg-muted")}
+                    variant={method === "cash" ? "default" : "outline"}
+                    disabled={cannotPay}
+                    onClick={() => setPaying(method)}
                   >
-                    Split payment
+                    {TENDER_LABELS[method].short}
                   </Button>
-                </div>
-              </>
+                ))}
+                {/* Outlined in gold, so Cash stays the one filled action. */}
+                <Button
+                  variant="outline"
+                  className="col-span-4 h-11 rounded-xl border-gold/60 text-gold-text hover:bg-gold/10 hover:text-gold-text [@media(max-height:32rem)]:col-span-1 [@media(max-height:32rem)]:px-1 [@media(max-height:32rem)]:text-xs"
+                  disabled={cannotPay}
+                  onClick={() => setPaying("split")}
+                >
+                  Split payment
+                </Button>
+              </div>
             )}
           </div>
         </>
@@ -251,21 +252,28 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
   );
 }
 
+/** How a stepper names its quantity: a room's nights, or a plain count for an extra. */
+const STEPPER_WORDS = {
+  room: { group: "Nights", fewer: "One night fewer", more: "One more night", unit: (qty: number) => (qty === 1 ? "night" : "nights") },
+  extra: { group: "Quantity", fewer: "One less", more: "One more", unit: () => "" },
+} as const;
+
 /** A room's nights or an extra's quantity, stepped on the server so quick taps add up. Removing the row is in its editor. */
 function QtyStepper({ line, run }: { line: OrderLine; run: Run }) {
   const actions = useCheckoutBackend().useActions();
-  const unit = line.kind === "room" ? ["night", "nights"] : ["", ""];
-  const label = line.kind === "room" ? "Nights" : "Quantity";
+  const words = STEPPER_WORDS[line.kind === "room" ? "room" : "extra"];
+  const unit = words.unit(line.qty);
+  const step = (qtyChange: 1 | -1) => run(() => actions.updateLine({ lineId: line._id, qtyChange }));
   return (
-    <div role="group" aria-label={`${label} for ${line.name}`} className="-mt-1.5 flex items-center justify-end gap-1 px-3 pb-2.5 sm:px-4">
-      <Button size="icon" variant="outline" className="size-8 rounded-full" aria-label={line.kind === "room" ? "One night fewer" : "One less"} disabled={line.qty <= 1} onClick={() => run(() => actions.updateLine({ lineId: line._id, qtyChange: -1 }))}>
+    <div role="group" aria-label={`${words.group} for ${line.name}`} className="-mt-1.5 flex items-center justify-end gap-1 px-3 pb-2.5 sm:px-4">
+      <Button size="icon" variant="outline" className="size-8 rounded-full" aria-label={words.fewer} disabled={line.qty <= 1} onClick={() => step(-1)}>
         <Minus aria-hidden className="size-3.5" />
       </Button>
       <output aria-live="polite" className="min-w-14 text-center text-sm font-semibold tabular-nums">
         {line.qty}
-        {unit[0] ? <span className="font-normal text-muted-foreground"> {line.qty === 1 ? unit[0] : unit[1]}</span> : null}
+        {unit ? <span className="font-normal text-muted-foreground"> {unit}</span> : null}
       </output>
-      <Button size="icon" variant="outline" className="size-8 rounded-full" aria-label={line.kind === "room" ? "One more night" : "One more"} disabled={line.qty >= MAX_QTY} onClick={() => run(() => actions.updateLine({ lineId: line._id, qtyChange: 1 }))}>
+      <Button size="icon" variant="outline" className="size-8 rounded-full" aria-label={words.more} disabled={line.qty >= MAX_QTY} onClick={() => step(1)}>
         <Plus aria-hidden className="size-3.5" />
       </Button>
     </div>

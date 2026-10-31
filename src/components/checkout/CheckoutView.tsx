@@ -3,11 +3,13 @@
 import { ChevronUp, ReceiptText, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
-import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type CatalogItem, type OrderId } from "./backend";
 import { CatalogPane } from "./CatalogPane";
-import { CHECKOUT_THEME, CHECKOUT_LAYER } from "./checkout-ui";
+import { CHECKOUT_LAYER } from "./checkout-ui";
+import { CheckoutSheetContent } from "./CheckoutLayers";
+import { useLoadablePhoto } from "./CheckoutPhoto";
 import { OrderPanel } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
 import { useOrderWrites } from "./useOrderWrites";
@@ -144,14 +146,14 @@ export function CheckoutView({
             <ChevronUp aria-hidden className="size-5 shrink-0" />
           </button>
         </SheetTrigger>
-        <SheetContent overlayClassName={CHECKOUT_THEME} side="bottom" showCloseButton={false} className={cn("h-[94dvh] gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden", CHECKOUT_LAYER)}>
+        <CheckoutSheetContent side="bottom" showCloseButton={false} className="h-[94dvh] gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden">
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>
           {/* The page banner sits under the sheet's overlay, so errors repeat here. */}
           {error ? alert(error) : null}
           {panel(() => setSheetOpen(false))}
-        </SheetContent>
+        </CheckoutSheetContent>
       </Sheet>
     </div>
   );
@@ -162,12 +164,12 @@ export function CheckoutView({
  * text keeps its contrast. Purely decorative and static; without a photo, only the wash shows.
  */
 function Backdrop({ src }: { src?: string }) {
-  const [failed, setFailed] = useState<string>();
+  const photo = useLoadablePhoto(src);
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-      {src && failed !== src ? (
+      {photo.src ? (
         // eslint-disable-next-line @next/next/no-img-element -- decorative, any host
-        <img src={src} alt="" decoding="async" onError={() => setFailed(src)} className="absolute inset-0 size-full scale-110 object-cover opacity-40 blur-3xl saturate-[0.6]" />
+        <img src={photo.src} alt="" decoding="async" onError={photo.onError} className="absolute inset-0 size-full scale-110 object-cover opacity-40 blur-3xl saturate-[0.6]" />
       ) : null}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_15%,oklch(0.32_0.04_150/0.35),transparent_55%),linear-gradient(to_bottom,var(--background)_0%,color-mix(in_oklch,var(--background)_80%,transparent)_40%,color-mix(in_oklch,var(--background)_70%,transparent)_100%)]" />
     </div>

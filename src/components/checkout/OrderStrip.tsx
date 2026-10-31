@@ -5,7 +5,7 @@ import { CalendarDays, Link2, ListOrdered, Plus, Search, UserRound, UserRoundPlu
 import { useDeferredValue, useRef, useState, type FormEvent } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -14,7 +14,8 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { formatReceiptNumber } from "convex/lib/billMath";
 import { useCheckoutBackend, type Attachable, type Customer, type CustomerId, type NewCustomer, type OrderFilter, type OrderId, type OrderView } from "./backend";
-import { CHECKOUT_THEME, CHECKOUT_LAYER, orderTime } from "./checkout-ui";
+import { orderTime } from "./checkout-ui";
+import { CheckoutDialogContent } from "./CheckoutLayers";
 import { InlineErrorBoundary } from "./ErrorBoundary";
 import type { Run } from "./useOrderWrites";
 
@@ -128,9 +129,9 @@ export function OrderStrip({
             <span className="truncate">{customer ? customer.name : "Add customer"}</span>
           </Button>
         </DialogTrigger>
-        <DialogContent overlayClassName={CHECKOUT_THEME} className={cn("max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto", CHECKOUT_LAYER)}>
+        <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
           {panel === "customer" ? <CustomerPicker view={view ?? null} onLink={link} onCreate={create} onUnlink={unlink} /> : null}
-        </DialogContent>
+        </CheckoutDialogContent>
       </Dialog>
 
       <Dialog open={panel === "booking"} onOpenChange={(open) => changePanel(open ? "booking" : null)}>
@@ -139,9 +140,9 @@ export function OrderStrip({
             <Link2 aria-hidden className="size-4" /> Add booking
           </Button>
         </DialogTrigger>
-        <DialogContent overlayClassName={CHECKOUT_THEME} className={cn("max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto", CHECKOUT_LAYER)}>
+        <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
           {panel === "booking" ? <AttachList orderId={order?._id ?? null} run={run} onDone={close} /> : null}
-        </DialogContent>
+        </CheckoutDialogContent>
       </Dialog>
 
       <div className="ml-auto flex gap-2">
@@ -152,13 +153,13 @@ export function OrderStrip({
               <span>Orders</span>
             </Button>
           </DialogTrigger>
-          <DialogContent overlayClassName={CHECKOUT_THEME} className={cn("max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto", CHECKOUT_LAYER)}>
+          <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
               <DialogDescription>Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device.</DialogDescription>
             </DialogHeader>
             {panel === "orders" ? <OrdersBrowser currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : null}
-          </DialogContent>
+          </CheckoutDialogContent>
         </Dialog>
         <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order} aria-label="New order">
           <Plus aria-hidden className="size-4" />
