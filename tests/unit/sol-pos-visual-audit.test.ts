@@ -39,17 +39,21 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   route.pathname = '/admin/checkout';
   Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true });
+  document.documentElement.classList.remove('dark');
   root = createRoot(document.body.appendChild(document.createElement('div')));
 });
 afterEach(async () => {
   await act(async () => root.unmount());
   document.body.innerHTML = '';
+  document.documentElement.classList.remove('dark');
   vi.unstubAllGlobals();
 });
 
 it('keeps checkout and other-route sidebar choices independent through keyboard and trigger toggles', async () => {
   await renderShell();
   expect(railState()).toBe('collapsed');
+  // The checkout shell wears the app theme; it adds none of its own.
+  expect(document.querySelector('.dark, .checkout-theme')).toBeNull();
   await key('b');
   expect(railState()).toBe('expanded');
   route.pathname = '/admin/bookings';
@@ -116,38 +120,46 @@ it('enforces the new inline stepper bounds and keeps totals correct at 99 and on
   expect(panel().querySelector('[data-testid=order-due]')?.textContent).toBe('฿100');
 });
 
-// Retained acceptance regression for checkout theme boundaries.
-it('keeps the mobile sidebar in checkout dark theme even when the app root is light', async () => {
-  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
-  document.documentElement.classList.remove('dark');
-  await renderShell();
-  await trigger();
+// Theme boundaries: checkout follows the app's light or dark theme (on <html>) like every other
+// admin page, so its portaled layers can't drift from the page they open over.
+const mobileSidebar = () => {
   const panel = document.querySelector('[role=dialog][data-mobile=true]')!;
-  expect(panel.closest('.checkout-theme.dark')).toBeTruthy();
-  expect(panel.previousElementSibling?.closest('.checkout-theme.dark')).toBeTruthy();
-});
+  return { panel, overlay: panel.previousElementSibling! };
+};
 
-it('themes the checkout Orders backdrop as well as its portaled content under a light app root', async () => {
-  await act(async () => root.render(createElement(CheckoutBackendProvider, {
-    backend: createFixtureBackend(),
-  } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { orderId: null, onOrderChange: () => {}, onPaid: () => {} }))));
-  await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Orders')!.click());
-  const content = document.querySelector('[role=dialog]')!;
-  expect(content.closest('.checkout-theme.dark')).toBeTruthy();
-  const overlay = content.previousElementSibling!;
-  expect(overlay.className).toContain('backdrop-blur');
-  expect(overlay.closest('.checkout-theme.dark')).toBeTruthy();
-});
+for (const theme of ['light', 'dark'] as const) {
+  it(`${theme}: checkout's mobile sidebar and its backdrop take the app theme, exactly like other pages`, async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    const html = theme === 'dark' ? document.documentElement : null;
+    const classesOn = async (pathname: string) => {
+      route.pathname = pathname;
+      await renderShell();
+      await trigger();
+      const { panel, overlay } = mobileSidebar();
+      expect(panel.closest('.dark'), pathname).toBe(html);
+      expect(overlay.closest('.dark'), pathname).toBe(html);
+      expect(document.body.querySelector('.dark, .checkout-theme'), pathname).toBeNull();
+      const classes = [panel.className, overlay.className];
+      await act(async () => root.unmount());
+      root = createRoot(document.body.appendChild(document.createElement('div')));
+      return classes;
+    };
+    expect(await classesOn('/admin/checkout')).toEqual(await classesOn('/admin/hotel'));
+  });
 
-
-it('keeps ordinary mobile navigation and its backdrop in the selected app theme', async () => {
-  route.pathname = '/admin/hotel';
-  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
-  document.documentElement.classList.remove('dark');
-  await renderShell();
-  await trigger();
-  const panel = document.querySelector('[role=dialog][data-mobile=true]')!;
-  expect(panel).toBeTruthy();
-  expect(panel.closest('.checkout-theme')).toBeNull();
-  expect(panel.previousElementSibling?.closest('.checkout-theme')).toBeNull();
-});
+  it(`${theme}: the checkout Orders dialog and its blurred backdrop take the app theme`, async () => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    await act(async () => root.render(createElement(CheckoutBackendProvider, {
+      backend: createFixtureBackend(),
+    } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { orderId: null, onOrderChange: () => {}, onPaid: () => {} }))));
+    await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Orders')!.click());
+    const content = document.querySelector('[role=dialog]')!;
+    const overlay = content.previousElementSibling!;
+    expect(overlay.className).toContain('backdrop-blur');
+    const html = theme === 'dark' ? document.documentElement : null;
+    expect(content.closest('.dark')).toBe(html);
+    expect(overlay.closest('.dark')).toBe(html);
+    expect(document.body.querySelector('.dark, .checkout-theme')).toBeNull();
+  });
+}

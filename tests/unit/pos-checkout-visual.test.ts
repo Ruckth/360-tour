@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Id } from "convex/_generated/dataModel";
 import { act, createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -184,13 +186,130 @@ describe("checkout order rows", () => {
   });
 });
 
+const buttonText = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text);
+
+/** The layers checkout portals out of its screen, and how staff open each one. */
+const LAYERS: Record<string, () => Promise<void>> = {
+  Orders: () => click(buttonText("Orders")),
+  Customer: () => click(document.querySelector('[aria-label="Add customer"]')),
+  "Add booking": () => click(buttonText("Add booking")),
+  Filters: () => click(document.querySelector('[aria-label^="Filters"]')),
+  "Custom item": async () => {
+    await click(tab("Extras"));
+    await click(buttonText("Custom item"));
+  },
+  "Order sheet": () => click(document.querySelector('[aria-label$="open the order"]')),
+};
+
 describe("checkout theme", () => {
-  it("wears its own dark theme on the screen and on the layers it opens", async () => {
+  afterEach(() => document.documentElement.classList.remove("dark"));
+
+  // The app theme lives on <html> (see src/lib/theme.ts); checkout adds none of its own.
+  for (const theme of ["light", "dark"] as const) {
+    for (const [name, open] of Object.entries(LAYERS)) {
+      it(`${theme}: the ${name} layer and its backdrop take the app theme, with touch sizes`, async () => {
+        document.documentElement.classList.toggle("dark", theme === "dark");
+        await show(createFixtureBackend());
+        await open();
+        const content = [...document.querySelectorAll('[role="dialog"]')].at(-1)!;
+        expect(content, name).toBeTruthy();
+        const overlay = content.previousElementSibling!;
+        expect(overlay.className).toContain("bg-background/80");
+        expect(content.className).toContain("pointer-coarse:[&_button]:min-h-11");
+        // No checkout-only palette, and nothing below <html> forces a theme.
+        expect(document.querySelector(".checkout-theme")).toBeNull();
+        expect(document.body.querySelector(".dark")).toBeNull();
+        const html = theme === "dark" ? document.documentElement : null;
+        expect(content.closest(".dark")).toBe(html);
+        expect(overlay.closest(".dark")).toBe(html);
+      });
+    }
+  }
+
+  it("keeps checkout's source free of its own palette and forced colour scheme", () => {
+    const dir = join(process.cwd(), "src/components/checkout");
+    const files = readdirSync(dir).filter((file) => /\.tsx?$/.test(file));
+    expect(files.length).toBeGreaterThan(5);
+    for (const file of files) {
+      const source = readFileSync(join(dir, file), "utf8");
+      expect(source, file).not.toMatch(/checkout-theme|color-scheme|oklch\(|radial-gradient|CHECKOUT_THEME/);
+      // A literal "dark" class (not a dark: variant) would force the dark theme on a subtree.
+      expect(source, file).not.toMatch(/["'`](?:[^"'`\n]*\s)?dark(?:\s[^"'`\n]*)?["'`]/);
+    }
+  });
+
+  it("lays the villa photo under a wash of the theme's own background", async () => {
     await show(createFixtureBackend());
-    expect(document.querySelector(".checkout-theme.dark")).toBeTruthy();
-    await click([...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "Orders"));
-    const dialog = document.querySelector('[role="dialog"]')!;
-    expect(dialog.classList.contains("checkout-theme")).toBe(true);
-    expect(dialog.classList.contains("dark")).toBe(true);
+    const backdrop = document.querySelector("[data-checkout-backdrop]")!;
+    expect(backdrop.getAttribute("aria-hidden")).toBe("true");
+    expect(backdrop.querySelector("img")?.getAttribute("src")).toBe("/pool-villa-veranda-view.webp");
+    const wash = backdrop.lastElementChild!;
+    expect(wash.className).toMatch(/\bfrom-background\b/);
+    expect(wash.className).toMatch(/\bto-background\/\d+/);
+  });
+});
+
+/**
+ * Whether an element shows at a width, from its own and its ancestors' Tailwind display classes:
+ * "phone" is below `sm`, "desktop" is `lg` and up (where the order panel sits beside the catalog).
+ */
+function shownAt(el: Element, width: "phone" | "desktop") {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    const classes = [...node.classList];
+    if (classes.includes("sr-only") || node.hasAttribute("hidden")) return false;
+    if (width === "phone" && classes.includes("hidden")) return false;
+    if (width === "desktop") {
+      if (classes.includes("lg:hidden")) return false;
+      if (classes.includes("hidden") && !classes.some((c) => /^(sm|md|lg):(flex|block|grid|inline|inline-flex)$/.test(c))) return false;
+    }
+  }
+  return true;
+}
+/** Visible elements whose own text is exactly `text`. */
+const shownText = (text: string, width: "phone" | "desktop", scope: ParentNode = document.body) =>
+  [...scope.querySelectorAll("*")].filter((el) => el.children.length === 0 && el.textContent?.trim() === text && shownAt(el, width));
+
+describe("checkout order title", () => {
+  it("names the order once on desktop, in the order panel, keeping the strip's context and actions", async () => {
+    await show(createFixtureBackend());
+    await click(tab("Spa"));
+    await click(tile("Thai massage 60"));
+    await settle();
+
+    const titles = shownText("Order #1043", "desktop");
+    expect(titles).toHaveLength(1);
+    expect(titles[0].closest('aside[aria-label="Order"]')).toBeTruthy();
+    expect(titles[0].getAttribute("data-testid")).toBe("order-panel-title");
+    // The strip's title is still in the page for narrow screens, just not on desktop.
+    expect(shownAt(document.querySelector('[data-testid="order-title"]')!, "desktop")).toBe(false);
+    // Booking context, customer, Orders and New order stay in the strip on desktop.
+    expect(shownText("No booking", "desktop")).toHaveLength(1);
+    expect(shownAt(document.querySelector('[aria-label="Add customer"]')!, "desktop")).toBe(true);
+    expect(shownAt(buttonText("Orders")!, "desktop")).toBe(true);
+    const newOrder = document.querySelector<HTMLButtonElement>('[aria-label="New order"]')!;
+    expect(shownAt(newOrder, "desktop")).toBe(true);
+    expect(newOrder.disabled).toBe(false);
+    expect(shownText("New order", "desktop")).toHaveLength(1);
+  });
+
+  it("keeps the strip's title on phones, where the order panel lives in the sheet", async () => {
+    await show(createFixtureBackend());
+    await click(tab("Spa"));
+    await click(tile("Thai massage 60"));
+    await settle();
+
+    // Sheet closed: the strip names the order; the desktop panel is hidden.
+    const titles = shownText("Order #1043", "phone");
+    expect(titles).toHaveLength(1);
+    expect(titles[0].getAttribute("data-testid")).toBe("order-title");
+    expect(shownAt(order(), "phone")).toBe(false);
+
+    // Sheet open: it is named by the order and shows the panel's own heading.
+    await click(document.querySelector('[aria-label$="open the order"]'));
+    const sheet = [...document.querySelectorAll('[role="dialog"]')].at(-1)!;
+    expect(document.getElementById(sheet.getAttribute("aria-labelledby")!)?.textContent).toBe("Order #1043");
+    const heading = shownText("Order #1043", "phone", sheet);
+    expect(heading).toHaveLength(1);
+    expect(heading[0].tagName).toBe("H2");
   });
 });

@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-export function AdminSidebar({ userEmail, mobileThemeClassName }: { userEmail?: string; mobileThemeClassName?: string }) {
+export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const tab = useSearchParams().get("tab");
   const router = useRouter();
@@ -80,7 +80,7 @@ export function AdminSidebar({ userEmail, mobileThemeClassName }: { userEmail?: 
   }, [focusSearch]);
 
   return (
-    <Sidebar variant="inset" collapsible="icon" mobileThemeClassName={mobileThemeClassName}>
+    <Sidebar variant="inset" collapsible="icon">
       <SidebarHeader className="gap-2 p-3">
         <div className="flex h-12 items-center gap-3 rounded-lg px-1 group-data-[collapsible=icon]:justify-center">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">

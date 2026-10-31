@@ -76,7 +76,7 @@ export function OrderPanel({
             <ReceiptText className="size-[18px]" strokeWidth={1.5} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-serif text-2xl leading-tight font-semibold lining-nums [overflow-wrap:anywhere]">{title}</h2>
+            <h2 className="font-serif text-2xl leading-tight font-semibold lining-nums [overflow-wrap:anywhere]" data-testid="order-panel-title">{title}</h2>
             <p className="truncate text-sm text-muted-foreground">
               {itemCount} {itemCount === 1 ? "item" : "items"}
               {view?.customer ? ` · ${view.customer.name}` : ""}

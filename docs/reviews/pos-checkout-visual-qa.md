@@ -1,5 +1,7 @@
 # Resort checkout visual QA
 
+> Historical visual-redesign report. The latest [shared-palette QA](pos-checkout-shared-palette-qa.md) supersedes the green-black/forced-dark styling below and records the single desktop order title, new evidence and completed two-tab UI check.
+
 31 October 2026. Visual redesign on PR #29, rebased onto main `ceb8654`. The earlier [order-model QA](pos-orders-qa.md) remains the record of migration and booking/deposit settlement acceptance. This report covers the redesign and its final integration checks. No merge has been performed.
 
 ## Result

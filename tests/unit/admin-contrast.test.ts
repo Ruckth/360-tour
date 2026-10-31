@@ -52,9 +52,7 @@ function vars(css: string) {
   return Object.fromEntries([...css.matchAll(/--([\w-]+):\s*(oklch\([^)]*\))/g)].map(([, name, value]) => [name, parseOklch(value)]));
 }
 
-const dark = vars(block(".dark"));
-// Checkout's scoped theme always sits on .dark, so it is checked like dark mode with its own tokens.
-const themes = { light: vars(block(":root")), dark, checkout: { ...dark, ...vars(block(".checkout-theme")) } };
+const themes = { light: vars(block(":root")), dark: vars(block(".dark")) };
 const palette = vars(tailwindCss);
 type Theme = keyof typeof themes;
 
@@ -68,7 +66,7 @@ function token(theme: Theme, name: string) {
 function toneColor(classes: string, prefix: "bg" | "text", theme: Theme) {
   const parts = classes.split(/\s+/);
   const pick =
-    (theme !== "light" ? parts.find((c) => c.startsWith(`dark:${prefix}-`)) : undefined) ??
+    (theme === "dark" ? parts.find((c) => c.startsWith(`dark:${prefix}-`)) : undefined) ??
     parts.find((c) => c.startsWith(`${prefix}-`));
   if (!pick) throw new Error(`No ${prefix} colour in "${classes}"`);
   const [name, alpha] = pick.replace(/^dark:/, "").slice(prefix.length + 1).split("/");
@@ -77,8 +75,19 @@ function toneColor(classes: string, prefix: "bg" | "text", theme: Theme) {
   return { color, alpha: alpha ? Number(alpha) / 100 : 1 };
 }
 
+describe("one app palette", () => {
+  it("defines colour tokens only in :root (light) and .dark, so no page carries its own palette", () => {
+    // Every rule that sets a palette token, by selector, outside @theme (which only maps tokens to utilities).
+    const rules = [...appCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, , body]) => /--(background|foreground|card|primary|border|gold)\s*:/.test(body))
+      .map(([, selector]) => selector.replace(/\/\*[\s\S]*?\*\//g, "").split(";").at(-1)!.trim());
+    expect(rules).toEqual([":root", ".dark"]);
+    expect(appCss).not.toMatch(/checkout-theme|color-scheme:\s*dark/);
+  });
+});
+
 describe("theme token contrast (WCAG AA)", () => {
-  for (const theme of ["light", "dark", "checkout"] as const) {
+  for (const theme of ["light", "dark"] as const) {
     const t = (name: string) => token(theme, name);
 
     it(`${theme}: text tokens are ≥4.5:1 on background, card and muted`, () => {
