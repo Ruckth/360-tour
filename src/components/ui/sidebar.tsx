@@ -175,6 +175,8 @@ const Sidebar = React.forwardRef<
     side?: "left" | "right"
     variant?: "sidebar" | "floating" | "inset"
     collapsible?: "offcanvas" | "icon" | "none"
+    /** Theme classes carried through the mobile sheet and its overlay. */
+    mobileThemeClassName?: string
   }
 >(
   (
@@ -182,6 +184,7 @@ const Sidebar = React.forwardRef<
       side = "left",
       variant = "sidebar",
       collapsible = "offcanvas",
+      mobileThemeClassName,
       className,
       children,
       ...props
@@ -212,7 +215,8 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-(--sidebar-width) gap-0 bg-sidebar p-0 text-sidebar-foreground"
+            className={cn("w-(--sidebar-width) gap-0 bg-sidebar p-0 text-sidebar-foreground", mobileThemeClassName)}
+            overlayClassName={mobileThemeClassName}
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,

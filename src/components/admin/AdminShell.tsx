@@ -3,10 +3,11 @@
 import { SignInButton, useUser } from "@clerk/nextjs";
 import { Shield } from "lucide-react";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { adminNavItem } from "@/components/admin/admin-routes";
+import { CHECKOUT_THEME } from "@/components/checkout/checkout-ui";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -93,13 +94,20 @@ export function AdminShell({ children }: { children: ReactNode }) {
 function AdminFrame({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
   const pathname = usePathname();
   // The chat inbox and checkout fill the viewport and scroll their panes; other views scroll the page.
-  const fitsViewport = pathname.startsWith("/admin/chats") || pathname.startsWith("/admin/checkout");
+  const checkout = pathname.startsWith("/admin/checkout");
+  const fitsViewport = pathname.startsWith("/admin/chats") || checkout;
+  // Checkout opens with the sidebar as an icon rail, leaving room for the catalog and order. Opening
+  // it there (trigger, ⌘B, search) is kept while on checkout; other pages keep their own state.
+  const [open, setOpen] = useState(true);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   return (
     <SidebarProvider
-      className={cn("bg-background", fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen")}
+      open={checkout ? checkoutOpen : open}
+      onOpenChange={checkout ? setCheckoutOpen : setOpen}
+      className={cn("bg-background", fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen", checkout && CHECKOUT_THEME)}
     >
-      <AdminSidebar userEmail={userEmail} />
+      <AdminSidebar userEmail={userEmail} mobileThemeClassName={checkout ? CHECKOUT_THEME : undefined} />
       <SidebarInset className="min-h-0 min-w-0">
         <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
           <SidebarTrigger className="-ml-1" />

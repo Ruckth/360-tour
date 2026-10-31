@@ -52,7 +52,9 @@ function vars(css: string) {
   return Object.fromEntries([...css.matchAll(/--([\w-]+):\s*(oklch\([^)]*\))/g)].map(([, name, value]) => [name, parseOklch(value)]));
 }
 
-const themes = { light: vars(block(":root")), dark: vars(block(".dark")) };
+const dark = vars(block(".dark"));
+// Checkout's scoped theme always sits on .dark, so it is checked like dark mode with its own tokens.
+const themes = { light: vars(block(":root")), dark, checkout: { ...dark, ...vars(block(".checkout-theme")) } };
 const palette = vars(tailwindCss);
 type Theme = keyof typeof themes;
 
@@ -66,7 +68,7 @@ function token(theme: Theme, name: string) {
 function toneColor(classes: string, prefix: "bg" | "text", theme: Theme) {
   const parts = classes.split(/\s+/);
   const pick =
-    (theme === "dark" ? parts.find((c) => c.startsWith(`dark:${prefix}-`)) : undefined) ??
+    (theme !== "light" ? parts.find((c) => c.startsWith(`dark:${prefix}-`)) : undefined) ??
     parts.find((c) => c.startsWith(`${prefix}-`));
   if (!pick) throw new Error(`No ${prefix} colour in "${classes}"`);
   const [name, alpha] = pick.replace(/^dark:/, "").slice(prefix.length + 1).split("/");
@@ -76,7 +78,7 @@ function toneColor(classes: string, prefix: "bg" | "text", theme: Theme) {
 }
 
 describe("theme token contrast (WCAG AA)", () => {
-  for (const theme of ["light", "dark"] as const) {
+  for (const theme of ["light", "dark", "checkout"] as const) {
     const t = (name: string) => token(theme, name);
 
     it(`${theme}: text tokens are ≥4.5:1 on background, card and muted`, () => {

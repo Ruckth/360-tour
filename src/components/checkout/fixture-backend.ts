@@ -33,7 +33,7 @@ type Order = Doc<"bills">;
 type Line = Doc<"billLines">;
 type LineFields = Omit<Line, "_id" | "_creationTime" | "billId" | "createdAt">;
 type Guest = { name: string; phone?: string; email?: string };
-type FixtureBooking = { id: Id<"bookings">; guest: Guest; name: string; detail: string; reference: string; price: number; deposit: number; paid: boolean; checkoutInProgress?: boolean };
+type FixtureBooking = { id: Id<"bookings">; propertyId?: Id<"properties">; guest: Guest; name: string; detail: string; reference: string; price: number; deposit: number; paid: boolean; checkoutInProgress?: boolean };
 type FixtureAppointment = Omit<FixtureBooking, "id"> & { appointmentId: Id<"serviceAppointments">; bookingId?: Id<"bookings">; serviceId: Id<"services">; staffId: Id<"staff">; start: number };
 type Source = { bookingId?: Id<"bookings">; appointmentId?: Id<"serviceAppointments"> };
 
@@ -43,27 +43,32 @@ const serviceId = (n: number) => fid<"services">("svc", n);
 const propertyId = (n: number) => fid<"properties">("villa", n);
 
 const STAFF = ["Nok", "Ploy", "Mali", "Dao"].map((name, i) => ({ _id: staffId(i + 1), name, color: ["#0f766e", "#b45309", "#7c3aed", "#be123c"][i] }));
-const SERVICES = [
+// Photos are the repo's own images in /public. Like a real catalog, some services have none; one
+// points at a missing file, so the preview also shows the fallback for a photo that fails to load.
+const SERVICES: [string, string, number, number, number[], string, string?][] = [
   ["Thai massage 60", "Massage", 60, 1200, [1, 2, 3], "Traditional stretching and acupressure."],
   ["Thai massage 90", "Massage", 90, 1600, [1, 2], "The full-length traditional massage."],
   ["Aroma oil massage 90", "Massage", 90, 1800, [2, 3], "Warm oil with lemongrass or jasmine."],
   ["Four-hand massage 60", "Massage", 60, 2800, [1, 2, 3, 4], "Two therapists in sync."],
   ["Hot stone 60", "Body", 60, 1500, [3, 4], "Basalt stones and slow strokes."],
-  ["Coconut body scrub 45", "Body", 45, 1100, [4], "Fresh coconut and sea salt."],
+  ["Coconut body scrub 45", "Body", 45, 1100, [4], "Fresh coconut and sea salt.", "/experiences/coconut-scrub-missing.jpg"],
   ["Foot spa 45", "Feet & hands", 45, 600, [1, 2, 3, 4], "Soak, scrub and foot massage."],
   ["Reflexology 60", "Feet & hands", 60, 900, [1, 4], "Pressure-point foot massage."],
-] as const;
+  ["Herbal flower bath 30", "Body", 30, 900, [3, 4], "Open-air tub with frangipani and lemongrass.", "/pool-villa-spa-bathroom.webp"],
+  ["Sunrise yoga by the pool 60", "Wellness", 60, 1400, [2, 3], "Private session on the pool deck.", "/experiences/wellness-yoga.png"],
+];
 
 const CATALOG: Catalog = {
-  services: SERVICES.map(([name, category, durationMin, price, staff, description], i) => ({
-    _id: serviceId(i + 1), name, category, description, durationMin, price, currency: "THB", staffIds: staff.map(staffId),
+  services: SERVICES.map(([name, category, durationMin, price, staff, description, imageUrl], i) => ({
+    _id: serviceId(i + 1), name, category, description, durationMin, price, currency: "THB", staffIds: staff.map(staffId), imageUrl,
   })),
-  rooms: [
-    ["Lagoon Pool Villa", "Private pool on the lagoon", 12000, 6],
-    ["Garden Villa", "Two bedrooms in the garden", 8500, 4],
-    ["Sunrise Suite", "Sea-view suite", 6200, 2],
-  ].map(([name, tagline, price, maxGuests], i) => ({
-    _id: propertyId(i + 1), name: name as string, tagline: tagline as string, price: price as number, currency: "THB", maxGuests: maxGuests as number,
+  // As convex/pos.ts: a villa's first image. The suite has none yet.
+  rooms: ([
+    ["Lagoon Pool Villa", "Private pool on the lagoon", 12000, 6, "/pool-villa-veranda-view.webp"],
+    ["Garden Villa", "Two bedrooms in the garden", 8500, 4, "/garden-image.webp"],
+    ["Sunrise Suite", "Sea-view suite", 6200, 2, undefined],
+  ] as const).map(([name, tagline, price, maxGuests, imageUrl], i) => ({
+    _id: propertyId(i + 1), name, tagline, price, currency: "THB", maxGuests, imageUrl,
   })),
   extras: [
     { name: "Airport transfer", price: 1200, category: "Transport" },
@@ -73,7 +78,7 @@ const CATALOG: Catalog = {
     { name: "Laundry bag", price: 300, category: "Stay" },
   ],
   staff: STAFF,
-  frequent: [`service:${serviceId(1)}`, `service:${serviceId(7)}`, "extra:Breakfast basket", `room:${propertyId(2)}`, `service:${serviceId(5)}`],
+  frequent: [`service:${serviceId(1)}`, `service:${serviceId(7)}`, `service:${serviceId(10)}`, "extra:Breakfast basket", `room:${propertyId(2)}`, `service:${serviceId(5)}`],
 };
 
 const ANNA: Guest = { name: "Anna Schmidt", phone: "+49 151 2345 6789", email: "anna@example.com" };
@@ -92,8 +97,8 @@ function createState() {
   const now = Date.now();
   const bookings: FixtureBooking[] = [
     // Deposit taken online by Stripe; the rest is paid at checkout.
-    { id: fid("bkg", 1), guest: ANNA, name: "Stay · Lagoon Pool Villa", detail: "3 nights · CONF-2026-A1B2C3", reference: "CONF-2026-A1B2C3", price: 36000, deposit: 10000, paid: false },
-    { id: fid("bkg", 2), guest: MIA, name: "Stay · Sunrise Suite", detail: "1 night · CONF-2026-MIA", reference: "CONF-2026-MIA", price: 6200, deposit: 0, paid: false, checkoutInProgress: true },
+    { id: fid("bkg", 1), propertyId: propertyId(1), guest: ANNA, name: "Stay · Lagoon Pool Villa", detail: "3 nights · CONF-2026-A1B2C3", reference: "CONF-2026-A1B2C3", price: 36000, deposit: 10000, paid: false },
+    { id: fid("bkg", 2), propertyId: propertyId(3), guest: MIA, name: "Stay · Sunrise Suite", detail: "1 night · CONF-2026-MIA", reference: "CONF-2026-MIA", price: 6200, deposit: 0, paid: false, checkoutInProgress: true },
   ];
   const appointments: FixtureAppointment[] = [
     { appointmentId: fid("appt", 1), bookingId: fid("bkg", 1), guest: ANNA, serviceId: serviceId(5), staffId: staffId(3), start: todayAt(16), name: "Hot stone 60", detail: "", reference: "SVC-0001", price: 1500, deposit: 0, paid: false },
@@ -484,6 +489,7 @@ export function createFixtureBackend(): CheckoutBackend {
       lines: lines.map((line) => ({
         ...line,
         net: lineNet(line),
+        imageUrl: linePhoto(line),
         staffName: line.staffId ? (isOpen(order) ? undefined : line.staffName) ?? STAFF.find((s) => s._id === line.staffId)?.name : undefined,
         sourceIssue: isOpen(order) && sourceOf(line)?.paid && (line.bookingId || line.appointmentId)
           ? { kind: "settled" as const, message: "This was paid since it was added. Remove it from the order." }
@@ -493,6 +499,12 @@ export function createFixtureBackend(): CheckoutBackend {
       audit: state.audit.filter((a) => a.billId === orderId).reverse(),
       totals: billTotals(lines),
     };
+  };
+  /** As linePhoto in convex/pos.ts: the service's, room's or booked villa's photo, looked up, never stored. */
+  const linePhoto = (line: Line) => {
+    if (line.serviceId) return CATALOG.services.find((s) => s._id === line.serviceId)?.imageUrl;
+    const property = line.propertyId ?? state.bookings.find((b) => b.id === line.bookingId)?.propertyId;
+    return CATALOG.rooms.find((r) => r._id === property)?.imageUrl;
   };
   const orderRow = (order: Order): OrderRow => {
     const refs = sourceRefs(order);

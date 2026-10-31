@@ -18,6 +18,13 @@ export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; 
 export const TOUCH_TARGETS =
   "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_[role=option]]:min-h-11";
 
+/**
+ * Checkout's dark resort theme (`.checkout-theme` in app.css). Set on the checkout screen and on
+ * each layer it portals (dialogs, sheets, menus), which don't inherit it. With TOUCH_TARGETS.
+ */
+export const CHECKOUT_THEME = "dark checkout-theme";
+export const CHECKOUT_LAYER = `${TOUCH_TARGETS} ${CHECKOUT_THEME}`;
+
 /** Money typed at the till (or set by a shortcut): digits, one decimal point, two decimals, and at most `max`. */
 export function amountInput(value: string, max = MAX_BILL) {
   const [whole, ...rest] = value.replace(/[^\d.]/g, "").split(".");

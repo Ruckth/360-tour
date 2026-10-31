@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { CheckoutBackendProvider, type OrderId } from "./backend";
+import { CHECKOUT_THEME } from "./checkout-ui";
 import { CheckoutView } from "./CheckoutView";
 import { createFixtureBackend } from "./fixture-backend";
 import { ReceiptView } from "./ReceiptView";
@@ -14,7 +16,8 @@ export function CheckoutPreview() {
 
   return (
     <CheckoutBackendProvider backend={backend}>
-      <div className="flex h-dvh flex-col bg-background text-foreground">
+      {/* Checkout wears its own dark theme, as under the admin shell; the receipt keeps the app's. */}
+      <div className={cn("flex h-dvh flex-col bg-background text-foreground", !receiptId && CHECKOUT_THEME)}>
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 text-sm print:hidden">
           <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Preview · sample data</span>
           <span className="font-semibold">{receiptId ? "Receipt" : "Checkout"}</span>

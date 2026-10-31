@@ -799,6 +799,31 @@ describe('order rows', () => {
 		expect((await order(orderId)).lines[0].qty).toBe(1);
 	});
 
+	it('shows catalog photos beside items without copying them onto the rows', async () => {
+		const { t, admin, serviceId, propertyId, bookingId, order } = await setup();
+		await t.run(async (ctx) => {
+			await ctx.db.patch(serviceId, { imageUrl: 'https://example.com/massage.jpg' });
+			await ctx.db.patch(propertyId, { images: ['/pool-villa-pool.webp', '/pool-villa-living.webp'] });
+		});
+		const catalog = await admin.query(api.pos.catalog, {});
+		expect(catalog.services[0].imageUrl).toBe('https://example.com/massage.jpg');
+		expect(catalog.rooms[0].imageUrl).toBe('/pool-villa-pool.webp');
+
+		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'room', propertyId } });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Water', price: 50 } });
+		const photos = (await order(orderId)).lines.map((line) => [line.kind, line.imageUrl]);
+		expect(photos).toEqual([['booking', '/pool-villa-pool.webp'], ['service', 'https://example.com/massage.jpg'], ['room', '/pool-villa-pool.webp'], ['extra', undefined]]);
+		// The rows themselves stay as added: the photo is looked up, never stored.
+		const stored = await t.run((ctx) => ctx.db.query('billLines').collect());
+		expect(stored.some((line) => 'imageUrl' in line)).toBe(false);
+
+		// A removed photo just falls back; nothing about the order changes.
+		await t.run((ctx) => ctx.db.patch(serviceId, { imageUrl: undefined }));
+		expect((await order(orderId)).lines.find((line) => line.kind === 'service')?.imageUrl).toBeUndefined();
+	});
+
 	it('only sells and charges THB prices (C4-01)', async () => {
 		const { t, admin, nok, propertyId, order } = await setup();
 		const usd = await admin.mutation(api.adminServices.createService, {
