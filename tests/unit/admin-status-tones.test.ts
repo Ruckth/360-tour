@@ -62,7 +62,9 @@ describe("admin labels", () => {
     expect(paymentLabel("failed")).toBe("Payment failed");
     expect(formatMoney(12000, "THB")).toBe("฿12,000");
     expect(formatMoney(-500, "THB")).toBe("-฿500");
-    expect(formatMoney(99.5, "USD")).toBe("$99.5");
+    expect(formatMoney(99.5, "USD")).toBe("$99.50");
+    expect(formatMoney(2594.5)).toBe("฿2,594.50");
+    expect(formatMoney(-0.001)).toBe("฿0");
     expect(formatMoney(1500, "SGD")).toBe("SGD 1,500");
   });
 });

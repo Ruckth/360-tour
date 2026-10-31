@@ -4,6 +4,7 @@ import { nightsBetween, todayIso } from './dates';
 import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from './validation';
 import { calculateDirectQuote } from './pricing';
 import { assertNoBookingOverlap, findBlockingNight, STAY_BLOCKED_ERROR } from './stayOverlap';
+import { ensureLinkedOrder } from './orderLinks';
 
 export type BookingSource = 'web' | 'whatsapp' | 'messenger' | 'line' | 'instagram' | 'admin';
 
@@ -20,6 +21,8 @@ export type BookingInput = StayInput & {
 	guestPhone: string;
 	source: BookingSource;
 	chatSessionId?: Id<'chatSessions'>;
+	/** Who created it (an admin's email), recorded on its order. Defaults to the channel. */
+	actor?: string;
 };
 
 export async function loadProperty(
@@ -145,6 +148,8 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		status: 'pending',
 		createdAt: Date.now()
 	});
+	// Every booking has its order from the start, empty until staff open it at checkout.
+	await ensureLinkedOrder(ctx, { bookingId }, input.actor ?? `system:${input.source}`);
 
 	return { bookingId, accessToken };
 }

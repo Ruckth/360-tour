@@ -19,6 +19,7 @@ function handleRequest(request: NextRequest) {
   if (
     pathname.startsWith("/api") ||
     pathname.startsWith("/admin") ||
+    pathname.startsWith("/dev/") ||
     pathname.startsWith("/__clerk") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up")

@@ -1,4 +1,4 @@
-import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, Settings, type LucideIcon } from "lucide-react";
+import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
 
 /** `keywords` are extra words the sidebar search matches, e.g. the channels a page covers. */
 export type AdminNavLink = { href: string; label: string; keywords?: readonly string[] };
@@ -49,6 +49,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
       keywords: STAFF_TAB_KEYWORDS[tab],
     })),
   },
+  { href: "/admin/checkout", label: "Checkout", icon: ShoppingBag, keywords: ["POS", "pay", "orders", "receipt"] },
   { href: "/admin/questions", label: "Business facts", icon: HelpCircle, keywords: ["questions", "answers", "FAQ"] },
   { href: "/admin/properties", label: "Properties", icon: Building2, keywords: ["villas"] },
   { href: "/admin/leads", label: "Leads", icon: Mail },
@@ -66,7 +67,8 @@ function adminSection(pathname: string) {
 }
 
 export function adminNavItem(pathname: string): AdminNavItem | undefined {
-  const section = adminSection(pathname);
+  // Receipts belong to checkout.
+  const section = adminSection(pathname.replace(/^\/admin\/receipt(?=\/|$)/, "/admin/checkout"));
   return ADMIN_NAV.find((item) => adminSection(item.href) === section);
 }
 
@@ -86,6 +88,7 @@ const ADMIN_HOME = "/admin/chats";
  */
 export function adminRedirectPath(pathname: string): string | null {
   const [, , section, subpage] = pathname.split("/");
+  if (section === "receipt") return subpage ? null : ADMIN_HOME;
   if (section === "staff") {
     if (!subpage) return adminStaffTabPath("calendar");
     return isAdminStaffTab(subpage) ? null : ADMIN_HOME;

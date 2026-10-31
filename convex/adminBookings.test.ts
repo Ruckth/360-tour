@@ -567,6 +567,10 @@ describe("historical admin bookings", () => {
       status: confirmed ? "confirmed" : "pending", paymentStatus: "pending",
     });
     expect(Boolean(booking?.confirmationEmailsQueuedAt)).toBe(confirmed);
+    const order = await t.run(ctx => ctx.db.query("bills")
+      .withIndex("by_bookingId_and_status", q => q.eq("bookingId", bookingId).eq("status", "draft"))
+      .unique());
+    expect(order).toMatchObject({ bookingId, createdBy: adminEmail, hasItems: false, itemCount: 0 });
     expect(await bookedDates(t)).toBe(confirmed ? to - from : 0);
     await t.mutation(internal.crons.expirePending, {});
     expect((await t.run(ctx => ctx.db.get(bookingId)))?.status).toBe(confirmed ? "confirmed" : "pending");

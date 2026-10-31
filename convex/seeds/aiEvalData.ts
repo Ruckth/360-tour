@@ -2,7 +2,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { demoCode } from '../lib/codes';
 import { normalizeSuggestedQuestion } from '../lib/chatSuggestions';
-import { localDateTimeUtc, resortLocalParts } from '../lib/serviceSlots';
+import { appointmentLookupFields, localDateTimeUtc, resortLocalParts } from '../lib/serviceSlots';
 
 /**
  * AI-EVAL test data: services, staff, knowledge answers, curated questions, and blocked dates
@@ -143,7 +143,7 @@ export async function seedAiEvalData(ctx: MutationCtx) {
 		const id = await ctx.db.insert('serviceAppointments', {
 			serviceId: serviceIds['thai-massage'], staffId: staffIds[slot.staff], start,
 			end: start + 60 * 60_000, blockedUntil: start + 75 * 60_000,
-			guestName: `${AI_EVAL_TAG} Occupied slot`, guestPhone: OCCUPIED_PHONE, source: 'admin',
+			guestName: `${AI_EVAL_TAG} Occupied slot`, guestPhone: OCCUPIED_PHONE, guestPhoneDigits: appointmentLookupFields({ guestPhone: OCCUPIED_PHONE }).guestPhoneDigits, source: 'admin',
 			status: 'booked', paymentStatus: 'unpaid', price: 1500, currency: 'THB',
 			confirmationCode: '', accessToken: crypto.randomUUID(), createdAt: now
 		});

@@ -26,6 +26,7 @@ import { nightsBetween } from './lib/dates';
 import { readBudget } from './lib/readBudget';
 import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './lib/stayOverlap';
 import { assertValidIsoDate } from './lib/validation';
+import { assertNotOnOpenOrder, deletePlaceholderOrders, orderDeleteBlocker } from './lib/orderLinks';
 
 const SEARCH_SCAN_LIMIT = 1000;
 
@@ -301,6 +302,8 @@ export const updateBooking = mutation({
 		if (booking.status === 'cancelled') throw new Error('This booking was cancelled.');
 
 		if (args.action === 'markPaid') {
+			// Paying it here while checkout is charging it on an open order would collect it twice.
+			await assertNotOnOpenOrder(ctx, { bookingId: booking._id }, 'This stay');
 			await markBookingPaid(ctx, booking._id, 'admin');
 			return;
 		}
@@ -339,8 +342,8 @@ export const createBooking = mutation({
 		confirmed: v.optional(v.boolean())
 	},
 	handler: async (ctx, { confirmed, ...args }) => {
-		await requireAdmin(ctx);
-		const { bookingId } = await createBookingRecord(ctx, { ...args, source: 'admin' }, { allowPastCheckIn: true });
+		const admin = await requireAdmin(ctx);
+		const { bookingId } = await createBookingRecord(ctx, { ...args, source: 'admin', actor: admin.email }, { allowPastCheckIn: true });
 		await ctx.db.patch(bookingId, { confirmationCode: demoCode('CONF', bookingId as string) });
 		if (confirmed) {
 			const booking = (await ctx.db.get(bookingId))!;
@@ -440,6 +443,11 @@ function deleteBlocker(booking: Doc<'bookings'>, now: number): string | null {
 	return null;
 }
 
+/** Orders keep a reference to what they charged, so a booking with a used order is cancelled, not deleted. */
+async function orderBlocker(ctx: MutationCtx, booking: Doc<'bookings'>): Promise<string | null> {
+	return await orderDeleteBlocker(ctx, booking._id);
+}
+
 async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>) {
 	await releaseBookingDates(ctx, booking);
 	const session = booking.chatSessionId ? await ctx.db.get(booking.chatSessionId) : null;
@@ -455,6 +463,8 @@ async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>) {
 		.take(51);
 	if (appointments.length > 50) throw new Error('This booking has more than 50 service appointments. Remove some before deleting it.');
 	for (const appointment of appointments) await ctx.db.patch(appointment._id, { bookingId: undefined });
+	// The empty order created with the booking goes with it (orderBlocker refused any used order).
+	await deletePlaceholderOrders(ctx, booking._id);
 	await ctx.db.delete(booking._id);
 }
 
@@ -467,6 +477,8 @@ export const deleteBooking = mutation({
 		if (!booking) throw new Error('Booking not found');
 		const blocker = deleteBlocker(booking, Date.now());
 		if (blocker) throw new Error(blocker);
+		const orderBlock = await orderBlocker(ctx, booking);
+		if (orderBlock) throw new Error(orderBlock);
 		await deleteBookingRecord(ctx, booking);
 	}
 });
@@ -513,7 +525,7 @@ export const deleteBookings = mutation({
 		const skipped: Array<{ bookingId: Id<'bookings'>; reason: string }> = [];
 		for (const bookingId of new Set(args.bookingIds)) {
 			const booking = await ctx.db.get(bookingId);
-			const blocker = booking ? deleteBlocker(booking, now) : 'Booking not found';
+			const blocker = booking ? deleteBlocker(booking, now) ?? (await orderBlocker(ctx, booking)) : 'Booking not found';
 			if (!booking || blocker) {
 				skipped.push({ bookingId, reason: blocker ?? 'Booking not found' });
 				continue;
