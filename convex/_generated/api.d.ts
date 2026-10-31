@@ -39,6 +39,7 @@ import type * as lib_appointmentChanges from "../lib/appointmentChanges.js";
 import type * as lib_appointmentWindow from "../lib/appointmentWindow.js";
 import type * as lib_availabilityWrites from "../lib/availabilityWrites.js";
 import type * as lib_billMath from "../lib/billMath.js";
+import type * as lib_bookingPhone from "../lib/bookingPhone.js";
 import type * as lib_bookingWrites from "../lib/bookingWrites.js";
 import type * as lib_channelReplyWindow from "../lib/channelReplyWindow.js";
 import type * as lib_chatFallback from "../lib/chatFallback.js";
@@ -137,6 +138,7 @@ declare const fullApi: ApiFromModules<{
   "lib/appointmentWindow": typeof lib_appointmentWindow;
   "lib/availabilityWrites": typeof lib_availabilityWrites;
   "lib/billMath": typeof lib_billMath;
+  "lib/bookingPhone": typeof lib_bookingPhone;
   "lib/bookingWrites": typeof lib_bookingWrites;
   "lib/channelReplyWindow": typeof lib_channelReplyWindow;
   "lib/chatFallback": typeof lib_chatFallback;
