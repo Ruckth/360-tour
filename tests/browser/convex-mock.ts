@@ -47,6 +47,11 @@ export function useConvex() { return client; }
 export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   if (args === "skip") return undefined;
   const name = getFunctionName(query);
+  if (name === "pos:ordersForBooking") return {
+    balance: { total: 28900, paid: 28900, owed: 0 },
+    activeOrder: null,
+    orders: [],
+  };
   if (name === "adminBookings:findGuests" && params.has("returning")) return [{
     guestName: "Returning Guest", guestPhone: params.get("phone") ?? "0812345678",
     guestEmail: "returning@example.com", stays: 2, lastCheckIn: "2025-01-30",
