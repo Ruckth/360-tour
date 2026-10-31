@@ -14,7 +14,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { formatReceiptNumber } from "convex/lib/billMath";
 import { useCheckoutBackend, type Attachable, type Customer, type CustomerId, type NewCustomer, type OrderFilter, type OrderId, type OrderView } from "./backend";
-import { TOUCH_TARGETS, orderTime } from "./checkout-ui";
+import { CHECKOUT_THEME, CHECKOUT_LAYER, orderTime } from "./checkout-ui";
 import { InlineErrorBoundary } from "./ErrorBoundary";
 import type { Run } from "./useOrderWrites";
 
@@ -102,7 +102,7 @@ export function OrderStrip({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-card px-4 py-2 sm:px-6">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-3 pb-2 sm:px-6">
       <div className="min-w-0 max-w-full">
         <p className="text-sm font-semibold" data-testid="order-title">{title}</p>
         <p className="truncate text-xs text-muted-foreground">
@@ -128,7 +128,7 @@ export function OrderStrip({
             <span className="truncate">{customer ? customer.name : "Add customer"}</span>
           </Button>
         </DialogTrigger>
-        <DialogContent className={cn("max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto", TOUCH_TARGETS)}>
+        <DialogContent overlayClassName={CHECKOUT_THEME} className={cn("max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto", CHECKOUT_LAYER)}>
           {panel === "customer" ? <CustomerPicker view={view ?? null} onLink={link} onCreate={create} onUnlink={unlink} /> : null}
         </DialogContent>
       </Dialog>
@@ -139,7 +139,7 @@ export function OrderStrip({
             <Link2 aria-hidden className="size-4" /> Add booking
           </Button>
         </DialogTrigger>
-        <DialogContent className={cn("max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto", TOUCH_TARGETS)}>
+        <DialogContent overlayClassName={CHECKOUT_THEME} className={cn("max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto", CHECKOUT_LAYER)}>
           {panel === "booking" ? <AttachList orderId={order?._id ?? null} run={run} onDone={close} /> : null}
         </DialogContent>
       </Dialog>
@@ -152,7 +152,7 @@ export function OrderStrip({
               <span>Orders</span>
             </Button>
           </DialogTrigger>
-          <DialogContent className={cn("max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto", TOUCH_TARGETS)}>
+          <DialogContent overlayClassName={CHECKOUT_THEME} className={cn("max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto", CHECKOUT_LAYER)}>
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
               <DialogDescription>Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device.</DialogDescription>

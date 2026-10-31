@@ -7,7 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from 
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type CatalogItem, type OrderId } from "./backend";
 import { CatalogPane } from "./CatalogPane";
-import { TOUCH_TARGETS } from "./checkout-ui";
+import { CHECKOUT_THEME, CHECKOUT_LAYER } from "./checkout-ui";
 import { OrderPanel } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
 import { useOrderWrites } from "./useOrderWrites";
@@ -110,15 +110,20 @@ export function CheckoutView({
   const message = error || notice || (missing ? "That order doesn't exist. Start a new one." : "");
 
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col", TOUCH_TARGETS)}>
+    <div className={cn("relative isolate flex min-h-0 flex-1 flex-col bg-background", CHECKOUT_LAYER)}>
+      <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
       <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} />
       {message ? alert(message) : null}
       {saved && !message ? (
-        <p role="status" className="border-b border-border bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>
+        <p role="status" className="border-b border-border/70 bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>
       ) : null}
       <div className="flex min-h-0 flex-1">
         <CatalogPane catalog={catalog} lines={lines} onAdd={add} className="min-w-0 flex-1" />
-        <aside aria-label="Order" className="hidden w-[360px] shrink-0 border-l border-border bg-card lg:flex lg:flex-col">
+        {/* An inset panel, wider on bigger screens; the catalog's columns adapt to what is left. */}
+        <aside
+          aria-label="Order"
+          className="mt-1 mr-4 mb-4 hidden w-[380px] shrink-0 overflow-hidden rounded-2xl border border-border/80 bg-card/80 shadow-2xl shadow-black/30 backdrop-blur-xl lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px]"
+        >
           {panel()}
         </aside>
       </div>
@@ -129,16 +134,17 @@ export function CheckoutView({
           <button
             type="button"
             aria-label={`${title} · ${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the order`}
-            className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 rounded-full bg-primary px-5 py-3.5 text-primary-foreground shadow-xl lg:hidden"
+            className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex min-h-14 items-center gap-3 rounded-2xl bg-primary px-5 py-3 text-primary-foreground shadow-2xl shadow-black/40 lg:hidden"
           >
-            <ReceiptText aria-hidden className="size-5" />
-            <span className="flex-1 text-left text-sm font-semibold">
-              {count} {count === 1 ? "item" : "items"} · {formatMoney(view?.totals.due ?? 0)}
+            <ReceiptText aria-hidden className="size-5 shrink-0" />
+            <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold">
+              {count} {count === 1 ? "item" : "items"}
             </span>
-            <ChevronUp aria-hidden className="size-5" />
+            <span className="shrink-0 font-serif text-2xl leading-none font-semibold lining-nums tabular-nums">{formatMoney(view?.totals.due ?? 0)}</span>
+            <ChevronUp aria-hidden className="size-5 shrink-0" />
           </button>
         </SheetTrigger>
-        <SheetContent side="bottom" showCloseButton={false} className={cn("h-[94dvh] gap-0 rounded-t-2xl p-0 lg:hidden", TOUCH_TARGETS)}>
+        <SheetContent overlayClassName={CHECKOUT_THEME} side="bottom" showCloseButton={false} className={cn("h-[94dvh] gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden", CHECKOUT_LAYER)}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>
@@ -147,6 +153,23 @@ export function CheckoutView({
           {panel(() => setSheetOpen(false))}
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+/**
+ * The resort's own first villa photo, blurred to colour behind the panes, under a dark wash so
+ * text keeps its contrast. Purely decorative and static; without a photo, only the wash shows.
+ */
+function Backdrop({ src }: { src?: string }) {
+  const [failed, setFailed] = useState<string>();
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      {src && failed !== src ? (
+        // eslint-disable-next-line @next/next/no-img-element -- decorative, any host
+        <img src={src} alt="" decoding="async" onError={() => setFailed(src)} className="absolute inset-0 size-full scale-110 object-cover opacity-40 blur-3xl saturate-[0.6]" />
+      ) : null}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_15%,oklch(0.32_0.04_150/0.35),transparent_55%),linear-gradient(to_bottom,var(--background)_0%,color-mix(in_oklch,var(--background)_80%,transparent)_40%,color-mix(in_oklch,var(--background)_70%,transparent)_100%)]" />
     </div>
   );
 }

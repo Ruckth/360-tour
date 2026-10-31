@@ -13,15 +13,16 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
+import { CHECKOUT_THEME, CHECKOUT_LAYER, TENDER_LABELS, amountInput } from "./checkout-ui";
+import { CheckoutPhoto } from "./CheckoutPhoto";
 import { PayPanel } from "./PayPanel";
 import type { Run } from "./useOrderWrites";
 
 const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
 /**
- * The order: a compact list of rows (tap to edit inline), totals with the VAT included, and the
- * tender buttons in the fixed footer. Paying swaps the rows for the payment panel. Used beside
+ * The order: a compact list of rows with small photos (tap to edit inline; rooms and extras step
+ * their quantity in the row), totals with the VAT included, and the tender buttons in the fixed footer. Paying swaps the rows for the payment panel. Used beside
  * the catalog on wide screens and inside the bottom sheet on phones (which passes `onClose`).
  */
 export function OrderPanel({
@@ -66,12 +67,14 @@ export function OrderPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <div className="flex min-w-0 flex-1 basis-32 items-center gap-2">
-          <ReceiptText aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/70 px-4 py-3 sm:px-5 lg:py-4 [@media(max-height:32rem)]:py-2">
+        <div className="flex min-w-0 flex-1 basis-40 items-center gap-3">
+          <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted/60 text-gold-text">
+            <ReceiptText className="size-[18px]" strokeWidth={1.5} />
+          </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{title}</h2>
-            <p className="truncate text-xs text-muted-foreground">
+            <h2 className="font-serif text-2xl leading-tight font-semibold lining-nums [overflow-wrap:anywhere]">{title}</h2>
+            <p className="truncate text-sm text-muted-foreground">
               {itemCount} {itemCount === 1 ? "item" : "items"}
               {view?.customer ? ` · ${view.customer.name}` : ""}
             </p>
@@ -80,18 +83,18 @@ export function OrderPanel({
         <div className="ml-auto flex shrink-0 items-center gap-2">
         {paying ? null : (
           <>
-            <Button size="sm" variant="outline" onClick={saveAndClose} disabled={!itemCount} title="Keep this unpaid order and start a new one. Reopen it from Orders.">
+            <Button variant="outline" className="rounded-xl" onClick={saveAndClose} disabled={!itemCount} title="Keep this unpaid order and start a new one. Reopen it from Orders.">
               <Save aria-hidden className="size-3.5" /> Save &amp; close
             </Button>
             {/* A local dialog rather than useConfirm: on phones it nests in the order sheet, which a
                 dialog from outside would dismiss, and it gets the touch sizes. */}
             <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
               <DialogTrigger asChild>
-                <Button size="icon" variant="ghost" className="size-9" disabled={!orderId || !itemCount} aria-label="Clear order">
+                <Button size="icon" variant="outline" className="size-9 rounded-xl" disabled={!orderId || !itemCount} aria-label="Clear order">
                   <Trash2 aria-hidden className="size-4" />
                 </Button>
               </DialogTrigger>
-              <DialogContent role="alertdialog" showCloseButton={false} className={cn("max-w-md", TOUCH_TARGETS)}>
+              <DialogContent overlayClassName={CHECKOUT_THEME} role="alertdialog" showCloseButton={false} className={cn("max-w-md", CHECKOUT_LAYER)}>
                 <DialogHeader>
                   <DialogTitle>Clear this order?</DialogTitle>
                   <DialogDescription>Removes every item. The order keeps its number, customer and booking; price changes stay in the audit log.</DialogDescription>
@@ -122,7 +125,7 @@ export function OrderPanel({
                 <p>Tap an item to add it to the order.</p>
               </div>
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="divide-y divide-border/70 px-1">
                 {lines.map((line) => (
                   <OrderLineRow
                     key={line._id}
@@ -137,16 +140,16 @@ export function OrderPanel({
             )}
           </div>
 
-          <div className="border-t border-border px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div className="shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
             <dl className="space-y-1 text-sm">
               <TotalRow label="Subtotal" value={formatMoney(totals.subtotal)} />
               {totals.discount ? <TotalRow label="Discounts" value={formatMoney(-totals.discount)} /> : null}
               <TotalRow label="VAT 7% (included)" value={formatMoney(totals.vat)} muted />
               {totals.deposit ? <TotalRow label="Paid online (deposit)" value={formatMoney(-totals.deposit)} /> : null}
             </dl>
-            <div className="mt-2 mb-3 flex items-baseline justify-between">
-              <span className="text-sm font-semibold">Due</span>
-              <span className="text-2xl font-bold tabular-nums">{formatMoney(totals.due)}</span>
+            <div className="mt-2 mb-3 flex items-baseline justify-between gap-3 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
+              <span className="font-serif text-2xl font-semibold">Due</span>
+              <span className="font-serif text-4xl leading-none font-semibold lining-nums tabular-nums [@media(max-height:32rem)]:text-3xl" data-testid="order-due">{formatMoney(totals.due)}</span>
             </div>
             {stale ? (
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
@@ -154,19 +157,32 @@ export function OrderPanel({
               </p>
             ) : null}
             {lines.length && totals.due === 0 ? (
-              <Button className="h-12 w-full" disabled={Boolean(stale)} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
+              <Button className="h-12 w-full rounded-xl" disabled={Boolean(stale)} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
             ) : (
               <>
-                <div className="grid grid-cols-4 gap-2">
+                {/* On short screens (phone landscape) Split joins the tender row, leaving room for the items. */}
+                <div className="grid grid-cols-4 gap-2 [@media(max-height:32rem)]:grid-cols-5">
                   {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
-                    <Button key={method} className="h-12 px-1 text-xs sm:text-sm" variant={method === "cash" ? "default" : "secondary"} disabled={!lines.length || Boolean(stale)} onClick={() => setPaying(method)}>
+                    <Button
+                      key={method}
+                      className={cn("h-12 rounded-xl px-1 text-xs sm:text-sm [@media(max-height:32rem)]:h-11", method !== "cash" && "border-border bg-muted/50 hover:bg-muted")}
+                      variant={method === "cash" ? "default" : "outline"}
+                      disabled={!lines.length || Boolean(stale)}
+                      onClick={() => setPaying(method)}
+                    >
                       {TENDER_LABELS[method].short}
                     </Button>
                   ))}
+                  {/* Outlined in gold, so Cash stays the one filled action. */}
+                  <Button
+                    variant="outline"
+                    className="col-span-4 h-11 rounded-xl border-gold/60 text-gold-text hover:bg-gold/10 hover:text-gold-text [@media(max-height:32rem)]:col-span-1 [@media(max-height:32rem)]:px-1 [@media(max-height:32rem)]:text-xs"
+                    disabled={!lines.length || Boolean(stale)}
+                    onClick={() => setPaying("split")}
+                  >
+                    Split payment
+                  </Button>
                 </div>
-                <Button variant="outline" className="mt-2 w-full" disabled={!lines.length || Boolean(stale)} onClick={() => setPaying("split")}>
-                  Split payment
-                </Button>
               </>
             )}
           </div>
@@ -200,12 +216,12 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
   const listPrice = round2(line.unitPrice * line.qty);
   const issue = line.sourceIssue;
   return (
-    <li className={cn(open && "bg-muted/40", issue && "bg-amber-50/60 dark:bg-amber-400/5")}>
-      <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-h-14 w-full items-start gap-2 px-4 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
+    <li className={cn("rounded-lg", open && "bg-muted/40", issue && "bg-amber-50/60 dark:bg-amber-400/5")}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-h-14 w-full items-start gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:px-4">
+        <CheckoutPhoto src={line.imageUrl} kind={line.kind} className="size-11 sm:size-12" />
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium [overflow-wrap:anywhere]">
+          <span className="block text-sm font-semibold [overflow-wrap:anywhere]">
             {line.name}
-            {MERGES_QTY[line.kind] && line.qty > 1 ? <span className="text-muted-foreground"> ×{line.qty}</span> : null}
           </span>
           <span className="block truncate text-xs text-muted-foreground">{lineSubtitle(line)}</span>
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid online</span> : null}
@@ -215,8 +231,10 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
           <span className="block text-sm font-semibold tabular-nums">{formatMoney(line.net)}</span>
           {line.net !== listPrice ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{formatMoney(listPrice)}</span> : null}
         </span>
-        <ChevronDown aria-hidden className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground transition", open && "rotate-180")} />
+        <ChevronDown aria-hidden className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
       </button>
+      {/* Only rooms and extras have a quantity; each service or appointment is its own scheduled row. */}
+      {MERGES_QTY[line.kind] ? <QtyStepper line={line} run={run} /> : null}
       {issue ? (
         <div className="flex items-start gap-2 px-4 pb-2.5 text-xs text-amber-800 dark:text-amber-300">
           <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -230,6 +248,27 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
       ) : null}
       {open ? <LineEditor line={line} catalog={catalog} run={run} /> : null}
     </li>
+  );
+}
+
+/** A room's nights or an extra's quantity, stepped on the server so quick taps add up. Removing the row is in its editor. */
+function QtyStepper({ line, run }: { line: OrderLine; run: Run }) {
+  const actions = useCheckoutBackend().useActions();
+  const unit = line.kind === "room" ? ["night", "nights"] : ["", ""];
+  const label = line.kind === "room" ? "Nights" : "Quantity";
+  return (
+    <div role="group" aria-label={`${label} for ${line.name}`} className="-mt-1.5 flex items-center justify-end gap-1 px-3 pb-2.5 sm:px-4">
+      <Button size="icon" variant="outline" className="size-8 rounded-full" aria-label={line.kind === "room" ? "One night fewer" : "One less"} disabled={line.qty <= 1} onClick={() => run(() => actions.updateLine({ lineId: line._id, qtyChange: -1 }))}>
+        <Minus aria-hidden className="size-3.5" />
+      </Button>
+      <output aria-live="polite" className="min-w-14 text-center text-sm font-semibold tabular-nums">
+        {line.qty}
+        {unit[0] ? <span className="font-normal text-muted-foreground"> {line.qty === 1 ? unit[0] : unit[1]}</span> : null}
+      </output>
+      <Button size="icon" variant="outline" className="size-8 rounded-full" aria-label={line.kind === "room" ? "One more night" : "One more"} disabled={line.qty >= MAX_QTY} onClick={() => run(() => actions.updateLine({ lineId: line._id, qtyChange: 1 }))}>
+        <Plus aria-hidden className="size-3.5" />
+      </Button>
+    </div>
   );
 }
 
@@ -304,20 +343,6 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
             </div>
           </Field>
         </>
-      ) : null}
-
-      {MERGES_QTY[line.kind] ? (
-        <Field label={line.kind === "room" ? "Nights" : "Quantity"}>
-          <div className="flex items-center gap-3">
-            <Button size="icon" variant="outline" className="size-9" aria-label="One less" disabled={line.qty <= 1} onClick={() => run(() => actions.updateLine({ lineId, qtyChange: -1 }))}>
-              <Minus aria-hidden className="size-4" />
-            </Button>
-            <span className="w-6 text-center text-sm font-semibold tabular-nums">{line.qty}</span>
-            <Button size="icon" variant="outline" className="size-9" aria-label="One more" disabled={line.qty >= MAX_QTY} onClick={() => run(() => actions.updateLine({ lineId, qtyChange: 1 }))}>
-              <Plus aria-hidden className="size-4" />
-            </Button>
-          </div>
-        </Field>
       ) : null}
 
       {line.kind === "booking" ? (

@@ -366,6 +366,21 @@ async function remaining(ctx: ReadCtx, order: Order) {
 	return order.due ?? billTotals(await orderLines(ctx, order._id)).due;
 }
 
+/** A villa's first image, its photo in the catalog; undefined when it has none. */
+function villaPhoto(property: Doc<'properties'> | null): string | undefined {
+	return property?.images[0];
+}
+
+/**
+ * The photo shown beside an order row: its service's, its room's, or the booked villa's first image.
+ * Display only, read as the catalog is now; it is never copied onto the row or its receipt.
+ */
+async function linePhoto(ctx: ReadCtx, line: Line) {
+	if (line.serviceId) return (await ctx.db.get(line.serviceId))?.imageUrl;
+	const propertyId = line.propertyId ?? (line.bookingId ? (await ctx.db.get(line.bookingId))?.propertyId : undefined);
+	return propertyId ? villaPhoto(await ctx.db.get(propertyId)) : undefined;
+}
+
 export const catalog = query({
 	args: {},
 	handler: async (ctx) => {
@@ -384,8 +399,8 @@ export const catalog = query({
 		}
 		// Only baht prices can go on an order (see assertBaht).
 		return {
-			services: services.filter((s) => s.currency === CURRENCY).map((s) => ({ _id: s._id, name: s.name, category: s.category, description: s.description, durationMin: s.durationMin, price: s.price, currency: s.currency, staffIds: s.staffIds })),
-			rooms: properties.filter((p) => p.currency === CURRENCY).map((p) => ({ _id: p._id, name: p.name, tagline: p.tagline, price: p.pricePerNight, currency: p.currency, maxGuests: p.maxGuests })),
+			services: services.filter((s) => s.currency === CURRENCY).map((s) => ({ _id: s._id, name: s.name, category: s.category, description: s.description, durationMin: s.durationMin, price: s.price, currency: s.currency, staffIds: s.staffIds, imageUrl: s.imageUrl })),
+			rooms: properties.filter((p) => p.currency === CURRENCY).map((p) => ({ _id: p._id, name: p.name, tagline: p.tagline, price: p.pricePerNight, currency: p.currency, maxGuests: p.maxGuests, imageUrl: villaPhoto(p) })),
 			/** No extras catalog exists yet; the Extras tab offers custom items. */
 			extras: [] as Array<{ name: string; price: number; category: string }>,
 			staff: staff.map((s) => ({ _id: s._id, name: s.name, color: s.color })),
@@ -414,11 +429,15 @@ export const getOrder = query({
 			const person = await ctx.db.get(id);
 			if (person) staffNames.set(id, person.name);
 		}
+		const photos = new Map<string, Promise<string | undefined>>();
 		const rows = [];
 		for (const line of lines) {
+			const photoKey = line.serviceId ?? line.propertyId ?? line.bookingId;
+			if (photoKey && !photos.has(photoKey)) photos.set(photoKey, linePhoto(ctx, line));
 			rows.push({
 				...line,
 				net: lineNet(line),
+				imageUrl: photoKey ? await photos.get(photoKey) : undefined,
 				// A paid row keeps the name it was issued with; an open row shows the therapist's current name.
 				staffName: line.staffId ? (open ? undefined : line.staffName) ?? staffNames.get(line.staffId) ?? 'Former staff member' : undefined,
 				// History is not re-checked: a paid row stays as it was paid.

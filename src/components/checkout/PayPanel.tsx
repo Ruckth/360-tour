@@ -12,7 +12,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_TENDERS, TENDER_METHODS, round2, type Tender, type TenderMethod } from "convex/lib/billMath";
 import { newAttemptKey, useCheckoutBackend, type OrderId, type OrderView } from "./backend";
-import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
+import { CHECKOUT_LAYER, TENDER_LABELS, amountInput } from "./checkout-ui";
 
 const CASH_STEPS = [100, 500, 1000];
 
@@ -72,9 +72,9 @@ export function PayPanel({
       <button type="button" onClick={onBack} disabled={submitting} className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">
         <ArrowLeft aria-hidden className="size-4" /> Back to order
       </button>
-      <div className="rounded-xl bg-muted p-4">
+      <div className="rounded-xl border border-border/70 bg-muted/60 p-4">
         <p className="text-xs font-medium text-muted-foreground">{mode === "split" ? "Split payment" : mode === "none" ? "Nothing due" : TENDER_LABELS[mode].long} · due</p>
-        <p className="text-3xl font-bold tabular-nums">{formatMoney(due)}</p>
+        <p className="font-serif text-4xl font-semibold lining-nums tabular-nums">{formatMoney(due)}</p>
       </div>
 
       {mode === "cash" ? (
@@ -156,7 +156,7 @@ function SplitForm({ due, submitting, onPay }: { due: number; submitting: boolea
           <li key={index} className="flex items-center gap-2">
             <Select value={row.method} onValueChange={(method) => update(index, { method: method as TenderMethod })}>
               <SelectTrigger className="w-32" aria-label={`Payment ${index + 1} method`}><SelectValue /></SelectTrigger>
-              <SelectContent className={TOUCH_TARGETS}>
+              <SelectContent className={CHECKOUT_LAYER}>
                 {/* Short labels: the long ones ("PromptPay QR") truncate in the narrow trigger. */}
                 {TENDER_METHODS.map((method) => <SelectItem key={method} value={method}>{TENDER_LABELS[method].short}</SelectItem>)}
               </SelectContent>

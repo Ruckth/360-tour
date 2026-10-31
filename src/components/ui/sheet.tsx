@@ -28,16 +28,19 @@ export function SheetOverlay({
 export function SheetContent({
   side = "right",
   className,
+  overlayClassName,
   children,
   showCloseButton = true,
   ...props
 }: ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
   showCloseButton?: boolean;
+  /** Scope a caller’s theme to the sibling overlay rendered through this portal. */
+  overlayClassName?: string;
 }) {
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         className={cn(
           "fixed z-50 flex flex-col gap-4 border-border bg-card p-6 text-card-foreground shadow-2xl outline-none transition ease-out data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
