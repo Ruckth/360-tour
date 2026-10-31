@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 // Independent audit: real shell/sidebar, with only auth, transport and router boundaries mocked.
+import type { Window as HappyDOMWindow } from 'happy-dom';
 import { act, createElement, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -27,6 +28,9 @@ vi.mock('next/navigation', () => ({
 }));
 
 let root: Root;
+const initialViewport = { width: window.innerWidth, height: window.innerHeight };
+// Resize Happy DOM itself: overriding Vitest's window.innerWidth leaves matchMedia's window unchanged.
+const viewport = (width: number) => (window as unknown as HappyDOMWindow).happyDOM.setWindowSize({ width, height: 900 });
 const renderShell = () => act(async () => root.render(createElement(AdminShell, null, 'Audit content')));
 const railState = () => document.querySelector('[data-collapsible]')?.getAttribute('data-state');
 const key = (value: string) => act(async () => {
@@ -38,7 +42,7 @@ const trigger = () => act(async () => {
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   route.pathname = '/admin/checkout';
-  Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true });
+  viewport(1440);
   document.documentElement.classList.remove('dark');
   root = createRoot(document.body.appendChild(document.createElement('div')));
 });
@@ -46,6 +50,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   document.body.innerHTML = '';
   document.documentElement.classList.remove('dark');
+  (window as unknown as HappyDOMWindow).happyDOM.setWindowSize(initialViewport);
   vi.unstubAllGlobals();
 });
 
@@ -76,7 +81,7 @@ it('keeps checkout and other-route sidebar choices independent through keyboard 
 });
 
 it('opens and closes the real mobile sidebar with the shell trigger', async () => {
-  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+  viewport(390);
   await renderShell();
   await trigger();
   expect(document.querySelector('[role=dialog][data-mobile=true]')).toBeTruthy();
@@ -129,7 +134,7 @@ const mobileSidebar = () => {
 
 for (const theme of ['light', 'dark'] as const) {
   it(`${theme}: checkout's mobile sidebar and its backdrop take the app theme, exactly like other pages`, async () => {
-    Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+    viewport(390);
     document.documentElement.classList.toggle('dark', theme === 'dark');
     const html = theme === 'dark' ? document.documentElement : null;
     const classesOn = async (pathname: string) => {
