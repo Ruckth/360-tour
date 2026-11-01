@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { markBookingPaid } from './bookings';
+import { isDocumentedLiveRefund, markBookingPaid } from './bookings';
 import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomerReviewed, customerCard } from './customers';
 import { requireAdmin } from './lib/adminAuth';
 import { recordAppointmentChange } from './lib/appointmentChanges';
@@ -20,7 +20,6 @@ import {
 	billTotals,
 	bookingBalance,
 	bookingChargeTotal,
-	bookingPayable,
 	lineNet,
 	orderTitle,
 	round2
@@ -38,7 +37,7 @@ import {
 	type OrderSource
 } from './lib/orderLinks';
 import { appointmentLookupFields, resortLocalParts } from './lib/serviceSlots';
-import { appendBookingHistory, attemptKey, cleanReason, effectiveTime, stayMoney, writeBooking } from './lib/bookingMoney';
+import { appendBookingHistory, assertNoLiveCheckout, attemptKey, cleanReason, effectiveTime, stayMoney, writeBooking } from './lib/bookingMoney';
 import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
 import { MAX_STAY_ROWS, orderStayPayment, stayPaymentReversalPatch } from './lib/stayCorrections';
@@ -185,8 +184,23 @@ function bookingCheckoutBlock(booking: Doc<'bookings'>) {
 	return booking.paymentStatus !== 'paid' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now() ? ONLINE_CHECKOUT : null;
 }
 
-function bookingClosed(booking: Doc<'bookings'>) {
-	return booking.status === 'cancelled' || booking.paymentStatus === 'refunded' || booking.paymentStatus === 'failed';
+/**
+ * Why a stay can't be charged at all, or null. A live stay a provider refund marked refunded with
+ * explicit amounts (bookings.ts isDocumentedLiveRefund) stays open: it can still collect what it
+ * owes beyond the waived provider charge. A legacy refunded flag or failed payment needs a reopen.
+ */
+function bookingClosedReason(booking: Doc<'bookings'>) {
+	if (booking.status === 'cancelled') return 'This booking was cancelled';
+	if (booking.paymentStatus === 'failed') return 'This booking’s payment failed; reopen it first';
+	if (booking.paymentStatus === 'refunded' && !isDocumentedLiveRefund(booking)) return 'This booking was marked refunded without refund amounts; reopen it first';
+	return null;
+}
+
+const bookingClosed = (booking: Doc<'bookings'>) => bookingClosedReason(booking) !== null;
+
+/** Open to charges and still owing something (net of refunds and waived provider charges). */
+function bookingPayable(booking: Doc<'bookings'>) {
+	return !bookingClosed(booking) && bookingBalance(booking).owed > 0;
 }
 
 async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>) {
@@ -230,7 +244,8 @@ async function sourceIssue(ctx: ReadCtx, line: Line): Promise<SourceIssue | null
 	if (line.bookingId) {
 		const booking = await ctx.db.get(line.bookingId);
 		if (!booking) return { kind: 'gone', message: 'This booking no longer exists. Remove it from the order.' };
-		if (bookingClosed(booking)) return { kind: 'settled', message: 'This booking was cancelled. Remove it from the order.' };
+		const closed = bookingClosedReason(booking);
+		if (closed) return { kind: 'settled', message: `${closed}. Remove it from the order.` };
 		if (!bookingPayable(booking)) return { kind: 'settled', message: 'This stay was paid since it was added. Remove it from the order.' };
 		const blocked = bookingCheckoutBlock(booking);
 		if (blocked) return { kind: 'online', message: blocked };
@@ -851,7 +866,8 @@ async function openSourceOrder(ctx: MutationCtx, source: OrderSource, actor: str
 	if ('bookingId' in source) {
 		const booking = await ctx.db.get(source.bookingId);
 		if (!booking) throw new Error('Booking not found');
-		if (bookingClosed(booking)) throw new Error('This booking was cancelled, so there is nothing to charge');
+		const closed = bookingClosedReason(booking);
+		if (closed) throw new Error(`${closed}, so there is nothing to charge`);
 		// The booking's order (usually created with the booking). Opening it charges what the stay
 		// still owes, unless another open order already does (checked above).
 		const linked = await linkedOpenOrder(ctx, source);
@@ -1433,6 +1449,8 @@ export const voidUnreceivedOrder = mutation({
 			if (row.bookingId) {
 				const booking = await ctx.db.get(row.bookingId);
 				if (!booking) throw new Error(`${row.name} was deleted, so its payment can't be reversed.`);
+				// Reopening a balance under a live online checkout would make its completion unrecordable.
+				assertNoLiveCheckout(booking);
 				const payment = await orderStayPayment(ctx, order._id, booking._id);
 				if (!payment) throw new Error(LEGACY_UNPROVEN(row.name));
 				if (payment.status !== 'recorded') throw new Error(`${row.name}: this payment was already reversed.`);

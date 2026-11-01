@@ -82,3 +82,40 @@ it('requires a reason for mistaken entry cancellation and preserves the same cor
   expect(mocks.correct).toHaveBeenCalledTimes(2); expect(mocks.correct.mock.calls[1]).toEqual(mocks.correct.mock.calls[0]);
   expect(mocks.correct.mock.calls[0][0]).toMatchObject({ action: 'cancel', expectedRevision: 4, paymentId: payment._id, reason: 'No money was received' });
 });
+
+it('mounts proven legacy Not received, requires review/reason and freezes pending/lost-response retries', async () => {
+  const data = { revision: 4, legacyManualPayment: { changeId: 'legacy-change' }, money: { gross: 1200, refunded: 0, net: 1200, owed: 0 }, unitemised: 1200, payments: [], orders: [], refunds: [] };
+  mocks.query.mockReturnValue(data);
+  let reject!: (error: Error) => void;
+  mocks.correct.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; })).mockResolvedValueOnce(null);
+  await render(createElement(AppointmentFinancials, { appointment }));
+  expect(document.body.textContent).toContain('original tender and received date remain unknown');
+  await click(button('Not received…'));
+  expect(button('Cancel mistaken payment entry')?.disabled).toBe(true);
+  await type('af-reason', 'Old manual paid entry was a mistake');
+  await click(button('Cancel mistaken payment entry'));
+  expect(mocks.correct).toHaveBeenCalledOnce();
+  expect(mocks.correct.mock.calls[0][0]).toMatchObject({ appointmentId: appointment._id, expectedRevision: 4, legacyChangeId: 'legacy-change', action: 'cancel', reason: 'Old manual paid entry was a mistake' });
+  expect(mocks.correct.mock.calls[0][0]).not.toHaveProperty('paymentId');
+  expect(mocks.correct.mock.calls[0][0]).not.toHaveProperty('method');
+  expect(mocks.correct.mock.calls[0][0]).not.toHaveProperty('effectiveAt');
+  expect(button('Close')?.disabled).toBe(true);
+  await click(button('Cancel mistaken payment entry'));
+  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  expect(mocks.correct).toHaveBeenCalledOnce();
+  await act(async () => reject(new Error('Response lost after commit')));
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain('Response lost');
+  expect(document.getElementById('af-reason')?.closest('fieldset')?.disabled).toBe(true);
+  // Refreshed query data must not replace the original review or submitted attempt on retry.
+  mocks.query.mockReturnValue({ ...data, revision: 5, legacyManualPayment: null, money: { gross: 0, refunded: 0, net: 0, owed: 1200 }, unitemised: 0 });
+  await render(createElement(AppointmentFinancials, { appointment: { ...appointment, paymentStatus: 'unpaid', revision: 5 } }));
+  await click(button('Cancel mistaken payment entry'));
+  expect(mocks.correct).toHaveBeenCalledTimes(2);
+  expect(mocks.correct.mock.calls[1]).toEqual(mocks.correct.mock.calls[0]);
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+});
+it.each(['unknown', 'refunded', 'receipt', 'provider'])('does not expose manual Not received for %s money', async kind => {
+  mocks.query.mockReturnValue({ revision: 4, legacyManualPayment: null, money: { gross: 1200, refunded: kind === 'refunded' ? 100 : 0, net: 1100, owed: 0 }, unitemised: kind === 'provider' ? 0 : 1200, payments: kind === 'provider' ? [{ ...payment, method: 'provider' }] : [], orders: kind === 'receipt' ? [{ billId: 'order1', charged: 1200, refundable: 1200 }] : [], refunds: [] });
+  await render(createElement(AppointmentFinancials, { appointment }));
+  expect(button('Not received…')).toBeUndefined();
+});

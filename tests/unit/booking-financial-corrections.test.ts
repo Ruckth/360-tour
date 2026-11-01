@@ -10,12 +10,13 @@ import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { BookingFinancials } from "@/components/admin/BookingFinancials";
 import { CancelStayDialog, ReopenBookingDialog } from "@/components/admin/BookingCorrectionDialogs";
 import { BookingHistory } from "@/components/admin/BookingHistory";
-import { EditBookingDialog } from "@/components/admin/BookingSheet";
+import { BookingSheet, EditBookingDialog } from "@/components/admin/BookingSheet";
 
 type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
 type Financials = NonNullable<FunctionReturnType<typeof api.adminBookings.bookingFinancials>>;
 
 const mutations = vi.hoisted(() => ({
+  updateBooking: vi.fn(), resendBookingEmails: vi.fn(), deleteBooking: vi.fn(), updateNotes: vi.fn(),
   linkRecordedStripeRefund: vi.fn(),
   recordPayment: vi.fn(),
   recordRefund: vi.fn(),
@@ -25,7 +26,7 @@ const mutations = vi.hoisted(() => ({
   reopenBooking: vi.fn(),
   editBooking: vi.fn(),
 }));
-const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn() }));
+const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn(), getForAdmin: vi.fn() }));
 const pages = vi.hoisted(() => ({ read: vi.fn(), loadMore: vi.fn() }));
 // The edit dialog's availability months: loaded, nothing blocked. One stable client, like ConvexProvider's.
 const client = vi.hoisted(() => ({ watchQuery: () => ({ localQueryResult: () => [], onUpdate: () => () => undefined }) }));
@@ -93,6 +94,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   for (const mutation of Object.values(mutations)) mutation.mockReset().mockResolvedValue(null);
   queries.bookingFinancials.mockReset().mockReturnValue(financials);
+  queries.getForAdmin.mockReset().mockReturnValue(booking);
   pages.read.mockReset().mockReturnValue({ results: [], status: "Exhausted", loadMore: pages.loadMore });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
@@ -122,6 +124,13 @@ afterEach(async () => {
 });
 
 describe("booking payments and refunds", () => {
+  it("keeps Edit and Cancel reachable for a live fully refunded stay", async () => {
+    queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", paymentStatus: "refunded", money: { ...money, gross: 17000, refunded: 17000, net: 0, owed: 0, credit: 0, refundable: 0 } });
+    await render(createElement(BookingSheet, { bookingId: booking._id, properties: [], onClose: vi.fn() }));
+    expect(button("Edit")).toBeDefined();
+    expect(button("Cancel booking")).toBeDefined();
+    expect(button("Reopen")).toBeUndefined();
+  });
   it("shows each payment with its corrections, and no corrections for online money", async () => {
     await render(createElement(BookingFinancials, { booking }));
     const text = document.body.textContent ?? "";
@@ -153,6 +162,8 @@ describe("booking payments and refunds", () => {
     await click(confirm());
     expect(alertText()).toContain("This booking changed since you opened it");
     expect((document.getElementById("refund-reason") as HTMLTextAreaElement).value).toBe("Left a night early");
+    expect(document.getElementById("refund-reason")?.closest("fieldset")?.disabled).toBe(true);
+    await type("refund-reason", "Changed after response loss");
     await click(confirm());
     expect(mutations.recordRefund).toHaveBeenCalledTimes(2);
     const [first, retry] = mutations.recordRefund.mock.calls.map(([args]) => args);

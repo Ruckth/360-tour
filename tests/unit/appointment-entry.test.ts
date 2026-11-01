@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Id } from 'convex/_generated/dataModel';
-import { appointmentEntrySlot } from '@/components/admin/appointment-entry';
+import { appointmentEntrySlot, appointmentEntryStatus } from '@/components/admin/appointment-entry';
 
 const staffId = 'mali' as Id<'staff'>;
 const otherId = 'nok' as Id<'staff'>;
@@ -25,4 +25,11 @@ describe('appointment entry time selection', () => {
     expect(appointmentEntrySlot(slots, now + 20 * 60000, staffId, now)).toEqual(slots[1]);
     expect(appointmentEntrySlot([], now + 20 * 60000, staffId, now)).toBeUndefined();
   });
+});
+
+it('defaults only ended service work to completed, independently of turnaround', () => {
+  expect(appointmentEntryStatus(now - 65 * 60000, 60, now)).toBe('completed');
+  expect(appointmentEntryStatus(now - 60 * 60000, 60, now)).toBe('booked');
+  expect(appointmentEntryStatus(now - 30 * 60000, 60, now)).toBe('booked');
+  expect(appointmentEntryStatus(now + 60000, 60, now)).toBe('booked');
 });

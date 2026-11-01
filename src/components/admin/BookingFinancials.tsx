@@ -58,7 +58,7 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
   if (data === null) return null;
   const { money } = data;
   const cancelled = booking.status === "cancelled";
-  const canPay = !cancelled && money.owed > 0 && booking.paymentStatus !== "refunded" && booking.paymentStatus !== "failed";
+  const canPay = !cancelled && money.owed > 0 && !money.legacyRefund && booking.paymentStatus !== "failed";
   const close = (done?: string) => {
     setDialog(null);
     if (done) setNotice(done);
@@ -297,11 +297,13 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
   const recordRefund = useMutation(api.adminBookings.recordRefund);
   const { money } = data;
   const [reviewed] = useState(() => ({ revision: data.revision, key: newAttemptKey("refund") }));
+  const [attempt, setAttempt] = useState<Parameters<typeof recordRefund>[0] | null>(null);
   const targets = [
     ...data.payments.filter((p) => p.status === "recorded" && p.refundable > 0).map((p) => ({
       value: `payment:${p._id}`, label: `${formatMoney(p.amount, p.currency)} · ${PAYMENT_ORIGIN_LABELS[p.origin]}${p.order ? ` (${p.order.title})` : ""}`, left: p.refundable, stripe: p.origin === "online",
     })),
     ...data.legacyOrders.filter((o) => o.refundable > 0).map((o) => ({ value: `order:${o._id}`, label: `${o.title} (before itemised payments)`, left: o.refundable, stripe: false })),
+    ...(data.unitemisedRefundable > 0 ? [{ value: "unitemised", label: "Older unitemised payment", left: data.unitemisedRefundable, stripe: false }] : []),
   ];
   const [target, setTarget] = useState(initialTarget ?? targets[0]?.value ?? "none");
   const chosen = targets.find((t) => t.value === target);
@@ -330,18 +332,23 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
       confirmLabel="Record refund"
       keepLabel="Close"
       destructive
-      confirmDisabled={Boolean(amountProblem) || !reason.trim() || when.at === null}
+      confirmDisabled={!attempt && (Boolean(amountProblem) || !reason.trim() || when.at === null)}
       onConfirm={async () => {
-        await recordRefund({
+        const args = attempt ?? {
           bookingId: booking._id, expectedRevision: reviewed.revision, amount: amount!, currency: money.currency, method,
           reason, effectiveAt: when.at!, idempotencyKey: reviewed.key,
           ...(target.startsWith("payment:") ? { paymentId: target.slice(8) as Id<"bookingPayments"> } : {}),
           ...(target.startsWith("order:") ? { billId: target.slice(6) as Id<"bills"> } : {}),
-        });
+          ...(target === "unitemised" ? { unitemised: true } : {}),
+        };
+        setAttempt(args);
+        await recordRefund(args);
         done.saved();
       }}
       onClose={done.close}
     >
+      {attempt ? <p className="text-sm text-muted-foreground">Retry keeps the original amount, payment, reason and date. Close and reopen to review a different correction.</p> : null}
+      <fieldset disabled={Boolean(attempt)} className="grid min-w-0 gap-3 disabled:opacity-70">
       {targets.length ? (
         <div className="grid gap-2">
           <Label htmlFor="refund-from">Refund from</Label>
@@ -349,7 +356,6 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
             <SelectTrigger id="refund-from"><SelectValue /></SelectTrigger>
             <SelectContent>
               {targets.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-              <SelectItem value="none">Not tied to one payment</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -367,6 +373,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
         <Label htmlFor="refund-reason">Reason (required)</Label>
         <Textarea id="refund-reason" required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Left a night early, goodwill…" />
       </div>
+      </fieldset>
     </ChangeConfirmDialog>
   );
 }

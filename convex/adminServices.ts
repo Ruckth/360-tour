@@ -867,7 +867,7 @@ export const getAppointmentFinancials = query({
 });
 
 export const correctAppointmentPaymentEntry = mutation({
- args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), paymentId: v.id('appointmentPayments'), idempotencyKey: v.string(), action: v.union(v.literal('amend'), v.literal('cancel')), reason: v.string(), method: v.optional(manualPaymentMethod), effectiveAt: v.optional(v.number()) },
+ args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), paymentId: v.optional(v.id('appointmentPayments')), legacyChangeId: v.optional(v.id('appointmentChanges')), idempotencyKey: v.string(), action: v.union(v.literal('amend'), v.literal('cancel')), reason: v.string(), method: v.optional(manualPaymentMethod), effectiveAt: v.optional(v.number()) },
  handler: async (ctx, args) => {
   const admin = await requireAdmin(ctx);
   return await correctAppointmentPayment(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);

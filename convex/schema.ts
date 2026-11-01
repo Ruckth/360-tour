@@ -153,6 +153,13 @@ export default defineSchema({
 		stripeCheckoutAmount: v.optional(v.number()),
 		stripeCheckoutSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
+		/**
+		 * The Stripe payment taken before payments were itemised, captured (with the stay's gross at
+		 * the time) when its first itemised payment is written. Provider refunds and completion
+		 * redeliveries for it must still match this amount exactly; nothing is inferred from it.
+		 */
+		legacyStripePaymentIntentId: v.optional(v.string()),
+		legacyStripeGross: v.optional(v.number()),
 		stripeCheckoutUrl: v.optional(v.string()),
 		stripeCheckoutExpiresAt: v.optional(v.number()),
 		checkoutAttempt: v.optional(v.number()),
@@ -196,6 +203,7 @@ export default defineSchema({
 		.index('by_status_checkIn', ['status', 'checkIn'])
 		.index('by_status_checkOut', ['status', 'checkOut'])
 		.index('by_stripePaymentIntentId', ['stripePaymentIntentId'])
+		.index('by_legacyStripePaymentIntentId', ['legacyStripePaymentIntentId'])
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone'])
 		.index('by_guestPhoneDigits', ['guestPhoneDigits'])
@@ -241,6 +249,7 @@ export default defineSchema({
 
 	/** Refunds recorded on a stay. Recording one moves no money; staff give it back themselves. */
 	bookingRefunds: defineTable({
+		requestFingerprint: v.optional(v.string()),
 		bookingId: v.id('bookings'),
 		amount: v.number(),
 		currency: v.string(),
@@ -280,7 +289,7 @@ export default defineSchema({
 		cancelledAt: v.optional(v.number()), cancelledBy: v.optional(v.string()), cancelReason: v.optional(v.string())
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt']).index('by_idempotencyKey', ['idempotencyKey']),
 	appointmentPaymentCorrections: defineTable({
-		appointmentId: v.id('serviceAppointments'), paymentId: v.id('appointmentPayments'), idempotencyKey: v.string(),
+		appointmentId: v.id('serviceAppointments'), paymentId: v.optional(v.id('appointmentPayments')), legacyChangeId: v.optional(v.id('appointmentChanges')), idempotencyKey: v.string(),
 		requestFingerprint: v.string(), actor: v.string(), recordedAt: v.number(), reason: v.string()
 	}).index('by_idempotencyKey', ['idempotencyKey']),
 	appointmentRefunds: defineTable({

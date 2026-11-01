@@ -440,7 +440,7 @@ describe('payment reversal on a cancelled stay', () => {
 		const refundAt = Date.now() - 60_000;
 		await admin.mutation(api.adminBookings.cancelStay, {
 			bookingId, expectedRevision: booking.revision, reason: 'Guest left', notifyGuest: false,
-			refund: { amount: 10000, currency: 'THB', method: 'cash', reason: 'Deposit returned', idempotencyKey: 'refund-0001', effectiveAt: refundAt }
+			refund: { amount: 10000, currency: 'THB', method: 'cash', reason: 'Deposit returned', idempotencyKey: 'refund-0001', effectiveAt: refundAt, unitemised: true }
 		});
 		vi.advanceTimersByTime(3_600_000);
 		await admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-unreceived-1', reason: 'Card never went through' });

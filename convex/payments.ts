@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { action, internalMutation, mutation } from './_generated/server';
 import { internal } from './_generated/api';
-import { recordStayPayment } from './bookings';
+import { isDocumentedLiveRefund, legacyStripeCharge, recordStayPayment } from './bookings';
 import { assertBookingRevision, stayMoney, writeBooking } from './lib/bookingMoney';
 import { round2 } from './lib/billMath';
 import { requireAdmin } from './lib/adminAuth';
@@ -19,7 +19,7 @@ function checkoutBalance(booking: Booking) {
 /** Pending or confirmed stays may pay their remaining, unwaived balance online. */
 function isPayable(booking: Booking) {
   return (booking.status === 'pending' || booking.status === 'confirmed') &&
-    (booking.paymentStatus === 'pending' || booking.paymentStatus === 'paid') && checkoutBalance(booking) > 0;
+    (booking.paymentStatus === 'pending' || booking.paymentStatus === 'paid' || isDocumentedLiveRefund(booking)) && checkoutBalance(booking) > 0;
 }
 
 export const beginCheckout = internalMutation({
@@ -222,9 +222,20 @@ export const completeCheckout = internalMutation({
       if (replay.bookingId !== booking._id || Math.round(replay.amount * 100) !== args.amountTotal || replay.providerPaymentIntentId !== args.paymentIntentId) throw new Error('Checkout replay mismatch');
       return;
     }
+    // A PaymentIntent is recorded at most once, whichever session delivers it.
+    if (await ctx.db.query('bookingPayments').withIndex('by_providerPaymentIntentId', q => q.eq('providerPaymentIntentId', args.paymentIntentId)).first()) throw new Error('Checkout replay mismatch');
+    // Redelivery of a completion the pre-itemisation code already recorded: the signed event names
+    // this stay's legacy Stripe PaymentIntent (unique per payment) and its exact amount. A later
+    // checkout may have replaced the stored session, so the session id is not required to match.
+    const hasItemised = Boolean(await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', booking._id)).first());
+    const legacy = legacyStripeCharge(booking, hasItemised);
+    if (legacy && legacy.paymentIntentId === args.paymentIntentId) {
+      if (Math.round(legacy.gross * 100) !== args.amountTotal) throw new Error('Checkout replay mismatch');
+      return;
+    }
     if (booking.stripeCheckoutSessionId !== args.sessionId) throw new Error('Checkout session mismatch');
+    // checkoutBalance > 0 means no credit, so it equals stayMoney().owed, which recordStayPayment checks again.
     if (!isPayable(booking) || Math.round((booking.stripeCheckoutAmount ?? booking.total) * 100) !== args.amountTotal || Math.round(checkoutBalance(booking) * 100) !== args.amountTotal) throw new Error('Checkout amount mismatch');
-    if (stayMoney(booking).owed !== args.amountTotal / 100) throw new Error('Shared provider refund balance integration is required before collecting this extension');
     const { paymentId } = await recordStayPayment(ctx, booking._id, { origin: 'online', method: 'stripe', actor: 'system:stripe', legacyMethod: 'stripe', expectedAmount: args.amountTotal / 100, idempotencyKey: key });
     if (!paymentId) throw new Error('No checkout balance remaining');
     await ctx.db.patch(paymentId, { providerPaymentIntentId: args.paymentIntentId });
@@ -243,7 +254,9 @@ export const recordRefund = internalMutation({
     if (!args.chargeId.startsWith('ch_') || !args.eventId.startsWith('evt_') || !Number.isSafeInteger(args.eventCreated * 1000) || args.eventCreated <= 0 || args.eventCreated * 1000 > Date.now() + 5 * 60_000 ||
       !Number.isSafeInteger(args.amount) || args.amount <= 0 || !Number.isSafeInteger(args.amountRefunded) || args.amountRefunded < 0 || args.amountRefunded > args.amount) throw new Error('Invalid provider refund amount or identifiers');
     const source = await ctx.db.query('bookingPayments').withIndex('by_providerPaymentIntentId', q => q.eq('providerPaymentIntentId', args.paymentIntentId)).unique();
-    const booking = source ? await ctx.db.get(source.bookingId) : await ctx.db.query('bookings').withIndex('by_stripePaymentIntentId', q => q.eq('stripePaymentIntentId', args.paymentIntentId)).unique();
+    const booking = source ? await ctx.db.get(source.bookingId)
+      : await ctx.db.query('bookings').withIndex('by_stripePaymentIntentId', q => q.eq('stripePaymentIntentId', args.paymentIntentId)).unique()
+        ?? await ctx.db.query('bookings').withIndex('by_legacyStripePaymentIntentId', q => q.eq('legacyStripePaymentIntentId', args.paymentIntentId)).unique();
     if (!booking) throw new Error('Provider payment is not reconciled to a booking yet');
     if (booking.currency.toLowerCase() !== args.currency.toLowerCase()) throw new Error('Refund currency mismatch');
     const checkpoint = await ctx.db.query('stripeRefundCharges').withIndex('by_chargeId', q => q.eq('chargeId', args.chargeId)).unique();
@@ -256,7 +269,10 @@ export const recordRefund = internalMutation({
     const payment = payments.find(p => p.providerPaymentIntentId === args.paymentIntentId && p.origin === 'online' && p.status === 'recorded')
       ?? (booking.stripePaymentIntentId === args.paymentIntentId && legacyOnline.length === 1 ? legacyOnline[0] : undefined);
     const money = stayMoney(booking);
-    const providerGross = payment?.amount ?? (booking.paymentMethod === 'stripe' && !payments.length ? money.gross : 0);
+    // Unitemised legacy Stripe money only when provable (see legacyStripeCharge); never the stay's
+    // gross once other itemised money exists.
+    const legacy = payment ? null : legacyStripeCharge(booking, payments.length > 0);
+    const providerGross = payment?.amount ?? (legacy?.paymentIntentId === args.paymentIntentId ? legacy.gross : 0);
     if (Math.round(providerGross * 100) !== args.amount) throw new Error('Provider charge does not match recorded provider money');
     if (payment && !payment.providerPaymentIntentId) await ctx.db.patch(payment._id, { providerPaymentIntentId: args.paymentIntentId });
     // Never guess that a hand-entered refund is this provider refund because the amounts match.
@@ -289,10 +305,17 @@ export const recordRefund = internalMutation({
     });
     if (payment && (applied || linkedSourceAmount)) await ctx.db.patch(payment._id, { refunded: round2(payment.refunded + applied + linkedSourceAmount) });
     const netAfter = round2(money.net - applied);
+    // A cancelled stay with nothing left becomes refunded. A live stay keeps an ordinary money state
+    // (as reopen and payment reversal do: paid while money is held, otherwise pending), so it stays
+    // editable and can still collect any unwaived balance, such as a later extension.
+    const emptied = netAfter === 0 && money.gross > 0;
+    const statusPatch = !emptied ? {}
+      : booking.status === 'cancelled' ? { paymentStatus: 'refunded' as const, refundedAt: booking.refundedAt ?? effectiveAt }
+      : booking.paymentStatus === 'paid' ? { paymentStatus: 'pending' as const } : {};
     await writeBooking(ctx, booking, {
       amountRefunded: round2(money.refunded + applied),
       providerRefundWaived: round2((booking.providerRefundWaived ?? 0) + delta + linkedAmount / 100),
-      ...(netAfter === 0 && money.gross > 0 ? { paymentStatus: 'refunded' as const, refundedAt: booking.refundedAt ?? effectiveAt } : {})
+      ...statusPatch
     }, { actor: 'system:stripe', kind: 'provider_refund', effectiveAt, details: { chargeId: args.chargeId, eventId: args.eventId, cumulativeMinor: args.amountRefunded, amount: delta, applied, legacyCovered } });
     const state = { bookingId: booking._id, chargeId: args.chargeId, paymentIntentId: args.paymentIntentId, amount: args.amount, currency: args.currency.toLowerCase(), cumulative: args.amountRefunded, eventId: args.eventId };
     if (checkpoint) await ctx.db.patch(checkpoint._id, state);

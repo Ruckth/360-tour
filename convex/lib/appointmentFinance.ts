@@ -4,6 +4,7 @@ import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './a
 import { assertMoney, attemptKey, cleanReason, effectiveTime } from './bookingMoney';
 import { lineNet, round2 } from './billMath';
 import { assertNotOnOpenOrder } from './orderLinks';
+import { MANUAL_PAYMENT_METHODS } from './financeValidators';
 
 type Appointment = Doc<'serviceAppointments'>;
 type ReadCtx = QueryCtx | MutationCtx;
@@ -32,10 +33,31 @@ async function rows(ctx: ReadCtx, a: Appointment) {
   return { payments, refunds, orders };
 }
 
+/** The old admin Mark paid wrote exactly this change, without tender or received-at data.
+ * POS wrote a reason (and sometimes price); flags alone or other financial changes prove nothing.
+ */
+async function legacyManualPayment(ctx: ReadCtx, a: Appointment, data: Awaited<ReturnType<typeof rows>>) {
+  if (a.paymentStatus !== 'paid' || a.amountPaid !== undefined || a.amountRefunded !== undefined ||
+      a.financialRevision !== undefined || a.paidAt !== undefined || a.paidBy !== undefined || a.refundedAt !== undefined ||
+      data.payments.length || data.refunds.length || data.orders.length || !Number.isFinite(a.price) || a.price <= 0) return null;
+  const history = await ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', a._id)).take(LIMIT + 1);
+  // Missing or truncated evidence cannot authorize a money correction.
+  if (history.length > LIMIT) return null;
+  const financial = history.filter(h => h.kind === 'payment' || h.changes.some(c =>
+    ['paymentStatus', 'price', 'currency', 'amountPaid', 'amountRefunded', 'paidAt', 'paidBy', 'refundedAt', 'financialRevision'].includes(c.field) &&
+    (c.from !== null || !['paymentStatus', 'price', 'currency'].includes(c.field) || (c.field === 'paymentStatus' && c.to !== 'unpaid'))));
+  if (financial.length !== 1) return null;
+  const evidence = financial[0];
+  if (evidence.kind !== 'payment' || evidence.reason !== undefined || !/^[^@\s]+@[^@\s]+$/.test(evidence.actor) ||
+      evidence.currencyBefore !== a.currency || evidence.currencyAfter !== a.currency || evidence.changes.length !== 1) return null;
+  const change = evidence.changes[0];
+  return change.field === 'paymentStatus' && change.from === 'unpaid' && change.to === 'paid' ? { changeId: evidence._id } : null;
+}
+
 export async function appointmentFinancials(ctx: ReadCtx, a: Appointment) {
   const data = await rows(ctx, a);
   const money = appointmentMoney(a);
-  return { ...data, money, revision: a.revision ?? 0,
+  return { ...data, money, revision: a.revision ?? 0, legacyManualPayment: await legacyManualPayment(ctx, a, data),
     unitemised: Math.max(0, round2(money.gross - data.payments.filter(p => p.status === 'recorded').reduce((sum, p) => sum + p.amount, 0))) };
 }
 
@@ -115,25 +137,39 @@ export async function recordAppointmentRefund(ctx: MutationCtx, a: Appointment, 
 }
 
 export async function correctAppointmentPayment(ctx: MutationCtx, a: Appointment, input: {
-  expectedRevision: number; paymentId: Id<'appointmentPayments'>; idempotencyKey: string; reason: string; action: 'amend' | 'cancel';
+  expectedRevision: number; paymentId?: Id<'appointmentPayments'>; legacyChangeId?: Id<'appointmentChanges'>; idempotencyKey: string; reason: string; action: 'amend' | 'cancel';
   method?: Doc<'appointmentPayments'>['method']; effectiveAt?: number;
 }, actor: string) {
   const reason = cleanReason(input.reason)!;
   const key = attemptKey(input.idempotencyKey);
-  const requestFingerprint = JSON.stringify({ appointmentId: a._id, paymentId: input.paymentId, action: input.action, reason, method: input.method ?? null, effectiveAt: input.effectiveAt ?? null });
+  const requestFingerprint = JSON.stringify({ appointmentId: a._id, paymentId: input.paymentId, ...(input.legacyChangeId ? { legacyChangeId: input.legacyChangeId } : {}), action: input.action, reason, method: input.method ?? null, effectiveAt: input.effectiveAt ?? null });
   const replay = await ctx.db.query('appointmentPaymentCorrections').withIndex('by_idempotencyKey', q => q.eq('idempotencyKey', key)).unique();
   if (replay) {
-    if (replay.requestFingerprint !== requestFingerprint) throw new Error('Correction attempt key was already used for different details');
+    if (replay.actor !== actor || replay.requestFingerprint !== requestFingerprint) throw new Error('Correction attempt key was already used for different details');
     return { replayed: true };
   }
   assertFresh(a, input.expectedRevision);
   const data = await rows(ctx, a);
   if (data.orders.length) throw new Error('Correct the tender/date or void an unreceived payment from the original order receipt');
+  if (Boolean(input.paymentId) === Boolean(input.legacyChangeId)) throw new Error('Choose one manual payment entry or proven legacy payment change');
+  if (input.legacyChangeId) {
+    const evidence = await legacyManualPayment(ctx, a, data);
+    if (input.action !== 'cancel' || input.method !== undefined || input.effectiveAt !== undefined || evidence?.changeId !== input.legacyChangeId) {
+      throw new Error('Original manual payment evidence is missing or ambiguous; this legacy payment cannot be reversed');
+    }
+    await assertNotOnOpenOrder(ctx, { appointmentId: a._id }, 'This appointment');
+    await write(ctx, a, { paymentStatus: 'unpaid', amountPaid: 0, amountRefunded: 0 }, actor, reason, Date.now(),
+      [{ field: 'legacyPaymentChangeId', from: null, to: evidence.changeId }]);
+    // No reconstructed payment: its original tender and received-at time remain unknown.
+    await ctx.db.insert('appointmentPaymentCorrections', { appointmentId: a._id, legacyChangeId: evidence.changeId, idempotencyKey: key, requestFingerprint, actor, recordedAt: Date.now(), reason });
+    return { replayed: false };
+  }
   const payment = data.payments.find(p => p._id === input.paymentId);
   if (!payment || payment.status !== 'recorded') throw new Error('Choose an active manual payment entry');
+  if (payment.method !== 'unrecorded' && !MANUAL_PAYMENT_METHODS.some(method => method === payment.method)) throw new Error('Provider or receipt-owned money cannot be corrected as a manual payment');
   const money = appointmentMoney(a);
   if (input.action === 'cancel') {
-    if (payment.refunded > 0 || money.refunded > 0) throw new Error('Refunded money cannot be cancelled as unreceived');
+    if (payment.refunded > 0 || money.refunded > 0 || data.refunds.length || a.refundedAt !== undefined) throw new Error('Refunded money cannot be cancelled as unreceived');
     await assertNotOnOpenOrder(ctx, { appointmentId: a._id }, 'This appointment');
     if (money.gross !== payment.amount) throw new Error('Other payments need review before reversing this entry');
     await ctx.db.patch(payment._id, { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: actor, cancelReason: reason });

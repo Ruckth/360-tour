@@ -250,7 +250,7 @@ function BookingDetails({
           <BookingOrders
             source={{ bookingId: booking._id }}
             currency={booking.currency}
-            closed={cancelled || booking.paymentStatus === "refunded" || booking.paymentStatus === "failed"}
+            closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
           />
         </Detail>
         <Detail label="Phone">{booking.guestPhone}</Detail>

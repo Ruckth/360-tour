@@ -108,6 +108,32 @@ export const create = mutation({
 	}
 });
 
+/**
+ * A live stay a full provider refund marked `refunded` with its money written out explicitly:
+ * gross `amountPaid` and an equal `amountRefunded`. Unlike a legacy refunded flag (no refund
+ * amount), its balance is provable, so only what it still owes beyond the waived provider charge
+ * may be collected. New provider refunds no longer write this state on live stays.
+ */
+export function isDocumentedLiveRefund(booking: Doc<'bookings'>) {
+	return booking.status !== 'cancelled' && booking.paymentStatus === 'refunded' &&
+		booking.amountPaid !== undefined && booking.amountRefunded !== undefined &&
+		round2(booking.amountRefunded) === round2(booking.amountPaid);
+}
+
+/**
+ * The Stripe payment recorded before payments were itemised, when it is provable: either captured
+ * when the stay's first itemised payment was written, or (no itemised payment yet) the stay's own
+ * Stripe PaymentIntent and gross. Provider evidence must still match its amount exactly.
+ */
+export function legacyStripeCharge(booking: Doc<'bookings'>, hasItemisedPayments: boolean) {
+	if (booking.legacyStripePaymentIntentId !== undefined && booking.legacyStripeGross !== undefined) {
+		return { paymentIntentId: booking.legacyStripePaymentIntentId, gross: booking.legacyStripeGross, captured: true };
+	}
+	const gross = stayMoney(booking).gross;
+	if (hasItemisedPayments || booking.paymentMethod !== 'stripe' || !booking.stripePaymentIntentId || gross <= 0) return null;
+	return { paymentIntentId: booking.stripePaymentIntentId, gross, captured: false };
+}
+
 export type StayPaymentInput = {
 	origin: 'manual' | 'pos' | 'online';
 	method: Doc<'bookingPayments'>['method'];
@@ -138,7 +164,7 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 		throw new Error('Booking not found');
 	}
 	assertNotCancelled(booking);
-	if (booking.paymentStatus === 'refunded' || booking.paymentStatus === 'failed') {
+	if (booking.paymentStatus === 'failed' || (booking.paymentStatus === 'refunded' && !isDocumentedLiveRefund(booking))) {
 		throw new Error('Reopen this booking before recording a payment on it.');
 	}
 	if (input.origin !== 'online' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
@@ -152,6 +178,15 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 	// Validates (no overlapping confirmed booking, no other hold or block) and holds the nights in
 	// this transaction; a conflict throws before anything is marked paid.
 	await blockBookingDates(ctx, booking, bookingId);
+
+	// The first itemised payment keeps the provable legacy Stripe payment's identity and amount, so
+	// a later refund or completion redelivery of it still reconciles (a later online payment
+	// replaces stripePaymentIntentId).
+	const hasItemised = Boolean(await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', bookingId)).first());
+	const legacy = legacyStripeCharge(booking, hasItemised);
+	const legacyEvidence = legacy && !legacy.captured
+		? { legacyStripePaymentIntentId: legacy.paymentIntentId, legacyStripeGross: legacy.gross }
+		: {};
 
 	const now = Date.now();
 	const effectiveAt = effectiveTime(input.effectiveAt, now);
@@ -174,11 +209,15 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 		paymentMethod: booking.paymentMethod ?? input.legacyMethod,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
-		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
+		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText),
+		...legacyEvidence
 	}, {
 		actor: input.actor, kind: 'payment_recorded', effectiveAt,
 		...(input.note ? { reason: input.note } : {}),
-		details: { paymentId, origin: input.origin, method: input.method, amount: money.owed, ...(input.billId ? { billId: input.billId } : {}) }
+		details: {
+			paymentId, origin: input.origin, method: input.method, amount: money.owed, ...(input.billId ? { billId: input.billId } : {}),
+			...('legacyStripeGross' in legacyEvidence ? { legacyStripeGross: legacyEvidence.legacyStripeGross } : {})
+		}
 	});
 
 	// The guest started an online payment themselves, so it is always confirmed to them.

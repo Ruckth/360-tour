@@ -352,6 +352,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const actor = admin?.email ?? input.actor ?? `system:${input.source}`;
 	const accessToken = crypto.randomUUID();
 	const lookup = appointmentLookupFields({ guestPhone, guestEmail });
+	const status = policy && input.source === 'admin' && input.start + service.durationMin * MINUTE < Date.now() ? 'completed' as const : 'booked' as const;
 	const appointmentId = await ctx.db.insert('serviceAppointments', {
 		serviceId: service._id,
 		staffId: chosen._id,
@@ -368,7 +369,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 		...(input.chatSessionId ? { chatSessionId: input.chatSessionId } : {}),
 		...(input.rebookedFromId ? { rebookedFromId: input.rebookedFromId } : {}),
 		source: input.source,
-		status: 'booked',
+		status,
 		paymentStatus: 'unpaid',
 		price: service.price,
 		currency: service.currency,
@@ -378,14 +379,14 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	});
 	const confirmationCode = demoCode('SVC', appointmentId);
 	await ctx.db.patch(appointmentId, { confirmationCode });
-	const snapshot = { staffId: chosen._id, staffName: chosen.name, serviceId: service._id, serviceName: service.name, start: input.start, end: input.start + service.durationMin * MINUTE, blockedUntil, status: 'booked', paymentStatus: 'unpaid', price: service.price, currency: service.currency, guestName, guestPhone, guestEmail: guestEmail ?? null, warnings: review.warnings };
+	const snapshot = { staffId: chosen._id, staffName: chosen.name, serviceId: service._id, serviceName: service.name, start: input.start, end: input.start + service.durationMin * MINUTE, blockedUntil, status, paymentStatus: 'unpaid', price: service.price, currency: service.currency, guestName, guestPhone, guestEmail: guestEmail ?? null, warnings: review.warnings };
 	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: appointmentId, actor, kind: 'created', effectiveAt: input.start, ...(reason ? { reason } : {}), after: snapshot });
 	await ctx.db.insert('appointmentChanges', { appointmentId, at: Date.now(), actor, kind: 'details', currencyBefore: service.currency, currencyAfter: service.currency,
 		...(reason ? { reason } : {}), changes: [
 			{ field: 'created', from: null, to: confirmationCode }, { field: 'staffName', from: null, to: chosen.name }, { field: 'serviceName', from: null, to: service.name },
 			{ field: 'start', from: null, to: input.start }, { field: 'effectiveAt', from: null, to: input.start },
 			{ field: 'end', from: null, to: input.start + service.durationMin * MINUTE }, { field: 'blockedUntil', from: null, to: blockedUntil },
-			{ field: 'status', from: null, to: 'booked' }, { field: 'paymentStatus', from: null, to: 'unpaid' },
+			{ field: 'status', from: null, to: status }, { field: 'paymentStatus', from: null, to: 'unpaid' },
 			{ field: 'price', from: null, to: service.price }, { field: 'currency', from: null, to: service.currency },
 			{ field: 'guestName', from: null, to: guestName }, { field: 'guestPhone', from: null, to: guestPhone }, { field: 'guestEmail', from: null, to: guestEmail ?? null },
 			...review.warnings.map(warning => ({ field: 'warning', from: null, to: warning }))

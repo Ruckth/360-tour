@@ -33,6 +33,9 @@ export type RefundInput = {
 	effectiveAt?: number;
 	paymentId?: Id<'bookingPayments'>;
 	billId?: Id<'bills'>;
+	unitemised?: boolean;
+	/** Internal operation context for atomic cancellation-and-refund retries. */
+	replayContext?: string;
 };
 
 /** At most this many rows of one booking's payments or refunds are read; far above any real stay. */
@@ -43,11 +46,18 @@ export const NOTHING_TO_REFUND = 'Nothing is left to refund on this booking.';
 export const LEGACY_REFUNDED = 'This booking was marked refunded before refund amounts were recorded, so nothing more can be refunded.';
 
 /** A retried refund (same key) returns the first result; a key reused for something else is refused. */
-export async function refundReplay(ctx: ReadCtx, bookingId: Id<'bookings'>, input: Pick<RefundInput, 'idempotencyKey' | 'amount' | 'method'>) {
+function refundFingerprint(bookingId: Id<'bookings'>, input: RefundInput, actor: string) {
+	return JSON.stringify([bookingId, input.amount, input.currency, input.method, input.reason.trim(), input.effectiveAt ?? null, input.paymentId ?? null, input.billId ?? null, input.unitemised ?? false, actor, input.replayContext ?? null]);
+}
+
+export async function refundReplay(ctx: ReadCtx, bookingId: Id<'bookings'>, input: RefundInput, actor: string) {
 	const key = attemptKey(input.idempotencyKey);
 	const existing = await ctx.db.query('bookingRefunds').withIndex('by_idempotencyKey', (q) => q.eq('idempotencyKey', key)).first();
 	if (!existing) return null;
-	if (existing.bookingId !== bookingId || existing.amount !== input.amount || existing.method !== input.method) {
+	const matches = existing.requestFingerprint
+		? existing.requestFingerprint === refundFingerprint(bookingId, input, actor)
+		: existing.bookingId === bookingId && existing.amount === input.amount && existing.currency === input.currency && existing.method === input.method && existing.reason === input.reason.trim() && existing.recordedBy === actor && (input.effectiveAt === undefined || existing.effectiveAt === input.effectiveAt) && existing.paymentId === input.paymentId && existing.billId === input.billId && !input.unitemised;
+	if (!matches) {
 		throw new Error('This refund attempt was already used for a different refund. Start the refund again.');
 	}
 	return existing;
@@ -79,6 +89,7 @@ export async function orderStayPayment(ctx: ReadCtx, billId: Id<'bills'>, bookin
  */
 export async function recordStayRefund(ctx: MutationCtx, booking: Booking, input: RefundInput, actor: string) {
 	const key = attemptKey(input.idempotencyKey);
+	const requestFingerprint = refundFingerprint(booking._id, input, actor);
 	if (input.method === 'stripe' && await ctx.db.query('stripeRefundCharges').withIndex('by_bookingId', q => q.eq('bookingId', booking._id)).first()) {
 		throw new Error('Stripe refunds on this booking are reconciled automatically. Replay the provider event instead of recording the same returned money by hand.');
 	}
@@ -101,6 +112,21 @@ export async function recordStayRefund(ctx: MutationCtx, booking: Booking, input
 
 	let paymentId: Id<'bookingPayments'> | undefined;
 	let billId: Id<'bills'> | undefined;
+	if (input.unitemised && (input.paymentId || input.billId)) throw new Error('Choose one refund source.');
+	if (!input.paymentId && !input.billId) {
+		const financials = await stayFinancials(ctx, booking);
+		if (!financials.complete) throw new Error('Review the complete payment history before recording this refund.');
+		const payments = financials.payments.filter(p => p.status === 'recorded' && p.refundable > 0);
+		const orders = financials.legacyOrders.filter(o => o.refundable > 0);
+		const unknown = financials.unitemisedRefundable;
+		if (input.unitemised) {
+			if (input.amount > unknown) throw new Error(`At most ${unknown} of older unitemised money remains. Select the payment or receipt for the rest.`);
+		} else if (payments.length + orders.length === 1 && unknown === 0) {
+			input = payments.length ? { ...input, paymentId: payments[0]._id } : { ...input, billId: orders[0]._id };
+		} else if (payments.length || orders.length) {
+			throw new Error('Select the payment or receipt this refund returns. Record separate refunds for separate payments.');
+		}
+	}
 	if (input.paymentId) {
 		const payment = await ctx.db.get(input.paymentId);
 		if (!payment || payment.bookingId !== booking._id) throw new Error('That payment belongs to another booking.');
@@ -110,6 +136,7 @@ export async function recordStayRefund(ctx: MutationCtx, booking: Booking, input
 		await ctx.db.patch(payment._id, { refunded: round2(payment.refunded + input.amount) });
 		paymentId = payment._id;
 		billId = payment.billId;
+		if (input.billId && input.billId !== billId) throw new Error('The selected payment belongs to a different receipt.');
 	} else if (input.billId) {
 		const order = await ctx.db.get(input.billId);
 		if (!order || !isSettledOrder(order)) throw new Error('Refer only to a paid order that charged this stay.');
@@ -117,7 +144,11 @@ export async function recordStayRefund(ctx: MutationCtx, booking: Booking, input
 		const charge = await orderStayCharge(ctx, order._id, booking._id);
 		if (!charge) throw new Error('That order did not charge this stay.');
 		const itemised = await orderStayPayment(ctx, order._id, booking._id);
-		if (itemised) return await recordStayRefund(ctx, booking, { ...input, billId: undefined, paymentId: itemised._id }, actor);
+		if (itemised) {
+			if (itemised.status !== 'recorded' || input.amount > round2(itemised.amount - itemised.refunded)) throw new Error('This payment has insufficient refundable money.');
+			await ctx.db.patch(itemised._id, { refunded: round2(itemised.refunded + input.amount) });
+			paymentId = itemised._id;
+		}
 		// Paid before payments were itemised: the order's own row says what it collected for the stay.
 		const left = round2(charge.charged - (await refundsForOrder(ctx, order._id, booking._id)));
 		if (input.amount > left) throw new Error(`At most ${Math.max(left, 0)} of what ${orderTitle(order.orderNumber)} took for this stay is left to refund.`);
@@ -130,7 +161,7 @@ export async function recordStayRefund(ctx: MutationCtx, booking: Booking, input
 	const refundId = await ctx.db.insert('bookingRefunds', {
 		bookingId: booking._id, amount: input.amount, currency: booking.currency, method: input.method, reason,
 		context: money.refundContext, ...(paymentId ? { paymentId } : {}), ...(billId ? { billId } : {}),
-		effectiveAt, recordedAt: now, recordedBy: actor, idempotencyKey: key, netBefore: money.net, netAfter
+		effectiveAt, recordedAt: now, recordedBy: actor, idempotencyKey: key, requestFingerprint, netBefore: money.net, netAfter
 	});
 	const fullyRefunded = netAfter === 0 && booking.status === 'cancelled';
 	const updated = await writeBooking(ctx, booking, {
@@ -230,7 +261,7 @@ export async function stayFinancials(ctx: ReadCtx, booking: Booking) {
 	const [payments, refunds, chargedLines] = await Promise.all([
 		ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', booking._id)).order('desc').take(MAX_STAY_ROWS),
 		ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', booking._id)).order('desc').take(MAX_STAY_ROWS),
-		ctx.db.query('billLines').withIndex('by_bookingId', (q) => q.eq('bookingId', booking._id)).order('desc').take(20)
+		ctx.db.query('billLines').withIndex('by_bookingId', (q) => q.eq('bookingId', booking._id)).order('desc').take(MAX_STAY_ROWS)
 	]);
 	const orders = new Map<Id<'bills'>, Doc<'bills'> | null>();
 	const orderOf = async (id: Id<'bills'>) => {
@@ -284,9 +315,10 @@ export async function stayFinancials(ctx: ReadCtx, booking: Booking) {
 		legacyOrders,
 		/** Paid before payments were itemised (or by a path that recorded no row); shown, never invented as entries. */
 		unitemised: Math.max(round2(money.gross - itemised), 0),
+		unitemisedRefundable: Math.max(round2(money.net - paymentRows.reduce((sum, p) => sum + p.refundable, 0) - legacyOrders.reduce((sum, o) => sum + o.refundable, 0)), 0),
 		legacyManual: 'amount' in legacy ? { cancellable: true as const, amount: legacy.amount } : { cancellable: false as const, reason: legacy.blocked },
 		hasStripePayment: Boolean(booking.stripePaymentIntentId),
-		complete: payments.length < MAX_STAY_ROWS && refunds.length < MAX_STAY_ROWS
+		complete: payments.length < MAX_STAY_ROWS && refunds.length < MAX_STAY_ROWS && chargedLines.length < MAX_STAY_ROWS
 	};
 }
 

@@ -47,7 +47,7 @@ export function displayDate(iso: string) {
 }
 
 export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentStatus">) {
-  return booking.status !== "cancelled" && booking.paymentStatus !== "refunded";
+  return booking.status !== "cancelled";
 }
 
 /** Amount still owed (positive) or owed back to the guest (negative) after an edit. */

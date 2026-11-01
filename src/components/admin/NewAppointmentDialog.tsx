@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { useRef, useState, type FormEvent } from "react";
-import { appointmentEntrySlot } from "@/components/admin/appointment-entry";
+import { appointmentEntrySlot, appointmentEntryStatus } from "@/components/admin/appointment-entry";
 import { ServicePicker } from "@/components/admin/ServicePicker";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { formatMoney } from "@/components/admin/labels";
@@ -236,6 +236,7 @@ export function NewAppointmentDialog({
                     : ""}
                 </p>
               ) : null}
+              {selectedSlot && service ? <p className="text-sm">{appointmentEntryStatus(selectedSlot.start, service.durationMin, now) === "completed" ? "Completed · Unpaid. Checkout can collect payment for this service." : "Booked · Unpaid."}</p> : null}
               <div className="grid gap-2">
                 <Label>Time</Label>
                 {historicalDate ? <div className="grid gap-2"><Label htmlFor="na-actual-time">Actual time (Bangkok)</Label><Input id="na-actual-time" type="time" step={60} value={start === null ? "" : resortTime24(start)} onChange={event => { if (event.target.value) setStart(resortDateTime(date, event.target.value)); }} /><p className="text-xs text-muted-foreground">Enter the recorded time or choose a time below.</p></div> : null}

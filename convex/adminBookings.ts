@@ -332,7 +332,8 @@ const refundInput = {
 	effectiveAt: v.optional(v.number()),
 	/** The payment it returns (from bookingFinancials), or a legacy order that charged the stay. */
 	paymentId: v.optional(v.id('bookingPayments')),
-	billId: v.optional(v.id('bills'))
+	billId: v.optional(v.id('bills')),
+	unitemised: v.optional(v.boolean())
 };
 
 async function loadBooking(ctx: MutationCtx, bookingId: Id<'bookings'>) {
@@ -522,7 +523,7 @@ export const recordRefund = mutation({
 	args: { bookingId: v.id('bookings'), expectedRevision: v.number(), ...refundInput },
 	handler: async (ctx, { bookingId, expectedRevision, ...input }) => {
 		const admin = await requireAdmin(ctx);
-		const replay = await refundReplay(ctx, bookingId, input);
+		const replay = await refundReplay(ctx, bookingId, input, admin.email);
 		if (replay) return { refundId: replay._id, replayed: true };
 		const booking = await loadBooking(ctx, bookingId);
 		assertBookingRevision(booking, expectedRevision);
@@ -548,15 +549,16 @@ export const cancelStay = mutation({
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		if (args.refund) {
-			const replay = await refundReplay(ctx, args.bookingId, args.refund);
+		const refund = args.refund ? { ...args.refund, replayContext: JSON.stringify(['cancel', args.reason?.trim() ?? null, args.effectiveAt ?? null, args.notifyGuest ?? null]) } : undefined;
+		if (refund) {
+			const replay = await refundReplay(ctx, args.bookingId, refund, admin.email);
 			if (replay) return { replayed: true };
 		}
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision);
 		if (booking.status === 'cancelled') throw new Error('This booking is already cancelled.');
 		await cancelStayRecord(ctx, booking, {
-			actor: admin.email, reason: args.reason, effectiveAt: args.effectiveAt, notifyGuest: args.notifyGuest, refund: args.refund
+			actor: admin.email, reason: args.reason, effectiveAt: args.effectiveAt, notifyGuest: args.notifyGuest, refund
 		});
 		return { replayed: false };
 	}
@@ -735,8 +737,8 @@ export const editBooking = mutation({
 		const booking = await loadBooking(ctx, args.bookingId);
 		// A price correction always names the revision it was reviewed against.
 		assertBookingRevision(booking, args.expectedRevision, args.priceOverride !== undefined);
-		if (booking.status === 'cancelled' || booking.paymentStatus === 'refunded') {
-			throw new Error('Cancelled or refunded bookings are read-only. Reopen it first.');
+		if (booking.status === 'cancelled') {
+			throw new Error('Cancelled bookings are read-only. Reopen it first.');
 		}
 		if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
 			throw new Error('The guest has a Stripe checkout open. Wait for it to finish or expire before editing.');

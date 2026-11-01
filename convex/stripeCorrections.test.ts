@@ -71,7 +71,10 @@ it('handles partial/full cumulative refunds and duplicate/out-of-order events at
   await refund(5000, 'evt_duplicate'); await refund(2500, 'evt_old');
   expect((await read())!.revision).toBe(revision);
   await refund(20000);
-  expect(await read()).toMatchObject({ amountPaid: 200, amountRefunded: 200, providerRefundWaived: 200, paymentStatus: 'refunded', status: 'confirmed', refundedAt: now - 60_000 });
+  // A live stay keeps an ordinary money state after a full provider refund (nothing held: pending),
+  // so it stays editable and chargeable; only a cancelled stay becomes `refunded`.
+  expect(await read()).toMatchObject({ amountPaid: 200, amountRefunded: 200, providerRefundWaived: 200, paymentStatus: 'pending', status: 'confirmed' });
+  expect((await read())!.refundedAt).toBeUndefined();
   const rows = await t.run(ctx => ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', bookingId)).take(10));
   expect(rows.map(r => r.amount)).toEqual([50,150]);
   expect(rows[0]).toMatchObject({ providerEventId: 'evt_5000', providerChargeId: 'ch_checkout', recordedBy: 'system:stripe', recordedAt: now });
@@ -157,7 +160,9 @@ it('expires pending bookings with an atomic system history and revision', async 
 it('supplies the real refund date when a cancelled stay becomes fully refunded after reversing a mistaken entry', async () => {
   const { t, admin, bookingId, start, complete, read } = await setup(); await start(); await complete();
   await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 300, status: 'cancelled' }));
-  await admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: (await read())!.revision!, amount: 200, currency: 'THB', method: 'cash', reason: 'Actual returned money', effectiveAt: now - 10000, idempotencyKey: 'refund-before-reversal' });
+  // Known itemised money must name its source; the 100 above it is older unitemised money.
+  const paymentId = (await t.run(ctx => ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', bookingId)).first()))!._id;
+  await admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: (await read())!.revision!, amount: 200, currency: 'THB', method: 'cash', reason: 'Actual returned money', effectiveAt: now - 10000, paymentId, idempotencyKey: 'refund-before-reversal' });
   const patch = await t.run(async ctx => stayPaymentReversalPatch(ctx, (await ctx.db.get(bookingId))!, 200));
   expect(patch).toMatchObject({ amountPaid: 200, paymentStatus: 'refunded', refundedAt: now - 10000 });
   expect(patch).not.toHaveProperty('status');

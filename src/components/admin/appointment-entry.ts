@@ -8,3 +8,8 @@ export function appointmentEntrySlot(slots: EntrySlot[] | undefined, wanted: num
   if (wanted !== null && wanted < now) return staffId ? { start: wanted, staffIds: [staffId], autoStaffId: staffId } : undefined;
   return pickSlot(slots, wanted);
 }
+
+/** Completed means the service ended; its turnaround does not extend the service itself. */
+export function appointmentEntryStatus(start: number, durationMin: number, now: number) {
+  return start + durationMin * 60_000 < now ? 'completed' : 'booked';
+}
