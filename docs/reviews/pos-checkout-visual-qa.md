@@ -55,7 +55,7 @@ No physical devices, virtual keyboards, bank/card terminals or thermal printers 
 
 ## Kiro Opus 5.5 review and refactor — 31 October
 
-Kiro CLI with `claude-opus-5.5`, high effort, completed the requested review and bounded refactor. It found no P0–P2 defects in the reviewed scope. Four maintainability improvements were implemented and independently checked by the coordinator:
+Kiro CLI with Opus 5.5, high effort, completed the requested review and bounded refactor. It found no P0–P2 defects in the reviewed scope. Four maintainability improvements were implemented and independently checked by the coordinator:
 
 - `CheckoutDialogContent` and `CheckoutSheetContent` now apply both content and overlay themes together across all seven checkout dialogs/sheets, preventing the omission that caused the earlier light-root overlay defect.
 - A shared `useLoadablePhoto` hook preserves the existing URL-specific photo-failure behavior for both thumbnails and the decorative background.
