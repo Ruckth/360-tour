@@ -13,6 +13,7 @@ import {
 import { CalendarClock, Hourglass, Pencil, Repeat } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentHistory } from "@/components/admin/AppointmentHistory";
+import { BookingOrders } from "@/components/admin/BookingOrders";
 import { CancelAppointmentDialog } from "@/components/admin/CancelAppointmentDialog";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { RescheduleDialog } from "@/components/admin/RescheduleDialog";
@@ -201,6 +202,13 @@ export function AppointmentSheet({
                   <Detail label="Payment">
                     {PAYMENT_LABELS[appointment.paymentStatus]}
                     {appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : ""}
+                  </Detail>
+                  <Detail label="Orders">
+                    <BookingOrders
+                      source={{ appointmentId: appointment._id }}
+                      currency={appointment.currency}
+                      closed={appointment.status === "cancelled" || appointment.status === "no_show" || appointment.paymentStatus === "refunded"}
+                    />
                   </Detail>
                   {appointment.cancelledAt ? (
                     <Detail label="Cancelled">

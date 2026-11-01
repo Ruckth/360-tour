@@ -30,6 +30,7 @@ import { nightsBetweenIso } from "@/lib/booking/dates";
 import { useAdminBookingDates } from "./useAdminBookingDates";
 import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
 import { errorText } from "@/lib/staff-bookings";
+import { BookingOrders } from "./BookingOrders";
 import { DisabledReason } from "./DisabledReason";
 import { StatusBadge } from "./StatusBadge";
 import { formatMoney, sourceLabel } from "./labels";
@@ -215,6 +216,13 @@ function BookingDetails({
             <span className="block text-muted-foreground">{format(new Date(booking.paidAt), "d MMM yyyy, HH:mm")}</span>
           ) : null}
           {booking.checkoutLive ? <span className="block text-muted-foreground">Guest has a Stripe checkout open</span> : null}
+        </Detail>
+        <Detail label="Orders">
+          <BookingOrders
+            source={{ bookingId: booking._id }}
+            currency={booking.currency}
+            closed={booking.status === "cancelled" || booking.paymentStatus === "refunded" || booking.paymentStatus === "failed"}
+          />
         </Detail>
         <Detail label="Phone">{booking.guestPhone}</Detail>
         <Detail label="Email">{booking.guestEmail ?? "—"}</Detail>

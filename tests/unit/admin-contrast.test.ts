@@ -75,6 +75,17 @@ function toneColor(classes: string, prefix: "bg" | "text", theme: Theme) {
   return { color, alpha: alpha ? Number(alpha) / 100 : 1 };
 }
 
+describe("one app palette", () => {
+  it("defines colour tokens only in :root (light) and .dark, so no page carries its own palette", () => {
+    // Every rule that sets a palette token, by selector, outside @theme (which only maps tokens to utilities).
+    const rules = [...appCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, , body]) => /--(background|foreground|card|primary|border|gold)\s*:/.test(body))
+      .map(([, selector]) => selector.replace(/\/\*[\s\S]*?\*\//g, "").split(";").at(-1)!.trim());
+    expect(rules).toEqual([":root", ".dark"]);
+    expect(appCss).not.toMatch(/checkout-theme|color-scheme:\s*dark/);
+  });
+});
+
 describe("theme token contrast (WCAG AA)", () => {
   for (const theme of ["light", "dark"] as const) {
     const t = (name: string) => token(theme, name);

@@ -4,6 +4,7 @@ import { internal } from './_generated/api';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
+import { assertNotOnOpenOrder } from './lib/orderLinks';
 import { avatarUploadProblem } from './lib/imageUploads';
 import { attachPhotoUpload, deleteStoredFile, deleteUnreferencedPhoto, pendingAvatarUpload } from './lib/adminPhotos';
 import {
@@ -568,7 +569,7 @@ export const createAppointment = mutation({
 		const admin = await requireAdmin(ctx);
 		const original = args.rebookedFromId ? await ctx.db.get(args.rebookedFromId) : null;
 		if (args.rebookedFromId && (!original || !canBookAgain(original))) throw new Error('Only cancelled or no-show appointments can be booked again');
-		const created = await createAppointmentRecord(ctx, { ...args, source: 'admin' });
+		const created = await createAppointmentRecord(ctx, { ...args, source: 'admin', actor: admin.email });
 		if (original) await recordRebooked(ctx, original, created.confirmationCode, admin.email);
 		return created;
 	}
@@ -664,6 +665,8 @@ export const markAppointmentPaid = mutation({
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		if (appointment.status === 'cancelled') throw new Error('Cancelled appointment cannot be paid');
+		// Paying it here while checkout is charging it on an open order would collect it twice.
+		await assertNotOnOpenOrder(ctx, { appointmentId: appointment._id }, 'This appointment');
 		await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid' }, { actor: admin.email, kind: 'payment' });
 	}
 });

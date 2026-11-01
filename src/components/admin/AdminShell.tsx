@@ -3,7 +3,7 @@
 import { SignInButton, useUser } from "@clerk/nextjs";
 import { Shield } from "lucide-react";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { adminNavItem } from "@/components/admin/admin-routes";
@@ -92,11 +92,20 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
 function AdminFrame({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
   const pathname = usePathname();
-  // The chat inbox fills the viewport and scrolls its panes; other views scroll the page.
-  const fitsViewport = pathname.startsWith("/admin/chats");
+  // The chat inbox and checkout fill the viewport and scroll their panes; other views scroll the page.
+  const checkout = pathname.startsWith("/admin/checkout");
+  const fitsViewport = pathname.startsWith("/admin/chats") || checkout;
+  // Checkout opens with the sidebar as an icon rail, leaving room for the catalog and order. Opening
+  // it there (trigger, ⌘B, search) is kept while on checkout and its receipts, so paying doesn't
+  // expand the rail; other pages keep their own state.
+  const checkoutFlow = checkout || /^\/admin\/receipt(\/|$)/.test(pathname);
+  const [open, setOpen] = useState(true);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   return (
     <SidebarProvider
+      open={checkoutFlow ? checkoutOpen : open}
+      onOpenChange={checkoutFlow ? setCheckoutOpen : setOpen}
       className={cn("bg-background", fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen")}
     >
       <AdminSidebar userEmail={userEmail} />

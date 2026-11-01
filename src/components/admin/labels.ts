@@ -112,10 +112,14 @@ export function paymentLabel(status: PaymentStatus | undefined, method?: string 
 
 const CURRENCY_SYMBOLS: Record<string, string> = { THB: "฿", USD: "$", EUR: "€", GBP: "£" };
 
-/** `formatMoney(12000, "THB")` → "฿12,000". Unknown currencies read "SGD 12,000". */
+/**
+ * `formatMoney(12000, "THB")` → "฿12,000"; amounts with satang show both decimals ("฿99.50").
+ * Unknown currencies read "SGD 12,000".
+ */
 export function formatMoney(amount: number, currency = "THB") {
-  const digits = Math.abs(amount).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const cents = Math.round(Math.abs(amount) * 100);
+  const digits = (cents / 100).toLocaleString("en-US", { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2 });
   const symbol = CURRENCY_SYMBOLS[currency];
-  const sign = amount < 0 ? "-" : "";
+  const sign = amount < 0 && cents > 0 ? "-" : "";
   return symbol ? `${sign}${symbol}${digits}` : `${sign}${currency} ${digits}`;
 }
