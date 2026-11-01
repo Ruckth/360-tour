@@ -18,6 +18,12 @@ export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; 
 export const TOUCH_TARGETS =
   "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_[role=option]]:min-h-11";
 
+/**
+ * A row of up to four equal buttons (tenders, cash shortcuts): four columns while each can be
+ * 4rem wide, fewer and wider ones when enlarged text needs the room, so labels never overlap.
+ */
+export const UP_TO_FOUR_COLUMNS = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,max(4rem,calc((100%_-_1.5rem)/4_-_1px))),1fr))] gap-2";
+
 /** Money typed at the till (or set by a shortcut): digits, one decimal point, two decimals, and at most `max`. */
 export function amountInput(value: string, max = MAX_BILL) {
   const [whole, ...rest] = value.replace(/[^\d.]/g, "").split(".");

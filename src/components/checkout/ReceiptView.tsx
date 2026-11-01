@@ -2,7 +2,8 @@
 
 import { format } from "date-fns";
 import { Ban, Copy, Plus, Printer, Share2 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -18,6 +19,37 @@ import { TENDER_LABELS, TOUCH_TARGETS, receiptBookings, receiptName, receiptText
 
 type Paper = "58" | "80";
 
+const PX_PER_MM = 96 / 25.4;
+/** Extra paper after the receipt, so rounding never spills it onto a second page. */
+const PAGE_SLACK_MM = 2;
+
+/** The printed receipt's box, at the paper's width. Shared by print and by the on-screen measurement. */
+const printBox = (paper: Paper) => `width: ${paper}mm !important; max-width: none !important; margin: 0 !important; padding: 3mm !important;
+  border: 0 !important; font-size: ${paper === "58" ? 10 : 11.5}px !important;`;
+
+/*
+ * Browsers accept a page size only as two lengths (or a named size); "58mm auto" is dropped. So the
+ * page is the paper's width by the receipt's own length, measured at that width with print styles.
+ * When printing, everything but the receipt is removed from layout (not just hidden), so the
+ * rest of the screen can't add blank pages.
+ */
+function printCss(paper: Paper, lengthMm: number) {
+  return `
+    @media print {
+      @page { size: ${paper}mm ${lengthMm}mm; margin: 0; }
+      html, body { height: auto !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; }
+      body *:not(:has(.pos-receipt)):not(.pos-receipt):not(.pos-receipt *) { display: none !important; }
+      body *:has(.pos-receipt) { display: block !important; position: static !important; width: auto !important; height: auto !important;
+        min-height: 0 !important; max-height: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important;
+        overflow: visible !important; background: none !important; box-shadow: none !important; transform: none !important; }
+      .pos-receipt { ${printBox(paper)} position: static !important; box-shadow: none !important; border-radius: 0 !important;
+        background: #fff !important; color: #000 !important; }
+      .pos-receipt * { color: #000 !important; }
+    }
+    .pos-receipt[data-print-measure] { ${printBox(paper)} }
+  `;
+}
+
 /** Receipt after payment: thermal print (58/80mm), share or copy, and void with a reason. */
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
   const backend = useCheckoutBackend();
@@ -25,6 +57,26 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const business = backend.useBusinessName() ?? "";
   const [paper, setPaper] = useState<Paper>("80");
   const [notice, setNotice] = useState("");
+  const receiptRef = useRef<HTMLElement>(null);
+  // Starts as an A4 length until the receipt has been measured.
+  const [pageLengthMm, setPageLengthMm] = useState(297);
+
+  // The receipt's printed length: its height with the print box applied, read before the browser paints.
+  const measure = useCallback(() => {
+    const receipt = receiptRef.current;
+    if (!receipt) return;
+    receipt.setAttribute("data-print-measure", "");
+    const height = receipt.getBoundingClientRect().height;
+    receipt.removeAttribute("data-print-measure");
+    setPageLengthMm(Math.ceil(height / PX_PER_MM) + PAGE_SLACK_MM);
+  }, []);
+  useLayoutEffect(measure, [measure, paper, view, business]);
+  // Measure again as printing starts (fonts may have loaded since), committed before print layout.
+  useEffect(() => {
+    const beforePrint = () => flushSync(measure);
+    window.addEventListener("beforeprint", beforePrint);
+    return () => window.removeEventListener("beforeprint", beforePrint);
+  }, [measure]);
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   if (view === null) return <p className="p-10 text-center text-sm text-muted-foreground">Receipt not found.</p>;
@@ -68,30 +120,25 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
 
   return (
     <div className={cn("flex min-w-0 flex-1 flex-col items-center gap-4 px-4 py-6", TOUCH_TARGETS)}>
-      <style>{`
-        @media print {
-          @page { size: ${paper}mm auto; margin: 0; }
-          body * { visibility: hidden !important; }
-          .pos-receipt, .pos-receipt * { visibility: visible !important; }
-          .pos-receipt { position: absolute; inset: 0 auto auto 0; width: ${paper}mm !important; max-width: none !important;
-            margin: 0 !important; padding: 3mm !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important;
-            background: #fff !important; color: #000 !important; font-size: ${paper === "58" ? 10 : 11.5}px !important; }
-          .pos-receipt * { color: #000 !important; }
-        }
-      `}</style>
+      <style>{printCss(paper, pageLengthMm)}</style>
 
       <div className="flex w-full max-w-md flex-wrap items-center gap-2 print:hidden">
         <ToggleGroup value={paper} onValueChange={setPaper} aria-label="Paper width">
           <ToggleGroupItem value="58">58 mm</ToggleGroupItem>
           <ToggleGroupItem value="80">80 mm</ToggleGroupItem>
         </ToggleGroup>
-        <Button variant="outline" onClick={() => window.print()}><Printer aria-hidden className="size-4" /> Print</Button>
+        <Button variant="outline" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
         <Button variant="outline" onClick={share}><Share2 aria-hidden className="size-4" /> Share</Button>
         <Button variant="ghost" size="icon" onClick={copy} aria-label="Copy receipt"><Copy aria-hidden className="size-4" /></Button>
       </div>
+      {/* The browser sets the page size; the printer's driver decides what reaches the paper. */}
+      <p id="receipt-print-help" className="w-full max-w-md text-xs text-muted-foreground print:hidden">
+        Prints on a {paper} mm wide page, as long as the receipt. In the print dialog, choose the receipt printer, margins None and scale 100%.
+        If it still prints on another paper size, select the {paper} mm roll in the printer&apos;s own settings.
+      </p>
       {notice ? <p role="status" className="text-sm text-muted-foreground print:hidden">{notice}</p> : null}
 
-      <article className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
+      <article ref={receiptRef} className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
         {isVoid ? (
           <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
             Void · {order.voidReason}

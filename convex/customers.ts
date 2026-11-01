@@ -5,6 +5,7 @@ import { requireAdmin } from './lib/adminAuth';
 import { orderTitle } from './lib/billMath';
 import { orderState } from './lib/orderLinks';
 import { assertValidEmail } from './lib/validation';
+import { customerPhoneError } from '../src/lib/booking/phone';
 
 /**
  * Reusable customer profiles for orders (admin only). An order links to a customer by id;
@@ -32,10 +33,13 @@ function text(value: string | undefined, label: string, max: number) {
 }
 
 /** Trims and validates a profile, with its exact-lookup fields. */
-export function cleanCustomer(input: { name: string; phone?: string; email?: string; notes?: string }) {
+export function cleanCustomer(input: { name: string; phone?: string; email?: string; notes?: string }, previousPhone?: string) {
 	const name = text(input.name, 'Name', NAME_MAX);
 	if (!name) throw new Error('Enter the customer name');
 	const phone = text(input.phone, 'Phone', PHONE_MAX);
+	// Unrelated edits must still work for profiles saved before phone validation existed.
+	const phoneError = phone !== previousPhone?.trim() ? customerPhoneError(phone) : undefined;
+	if (phoneError) throw new Error(phoneError);
 	const email = text(input.email, 'Email', EMAIL_MAX);
 	if (email) assertValidEmail(email);
 	return {
@@ -121,7 +125,7 @@ export const updateCustomer = mutation({
 		await requireAdmin(ctx);
 		const customer = await ctx.db.get(customerId);
 		if (!customer) throw new Error('Customer not found');
-		const next = cleanCustomer(input);
+		const next = cleanCustomer(input, customer.phone);
 		const now = Date.now();
 		await ctx.db.patch(customerId, { ...next, updatedAt: now });
 		if (next.name === customer.name && next.phone === customer.phone && next.email === customer.email) return;

@@ -185,7 +185,7 @@ export function CatalogPane({
         </div>
       </div>
 
-      <div id="checkout-catalog" className="min-h-0 flex-1 overflow-y-auto px-4 pt-1 pb-28 sm:px-6 lg:pb-6">
+      <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 scroll-pb-28 overflow-y-auto px-4 pt-1 pb-28 sm:px-6 lg:scroll-pb-6 lg:pb-6">
         {tab === "rooms" ? (
           <p className="mb-4 rounded-xl border border-border/70 bg-card/50 p-3 text-sm text-muted-foreground">
             Room items record charges only. To reserve dates, create a booking and add it to the order.
@@ -249,7 +249,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
       <button
         type="button"
         onClick={() => onAdd(tile.item)}
-        className="group flex h-full min-h-[72px] w-full items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
+        className="group flex h-full min-h-[72px] w-full flex-wrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
       >
         <span className="relative shrink-0">
           <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
@@ -259,10 +259,10 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
             </span>
           ) : null}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col py-0.5">
+        <span className="flex min-w-[min(100%,8rem)] flex-1 flex-col py-0.5">
           <span className={cn("line-clamp-2 text-sm leading-snug font-semibold [overflow-wrap:anywhere]", tile.description && "pr-7")}>{tile.name}</span>
           <span className="mt-0.5 truncate text-xs text-muted-foreground">{tile.meta}</span>
-          <span className="mt-auto flex items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
+          <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
             <span className="text-sm font-semibold tabular-nums">{price}</span>
             {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
             <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
@@ -318,9 +318,12 @@ function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
           Custom item
         </button>
       </DialogTrigger>
-      <CheckoutDialogContent className="max-w-sm">
-        <form onSubmit={submit} className="grid gap-4">
-          <DialogHeader>
+      {/* Held inside the screen and scrolled within, so enlarged text never pushes Close or the actions off it.
+          On a narrow phone with enlarged text the padding stops growing past 7.5% of the width, and in a
+          narrow form the heading starts below the corner Close button instead of running under it. */}
+      <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-sm overflow-y-auto overscroll-contain p-[min(1.5rem,7.5vw)]">
+        <form onSubmit={submit} className="@container grid min-w-0 gap-4">
+          <DialogHeader className="@max-[14rem]:pt-8">
             <DialogTitle>Custom item</DialogTitle>
             <DialogDescription>A one-off item that isn&apos;t in the catalog. Same name and price stack into a quantity.</DialogDescription>
           </DialogHeader>
@@ -333,8 +336,8 @@ function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
             <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={!valid}>Add to order</Button>
+            <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="submit" className="h-auto min-h-10 whitespace-normal" disabled={!valid}>Add to order</Button>
           </DialogFooter>
         </form>
       </CheckoutDialogContent>

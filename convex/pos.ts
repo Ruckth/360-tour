@@ -410,10 +410,14 @@ export const catalog = query({
 });
 
 export const getOrder = query({
-	args: { orderId: v.id('bills') },
+	// Deep links are untrusted strings. Normalize after auth so a bad link is recoverable,
+	// rather than failing argument validation before checkout can render its recovery controls.
+	args: { orderId: v.string() },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		const order = await ctx.db.get(args.orderId);
+		const orderId = ctx.db.normalizeId('bills', args.orderId);
+		if (!orderId) return null;
+		const order = await ctx.db.get(orderId);
 		if (!order) return null;
 		const open = isOpenOrder(order);
 		const [lines, payments, audit, customer, parent] = await Promise.all([
@@ -721,46 +725,64 @@ export const listAttachable = query({
  * order. Otherwise creates the booking's order (following its last paid order, if any) and
  * charges what is still owed. An appointment that is part of a stay goes on the stay's order.
  */
+async function openSourceOrder(ctx: MutationCtx, source: OrderSource, actor: string) {
+	const charging = await openOrderCharging(ctx, source);
+	if (charging) return { orderId: charging._id };
+
+	if ('bookingId' in source) {
+		const booking = await ctx.db.get(source.bookingId);
+		if (!booking) throw new Error('Booking not found');
+		if (bookingClosed(booking)) throw new Error('This booking was cancelled, so there is nothing to charge');
+		// The booking's order (usually created with the booking). Opening it charges what the stay
+		// still owes, unless another open order already does (checked above).
+		const linked = await linkedOpenOrder(ctx, source);
+		if (linked) {
+			const order = await editableOrder(ctx, linked._id, actor);
+			if (bookingPayable(booking)) await attachTo(ctx, order, source);
+			return { orderId: order._id };
+		}
+		const order = await insertOrder(ctx, actor, { bookingId: booking._id, parentOrderId: (await lastPaidOrder(ctx, source))?._id });
+		if (bookingPayable(booking)) await attachTo(ctx, order, source);
+		return { orderId: order._id };
+	}
+
+	const appointment = await ctx.db.get(source.appointmentId);
+	if (!appointment) throw new Error('Appointment not found');
+	if (appointment.status === 'cancelled' || appointment.status === 'no_show' || appointment.paymentStatus === 'refunded') {
+		throw new Error('This appointment has nothing left to pay');
+	}
+	const stay: OrderSource | null = appointment.bookingId ? { bookingId: appointment.bookingId } : null;
+	let order = stay ? await activeOrderFor(ctx, stay) : await linkedOpenOrder(ctx, source);
+	if (!order) {
+		const parentOrderId = (await lastPaidOrder(ctx, stay ?? source))?._id;
+		order = await insertOrder(ctx, actor, stay ? { bookingId: appointment.bookingId, parentOrderId } : { appointmentId: appointment._id, parentOrderId });
+	} else {
+		order = await editableOrder(ctx, order._id, actor);
+	}
+	if (appointmentAttachable(appointment)) await attachTo(ctx, order, source);
+	return { orderId: order._id };
+}
+
 export const openOrderFor = mutation({
 	args: sourceArgs,
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		const source = oneSource(args);
-		const charging = await openOrderCharging(ctx, source);
-		if (charging) return { orderId: charging._id };
+		return await openSourceOrder(ctx, oneSource(args), admin.email);
+	}
+});
 
-		if ('bookingId' in source) {
-			const booking = await ctx.db.get(source.bookingId);
-			if (!booking) throw new Error('Booking not found');
-			if (bookingClosed(booking)) throw new Error('This booking was cancelled, so there is nothing to charge');
-			// The booking's order (usually created with the booking). Opening it charges what the stay
-			// still owes, unless another open order already does (checked above).
-			const linked = await linkedOpenOrder(ctx, source);
-			if (linked) {
-				const order = await editableOrder(ctx, linked._id, admin.email);
-				if (bookingPayable(booking)) await attachTo(ctx, order, source);
-				return { orderId: order._id };
-			}
-			const order = await insertOrder(ctx, admin.email, { bookingId: booking._id, parentOrderId: (await lastPaidOrder(ctx, source))?._id });
-			if (bookingPayable(booking)) await attachTo(ctx, order, source);
-			return { orderId: order._id };
-		}
-
-		const appointment = await ctx.db.get(source.appointmentId);
-		if (!appointment) throw new Error('Appointment not found');
-		if (appointment.status === 'cancelled' || appointment.status === 'no_show' || appointment.paymentStatus === 'refunded') {
-			throw new Error('This appointment has nothing left to pay');
-		}
-		const stay: OrderSource | null = appointment.bookingId ? { bookingId: appointment.bookingId } : null;
-		let order = stay ? await activeOrderFor(ctx, stay) : await linkedOpenOrder(ctx, source);
-		if (!order) {
-			const parentOrderId = (await lastPaidOrder(ctx, stay ?? source))?._id;
-			order = await insertOrder(ctx, admin.email, stay ? { bookingId: appointment.bookingId, parentOrderId } : { appointmentId: appointment._id, parentOrderId });
-		} else {
-			order = await editableOrder(ctx, order._id, admin.email);
-		}
-		if (appointmentAttachable(appointment)) await attachTo(ctx, order, source);
-		return { orderId: order._id };
+/** URL source IDs are untrusted; preserve the typed action above for internal UI callers. */
+export const openOrderForLink = mutation({
+	args: { bookingId: v.optional(v.string()), appointmentId: v.optional(v.string()) },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new Error('Choose one booking or appointment');
+		const bookingId = args.bookingId ? ctx.db.normalizeId('bookings', args.bookingId) : null;
+		const appointmentId = args.appointmentId ? ctx.db.normalizeId('serviceAppointments', args.appointmentId) : null;
+		if (args.bookingId && !bookingId) throw new Error('Booking not found. Start a new order or choose one from Orders.');
+		if (args.appointmentId && !appointmentId) throw new Error('Appointment not found. Start a new order or choose one from Orders.');
+		const source = oneSource({ bookingId: bookingId ?? undefined, appointmentId: appointmentId ?? undefined });
+		return await openSourceOrder(ctx, source, admin.email);
 	}
 });
 

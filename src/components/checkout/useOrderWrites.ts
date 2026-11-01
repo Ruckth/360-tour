@@ -30,7 +30,7 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
       const mine = sale.current;
       const next = queue.current.then(async () => {
         try {
-          onError("");
+          if (sale.current === mine) onError("");
           const result = await task(mine.orderId ?? undefined);
           const created = result && typeof result === "object" && "orderId" in result ? (result.orderId as OrderId) : undefined;
           if (created && created !== mine.orderId) {
@@ -40,7 +40,7 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
           if (then && sale.current === mine) then();
           return true;
         } catch (err) {
-          onError(errorText(err, "That didn't save. Try again."));
+          if (sale.current === mine) onError(errorText(err, "That didn't save. Try again."));
           return false;
         }
       });
