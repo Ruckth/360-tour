@@ -193,6 +193,9 @@ export function OrderPanel({
   );
 }
 
+/** A typed amount that is a number: "" and a lone "." are not. */
+const isAmount = (text: string) => text !== "" && Number.isFinite(Number(text));
+
 function TotalRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className={cn("flex justify-between", muted ? "text-xs text-muted-foreground" : "text-muted-foreground")}>
@@ -329,6 +332,14 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
     }
   }
 
+  // A changed price can be corrected (price or reason) in place, without restoring it first.
+  function editPrice() {
+    setPrice(line.priceOverride ? String(line.priceOverride.price) : "");
+    setNote(line.priceOverride?.note ?? "");
+    setPriceOpen(true);
+  }
+  const unchangedPrice = line.priceOverride !== undefined && Number(price) === line.priceOverride.price && note.trim() === line.priceOverride.note;
+
   return (
     <div className="grid gap-4 border-t border-dashed border-border px-4 pt-3 pb-3">
       {line.kind === "service" ? (
@@ -365,7 +376,7 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
                 <ToggleGroupItem value="percent" className="px-2.5 py-1.5">%</ToggleGroupItem>
               </ToggleGroup>
               <Input inputMode="decimal" aria-label="Discount" className="h-9 w-24" value={discountValue} onChange={(e) => setDiscountValue(amountInput(e.target.value))} placeholder="0" />
-              <Button size="sm" variant="outline" disabled={discountValue === ""} onClick={() => run(() => actions.updateLine({ lineId, discount: { type: discountType, value: Number(discountValue) } }))}>
+              <Button size="sm" variant="outline" disabled={!isAmount(discountValue)} onClick={() => run(() => actions.updateLine({ lineId, discount: { type: discountType, value: Number(discountValue) } }))}>
                 Apply
               </Button>
               {line.discount ? (
@@ -377,14 +388,19 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
           </Field>
 
           <Field label="Price">
-            {line.priceOverride ? (
+            {line.priceOverride && !priceOpen ? (
               <div className="flex items-start justify-between gap-2 rounded-lg bg-amber-50 p-2 text-xs dark:bg-amber-400/10">
-                <span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
                   {formatMoney(line.priceOverride.price)} instead of {formatMoney(line.unitPrice)} · “{line.priceOverride.note}”
                 </span>
-                <Button size="sm" variant="ghost" className="h-7" onClick={() => run(() => actions.overrideLinePrice({ lineId, price: null, note: "" }))}>
-                  Restore
-                </Button>
+                <span className="flex shrink-0 gap-1">
+                  <Button size="sm" variant="ghost" className="h-7" onClick={editPrice}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7" onClick={() => run(() => actions.overrideLinePrice({ lineId, price: null, note: "" }))}>
+                    Restore
+                  </Button>
+                </span>
               </div>
             ) : priceOpen ? (
               <div className="grid gap-2">
@@ -395,12 +411,12 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
                 </div>
                 <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
                 <div className="flex gap-2">
-                  <Button size="sm" disabled={price === "" || !note.trim()} onClick={applyPrice}>Apply price</Button>
+                  <Button size="sm" disabled={!isAmount(price) || !note.trim() || unchangedPrice} onClick={applyPrice}>Apply price</Button>
                   <Button size="sm" variant="ghost" onClick={() => setPriceOpen(false)}>Cancel</Button>
                 </div>
               </div>
             ) : (
-              <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setPriceOpen(true)}>
+              <Button size="sm" variant="outline" className="justify-self-start" onClick={editPrice}>
                 Change price
               </Button>
             )}

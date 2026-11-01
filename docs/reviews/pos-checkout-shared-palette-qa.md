@@ -10,7 +10,7 @@ Desktop shows the active order number only in the right panel header. The duplic
 
 The light-mode add icon now uses dark text on its gold hover fill, and selected tab underlines use the accessible gold token. Shadows and the neutral backdrop wash adapt to the app theme. The order panel defaults to 95% card opacity when backdrop-filter is unsupported, using 80% only with blur support. Global theme values, backend, schema and money logic were not changed.
 
-Kiro Opus 5.5 implemented the change. The coordinator reviewed the diff and separately checked the running UI. Old forced-dark assertions were replaced with inherited-theme regressions, rather than disabled. Temporary mutation checks caught the duplicate title, a forced dark layer, a separate palette and a forced dark admin shell.
+The coordinator reviewed the diff and separately checked the running UI. Old forced-dark assertions were replaced with inherited-theme regressions, rather than disabled. Temporary mutation checks caught the duplicate title, a forced dark layer, a separate palette and a forced dark admin shell.
 
 ## Validation
 
@@ -29,7 +29,7 @@ The shared preview remained signed in. Computed colours on Settings and checkout
 
 The previously pending two-tab stale-payment UI check is now complete. Using only the UI, synthetic **Order #9** (`rn71tjbr18qzj37gmf9rnrsf5d8hbgkw`) contained a labelled QA item at ฿100. Tab A opened Cash payment. Tab B increased quantity to two. Tab A displayed “The order changed while payment was open” and removed Confirm cash. Reviewing the updated order showed ฿200 due. Exact cash settlement displayed **Receipt R-000008**, two items, total/cash ฿200 and included VAT ฿13.08. The receipt was then voided through the UI with a synthetic-QA reason, preserving its history. No actual money was collected; no booking or customer was linked.
 
-These live checks were verified through DOM state. Screenshot and recording calls repeatedly failed with `Preview automation snapshot timed out after 15000ms` / recordingStart timeout; the fallback browser host was also unavailable. **A fresh authenticated receipt screenshot remains unavailable.** The owned QA tabs were closed. No user testing tab was changed.
+These live checks were verified through DOM state. Screenshot and recording calls repeatedly failed with `Preview automation snapshot timed out after 15000ms` / recordingStart timeout; the fallback browser host was also unavailable. **Resolved on 1 November:** fresh authenticated receipt capture now succeeds; see the [final review](pos-checkout-final-review.md). The owned QA tabs were closed. No user testing tab was changed.
 
 ## Visual evidence
 
@@ -45,7 +45,7 @@ The images and video below use the real checkout components on `/dev/checkout-pr
 
 ## Remaining limits
 
-New-head hosted CI and owner/reviewer acceptance must complete before merge. The fresh authenticated receipt screenshot remains blocked by browser capture tooling; live two-tab payment and receipt/void DOM checks passed. This report does not claim all live visual gates are complete, and no merge was performed.
+New-head hosted CI must pass before merge. The user authorized merge after final review on 1 November. Live two-tab payment and receipt/void DOM checks passed; the previously blocked authenticated receipt screenshot was captured and inspected on 1 November. See the [final review](pos-checkout-final-review.md) for the latest verification.
 
 Shared-dev services without photos still use fallback icons. No service photos were fabricated or seeded. No physical device, terminal, printer or physical keyboard testing was performed. Payment methods record tenders manually.
 

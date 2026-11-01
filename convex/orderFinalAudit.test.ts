@@ -8,16 +8,16 @@ import { orderBackfillPatch } from './lib/orderBackfill';
 import { ensureLinkedOrder } from './lib/orderLinks';
 
 const modules = import.meta.glob('./**/*.ts');
-beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'sol-final@example.com'));
+beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'order-final@example.com'));
 afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'sol-final@example.com', tokenIdentifier: 'sol-final' });
+  const admin = t.withIdentity({ email: 'order-final@example.com', tokenIdentifier: 'order-final' });
   const ids = await t.run(async ctx => {
     const staffId = await ctx.db.insert('staff', { name: 'Original therapist', role: 'Therapist', color: '#abc', workingHours: [], breaks: [], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
-    const serviceId = await ctx.db.insert('services', { slug: 'sol-final-service', name: 'Final massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 1200, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
-    const appointmentId = await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: Date.now() + 86400000, end: Date.now() + 90000000, blockedUntil: Date.now() + 90000000, guestName: 'Unique appointment guest', guestPhone: '+66 81 123 4567', guestEmail: 'unique-appointment@example.com', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-SOL-FINAL', accessToken: 'sol-final-test-token', createdAt: Date.now() });
+    const serviceId = await ctx.db.insert('services', { slug: 'order-final-service', name: 'Final massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 1200, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
+    const appointmentId = await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: Date.now() + 86400000, end: Date.now() + 90000000, blockedUntil: Date.now() + 90000000, guestName: 'Unique appointment guest', guestPhone: '+66 81 123 4567', guestEmail: 'unique-appointment@example.com', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-ORDER-FINAL', accessToken: 'order-final-test-token', createdAt: Date.now() });
     return { staffId, serviceId, appointmentId };
   });
   return { t, admin, ...ids };
@@ -91,14 +91,14 @@ describe('Independent final recheck: attaching to an existing standalone order',
     const before = await admin.query(api.pos.getOrder, { orderId });
     await admin.mutation(api.pos.attach, { orderId, appointmentId });
     const after = await admin.query(api.pos.getOrder, { orderId });
-    expect(after?.source).toMatchObject({ id: appointmentId, reference: 'SVC-SOL-FINAL', guestName: 'Unique appointment guest' });
+    expect(after?.source).toMatchObject({ id: appointmentId, reference: 'SVC-ORDER-FINAL', guestName: 'Unique appointment guest' });
     expect(after?.customer?.name).toBe('Separate payer');
     expect(after?.order.orderNumber).toBe(before?.order.orderNumber);
     expect((await t.run(ctx => ctx.db.get(placeholder._id)))?.appointmentId).toBe(appointmentId);
     expect(await admin.mutation(api.pos.openOrderFor, { appointmentId })).toEqual({ orderId });
     expect((await admin.query(api.pos.getOrder, { orderId }))?.lines).toHaveLength(2);
     const orders = await admin.query(api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } });
-    expect(orders.page.find(row => row._id === orderId)?.bookingReference).toBe('SVC-SOL-FINAL');
+    expect(orders.page.find(row => row._id === orderId)?.bookingReference).toBe('SVC-ORDER-FINAL');
     expect(orders.page.map(row => row._id)).not.toContain(placeholder._id);
   });
 });

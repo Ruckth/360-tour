@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Independent audit: real shell/sidebar, with only auth, transport and router boundaries mocked.
+// Real shell/sidebar, with only auth, transport and router boundaries mocked.
 import type { Window as HappyDOMWindow } from 'happy-dom';
 import { act, createElement, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -78,6 +78,27 @@ it('keeps checkout and other-route sidebar choices independent through keyboard 
   route.pathname = '/admin/bookings';
   await renderShell();
   expect(railState()).toBe('collapsed');
+});
+
+it('keeps the checkout rail on its receipts, so paying does not expand the sidebar', async () => {
+  await renderShell();
+  expect(railState()).toBe('collapsed');
+  route.pathname = '/admin/receipt/order123abc';
+  await renderShell();
+  expect(railState()).toBe('collapsed');
+  await key('b');
+  expect(railState()).toBe('expanded');
+  route.pathname = '/admin/checkout';
+  await renderShell();
+  expect(railState()).toBe('expanded');
+  // Other pages keep their own choice.
+  route.pathname = '/admin/receipts-elsewhere';
+  await renderShell();
+  expect(railState()).toBe('expanded');
+  await trigger();
+  route.pathname = '/admin/receipt/order123abc';
+  await renderShell();
+  expect(railState()).toBe('expanded');
 });
 
 it('opens and closes the real mobile sidebar with the shell trigger', async () => {

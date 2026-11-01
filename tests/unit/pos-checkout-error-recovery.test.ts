@@ -37,7 +37,7 @@ afterEach(async () => {
   vi.unstubAllGlobals(); vi.useRealTimers(); vi.restoreAllMocks();
 });
 
-describe('Independent checkout error recovery', () => {
+describe('Checkout error recovery', () => {
   it.each(['customer', 'booking'] as const)('keeps checkout usable when the %s search query fails', async kind => {
     const { backend, orderId } = await setup();
     vi.spyOn(console, 'error').mockImplementation(() => {});

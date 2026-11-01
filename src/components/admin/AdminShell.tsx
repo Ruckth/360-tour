@@ -96,14 +96,16 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
   const checkout = pathname.startsWith("/admin/checkout");
   const fitsViewport = pathname.startsWith("/admin/chats") || checkout;
   // Checkout opens with the sidebar as an icon rail, leaving room for the catalog and order. Opening
-  // it there (trigger, ⌘B, search) is kept while on checkout; other pages keep their own state.
+  // it there (trigger, ⌘B, search) is kept while on checkout and its receipts, so paying doesn't
+  // expand the rail; other pages keep their own state.
+  const checkoutFlow = checkout || /^\/admin\/receipt(\/|$)/.test(pathname);
   const [open, setOpen] = useState(true);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   return (
     <SidebarProvider
-      open={checkout ? checkoutOpen : open}
-      onOpenChange={checkout ? setCheckoutOpen : setOpen}
+      open={checkoutFlow ? checkoutOpen : open}
+      onOpenChange={checkoutFlow ? setCheckoutOpen : setOpen}
       className={cn("bg-background", fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen")}
     >
       <AdminSidebar userEmail={userEmail} />

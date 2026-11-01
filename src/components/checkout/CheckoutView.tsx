@@ -25,12 +25,14 @@ export function CheckoutView({
   onOrderChange,
   onPaid,
   notice,
+  onNoticeRetry,
 }: {
   orderId: OrderId | null;
   onOrderChange: (orderId: OrderId | null) => void;
   onPaid: (orderId: OrderId) => void;
   /** Shown above the catalog, e.g. a refused `?booking=` link. */
   notice?: string;
+  onNoticeRetry?: () => void;
 }) {
   const backend = useCheckoutBackend();
   const catalog = backend.useCatalog();
@@ -47,6 +49,8 @@ export function CheckoutView({
     (next: OrderId | null) => {
       setSheetOpen(false);
       setSaved("");
+      // A failed write belongs to the order it was made on; the next order starts without its banner.
+      setError("");
       switchTo(next);
     },
     [switchTo],
@@ -102,6 +106,9 @@ export function CheckoutView({
   const alert = (message: string) => (
     <div role="alert" className="flex items-start gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 sm:px-6 dark:border-red-400/30 dark:bg-red-400/15 dark:text-red-300">
       <span className="flex-1 self-center">{message}</span>
+      {!error && onNoticeRetry ? (
+        <button type="button" onClick={onNoticeRetry} className="shrink-0 rounded px-2 py-1 font-medium underline">Try again</button>
+      ) : null}
       {error ? (
         <button type="button" onClick={() => setError("")} aria-label="Dismiss" className="grid place-items-center rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-400/20">
           <X aria-hidden className="size-4" />

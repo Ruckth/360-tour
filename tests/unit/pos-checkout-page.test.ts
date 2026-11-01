@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminCheckoutPage from "@/app/admin/checkout/page";
 
-const nav = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn(), push: vi.fn(), notice: undefined as string | undefined, orderId: null as string | null }));
+const nav = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn(), push: vi.fn(), notice: undefined as string | undefined, orderId: null as string | null, retry: undefined as (() => void) | undefined }));
 const openOrderFor = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
@@ -16,8 +16,9 @@ vi.mock("@/components/checkout/convex-backend", () => {
   return { convexCheckoutBackend: { useActions: () => actions } };
 });
 vi.mock("@/components/checkout/CheckoutView", () => ({
-  CheckoutView: ({ notice, orderId }: { notice?: string; orderId: string | null }) => {
+  CheckoutView: ({ notice, orderId, onNoticeRetry }: { notice?: string; orderId: string | null; onNoticeRetry?: () => void }) => {
     nav.notice = notice;
+    nav.retry = onNoticeRetry;
     nav.orderId = orderId;
     return null;
   },
@@ -81,4 +82,28 @@ describe("checkout page links", () => {
     expect(nav.replace).toHaveBeenCalledWith("/admin/checkout?order=k17billbbb0001");
     expect(openOrderFor).not.toHaveBeenCalled();
   });
+});
+
+
+it("retries a refused booking link without reloading the page", async () => {
+  openOrderFor.mockRejectedValueOnce(new Error("Temporarily unavailable")).mockResolvedValueOnce({ orderId: "order-retried" });
+  await show("booking=k17booking0001");
+  expect(nav.notice).toBe("Temporarily unavailable");
+  expect(openOrderFor).toHaveBeenCalledTimes(1);
+  await act(async () => nav.retry!());
+  expect(openOrderFor).toHaveBeenCalledTimes(2);
+  expect(nav.notice).toBeUndefined();
+  expect(nav.replace).toHaveBeenCalledWith("/admin/checkout?order=order-retried");
+});
+
+it("reopens the same booking after leaving and ignores the earlier attempt", async () => {
+  let finishFirst!: (result: { orderId: string }) => void;
+  openOrderFor.mockReturnValueOnce(new Promise(resolve => { finishFirst = resolve; })).mockResolvedValueOnce({ orderId: "new-attempt" });
+  await show("booking=k17booking0001");
+  await show("");
+  await show("booking=k17booking0001");
+  expect(openOrderFor).toHaveBeenCalledTimes(2);
+  expect(nav.replace).toHaveBeenLastCalledWith("/admin/checkout?order=new-attempt");
+  await act(async () => finishFirst({ orderId: "old-attempt" }));
+  expect(nav.replace).toHaveBeenCalledTimes(1);
 });

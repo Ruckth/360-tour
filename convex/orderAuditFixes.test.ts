@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 // Regressions for the audit fixes: appointment contact lookup, legacy balances and frozen
-// therapist names (tmp/pos-order-implementation/kiro-audit-fixes-report.md).
+// therapist names.
 
 import migrationsTest from '@convex-dev/migrations/test';
 import { convexTest } from 'convex-test';

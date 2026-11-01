@@ -90,7 +90,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute
 .flag{border:1px solid var(--warning,var(--border));background:var(--warning-surface,var(--secondary));border-radius:var(--radius);padding:12px 14px;font-size:12.5px}
 </style></head><body><div class="wrap">
 
-<p class="lead">Updated after Kiro read the Ease POS checkout code (<code>ease-international/src/app/(app)/checkout/</code>, origin/main <code>2b0c174e4</code>). This version follows how Ease actually works: <b>tapping a tile adds it to the bill, the right panel is the bill</b>, and you edit each row there. Bills are saved on the server, and payment happens in the bill footer.</p>
+<p class="lead">Updated after reviewing the Ease POS checkout code (<code>ease-international/src/app/(app)/checkout/</code>, origin/main <code>2b0c174e4</code>). This version follows how Ease actually works: <b>tapping a tile adds it to the bill, the right panel is the bill</b>, and you edit each row there. Bills are saved on the server, and payment happens in the bill footer.</p>
 
 <div class="flag"><b>⚠ Decide:</b> You asked for <i>item details on the right</i>, but in Ease the right panel is <b>the bill</b>. I've matched Ease, and tapping a row expands its details (therapist, time, price, discount) inside the bill. If you still want a separate item-detail panel, an ⓘ on each tile could open it.</div>
 

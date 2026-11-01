@@ -1,6 +1,6 @@
 # Booking, Order and Customer — implementation and test plan
 
-Approved: 29 October 2026. User requested removal of the walk-in concept, booking-linked orders, optional customer links, compact list rows, and standalone orders without a booking. Implementation by Kiro; independent audit and testing by GPT-6.1 Sol. No merge is authorized.
+Approved: 29 October 2026. User requested removal of the walk-in concept, booking-linked orders, optional customer links, compact list rows, and standalone orders without a booking. Implementation and independent audit/testing were requested. Merge was subsequently authorized on 1 November 2026 after the final review and checks.
 
 ## Product model
 
@@ -29,7 +29,7 @@ Approved: 29 October 2026. User requested removal of the walk-in concept, bookin
 4. Replace customer name copying with explicit optional customer linkage and immutable receipt snapshots. Do not automatically merge customers by matching names; handle ambiguous legacy contacts conservatively.
 5. Update checkout components, Orders list, receipt labels/copy text, URLs/compatibility redirects and fixture backend. Remove active walk-in numbering and language consistently.
 6. Use widen → migrate → verify → narrow for existing dev data. Prefer the existing @convex-dev/migrations component for batched, resumable, idempotent backfills. Preserve bill/order IDs, receipt numbers, payments and audit records. Keep an explicit plan for ambiguous historical multi-booking bills. No destructive data reset.
-7. Complete implementation tests; independent Sol audit/test; Kiro fixes confirmed findings; focused independent recheck. Coordinator deploys to the already-authorized shared dev and performs final authenticated visual/flow QA.
+7. Complete implementation tests; independent audit/test; fix confirmed findings; focused independent recheck. Coordinator deploys to the already-authorized shared dev and performs final authenticated visual/flow QA.
 
 ## Required automated tests
 
@@ -58,8 +58,8 @@ Run relevant tests during development, then full `pnpm typecheck`, `pnpm lint`, 
 
 ## Completion gate
 
-Kiro reports implemented scope, exact checks and failures/limitations. Sol independently reads the actual diff, executes tests and gives reproducible findings plus an explicit completed verdict. Fix/recheck confirmed issues, update this plan/status and QA report, capture final visuals, push the reviewed candidate, and report current CI/merge readiness. Do not claim completion based solely on agents saying it works. No automatic merge.
+The implementer reports scope, exact checks and failures/limitations. The reviewer independently reads the actual diff, executes tests and gives reproducible findings plus an explicit completed verdict. Fix/recheck confirmed issues, update this plan/status and QA report, capture final visuals, push the reviewed candidate, and report current CI/merge readiness. Do not claim completion based solely on agents saying it works. Merge after the final review and required checks pass, as authorized on 1 November 2026.
 
 ## Implementation status — 29 October 2026
 
-Implementation, Kiro fix loops, completed Sol audits, F9 coordinator fix, shared-dev migration/preservation/idempotence and authenticated desktop/mobile acceptance are complete. See `docs/reviews/pos-orders-qa.md` for exact test counts and evidence. Final hosted CI/review status is checked after pushing the rebased candidate; no automatic merge.
+Implementation, fix loops, completed independent audits, F9 coordinator fix, shared-dev migration/preservation/idempotence and authenticated desktop/mobile acceptance are complete. See `docs/reviews/pos-orders-qa.md` for exact test counts and evidence. Final hosted CI/review status is checked after pushing the rebased candidate; merge is authorized after the final review and checks pass.

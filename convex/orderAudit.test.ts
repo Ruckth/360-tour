@@ -14,24 +14,24 @@ const modules = import.meta.glob('./**/*.ts');
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-29T03:00:00Z'));
-  vi.stubEnv('ADMIN_EMAILS', 'sol-audit@example.com');
+  vi.stubEnv('ADMIN_EMAILS', 'order-audit@example.com');
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'sol-audit@example.com', tokenIdentifier: 'sol-audit' });
+  const admin = t.withIdentity({ email: 'order-audit@example.com', tokenIdentifier: 'order-audit' });
   const staffId = await admin.mutation(api.adminServices.createStaff, {
     name: 'Audit therapist', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
   });
   const serviceId = await admin.mutation(api.adminServices.createService, {
-    slug: 'sol-audit-service', name: 'Audit massage', description: '', category: 'Massage',
+    slug: 'order-audit-service', name: 'Audit massage', description: '', category: 'Massage',
     durationMin: 60, bufferMin: 15, price: 1200, currency: 'THB', staffIds: [staffId]
   });
   const { propertyId, bookingId, appointmentId } = await t.run(async ctx => {
     const propertyId = await ctx.db.insert('properties', {
-      slug: 'sol-audit-villa', name: 'Audit villa', tagline: '', description: '', pricePerNight: 10000,
+      slug: 'order-audit-villa', name: 'Audit villa', tagline: '', description: '', pricePerNight: 10000,
       currency: 'THB', maxGuests: 4, bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [],
       tourRoomIds: [], directDiscountPercent: 0, status: 'active'
     });
@@ -39,20 +39,20 @@ async function setup() {
       propertyId, guestName: 'Booking guest', guestPhone: '+66 81 234 5678', guestPhoneDigits: '66812345678',
       checkIn: '2026-11-01', checkOut: '2026-11-04', guests: 2, nights: 3, subtotal: 30000,
       discountAmount: 0, total: 30000, currency: 'THB', amountPaid: 10000,
-      paymentStatus: 'pending', status: 'confirmed', accessToken: 'sol-audit-token', createdAt: Date.now(),
+      paymentStatus: 'pending', status: 'confirmed', accessToken: 'order-audit-token', createdAt: Date.now(),
       confirmationEmailsQueuedAt: Date.now()
     });
     const start = localDateTimeUtc('2026-11-02', '10:00');
     const appointmentId = await ctx.db.insert('serviceAppointments', {
       serviceId, staffId, bookingId, start, end: start + 3600000, blockedUntil: start + 4500000,
       guestName: 'Appointment guest', guestPhone: '+66 81 234 5678', source: 'admin', status: 'booked',
-      paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-SOL-AUDIT',
-      accessToken: 'sol-audit-appointment-token', createdAt: Date.now()
+      paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-ORDER-AUDIT',
+      accessToken: 'order-audit-appointment-token', createdAt: Date.now()
     });
     return { propertyId, bookingId, appointmentId };
   });
   const view = async (orderId: Id<'bills'>) => (await admin.query(api.pos.getOrder, { orderId }))!;
-  const review = async (orderId: Id<'bills'>, key = 'sol-attempt-0001') => {
+  const review = async (orderId: Id<'bills'>, key = 'audit-attempt-0001') => {
     const data = await view(orderId);
     return { orderId, idempotencyKey: key, expectedDue: data.totals.due, expectedRevision: data.order.revision,
       tenders: data.totals.due ? [{ method: 'card' as const, amount: data.totals.due }] : [] };
@@ -61,7 +61,7 @@ async function setup() {
   return { t, admin, staffId, serviceId, propertyId, bookingId, appointmentId, view, review, extra };
 }
 
-describe('Sol independent order audit: identity, customer and settlement', () => {
+describe('Independent order audit: identity, customer and settlement', () => {
   it('creates standalone orders without inventing a customer, booking or legacy counter', async () => {
     const { t, admin, extra, view, review } = await setup();
     const { orderId } = await extra();
@@ -187,7 +187,7 @@ describe('Sol independent order audit: identity, customer and settlement', () =>
   });
 });
 
-describe('Sol independent order audit: booking/source integrity', () => {
+describe('Independent order audit: booking/source integrity', () => {
   it('REGRESSION COVERAGE: opening appointment before stay still charges the unpaid stay exactly once', async () => {
     const { admin, bookingId, appointmentId, view } = await setup();
     const appointmentOrder = await admin.mutation(api.pos.openOrderFor, { appointmentId });
@@ -270,7 +270,7 @@ describe('Sol independent order audit: booking/source integrity', () => {
     expect(later.orderId).not.toBe(original.orderId);
     expect((await view(later.orderId)).order.parentOrderId).toBe(original.orderId);
     expect((await view(later.orderId)).totals).toMatchObject({ total: 40000, deposit: 30000, due: 10000 });
-    await admin.mutation(api.pos.settleOrder, await review(later.orderId, 'sol-attempt-0002'));
+    await admin.mutation(api.pos.settleOrder, await review(later.orderId, 'audit-attempt-0002'));
     expect((await view(original.orderId)).order).toEqual(before.order);
     expect((await view(original.orderId)).lines).toEqual(before.lines);
     expect((await view(original.orderId)).payments).toEqual(before.payments);
@@ -279,7 +279,7 @@ describe('Sol independent order audit: booking/source integrity', () => {
   it('REGRESSION COVERAGE: shared stay creation establishes an order before first checkout', async () => {
     const { t, admin } = await setup();
     const bookingId = await admin.mutation(api.adminBookings.createBooking, {
-      propertySlug: 'sol-audit-villa', guestName: 'New guest', guestPhone: '0812222222', checkIn: '2026-12-01', checkOut: '2026-12-03', guests: 2
+      propertySlug: 'order-audit-villa', guestName: 'New guest', guestPhone: '0812222222', checkIn: '2026-12-01', checkOut: '2026-12-03', guests: 2
     });
     expect((await admin.query(api.pos.ordersForBooking, { bookingId })).activeOrder).not.toBeNull();
     expect(await t.run(ctx => ctx.db.query('bills').take(10))).toHaveLength(1);
@@ -297,15 +297,15 @@ describe('Sol independent order audit: booking/source integrity', () => {
     const { t, admin, bookingId } = await setup();
     if (method === 'manual') await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' });
     else {
-      await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutSessionId: 'cs_sol_audit' }));
-      await t.mutation(api.payments.completeCheckout, { bookingId, sessionId: 'cs_sol_audit', amountTotal: 3000000, currency: 'thb', paymentIntentId: 'pi_sol_audit' });
+      await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutSessionId: 'cs_order_audit' }));
+      await t.mutation(api.payments.completeCheckout, { bookingId, sessionId: 'cs_order_audit', amountTotal: 3000000, currency: 'thb', paymentIntentId: 'pi_order_audit' });
     }
     expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'paid', amountPaid: 30000 });
     expect((await admin.query(api.pos.ordersForBooking, { bookingId })).balance.owed).toBe(0);
   });
 });
 
-describe('Sol independent order audit: legacy backfill', () => {
+describe('Independent order audit: legacy backfill', () => {
   it('registered migration dry run rolls back its counter/row writes and one-batch cursors resume safely', async () => {
     const { t } = await setup();
     const ids = await t.run(async ctx => {
@@ -476,13 +476,13 @@ describe('Sol independent order audit: legacy backfill', () => {
   });
 });
 
-describe('Sol independent order audit: authorization', () => {
+describe('Independent order audit: authorization', () => {
   it('public booking response does not expose the payer profile or order history', async () => {
     const { t, admin, bookingId } = await setup();
     const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Private corporate payer', email: 'private-payer@example.com', notes: 'Private notes' });
     const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
     await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
-    const data = await t.query(api.bookings.getById, { id: bookingId, accessToken: 'sol-audit-token' });
+    const data = await t.query(api.bookings.getById, { id: bookingId, accessToken: 'order-audit-token' });
     expect(data._id).toBe(bookingId);
     expect(data.customerId).toBeUndefined();
     expect(data.customerSnapshot).toBeUndefined();

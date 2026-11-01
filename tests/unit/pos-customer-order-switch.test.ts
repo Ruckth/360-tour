@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Independent stable-candidate checks of customer recovery and writes across order switches.
+// Checks customer recovery and writes across order switches.
 import { act, createElement, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';

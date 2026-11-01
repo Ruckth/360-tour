@@ -45,7 +45,7 @@ The synthetic custom item on Order #7 was priced at ฿100 and overridden to ฿
 | [Light-root mobile sheet](assets/pos-checkout-visual/light-root-mobile-fixed.png) | Final rebased fixture build, themed content and backdrop |
 | [Scroll/save/reopen video](assets/pos-checkout-visual/sample-mobile-scroll-save-reopen.mp4) | About 15 seconds of real browser capture on labelled sample data; initial dev compilation trimmed |
 
-The video was inspected at sampled frames through the reopened order. Fixture video proves interaction/layout, while the authenticated screenshots and reload check prove the live catalog and persisted order separately. Original independent audit details remain locally in `tmp/pos-visual-redesign/sol-audit-report.md`.
+The video was inspected at sampled frames through the reopened order. Fixture video proves interaction/layout, while the authenticated screenshots and reload check prove the live catalog and persisted order separately. Original independent audit details remain in local reports.
 
 ## Remaining gates and limits
 
@@ -53,9 +53,9 @@ Current-head hosted CI and final reviewer/owner acceptance are pending push. The
 
 No physical devices, virtual keyboards, bank/card terminals or thermal printers were tested. Photos currently use their original size. Cash/PromptPay/card/transfer record tenders manually; no money was sent. The local dev server remains on port 3107 for testing.
 
-## Kiro Opus 5.5 review and refactor — 31 October
+## Review and refactor — 31 October
 
-Kiro CLI with Opus 5.5, high effort, completed the requested review and bounded refactor. It found no P0–P2 defects in the reviewed scope. Four maintainability improvements were implemented and independently checked by the coordinator:
+The requested review and bounded refactor are complete. It found no P0–P2 defects in the reviewed scope. Four maintainability improvements were implemented and independently checked by the coordinator:
 
 - `CheckoutDialogContent` and `CheckoutSheetContent` now apply both content and overlay themes together across all seven checkout dialogs/sheets, preventing the omission that caused the earlier light-root overlay defect.
 - A shared `useLoadablePhoto` hook preserves the existing URL-specific photo-failure behavior for both thumbnails and the decorative background.
@@ -68,4 +68,4 @@ After refactoring: **205 focused regressions, all 1,270 unit tests and all 27 bo
 
 Fresh isolated browser checks confirmed all seven themed layers under a light root, separate service rows, room/extra steppers and required price-change reasons. At all five required viewports, there was no page overflow and the payment footer remained reachable; measured footer positions matched the pre-refactor audit. The coordinator inspected the [desktop sample](assets/pos-checkout-visual/refactor-desktop-sample.png), [320px mobile sample](assets/pos-checkout-visual/refactor-mobile-sample.png), and Orders overlay captures. These images use labelled fixture data, not authenticated shared-dev data. No motion changed, so the earlier inspected scroll/save/reopen video remains the motion evidence.
 
-The full local review is `tmp/pos-visual-redesign/kiro-review-refactor-report.md`. Hosted CI on `86da380` passed before this refactor; the new commit must receive its own CI result. The authenticated two-tab/receipt-screen gate and missing real service-photo data described above remain open. No merge performed.
+Hosted CI on `86da380` passed before this refactor; the new commit must receive its own CI result. The authenticated two-tab/receipt-screen gate and missing real service-photo data described above remain open. No merge performed.

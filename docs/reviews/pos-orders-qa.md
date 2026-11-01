@@ -14,7 +14,7 @@ Items are compact full-width list rows. Editing expands a row. Totals and paymen
 
 ## Audit and automated checks
 
-Kiro CLI implemented and fixed the feature. Independent GPT-6.1 Sol audits completed and retained regressions for migration ambiguity, legacy held pagination, query-error recovery, deposit balances, therapist snapshots, landscape forms, appointment contact discovery and customer retry handling. All F1–F8 regressions passed the stable recheck. Sol then found F9: completion of an earlier customer write could close a newer form. The coordinator fixed completion scoping to both the original order and dialog session; the original regression and a same-order close/reopen regression pass.
+Implementation and independent audits completed and retained regressions for migration ambiguity, legacy held pagination, query-error recovery, deposit balances, therapist snapshots, landscape forms, appointment contact discovery and customer retry handling. All F1–F8 regressions passed the stable recheck. A later review found F9: completion of an earlier customer write could close a newer form. The coordinator fixed completion scoping to both the original order and dialog session; the original regression and a same-order close/reopen regression pass.
 
 - Full rebased unit suite: **117 files / 1,216 tests passed**.
 - Focused acceptance: **183 tests passed**. After the final event-handler refactor, all **32 customer recovery/write tests passed** again.
@@ -61,7 +61,7 @@ These screenshots show the real authenticated app and synthetic shared-dev recor
 | [Desktop receipt](assets/pos-orders/desktop-booking-receipt.jpg) | Same split settlement at desktop size |
 | [Scroll/save/reopen video](assets/pos-orders/sample-mobile-scroll-save-reopen.mp4) | 20-second real browser capture, sample data |
 
-Earlier inspected fixture evidence also covers long names, landscape844×390 customer forms, keyboard/focus, rotation, error/retry states and receipt overflow. It is retained locally under `output/pos-orders-qa/sol-final/`.
+Earlier inspected fixture evidence also covers long names, landscape844×390 customer forms, keyboard/focus, rotation, error/retry states and receipt overflow. The original evidence is retained locally.
 
 ## Limits
 
