@@ -116,12 +116,12 @@ export function CheckoutView({
       ) : null}
     </div>
   );
-  const message = error || notice || (missing ? "That order doesn't exist. Start a new one." : "");
+  const message = error || notice || (missing ? "That order link is invalid or the order no longer exists. Start a new order or choose one from Orders." : "");
 
   return (
-    <div className={cn("relative isolate flex min-h-0 flex-1 flex-col bg-background", TOUCH_TARGETS)}>
+    <div className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
-      <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} />
+      <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} />
       {message ? alert(message) : null}
       {saved && !message ? (
         <p role="status" className="border-b border-border/70 bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>

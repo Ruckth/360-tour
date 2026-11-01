@@ -15,3 +15,15 @@ export function normalizeGuestPhone(value: string): string | undefined {
   }
   return undefined;
 }
+
+/** Optional customer contact, using the same Thai/local and international rules as guest input. */
+export function customerPhoneError(value: string | undefined): string | undefined {
+  if (!value?.trim()) return undefined;
+  // Historic international digits may also be entered with spaces or punctuation, without '+'.
+  const compact = value.replace(/[\s().-]/g, "");
+  // The phone parser can extract numbers from prose; a contact field must be the whole number.
+  if (!/^\+?\d+$/.test(compact)) return "Enter a valid phone number. Include the country code for numbers outside Thailand.";
+  const international = /^[1-9]\d{9,14}$/.test(compact) ? parsePhoneNumberFromString(`+${compact}`) : undefined;
+  if (normalizeGuestPhone(compact) || international?.isPossible()) return undefined;
+  return "Enter a valid phone number. Include the country code for numbers outside Thailand.";
+}

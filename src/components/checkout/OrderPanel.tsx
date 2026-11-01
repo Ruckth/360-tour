@@ -13,7 +13,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { TENDER_LABELS, amountInput } from "./checkout-ui";
+import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
 import { PayPanel } from "./PayPanel";
@@ -68,8 +68,11 @@ export function OrderPanel({
     if (orderId) await run(() => actions.clearOrder({ orderId }));
   }
 
+  // With enlarged text the header and footer can outgrow the screen. The rows keep a minimum
+  // height (no more than they get at normal text, even in phone landscape) and the panel itself
+  // scrolls, so every action stays reachable; at normal text only the rows scroll.
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/70 px-4 py-3 sm:px-5 lg:py-4 [@media(max-height:32rem)]:py-2">
         <div className="flex min-w-0 flex-1 basis-40 items-center gap-3">
           <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted/60 text-gold-text">
@@ -83,10 +86,10 @@ export function OrderPanel({
             </p>
           </div>
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
         {paying ? null : (
           <>
-            <Button variant="outline" className="rounded-xl" onClick={saveAndClose} disabled={!itemCount} title="Keep this unpaid order and start a new one. Reopen it from Orders.">
+            <Button variant="outline" className="h-auto min-h-10 max-w-full rounded-xl whitespace-normal" onClick={saveAndClose} disabled={!itemCount} title="Keep this unpaid order and start a new one. Reopen it from Orders.">
               <Save aria-hidden className="size-3.5" /> Save &amp; close
             </Button>
             {/* A local dialog rather than useConfirm: on phones it nests in the order sheet, which a
@@ -122,7 +125,7 @@ export function OrderPanel({
         <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onBack={() => setPaying(null)} onPaid={onPaid} />
       ) : (
         <>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-[min(14rem,28dvh)] flex-1 overflow-y-auto">
             {lines.length === 0 ? (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground">
                 <p>Tap an item to add it to the order.</p>
@@ -143,16 +146,17 @@ export function OrderPanel({
             )}
           </div>
 
-          <div className="shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
+          <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
             <dl className="space-y-1 text-sm">
               <TotalRow label="Subtotal" value={formatMoney(totals.subtotal)} />
               {totals.discount ? <TotalRow label="Discounts" value={formatMoney(-totals.discount)} /> : null}
               <TotalRow label="VAT 7% (included)" value={formatMoney(totals.vat)} muted />
               {totals.deposit ? <TotalRow label="Paid online (deposit)" value={formatMoney(-totals.deposit)} /> : null}
             </dl>
-            <div className="mt-2 mb-3 flex items-baseline justify-between gap-3 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
+            <div className="mt-2 mb-3 flex flex-wrap items-baseline justify-between gap-x-3 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
               <span className="font-serif text-2xl font-semibold">Due</span>
-              <span className="font-serif text-4xl leading-none font-semibold lining-nums tabular-nums [@media(max-height:32rem)]:text-3xl" data-testid="order-due">{formatMoney(totals.due)}</span>
+              {/* Never wider than the panel: shrinks with it, and wraps under "Due" if it must. */}
+              <span className="ml-auto min-w-0 text-right font-serif text-[min(2.25rem,13cqi)] leading-none font-semibold lining-nums tabular-nums [overflow-wrap:anywhere] [@media(max-height:32rem)]:text-[min(1.875rem,13cqi)]" data-testid="order-due">{formatMoney(totals.due)}</span>
             </div>
             {stale ? (
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
@@ -163,7 +167,7 @@ export function OrderPanel({
               <Button className="h-12 w-full rounded-xl" disabled={cannotPay} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
             ) : (
               // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
-              <div className="grid grid-cols-4 gap-2 [@media(max-height:32rem)]:grid-cols-5">
+              <div className={cn(UP_TO_FOUR_COLUMNS, "[@media(max-height:32rem)]:grid-cols-5")}>
                 {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
                   <Button
                     key={method}
@@ -178,7 +182,7 @@ export function OrderPanel({
                 {/* Outlined in gold, so Cash stays the one filled action. */}
                 <Button
                   variant="outline"
-                  className="col-span-4 h-11 rounded-xl border-gold/60 text-gold-text hover:bg-gold/10 hover:text-gold-text [@media(max-height:32rem)]:col-span-1 [@media(max-height:32rem)]:px-1 [@media(max-height:32rem)]:text-xs"
+                  className="col-span-full h-11 rounded-xl border-gold/60 text-gold-text hover:bg-gold/10 hover:text-gold-text [@media(max-height:32rem)]:col-span-1 [@media(max-height:32rem)]:px-1 [@media(max-height:32rem)]:text-xs"
                   disabled={cannotPay}
                   onClick={() => setPaying("split")}
                 >
@@ -198,9 +202,9 @@ const isAmount = (text: string) => text !== "" && Number.isFinite(Number(text));
 
 function TotalRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className={cn("flex justify-between", muted ? "text-xs text-muted-foreground" : "text-muted-foreground")}>
+    <div className={cn("flex justify-between gap-3", muted ? "text-xs text-muted-foreground" : "text-muted-foreground")}>
       <dt>{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
+      <dd className="text-right tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -221,9 +225,10 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
   const issue = line.sourceIssue;
   return (
     <li className={cn("rounded-lg", open && "bg-muted/40", issue && "bg-amber-50/60 dark:bg-amber-400/5")}>
-      <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-h-14 w-full items-start gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:px-4">
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-h-14 w-full flex-wrap items-start gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:px-4">
         <CheckoutPhoto src={line.imageUrl} kind={line.kind} className="size-11 sm:size-12" />
-        <span className="min-w-0 flex-1">
+        {/* With enlarged text the name keeps a readable width and the price wraps below it. */}
+        <span className="min-w-24 flex-1">
           <span className="block text-sm font-semibold [overflow-wrap:anywhere]">
             {line.name}
           </span>
@@ -231,7 +236,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid online</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
         </span>
-        <span className="shrink-0 text-right">
+        <span className="ml-auto shrink-0 text-right">
           <span className="block text-sm font-semibold tabular-nums">{formatMoney(line.net)}</span>
           {line.net !== listPrice ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{formatMoney(listPrice)}</span> : null}
         </span>

@@ -12,7 +12,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_TENDERS, TENDER_METHODS, round2, type Tender, type TenderMethod } from "convex/lib/billMath";
 import { newAttemptKey, useCheckoutBackend, type OrderId, type OrderView } from "./backend";
-import { TENDER_LABELS, TOUCH_TARGETS, amountInput } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, UP_TO_FOUR_COLUMNS, amountInput } from "./checkout-ui";
 
 const CASH_STEPS = [100, 500, 1000];
 
@@ -72,9 +72,10 @@ export function PayPanel({
       <button type="button" onClick={onBack} disabled={submitting} className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">
         <ArrowLeft aria-hidden className="size-4" /> Back to order
       </button>
-      <div className="rounded-xl border border-border/70 bg-muted/60 p-4">
+      <div className="@container rounded-xl border border-border/70 bg-muted/60 p-4">
         <p className="text-xs font-medium text-muted-foreground">{mode === "split" ? "Split payment" : mode === "none" ? "Nothing due" : TENDER_LABELS[mode].long} · due</p>
-        <p className="font-serif text-4xl font-semibold lining-nums tabular-nums">{formatMoney(due)}</p>
+        {/* Shrinks with a narrow box (enlarged text), so the amount stays whole and inside it. */}
+        <p className="font-serif text-[min(2.25rem,15cqi)] leading-[calc(2.5/2.25)] font-semibold lining-nums tabular-nums [overflow-wrap:anywhere]">{formatMoney(due)}</p>
       </div>
 
       {mode === "cash" ? (
@@ -101,7 +102,7 @@ export function PayPanel({
 
 function PayButton({ submitting, disabled, onClick, className, children }: { submitting: boolean; disabled?: boolean; onClick: () => void; className?: string; children: ReactNode }) {
   return (
-    <Button className={cn("h-12 w-full text-base", className)} disabled={submitting || disabled} onClick={onClick}>
+    <Button className={cn("h-auto min-h-12 w-full text-base whitespace-normal", className)} disabled={submitting || disabled} onClick={onClick}>
       {submitting ? <Spinner className="text-current" /> : null}
       {children}
     </Button>
@@ -119,19 +120,19 @@ function CashForm({ due, submitting, onPay }: { due: number; submitting: boolean
         <Label htmlFor="cash-received">Cash received</Label>
         <Input id="cash-received" inputMode="decimal" className="h-12 text-lg tabular-nums" value={received} onChange={(e) => setReceived(amountInput(e.target.value))} placeholder="0" />
       </div>
-      <div className="grid grid-cols-4 gap-2">
-        <Button variant="secondary" onClick={() => setReceived(String(due))}>Exact</Button>
+      <div className={UP_TO_FOUR_COLUMNS}>
+        <Button variant="secondary" className="px-2" onClick={() => setReceived(String(due))}>Exact</Button>
         {CASH_STEPS.map((step) => (
-          <Button key={step} variant="secondary" onClick={() => setReceived(amountInput(String(round2(value + step))))}>+{formatMoney(step)}</Button>
+          <Button key={step} variant="secondary" className="px-2" onClick={() => setReceived(amountInput(String(round2(value + step))))}>+{formatMoney(step)}</Button>
         ))}
       </div>
-      <div className={cn("flex items-baseline justify-between rounded-xl border p-3", value >= due && change > 0 ? "border-primary" : "border-border")} aria-live="polite">
+      <div className={cn("@container flex flex-wrap items-baseline justify-between gap-x-3 rounded-xl border p-3", value >= due && change > 0 ? "border-primary" : "border-border")} aria-live="polite">
         <span className="text-sm font-medium">{value >= due ? "Change" : "Still short"}</span>
-        <span className="text-2xl font-bold tabular-nums">{formatMoney(value >= due ? change : round2(due - value))}</span>
+        <span className="ml-auto min-w-0 text-right text-[min(1.5rem,11cqi)] leading-[calc(2/1.5)] font-bold tabular-nums [overflow-wrap:anywhere]" data-testid="cash-balance">{formatMoney(value >= due ? change : round2(due - value))}</span>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button variant="ghost" onClick={() => setReceived("")} disabled={!received}>Clear</Button>
-        <PayButton className="w-auto flex-1" submitting={submitting} disabled={value < due} onClick={() => onPay([{ method: "cash", amount: due, received: value }])}>
+        <PayButton className="w-auto flex-[1_1_10rem]" submitting={submitting} disabled={value < due} onClick={() => onPay([{ method: "cash", amount: due, received: value }])}>
           Confirm cash
         </PayButton>
       </div>
@@ -151,17 +152,18 @@ function SplitForm({ due, submitting, onPay }: { due: number; submitting: boolea
 
   return (
     <>
-      <ul className="grid gap-2">
+      {/* One line per payment; in a narrow panel (enlarged text) the method takes its own line. */}
+      <ul className="@container grid gap-2">
         {rows.map((row, index) => (
-          <li key={index} className="flex items-center gap-2">
+          <li key={index} className="flex flex-wrap items-center gap-2">
             <Select value={row.method} onValueChange={(method) => update(index, { method: method as TenderMethod })}>
-              <SelectTrigger className="w-32" aria-label={`Payment ${index + 1} method`}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full @min-[17rem]:w-32" aria-label={`Payment ${index + 1} method`}><SelectValue /></SelectTrigger>
               <SelectContent className={TOUCH_TARGETS}>
                 {/* Short labels: the long ones ("PromptPay QR") truncate in the narrow trigger. */}
                 {TENDER_METHODS.map((method) => <SelectItem key={method} value={method}>{TENDER_LABELS[method].short}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Input inputMode="decimal" aria-label={`Payment ${index + 1} amount`} className="min-w-0 flex-1 tabular-nums" value={row.amount} onChange={(e) => update(index, { amount: amountInput(e.target.value) })} placeholder="0" />
+            <Input inputMode="decimal" aria-label={`Payment ${index + 1} amount`} className="min-w-0 flex-1 tabular-nums @max-[17rem]:min-w-14" value={row.amount} onChange={(e) => update(index, { amount: amountInput(e.target.value) })} placeholder="0" />
             <Button size="sm" variant="outline" disabled={remaining <= 0} onClick={() => update(index, { amount: String(round2((Number(row.amount) || 0) + remaining)) })}>
               Rest
             </Button>
@@ -178,9 +180,9 @@ function SplitForm({ due, submitting, onPay }: { due: number; submitting: boolea
           <Plus aria-hidden className="size-4" /> Add payment
         </Button>
       ) : null}
-      <div className="flex items-baseline justify-between rounded-xl border border-border p-3" aria-live="polite">
+      <div className="@container flex flex-wrap items-baseline justify-between gap-x-3 rounded-xl border border-border p-3" aria-live="polite">
         <span className="text-sm font-medium">{remaining >= 0 ? "Remaining" : "Over by"}</span>
-        <span className={cn("text-xl font-bold tabular-nums", remaining < 0 && "text-destructive")}>{formatMoney(Math.abs(remaining))}</span>
+        <span className={cn("ml-auto min-w-0 text-right text-[min(1.25rem,11cqi)] leading-[calc(1.75/1.25)] font-bold tabular-nums [overflow-wrap:anywhere]", remaining < 0 && "text-destructive")} data-testid="split-remaining">{formatMoney(Math.abs(remaining))}</span>
       </div>
       <p className="text-xs text-muted-foreground">Up to {MAX_TENDERS} payments. Confirm each one (QR, card, transfer) before taking the next.</p>
       <PayButton submitting={submitting} disabled={!ready} onClick={() => onPay(rows.map((row) => ({ method: row.method, amount: Number(row.amount) })))}>

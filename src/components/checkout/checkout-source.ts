@@ -12,7 +12,7 @@ export type CheckoutSource =
 
 const KEYS = ["order", "bill", "booking", "appointment"] as const;
 
-/** Strict: exactly zero or one of `?order=` (or `?bill=`), `?booking=`, `?appointment=`, given once with a plain id. */
+/** Strict URL shape only; the backend checks table-specific IDs with db.normalizeId. */
 export function parseCheckoutSource(params: URLSearchParams): CheckoutSource {
   const present = KEYS.filter((key) => params.has(key));
   if (present.length === 0) return { kind: "new" };

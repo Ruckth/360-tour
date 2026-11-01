@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
+import { customerPhoneError } from "@/lib/booking/phone";
 import { cn } from "@/lib/utils";
 import { formatReceiptNumber } from "convex/lib/billMath";
 import { useCheckoutBackend, type Attachable, type Customer, type CustomerId, type NewCustomer, type OrderFilter, type OrderId, type OrderView } from "./backend";
@@ -32,11 +33,14 @@ export function OrderStrip({
   title,
   run,
   onOrderChange,
+  canStartNew = false,
 }: {
   view: OrderView | null | undefined;
   title: string;
   run: Run;
   onOrderChange: (orderId: OrderId | null) => void;
+  /** Invalid/missing source links can be cleared even when there is no loaded order. */
+  canStartNew?: boolean;
 }) {
   const actions = useCheckoutBackend().useActions();
   const [panel, setPanel] = useState<Panel>(null);
@@ -147,7 +151,7 @@ export function OrderStrip({
         </CheckoutDialogContent>
       </Dialog>
 
-      <div className="ml-auto flex gap-2">
+      <div className="ml-auto flex max-w-full flex-wrap justify-end gap-2">
         <Dialog open={panel === "orders"} onOpenChange={(open) => changePanel(open ? "orders" : null)}>
           <DialogTrigger asChild>
             <Button variant="ghost">
@@ -163,7 +167,7 @@ export function OrderStrip({
             {panel === "orders" ? <OrdersBrowser currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : null}
           </CheckoutDialogContent>
         </Dialog>
-        <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order} aria-label="New order">
+        <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
           <Plus aria-hidden className="size-4" />
           <span className="hidden sm:inline">New order</span>
         </Button>
@@ -350,6 +354,11 @@ function CustomerForm({
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!form.name.trim()) return;
+    const phoneError = !savedId ? customerPhoneError(form.phone) : undefined;
+    if (phoneError) {
+      setError(phoneError);
+      return;
+    }
     void attempt(async () => {
       const details = { name: form.name, phone: form.phone?.trim() || undefined, email: form.email?.trim() || undefined };
       const { customerId, error: failed } = await onCreate(details, savedId);
