@@ -58,7 +58,8 @@ it("uses actual received date in Bangkok and freezes every attempt input after a
   const settle = vi.spyOn(actions, "settleOrder").mockImplementationOnce(async args => { await original(args); throw new Error("Response lost"); });
   const onPaid = vi.fn();
   await show(backend, orderId, true, onPaid);
-  await input("#payment-effective", "2026-10-02T14:15");
+  await input("#payment-effective", "2026-10-02");
+  await input("#payment-effective-time", "14:15");
   await click("Confirm ฿100 received"); await tick();
   expect(document.body.textContent).toContain("Response lost");
   expect(document.querySelector<HTMLInputElement>("#payment-effective")?.disabled).toBe(false); // disabled by its fieldset

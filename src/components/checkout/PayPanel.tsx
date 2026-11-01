@@ -150,7 +150,7 @@ export function PayPanel({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
       <button
         type="button"
         onClick={onBack}
@@ -176,17 +176,26 @@ export function PayPanel({
 
       <fieldset
         disabled={submitting || attempted}
-        className="grid gap-4 disabled:opacity-70"
+        className="grid min-w-0 grid-cols-1 gap-4 disabled:opacity-70"
       >
-        <div className="grid gap-2">
+        <div className="grid min-w-0 grid-cols-1 gap-2">
           <Label htmlFor="payment-effective">
-            Money received at · Bangkok time
+            Money received date · Bangkok time
           </Label>
           <Input
             id="payment-effective"
-            type="datetime-local"
-            value={effectiveInput}
-            onChange={(e) => setEffectiveInput(e.target.value)}
+            type="date"
+            className="min-w-0 max-w-full"
+            value={effectiveInput.split("T")[0]}
+            onChange={(e) => setEffectiveInput(`${e.target.value}T${effectiveInput.split("T")[1] ?? ""}`)}
+          />
+          <Label htmlFor="payment-effective-time">Money received time · Bangkok time</Label>
+          <Input
+            id="payment-effective-time"
+            type="time"
+            className="min-w-0 max-w-full"
+            value={effectiveInput.split("T")[1] ?? ""}
+            onChange={(e) => setEffectiveInput(`${effectiveInput.split("T")[0]}T${e.target.value}`)}
           />
           <p className="text-xs text-muted-foreground">
             Use the actual date and time received. The receipt is issued now

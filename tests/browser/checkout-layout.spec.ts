@@ -170,6 +170,10 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     await setRootFont(page, ENLARGED);
 
     await sheet.getByRole("button", { name: "Cash", exact: true }).click();
+    await expectReachable(page, sheet.getByLabel("Money received date · Bangkok time"), "payment business date");
+    await expectReachable(page, sheet.getByLabel("Money received time · Bangkok time"), "payment business time");
+    const paymentWidth = await sheet.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+    expect.soft(paymentWidth.scroll, "payment sheet has no horizontal overflow").toBeLessThanOrEqual(paymentWidth.client + 1);
     for (const label of ["Back to order", "Exact", "+฿100", "+฿500", "+฿1,000", "Confirm cash"]) {
       await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
     }
