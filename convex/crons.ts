@@ -3,6 +3,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation } from './_generated/server';
 import { releaseBookingDates } from './lib/availabilityWrites';
+import { writeBooking } from './lib/bookingMoney';
 import { resortLocalParts } from './lib/serviceSlots';
 
 export const PENDING_BOOKING_TTL_MS = 24 * 60 * 60 * 1000;
@@ -20,7 +21,7 @@ export const expirePending = internalMutation({
       if (booking.source === 'admin') continue;
       if (booking.paymentStatus !== 'paid' && (booking.stripeCheckoutExpiresAt ? booking.stripeCheckoutExpiresAt + 60 * 60 * 1000 : 0) <= Date.now()) {
         await releaseBookingDates(ctx, booking);
-        await ctx.db.patch(booking._id, { status: 'cancelled' });
+        await writeBooking(ctx, booking, { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: 'system:expiry' }, { actor: 'system:expiry', kind: 'pending_expired' });
         expired++;
       }
     }

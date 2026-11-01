@@ -1,8 +1,28 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { inboxReasonValidator } from './lib/inboxTypes';
 import { v } from 'convex/values';
+import {
+	bookingPriceOverride,
+	correctedTender,
+	receiptCustomer,
+	stayPaymentOrigin,
+	storedPaymentMethod,
+	storedRefundMethod
+} from './lib/financeValidators';
 
 export default defineSchema({
+ appointmentFeeAttempts: defineTable({
+  key: v.string(), actor: v.string(), fingerprint: v.string(), orderId: v.id('bills'), lineId: v.id('billLines')
+ }).index('by_key', ['key']),
+ bookingCreateAttempts: defineTable({
+  key: v.string(), actor: v.string(), bookingId: v.id('bookings'), fingerprint: v.string(), recordedAt: v.number()
+ }).index('by_key', ['key']),
+ recordChanges: defineTable({
+  entityType: v.string(), entityId: v.string(), recordedAt: v.number(),
+  effectiveAt: v.number(), actor: v.string(), kind: v.string(),
+  reason: v.optional(v.string()), before: v.optional(v.any()), after: v.optional(v.any())
+ }).index('by_entityType_and_entityId_and_recordedAt', ['entityType', 'entityId', 'recordedAt'])
+   .index('by_entityType_and_recordedAt', ['entityType', 'recordedAt']),
 	users: defineTable({
 		clerkId: v.string(),
 		tokenIdentifier: v.string(),
@@ -106,13 +126,31 @@ export default defineSchema({
 		currency: v.string(),
 		paidAt: v.optional(v.number()),
 		// What the guest actually paid; the total can change later if an admin edits the stay.
+		// Gross: every payment received, before refunds (see lib/billMath bookingBalance).
 		amountPaid: v.optional(v.number()),
+		/** Sum of bookingRefunds rows. Absent on legacy rows: a legacy `refunded` stay counts as fully refunded. */
+		amountRefunded: v.optional(v.number()),
+		/** Provider returns waived from collection; parent billMath must subtract this from owed. */
+		providerRefundWaived: v.optional(v.number()),
+		/** When the stay became fully refunded (business date for recorded refunds). */
 		refundedAt: v.optional(v.number()),
+		/** A custom price set by staff instead of the villa rate; `total` follows it. */
+		priceOverride: v.optional(bookingPriceOverride),
+		/** Bumped on every staff/system write that goes through lib/bookingMoney; absent = 0. */
+		revision: v.optional(v.number()),
+		/** Who entered it (admin email or `system:<channel>`); absent on legacy rows. */
+		createdBy: v.optional(v.string()),
+		/** Set for historical entries created without guest notification; lifecycle emails then skip it. */
+		guestEmailsOff: v.optional(v.boolean()),
+		cancelledAt: v.optional(v.number()),
+		cancelledBy: v.optional(v.string()),
+		cancelReason: v.optional(v.string()),
 		paymentMethod: v.optional(v.string()),
 		confirmationCode: v.optional(v.string()),
 		invoiceNumber: v.optional(v.string()),
 		receiptNumber: v.optional(v.string()),
 		accessToken: v.optional(v.string()),
+		stripeCheckoutAmount: v.optional(v.number()),
 		stripeCheckoutSessionId: v.optional(v.string()),
 		stripePaymentIntentId: v.optional(v.string()),
 		stripeCheckoutUrl: v.optional(v.string()),
@@ -165,8 +203,97 @@ export default defineSchema({
 		.index('by_confirmationCode', ['confirmationCode'])
 		.searchIndex('search_guestName', { searchField: 'guestName' }),
 
+	/**
+	 * Money received for a stay, one row per recorded payment (lib/bookingMoney.ts). The booking's
+	 * `amountPaid` is the transactional total; these rows say where each part came from. Rows are
+	 * never deleted: a mistaken manual entry is marked cancelled, and online money is never changed.
+	 * Payments recorded before this table existed have no row (see `bookingFinancials.unitemised`).
+	 */
+	bookingPayments: defineTable({
+		bookingId: v.id('bookings'),
+		providerPaymentIntentId: v.optional(v.string()),
+		origin: stayPaymentOrigin,
+		amount: v.number(),
+		currency: v.string(),
+		/** Manual: how it was received. POS: `order` (tenders are on the order). Online: the provider. */
+		method: storedPaymentMethod,
+		/** The order that settled it (POS). */
+		billId: v.optional(v.id('bills')),
+		/** Business date the money was received, distinct from when it was recorded. */
+		effectiveAt: v.number(),
+		recordedAt: v.number(),
+		recordedBy: v.string(),
+		idempotencyKey: v.optional(v.string()),
+		note: v.optional(v.string()),
+		/** Sum of refunds recorded against this payment. */
+		refunded: v.number(),
+		status: v.union(v.literal('recorded'), v.literal('cancelled')),
+		cancelledAt: v.optional(v.number()),
+		cancelledBy: v.optional(v.string()),
+		cancelReason: v.optional(v.string()),
+		amendedAt: v.optional(v.number()),
+		amendedBy: v.optional(v.string())
+	})
+		.index('by_bookingId_and_recordedAt', ['bookingId', 'recordedAt'])
+		.index('by_billId', ['billId'])
+		.index('by_providerPaymentIntentId', ['providerPaymentIntentId'])
+		.index('by_idempotencyKey', ['idempotencyKey']),
+
+	/** Refunds recorded on a stay. Recording one moves no money; staff give it back themselves. */
+	bookingRefunds: defineTable({
+		bookingId: v.id('bookings'),
+		amount: v.number(),
+		currency: v.string(),
+		method: storedRefundMethod,
+		providerChargeId: v.optional(v.string()),
+		providerRefundId: v.optional(v.string()),
+		providerEventId: v.optional(v.string()),
+		providerCumulative: v.optional(v.number()),
+		reason: v.string(),
+		/** `credit`: what exceeded the price of a live stay. `cancellation`: money kept on a cancelled stay. */
+		context: v.union(v.literal('credit'), v.literal('cancellation')),
+		paymentId: v.optional(v.id('bookingPayments')),
+		billId: v.optional(v.id('bills')),
+		effectiveAt: v.number(),
+		recordedAt: v.number(),
+		recordedBy: v.string(),
+		idempotencyKey: v.string(),
+		netBefore: v.number(),
+		netAfter: v.number()
+	})
+		.index('by_bookingId_and_recordedAt', ['bookingId', 'recordedAt'])
+		.index('by_billId', ['billId'])
+		.index('by_idempotencyKey', ['idempotencyKey'])
+		.index('by_providerRefundId', ['providerRefundId']),
+
+	/** High-water mark of authoritative charge.refunded snapshots, in minor units. */
+	stripeRefundCharges: defineTable({
+		bookingId: v.id('bookings'), chargeId: v.string(), paymentIntentId: v.string(),
+		amount: v.number(), currency: v.string(), cumulative: v.number(), eventId: v.string()
+	}).index('by_chargeId', ['chargeId']).index('by_bookingId', ['bookingId']),
+
+	appointmentPayments: defineTable({
+		appointmentId: v.id('serviceAppointments'), amount: v.number(), currency: v.string(), method: storedPaymentMethod,
+		effectiveAt: v.number(), recordedAt: v.number(), recordedBy: v.string(), idempotencyKey: v.string(),
+		status: v.union(v.literal('recorded'), v.literal('cancelled')), refunded: v.number(),
+		amendedAt: v.optional(v.number()), amendedBy: v.optional(v.string()),
+		cancelledAt: v.optional(v.number()), cancelledBy: v.optional(v.string()), cancelReason: v.optional(v.string())
+	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt']).index('by_idempotencyKey', ['idempotencyKey']),
+	appointmentPaymentCorrections: defineTable({
+		appointmentId: v.id('serviceAppointments'), paymentId: v.id('appointmentPayments'), idempotencyKey: v.string(),
+		requestFingerprint: v.string(), actor: v.string(), recordedAt: v.number(), reason: v.string()
+	}).index('by_idempotencyKey', ['idempotencyKey']),
+	appointmentRefunds: defineTable({
+		appointmentId: v.id('serviceAppointments'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
+		reason: v.string(), effectiveAt: v.number(), recordedAt: v.number(), recordedBy: v.string(), idempotencyKey: v.string(),
+		paymentId: v.optional(v.id('appointmentPayments')), billId: v.optional(v.id('bills')),
+		netBefore: v.number(), netAfter: v.number()
+	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt'])
+		.index('by_billId', ['billId']).index('by_idempotencyKey', ['idempotencyKey']),
 	staff: defineTable({
 		name: v.string(),
+		/** Retained on archive; restoration validates each surviving service. */
+		archivedServiceIds: v.optional(v.array(v.id('services'))),
 		role: v.string(),
 		avatarUrl: v.optional(v.string()),
 		/** Set when `avatarUrl` is a photo uploaded from the staff admin, so replacing or removing it can delete the file. */
@@ -213,6 +340,29 @@ export default defineSchema({
 		createdByAdminEmail: v.optional(v.string())
 	}).index('by_staff_start', ['staffId', 'start']),
 
+	/** Observed/proven weekly defaults. Append-only, independent of the undo buffer. */
+	staffPatternVersions: defineTable({
+		staffId: v.id('staff'),
+		effectiveFrom: v.string(),
+		recordedAt: v.number(),
+		actor: v.string(),
+		provenance: v.union(v.literal('created'), v.literal('observed'), v.literal('change')),
+		workingHours: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string() })),
+		breaks: v.array(v.object({ weekday: v.number(), start: v.string(), end: v.string(), label: v.string() }))
+	}).index('by_staffId_and_effectiveFrom', ['staffId', 'effectiveFrom']),
+	configurationHistoryIndex: defineTable({
+		entityType: v.union(v.literal('property'), v.literal('room')),
+		entityId: v.string(),
+		propertyId: v.id('properties'),
+		name: v.string(),
+		slug: v.string(),
+		deleted: v.boolean(),
+		updatedAt: v.number()
+	})
+		.index('by_entityType_and_entityId', ['entityType', 'entityId'])
+		.index('by_propertyId_and_entityType', ['propertyId', 'entityType'])
+		.index('by_entityType_and_deleted', ['entityType', 'deleted']),
+
 	/** Roster override for one person on one resort-local date; replaces the weekly pattern. No shifts = off. */
 	staffDays: defineTable({
 		staffId: v.id('staff'),
@@ -230,6 +380,8 @@ export default defineSchema({
 		label: v.string(),
 		status: v.union(v.literal('running'), v.literal('undoing'), v.literal('done'), v.literal('undone')),
 		createdByAdminEmail: v.string(),
+		undoByAdminEmail: v.optional(v.string()),
+		patternVersionIds: v.optional(v.array(v.object({ staffId: v.id('staff'), versionId: v.id('staffPatternVersions') }))),
 		createdAt: v.number(),
 		// makeDefault only: each person's weekly pattern before the change.
 		patterns: v.optional(v.array(v.object({
@@ -254,6 +406,15 @@ export default defineSchema({
 	serviceAppointments: defineTable({
 		serviceId: v.id('services'),
 		staffId: v.id('staff'),
+		/** Descriptions retained when recording work; absent on legacy appointments. */
+		amountPaid: v.optional(v.number()),
+		amountRefunded: v.optional(v.number()),
+		financialRevision: v.optional(v.number()),
+		serviceNameSnapshot: v.optional(v.string()),
+		staffNameSnapshot: v.optional(v.string()),
+		createdBy: v.optional(v.string()),
+		paidAt: v.optional(v.number()),
+		paidBy: v.optional(v.string()),
 		start: v.number(),
 		end: v.number(),
 		blockedUntil: v.number(),
@@ -349,8 +510,12 @@ export default defineSchema({
 	 * to a reusable customer; it may also have neither.
 	 */
 	bills: defineTable({
-		/** draft = unpaid. `held` is legacy (the old Hold button); migrations:backfillOrders turns it into draft. */
-		status: v.union(v.literal('draft'), v.literal('held'), v.literal('paid'), v.literal('void')),
+		/**
+		 * draft = unpaid. `held` is legacy (the old Hold button); migrations:backfillOrders turns it into draft.
+		 * `discarded` = an unpaid order staff set aside (pos.discardOrder): lines, links and customer are kept,
+		 * nothing on it can be charged, and it charges no source until pos.restoreOrder makes it a draft again.
+		 */
+		status: v.union(v.literal('draft'), v.literal('held'), v.literal('paid'), v.literal('void'), v.literal('discarded')),
 		/** Permanent "Order #N", issued when the order is created and never changed. Optional only until migrations:backfillOrders numbers legacy rows. */
 		orderNumber: v.optional(v.number()),
 		/** Deprecated: the old per-day "Walk-in #N". Kept on legacy rows only; never written or shown. */
@@ -388,6 +553,24 @@ export default defineSchema({
 		voidedAt: v.optional(v.number()),
 		voidedBy: v.optional(v.string()),
 		voidReason: v.optional(v.string()),
+		/** Set when the void said no money was ever received, so the charged sources were reopened. */
+		voidUnreceived: v.optional(v.boolean()),
+		/** Business date the payment was received; `paidAt` stays the receipt's issue time. Absent = paidAt. */
+		paymentEffectiveAt: v.optional(v.number()),
+		/** The linked customer's revision when the receipt was issued. */
+		customerRevisionAtPayment: v.optional(v.number()),
+		/** Bumped by every billCorrections row; corrections send the revision they reviewed. Absent = 0. */
+		correctionRevision: v.optional(v.number()),
+		/** Corrected tenders (same total). The original billPayments rows are never changed. */
+		amendedTenders: v.optional(v.array(correctedTender)),
+		/** Corrected payer; null = no named customer. `customerSnapshot` stays what the receipt was issued with. */
+		amendedCustomer: v.optional(v.union(v.null(), receiptCustomer)),
+		/** Set while discarded (pos.discardOrder); cleared on restore. recordChanges keeps every discard and restore. */
+		discardedAt: v.optional(v.number()),
+		discardedBy: v.optional(v.string()),
+		discardReason: v.optional(v.string()),
+		/** Attempt key of the latest discard or restore, so a retried request returns the first result. */
+		lifecycleKey: v.optional(v.string()),
 		createdBy: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number()
@@ -406,6 +589,11 @@ export default defineSchema({
 	 * so two people with the same name stay two customers.
 	 */
 	customers: defineTable({
+		revision: v.optional(v.number()),
+		archivedAt: v.optional(v.number()),
+		mergedInto: v.optional(v.id('customers')),
+		mergeKey: v.optional(v.string()),
+		mergeReason: v.optional(v.string()),
 		name: v.string(),
 		phone: v.optional(v.string()),
 		/** Digits of `phone`, for exact lookup. */
@@ -420,7 +608,19 @@ export default defineSchema({
 	})
 		.index('by_phoneDigits', ['phoneDigits'])
 		.index('by_emailNormalized', ['emailNormalized'])
+		.index('by_archivedAt', ['archivedAt'])
 		.searchIndex('search_name', { searchField: 'name' }),
+
+    /** Durable, bounded customer reference migration. Original identities and receipt snapshots remain. */
+    customerMergeJobs: defineTable({
+        sourceId: v.id('customers'), destinationId: v.id('customers'),
+        reason: v.string(), actor: v.string(), status: v.union(v.literal('running'), v.literal('completed')),
+        movedOrders: v.number(), before: v.object({
+            sourceId: v.id('customers'), destinationId: v.id('customers'),
+            source: v.object({ name: v.string(), phone: v.optional(v.string()), email: v.optional(v.string()), notes: v.optional(v.string()) }),
+            destination: v.object({ name: v.string(), phone: v.optional(v.string()), email: v.optional(v.string()), notes: v.optional(v.string()) })
+        }), createdAt: v.number(), updatedAt: v.number(), completedAt: v.optional(v.number())
+    }).index('by_sourceId', ['sourceId']).index('by_destinationId_and_status', ['destinationId', 'status']),
 
 	billLines: defineTable({
 		billId: v.id('bills'),
@@ -452,9 +652,22 @@ export default defineSchema({
 		priceOverride: v.optional(v.object({ price: v.number(), note: v.string(), by: v.string(), at: v.number() })),
 		/** Paid before checkout (an attached booking's online payment); deducted from what is due. */
 		deposit: v.optional(v.number()),
+		/**
+		 * A no-show or late-cancellation fee (pos.addAppointmentFee), on an `extra` row. It refers to the
+		 * appointment without charging it: the appointment keeps its status and stays unpaid.
+		 */
+		fee: v.optional(v.object({
+			kind: v.union(v.literal('no_show'), v.literal('late_cancellation')),
+			reason: v.optional(v.string()),
+			by: v.string(),
+			at: v.number()
+		})),
+		/** The appointment a fee row is for (with `fee`). Deliberately not `appointmentId`, which means "charges it". */
+		feeAppointmentId: v.optional(v.id('serviceAppointments')),
 		createdAt: v.number()
 	})
 		.index('by_billId', ['billId'])
+		.index('by_feeAppointmentId', ['feeAppointmentId'])
 		// The booking and appointment rows of an order, for the booking references the orders list shows.
 		.index('by_billId_and_kind', ['billId', 'kind'])
 		.index('by_bookingId', ['bookingId'])
@@ -468,8 +681,35 @@ export default defineSchema({
 		received: v.optional(v.number()),
 		idempotencyKey: v.string(),
 		createdBy: v.string(),
-		createdAt: v.number()
+		createdAt: v.number(),
+		/** Business date the money was received; `createdAt` is when it was recorded. Absent = createdAt. */
+		effectiveAt: v.optional(v.number())
 	}).index('by_billId', ['billId']),
+
+	/**
+	 * Audited corrections to a paid order (pos.amendOrderPayment, pos.voidUnreceivedOrder). The issued
+	 * receipt, its payments and audit rows stay as they were; each row records before and after.
+	 */
+	billCorrections: defineTable({
+		billId: v.id('bills'),
+		/** The order's correctionRevision this row produced (1, 2, …). */
+		sequence: v.number(),
+		kind: v.union(v.literal('amended'), v.literal('void_unreceived')),
+		reason: v.string(),
+		actor: v.string(),
+		recordedAt: v.number(),
+		idempotencyKey: v.string(),
+		tendersBefore: v.optional(v.array(correctedTender)),
+		tendersAfter: v.optional(v.array(correctedTender)),
+		customerBefore: v.optional(v.union(v.null(), receiptCustomer)),
+		customerAfter: v.optional(v.union(v.null(), receiptCustomer)),
+		customerIdBefore: v.optional(v.union(v.null(), v.id('customers'))),
+		customerIdAfter: v.optional(v.union(v.null(), v.id('customers'))),
+		effectiveAtBefore: v.optional(v.number()),
+		effectiveAtAfter: v.optional(v.number())
+	})
+		.index('by_billId_and_sequence', ['billId', 'sequence'])
+		.index('by_idempotencyKey', ['idempotencyKey']),
 
 	/** Price overrides, customer links, source updates, payments and voids on an order: who, when, why, old and new price. */
 	billAudit: defineTable({
@@ -1244,6 +1484,7 @@ export default defineSchema({
 	// Admin-editable business profile; a single row with key 'default'. Missing fields fall back to lib/siteSettings defaults.
 	siteSettings: defineTable({
 		key: v.literal('default'),
+		revision: v.optional(v.number()),
 		businessName: v.optional(v.string()),
 		tagline: v.optional(v.string()),
 		contactEmail: v.optional(v.string()),

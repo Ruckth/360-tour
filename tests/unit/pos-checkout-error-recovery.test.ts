@@ -91,7 +91,7 @@ describe('Checkout error recovery', () => {
     const loadMore = vi.fn();
     let loaded = false;
     const paginated: CheckoutBackend = { ...backend, useOrders: () => ({
-      results: loaded ? [{ _id: orderId, title: 'Order #1043', orderNumber: 1043, state: 'unpaid', itemCount: 1, total: 100, due: 100, currency: 'THB', updatedAt: Date.now(), receiptNumber: undefined, customerName: undefined, bookingReference: 'QA-MOCK-SOURCE', otherBookings: 0 }] : [],
+      results: loaded ? [{ _id: orderId, title: 'Order #1043', orderNumber: 1043, state: 'unpaid', itemCount: 1, total: 100, due: 100, currency: 'THB', updatedAt: Date.now(), receiptNumber: undefined, customerName: undefined, bookingReference: 'QA-MOCK-SOURCE', otherBookings: 0, discarded: null }] : [],
       status: loaded ? 'CanLoadMore' : 'LoadingFirstPage', loadMore,
     }) };
     await render(paginated, orderId);

@@ -3,6 +3,9 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { demoCode } from './codes';
 import { ensureLinkedOrder } from './orderLinks';
 import { assertValidIsoDate, assertValidEmail } from './validation';
+import { requireAdmin } from './adminAuth';
+import { patternForDate, patternsForRange } from './rosterHistory';
+import { appendRecordHistory } from './recordHistory';
 
 const MINUTE = 60_000;
 // Asia/Bangkok is UTC+7 with no DST. Use fixed arithmetic: zone-aware helpers returned
@@ -16,6 +19,15 @@ export const SLOT_CONFLICT = 'That time was just taken. Please choose another ti
 export type Range = [start: number, end: number];
 export type Slot = { start: number; staffIds: Id<'staff'>[] };
 type ReadCtx = QueryCtx | MutationCtx;
+
+/** Integrity scans fail explicitly on overflow; they never approve against a truncated prefix. */
+export async function* boundedIntegrityRows<T>(rows: AsyncIterable<T>, limit = 2000): AsyncGenerator<T> {
+	let count = 0;
+	for await (const row of rows) {
+		if (++count > limit) throw new Error('Too many records to check safely. Narrow the range or contact support.');
+		yield row;
+	}
+}
 
 /** Local "HH:mm"; "24:00" is allowed so shifts and breaks can end at midnight. */
 export function assertValidTime(time: string): void {
@@ -49,10 +61,30 @@ export function localDayRange(date: string): Range {
 	return [localDateTimeUtc(date, '00:00'), localDateTimeUtc(nextLocalDate(date), '00:00')];
 }
 
-export function assertAppointmentStart(start: number): void {
-	if (!Number.isSafeInteger(start) || start < Date.now() || start % (15 * MINUTE) !== 0) {
-		throw new Error('Start must be a future 15-minute time');
+export function assertAppointmentStart(start: number, policy?: AdminHistoricalPolicy): void {
+	const historical = Boolean(policy && start < Date.now());
+	if (!Number.isSafeInteger(start) || (!policy && start < Date.now()) || start % (historical ? MINUTE : 15 * MINUTE) !== 0) {
+		throw new Error(historical ? 'Historical start must be a valid whole-minute time' : 'Start must be a future 15-minute time');
 	}
+}
+
+/** Only passed explicitly by an authenticated admin endpoint. Public/chat callers omit it. */
+export type AdminHistoricalPolicy = { kind: 'admin_historical'; reason?: string };
+
+/** Retrospective evidence is not today's roster. Overlaps need a deliberate, logged explanation. */
+export async function historicalWarnings(ctx: ReadCtx, staff: Doc<'staff'>, service: Doc<'services'>, start: number, blockedUntil: number, ignoreAppointmentId?: Id<'serviceAppointments'>) {
+	const warnings: string[] = [];
+	if ((await scheduleDays(ctx, staff, start, blockedUntil)).some(day => !day.patternHistoryKnown)) warnings.push('The weekly roster for this earlier date is unknown; the earliest observed pattern is shown. Verify the historical schedule.');
+	if (staff.status !== 'active') warnings.push('Staff member is archived.');
+	if (service.status !== 'active') warnings.push('Service is archived.');
+	if (!service.staffIds.includes(staff._id)) warnings.push('Current service assignments do not confirm this historical assignment; verify who actually performed the work.');
+	if ((await staffBusyRanges(ctx, staff, start, blockedUntil, ignoreAppointmentId)).length) warnings.push('The current roster, breaks, time off or appointment records do not show this entire time as available. These are not proof of the historical roster.');
+	let overlap = false;
+	for await (const row of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', q => q.eq('staffId', staff._id).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', blockedUntil)))) {
+		if (row._id !== ignoreAppointmentId && blocksTime(row) && row.blockedUntil > start) overlap = true;
+	}
+	if (overlap) warnings.push('Another appointment overlaps this historical time. Explain the correction before saving.');
+	return { warnings, needsReason: overlap };
 }
 
 export function mergeRanges(ranges: Range[]): Range[] {
@@ -96,9 +128,9 @@ export function patternDay(staff: Pattern, date: string): DayPlan {
 /** Roster overrides for one person, keyed by date, in [firstDate, lastDate]. */
 export async function staffDayOverrides(ctx: ReadCtx, staffId: Id<'staff'>, firstDate: string, lastDate: string) {
 	const rows = new Map<string, Doc<'staffDays'>>();
-	for await (const row of ctx.db.query('staffDays').withIndex('by_staff_date', (q) =>
+	for await (const row of boundedIntegrityRows(ctx.db.query('staffDays').withIndex('by_staff_date', (q) =>
 		q.eq('staffId', staffId).gte('date', firstDate).lte('date', lastDate)
-	)) {
+	))) {
 		rows.set(row.date, row);
 	}
 	return rows;
@@ -136,13 +168,17 @@ export function planUncovers(date: string, plan: DayPlan, start: number, end: nu
 
 /** Each local date touched by [from, to), with the plan in force. */
 export async function scheduleDays(ctx: ReadCtx, staff: Doc<'staff'>, from: number, to: number) {
-	const days: Array<{ date: string; plan: DayPlan; override: boolean }> = [];
+	const days: Array<{ date: string; plan: DayPlan; override: boolean; patternHistoryKnown: boolean; patternKnownFrom: string }> = [];
 	if (to <= from) return days;
 	const first = resortLocalParts(from).date;
 	const last = resortLocalParts(to - 1).date;
 	const overrides = await staffDayOverrides(ctx, staff._id, first, last);
+	const patterns = await patternsForRange(ctx, [staff], first, last);
+	const resolve = patterns.get(staff._id)!;
 	for (let date = first; date <= last; date = nextLocalDate(date)) {
-		days.push({ date, plan: effectivePlan(staff, date, overrides.get(date)), override: overrides.has(date) });
+		const evidence = resolve(date);
+		days.push({ date, plan: effectivePlan(evidence.pattern, date, overrides.get(date)), override: overrides.has(date),
+		 patternHistoryKnown: overrides.has(date) || evidence.historyKnown, patternKnownFrom: evidence.knownFrom });
 	}
 	return days;
 }
@@ -168,14 +204,14 @@ export async function staffBusyRanges(
 		}
 	}
 
-	for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
+	for await (const row of boundedIntegrityRows(ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staff._id).gte('start', from - TIME_OFF_LOOKBACK).lt('start', to)
-	)) {
+	))) {
 		if (row.end > from) busy.push([Math.max(row.start, from), Math.min(row.end, to)]);
 	}
-	for await (const row of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+	for await (const row of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staff._id).gte('start', from - APPOINTMENT_LOOKBACK).lt('start', to)
-	)) {
+	))) {
 		if (row._id !== ignoreAppointmentId && row.status !== 'cancelled' && row.status !== 'no_show' && row.blockedUntil > from) {
 			busy.push([Math.max(row.start, from), Math.min(row.blockedUntil, to)]);
 		}
@@ -234,7 +270,7 @@ export async function serviceRostered(ctx: ReadCtx, serviceId: Id<'services'>, d
 		const person = await ctx.db.get(id);
 		if (!person || person.status !== 'active') continue;
 		const override = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', id).eq('date', date)).unique();
-		if (effectivePlan(person, date, override).shifts.length) return true;
+		if (effectivePlan((await patternForDate(ctx, person, date)).pattern, date, override).shifts.length) return true;
 	}
 	return false;
 }
@@ -279,24 +315,28 @@ export function appointmentLookupFields(guest: { guestPhone: string; guestEmail?
 	};
 }
 
-export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput) {
-	assertAppointmentStart(input.start);
+export async function createAppointmentRecord(ctx: MutationCtx, input: AppointmentInput, policy?: AdminHistoricalPolicy) {
+	const admin = policy ? await requireAdmin(ctx) : null;
+	assertAppointmentStart(input.start, policy);
 	const { guestName, guestPhone, guestEmail } = guestDetails(input, { requireContact: input.source !== 'admin' || Boolean(input.chatSessionId) });
 	const service = await ctx.db.get(input.serviceId);
-	if (!service || service.status !== 'active') throw new Error('Service unavailable');
+	if (!service) throw new Error('Service unavailable');
 	const blockedUntil = input.start + (service.durationMin + service.bufferMin) * MINUTE;
+	const historical = Boolean(policy && blockedUntil <= Date.now());
+	if (!historical && service.status !== 'active') throw new Error('Service unavailable');
+	if (historical && !input.staffId) throw new Error('Choose the staff member who actually performed the historical service');
 	const [dayStart, dayEnd] = localDayRange(resortLocalParts(input.start).date);
-	const candidates = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
-		.filter((person): person is Doc<'staff'> => !!person && person.status === 'active' && (!input.staffId || person._id === input.staffId));
+	const candidates = (await Promise.all((historical && input.staffId ? [input.staffId] : service.staffIds).map((id) => ctx.db.get(id))))
+		.filter((person): person is Doc<'staff'> => !!person && (historical || person.status === 'active') && (!input.staffId || person._id === input.staffId));
 	if (input.staffId && !candidates.length) throw new Error('Staff member is not available for this service');
 	const free: Array<{ staff: Doc<'staff'>; count: number }> = [];
 	for (const person of candidates) {
-		if ((await staffBusyRanges(ctx, person, input.start, blockedUntil)).length) continue;
+		if (!historical && (await staffBusyRanges(ctx, person, input.start, blockedUntil)).length) continue;
 		let count = 0;
 		if (!input.staffId) {
-			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', dayStart).lt('start', dayEnd)
-			)) {
+			))) {
 				if (blocksTime(appointment)) count++;
 			}
 		}
@@ -305,11 +345,17 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	free.sort((a, b) => a.count - b.count || a.staff.name.localeCompare(b.staff.name) || a.staff._id.localeCompare(b.staff._id));
 	const chosen = free[0]?.staff;
 	if (!chosen) throw new Error(SLOT_CONFLICT);
+	const review = historical ? await historicalWarnings(ctx, chosen, service, input.start, blockedUntil) : { warnings: [], needsReason: false };
+	const reason = policy?.reason?.trim();
+	if (reason && reason.length > 500) throw new Error('Reason must be at most 500 characters');
+	if (review.needsReason && !reason) throw new Error('Explain the historical appointment overlap before saving');
+	const actor = admin?.email ?? input.actor ?? `system:${input.source}`;
 	const accessToken = crypto.randomUUID();
 	const lookup = appointmentLookupFields({ guestPhone, guestEmail });
 	const appointmentId = await ctx.db.insert('serviceAppointments', {
 		serviceId: service._id,
 		staffId: chosen._id,
+		staffNameSnapshot: chosen.name, serviceNameSnapshot: service.name, createdBy: actor,
 		start: input.start,
 		end: input.start + service.durationMin * MINUTE,
 		blockedUntil,
@@ -332,7 +378,19 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	});
 	const confirmationCode = demoCode('SVC', appointmentId);
 	await ctx.db.patch(appointmentId, { confirmationCode });
+	const snapshot = { staffId: chosen._id, staffName: chosen.name, serviceId: service._id, serviceName: service.name, start: input.start, end: input.start + service.durationMin * MINUTE, blockedUntil, status: 'booked', paymentStatus: 'unpaid', price: service.price, currency: service.currency, guestName, guestPhone, guestEmail: guestEmail ?? null, warnings: review.warnings };
+	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: appointmentId, actor, kind: 'created', effectiveAt: input.start, ...(reason ? { reason } : {}), after: snapshot });
+	await ctx.db.insert('appointmentChanges', { appointmentId, at: Date.now(), actor, kind: 'details', currencyBefore: service.currency, currencyAfter: service.currency,
+		...(reason ? { reason } : {}), changes: [
+			{ field: 'created', from: null, to: confirmationCode }, { field: 'staffName', from: null, to: chosen.name }, { field: 'serviceName', from: null, to: service.name },
+			{ field: 'start', from: null, to: input.start }, { field: 'effectiveAt', from: null, to: input.start },
+			{ field: 'end', from: null, to: input.start + service.durationMin * MINUTE }, { field: 'blockedUntil', from: null, to: blockedUntil },
+			{ field: 'status', from: null, to: 'booked' }, { field: 'paymentStatus', from: null, to: 'unpaid' },
+			{ field: 'price', from: null, to: service.price }, { field: 'currency', from: null, to: service.currency },
+			{ field: 'guestName', from: null, to: guestName }, { field: 'guestPhone', from: null, to: guestPhone }, { field: 'guestEmail', from: null, to: guestEmail ?? null },
+			...review.warnings.map(warning => ({ field: 'warning', from: null, to: warning }))
+		] });
 	// Its order from the start (the stay's order for an appointment that is part of a stay), empty until opened at checkout.
-	await ensureLinkedOrder(ctx, input.bookingId ? { bookingId: input.bookingId } : { appointmentId }, input.actor ?? `system:${input.source}`);
+	await ensureLinkedOrder(ctx, input.bookingId ? { bookingId: input.bookingId } : { appointmentId }, actor);
 	return { appointmentId, staffId: chosen._id, confirmationCode, accessToken };
 }

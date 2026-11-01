@@ -54,7 +54,10 @@ async function setup() {
   const view = async (orderId: Id<'bills'>) => (await admin.query(api.pos.getOrder, { orderId }))!;
   const review = async (orderId: Id<'bills'>, key = 'audit-attempt-0001') => {
     const data = await view(orderId);
+    // The customer revision is part of what the cashier reviewed (customers.ts assertCustomerReviewed).
+    const customerRevision = data.customer && 'revision' in data.customer ? data.customer.revision : undefined;
     return { orderId, idempotencyKey: key, expectedDue: data.totals.due, expectedRevision: data.order.revision,
+      ...(customerRevision !== undefined ? { expectedCustomerRevision: customerRevision } : {}),
       tenders: data.totals.due ? [{ method: 'card' as const, amount: data.totals.due }] : [] };
   };
   const extra = () => admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Audit water', price: 90 } });
@@ -297,8 +300,8 @@ describe('Independent order audit: booking/source integrity', () => {
     const { t, admin, bookingId } = await setup();
     if (method === 'manual') await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' });
     else {
-      await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutSessionId: 'cs_order_audit' }));
-      await t.mutation(api.payments.completeCheckout, { bookingId, sessionId: 'cs_order_audit', amountTotal: 3000000, currency: 'thb', paymentIntentId: 'pi_order_audit' });
+      await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutSessionId: 'cs_order_audit', stripeCheckoutAmount: 20000 }));
+      await t.mutation(api.payments.completeCheckout, { bookingId, sessionId: 'cs_order_audit', amountTotal: 2000000, currency: 'thb', paymentIntentId: 'pi_order_audit' });
     }
     expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'paid', amountPaid: 30000 });
     expect((await admin.query(api.pos.ordersForBooking, { bookingId })).balance.owed).toBe(0);

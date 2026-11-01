@@ -194,7 +194,15 @@ describe('AI service booking', () => {
 		const [cancelled] = await appointments(s.t);
 		expect(cancelled).toMatchObject({ status: 'cancelled', cancelledBy: 'guest', cancelledAt: Date.now(), paymentStatus: 'unpaid', revision: 1 });
 		const history = await s.t.run(async (ctx) => await ctx.db.query('appointmentChanges').take(10));
-		expect(history).toMatchObject([{ appointmentId: cancelled._id, actor: 'guest', kind: 'cancelled', changes: [{ field: 'status', from: 'booked', to: 'cancelled' }] }]);
+		expect(history).toHaveLength(2);
+		expect(history[0]).toMatchObject({ appointmentId: cancelled._id, actor: 'system:whatsapp', changes: expect.arrayContaining([
+			{ field: 'created', from: null, to: booked.confirmationCode }
+		]) });
+		expect(history[1]).toMatchObject({ appointmentId: cancelled._id, actor: 'guest', kind: 'cancelled', changes: expect.arrayContaining([
+			{ field: 'status', from: 'booked', to: 'cancelled' },
+			{ field: 'cancelledBy', from: null, to: 'guest' },
+			{ field: 'cancelledAt', from: null, to: Date.now() }
+		]) });
 		expect(await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' })).toMatchObject({ available: true });
 	});
 

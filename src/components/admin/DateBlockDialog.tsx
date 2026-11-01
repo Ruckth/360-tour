@@ -3,7 +3,8 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { HistoryDisclosure, RecordHistoryPanel } from "./RecordHistoryPanel";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -100,6 +101,8 @@ function HostBlockForm({
   });
   const [reason, setReason] = useState(block?.reason ?? "");
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const expected = block ? { propertyId: block.propertyId, start: block.start, end: block.end, reason: block.reason } : undefined;
   const [error, setError] = useState("");
   const [results, setResults] = useState<BlockResult[] | null>(null);
   const propertyId = propertyIds.length === 1 ? propertyIds[0] : "";
@@ -118,6 +121,8 @@ function HostBlockForm({
   const conflicts = rangeIntersectsDates(otherBlocked, dates.checkIn, dates.checkOut);
 
   async function run(work: () => Promise<unknown>) {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
@@ -126,16 +131,20 @@ function HostBlockForm({
     } catch (err) {
       setError(errorText(err, "Could not save the block."));
       setBusy(false);
+    } finally {
+      pending.current = false;
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (pending.current) return;
     const range = { start: dates.checkIn, end: dates.checkOut, reason };
     if (block) {
-      void run(() => updateDateBlock({ blockId: block._id, propertyId: propertyId as Id<"properties">, ...range }));
+      void run(() => updateDateBlock({ blockId: block._id, propertyId: propertyId as Id<"properties">, ...range, expected }));
       return;
     }
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
@@ -147,19 +156,21 @@ function HostBlockForm({
       setResults(saved);
     } catch (err) {
       setError(errorText(err, "Could not save the block."));
+    } finally {
+      pending.current = false;
     }
     setBusy(false);
   }
 
   async function remove() {
-    if (!block) return;
+    if (!block || pending.current) return;
     const ok = await confirm({
       title: "Remove this block?",
       description: "The nights become bookable again.",
       confirmLabel: "Remove block",
       destructive: true,
     });
-    if (ok) await run(() => removeDateBlock({ blockId: block._id }));
+    if (ok) await run(() => removeDateBlock({ blockId: block._id, expected }));
   }
 
   function toggleVilla(id: string, checked: boolean) {
@@ -200,7 +211,7 @@ function HostBlockForm({
   const allSelected = propertyIds.length === properties.length;
 
   return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Dialog open onOpenChange={(open) => !open && !pending.current && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{block ? "Edit date block" : "Block dates"}</DialogTitle>
@@ -209,6 +220,7 @@ function HostBlockForm({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4">
+          <fieldset disabled={busy} className="grid min-w-0 gap-4">
           {block ? (
             <div className="grid gap-2">
               <Label id="block-villa-label" htmlFor="block-villa">Villa</Label>
@@ -273,6 +285,9 @@ function HostBlockForm({
             />
           </div>
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          <HistoryDisclosure label={block ? "Date block history" : "Date block history, including removed blocks"}>
+            <RecordHistoryPanel entityType="dateBlock" entityId={block?._id} title="Date block history" />
+          </HistoryDisclosure>
           <DialogFooter className="gap-2">
             {block ? (
               <Button type="button" variant="ghost" className="text-destructive sm:me-auto" onClick={remove} disabled={busy}>
@@ -290,6 +305,7 @@ function HostBlockForm({
               {block ? "Save block" : propertyIds.length > 1 ? `Block ${propertyIds.length} villas` : "Block dates"}
             </Button>
           </DialogFooter>
+          </fieldset>
         </form>
       </DialogContent>
     </Dialog>

@@ -2,6 +2,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { appointmentRevision } from './appointmentWindow';
 import { appointmentLookupFields } from './serviceSlots';
+import { appendRecordHistory } from './recordHistory';
 
 /**
  * Shared recording for calendar edits and guest cancellations. Each tracked change
@@ -18,12 +19,13 @@ const REASON_MAX = 500;
 /** Fields whose old and new values are kept in the history. */
 const TRACKED = [
 	'staffId', 'serviceId', 'start', 'end', 'blockedUntil', 'price', 'currency',
-	'status', 'paymentStatus', 'guestName', 'guestPhone', 'guestEmail', 'notes'
+	'amountPaid', 'amountRefunded', 'financialRevision', 'status', 'paymentStatus', 'guestName', 'guestPhone', 'guestEmail', 'notes',
+	'staffNameSnapshot', 'serviceNameSnapshot', 'paidAt', 'paidBy', 'refundedAt', 'cancelledAt', 'cancelledBy', 'cancellationReason'
 ] as const;
 type Tracked = (typeof TRACKED)[number];
 
 export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'refundedAt' | 'cancelledAt' | 'cancelledBy' | 'cancellationReason'>>;
-export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string };
+export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string; effectiveAt?: number; warnings?: string[]; details?: Array<{ field: string; from: string | number | null; to: string | number | null }> };
 
 /** Refuses a change confirmed against an older version of the appointment. */
 export function assertFresh(appointment: Appointment, expectedRevision: number): void {
@@ -38,10 +40,12 @@ export function cleanReason(reason: string | undefined): string | undefined {
 
 /** Applies the patch and records it. Returns false (and writes nothing) when no tracked field changes. */
 export async function recordAppointmentChange(ctx: MutationCtx, appointment: Appointment, patch: AppointmentPatch, entry: ChangeEntry): Promise<boolean> {
-	const changes = TRACKED
+	const changes = [...TRACKED
 		.filter((field) => field in patch && (patch[field] ?? null) !== (appointment[field] ?? null))
-		.map((field) => ({ field, from: appointment[field] ?? null, to: patch[field] ?? null }));
+		.map((field) => ({ field, from: appointment[field] ?? null, to: patch[field] ?? null })), ...(entry.details ?? [])];
 	if (!changes.length) return false;
+	const effectiveAt = entry.effectiveAt ?? Date.now();
+	if (!Number.isSafeInteger(effectiveAt)) throw new Error('Invalid effective time');
 	// Keeps the exact-lookup fields in step with the guest's phone and email (and fills them on a
 	// row saved before they existed). A removed email clears its lookup form.
 	const lookup = appointmentLookupFields({
@@ -52,7 +56,14 @@ export async function recordAppointmentChange(ctx: MutationCtx, appointment: App
 	await ctx.db.insert('appointmentChanges', {
 		appointmentId: appointment._id, at: Date.now(), actor: entry.actor, kind: entry.kind,
 		currencyBefore: appointment.currency, currencyAfter: patch.currency ?? appointment.currency,
-		...(entry.reason ? { reason: entry.reason } : {}), changes
+		...(entry.reason ? { reason: entry.reason } : {}), changes: [...changes,
+			...(entry.effectiveAt !== undefined ? [{ field: 'effectiveAt', from: null, to: effectiveAt }] : []),
+			...(entry.warnings ?? []).map(warning => ({ field: 'warning', from: null, to: warning }))]
+	});
+	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: appointment._id, actor: entry.actor, kind: entry.kind, effectiveAt,
+		...(entry.reason ? { reason: entry.reason } : {}),
+		before: Object.fromEntries(changes.map(change => [change.field, change.from])),
+		after: { ...Object.fromEntries(changes.map(change => [change.field, change.to])), ...(entry.warnings?.length ? { warnings: entry.warnings } : {}) }
 	});
 	return true;
 }
@@ -72,6 +83,7 @@ export async function recordRebooked(ctx: MutationCtx, original: Appointment, co
 		currencyBefore: original.currency, currencyAfter: original.currency,
 		changes: [{ field: 'rebookedAs', from: null, to: confirmationCode }]
 	});
+	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: original._id, actor, kind: 'rebooked', after: { rebookedAs: confirmationCode } });
 }
 
 export async function appointmentHistory(ctx: QueryCtx | MutationCtx, appointmentId: Id<'serviceAppointments'>) {

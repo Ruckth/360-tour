@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { canEditTurnaround, canReschedule, turnaroundMinutes } from "convex/lib/appointmentWindow";
+import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/lib/appointmentWindow";
 import { CalendarDays, Clock, Filter, History, PlusIcon, Users } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
@@ -238,7 +238,7 @@ function StaffCalendar() {
         end: new Date(ghost?.end ?? appointment.end),
         resourceId: ghost?.staffId ?? appointment.staffId,
         color: appointmentStatusColor(displayStatus(appointment)),
-        readOnly: !canReschedule(appointment, now),
+        readOnly: !canCorrectAppointmentTime(appointment, now),
         // The booked length is kept; a different length is a different service.
         resizable: false,
         priority: 1,
@@ -458,10 +458,10 @@ function StaffCalendar() {
             if (slot.allDay || !data || activeServices.length === 0) return;
             const start = slot.date.getTime();
             setDraft({
-              // A click on a past day books from today: open times are only searched from today on.
-              date: resortIsoDate(Math.max(start, Date.now())),
+              // Preserve the selected historical slot for staff record entry.
+              date: resortIsoDate(start),
               staffId: slot.resourceId as Id<"staff"> | undefined,
-              start: start > Date.now() ? start : undefined,
+              start,
             });
           }}
           onEventUpdate={(update) => {

@@ -129,7 +129,7 @@ it('enforces the new inline stepper bounds and keeps totals correct at 99 and on
   const actions = backend.useActions();
   const { orderId, lineId } = await actions.addItem({ item: { kind: 'extra', name: 'Bounded extra', price: 100 } });
   await actions.updateLine({ lineId, qtyChange: 98 });
-  await act(async () => root.render(createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>,
+  await act(async () => root.render(createElement(CheckoutBackendProvider, { backend, children: null } as ComponentProps<typeof CheckoutBackendProvider>,
     createElement(CheckoutView, { orderId, onOrderChange: () => {}, onPaid: () => {} }))));
   const panel = () => document.querySelector('aside')!;
   expect(panel().querySelector('output')?.textContent).toBe('99');
@@ -177,7 +177,7 @@ for (const theme of ['light', 'dark'] as const) {
   it(`${theme}: the checkout Orders dialog and its blurred backdrop take the app theme`, async () => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     await act(async () => root.render(createElement(CheckoutBackendProvider, {
-      backend: createFixtureBackend(),
+      backend: createFixtureBackend(), children: null,
     } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { orderId: null, onOrderChange: () => {}, onPaid: () => {} }))));
     await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Orders')!.click());
     const content = document.querySelector('[role=dialog]')!;

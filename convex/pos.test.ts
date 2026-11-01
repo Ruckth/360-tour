@@ -9,6 +9,9 @@ import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 const weekdays = [0, 1, 2, 3, 4, 5, 6];
+/** The linked customer's profile revision as the cashier reviewed it (customers.ts assertCustomerReviewed). */
+const reviewedCustomer = (view: { customer: object | null }) =>
+	view.customer && 'revision' in view.customer && typeof view.customer.revision === 'number' ? { expectedCustomerRevision: view.customer.revision } : {};
 
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
@@ -35,9 +38,11 @@ async function setup() {
 		return { propertyId, bookingId };
 	});
 	const order = (orderId: Id<'bills'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
-	/** settleOrder with the revision the cashier is looking at now. */
-	const settle = async (args: Omit<FunctionArgs<typeof api.pos.settleOrder>, 'expectedRevision'>) =>
-		admin.mutation(api.pos.settleOrder, { ...args, expectedRevision: (await order(args.orderId)).order.revision });
+	/** settleOrder with the order and customer revisions the cashier is looking at now. */
+	const settle = async (args: Omit<FunctionArgs<typeof api.pos.settleOrder>, 'expectedRevision'>) => {
+		const view = await order(args.orderId);
+		return admin.mutation(api.pos.settleOrder, { ...reviewedCustomer(view), ...args, expectedRevision: view.order.revision });
+	};
 	const appointment = (overrides: Record<string, unknown> = {}) => {
 		const start = Date.now() + 3_600_000;
 		return t.run((ctx) => ctx.db.insert('serviceAppointments', {
@@ -382,7 +387,7 @@ describe('customers', () => {
 		await expect(admin.mutation(api.customers.updateCustomer, { customerId: gone, name: 'Y' })).rejects.toThrow('Customer not found');
 	});
 
-	it('marks open orders changed when their customer is edited, so a reviewed payment is checked again', async () => {
+	it('refuses a payment reviewed before its customer was edited, by the reviewed customer revision', async () => {
 		const { admin, order, extra } = await setup();
 		const bob = await admin.mutation(api.customers.createCustomer, { name: 'Bob' });
 		const { orderId } = await extra();
@@ -390,9 +395,13 @@ describe('customers', () => {
 		const reviewed = (await order(orderId)).order.revision;
 		await admin.mutation(api.customers.updateCustomer, { customerId: bob, name: 'Bob', notes: 'Prefers card' });
 		expect((await order(orderId)).order.revision).toBe(reviewed);
+		const reviewedCustomerRevision = ((await order(orderId)).customer as { revision: number }).revision;
 		await admin.mutation(api.customers.updateCustomer, { customerId: bob, name: 'Robert' });
 		const args = { orderId, idempotencyKey: 'attempt-0001', expectedDue: 100, tenders: [{ method: 'card' as const, amount: 100 }] };
-		await expect(admin.mutation(api.pos.settleOrder, { ...args, expectedRevision: reviewed })).rejects.toThrow('The order changed');
+		// The identity edit is caught by the customer revision the cashier reviewed (no order scan needed).
+		await expect(admin.mutation(api.pos.settleOrder, { ...args, expectedRevision: reviewed, expectedCustomerRevision: reviewedCustomerRevision })).rejects.toThrow('The customer changed');
+		await expect(admin.mutation(api.pos.settleOrder, { ...args, expectedRevision: reviewed })).rejects.toThrow('The customer changed');
+		await admin.mutation(api.pos.settleOrder, { ...args, idempotencyKey: 'attempt-0002', expectedRevision: (await order(orderId)).order.revision, expectedCustomerRevision: reviewedCustomerRevision + 1 });
 	});
 
 	it('freezes the receipt customer at payment, whatever happens to the profile later', async () => {
@@ -688,8 +697,8 @@ describe('settlement', () => {
 		const reviewed = (await order(orderId)).order.revision;
 		await admin.mutation(api.pos.linkCustomer, { orderId, customerId: bob });
 		const args = { orderId, expectedDue: 100, tenders: [{ method: 'card' as const, amount: 100 }] };
-		await expect(admin.mutation(api.pos.settleOrder, { ...args, idempotencyKey: 'attempt-0001', expectedRevision: reviewed })).rejects.toThrow('The order changed');
-		await admin.mutation(api.pos.settleOrder, { ...args, idempotencyKey: 'attempt-0002', expectedRevision: (await order(orderId)).order.revision });
+		await expect(admin.mutation(api.pos.settleOrder, { ...args, idempotencyKey: 'attempt-0001', expectedRevision: reviewed, expectedCustomerRevision: 0 })).rejects.toThrow('The order changed');
+		await admin.mutation(api.pos.settleOrder, { ...args, idempotencyKey: 'attempt-0002', expectedRevision: (await order(orderId)).order.revision, expectedCustomerRevision: 0 });
 	});
 
 	it('refuses a payment for an order that changed at the same total (C4-06)', async () => {

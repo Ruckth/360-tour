@@ -15,6 +15,8 @@ import { errorText } from "@/lib/staff-bookings";
 import { changeDue, formatReceiptNumber, lineGross, linePrice } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type OrderId } from "./backend";
+import { PaymentRecord } from "./PaymentRecord";
+import { OrderHistory } from "./OrderHistory";
 import { TENDER_LABELS, TOUCH_TARGETS, receiptBookings, receiptName, receiptText } from "./checkout-ui";
 
 type Paper = "58" | "80";
@@ -80,10 +82,10 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   if (view === null) return <p className="p-10 text-center text-sm text-muted-foreground">Receipt not found.</p>;
-  if (view.order.state === "unpaid") {
+  if (view.order.state === "unpaid" || view.order.state === "discarded") {
     return (
       <div className="grid flex-1 place-items-center gap-3 p-10 text-center">
-        <p className="text-sm text-muted-foreground">{view.order.title} isn&apos;t paid yet.</p>
+        <p className="text-sm text-muted-foreground">{view.order.title} {view.order.state === "discarded" ? "was discarded. Restore it from Orders before editing or payment." : "isn’t paid yet."}</p>
         <Button onClick={() => onOpenOrder(orderId)}>Open the order</Button>
       </div>
     );
@@ -148,7 +150,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           <p className="text-base font-bold">{business}</p>
           <p>Receipt {formatReceiptNumber(order.receiptNumber ?? 0)}</p>
           <p className="text-xs">{order.title}</p>
-          <p className="text-xs">{order.paidAt ? format(order.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
+          <p className="text-xs">Issued {order.paidAt ? format(order.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
           {customerName ? <p className="text-xs">Customer: {customerName}</p> : null}
           {bookings ? <p className="text-xs [overflow-wrap:anywhere]">{bookings}</p> : null}
         </header>
@@ -188,6 +190,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <p className="mt-4 text-center text-xs">Thank you</p>
       </article>
 
+      <PaymentRecord view={view} />
+      <div className="w-full max-w-md"><OrderHistory orderId={orderId} /></div>
       <div className="flex w-full max-w-sm flex-wrap gap-2 print:hidden">
         <Button className="flex-1" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
         {!isVoid ? <VoidDialog orderId={orderId} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} /> : null}
@@ -204,8 +208,11 @@ function VoidDialog({ orderId, hasAttached }: { orderId: OrderId; hasAttached: b
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const lock = useRef(false);
 
   async function submit() {
+    if (lock.current) return;
+    lock.current = true;
     setSaving(true);
     setError("");
     try {
@@ -214,12 +221,13 @@ function VoidDialog({ orderId, hasAttached }: { orderId: OrderId; hasAttached: b
     } catch (err) {
       setError(errorText(err, "Couldn't void the receipt."));
     } finally {
+      lock.current = false;
       setSaving(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={next => { if (!saving) setOpen(next); }}>
       <DialogTrigger asChild>
         <Button variant="outline" className="text-destructive"><Ban aria-hidden className="size-4" /> Void…</Button>
       </DialogTrigger>
@@ -227,17 +235,17 @@ function VoidDialog({ orderId, hasAttached }: { orderId: OrderId; hasAttached: b
         <DialogHeader>
           <DialogTitle>Void this receipt?</DialogTitle>
           <DialogDescription>
-            The order and receipt stay on record, marked void, with their numbers and payments. Give back any money at the desk.
+            The order and receipt stay on record, marked void, with their numbers and payments. This does not send or record a refund. If no money was received, use Payment entered by mistake instead.
             {hasAttached ? " Its bookings and appointments stay marked paid; record a refund on them if needed." : ""}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2">
           <Label htmlFor="void-reason">Reason</Label>
-          <Textarea id="void-reason" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Charged the wrong guest" autoFocus />
+          <Textarea disabled={saving} id="void-reason" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Charged the wrong guest" autoFocus />
         </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="outline" disabled={saving} onClick={() => setOpen(false)}>Cancel</Button>
           <Button variant="destructive" disabled={!reason.trim() || saving} onClick={submit}>
             {saving ? <Spinner className="text-current" /> : null}
             Void receipt

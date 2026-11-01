@@ -28,6 +28,7 @@ import {
   formatResortTime,
   resortIsoDate,
   timeOffRange,
+  timeOffRangeProblem,
   useNow,
   type TimeOffInput,
 } from "@/lib/staff-bookings";
@@ -56,15 +57,16 @@ export function readTimeOff(form: FormData): TimeOffInput & { label: string } {
   };
 }
 
-/** Dates plus optional times and a label preset; blank times mean whole days. Read back with `readTimeOff`. */
+/**
+ * Dates plus optional times and a label preset; blank times mean whole days. Read back with `readTimeOff`.
+ * Past dates are allowed on purpose: staff record yesterday's sick day after the fact.
+ */
 export function TimeOffFields({
   idPrefix,
-  min,
   defaults,
   required,
 }: {
   idPrefix: string;
-  min?: string;
   defaults?: Partial<TimeOffInput> & { label?: string };
   required?: boolean;
 }) {
@@ -74,13 +76,13 @@ export function TimeOffFields({
     <>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="From" htmlFor={`${idPrefix}-from`}>
-          <DatePicker id={`${idPrefix}-from`} name="offFrom" clearable min={min} defaultValue={defaults?.from} required={required} />
+          <DatePicker id={`${idPrefix}-from`} name="offFrom" clearable defaultValue={defaults?.from} required={required} />
         </Field>
         <Field label="Start time (optional)" htmlFor={`${idPrefix}-start`}>
           <TimePicker id={`${idPrefix}-start`} label="Start time" name="offStartTime" minuteStep={15} allowEmpty defaultValue={defaults?.startTime} />
         </Field>
         <Field label="To" htmlFor={`${idPrefix}-to`}>
-          <DatePicker id={`${idPrefix}-to`} name="offTo" clearable min={min} defaultValue={defaults?.to} />
+          <DatePicker id={`${idPrefix}-to`} name="offTo" clearable defaultValue={defaults?.to} />
         </Field>
         <Field label="End time (optional)" htmlFor={`${idPrefix}-end`}>
           <TimePicker id={`${idPrefix}-end`} label="End time" name="offEndTime" minuteStep={15} allowEmpty defaultValue={defaults?.endTime} />
@@ -148,11 +150,18 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     const input = readTimeOff(new FormData(event.currentTarget));
+    const range = timeOffRange(input);
+    const problem = timeOffRangeProblem(range);
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      setResults(await addTimeOff({ staffIds: [...selected], ...timeOffRange(input), label: input.label || "Leave" }));
+      setResults(await addTimeOff({ staffIds: [...selected], ...range, label: input.label || "Leave" }));
     } catch (err) {
       setError(errorText(err, "Could not add time off."));
     } finally {
@@ -237,7 +246,7 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
                 ))}
               </div>
             </div>
-            <TimeOffFields idPrefix="bulk-off" min={today} defaults={{ from: today }} required />
+            <TimeOffFields idPrefix="bulk-off" defaults={{ from: today }} required />
             {selected.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one person.</p> : null}
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <DialogFooter>

@@ -1,25 +1,64 @@
 "use client";
 
-import { format } from "date-fns";
 import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, Trash2, TriangleAlert, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { isTimeValue, isoToDate } from "@/lib/dates/values";
+import {
+  formatResortDate,
+  formatResortFullDate,
+  resortDateTime,
+  resortIsoDate,
+  resortMidnight,
+  resortTime24,
+  useNow,
+} from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
 import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
+import { FinancialHistory } from "./FinancialHistory";
+import { OrderHistory } from "./OrderHistory";
 import { PayPanel } from "./PayPanel";
 import type { Run } from "./useOrderWrites";
 
 const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, total: 0, vat: 0, deposit: 0, due: 0 };
+
+/**
+ * A service row's new start after its date or its time changes, in resort time (Bangkok, like
+ * staff schedules), whatever the device's zone. The other part is kept: a new date keeps the
+ * row's time, a new time keeps the row's date, so correcting last week's row never moves it to
+ * today. A row still on "Now" takes today's date or the current time for the missing part.
+ * Any past or future date is allowed. Null for an incomplete or invalid value.
+ */
+export function serviceStartAt(current: number | undefined, change: { date: string } | { time: string }, now: number): number | null {
+  if ("date" in change) {
+    if (!isoToDate(change.date)) return null;
+    // Thailand has no DST, so moving by whole resort days keeps the exact time of day.
+    if (current !== undefined) return current + resortMidnight(change.date) - resortMidnight(resortIsoDate(current));
+    return resortDateTime(change.date, resortTime24(now));
+  }
+  if (!isTimeValue(change.time)) return null;
+  return resortDateTime(resortIsoDate(current ?? now), change.time);
+}
+
+/** "14:00" today, "Mon, Oct 26, 14:00" on another day this year, with the year otherwise. */
+export function serviceStartLabel(startAt: number, now: number) {
+  const time = resortTime24(startAt);
+  const day = resortIsoDate(startAt);
+  const today = resortIsoDate(now);
+  if (day === today) return time;
+  return `${day.slice(0, 4) === today.slice(0, 4) ? formatResortDate(startAt) : formatResortFullDate(startAt)}, ${time}`;
+}
 
 /**
  * The order: a compact list of rows with small photos (tap to edit inline; rooms and extras step
@@ -49,6 +88,7 @@ export function OrderPanel({
   const [confirmClear, setConfirmClear] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(null);
+  const now = useNow();
   const lines = view?.lines ?? [];
   const totals = view?.totals ?? EMPTY_TOTALS;
   const orderId = view?.order._id;
@@ -67,6 +107,14 @@ export function OrderPanel({
     setConfirmClear(false);
     if (orderId) await run(() => actions.clearOrder({ orderId }));
   }
+
+  if (view?.order.state === "discarded") return <div className="grid gap-4 overflow-y-auto p-5">
+    <h2 className="font-serif text-2xl">{title} · Discarded</h2>
+    <p className="text-sm">Read only. Restore from Orders → Discarded before editing or payment. Contents, customer, source links and history are kept; bookings are not cancelled.</p>
+    <ul className="grid gap-3">{lines.map(line => <li key={line._id}><p className="font-medium">{line.name} · {formatMoney(line.net)}</p><p className="text-xs text-muted-foreground">{line.detail} · Quantity {line.qty}</p></li>)}</ul>
+    <OrderHistory orderId={view.order._id} /><FinancialHistory orderId={view.order._id} view={view} />
+    {onClose ? <Button variant="outline" onClick={onClose}>Close order</Button> : null}
+  </div>;
 
   // With enlarged text the header and footer can outgrow the screen. The rows keep a minimum
   // height (no more than they get at normal text, even in phone landscape) and the panel itself
@@ -126,6 +174,7 @@ export function OrderPanel({
       ) : (
         <>
           <div className="min-h-[min(14rem,28dvh)] flex-1 overflow-y-auto">
+            {orderId ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
             {lines.length === 0 ? (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground">
                 <p>Tap an item to add it to the order.</p>
@@ -140,6 +189,7 @@ export function OrderPanel({
                     open={expanded === line._id}
                     onToggle={() => setExpanded(expanded === line._id ? null : line._id)}
                     run={run}
+                    now={now}
                   />
                 ))}
               </ul>
@@ -209,17 +259,17 @@ function TotalRow({ label, value, muted }: { label: string; value: string; muted
   );
 }
 
-function lineSubtitle(line: OrderLine) {
+function lineSubtitle(line: OrderLine, now: number) {
   const parts = [line.detail];
   if (line.kind === "service" || line.kind === "appointment") {
     parts.push(line.staffName ?? "Any therapist");
-    if (line.kind === "service") parts.push(line.startAt ? format(line.startAt, "HH:mm") : "Now");
+    if (line.kind === "service") parts.push(line.startAt ? serviceStartLabel(line.startAt, now) : "Now");
   }
   if (MERGES_QTY[line.kind] && line.qty > 1) parts.push(`${formatMoney(line.priceOverride?.price ?? line.unitPrice)} each`);
   return parts.filter(Boolean).join(" · ");
 }
 
-function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run }) {
+function OrderLineRow({ line, catalog, open, onToggle, run, now }: { line: OrderLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run; now: number }) {
   const actions = useCheckoutBackend().useActions();
   const listPrice = round2(line.unitPrice * line.qty);
   const issue = line.sourceIssue;
@@ -232,7 +282,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
           <span className="block text-sm font-semibold [overflow-wrap:anywhere]">
             {line.name}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">{lineSubtitle(line)}</span>
+          <span className="block truncate text-xs text-muted-foreground">{lineSubtitle(line, now)}</span>
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid online</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
         </span>
@@ -242,8 +292,9 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
         </span>
         <ChevronDown aria-hidden className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
       </button>
+      {line.fee ? <div className="px-4 pb-3 text-xs text-muted-foreground"><p>Appointment fee · service not given. Appointment status, price and payment are unchanged.</p>{line.fee.reason ? <p>{line.fee.reason}</p> : null}<Button size="sm" variant="ghost" onClick={() => run(() => actions.removeLine({ lineId: line._id }))}>Remove fee</Button></div> : null}
       {/* Only rooms and extras have a quantity; each service or appointment is its own scheduled row. */}
-      {MERGES_QTY[line.kind] ? <QtyStepper line={line} run={run} /> : null}
+      {MERGES_QTY[line.kind] && !line.fee ? <QtyStepper line={line} run={run} /> : null}
       {issue ? (
         <div className="flex items-start gap-2 px-4 pb-2.5 text-xs text-amber-800 dark:text-amber-300">
           <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -255,7 +306,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run }: { line: OrderLine;
           )}
         </div>
       ) : null}
-      {open ? <LineEditor line={line} catalog={catalog} run={run} /> : null}
+      {open && !line.fee ? <LineEditor line={line} catalog={catalog} run={run} /> : null}
     </li>
   );
 }
@@ -321,12 +372,10 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
   const service = catalog?.services.find((s) => s._id === line.serviceId);
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
 
-  function setStart(value: string) {
-    if (!/^\d{2}:\d{2}$/.test(value)) return;
-    const [hours, minutes] = value.split(":").map(Number);
-    const start = new Date();
-    start.setHours(hours, minutes, 0, 0);
-    void run(() => actions.updateLine({ lineId, startAt: start.getTime() }));
+  function setStart(change: { date: string } | { time: string }) {
+    const startAt = serviceStartAt(line.startAt, change, Date.now());
+    if (startAt === null || startAt === line.startAt) return;
+    void run(() => actions.updateLine({ lineId, startAt }));
   }
 
   async function applyPrice() {
@@ -360,11 +409,21 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
             </div>
             {catalog && !eligible.length ? <p className="text-xs text-muted-foreground">No one is set up for this service yet.</p> : null}
           </Field>
-          <Field label="Time">
-            <div className="flex items-center gap-2">
+          <Field label="Date and time">
+            <div className="flex flex-wrap items-center gap-2">
               <Chip on={!line.startAt} onClick={() => run(() => actions.updateLine({ lineId, startAt: null }))}>Now</Chip>
-              <Input type="time" aria-label="Start time" className="h-9 w-32" value={line.startAt ? format(line.startAt, "HH:mm") : ""} onChange={(e) => setStart(e.target.value)} />
+              {/* Work done on another day is recorded on that day; the time stays when the date changes. */}
+              <DatePicker
+                aria-label="Service date"
+                size="sm"
+                className="h-9 w-40 text-sm"
+                placeholder="Today"
+                value={line.startAt ? resortIsoDate(line.startAt) : ""}
+                onValueChange={(date) => setStart({ date })}
+              />
+              <Input type="time" aria-label="Start time" className="h-9 w-32" value={line.startAt ? resortTime24(line.startAt) : ""} onChange={(e) => setStart({ time: e.target.value })} />
             </div>
+            <p className="text-xs text-muted-foreground">Resort time (Bangkok).</p>
           </Field>
         </>
       ) : null}

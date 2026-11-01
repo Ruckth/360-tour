@@ -19,6 +19,7 @@ import { OtaRatesPanel } from "./OtaRatesDialog";
 import { PropertyPhotosEditor } from "./PropertyPhotosEditor";
 import { PropertyReviewsEditor } from "./PropertyReviewsEditor";
 import { PropertyRoomsEditor } from "./PropertyRoomsEditor";
+import { ConfigurationHistoryRecords, HistoryDisclosure, RecordHistoryPanel } from "./RecordHistoryPanel";
 import { StatusBadge } from "./StatusBadge";
 import { Field, PROPERTY_STATUS, SaveBar, Section, useSaver, type PropertyStatus } from "./property-form";
 
@@ -63,7 +64,7 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
           <Skeleton className="h-96 w-full" />
         </div>
       ) : data === null ? (
-        <p className="text-sm text-muted-foreground">This villa doesn&apos;t exist (it may have been deleted).</p>
+        <div className="space-y-4"><p className="text-sm text-muted-foreground">This villa doesn&apos;t exist (it may have been deleted).</p><RecordHistoryPanel entityType="property" entityId={propertyId} /><ConfigurationHistoryRecords /></div>
       ) : (
         <>
           <PropertyHeader property={data.property} deleteBlocker={data.deleteBlocker} />
@@ -116,6 +117,8 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
               </Section>
             )}
           </div>
+          <RecordHistoryPanel entityType="property" entityId={data.property._id} title="Villa history" />
+          <HistoryDisclosure label="Deleted villa history"><ConfigurationHistoryRecords /></HistoryDisclosure>
         </>
       )}
     </div>

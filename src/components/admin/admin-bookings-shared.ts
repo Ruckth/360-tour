@@ -58,33 +58,71 @@ export function balanceText(total: number, paid: number, currency: string) {
   return null;
 }
 
-/** Confirm-dialog copy for cancelling; paid bookings record a refund. */
-export function cancelConfirmOptions(booking: {
-  paymentStatus: AdminBooking["paymentStatus"];
-  amountPaid?: number;
-  total: number;
-  currency: string;
-  hasStripePayment: boolean;
-}): ConfirmOptions {
-  if (booking.paymentStatus !== "paid") {
-    return {
-      title: "Cancel this booking?",
-      description: "The booking is cancelled and its dates are released.",
-      confirmLabel: "Cancel booking",
-      cancelLabel: "Keep booking",
-      destructive: true,
-    };
-  }
-  const refund = formatMoney(booking.amountPaid ?? booking.total, booking.currency);
+/**
+ * Confirm-dialog copy for cancelling an unpaid booking from the calendar. Paid bookings are
+ * cancelled from the booking sheet, which asks whether to keep the payment or record a refund.
+ */
+export function cancelConfirmOptions(booking: { guestEmail?: string; notifyByDefault: boolean }): ConfirmOptions {
+  const email = booking.guestEmail
+    ? booking.notifyByDefault
+      ? " The guest is emailed about the cancellation."
+      : " The guest is not emailed (past stay)."
+    : "";
   return {
-    title: "Cancel and record a refund?",
-    description: booking.hasStripePayment
-      ? `Issue the ${refund} refund in the Stripe dashboard first. This only records it: the booking is cancelled, marked refunded and its dates are released.`
-      : `Refund ${refund} to the guest yourself (bank transfer or cash). This records the refund, cancels the booking and releases its dates.`,
-    confirmLabel: "Cancel & record refund",
+    title: "Cancel this booking?",
+    description: `The booking is cancelled and its dates are released.${email}`,
+    confirmLabel: "Cancel booking",
     cancelLabel: "Keep booking",
     destructive: true,
   };
+}
+
+/** How money was received or given back, as staff read it. */
+export const MONEY_METHOD_LABELS: Record<string, string> = {
+  cash: "Cash",
+  promptpay: "PromptPay",
+  card: "Card",
+  transfer: "Bank transfer",
+  other: "Other",
+  stripe: "Stripe",
+  provider: "Online payment",
+  order: "Checkout order",
+  unrecorded: "Method not recorded",
+};
+
+export const PAYMENT_ORIGIN_LABELS: Record<string, string> = {
+  manual: "Recorded on the booking",
+  pos: "Paid at checkout",
+  online: "Paid online",
+};
+
+/** Methods staff choose for a desk payment, and for a refund (Stripe = refunded in the Stripe dashboard). */
+export const DESK_PAYMENT_METHODS = ["cash", "promptpay", "card", "transfer", "other"] as const;
+export const REFUND_METHODS = ["cash", "promptpay", "card", "transfer", "stripe", "other"] as const;
+export type DeskPaymentMethod = (typeof DESK_PAYMENT_METHODS)[number];
+export type RefundMethod = (typeof REFUND_METHODS)[number];
+
+/** One attempt key per dialog: a retry after a dropped connection is recorded once. */
+export function newAttemptKey(prefix: string) {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+/** Today as the server's booking calendar date (UTC ISO), which decides the email default. */
+export function serverTodayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** The server's default for emailing the guest about a change to this stay. */
+export function notifyDefault(stay: { checkIn: string; guestEmailsOff?: boolean }) {
+  return !stay.guestEmailsOff && stay.checkIn >= serverTodayIso();
+}
+
+/** A typed amount in whole satang, or null. */
+export function parseAmount(text: string): number | null {
+  const trimmed = text.trim().replace(/,/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
 }
 
 export function payLink(bookingId: string, accessToken: string) {

@@ -19,6 +19,8 @@ import { orderTime } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { InlineErrorBoundary } from "./ErrorBoundary";
 import type { Run } from "./useOrderWrites";
+import { OrderLifecycle } from "./OrderLifecycle";
+import { CustomerDetails } from "./CustomerDetails";
 
 type Panel = "customer" | "booking" | "orders" | null;
 
@@ -44,6 +46,8 @@ export function OrderStrip({
 }) {
   const actions = useCheckoutBackend().useActions();
   const [panel, setPanel] = useState<Panel>(null);
+  const [ordersPending, setOrdersPending] = useState(false);
+  const [customerPending, setCustomerPending] = useState(false);
   const order = view?.order;
   // The order's own booking, else the first it charges; `more` counts the other bookings it charges.
   const source = view?.source ?? null;
@@ -128,21 +132,21 @@ export function OrderStrip({
       </div>
 
       {/* Each button is its dialog's trigger, so closing the dialog puts focus back on it. */}
-      <Dialog open={panel === "customer"} onOpenChange={(open) => changePanel(open ? "customer" : null)}>
+      <Dialog open={panel === "customer"} onOpenChange={(open) => { if (!customerPending) changePanel(open ? "customer" : null); }}>
         <DialogTrigger asChild>
-          <Button variant="outline" className="max-w-[60vw]" aria-label={customer ? `Customer: ${customer.name}. Change customer` : "Add customer"}>
+          <Button variant="outline" className="max-w-[60vw]" disabled={order?.state === "discarded"} aria-label={customer ? `Customer: ${customer.name}. Change customer` : "Add customer"}>
             {customer ? <UserRound aria-hidden className="size-4" /> : <UserRoundPlus aria-hidden className="size-4" />}
             <span className="truncate">{customer ? customer.name : "Add customer"}</span>
           </Button>
         </DialogTrigger>
         <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
-          {panel === "customer" ? <CustomerPicker view={view ?? null} onLink={link} onCreate={create} onUnlink={unlink} /> : null}
+          {panel === "customer" ? <CustomerPicker view={view ?? null} onLink={link} onCreate={create} onUnlink={unlink} onPending={setCustomerPending} /> : null}
         </CheckoutDialogContent>
       </Dialog>
 
       <Dialog open={panel === "booking"} onOpenChange={(open) => changePanel(open ? "booking" : null)}>
         <DialogTrigger asChild>
-          <Button variant="ghost">
+          <Button variant="ghost" disabled={order?.state === "discarded"}>
             <Link2 aria-hidden className="size-4" /> Add booking
           </Button>
         </DialogTrigger>
@@ -152,19 +156,19 @@ export function OrderStrip({
       </Dialog>
 
       <div className="ml-auto flex max-w-full flex-wrap justify-end gap-2">
-        <Dialog open={panel === "orders"} onOpenChange={(open) => changePanel(open ? "orders" : null)}>
+        <Dialog open={panel === "orders"} onOpenChange={(open) => { if (!ordersPending) changePanel(open ? "orders" : null); }}>
           <DialogTrigger asChild>
             <Button variant="ghost">
               <ListOrdered aria-hidden className="size-4" />
               <span>Orders</span>
             </Button>
           </DialogTrigger>
-          <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
+          <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
               <DialogDescription>Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device.</DialogDescription>
             </DialogHeader>
-            {panel === "orders" ? <OrdersBrowser currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : null}
+            {panel === "orders" ? <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : null}
           </CheckoutDialogContent>
         </Dialog>
         <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
@@ -192,11 +196,13 @@ function CustomerPicker({
   onLink,
   onCreate,
   onUnlink,
+  onPending,
 }: {
   view: OrderView | null;
   onLink: LinkFn;
   onCreate: CreateFn;
   onUnlink: () => void;
+  onPending: (pending: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
   const [form, setForm] = useState<NewCustomer | null>(null);
@@ -204,6 +210,8 @@ function CustomerPicker({
   const [saved, setSaved] = useState<SavedCustomer | null>(null);
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState("");
+  const [profileId, setProfileId] = useState<CustomerId | null>(null);
+  const [archived, setArchived] = useState(false);
   const deferred = useDeferredValue(query);
   const typed = query.trim();
   const current = view?.customer ?? null;
@@ -221,6 +229,7 @@ function CustomerPicker({
   }
 
   if (form) return <CustomerForm initial={form} onCancel={() => setForm(null)} onLink={onLink} onCreate={onCreate} onSaved={setSaved} />;
+  if (profileId) return <InlineErrorBoundary resetKey={profileId} message="Couldn't load this customer. Check your connection and retry."><CustomerDetails key={profileId} customerId={profileId} onBack={() => setProfileId(null)} onOpen={setProfileId} onPending={onPending} /></InlineErrorBoundary>;
 
   const fromQuery = (): NewCustomer => {
     if (/^[+\d\s()-]+$/.test(typed)) return { ...EMPTY_FORM, phone: typed };
@@ -239,6 +248,7 @@ function CustomerPicker({
       {current ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
           <CustomerLabel customer={current} />
+          <Button variant="outline" size="sm" onClick={() => setProfileId(current._id)}>View / edit</Button>
           <Button variant="outline" size="sm" onClick={onUnlink}>
             <X aria-hidden className="size-3.5" /> Remove
           </Button>
@@ -259,10 +269,12 @@ function CustomerPicker({
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search customers" aria-label="Search customers" className="pl-9" autoFocus />
       </div>
+      <Button variant="ghost" className="justify-self-start" onClick={() => setArchived(!archived)}>{archived ? "Show active customers" : "Show archived customers"}</Button>
+      {archived ? <p className="text-sm text-muted-foreground">Archived profiles stay linked to existing orders. Open a profile to restore it.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {/* A failed search stays in this dialog with a retry; the order on screen is untouched. */}
-      <InlineErrorBoundary resetKey={deferred.trim()} message={SEARCH_FAILED}>
-        <CustomerResults query={deferred} currentId={current?._id} disabled={linking} onPick={pick} />
+      <InlineErrorBoundary resetKey={`${deferred.trim()}:${archived}`} message={SEARCH_FAILED}>
+        <CustomerResults query={deferred} archived={archived} currentId={current?._id} disabled={linking} onPick={pick} onOpen={setProfileId} />
       </InlineErrorBoundary>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => setForm(fromQuery())}>
@@ -278,26 +290,28 @@ function CustomerPicker({
   );
 }
 
-function CustomerResults({ query, currentId, disabled, onPick }: { query: string; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void }) {
-  const results = useCheckoutBackend().useCustomerSearch(query);
+function CustomerResults({ query, archived, currentId, disabled, onPick, onOpen }: { query: string; archived: boolean; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void; onOpen: (id: CustomerId) => void }) {
+  const { results, status, loadMore } = useCheckoutBackend().useCustomerPage(query, archived);
   const typed = query.trim();
   return (
-    <ul className="grid max-h-72 gap-1 overflow-y-auto" aria-label="Customers">
-      {typed.length >= 2 && results === undefined ? <li className="px-3 py-2"><Spinner label="Searching" /></li> : null}
-      {(typed.length >= 2 ? results ?? [] : []).map((customer) => (
-        <li key={customer._id}>
+    <><ul className="grid max-h-72 gap-1 overflow-y-auto" aria-label="Customers">
+      {status === "LoadingFirstPage" ? <li className="px-3 py-2"><Spinner label="Searching" /></li> : null}
+      {results.map((customer) => (
+        <li key={customer._id} className="flex items-center gap-2">
           <button
             type="button"
-            disabled={disabled || customer._id === currentId}
+            disabled={disabled || archived || Boolean(customer.mergedInto) || customer._id === currentId}
             onClick={() => onPick(customer._id)}
             className="w-full rounded-lg px-3 py-2 text-left hover:bg-muted disabled:opacity-60"
           >
             <CustomerLabel customer={customer} />
           </button>
+          <Button variant="outline" size="sm" disabled={disabled} onClick={() => onOpen(customer._id)} aria-label={`View or edit ${customer.name}`}>Details</Button>
         </li>
       ))}
-      {typed.length >= 2 && results?.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">No customer matches “{typed}”.</li> : null}
+      {status === "Exhausted" && results.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{typed.length >= 2 ? `No customer matches “${typed}”.` : `No ${archived ? "archived" : "active"} customers.`}</li> : null}
     </ul>
+    {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(20)}>Load more customers</Button> : null}</>
   );
 }
 
@@ -407,16 +421,18 @@ function CustomerForm({
 }
 
 function ContactMatches({ contact, disabled, onPick }: { contact: string; disabled: boolean; onPick: (id: CustomerId) => void }) {
-  const matches = useCheckoutBackend().useCustomerSearch(contact);
-  if (!contact || !matches?.length) return null;
+  const { results: matches, status, loadMore } = useCheckoutBackend().useCustomerPage(contact, false);
+  if (!contact || (!matches.length && status === "Exhausted")) return null;
   return (
     <div className="grid gap-1 rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/10">
       <p className="px-1 text-xs font-medium">Already a customer with this contact?</p>
+      {status === "LoadingFirstPage" ? <Spinner label="Checking existing customers" /> : null}
       {matches.map((customer) => (
         <button key={customer._id} type="button" disabled={disabled} onClick={() => onPick(customer._id)} className="rounded-md px-2 py-1.5 text-left hover:bg-amber-100 disabled:opacity-60 dark:hover:bg-amber-400/20">
           <CustomerLabel customer={customer} />
         </button>
       ))}
+      {status === "CanLoadMore" || status === "LoadingMore" ? <Button type="button" variant="outline" disabled={disabled || status === "LoadingMore"} onClick={() => loadMore(20)}>Load more contact matches</Button> : null}
     </div>
   );
 }
@@ -507,30 +523,34 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
 const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
   { value: "unpaid", label: "Unpaid", empty: "No unpaid orders. Save & close keeps an order here until it is paid." },
   { value: "paid", label: "Paid", empty: "No paid orders yet." },
+  { value: "discarded", label: "Discarded", empty: "No discarded orders. Discarding keeps contents and history; bookings are not cancelled." },
   { value: "void", label: "Voided", empty: "No voided orders." },
 ];
 
-function OrdersBrowser({ currentId, onOpen }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
+export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onPending?: (pending: boolean) => void }) {
   const [filter, setFilter] = useState<OrderFilter>("unpaid");
+  const [action, setAction] = useState<{ id: OrderId; mode: "discard" | "restore" } | null>(null);
   return (
     <div className="grid gap-3">
-      <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="justify-self-start">
+      {action ? <InlineErrorBoundary resetKey={action.id} message="Couldn't review this order. Try again."><OrderLifecycle key={`${action.id}:${action.mode}`} orderId={action.id} mode={action.mode} onPending={onPending} onDone={() => setAction(null)} onOpen={onOpen} /></InlineErrorBoundary> : <>
+      <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
         {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value}>{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
-      {/* Keyed by filter: each list pages on its own, and a failed one can be retried. */}
+      <p className="text-xs text-muted-foreground">Discard retains contents and history. It releases charges for other orders; bookings are not cancelled.</p>
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">
-        <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} />
+        <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} onAction={(id, mode) => setAction({ id, mode })} />
       </InlineErrorBoundary>
+      </>}
     </div>
   );
 }
 
 const PAGE = 20;
 
-function OrdersList({ filter, currentId, onOpen }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
+function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onAction: (id: OrderId, mode: "discard" | "restore") => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOrders(filter);
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
-  if (!results.length) return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
+  if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
   return (
     <div className="grid gap-2">
       <ul className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
@@ -556,14 +576,16 @@ function OrdersList({ filter, currentId, onOpen }: { filter: OrderFilter; curren
                   {row.itemCount} {row.itemCount === 1 ? "item" : "items"} · {orderTime(row.updatedAt)}
                   {row.receiptNumber !== undefined ? ` · ${formatReceiptNumber(row.receiptNumber)}` : ""}
                 </span>
+                {row.discarded ? <span className="block text-xs text-muted-foreground">Discarded {orderTime(row.discarded.at)} · {row.discarded.by ?? "Unknown"}{row.discarded.reason ? ` · ${row.discarded.reason}` : ""}</span> : null}
               </span>
               <span className="shrink-0 text-right">
-                <span className="block text-[11px] text-muted-foreground">{row.state === "unpaid" ? "Due" : row.state === "paid" ? "Paid" : "Voided"}</span>
+                <span className="block text-[11px] text-muted-foreground">{row.state === "unpaid" ? "Due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
                 <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                   {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                 </span>
               </span>
             </button>
+            {filter === "unpaid" || filter === "discarded" ? <Button variant="outline" size="sm" className="mb-2" aria-label={`${filter === "unpaid" ? "Discard" : "Restore"} ${row.title}`} onClick={() => onAction(row._id, filter === "unpaid" ? "discard" : "restore")}>{filter === "unpaid" ? "Discard" : "Restore…"}</Button> : null}
           </li>
         ))}
       </ul>

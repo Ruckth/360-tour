@@ -43,14 +43,27 @@ const client = {
 };
 
 export function useConvex() { return client; }
+export function usePaginatedQuery() {
+  return { results: [], status: "Exhausted", loadMore: () => undefined };
+}
+
+const money = { total: 28900, currency: "THB", gross: 28900, refunded: 0, net: 28900, owed: 0, credit: 0, refundable: 0, refundContext: "credit", legacyRefund: false };
 
 export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   if (args === "skip") return undefined;
   const name = getFunctionName(query);
+  // Picker fixtures supply their catalog through the real component's initial props.
+  if (name === "adminServices:listServices" || name === "adminServices:listStaff") return undefined;
   if (name === "pos:ordersForBooking") return {
-    balance: { total: 28900, paid: 28900, owed: 0 },
+    balance: { total: 28900, paid: 28900, owed: 0, refunded: 0, credit: 0 },
     activeOrder: null,
     orders: [],
+    discardedOrders: [],
+    refunds: [],
+  };
+  if (name === "adminBookings:bookingFinancials") return {
+    revision: 0, money, payments: [], refunds: [], legacyOrders: [], unitemised: 28900,
+    legacyManual: { cancellable: false, reason: "Receipt provenance is unknown in this legacy fixture." }, hasStripePayment: false, complete: true,
   };
   if (name === "adminBookings:findGuests" && params.has("returning")) return [{
     guestName: "Returning Guest", guestPhone: params.get("phone") ?? "0812345678",
@@ -62,6 +75,8 @@ export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unk
     subtotal: 34000, discountAmount: 5100, total: 28900, currency: "THB",
     status: "completed", paymentStatus: "paid", amountPaid: 28900, source: "admin",
     propertyName: "Tideglass Pool Residence", hasStripePayment: false, checkoutLive: false,
+    revision: 0, propertyStatus: "active", priceOverride: null, money, historical: true,
+    guestEmailsOff: true, confirmationEmailed: false, notifyByDefault: false,
   };
   return [];
 }

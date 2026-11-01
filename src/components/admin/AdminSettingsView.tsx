@@ -11,7 +11,7 @@ import {
 import { format } from "date-fns";
 import { Check, RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { TimePicker } from "@/components/ui/time-picker";
@@ -21,6 +21,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import { ConfigurationHistoryRecords, HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
 import { ADMIN_SETTINGS_TABS, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
 import { SetupChecklistCard } from "./SetupChecklist";
@@ -67,13 +68,14 @@ export function AdminSettingsView() {
         ) : settings === undefined ? (
           <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
-          <SettingsForm section="business" settings={settings} />
+          <SettingsForm key={tab} section="business" settings={settings} />
         ) : tab === "ai" ? (
-          <SettingsForm section="ai" settings={settings} />
+          <SettingsForm key={tab} section="ai" settings={settings} />
         ) : (
-          <SettingsForm section="email" settings={settings} />
+          <SettingsForm key={tab} section="email" settings={settings} />
         )}
       </div>
+      <HistoryDisclosure label="Deleted villa history"><ConfigurationHistoryRecords /></HistoryDisclosure>
     </div>
   );
 }
@@ -188,9 +190,13 @@ function toInput(section: Section, values: Record<string, string>): SettingsInpu
   return { [section]: values };
 }
 
-function SettingsForm({ section, settings }: { section: Section; settings: EffectiveSettings }) {
+function SettingsForm({ section, settings }: { section: Section; settings: EffectiveSettings & { revision: number } }) {
   const config = SECTIONS[section];
+  const pending = useRef(false);
   const update = useMutation(api.settings.update);
+  const restore = useMutation(api.settings.restore);
+  const [revision, setRevision] = useState(settings.revision);
+  const [savedValues, setSavedValues] = useState(() => config.values(settings));
   const [values, setValues] = useState(() => config.values(settings));
   const [touched, setTouched] = useState<Set<string>>(() => new Set());
   const [submitted, setSubmitted] = useState(false);
@@ -204,17 +210,41 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending.current) return;
     setSubmitted(true);
     if (Object.keys(errors).length) {
       setState({ saving: false, saved: false, error: "Fix the highlighted fields and save again." });
       return;
     }
+    pending.current = true;
     setState({ saving: true, saved: false, error: "" });
     try {
-      await update(toInput(section, values));
+      await update({ ...toInput(section, values), expectedRevision: revision });
+      setRevision(revision + 1);
+      setSavedValues(values);
       setState({ saving: false, saved: true, error: "" });
     } catch (err) {
       setState({ saving: false, saved: false, error: errorText(err, "Could not save settings.") });
+    } finally {
+      pending.current = false;
+    }
+  }
+
+  const dirty = JSON.stringify(values) !== JSON.stringify(savedValues);
+  async function applyHistory(entry: HistoryEntry, side: "before" | "after") {
+    if (pending.current || dirty) return;
+    pending.current = true;
+    setState({ saving: true, saved: false, error: "" });
+    try {
+      const restored = await restore({ historyId: entry._id, expectedRevision: revision, side });
+      setValues(config.values(restored));
+      setSavedValues(config.values(restored));
+      setRevision(restored.revision);
+      setState({ saving: false, saved: true, error: "" });
+    } catch (err) {
+      setState({ saving: false, saved: false, error: errorText(err, "Could not apply configuration.") });
+    } finally {
+      pending.current = false;
     }
   }
 
@@ -229,6 +259,7 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
             const common = {
               id,
               name: field.name,
+              disabled: state.saving,
               value: values[field.name] ?? "",
               placeholder: field.placeholder,
               "aria-invalid": error ? true : undefined,
@@ -257,6 +288,7 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
                     onBlur={common.onBlur}
                     aria-invalid={Boolean(error)}
                     aria-describedby={describedBy}
+                    disabled={state.saving}
                     allowEmpty
                   />
                 ) : (
@@ -307,6 +339,9 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
           </span>
         </div>
       </form>
+      {settings.revision > revision ? <p className="mt-3 text-sm text-muted-foreground">Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></p> : null}
+      {dirty ? <p className="mt-4 text-xs text-muted-foreground">Save your draft before applying an earlier configuration.</p> : null}
+      <div className="mt-4"><RecordHistoryPanel entityType="settings" entityId="default" onRestore={applyHistory} disabled={state.saving || dirty || settings.revision > revision} /></div>
     </Panel>
   );
 }

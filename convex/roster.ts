@@ -19,6 +19,8 @@ import {
 	type DayPlan,
 	type RosterBreak
 } from './lib/serviceSlots';
+import { appendRecordHistory } from './lib/recordHistory';
+import { patternForDate, patternsForRange, rosterDate, writeWeeklyPattern } from './lib/rosterHistory';
 import { assertValidIsoDate } from './lib/validation';
 
 /**
@@ -200,9 +202,12 @@ async function writeCell(
 	staffId: Id<'staff'>,
 	date: string,
 	existing: Doc<'staffDays'> | null | undefined,
-	next: DayPlan | null
+	next: DayPlan | null,
+	actor: string
 ) {
 	await ctx.db.insert('rosterBatchItems', { batchId, staffId, date, previous: snapshot(existing) });
+	await appendRecordHistory(ctx, { entityType: 'roster', entityId: staffId, actor, kind: next ? 'day_updated' : 'day_reset', effectiveAt: localDayRange(date)[0],
+	 before: { date, override: snapshot(existing) }, after: { date, override: next } });
 	if (!next) {
 		if (existing) await ctx.db.delete(existing._id);
 		return;
@@ -245,6 +250,7 @@ async function setCells(
 	const staff = await cellStaff(ctx, cells);
 	const dates = cells.map((c) => c.date).sort();
 	const [first, last] = [dates[0], dates[dates.length - 1]];
+	const patterns = await patternsForRange(ctx, [...staff.values()], first, last);
 	const overrides = await overridesByCell(ctx, first, last);
 	const appointments = await appointmentsByCell(ctx, first, last);
 	const now = Date.now();
@@ -254,7 +260,7 @@ async function setCells(
 		const person = staff.get(cell.staffId)!;
 		const key = cellKey(cell.staffId, cell.date);
 		const existing = overrides.get(key);
-		const pattern = patternDay(person, cell.date);
+		const pattern = patternDay(patterns.get(person._id)!(cell.date).pattern, cell.date);
 		const target = plan ?? pattern;
 		const next = samePlan(target, pattern) ? null : target;
 		if (existing ? next && samePlan(next, snapshot(existing)!) : !next) continue; // no change
@@ -270,7 +276,7 @@ async function setCells(
 	})));
 	if (!changes.length) return { ok: true as const, batchId: null, changed: 0, warnings, skipped: conflicts };
 	const batchId = await newBatch(ctx, email, label);
-	for (const change of changes) await writeCell(ctx, batchId, change.staff._id, change.date, change.existing, change.next);
+	for (const change of changes) await writeCell(ctx, batchId, change.staff._id, change.date, change.existing, change.next, email);
 	return { ok: true as const, batchId, changed: changes.length, warnings, skipped: conflicts };
 }
 
@@ -283,13 +289,15 @@ export const getWeek = query({
 		const first = dates[0];
 		const last = dates[6];
 		const staff = await activeStaff(ctx);
+		const patterns = await patternsForRange(ctx, staff, first, last);
 		const overrides = await overridesByCell(ctx, first, last);
 		const appointments = await appointmentsByCell(ctx, first, last);
 		const timeOff = await timeOffByCell(ctx, staff.map((s) => s._id), first, last);
 		const cells = staff.flatMap((person) => dates.map((date) => {
 			const key = cellKey(person._id, date);
 			const override = overrides.get(key);
-			const plan = effectivePlan(person, date, override);
+			const evidence = patterns.get(person._id)!(date);
+			const plan = effectivePlan(evidence.pattern, date, override);
 			return {
 				staffId: person._id,
 				date,
@@ -297,6 +305,8 @@ export const getWeek = query({
 				breaks: plan.breaks,
 				note: plan.note ?? null,
 				override: !!override,
+				patternHistoryKnown: !!override || evidence.historyKnown,
+				patternKnownFrom: evidence.knownFrom,
 				appointments: appointments.get(key)?.length ?? 0,
 				timeOff: timeOff.get(key) ?? []
 			};
@@ -340,13 +350,15 @@ type SkippedCell = { staffId: Id<'staff'>; staffName: string; date: string; reas
 
 /**
  * What copying the source week onto weeks [fromWeek, toWeek] (1 = the week after) would do.
- * Source cells that follow the pattern leave target cells on the pattern; source overrides become target overrides.
+ * Copies the actual source plan, resolving each date's version. A target override is needed only when it differs from that target's default.
  */
 async function planCopy(ctx: ReadCtx, sourceWeekStart: string, fromWeek: number, toWeek: number, conflict: 'skip' | 'overwrite') {
 	const staff = await activeStaff(ctx);
 	const sourceOverrides = await overridesByCell(ctx, sourceWeekStart, addDays(sourceWeekStart, 6));
+	const sourcePatterns = await patternsForRange(ctx, staff, sourceWeekStart, addDays(sourceWeekStart, 6));
 	const first = addDays(sourceWeekStart, 7 * fromWeek);
 	const last = addDays(sourceWeekStart, 7 * toWeek + 6);
+	const patterns = await patternsForRange(ctx, staff, first, last);
 	const targetOverrides = await overridesByCell(ctx, first, last);
 	const appointments = await appointmentsByCell(ctx, first, last);
 	const now = Date.now();
@@ -358,12 +370,13 @@ async function planCopy(ctx: ReadCtx, sourceWeekStart: string, fromWeek: number,
 	for (let week = fromWeek; week <= toWeek; week++) {
 		for (const person of staff) {
 			for (let day = 0; day < 7; day++) {
-				const source = snapshot(sourceOverrides.get(cellKey(person._id, addDays(sourceWeekStart, day))));
+				const sourceDate = addDays(sourceWeekStart, day);
+				const source = effectivePlan(sourcePatterns.get(person._id)!(sourceDate).pattern, sourceDate, sourceOverrides.get(cellKey(person._id, sourceDate)));
 				const date = addDays(sourceWeekStart, 7 * week + day);
 				const key = cellKey(person._id, date);
 				const existing = targetOverrides.get(key);
-				const pattern = patternDay(person, date);
-				const next = source && !samePlan(source, pattern) ? source : null;
+				const pattern = patternDay(patterns.get(person._id)!(date).pattern, date);
+				const next = !samePlan(source, pattern) ? source : null;
 				if (existing ? next && samePlan(next, snapshot(existing)!) : !next) {
 					unchanged++;
 					continue;
@@ -416,7 +429,7 @@ export const copyWeek = mutation({
 		const lastInChunk = addDays(args.sourceWeekStart, 7 * Math.min(weeksPerTx, args.weeks) + 6);
 		for (const action of plan.actions) {
 			if (action.date > lastInChunk) break;
-			await writeCell(ctx, batchId, action.staffId, action.date, action.existing, action.next);
+			await writeCell(ctx, batchId, action.staffId, action.date, action.existing, action.next, admin.email);
 		}
 		if (running) {
 			await ctx.scheduler.runAfter(0, internal.roster.continueCopy, {
@@ -442,7 +455,7 @@ export const continueCopy = internalMutation({
 		if (!batch || batch.status !== 'running') return;
 		const chunkEnd = Math.min(args.toWeek, args.fromWeek + args.weeksPerTx - 1);
 		const plan = await planCopy(ctx, args.sourceWeekStart, args.fromWeek, chunkEnd, args.conflict);
-		for (const action of plan.actions) await writeCell(ctx, args.batchId, action.staffId, action.date, action.existing, action.next);
+		for (const action of plan.actions) await writeCell(ctx, args.batchId, action.staffId, action.date, action.existing, action.next, batch.createdByAdminEmail);
 		if (chunkEnd < args.toWeek) {
 			await ctx.scheduler.runAfter(0, internal.roster.continueCopy, { ...args, fromWeek: chunkEnd + 1 });
 		} else {
@@ -490,6 +503,7 @@ export const makeDefault = mutation({
 		assertWeekStart(args.weekStart);
 		const dates = Array.from({ length: 7 }, (_, i) => addDays(args.weekStart, i));
 		const staff = await activeStaff(ctx);
+		const patterns = await patternsForRange(ctx, staff, dates[0], dates[6]);
 		const weekOverrides = await overridesByCell(ctx, dates[0], dates[6]);
 		const updates: Array<{ person: Staff; pattern: Pattern }> = [];
 		const blocked: Array<{ staff: Staff; date: string; appointments: Appointment[] }> = [];
@@ -497,27 +511,30 @@ export const makeDefault = mutation({
 			const pattern: Pattern = { workingHours: [], breaks: [] };
 			for (const date of dates) {
 				const weekday = weekdayOf(date);
-				const plan = effectivePlan(person, date, weekOverrides.get(cellKey(person._id, date)));
+				const plan = effectivePlan(patterns.get(person._id)!(date).pattern, date, weekOverrides.get(cellKey(person._id, date)));
 				pattern.workingHours.push(...plan.shifts.map((s) => ({ weekday, ...s })));
 				pattern.breaks.push(...plan.breaks.map((b) => ({ weekday, ...b })));
 			}
 			const changed = dates.some((date) => !samePlan(patternDay(pattern, date), patternDay(person, date)));
 			if (!changed) continue;
 			const overrideDates = await upcomingOverrideDates(ctx, person._id);
-			for (const date of dates) overrideDates.delete(date); // this week's overrides are removed below
+			for (const date of dates) if (date >= rosterDate()) overrideDates.delete(date); // this week's overrides are removed below
 			blocked.push(...(await patternConflicts(ctx, person, pattern, overrideDates)));
 			updates.push({ person, pattern });
 		}
 		if (blocked.length) return { ok: false as const, conflicts: await describeConflicts(ctx, blocked) };
-		const weekRows = [...weekOverrides.values()].filter((row) => staff.some((s) => s._id === row.staffId));
+		const weekRows = [...weekOverrides.values()].filter((row) => row.date >= rosterDate() && staff.some((s) => s._id === row.staffId));
 		if (!updates.length && !weekRows.length) return { ok: true as const, batchId: null, staffUpdated: 0 };
 		const batchId = await newBatch(ctx, admin.email, `Make week of ${args.weekStart} the default`, {
 			patterns: updates.map(({ person }) => ({ staffId: person._id, workingHours: person.workingHours, breaks: person.breaks }))
 		});
+		const patternVersionIds = [];
 		for (const { person, pattern } of updates) {
-			await ctx.db.patch(person._id, { workingHours: pattern.workingHours, breaks: pattern.breaks, updatedAt: Date.now() });
+			const versionId = await writeWeeklyPattern(ctx, person, pattern, admin.email);
+			patternVersionIds.push({ staffId: person._id, versionId });
 		}
-		for (const row of weekRows) await writeCell(ctx, batchId, row.staffId, row.date, row, null);
+		await ctx.db.patch(batchId, { patternVersionIds });
+		for (const row of weekRows) await writeCell(ctx, batchId, row.staffId, row.date, row, null, admin.email);
 		return { ok: true as const, batchId, staffUpdated: updates.length };
 	}
 });
@@ -526,13 +543,17 @@ export const makeDefault = mutation({
 export const undo = mutation({
 	args: { batchId: v.id('rosterBatches') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		const batch = await ctx.db.get(args.batchId);
 		if (!batch) throw new Error('Nothing to undo');
 		const latest = await ctx.db.query('rosterBatches').order('desc').first();
 		if (latest?.status === 'running' || latest?.status === 'undoing') throw new Error('A roster copy is still running — try again in a moment');
 		if (latest?._id !== batch._id) throw new Error('Only the most recent roster change can be undone');
 		if (batch.status === 'undone') throw new Error('Already undone');
+		for (const saved of batch.patternVersionIds ?? []) {
+		 const latestVersion = await ctx.db.query('staffPatternVersions').withIndex('by_staffId_and_effectiveFrom', q => q.eq('staffId', saved.staffId)).order('desc').first();
+		 if (latestVersion?._id !== saved.versionId) throw new Error('The weekly default changed after this action. Review the current pattern instead of undoing it.');
+		}
 		const items = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', batch._id)).take(CELLS_PER_TX);
 		const staff = new Map<Id<'staff'>, Staff>();
 		for (const id of new Set([...items.map((i) => i.staffId), ...(batch.patterns ?? []).map((p) => p.staffId)])) {
@@ -546,11 +567,12 @@ export const undo = mutation({
 		if (items.length) {
 			const dates = items.map((i) => i.date).sort();
 			const appointments = await appointmentsByCell(ctx, dates[0], dates[dates.length - 1]);
+			const historicalPatterns = await patternsForRange(ctx, [...staff.values()], dates[0], dates[dates.length - 1]);
 			const now = Date.now();
 			for (const item of items) {
 				const person = staff.get(item.staffId);
 				if (!person) continue;
-				const plan = item.previous ?? patternDay(patternOf(person), item.date);
+				const plan = item.previous ?? patternDay(item.date >= rosterDate() ? patternOf(person) : historicalPatterns.get(person._id)!(item.date).pattern, item.date);
 				const orphaned = uncovered(item.date, plan, appointments.get(cellKey(item.staffId, item.date)), now);
 				if (orphaned.length) blocked.push({ staff: person, date: item.date, appointments: orphaned });
 			}
@@ -568,9 +590,11 @@ export const undo = mutation({
 		}
 		if (blocked.length) return { ok: false as const, conflicts: await describeConflicts(ctx, blocked) };
 		for (const saved of batch.patterns ?? []) {
-			if (staff.has(saved.staffId)) await ctx.db.patch(saved.staffId, { workingHours: saved.workingHours, breaks: saved.breaks, updatedAt: Date.now() });
+			const person = staff.get(saved.staffId);
+			if (person) await writeWeeklyPattern(ctx, person, saved, admin.email, 'pattern_undone');
 		}
-		await restoreBatchItems(ctx, items);
+		await ctx.db.patch(batch._id, { undoByAdminEmail: admin.email });
+		await restoreBatchItems(ctx, items, admin.email);
 		const more = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', batch._id)).first();
 		if (more) {
 			await ctx.db.patch(batch._id, { status: 'undoing' });
@@ -580,9 +604,11 @@ export const undo = mutation({
 	}
 });
 
-async function restoreBatchItems(ctx: MutationCtx, items: Doc<'rosterBatchItems'>[]) {
+async function restoreBatchItems(ctx: MutationCtx, items: Doc<'rosterBatchItems'>[], actor: string) {
 	for (const item of items) {
 		const existing = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', item.staffId).eq('date', item.date)).unique();
+		await appendRecordHistory(ctx, { entityType: 'roster', entityId: item.staffId, actor, kind: 'day_undone', effectiveAt: localDayRange(item.date)[0],
+		 before: { date: item.date, override: snapshot(existing) }, after: { date: item.date, override: item.previous } });
 		if (!item.previous) {
 			if (existing) await ctx.db.delete(existing._id);
 		} else {
@@ -609,17 +635,19 @@ export const continueUndo = internalMutation({
 			const dates = items.map((item) => item.date).sort();
 			const appointments = await appointmentsByCell(ctx, dates[0], dates[dates.length - 1]);
 			const now = Date.now();
-			const staffById = new Map<Id<'staff'>, Staff | null>();
+			const staffRows = await Promise.all([...new Set(items.map(item => item.staffId))].map(id => ctx.db.get(id)));
+			const people = staffRows.filter((person): person is Staff => !!person);
+			const staffById = new Map(people.map(person => [person._id, person]));
+			const historicalPatterns = await patternsForRange(ctx, people, dates[0], dates[dates.length - 1]);
 			for (const item of items) {
-				if (!staffById.has(item.staffId)) staffById.set(item.staffId, await ctx.db.get(item.staffId));
 				const staff = staffById.get(item.staffId);
-				const target = staff ? (item.previous ?? patternDay(staff, item.date)) : null;
+				const target = staff ? (item.previous ?? patternDay(historicalPatterns.get(staff._id)!(item.date).pattern, item.date)) : null;
 				if (target && uncovered(item.date, target, appointments.get(cellKey(item.staffId, item.date)), now).length) {
 					await ctx.db.delete(item._id);
 				} else restorable.push(item);
 			}
 		}
-		await restoreBatchItems(ctx, restorable);
+		await restoreBatchItems(ctx, restorable, batch.undoByAdminEmail ?? batch.createdByAdminEmail);
 		if (await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', args.batchId)).first()) {
 			await ctx.scheduler.runAfter(0, internal.roster.continueUndo, args);
 		} else await ctx.db.patch(args.batchId, { status: 'undone' });
@@ -683,7 +711,8 @@ async function planBreakChange(ctx: ReadCtx, input: BreakChange) {
 	if (!person) throw new Error('Staff member not found');
 	if (person.status !== 'active') throw new Error(`${person.name} is archived`);
 	const override = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', person._id).eq('date', input.date)).unique();
-	const current = effectivePlan(person, input.date, override);
+	const evidence = await patternForDate(ctx, person, input.date);
+	const current = effectivePlan(evidence.pattern, input.date, override);
 	if (!samePlan(current, input.expectedPlan)) throw new Error(STALE_ROSTER);
 	const index = current.breaks.findIndex((b) => sameBreak(b, input.original));
 	if (index < 0) throw new Error(STALE_ROSTER);
@@ -697,6 +726,7 @@ async function planBreakChange(ctx: ReadCtx, input: BreakChange) {
 		const conflicts = await describeConflicts(ctx, orphaned.length ? [{ staff: person, date: input.date, appointments: orphaned }] : []);
 		return { scope: 'day' as const, person, override, plan, conflicts, keptDates: [], affectedDates: [input.date], previewThrough: input.date };
 	}
+	if (input.date < rosterDate()) throw new Error('Change this day only for a past date. Weekly defaults start today.');
 	if (override) throw new Error("This date has its own roster plan, so the weekly default doesn't show here. Change this day only, or reset the day in Roster first");
 	const weekday = weekdayOf(input.date);
 	const pattern: Pattern = {
@@ -741,14 +771,15 @@ export const editBreak = mutation({
 		const { person } = change;
 		if (change.scope === 'day') {
 			const batchId = await newBatch(ctx, admin.email, `${what} for ${person.name} on ${args.date}`);
-			const next = samePlan(change.plan, patternDay(person, args.date)) ? null : change.plan;
-			await writeCell(ctx, batchId, person._id, args.date, change.override, next);
+			const next = samePlan(change.plan, patternDay((await patternForDate(ctx, person, args.date)).pattern, args.date)) ? null : change.plan;
+			await writeCell(ctx, batchId, person._id, args.date, change.override, next, admin.email);
 			return { ok: true as const, batchId };
 		}
 		const batchId = await newBatch(ctx, admin.email, `${what} for ${person.name} every ${WEEKDAY_NAMES[weekdayOf(args.date)]}`, {
 			patterns: [{ staffId: person._id, workingHours: person.workingHours, breaks: person.breaks }]
 		});
-		await ctx.db.patch(person._id, { breaks: change.pattern.breaks, updatedAt: Date.now() });
+		const versionId = await writeWeeklyPattern(ctx, person, change.pattern, admin.email);
+		await ctx.db.patch(batchId, { patternVersionIds: [{ staffId: person._id, versionId }] });
 		return { ok: true as const, batchId };
 	}
 });

@@ -62,7 +62,11 @@ describe('admin services', () => {
 		expect(await appointment(appointmentId)).toMatchObject({ guestName: '', guestPhone: '', start: at('09:00'), staffId: booking.staffId, serviceId: booking.serviceId });
 		expect((await appointment(appointmentId)).guestEmail).toBeUndefined();
 		const history = await admin.query(api.adminServices.listAppointmentHistory, { appointmentId });
-		expect(history).toHaveLength(2);
+		expect(history).toHaveLength(3);
+		expect(history[2]).toMatchObject({ actor: 'admin@example.com', changes: expect.arrayContaining([
+			expect.objectContaining({ field: 'created', from: null }),
+			{ field: 'effectiveAt', from: null, to: at('09:00') }
+		]) });
 		expect(history[0].changes).toEqual(expect.arrayContaining([{ field: 'guestName', from: 'Ann', to: '' }, { field: 'guestPhone', from: '+66111', to: '' }]));
 	});
 
@@ -162,7 +166,7 @@ describe('admin services', () => {
 	});
 
 	it('reschedules with conflict checks and enforces status transitions', async () => {
-		const { admin, booking, staffId, revision } = await setup();
+		const { admin, booking, staffId, revision, appointment } = await setup();
 		const first = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
 		const second = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('13:00') });
 		const move = { appointmentId: first.appointmentId, expectedRevision: 0, staffId };
@@ -175,7 +179,12 @@ describe('admin services', () => {
 		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: first.appointmentId, status: 'in_service' });
 		await expect(admin.mutation(api.adminServices.cancelAppointment, { appointmentId: first.appointmentId, expectedRevision: await revision(first.appointmentId) })).rejects.toThrow('cannot be cancelled');
 		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: first.appointmentId, status: 'completed' });
-		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: await revision(first.appointmentId), start: at('16:00') })).rejects.toThrow('cannot be rescheduled');
+		const completed = await appointment(first.appointmentId);
+		await admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: await revision(first.appointmentId), start: at('16:00') });
+		expect(await appointment(first.appointmentId)).toMatchObject({
+			start: at('16:00'), status: 'completed', price: completed.price,
+			paymentStatus: completed.paymentStatus, currency: completed.currency
+		});
 		await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: second.appointmentId });
 		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId, expectedRevision: 1 });
 		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: second.appointmentId, status: 'arrived' })).rejects.toThrow('Invalid appointment status transition');

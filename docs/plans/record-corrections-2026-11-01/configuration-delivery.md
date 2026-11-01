@@ -1,0 +1,59 @@
+# Configuration history delivery
+
+Implemented locally on `fix/audited-record-corrections` in `/Users/macbook/Development/360-tour-pos-checkout`. No commit, push, PR, deployment, live data/provider write, dependency installation, generated-file edit or child agent was performed. Concurrent financial, customer, checkout, appointment and time-off UI work was preserved.
+
+## Delivered scope
+
+- `settings.update` writes an atomic append-only event through the existing `appendRecordHistory`. Its explicit snapshot selects the actual schema's business profile, AI tone/maximum words and email sender/notification/footer preferences. AI instruction text is deliberately excluded, including from before snapshots; an instruction edit records a readable exclusion note. Provider keys, environment variables, access tokens and the property's iCal export token never enter these snapshots.
+- Settings has an optional schema revision for legacy compatibility; missing revisions read as zero. The actual editor sends its viewed revision on normal saves and retains the draft after stale/validation failures. `settings.restore({historyId,side,expectedRevision})` requires a revision, validates the selected event belongs to `settings/default`, selects safe fields again and applies normal settings validation. It creates a new revision and history row, deriving the actor from `requireAdmin`. It preserves current AI instruction text and provider/environment configuration. Both before and after snapshots are restorable. Incomplete or invalid legacy snapshots are rejected atomically.
+- All property/room writes in `adminProperties.ts` and `properties.ts` use the private typed `configurationWriter` or explicit rate events. Covered: draft creation, duplicate property/room creation, names/details/prices/amenities/photos, slug/status/archive/restore, room creation/rename/panorama, hotspots, inbound hotspot cleanup on deletion, tour order, OTA add/update/remove/duplicate/cascade delete, room removal and draft deletion. History is stored separately from primary records. Existing reference/delete restrictions remain. Room and snippet cleanup refuses capacity overflow instead of leaving references in an unexamined suffix. Upload allocation/validation has no attached business record and creates no artificial property change.
+- `configurationHistoryIndex` keeps a small discovery entry for every newly changed property/room, including tombstones after deletion. It contains IDs, names, slugs and deletion state, not provider tokens. Its authenticated paginated reader exposes deleted villas globally and rooms under a retained villa ID, including after the villa is gone. It does not reconstruct a list of deletions that predate this feature.
+- Roster apply/reset/copy/make-default/weekly-break edits/undo write durable per-person or per-day events. Cell events contain date plus before/after override plans; weekly events contain before/after weekly patterns and an effective date. No full batch snapshot enters history. Pruning undo batches/items never deletes record history or pattern versions. Undo records the authenticated undo actor, including scheduled continuation chunks. Pattern undo checks its version IDs so a later staff-editor pattern change cannot be overwritten by an older roster batch.
+- `staffPatternVersions` stores append-only weekly versions with resort-local effective dates, recording timestamps, observer/actor and provenance. New staff get a creation baseline. An untouched legacy row (`createdAt === updatedAt`) can establish the existing creation-date baseline. A previously updated legacy row starts with an observed baseline at first capture; earlier dates use that earliest retained pattern with `historyKnown:false`, rather than claiming reconstruction. No date-by-date historical backfill is performed. Changes and undo start today; prior dates continue to resolve older versions. Same-day versions resolve in insertion order.
+- `makeDefault` reads the chosen source week's actual dated plans, starts the new default today and retains overrides on earlier dates. Copy reads the source and target's own pattern versions, so copying an old week across a newer default copies the old week's actual shifts/breaks. Past weekly break drags explicitly direct the user to a day-only correction.
+
+## User-visible delivery
+
+`RecordHistoryPanel.tsx` is a reusable read-only paginated view. It selects labelled business fields, formats shifts/breaks/destinations and before-to-after changes, and shows actor, recorded time and effective time. It does not render raw JSON or unrecognised secret fields. It explicitly states history begins with newly recorded changes. Each page loads ten events; Load older changes follows cursor pagination. Closed nested history disclosures do not subscribe to their child queries.
+
+Integrated in:
+
+- `AdminSettingsView.tsx`: history and Apply before/after actions below each business/AI/email editor. Applying history is disabled for dirty drafts, pending writes and a newer external revision that has not been loaded. Pending fields and actions are disabled, repeated submissions are guarded, failures stay visible and retain drafts. Loading the current external revision is explicit. No reason or confirmation modal was added. Deleted villa discovery is also reachable here when no live villas remain.
+- `AdminPropertyEditor.tsx`: villa history, history for a deleted ID and global deleted-villa discovery.
+- `PropertyRoomsEditor.tsx`: per-room history and retained history for removed rooms under the villa.
+- `StaffRosterView.tsx`: history selector including archived staff, plus an honest note when displayed earlier defaults are unknown.
+
+New query modules are not yet in the generated API. The reusable view uses typed `makeFunctionReference` references for `recordHistory:list` and `configurationHistory:records`; no `any` API cast or generated-file patch is needed. Parent still owns ordinary local codegen.
+
+## Released appointment-owner integration: implemented
+
+The coordination update released `convex/lib/serviceSlots.ts` and `convex/adminServices.ts` to this worker. Their current code and `appointments-delivery.md` were read first. These callsites are now implemented, not deferred patches:
+
+1. `adminServices.createStaff`: after inserting the staff row, call `initializeWeeklyPattern(ctx,id,admin.email)` before the existing creation audit.
+2. `adminServices.updateStaff`: initialize a missing baseline before any profile write. When hours/breaks are supplied, call `writeWeeklyPattern` with the original staff row and proposed complete pattern before the existing appointment-availability checks. Those checks consequently read the proposed dated version. Convex rollback removes the version/history/profile write if validation fails. The existing assignment restoration, photo ownership and staff/service audits stay intact.
+3. `archiveStaffRecord`: initialize a missing baseline before updating profile metadata, preserving evidence on untouched legacy rows. Existing appointment/assignment safeguards remain.
+4. `serviceSlots.scheduleDays`: load date overrides and `patternsForRange`, then pass the resolved pattern to the existing `effectivePlan`. Return `patternHistoryKnown` and `patternKnownFrom` alongside each dated plan. This covers actual schedule shading, breaks, free/busy, available slots and appointment checks through their existing shared reader.
+5. `serviceSlots.serviceRostered`: resolve `patternForDate` before its `effectivePlan` check.
+6. `serviceSlots.historicalWarnings`: add a specific unknown-weekly-history warning when relevant, while preserving the appointment worker's historical overlap/reason and public/future policies.
+7. `adminServices.listSchedule`: retain all existing result fields and add a bounded `patternHistory` array for the displayed staff/date cells, exposing the provenance distinction to callers.
+
+`patternForDate(ctx,staff,date)` uses an indexed latest-version lookup, with earliest-baseline fallback for unknown older dates. `patternsForRange(ctx,staffRows,first,last)` fetches the prior version and in-range versions once per person, then resolves cells in memory. A range with more than 512 versions per person fails explicitly and asks for a shorter range. Roster week/edit/copy/default/undo paths use the range helper where they process several cells. The helper uses production-safe fixed Bangkok offset arithmetic, matching the existing slot code.
+
+The appointment worker's historical correction authorization, whole-minute entries, archived-source policy, overlaps/reasons, receipts/payment fields and history behavior were preserved. No appointment UI was edited by this worker. Stable past roster behavior is now demonstrated through actual `adminServices.listSchedule` and `roster.getWeek` queries; it is no longer contingent on a future integration patch. Unknown history before the available baseline remains explicitly unknown.
+
+## New files and narrow schema additions
+
+New source: `convex/lib/configurationHistory.ts`, `convex/configurationHistory.ts`, `convex/lib/rosterHistory.ts`, `src/components/admin/RecordHistoryPanel.tsx`.
+
+New tests: `convex/configurationHistory.test.ts`, `convex/rosterHistory.test.ts`, `tests/unit/configuration-history.test.ts`.
+
+Schema edits from this worker only: the new `staffPatternVersions` and `configurationHistoryIndex` tables; optional `siteSettings.revision`; optional `rosterBatches.undoByAdminEmail` and `patternVersionIds`. Existing concurrent schema edits in other sections are not this worker's work. No customer/booking/bill/staff/service/appointment schema section was changed here.
+
+## Verification
+
+- Focused backend/UI command: `pnpm exec vitest run convex/configurationHistory.test.ts convex/rosterHistory.test.ts convex/adminProperties.test.ts convex/properties.test.ts convex/settings.test.ts convex/roster.test.ts convex/serviceSlots.test.ts convex/adminServices.test.ts convex/staffCalendarChanges.test.ts convex/appointmentCorrections.test.ts tests/unit/configuration-history.test.ts`.
+- Final integrated run: **11 files / 152 tests passed**, including **24 new regression cases** across the three new suites (7 configuration backend, 12 roster backend, 5 mounted UI).
+- New regressions exercise actual Convex mutations/readers and mounted UI: secret exclusion; before/after/actor/effective/recording fields; archive/restore; retained delete snapshots/discovery; cursor paging; restore validation/revision/legacy/auth; all roster event kinds; pruning plus undo; historical schedule shifts/breaks; legacy uncertainty; profile-only edits before pattern writes; same-day versions; copy across versions; rejection of stale pattern undo; future appointment conflict rollback; availability/serviceRostered integration; readable UI/pagination; dirty/pending/error drafts and lazy deleted-room history.
+- Final owned-file ESLint passed. Backend TypeScript passed independently after the last backend edit/formatting pass. Final `git diff --check` passed on owned tracked files. Generated-file status remained clean.
+- Final `pnpm typecheck` stops in app checking on the concurrent unrelated checkout error; the separate test typecheck also sees that imported fixture error at `src/components/checkout/fixture-backend.ts:519`: its order view return lacks the new financial `paymentRecord`, `corrections`, `refunds` fields. Earlier transient financial errors (`adminBookings.queueCancellationEmail`, `stayCorrections.legacyOrders`) were resolved by concurrent work and are not present in the latest backend check. These files were not edited here.
+- No browser screenshot/build/full-repo unit/lint pass was attempted by this worker. Parent owns integrated browser/full verification, local codegen, independent reviews and eventual git/PR/merge.

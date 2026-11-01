@@ -1,5 +1,8 @@
 import { v } from 'convex/values';
 import { internalQuery, mutation, query, type QueryCtx } from './_generated/server';
+import { appendRecordHistory } from './lib/recordHistory';
+import { settingsSnapshot } from './lib/configurationHistory';
+import { BUSINESS_FIELDS, mergeSiteSettings, type SettingsInput } from './lib/siteSettings';
 import { adminEmails, requireAdmin } from './lib/adminAuth';
 import {
 	getEffectiveSettings,
@@ -12,9 +15,10 @@ const text = v.optional(v.string());
 
 export const get = query({
 	args: {},
-	handler: async (ctx): Promise<EffectiveSettings> => {
+	handler: async (ctx): Promise<EffectiveSettings & { revision: number }> => {
 		await requireAdmin(ctx);
-		return await getEffectiveSettings(ctx);
+		const row = await getSiteSettingsRow(ctx);
+		return { ...mergeSiteSettings(row), revision: row?.revision ?? 0 };
 	}
 });
 
@@ -48,6 +52,7 @@ export const publicProfile = query({
 
 export const update = mutation({
 	args: {
+		expectedRevision: v.optional(v.number()),
 		business: v.optional(
 			v.object({
 				businessName: text,
@@ -75,7 +80,10 @@ export const update = mutation({
 		if (firstError) throw new Error(firstError);
 
 		const row = await getSiteSettingsRow(ctx);
+		if (args.expectedRevision !== undefined && args.expectedRevision !== (row?.revision ?? 0)) throw new Error('Settings changed. Review the latest configuration and try again.');
+		const before = mergeSiteSettings(row);
 		const fields = {
+			revision: (row?.revision ?? 0) + 1,
 			...business,
 			...(ai ? { ai: { ...row?.ai, ...ai } } : {}),
 			...(email ? { email: { ...row?.email, ...email } } : {}),
@@ -84,7 +92,79 @@ export const update = mutation({
 		};
 		if (row) await ctx.db.patch(row._id, fields);
 		else await ctx.db.insert('siteSettings', { key: 'default', ...fields });
+		await appendRecordHistory(ctx, { entityType: 'settings', entityId: 'default', actor: admin.email, kind: 'updated', before: settingsSnapshot(before), after: settingsSnapshot(await getEffectiveSettings(ctx)),
+		 ...(ai?.extraInstructions !== undefined && ai.extraInstructions !== before.ai.extraInstructions ? { reason: 'AI instructions changed; instruction text is excluded from history.' } : {}) });
 		return null;
+	}
+});
+
+/** Restore a selected safe snapshot as a new validated revision. Never touches AI instructions/provider configuration. */
+export const restore = mutation({
+	args: {
+		historyId: v.id('recordChanges'),
+		expectedRevision: v.number(),
+		side: v.union(v.literal('before'), v.literal('after'))
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const row = await getSiteSettingsRow(ctx);
+		if (args.expectedRevision !== (row?.revision ?? 0))
+			throw new Error('Settings changed. Review the latest configuration and try again.');
+		const event = await ctx.db.get(args.historyId);
+		if (!event || event.entityType !== 'settings' || event.entityId !== 'default')
+			throw new Error('Settings history not found');
+		const saved: unknown = event[args.side];
+		if (!saved || typeof saved !== 'object') throw new Error('This entry has no restorable configuration');
+		const source = saved as Record<string, unknown>;
+		const business: Record<string, string> = {};
+		for (const field of BUSINESS_FIELDS) {
+			if (typeof source[field] !== 'string') throw new Error('Incomplete settings snapshot');
+			business[field] = source[field];
+		}
+		// Whitelist and validate nested fields too; legacy/malformed snapshots cannot inject fields.
+		const ai = source.ai as Record<string, unknown> | undefined;
+		const email = source.email as Record<string, unknown> | undefined;
+		if (
+			!ai ||
+			typeof ai.tone !== 'string' ||
+			typeof ai.maxWords !== 'number' ||
+			!email ||
+			['fromName', 'ownerNotificationEmail', 'footer'].some((key) => typeof email[key] !== 'string')
+		)
+			throw new Error('Incomplete settings snapshot');
+		const input: SettingsInput = {
+			business,
+			ai: { tone: ai.tone, maxWords: ai.maxWords },
+			email: {
+				fromName: email.fromName as string,
+				ownerNotificationEmail: email.ownerNotificationEmail as string,
+				footer: email.footer as string
+			}
+		};
+		const clean = validateSettingsInput(input);
+		const problem = Object.values(clean.errors)[0];
+		if (problem) throw new Error(problem);
+		const before = settingsSnapshot(mergeSiteSettings(row));
+		const fields = {
+			...clean.business,
+			ai: { ...row?.ai, ...clean.ai },
+			email: { ...row?.email, ...clean.email },
+			revision: (row?.revision ?? 0) + 1,
+			updatedAt: Date.now(),
+			updatedByEmail: admin.email
+		};
+		if (row) await ctx.db.patch(row._id, fields);
+		else await ctx.db.insert('siteSettings', { key: 'default', ...fields });
+		await appendRecordHistory(ctx, {
+			entityType: 'settings',
+			entityId: 'default',
+			actor: admin.email,
+			kind: 'restored',
+			before,
+			after: settingsSnapshot(await getEffectiveSettings(ctx)),
+			reason: 'Restored safe configuration from a history entry; AI instructions are retained.'
+		});
+		return { ...(await getEffectiveSettings(ctx)), revision: fields.revision };
 	}
 });
 

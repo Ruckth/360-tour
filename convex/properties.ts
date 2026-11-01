@@ -2,6 +2,8 @@ import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
+import { configurationWriter } from './lib/configurationHistory';
+import { appendRecordHistory } from './lib/recordHistory';
 import { allowedImageUrl, IMAGE_HOSTS } from './lib/imageUrls';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
@@ -112,7 +114,7 @@ export const listOtaRates = query({
 export const upsertOtaRate = mutation({
 	args: { propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
 		if (!Number.isFinite(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
 			throw new Error('Nightly rate must be a positive amount');
@@ -126,6 +128,9 @@ export const upsertOtaRate = mutation({
 			.query('otaRates')
 			.withIndex('by_property_platform', (q) => q.eq('propertyId', args.propertyId).eq('platform', args.platform))
 			.unique();
+		await appendRecordHistory(ctx, { entityType: 'property', entityId: args.propertyId, actor: admin.email, kind: 'ota_rate_updated',
+		 before: existing ? { platform: existing.platform, nightlyRate: existing.nightlyRate, url: existing.url ?? null } : null,
+		 after: { platform: args.platform, nightlyRate: fields.nightlyRate, url: fields.url ?? null } });
 		if (existing) {
 			await ctx.db.patch(existing._id, fields);
 			return existing._id;
@@ -137,8 +142,12 @@ export const upsertOtaRate = mutation({
 export const removeOtaRate = mutation({
 	args: { rateId: v.id('otaRates') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		if (await ctx.db.get(args.rateId)) await ctx.db.delete(args.rateId);
+		const admin = await requireAdmin(ctx);
+		const rate = await ctx.db.get(args.rateId);
+		if (rate) {
+		 await appendRecordHistory(ctx, { entityType: 'property', entityId: rate.propertyId, actor: admin.email, kind: 'ota_rate_removed', before: { platform: rate.platform, nightlyRate: rate.nightlyRate, url: rate.url ?? null }, after: null });
+		 await ctx.db.delete(args.rateId);
+		}
 	}
 });
 
@@ -276,7 +285,8 @@ export const update = mutation({
 		status: v.optional(propertyStatus)
 	},
 	handler: async (ctx, { propertyId, ...args }) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const existing = await ctx.db.get(propertyId);
 		if (!existing) throw new Error('Property not found');
 		const changes: Partial<Doc<'properties'>> = {};
@@ -299,16 +309,17 @@ export const update = mutation({
 		}
 		if (args.status !== undefined) changes.status = args.status;
 		if (contentChanged(existing, changes)) changes.contentEditedAt = Date.now();
-		await ctx.db.patch(propertyId, changes);
+		await history.patchProperty(propertyId, changes);
 	}
 });
 
 export const updateRoom = mutation({
 	args: { roomId: v.id('rooms'), name: v.optional(v.string()), imagePath: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		if (!(await ctx.db.get(args.roomId))) throw new Error('Room not found');
-		await ctx.db.patch(args.roomId, {
+		await history.patchRoom(args.roomId, {
 			...(args.name !== undefined ? { name: required(args.name, 'Room name') } : {}),
 			...(args.imagePath !== undefined ? { imagePath: imageUrl(required(args.imagePath, 'Room image')) } : {})
 		});

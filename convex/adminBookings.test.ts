@@ -148,6 +148,17 @@ describe("admin bookings", () => {
     expect(await bookedDates(t)).toBe(0);
     await expect(admin.mutation(api.adminBookings.createBooking, stay)).resolves.toBeTruthy();
   });
+  it("replays manual booking creation after a lost response without duplicating a stay or notification", async () => {
+    const { t, admin } = await setup();
+    const input = { ...stay, confirmed: true, notifyGuest: false, idempotencyKey: 'manual-booking-attempt' };
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, input);
+    const before = await t.run(ctx => ctx.db.get(bookingId));
+    expect(await admin.mutation(api.adminBookings.createBooking, input)).toBe(bookingId);
+    expect(await t.run(ctx => ctx.db.get(bookingId))).toEqual(before);
+    expect(await t.run(ctx => ctx.db.query('bookings').collect())).toHaveLength(1);
+    expect(await t.run(ctx => ctx.db.query('bookingCreateAttempts').collect())).toHaveLength(1);
+    await expect(admin.mutation(api.adminBookings.createBooking, { ...input, guestName: 'Changed' })).rejects.toThrow('already created');
+  });
 
   it("marks a booking paid", async () => {
     const { admin } = await setup();
@@ -158,22 +169,28 @@ describe("admin bookings", () => {
     expect(bookings[0]).toMatchObject({ paymentStatus: "paid", status: "confirmed", paymentMethod: "admin" });
   });
 
-  it("requires a recorded refund before cancelling a paid booking", async () => {
+  it("cancels a paid booking keeping the payment, or with the legacy full-refund flag", async () => {
     const { t, admin } = await setup();
     const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, guestEmail: "guest@example.com" });
     await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "markPaid" });
     expect(await bookedDates(t)).toBe(3);
 
-    await expect(admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "cancel" }))
-      .rejects.toThrow("Paid booking: record the refund to cancel");
-    expect((await t.run(ctx => ctx.db.get(bookingId)))?.status).toBe("confirmed");
-
-    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "cancel", refundRecorded: true });
-    const cancelled = await t.run(ctx => ctx.db.get(bookingId));
-    expect(cancelled).toMatchObject({ status: "cancelled", paymentStatus: "refunded" });
-    expect(cancelled?.refundedAt).toEqual(expect.any(Number));
-    expect(cancelled?.cancellationEmailQueuedAt).toEqual(expect.any(Number));
+    // Cancelling no longer implies a refund: the money is kept until a refund is recorded.
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "cancel" });
+    const kept = await t.run(ctx => ctx.db.get(bookingId));
+    expect(kept).toMatchObject({ status: "cancelled", paymentStatus: "paid", amountPaid: 25500 });
+    expect(kept?.cancellationEmailQueuedAt).toEqual(expect.any(Number));
     expect(await bookedDates(t)).toBe(0);
+
+    // The legacy flag still records a full refund (method not entered) in the same transaction.
+    const other = await admin.mutation(api.adminBookings.createBooking, { ...stay, guestEmail: "guest@example.com" });
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId: other, action: "markPaid" });
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId: other, action: "cancel", refundRecorded: true });
+    const refunded = await t.run(ctx => ctx.db.get(other));
+    expect(refunded).toMatchObject({ status: "cancelled", paymentStatus: "refunded", amountPaid: 25500, amountRefunded: 25500 });
+    expect(refunded?.refundedAt).toEqual(expect.any(Number));
+    const refunds = await t.run(ctx => ctx.db.query("bookingRefunds").collect());
+    expect(refunds).toMatchObject([{ bookingId: other, amount: 25500, method: "unrecorded", context: "cancellation" }]);
   });
 
   it("rejects draft and archived properties for quotes and admin bookings", async () => {
@@ -417,7 +434,10 @@ describe("date blocks", () => {
     expect(listed.dateBlocks).toEqual([{ _id: blockId, propertyId, start: checkIn, end: checkOut, reason: "Maintenance" }]);
     expect(listed.blocks).toHaveLength(0);
 
-    await admin.mutation(api.adminBookings.updateDateBlock, { blockId, propertyId, start: checkOut, end: isoInDays(35), reason: "Owner stay" });
+    const expected = { propertyId, start: checkIn, end: checkOut, reason: "Maintenance" };
+    await admin.mutation(api.adminBookings.updateDateBlock, { blockId, propertyId, start: checkOut, end: isoInDays(35), reason: "Owner stay", expected });
+    await expect(admin.mutation(api.adminBookings.updateDateBlock, { blockId, ...expected, expected })).rejects.toThrow("This block changed");
+    await expect(admin.mutation(api.adminBookings.removeDateBlock, { blockId, expected })).rejects.toThrow("This block changed");
     await expect(admin.mutation(api.adminBookings.createBooking, stay)).resolves.toBeTruthy();
     const rows = await t.run(async (ctx) => (await ctx.db.query("availability").collect()).filter((a) => a.dateBlockId === blockId));
     expect(rows.map((r) => r.date).sort()).toEqual([isoInDays(33), isoInDays(34)]);
@@ -427,6 +447,11 @@ describe("date blocks", () => {
     listed = await admin.query(api.adminBookings.listForAdmin, { from: checkIn, to: isoInDays(40) });
     expect(listed.dateBlocks).toHaveLength(0);
     expect(await t.run(async (ctx) => (await ctx.db.query("availability").collect()).filter((a) => a.status === "blocked"))).toHaveLength(0);
+    const history = await t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'dateBlock').eq('entityId', blockId)).collect());
+    expect(history.map(row => row.kind)).toEqual(['created', 'updated', 'removed']);
+    expect(history[1]).toMatchObject({ before: expected, after: { propertyId, start: checkOut, end: isoInDays(35), reason: 'Owner stay' } });
+    expect(history[2].before).toEqual(history[1].after);
+    expect(history.every(row => row.actor && Number.isFinite(row.recordedAt) && Number.isFinite(row.effectiveAt))).toBe(true);
   });
 
   it("refuses blocks over confirmed bookings, without a reason or for non-admins", async () => {
@@ -566,7 +591,10 @@ describe("historical admin bookings", () => {
       subtotal: (to - from) * 10000, total: (to - from) * 8500,
       status: confirmed ? "confirmed" : "pending", paymentStatus: "pending",
     });
-    expect(Boolean(booking?.confirmationEmailsQueuedAt)).toBe(confirmed);
+    // Entering a stay that already started is a correction: the guest is not emailed unless asked
+    // (see booking-corrections.test.ts for notifyGuest: true).
+    expect(Boolean(booking?.confirmationEmailsQueuedAt)).toBe(false);
+    expect(booking?.guestEmailsOff).toBe(true);
     const order = await t.run(ctx => ctx.db.query("bills")
       .withIndex("by_bookingId_and_status", q => q.eq("bookingId", bookingId).eq("status", "draft"))
       .unique());

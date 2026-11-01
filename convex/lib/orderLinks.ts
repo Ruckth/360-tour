@@ -18,9 +18,15 @@ export type OrderSource = { bookingId: Id<'bookings'> } | { appointmentId: Id<'s
 
 export const isOpenOrder = (order: Pick<Doc<'bills'>, 'status'>) => order.status === 'draft' || order.status === 'held';
 
+/**
+ * Paid or void: an order that was settled and is history. Use this, not `!isOpenOrder`, wherever
+ * "an order that took money" is meant: a discarded order is neither open nor settled.
+ */
+export const isSettledOrder = (order: Pick<Doc<'bills'>, 'status'>) => order.status === 'paid' || order.status === 'void';
+
 /** Open orders are listed as unpaid; `held` is the legacy spelling of draft. */
-export function orderState(order: Pick<Doc<'bills'>, 'status'>): 'unpaid' | 'paid' | 'void' {
-	return isOpenOrder(order) ? 'unpaid' : order.status === 'paid' ? 'paid' : 'void';
+export function orderState(order: Pick<Doc<'bills'>, 'status'>): 'unpaid' | 'paid' | 'void' | 'discarded' {
+	return isOpenOrder(order) ? 'unpaid' : order.status === 'paid' ? 'paid' : order.status === 'discarded' ? 'discarded' : 'void';
 }
 
 const SOURCE_SCAN = 20;
@@ -81,10 +87,13 @@ export async function activeOrderFor(ctx: ReadCtx, source: OrderSource) {
 	return (await openOrderCharging(ctx, source)) ?? (await linkedOpenOrder(ctx, source));
 }
 
-/** Recent orders for a source, linked or charging it on a line, newest change first (bounded). */
+/**
+ * Recent orders for a source, linked or charging it on a line, newest change first (bounded).
+ * Discarded orders are included, so a booking with one is never mistaken for one without orders.
+ */
 export async function ordersForSource(ctx: ReadCtx, source: OrderSource, limit = 10) {
 	const found = new Map<Id<'bills'>, Doc<'bills'>>();
-	for (const status of ['draft', 'held', 'paid', 'void'] as const) {
+	for (const status of ['draft', 'held', 'paid', 'void', 'discarded'] as const) {
 		for (const order of await linkedWithStatus(ctx, source, status).take(limit)) found.set(order._id, order);
 	}
 	for (const line of await sourceLines(ctx, source).take(SOURCE_SCAN)) {

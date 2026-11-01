@@ -1,11 +1,11 @@
 "use client";
 
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { Archive, ArchiveRestore, CalendarOff, Pencil, PlusIcon, Trash2 } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ServiceStaffMatrix } from "@/components/admin/AdminServiceStaffMatrix";
 import { BulkTimeOffDialog, TimeOffFields, conflictText, readTimeOff } from "@/components/admin/AdminStaffTimeOff";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
@@ -15,6 +15,7 @@ import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { ServiceThumb, ServiceThumbZoom } from "@/components/admin/ServicePhoto";
 import { StaffAvatarPhotoButton, StaffListPhotoButton } from "@/components/admin/StaffAvatarPhoto";
 import { PhotoPickerButton } from "@/components/admin/PhotoPickerButton";
+import { HistoryDisclosure, RecordHistoryPanel } from "@/components/admin/RecordHistoryPanel";
 import { usePhotoDraft } from "@/components/admin/usePhotoDraft";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { formatMoney } from "@/components/admin/labels";
@@ -36,12 +37,9 @@ import {
   WEEKDAYS,
   errorText,
   formatTimeOff,
-  formatResortDateTime,
-  resortIsoDate,
   timeOffInput,
   timeOffRange,
   timeOffRangeProblem,
-  useNow,
 } from "@/lib/staff-bookings";
 import { UNSAVED_CHANGES_MESSAGE, useUnsavedChangesGuard } from "@/lib/react/use-unsaved-changes";
 import { cn } from "@/lib/utils";
@@ -294,6 +292,9 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
         </ul>
       )}
 
+      {section === "staff" ? <HistoryDisclosure label="Time off history, including removed entries">
+        <RecordHistoryPanel entityType="timeOff" title="All staff time off history" />
+      </HistoryDisclosure> : null}
       {bulkTimeOff ? (
         <BulkTimeOffDialog staff={staff.filter((s) => s.status === "active")} onClose={() => setBulkTimeOff(false)} />
       ) : null}
@@ -399,7 +400,6 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
   const photo = usePhotoDraft(staff?.avatarUrl);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState("");
-  const today = resortIsoDate(useNow());
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -559,10 +559,15 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
               {hoursSummary(staff!)}. This custom schedule is kept as-is; it can&apos;t be edited in this form.
             </p>
           )}
-          {staff ? <TimeOffList staff={staff} /> : null}
+          {staff ? <>
+            <HistoryDisclosure label="Staff change history">
+              <RecordHistoryPanel entityType="staff" entityId={staff._id} title={`${staff.name} history`} />
+            </HistoryDisclosure>
+            <TimeOffList staff={staff} />
+          </> : null}
           <fieldset className="grid gap-3 border-t border-border pt-4">
             <legend className="text-sm font-medium">Add time off (optional)</legend>
-            <TimeOffFields idPrefix="st-off" min={today} />
+            <TimeOffFields idPrefix="st-off" />
           </fieldset>
           {simpleSchedule && days.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one working day to save.</p> : null}
           {createdId ? (
@@ -731,6 +736,9 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
               ))}
             </div>
           </fieldset>
+          {service ? <HistoryDisclosure label="Service change history">
+            <RecordHistoryPanel entityType="service" entityId={service._id} title={`${service.name} history`} />
+          </HistoryDisclosure> : null}
           {staffIds.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one person to save.</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
@@ -748,8 +756,11 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
   );
 }
 
-function TimeOffList({ staff }: { staff: Staff }) {
-  const rows = useQuery(api.adminServices.listTimeOff, { staffId: staff._id });
+export function TimeOffList({ staff }: { staff: Staff }) {
+  const [range, setRange] = useState<"upcoming" | "past">("upcoming");
+  const { results: rows, status, loadMore } = usePaginatedQuery(
+    api.adminServices.listTimeOffPage, { staffId: staff._id, range }, { initialNumItems: 20 },
+  );
   const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
   const [editing, setEditing] = useState<TimeOff | null>(null);
   const [error, setError] = useState("");
@@ -767,13 +778,19 @@ function TimeOffList({ staff }: { staff: Staff }) {
 
   return (
     <section className="grid gap-2 border-t border-border pt-4">
-      <h3 className="text-sm font-semibold">Upcoming time off</h3>
-      {rows === undefined ? (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Time off</h3>
+        <div className="flex gap-1" role="group" aria-label="Time off dates">
+          <Button type="button" size="sm" variant={range === "upcoming" ? "secondary" : "ghost"} aria-pressed={range === "upcoming"} onClick={() => setRange("upcoming")}>Upcoming</Button>
+          <Button type="button" size="sm" variant={range === "past" ? "secondary" : "ghost"} aria-pressed={range === "past"} onClick={() => setRange("past")}>Past</Button>
+        </div>
+      </div>
+      {status === "LoadingFirstPage" ? (
         <div role="status" aria-label="Loading time off">
           <Skeleton className="h-12 w-full" />
         </div>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">None scheduled.</p>
+        <p className="text-sm text-muted-foreground">{status === "Exhausted" ? (range === "past" ? "No past time off recorded." : "None scheduled.") : "No time off in this page. Load more to continue."}</p>
       ) : (
         <ul className="divide-y divide-border rounded-lg border border-border">
           {rows.map((row) => (
@@ -792,6 +809,11 @@ function TimeOffList({ staff }: { staff: Staff }) {
           ))}
         </ul>
       )}
+      {status === "CanLoadMore" || status === "LoadingMore" ? (
+        <Button type="button" variant="outline" size="sm" disabled={status === "LoadingMore"} onClick={() => loadMore(20)}>
+          {status === "LoadingMore" ? "Loading…" : "Load more time off"}
+        </Button>
+      ) : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {editing ? <TimeOffDialog key={editing._id} timeOff={editing} staffName={staff.name} onClose={() => setEditing(null)} /> : null}
     </section>
@@ -803,53 +825,61 @@ export function TimeOffDialog({ timeOff: initialTimeOff, staffName, onClose }: {
   const updateTimeOff = useMutation(api.adminServices.updateTimeOff);
   const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
   const [pending, setPending] = useState<"save" | "remove" | null>(null);
+  // Set synchronously, so a double tap can't send two writes before `pending` re-renders.
+  const busy = useRef(false);
   const [error, setError] = useState("");
   const confirm = useConfirm();
 
   async function act(kind: "save" | "remove", action: () => Promise<unknown>) {
+    if (busy.current) return;
+    busy.current = true;
     setPending(kind);
     setError("");
     try {
       await action();
       onClose();
     } catch (err) {
+      // The dialog stays open with the edits in place, so Save can be tried again.
       setError(errorText(err, kind === "save" ? "Could not save." : "Could not remove time off."));
     } finally {
+      busy.current = false;
       setPending(null);
     }
   }
 
+  // An ordinary edit saves on Save: the form already shows what changes, and the server
+  // rejects it if someone else changed this time off first (`expected`).
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // This dialog can open from inside the staff form; React events bubble through portals.
     event.stopPropagation();
+    if (busy.current) return;
     const input = readTimeOff(new FormData(event.currentTarget));
-    if (pending !== null) return;
     const next = { ...timeOffRange(input), label: input.label || "Time off" };
     const problem = timeOffRangeProblem(next);
     if (problem) { setError(problem); return; }
-    if (!(await confirm({
-      title: "Confirm time off change?",
-      description: <>From: {timeOff.label} · {formatResortDateTime(timeOff.start)} – {formatResortDateTime(timeOff.end)}.<br />To: {next.label} · {formatResortDateTime(next.start)} – {formatResortDateTime(next.end)}. Times are Bangkok time.</>,
-      confirmLabel: "Save time off", cancelLabel: "Keep editing",
-    }))) return;
     await act("save", () => updateTimeOff({ timeOffId: timeOff._id, ...next, expected: { start: timeOff.start, end: timeOff.end, label: timeOff.label } }));
   }
 
+  // Removing can't be undone here, so it still asks.
   async function remove() {
+    if (busy.current) return;
     if (!(await confirm({ title: `Remove "${timeOff.label}" time off?`, confirmLabel: "Remove", destructive: true }))) return;
     await act("remove", () => removeTimeOff({ timeOffId: timeOff._id }));
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open onOpenChange={(open) => !open && !busy.current && onClose()}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit time off{staffName ? ` · ${staffName}` : ""}</DialogTitle>
           <DialogDescription>{formatTimeOff(timeOff)}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
           <TimeOffFields idPrefix="to-edit" defaults={{ ...timeOffInput(timeOff), label: timeOff.label }} required />
+          <HistoryDisclosure label="Time off change history">
+            <RecordHistoryPanel entityType="timeOff" entityId={timeOff._id} title="Time off history" />
+          </HistoryDisclosure>
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter className="sm:justify-between">
             <Button type="button" variant="outline" onClick={remove} disabled={pending !== null}>
@@ -857,7 +887,7 @@ export function TimeOffDialog({ timeOff: initialTimeOff, staffName, onClose }: {
               Remove
             </Button>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={onClose} disabled={pending !== null}>
                 Cancel
               </Button>
               <Button type="submit" disabled={pending !== null}>
