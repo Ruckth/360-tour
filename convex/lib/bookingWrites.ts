@@ -5,6 +5,7 @@ import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from './valid
 import { calculateDirectQuote } from './pricing';
 import { assertNoBookingOverlap, findBlockingNight, STAY_BLOCKED_ERROR } from './stayOverlap';
 import { ensureLinkedOrder } from './orderLinks';
+import { appendBookingHistory, bookingSnapshot } from './bookingMoney';
 
 export type BookingSource = 'web' | 'whatsapp' | 'messenger' | 'line' | 'instagram' | 'admin';
 
@@ -21,13 +22,34 @@ export type BookingInput = StayInput & {
 	guestPhone: string;
 	source: BookingSource;
 	chatSessionId?: Id<'chatSessions'>;
-	/** Who created it (an admin's email), recorded on its order. Defaults to the channel. */
+	/** Who created it (an admin's email), recorded on the booking, its history and its order. Defaults to the channel. */
 	actor?: string;
+	/** Historical entries made without telling the guest; lifecycle emails then skip the booking. */
+	guestEmailsOff?: boolean;
+	/** Why an archived villa is used (staff historical entry only); logged in the booking history. */
+	archivedVillaReason?: string;
 };
+
+/** Server-only policy: callers must authenticate the admin before enabling either relaxation. */
+type StayPolicy = {
+	allowPastCheckIn?: boolean;
+	/** Accept an archived (not draft) villa, for recording a past stay there. */
+	allowArchivedProperty?: boolean;
+};
+
+export const PROPERTY_UNAVAILABLE = 'Property is not available for booking';
+
+/** Throws unless an archived villa is explicitly allowed for this (historical) stay. */
+export function assertBookableProperty(property: Doc<'properties'>, policy: StayPolicy = {}) {
+	if (property.status === 'active') return;
+	if (property.status === 'archived' && policy.allowArchivedProperty) return;
+	throw new Error(PROPERTY_UNAVAILABLE);
+}
 
 export async function loadProperty(
 	ctx: QueryCtx | MutationCtx,
-	slug: string
+	slug: string,
+	policy: StayPolicy = {}
 ): Promise<Doc<'properties'>> {
 	const property = await ctx.db
 		.query('properties')
@@ -37,9 +59,7 @@ export async function loadProperty(
 	if (!property) {
 		throw new Error('Property not found');
 	}
-	if (property.status !== 'active') {
-		throw new Error('Property is not available for booking');
-	}
+	assertBookableProperty(property, policy);
 
 	return property;
 }
@@ -102,16 +122,13 @@ export function guestLookupFields(guest: { guestPhone: string; guestEmail?: stri
 	};
 }
 
-/** Server-only policy: callers must authenticate the admin before enabling historical dates. */
-type StayDatePolicy = { allowPastCheckIn?: boolean };
-
 /** Validates a stay (dates, capacity, overlap, blocked dates) and prices it. */
-export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: StayInput, policy: StayDatePolicy = {}) {
+export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: StayInput, policy: StayPolicy = {}) {
 	assertValidIsoDate(input.checkIn, 'Check-in date');
 	assertValidIsoDate(input.checkOut, 'Check-out date');
 	assertPositiveInt(input.guests, 'Guest count');
 
-	const property = await loadProperty(ctx, input.propertySlug);
+	const property = await loadProperty(ctx, input.propertySlug, policy);
 	assertCapacity(property, input.guests);
 	const nights = assertStayDates(input.checkIn, input.checkOut, policy);
 	await assertStayFree(ctx, property._id, input.checkIn, input.checkOut);
@@ -119,9 +136,10 @@ export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: Stay
 	return { property, nights, quote: calculateDirectQuote(property, nights) };
 }
 
-export async function createBookingRecord(ctx: MutationCtx, input: BookingInput, policy: StayDatePolicy = {}) {
+export async function createBookingRecord(ctx: MutationCtx, input: BookingInput, policy: StayPolicy = {}) {
 	const { guestName, guestPhone, guestEmail } = cleanGuestDetails(input);
 	const { property, nights, quote } = await quoteBookableStay(ctx, input, policy);
+	const actor = input.actor ?? `system:${input.source}`;
 
 	const accessToken = crypto.randomUUID();
 	const { guestPhoneDigits, guestEmailNormalized } = guestLookupFields({ guestPhone, guestEmail });
@@ -146,10 +164,19 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		accessToken,
 		paymentStatus: 'pending',
 		status: 'pending',
+		revision: 0,
+		createdBy: actor,
+		...(input.guestEmailsOff ? { guestEmailsOff: true } : {}),
 		createdAt: Date.now()
 	});
+	const created = (await ctx.db.get(bookingId))!;
+	await appendBookingHistory(ctx, bookingId, {
+		actor, kind: 'created',
+		...(input.archivedVillaReason ? { reason: input.archivedVillaReason } : {}),
+		after: { ...bookingSnapshot(created), ...(property.status !== 'active' ? { villaStatus: property.status } : {}) }
+	});
 	// Every booking has its order from the start, empty until staff open it at checkout.
-	await ensureLinkedOrder(ctx, { bookingId }, input.actor ?? `system:${input.source}`);
+	await ensureLinkedOrder(ctx, { bookingId }, actor);
 
 	return { bookingId, accessToken };
 }

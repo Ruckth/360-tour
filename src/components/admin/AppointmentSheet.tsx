@@ -7,11 +7,14 @@ import {
   appointmentRevision,
   canBookAgain,
   canEditTurnaround,
-  canReschedule,
+  canCorrectAppointmentTime,
   turnaroundMinutes,
 } from "convex/lib/appointmentWindow";
 import { CalendarClock, Hourglass, Pencil, Repeat } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { AppointmentCorrectionDialog } from "@/components/admin/AppointmentCorrectionDialog";
+import { AppointmentFeeAction } from "@/components/admin/AppointmentFeeAction";
+import { AppointmentFinancials } from "@/components/admin/AppointmentFinancials";
 import { AppointmentHistory } from "@/components/admin/AppointmentHistory";
 import { BookingOrders } from "@/components/admin/BookingOrders";
 import { CancelAppointmentDialog } from "@/components/admin/CancelAppointmentDialog";
@@ -76,7 +79,7 @@ const ACTION_LABELS: Record<StatusAction, string> = {
 
 const CANCELLABLE: AppointmentStatus[] = ["booked", "arrived"];
 
-type Dialog = "reschedule" | "turnaround" | "cancel" | null;
+type Dialog = "reschedule" | "turnaround" | "cancel" | "correct" | "payment" | null;
 
 export function AppointmentSheet({
   appointment,
@@ -95,40 +98,26 @@ export function AppointmentSheet({
   onClose: () => void;
 }) {
   const updateStatus = useMutation(api.adminServices.updateAppointmentStatus);
-  const markPaid = useMutation(api.adminServices.markAppointmentPaid);
-  const refund = useMutation(api.adminServices.refundAppointment);
   const originalReference = useQuery(api.adminServices.getAppointmentReference, appointment?.rebookedFromId ? { appointmentId: appointment.rebookedFromId } : "skip");
+  const [feePending, setFeePending] = useState(false);
   const [pending, setPending] = useState<StatusAction | null>(null);
   const [editing, setEditing] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState("");
   const now = useNow();
-  const confirm = useConfirm();
-
   const service = appointment ? serviceById.get(appointment.serviceId) : undefined;
   const staff = appointment ? staffById.get(appointment.staffId) : undefined;
-  const serviceName = service?.name ?? "Service";
+  const serviceName = appointment?.serviceNameSnapshot ?? service?.name ?? "Service";
   const staffName = (id: string) => staffById.get(id)?.name ?? "Former staff member";
 
   async function run(action: StatusAction) {
-    if (!appointment) return;
-    if (
-      action === "refund" &&
-      !(await confirm({
-        title: `Record a ${formatMoney(appointment.price, appointment.currency)} refund?`,
-        description: "Marks the payment as refunded. Give the money back at the desk; nothing is charged or sent from here.",
-        confirmLabel: "Record refund",
-        destructive: true,
-      }))
-    ) {
-      return;
-    }
+    if (!appointment || pending !== null || feePending) return;
+    if (action === "paid") { setDialog("payment"); return; }
     setPending(action);
     setError("");
     try {
-      if (action === "paid") await markPaid({ appointmentId: appointment._id });
-      else if (action === "refund") await refund({ appointmentId: appointment._id });
-      else await updateStatus({ appointmentId: appointment._id, status: action });
+      if (action === "refund") return;
+      await updateStatus({ appointmentId: appointment._id, status: action, expectedRevision: appointmentRevision(appointment) });
     } catch (err) {
       setError(errorText(err, "Could not update the appointment."));
     } finally {
@@ -139,8 +128,6 @@ export function AppointmentSheet({
   const actions = appointment
     ? [
         ...NEXT_ACTIONS[appointment.status].filter((action) => action !== "no_show" || appointment.start <= now),
-        ...(appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (["paid"] as const) : []),
-        ...(appointment.paymentStatus === "paid" ? (["refund"] as const) : []),
       ]
     : [];
   const status = appointment ? appointmentStatus(displayStatus(appointment)) : null;
@@ -150,7 +137,7 @@ export function AppointmentSheet({
     <Sheet
       open={Boolean(appointment)}
       onOpenChange={(open) => {
-        if (!open) {
+        if (!open && !feePending) {
           setError("");
           setEditing(false);
           setDialog(null);
@@ -158,7 +145,7 @@ export function AppointmentSheet({
         }
       }}
     >
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent onEscapeKeyDown={(e) => { if (feePending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (feePending) e.preventDefault(); }} className="w-full overflow-y-auto sm:max-w-md">
         {appointment && status ? (
           <div className="grid gap-5">
             <div>
@@ -179,15 +166,15 @@ export function AppointmentSheet({
             ) : (
               <>
                 <dl className="divide-y divide-border border-y border-border">
-                  <Detail label="Service">{service?.name ?? "—"}</Detail>
+                  <Detail label="Service">{appointment.serviceNameSnapshot ?? service?.name ?? "—"}</Detail>
                   <Detail label="Staff">
                     {staff ? (
                       <span className="flex items-center gap-2">
                         <StaffAvatar staff={staff} className="size-6" />
-                        {staff.name} <span className="text-muted-foreground">· {staff.role}</span>
+                        {appointment.staffNameSnapshot ?? staff.name} <span className="text-muted-foreground">· {staff.role}</span>
                       </span>
                     ) : (
-                      "—"
+                      appointment.staffNameSnapshot ?? "—"
                     )}
                   </Detail>
                   <Detail label="When">
@@ -201,7 +188,7 @@ export function AppointmentSheet({
                   <Detail label="Price">{formatMoney(appointment.price, appointment.currency)}</Detail>
                   <Detail label="Payment">
                     {PAYMENT_LABELS[appointment.paymentStatus]}
-                    {appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : ""}
+                    {appointment.paymentStatus === "refunded" && appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : appointment.paymentStatus === "paid" && appointment.paidAt ? ` · ${formatResortDateTime(appointment.paidAt)}` : ""}
                   </Detail>
                   <Detail label="Orders">
                     <BookingOrders
@@ -237,41 +224,44 @@ export function AppointmentSheet({
                       key={action}
                       variant={action === "no_show" || action === "refund" ? "outline" : action === "paid" ? "secondary" : "default"}
                       onClick={() => run(action)}
-                      disabled={pending !== null}
+                      disabled={feePending || pending !== null}
                     >
                       {pending === action ? <Spinner className="text-current" /> : null}
                       {ACTION_LABELS[action]}
                     </Button>
                   ))}
-                  {canReschedule(appointment, now) ? (
-                    <Button variant="outline" onClick={() => setDialog("reschedule")} disabled={pending !== null}>
+                  {canCorrectAppointmentTime(appointment, now) ? (
+                    <Button variant="outline" onClick={() => setDialog("reschedule")} disabled={feePending || pending !== null}>
                       <CalendarClock aria-hidden className="size-4" />
-                      Reschedule
+                      Correct date / time
                     </Button>
                   ) : null}
                   {canEditTurnaround(appointment) ? (
-                    <Button variant="outline" onClick={() => setDialog("turnaround")} disabled={pending !== null}>
+                    <Button variant="outline" onClick={() => setDialog("turnaround")} disabled={feePending || pending !== null}>
                       <Hourglass aria-hidden className="size-4" />
                       Turnaround
                     </Button>
                   ) : null}
                   {canBookAgain(appointment) ? (
-                    <Button variant="outline" onClick={() => onBookAgain(appointment)} disabled={pending !== null || services.length === 0}>
+                    <Button variant="outline" onClick={() => onBookAgain(appointment)} disabled={feePending || pending !== null || services.length === 0}>
                       <Repeat aria-hidden className="size-4" />
                       Book again
                     </Button>
                   ) : null}
-                  <Button variant="ghost" onClick={() => setEditing(true)} disabled={pending !== null}>
+                  <Button variant="ghost" onClick={() => setEditing(true)} disabled={feePending || pending !== null}>
                     <Pencil aria-hidden className="size-4" />
                     Edit details
                   </Button>
+                  <Button variant="outline" onClick={() => setDialog("correct")} disabled={feePending || pending !== null}>Correct status</Button>
                   {CANCELLABLE.includes(appointment.status) ? (
-                    <Button variant="outline" className="text-destructive" onClick={() => setDialog("cancel")} disabled={pending !== null}>
+                    <Button variant="outline" className="text-destructive" onClick={() => setDialog("cancel")} disabled={feePending || pending !== null}>
                       Cancel appointment
                     </Button>
                   ) : null}
                 </div>
                 {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
+                <AppointmentFeeAction key={`fee:${appointment._id}`} appointment={appointment} onPendingChange={setFeePending} />
+                <AppointmentFinancials key={appointment._id} appointment={appointment} />
                 <AppointmentHistory
                   appointmentId={appointment._id}
                   staffName={staffName}
@@ -281,6 +271,7 @@ export function AppointmentSheet({
             )}
           </div>
         ) : null}
+        {appointment && (dialog === "correct" || dialog === "payment") ? <AppointmentCorrectionDialog key={dialog} appointment={appointment} payment={dialog === "payment"} onClose={() => setDialog(null)} /> : null}
         {appointment && dialog === "reschedule" ? (
           <RescheduleDialog appointment={appointment} serviceName={serviceName} staffById={staffById} onClose={() => setDialog(null)} />
         ) : null}

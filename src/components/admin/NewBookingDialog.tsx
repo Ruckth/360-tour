@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { UserRound } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,8 @@ import { normalizeGuestPhone } from "@/lib/booking/phone";
 import { useAdminBookingDates } from "./useAdminBookingDates";
 import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
 import { errorText } from "@/lib/staff-bookings";
-import { displayDate, type AdminProperty } from "./admin-bookings-shared";
+import { displayDate, newAttemptKey, notifyDefault, parseAmount, serverTodayIso, type AdminProperty } from "./admin-bookings-shared";
+import { NotifyGuestField } from "./BookingMoneyFields";
 import { formatMoney } from "./labels";
 
 export type NewBookingPrefill = { propertyId?: string; checkIn?: string; checkOut?: string };
@@ -54,7 +55,14 @@ export function NewBookingDialog({
   onBlockInstead: (target: { propertyId: string; start: string; end: string }) => void;
 }) {
   const createBooking = useMutation(api.adminBookings.createBooking);
-  const initial = properties.find((p) => p._id === prefill?.propertyId) ?? properties[0];
+  const [creationKey] = useState(() => newAttemptKey("booking"));
+  const pending = useRef(false);
+  // A prefilled archived villa is kept only for a past stay (the calendar filtered to that villa).
+  const prefillCheckIn = prefill?.checkIn ?? "";
+  const prefillPast = prefillCheckIn !== "" && prefillCheckIn < serverTodayIso();
+  const initial =
+    properties.find((p) => p._id === prefill?.propertyId && (p.status === "active" || (p.status === "archived" && prefillPast))) ??
+    properties.find((p) => p.status === "active");
   const [propertySlug, setPropertySlug] = useState(initial?.slug ?? "");
   const [dates, setDates] = useState({ checkIn: prefill?.checkIn ?? "", checkOut: prefill?.checkOut ?? "" });
   const [guest, setGuest] = useState({ name: "", phone: "", email: "" });
@@ -62,11 +70,34 @@ export function NewBookingDialog({
   const [pickedGuest, setPickedGuest] = useState("");
   const [phoneToCheck, setPhoneToCheck] = useState("");
   const [confirmed, setConfirmed] = useState(true);
+  // null = follow the default for the dates (no email for a past stay); set once staff choose.
+  const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
+  const [custom, setCustom] = useState(false);
+  const [customTotal, setCustomTotal] = useState("");
+  const [customReason, setCustomReason] = useState("");
+  const [villaReason, setVillaReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // A stay that started before today is a record of the past: archived villas may be used for it.
+  const historical = Boolean(dates.checkIn) && dates.checkIn < serverTodayIso();
+  const villas = properties.filter((p) => p.status === "active" || (p.status === "archived" && (historical || p.slug === propertySlug)));
   const property = properties.find((p) => p.slug === propertySlug);
+  const archivedVilla = property?.status === "archived";
   const availability = useAdminBookingDates(property?._id, dates);
   const { conflicts } = availability;
+  const notify = notifyChoice ?? notifyDefault({ checkIn: dates.checkIn || serverTodayIso() });
+  const customAmount = parseAmount(customTotal);
+  const problem =
+    archivedVilla && !historical
+      ? "This villa is archived. It can only be used to record a stay that started in the past."
+      : archivedVilla && !villaReason.trim()
+        ? "Give the reason for recording this stay in an archived villa."
+        : custom && customAmount === null
+          ? "Enter the stay total, at most 2 decimals."
+          : custom && !customReason.trim()
+            ? "Add the reason for the custom price."
+            : "";
 
   // Returning guests: suggest previous bookings matching the phone or email typed so far.
   const phone = useDebounced(guest.phone.trim());
@@ -79,15 +110,17 @@ export function NewBookingDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!availability.canSubmit || saving) return;
+    if (!availability.canSubmit || pending.current || problem) return;
     if (!isPossiblePhoneNumber(guest.phone)) {
       setError("Enter a complete phone number for the selected country.");
       return;
     }
+    pending.current = true;
     setSaving(true);
     setError("");
     try {
       const id = await createBooking({
+        idempotencyKey: creationKey,
         propertySlug,
         guestName: guest.name.trim(),
         guestPhone: guest.phone.trim(),
@@ -96,11 +129,17 @@ export function NewBookingDialog({
         checkOut: dates.checkOut,
         guests: Number(guests),
         confirmed,
+        // Always explicit, so the server never picks a different email choice than the one shown.
+        notifyGuest: notify,
+        ...(custom && customAmount !== null ? { priceOverride: { total: customAmount, reason: customReason.trim() } } : {}),
+        ...(archivedVilla ? { archivedVillaReason: villaReason.trim() } : {}),
       });
       onCreated(id);
     } catch (err) {
+      // Everything entered stays, so Create booking can simply be pressed again.
       setError(errorText(err, "Could not create the booking."));
     } finally {
+      pending.current = false;
       setSaving(false);
     }
   }
@@ -111,7 +150,7 @@ export function NewBookingDialog({
   });
 
   return (
-    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
+    <Dialog open onOpenChange={(next) => (next || saving ? undefined : onClose())}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New booking</DialogTitle>
@@ -123,7 +162,7 @@ export function NewBookingDialog({
             <VillaPicker
               id="nb-villa"
               labelId="nb-villa-label"
-              properties={properties}
+              properties={villas}
               value={property?._id}
               onChange={(id) => {
                 const next = properties.find((p) => p._id === id);
@@ -131,7 +170,22 @@ export function NewBookingDialog({
               }}
               disabled={saving}
             />
+            {historical && properties.some((p) => p.status === "archived") ? (
+              <p className="text-xs text-muted-foreground">Past stay: archived villas are listed too, to record where the guest stayed.</p>
+            ) : null}
           </div>
+          {archivedVilla ? (
+            <div className="grid gap-2">
+              <Label htmlFor="nb-villa-reason">This villa is archived. Why record this past stay in it? (required)</Label>
+              <Input
+                id="nb-villa-reason"
+                maxLength={500}
+                value={villaReason}
+                onChange={(event) => setVillaReason(event.target.value)}
+                disabled={saving}
+              />
+            </div>
+          ) : null}
           <BookingRangePicker
             checkIn={dates.checkIn}
             checkOut={dates.checkOut}
@@ -221,16 +275,65 @@ export function NewBookingDialog({
             <span>
               Create as confirmed
               <span className="block text-muted-foreground">
-                Holds the dates now and emails the guest. Unticked, it stays pending and the dates stay open until you confirm.
+                Holds the dates now. Unticked, it stays pending and the dates stay open until you confirm.
               </span>
             </span>
           </label>
-          {property && dates.checkIn && dates.checkOut && !conflicts ? (
-            <p className="text-sm text-muted-foreground">
-              {formatMoney(property.pricePerNight, property.currency)} per night
-              {property.directDiscountPercent ? `, ${property.directDiscountPercent}% direct discount` : ""}
-            </p>
+          <NotifyGuestField
+            id="nb-notify"
+            guestEmail={guest.email.trim()}
+            checked={notify}
+            onChange={setNotifyChoice}
+            action="this booking"
+          />
+          {historical && notifyChoice === null ? (
+            <p className="-mt-2 text-xs text-muted-foreground">Past stays don’t email the guest unless you tick this.</p>
           ) : null}
+          <div className="grid gap-3 rounded-lg border border-border p-3">
+            <label htmlFor="nb-custom" className="flex items-center gap-2 text-sm font-medium">
+              <input
+                id="nb-custom"
+                type="checkbox"
+                className="size-4 accent-foreground"
+                checked={custom}
+                onChange={(event) => setCustom(event.target.checked)}
+                disabled={saving}
+              />
+              Custom price
+            </label>
+            {custom ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="nb-custom-total">Stay total ({property?.currency ?? "THB"})</Label>
+                  <Input
+                    id="nb-custom-total"
+                    inputMode="decimal"
+                    value={customTotal}
+                    onChange={(event) => setCustomTotal(event.target.value)}
+                    aria-invalid={customAmount === null}
+                    disabled={saving}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="nb-custom-reason">Reason (required)</Label>
+                  <Input
+                    id="nb-custom-reason"
+                    maxLength={500}
+                    value={customReason}
+                    onChange={(event) => setCustomReason(event.target.value)}
+                    placeholder="Negotiated rate, long-stay discount…"
+                    disabled={saving}
+                  />
+                </div>
+              </>
+            ) : property && dates.checkIn && dates.checkOut && !conflicts ? (
+              <p className="text-sm text-muted-foreground">
+                Villa rate: {formatMoney(property.pricePerNight, property.currency)} per night
+                {property.directDiscountPercent ? `, ${property.directDiscountPercent}% direct discount` : ""}
+              </p>
+            ) : null}
+          </div>
+          {problem ? <p className="text-sm text-destructive">{problem}</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter className="gap-2 sm:flex-wrap">
             {property && dates.checkIn && dates.checkOut ? (
@@ -243,10 +346,10 @@ export function NewBookingDialog({
                 Block these dates instead
               </Button>
             ) : null}
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Close
             </Button>
-            <Button type="submit" disabled={saving || !availability.canSubmit}>
+            <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(problem)}>
               {saving ? <Spinner className="text-current" /> : null}
               Create booking
             </Button>

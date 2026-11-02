@@ -18,14 +18,22 @@ import type {
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
 import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
-import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button, ButtonLink } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
 import { errorText } from "@/lib/staff-bookings";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
+import { NotifyGuestField } from "./BookingMoneyFields";
 import { BookingQuickActions, type QuickTarget } from "./BookingQuickActions";
 import { BookingSheet } from "./BookingSheet";
 import { DateBlockDialog, type BlockTarget } from "./DateBlockDialog";
@@ -40,6 +48,7 @@ import {
   displayDate,
   hotelStatus,
   hotelStatusColor,
+  notifyDefault,
   statusKey,
   stayConflicts,
   type AdminProperty,
@@ -63,7 +72,7 @@ const DEFAULT_CHECK_OUT = "11:00";
 // event transformation. `EventData` keeps its local name so the rest of the view is unchanged.
 type EventData = HotelEventData;
 
-type Move = { booking: AdminBooking; propertyId: string; checkIn: string; checkOut: string };
+export type Move = { booking: AdminBooking; propertyId: string; checkIn: string; checkOut: string };
 
 function initialRange() {
   const today = new Date();
@@ -103,11 +112,10 @@ export function AdminBookingsView() {
   const [managingRates, setManagingRates] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const [moving, setMoving] = useState<Move | null>(null);
 
   const data = useQuery(api.adminBookings.listForAdmin, range);
   const profile = useQuery(api.settings.publicProfile, {});
-  const editBooking = useMutation(api.adminBookings.editBooking);
-  const confirm = useConfirm();
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
   const today = todayIsoLocal();
@@ -151,59 +159,10 @@ export function AdminBookingsView() {
     return !stayConflicts(data, move.propertyId, move.checkIn, move.checkOut, move.booking._id);
   }
 
-  async function confirmMove(move: Move) {
-    const { booking, propertyId, checkIn, checkOut } = move;
-    const property = data?.properties.find((p) => p._id === propertyId);
-    if (!property) return;
-    const nights = nightsBetweenIso(checkIn, checkOut);
-    const newTotal = calculateDirectQuote(property, nights).directTotal;
-    const difference = newTotal - booking.total;
-    const balance = booking.amountPaid !== undefined ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
-    const ok = await confirm({
-      title: `Move ${booking.guestName}'s booking?`,
-      description: (
-        <>
-          <span className="block text-foreground">
-            {propertyId !== booking.propertyId ? `${villaName(booking.propertyId)} → ${property.name}` : property.name}
-          </span>
-          <span className="block">
-            {displayDate(checkIn)} → {displayDate(checkOut)} · {nights} {nights === 1 ? "night" : "nights"}
-          </span>
-          <span className="mt-2 block text-foreground">
-            New total {formatMoney(newTotal, booking.currency)}{" "}
-            <span className="text-muted-foreground">
-              (was {formatMoney(booking.total, booking.currency)},{" "}
-              {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${formatMoney(Math.abs(difference), booking.currency)}`})
-            </span>
-          </span>
-          {booking.amountPaid !== undefined ? (
-            <span className="block">
-              Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
-              {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
-            </span>
-          ) : null}
-          {booking.guestEmail ? <span className="mt-2 block">The guest is emailed about the change.</span> : null}
-        </>
-      ),
-      confirmLabel: "Move booking",
-      cancelLabel: "Keep dates",
-    });
-    if (!ok) return;
-    try {
-      await editBooking({
-        bookingId: booking._id,
-        propertyId: propertyId as Id<"properties">,
-        checkIn,
-        checkOut,
-        guests: booking.guests,
-        guestName: booking.guestName,
-        guestPhone: booking.guestPhone,
-        guestEmail: booking.guestEmail,
-      });
-      setNotice({ text: `${booking.guestName}: moved to ${displayDate(checkIn)} → ${displayDate(checkOut)}.` });
-    } catch (err) {
-      setNotice({ text: errorText(err, "Could not move the booking."), error: true });
-    }
+  /** A drop opens the move dialog with the booking exactly as the calendar showed it (its revision included). */
+  function confirmMove(move: Move) {
+    setQuick(null);
+    setMoving(move);
   }
 
   /** Villa for a drag-selected range: the filtered villa, else the first active villa free on those nights. */
@@ -253,7 +212,7 @@ export function AdminBookingsView() {
           onEventUpdate={(update) => {
             // Never apply locally: confirm first, then the server result flows back through the query.
             const move = proposedMove(update);
-            if (move && !isUnchanged(move) && canMove(move)) void confirmMove(move);
+            if (move && !isUnchanged(move) && canMove(move)) confirmMove(move);
             return false;
           }}
           onDragBlocked={(occurrence) =>
@@ -381,9 +340,26 @@ export function AdminBookingsView() {
         <OtaRatesDialog open={managingRates} onClose={() => setManagingRates(false)} properties={data.properties} />
       ) : null}
       {data && cleaningUp ? <BookingCleanupDialog properties={data.properties} onClose={() => setCleaningUp(false)} /> : null}
+      {data && moving ? (
+        <MoveBookingDialog
+          key={`${moving.booking._id}:${moving.propertyId}:${moving.checkIn}:${moving.checkOut}`}
+          move={moving}
+          properties={data.properties}
+          onClose={() => setMoving(null)}
+          onMoved={(text) => {
+            setMoving(null);
+            setNotice({ text });
+          }}
+          onOpenBooking={(id) => {
+            setMoving(null);
+            setSelectedId(id);
+          }}
+        />
+      ) : null}
       {data && creating ? (
         <NewBookingDialog
-          properties={data.properties.filter((p) => p.status === "active")}
+          // Archived villas are offered only for past stays, inside the dialog; drafts never.
+          properties={data.properties.filter((p) => p.status !== "draft")}
           prefill={creating}
           onClose={() => setCreating(null)}
           onCreated={(id) => {
@@ -397,6 +373,139 @@ export function AdminBookingsView() {
         />
       ) : null}
     </div>
+  );
+}
+
+const CUSTOM_PRICE_REFUSAL = /custom price/i;
+
+/**
+ * Confirms a dragged or resized booking. It sends the revision the calendar showed when the chip
+ * was dropped, so a change made meanwhile is refused rather than overwritten, and always says
+ * whether the guest is emailed (sent explicitly). A stay with a custom price is not re-priced at
+ * the villa rate here: the dialog explains and offers to open the booking to set the new price.
+ * While saving it can't be closed or sent twice; a failure keeps it open for a retry.
+ */
+export function MoveBookingDialog({
+  move,
+  properties,
+  onClose,
+  onMoved,
+  onOpenBooking,
+}: {
+  move: Move;
+  properties: AdminProperty[];
+  onClose: () => void;
+  onMoved: (notice: string) => void;
+  onOpenBooking: (bookingId: Id<"bookings">) => void;
+}) {
+  const { booking, propertyId, checkIn, checkOut } = move;
+  const editBooking = useMutation(api.adminBookings.editBooking);
+  const detail = useQuery(api.adminBookings.getForAdmin, { bookingId: booking._id });
+  const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const property = properties.find((p) => p._id === propertyId);
+  const fromVilla = properties.find((p) => p._id === booking.propertyId)?.name ?? "Villa";
+  const nights = nightsBetweenIso(checkIn, checkOut);
+  const newTotal = property ? calculateDirectQuote(property, nights).directTotal : booking.total;
+  const difference = newTotal - booking.total;
+  const balance = booking.amountPaid !== undefined ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
+  const customPrice = detail?.priceOverride ?? null;
+  const changedMeanwhile = detail ? detail.revision !== booking.revision : false;
+  const notify = notifyChoice ?? notifyDefault({ checkIn, guestEmailsOff: detail?.guestEmailsOff });
+  const customRefused = CUSTOM_PRICE_REFUSAL.test(error);
+  const ready = detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property);
+
+  async function save() {
+    if (!ready || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await editBooking({
+        bookingId: booking._id,
+        expectedRevision: booking.revision,
+        propertyId: propertyId as Id<"properties">,
+        checkIn,
+        checkOut,
+        guests: booking.guests,
+        guestName: booking.guestName,
+        guestPhone: booking.guestPhone,
+        guestEmail: booking.guestEmail,
+        notifyGuest: notify,
+      });
+      onMoved(`${booking.guestName}: moved to ${displayDate(checkIn)} → ${displayDate(checkOut)}.`);
+    } catch (err) {
+      setError(errorText(err, "Could not move the booking."));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (open || saving ? undefined : onClose())}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{`Move ${booking.guestName}'s booking?`}</DialogTitle>
+          <DialogDescription>
+            {propertyId !== booking.propertyId ? `${fromVilla} → ${property?.name ?? "Villa"}` : (property?.name ?? fromVilla)} ·{" "}
+            {displayDate(checkIn)} → {displayDate(checkOut)} · {nights} {nights === 1 ? "night" : "nights"}
+          </DialogDescription>
+        </DialogHeader>
+        {detail === undefined ? (
+          <Spinner label="Loading the booking" />
+        ) : detail === null ? (
+          <p role="alert" className="text-sm text-destructive">This booking no longer exists.</p>
+        ) : customPrice ? (
+          <div className="grid gap-1 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+            <p className="font-medium">
+              This stay has a custom price of {formatMoney(customPrice.total, booking.currency)}: {customPrice.reason}
+            </p>
+            <p className="text-muted-foreground">
+              Moving it needs the price for the new dates, so it isn’t moved here. Open the booking and use Edit to set
+              the new price, or return it to the villa rate.
+            </p>
+          </div>
+        ) : changedMeanwhile ? (
+          <p role="alert" className="text-sm text-destructive">
+            This booking changed since the calendar showed it. Close this and drag it again to see the latest details.
+          </p>
+        ) : (
+          <div className="grid gap-3 text-sm">
+            <div className="rounded-lg border border-border bg-muted/40 p-3">
+              <p className="font-medium">
+                New total {formatMoney(newTotal, booking.currency)}{" "}
+                <span className="font-normal text-muted-foreground">
+                  (was {formatMoney(booking.total, booking.currency)},{" "}
+                  {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${formatMoney(Math.abs(difference), booking.currency)}`})
+                </span>
+              </p>
+              {booking.amountPaid !== undefined ? (
+                <p className="text-muted-foreground">
+                  Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
+                  {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
+                </p>
+              ) : null}
+            </div>
+            <NotifyGuestField id="move-notify" guestEmail={booking.guestEmail} checked={notify} onChange={setNotifyChoice} action="the new dates" />
+          </div>
+        )}
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Keep dates
+          </Button>
+          {customPrice || customRefused ? (
+            <Button type="button" onClick={() => onOpenBooking(booking._id)} disabled={saving}>
+              Open booking
+            </Button>
+          ) : (
+            <Button type="button" onClick={() => void save()} disabled={!ready || saving}>
+              {saving ? <Spinner className="text-current" /> : null}
+              {error ? "Try again" : "Move booking"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

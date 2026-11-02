@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { DisabledReason } from "./DisabledReason";
 import { HotspotEditorDialog } from "./HotspotEditorDialog";
+import { ConfigurationHistoryRecords, HistoryDisclosure, RecordHistoryPanel } from "./RecordHistoryPanel";
 import { RoomHotspotList } from "./RoomHotspotList";
 import { TONES } from "./status-tones";
 import { Field, IMAGE_ACCEPT, panoramaWarning, SaveBar, SaveStatus, Section, Thumb, useImageUpload, useSaver } from "./property-form";
@@ -57,6 +58,7 @@ export function PropertyRoomsEditor({ propertyId, rooms }: { propertyId: Id<"pro
         )}
       </Section>
       <AddRoomForm propertyId={propertyId} />
+      <ConfigurationHistoryRecords propertyId={propertyId} />
     </>
   );
 }
@@ -172,6 +174,7 @@ function RoomCard({
           </div>
         </details>
       ) : null}
+      <HistoryDisclosure label="Room history"><RecordHistoryPanel entityType="room" entityId={room._id} /></HistoryDisclosure>
       {editingHotspots ? <HotspotEditorDialog room={room} rooms={rooms} onClose={() => setEditingHotspots(false)} /> : null}
     </li>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { RecordHistoryPanel } from "./RecordHistoryPanel";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
@@ -96,6 +97,7 @@ const cellKey = (staffId: string, date: string) => `${staffId}|${date}`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export function StaffRosterView() {
+  const [historyPerson, setHistoryPerson] = useState("");
   const [today] = useState(() => resortIsoDate(Date.now()));
   const [weekStart, setWeekStart] = useState(() => mondayOf(today));
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -114,6 +116,7 @@ export function StaffRosterView() {
   const confirm = useConfirm();
 
   const data = useQuery(api.roster.getWeek, { weekStart });
+  const historyStaff = useQuery(api.adminServices.listStaff, { includeArchived: true }) ?? [];
   const applyCells = useMutation(api.roster.applyCells);
   const resetCells = useMutation(api.roster.resetCells);
   const makeDefault = useMutation(api.roster.makeDefault);
@@ -639,6 +642,14 @@ export function StaffRosterView() {
         </span>
       </div>
 
+      {data?.cells.some(cell => !cell.patternHistoryKnown) ? <p className="text-xs text-muted-foreground">Some earlier weekly defaults are unknown. Those cells show the earliest observed pattern, not a verified historical schedule.</p> : null}
+      {historyStaff.length ? <div className="space-y-3 border-t border-border pt-4">
+        <label htmlFor="roster-history-person" className="block text-sm font-medium">Roster history for</label>
+        <select id="roster-history-person" className="min-h-10 max-w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={historyPerson || historyStaff[0]._id} onChange={event => setHistoryPerson(event.target.value)}>
+          {historyStaff.map(person => <option key={person._id} value={person._id}>{person.name}{person.status === "archived" ? " (archived)" : ""}</option>)}
+        </select>
+        <RecordHistoryPanel key={historyPerson || historyStaff[0]._id} entityType="roster" entityId={historyPerson || historyStaff[0]._id} title="Roster change history" />
+      </div> : null}
       {customOpen ? (
         <CustomShiftDialog
           count={selectedKeys.length}

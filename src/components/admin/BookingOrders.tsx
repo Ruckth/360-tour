@@ -12,12 +12,14 @@ import { formatMoney } from "./labels";
 
 type Source = { bookingId: Id<"bookings"> } | { appointmentId: Id<"serviceAppointments"> };
 
-const STATE_LABELS = { unpaid: "Unpaid", paid: "Paid", void: "Voided" } as const;
+const STATE_LABELS = { unpaid: "Unpaid", paid: "Paid", void: "Voided", discarded: "Discarded" } as const;
 
 /**
- * A booking's or appointment's orders in its detail sheet: total, paid and balance, the open
- * order (Open order reuses it, from any device) and recent paid orders with their receipts.
- * `closed` (cancelled or refunded) hides the actions that would start charging it.
+ * A booking's or appointment's orders in its detail sheet: total, paid (net of recorded refunds)
+ * and balance or credit, the open order (Open order reuses it, from any device) and recent paid
+ * orders with their receipts, refunds against them and whether they were corrected. Receipts
+ * themselves stay as issued. `closed` (cancelled or refunded) hides the actions that would start
+ * charging it.
  */
 export function BookingOrders({ source, currency, closed }: { source: Source; currency: string; closed: boolean }) {
   const summary = useQuery(api.pos.ordersForBooking, source);
@@ -31,8 +33,11 @@ export function BookingOrders({ source, currency, closed }: { source: Source; cu
   return (
     <div className="grid gap-2 text-sm">
       <p>
-        Total {formatMoney(balance.total, currency)} · Paid {formatMoney(balance.paid, currency)} ·{" "}
-        <span className="font-medium">Balance {formatMoney(balance.owed, currency)}</span>
+        Total {formatMoney(balance.total, currency)} · Paid {formatMoney(balance.paid, currency)}
+        {balance.refunded > 0 ? ` (after ${formatMoney(balance.refunded, currency)} refunded)` : ""} ·{" "}
+        <span className="font-medium">
+          {balance.credit > 0 && !closed ? `Credit ${formatMoney(balance.credit, currency)}` : `Balance ${formatMoney(balance.owed, currency)}`}
+        </span>
       </p>
       {closed ? null : activeOrder ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -56,12 +61,20 @@ export function BookingOrders({ source, currency, closed }: { source: Source; cu
                 {order.receiptNumber !== undefined ? ` · ${formatReceiptNumber(order.receiptNumber)}` : ""}
               </Link>
               <span>
-                {STATE_LABELS[order.state]} · {formatMoney(order.total, currency)}
+                {order.voidUnreceived ? "Voided, no money received" : STATE_LABELS[order.state]} · {formatMoney(order.total, currency)}
+                {order.refunded > 0 ? ` · ${formatMoney(order.refunded, currency)} refunded` : ""}
+                {order.corrected && !order.voidUnreceived ? " · corrected" : ""}
               </span>
             </li>
           ))}
         </ul>
       ) : null}
+      {summary.discardedOrders.length ? <ul className="grid gap-1" aria-label="Discarded orders">
+        {summary.discardedOrders.map(order => <li key={order._id} className="flex flex-wrap justify-between gap-2 text-muted-foreground">
+          <Link className="underline-offset-2 hover:underline" href={orderPath(order._id)}>{order.title} · Discarded</Link>
+          <span>{order.discardReason ?? "Contents kept; open to restore"}</span>
+        </li>)}
+      </ul> : null}
     </div>
   );
 }

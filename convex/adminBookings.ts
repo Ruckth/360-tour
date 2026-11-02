@@ -1,10 +1,11 @@
 import { mutation, query } from './_generated/server';
 import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
+import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 import { internal } from './_generated/api';
-import { markBookingPaid, queueBookingEmails, queueCancellationEmail } from './bookings';
+import { markBookingPaid, queueBookingEmails, recordStayPayment } from './bookings';
 import { requireAdmin } from './lib/adminAuth';
 import {
 	blockBookingDates,
@@ -13,6 +14,8 @@ import {
 	writeDateBlockRows
 } from './lib/availabilityWrites';
 import {
+	PROPERTY_UNAVAILABLE,
+	assertBookableProperty,
 	assertCapacity,
 	assertStayDates,
 	assertStayFree,
@@ -20,10 +23,39 @@ import {
 	createBookingRecord,
 	guestLookupFields
 } from './lib/bookingWrites';
+import {
+	appendBookingHistory,
+	assertBookingRevision,
+	assertNoLiveCheckout,
+	assertStayPrice,
+	attemptKey,
+	bookingRevision,
+	bookingSnapshot,
+	cleanReason,
+	effectiveTime,
+	isHistoricalStay,
+	resolveNotify,
+	stayMoney,
+	writeBooking,
+	type BookingPatch
+} from './lib/bookingMoney';
+import { round2 } from './lib/billMath';
 import { demoCode } from './lib/codes';
 import { calculateDirectQuote } from './lib/pricing';
-import { nightsBetween } from './lib/dates';
+import { nightsBetween, todayIso } from './lib/dates';
 import { readBudget } from './lib/readBudget';
+import { appendRecordHistory } from './lib/recordHistory';
+import { manualPaymentMethod, refundMethod } from './lib/financeValidators';
+import {
+	cancelStayRecord,
+	legacyManualPayment,
+	paymentAmendBlocker,
+	paymentCancelBlocker,
+	recordStayRefund,
+	refundReplay,
+	stayFinancials,
+	stayPaymentReversalPatch
+} from './lib/stayCorrections';
 import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './lib/stayOverlap';
 import { assertValidIsoDate } from './lib/validation';
 import { assertNotOnOpenOrder, deletePlaceholderOrders, orderDeleteBlocker } from './lib/orderLinks';
@@ -46,11 +78,14 @@ function toAdminBooking(booking: Doc<'bookings'>) {
 		status: booking.status,
 		paymentStatus: booking.paymentStatus,
 		paymentMethod: booking.paymentMethod,
-		amountPaid: booking.paymentStatus === 'paid' ? (booking.amountPaid ?? booking.total) : undefined,
+		/** What the guest has paid and kept, after recorded refunds; undefined while unpaid. */
+		amountPaid: booking.paymentStatus === 'paid' ? stayMoney(booking).net : undefined,
 		source: booking.source ?? 'web',
 		chatSessionId: booking.chatSessionId,
 		confirmationCode: booking.confirmationCode,
-		createdAt: booking.createdAt
+		createdAt: booking.createdAt,
+		/** Send it back with a correction so a change made meanwhile is not overwritten. */
+		revision: bookingRevision(booking)
 	};
 }
 
@@ -151,14 +186,28 @@ export const getForAdmin = query({
 		return {
 			...toAdminBooking(booking),
 			propertyName: property?.name ?? 'Unknown villa',
+			propertyStatus: property?.status ?? 'archived',
 			subtotal: booking.subtotal,
 			discountAmount: booking.discountAmount,
+			priceOverride: booking.priceOverride ?? null,
 			paidAt: booking.paidAt,
 			refundedAt: booking.refundedAt,
 			hasStripePayment: Boolean(booking.stripePaymentIntentId),
 			checkoutLive: (booking.stripeCheckoutExpiresAt ?? 0) > Date.now(),
 			adminNotes: booking.adminNotes,
-			accessToken: payable ? booking.accessToken : undefined
+			accessToken: payable ? booking.accessToken : undefined,
+			money: stayMoney(booking),
+			createdBy: booking.createdBy,
+			cancelledAt: booking.cancelledAt,
+			cancelledBy: booking.cancelledBy,
+			cancelReason: booking.cancelReason,
+			/** Started before today: corrections default to not emailing the guest. */
+			historical: isHistoricalStay(booking),
+			guestEmailsOff: booking.guestEmailsOff ?? false,
+			/** A confirmation was already emailed, so paying won't send another. */
+			confirmationEmailed: Boolean(booking.confirmationEmailsQueuedAt),
+			/** What a staff action does about guest email when not told otherwise. */
+			notifyByDefault: resolveNotify(undefined, booking)
 		};
 	}
 });
@@ -272,30 +321,63 @@ export const findGuests = query({
 	}
 });
 
+const priceOverrideInput = v.object({ total: v.number(), reason: v.string() });
+const refundInput = {
+	amount: v.number(),
+	currency: v.string(),
+	method: refundMethod,
+	reason: v.string(),
+	idempotencyKey: v.string(),
+	/** Business date the money was given back; defaults to now. */
+	effectiveAt: v.optional(v.number()),
+	/** The payment it returns (from bookingFinancials), or a legacy order that charged the stay. */
+	paymentId: v.optional(v.id('bookingPayments')),
+	billId: v.optional(v.id('bills')),
+	unitemised: v.optional(v.boolean())
+};
+
+async function loadBooking(ctx: MutationCtx, bookingId: Id<'bookings'>) {
+	const booking = await ctx.db.get(bookingId);
+	if (!booking) throw new Error('Booking not found');
+	return booking;
+}
+
+/** Confirms a pending stay without payment (pay later / on arrival) and holds its nights. */
+async function confirmStay(ctx: MutationCtx, booking: Doc<'bookings'>, actor: string, notifyGuest: boolean | undefined) {
+	if (booking.status !== 'pending') return;
+	await blockBookingDates(ctx, booking, booking._id);
+	const notify = resolveNotify(notifyGuest, booking);
+	await writeBooking(ctx, booking, {
+		status: 'confirmed',
+		confirmationCode: booking.confirmationCode ?? demoCode('CONF', booking._id as string)
+	}, { actor, kind: 'confirmed', details: { notifiedGuest: notify } });
+	if (notify) await queueBookingEmails(ctx, booking);
+}
+
+/**
+ * The booking sheet's one-click actions. `expectedRevision` (sent by the sheet) refuses a change
+ * made on another device meanwhile. `notifyGuest` defaults to yes for current stays and no for
+ * historical ones. Cancelling keeps any money paid; record refunds with `recordRefund` or
+ * `cancelStay`. The legacy `refundRecorded: true` records a full refund without amount details.
+ */
 export const updateBooking = mutation({
 	args: {
 		bookingId: v.id('bookings'),
 		action: v.union(v.literal('confirm'), v.literal('cancel'), v.literal('markPaid')),
-		refundRecorded: v.optional(v.boolean())
+		refundRecorded: v.optional(v.boolean()),
+		expectedRevision: v.optional(v.number()),
+		notifyGuest: v.optional(v.boolean()),
+		reason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) throw new Error('Booking not found');
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision, false);
 
 		if (args.action === 'cancel') {
-			if (booking.paymentStatus === 'paid' && args.refundRecorded !== true) {
-				throw new Error('Paid booking: record the refund to cancel');
-			}
-			if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
-				throw new Error('The Stripe checkout is active. Wait for it to expire before cancelling.');
-			}
-			await ctx.db.patch(booking._id, {
-				status: 'cancelled',
-				...(booking.paymentStatus === 'paid' ? { paymentStatus: 'refunded' as const, refundedAt: Date.now() } : {})
+			await cancelStayRecord(ctx, booking, {
+				actor: admin.email, reason: args.reason, notifyGuest: args.notifyGuest, legacyFullRefund: args.refundRecorded === true
 			});
-			await queueCancellationEmail(ctx, booking);
-			await releaseBookingDates(ctx, booking);
 			return;
 		}
 
@@ -304,17 +386,236 @@ export const updateBooking = mutation({
 		if (args.action === 'markPaid') {
 			// Paying it here while checkout is charging it on an open order would collect it twice.
 			await assertNotOnOpenOrder(ctx, { bookingId: booking._id }, 'This stay');
-			await markBookingPaid(ctx, booking._id, 'admin');
+			await markBookingPaid(ctx, booking._id, 'admin', { actor: admin.email, notifyGuest: args.notifyGuest });
 			return;
 		}
 
-		// Confirm without payment (e.g. pay on arrival): hold the dates.
-		await blockBookingDates(ctx, booking, booking._id);
-		await ctx.db.patch(booking._id, {
-			status: 'confirmed',
-			confirmationCode: booking.confirmationCode ?? demoCode('CONF', booking._id as string)
+		await confirmStay(ctx, booking, admin.email, args.notifyGuest);
+	}
+});
+
+/**
+ * Records money received at the desk for everything the stay owes: how it was paid, the business
+ * date it was received (any past date) and an optional note. Nothing is charged. Retrying with the
+ * same `idempotencyKey` returns the first result.
+ */
+export const recordPayment = mutation({
+	args: {
+		bookingId: v.id('bookings'),
+		expectedRevision: v.number(),
+		/** The balance staff reviewed; refused if the stay now owes something else. */
+		expectedAmount: v.number(),
+		method: manualPaymentMethod,
+		effectiveAt: v.optional(v.number()),
+		note: v.optional(v.string()),
+		idempotencyKey: v.string(),
+		notifyGuest: v.optional(v.boolean())
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const key = attemptKey(args.idempotencyKey);
+		const replay = await ctx.db.query('bookingPayments').withIndex('by_idempotencyKey', (q) => q.eq('idempotencyKey', key)).first();
+		if (replay) {
+			if (replay.bookingId !== args.bookingId) throw new Error('This payment attempt was already used for another booking.');
+			return { paymentId: replay._id, replayed: true };
+		}
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision);
+		await assertNotOnOpenOrder(ctx, { bookingId: booking._id }, 'This stay');
+		const note = cleanReason(args.note, 'Note', false);
+		const { paymentId } = await recordStayPayment(ctx, booking._id, {
+			origin: 'manual', method: args.method, actor: admin.email, legacyMethod: 'admin',
+			effectiveAt: args.effectiveAt, note, idempotencyKey: key, notifyGuest: args.notifyGuest, expectedAmount: args.expectedAmount
 		});
-		await queueBookingEmails(ctx, booking);
+		if (!paymentId) throw new Error('Nothing is owed on this stay.');
+		return { paymentId, replayed: false };
+	}
+});
+
+/**
+ * Corrects how or when a hand-entered payment was received (wrong method, wrong date, note). The
+ * amount is not changed here: cancel a mistaken entry instead. Order and online payments refuse.
+ */
+export const amendPayment = mutation({
+	args: {
+		bookingId: v.id('bookings'),
+		paymentId: v.id('bookingPayments'),
+		expectedRevision: v.number(),
+		method: v.optional(manualPaymentMethod),
+		effectiveAt: v.optional(v.number()),
+		note: v.optional(v.string()),
+		reason: v.string()
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision);
+		const payment = await ctx.db.get(args.paymentId);
+		if (!payment || payment.bookingId !== booking._id) throw new Error('That payment belongs to another booking.');
+		const blocked = paymentAmendBlocker(payment);
+		if (blocked) throw new Error(blocked);
+		const reason = cleanReason(args.reason, 'Reason for the correction')!;
+		const method = args.method ?? payment.method;
+		const effectiveAt = args.effectiveAt === undefined ? payment.effectiveAt : effectiveTime(args.effectiveAt);
+		const note = args.note === undefined ? payment.note : cleanReason(args.note, 'Note', false);
+		if (method === payment.method && effectiveAt === payment.effectiveAt && note === payment.note) throw new Error('Nothing changed.');
+		const now = Date.now();
+		await ctx.db.patch(payment._id, { method, effectiveAt, note, amendedAt: now, amendedBy: admin.email });
+		const patch: BookingPatch = booking.paidAt === payment.effectiveAt && effectiveAt !== payment.effectiveAt ? { paidAt: effectiveAt } : {};
+		await writeBooking(ctx, booking, patch, {
+			actor: admin.email, kind: 'payment_amended', reason, effectiveAt,
+			details: { paymentId: payment._id, before: { method: payment.method, effectiveAt: payment.effectiveAt, note: payment.note ?? null }, after: { method, effectiveAt, note: note ?? null } }
+		});
+	}
+});
+
+/**
+ * Cancels a hand-entered payment that was recorded by mistake (no money was received). It reduces
+ * what the stay counts as paid, and may leave it unpaid again; nothing is refunded. Online and
+ * order payments refuse. `legacy: true` covers a "Mark paid" recorded before payments were
+ * itemised, only when the app can prove it was that alone (see lib/stayCorrections legacyManualPayment).
+ */
+export const cancelPayment = mutation({
+	args: {
+		bookingId: v.id('bookings'),
+		expectedRevision: v.number(),
+		paymentId: v.optional(v.id('bookingPayments')),
+		legacy: v.optional(v.boolean()),
+		reason: v.string()
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision);
+		assertNoLiveCheckout(booking);
+		if (Boolean(args.paymentId) === Boolean(args.legacy)) throw new Error('Choose one payment entry to cancel.');
+		const reason = cleanReason(args.reason, 'Reason')!;
+		const money = stayMoney(booking);
+		const now = Date.now();
+		let amount: number;
+		let paymentId: Id<'bookingPayments'> | undefined;
+		if (args.paymentId) {
+			const payment = await ctx.db.get(args.paymentId);
+			if (!payment || payment.bookingId !== booking._id) throw new Error('That payment belongs to another booking.');
+			const blocked = paymentCancelBlocker(booking, payment);
+			if (blocked) throw new Error(blocked);
+			await ctx.db.patch(payment._id, { status: 'cancelled', cancelledAt: now, cancelledBy: admin.email, cancelReason: reason });
+			amount = payment.amount;
+			paymentId = payment._id;
+		} else {
+			const legacy = await legacyManualPayment(ctx, booking);
+			if ('blocked' in legacy) throw new Error(legacy.blocked);
+			amount = legacy.amount;
+		}
+		const gross = round2(money.gross - amount);
+		await writeBooking(ctx, booking, await stayPaymentReversalPatch(ctx, booking, gross),
+			{ actor: admin.email, kind: 'payment_cancelled', reason, details: { amount, ...(paymentId ? { paymentId } : { legacy: true }) } });
+	}
+});
+
+/**
+ * Records a refund given back to the guest. Recording moves no money. A live stay refunds only
+ * what exceeds its price (a credit, e.g. after it was shortened), so it can't be charged again;
+ * a cancelled stay can refund any part of what it kept. Duplicates (same key), overrefunds, other
+ * currencies and payments of other bookings are refused.
+ */
+export const recordRefund = mutation({
+	args: { bookingId: v.id('bookings'), expectedRevision: v.number(), ...refundInput },
+	handler: async (ctx, { bookingId, expectedRevision, ...input }) => {
+		const admin = await requireAdmin(ctx);
+		const replay = await refundReplay(ctx, bookingId, input, admin.email);
+		if (replay) return { refundId: replay._id, replayed: true };
+		const booking = await loadBooking(ctx, bookingId);
+		assertBookingRevision(booking, expectedRevision);
+		assertNoLiveCheckout(booking);
+		const { refundId } = await recordStayRefund(ctx, booking, input, admin.email);
+		return { refundId, replayed: false };
+	}
+});
+
+/**
+ * Cancels a stay. Paid money is kept unless `refund` records a refund of any part of it in the
+ * same transaction; cancelling never implies a refund. `notifyGuest` defaults to no for stays that
+ * started before today.
+ */
+export const cancelStay = mutation({
+	args: {
+		bookingId: v.id('bookings'),
+		expectedRevision: v.number(),
+		reason: v.optional(v.string()),
+		effectiveAt: v.optional(v.number()),
+		notifyGuest: v.optional(v.boolean()),
+		refund: v.optional(v.object(refundInput))
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const refund = args.refund ? { ...args.refund, replayContext: JSON.stringify(['cancel', args.reason?.trim() ?? null, args.effectiveAt ?? null, args.notifyGuest ?? null]) } : undefined;
+		if (refund) {
+			const replay = await refundReplay(ctx, args.bookingId, refund, admin.email);
+			if (replay) return { replayed: true };
+		}
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision);
+		if (booking.status === 'cancelled') throw new Error('This booking is already cancelled.');
+		await cancelStayRecord(ctx, booking, {
+			actor: admin.email, reason: args.reason, effectiveAt: args.effectiveAt, notifyGuest: args.notifyGuest, refund
+		});
+		return { replayed: false };
+	}
+});
+
+/**
+ * Reopens a cancelled, expired or refunded stay. Its refund records and payments stay; money still
+ * kept makes it paid and confirmed, otherwise it is unpaid. The nights are checked again (held when
+ * confirmed), and a live online checkout or a conflicting stay refuses. An archived villa needs a
+ * reason and a stay that started in the past.
+ */
+export const reopenBooking = mutation({
+	args: {
+		bookingId: v.id('bookings'),
+		expectedRevision: v.number(),
+		confirmed: v.boolean(),
+		reason: v.string(),
+		notifyGuest: v.optional(v.boolean()),
+		archivedVillaReason: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision);
+		if (booking.status !== 'cancelled') throw new Error('Only cancelled, expired or refunded bookings can be reopened.');
+		assertNoLiveCheckout(booking);
+		const reason = cleanReason(args.reason, 'Reason')!;
+		const property = await ctx.db.get(booking.propertyId);
+		if (!property) throw new Error('Property not found');
+		const archivedReason = archivedVillaPolicy(property, booking.checkIn, args.archivedVillaReason);
+		const money = stayMoney(booking);
+		const paid = money.net > 0;
+		const confirmed = paid || args.confirmed;
+		if (!confirmed && booking.source && booking.source !== 'admin') {
+			throw new Error('Online bookings reopen as confirmed: unpaid online bookings that are pending expire automatically.');
+		}
+		if (confirmed) await blockBookingDates(ctx, booking, booking._id);
+		else await assertStayFree(ctx, booking.propertyId, booking.checkIn, booking.checkOut, booking._id);
+		const notify = resolveNotify(args.notifyGuest, booking);
+		await writeBooking(ctx, booking, {
+			status: confirmed ? 'confirmed' : 'pending',
+			paymentStatus: paid ? 'paid' : 'pending',
+			// A legacy refunded stay counts its whole payment as refunded; keep counting it once reopened.
+			...(money.legacyRefund ? { amountRefunded: money.refunded } : {}),
+			refundedAt: undefined,
+			cancelledAt: undefined,
+			cancelledBy: undefined,
+			cancelReason: undefined,
+			cancellationEmailQueuedAt: undefined,
+			confirmationCode: booking.confirmationCode ?? demoCode('CONF', booking._id as string),
+			// A stale online checkout can't be resumed; a new pay link starts a new one.
+			stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined, checkoutRequest: undefined
+		}, {
+			actor: admin.email, kind: 'reopened', reason,
+			details: { notifiedGuest: notify && confirmed, ...(archivedReason ? { archivedVillaReason: archivedReason } : {}) }
+		});
+		if (notify && confirmed) await queueBookingEmails(ctx, booking, true);
 	}
 });
 
@@ -328,9 +629,33 @@ export const resendBookingEmails = mutation({
 	}
 });
 
-/** Manual / phone booking entered by the host. Pending ones are exempt from the 24h expiry. */
+/**
+ * An archived villa is accepted only to record a stay that started in the past, with a reason
+ * that is logged. Returns the cleaned reason, or undefined for an active villa.
+ */
+function archivedVillaPolicy(property: Doc<'properties'>, checkIn: string, archivedVillaReason: string | undefined) {
+	if (property.status === 'active') return undefined;
+	if (property.status !== 'archived') throw new Error(PROPERTY_UNAVAILABLE);
+	if (checkIn >= todayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
+	const reason = cleanReason(archivedVillaReason, 'Reason for using an archived villa', false);
+	if (!reason) throw new Error('This villa is archived. Give a reason to record a past stay in it.');
+	assertBookableProperty(property, { allowArchivedProperty: true });
+	return reason;
+}
+
+function cleanPriceOverride(input: { total: number; reason: string }) {
+	assertStayPrice(input.total);
+	return { total: input.total, reason: cleanReason(input.reason, 'Reason for the custom price')! };
+}
+
+/**
+ * Manual / phone booking entered by the host. Pending ones are exempt from the 24h expiry.
+ * `notifyGuest` defaults to yes for stays from today on and no for past stays; a booking entered
+ * without notification also gets no automatic pre-arrival or review emails.
+ */
 export const createBooking = mutation({
 	args: {
+		idempotencyKey: v.optional(v.string()),
 		propertySlug: v.string(),
 		guestName: v.string(),
 		guestPhone: v.string(),
@@ -339,26 +664,58 @@ export const createBooking = mutation({
 		checkOut: v.string(),
 		guests: v.number(),
 		/** Confirmed bookings hold the dates straight away (pay later / on arrival). */
-		confirmed: v.optional(v.boolean())
+		confirmed: v.optional(v.boolean()),
+		notifyGuest: v.optional(v.boolean()),
+		/** Required to record a past stay in a villa that has since been archived. */
+		archivedVillaReason: v.optional(v.string()),
+		priceOverride: v.optional(priceOverrideInput)
 	},
-	handler: async (ctx, { confirmed, ...args }) => {
+	handler: async (ctx, { idempotencyKey, confirmed, notifyGuest, archivedVillaReason, priceOverride, ...args }) => {
 		const admin = await requireAdmin(ctx);
-		const { bookingId } = await createBookingRecord(ctx, { ...args, source: 'admin', actor: admin.email }, { allowPastCheckIn: true });
-		await ctx.db.patch(bookingId, { confirmationCode: demoCode('CONF', bookingId as string) });
-		if (confirmed) {
-			const booking = (await ctx.db.get(bookingId))!;
-			await blockBookingDates(ctx, booking, bookingId);
-			await ctx.db.patch(bookingId, { status: 'confirmed' });
-			await queueBookingEmails(ctx, booking);
+		const key = idempotencyKey === undefined ? undefined : attemptKey(idempotencyKey);
+		const fingerprint = JSON.stringify([args.propertySlug, args.guestName, args.guestPhone, args.guestEmail, args.checkIn, args.checkOut, args.guests, confirmed, notifyGuest, archivedVillaReason, priceOverride?.total, priceOverride?.reason]);
+		if (key) {
+			const previous = await ctx.db.query('bookingCreateAttempts').withIndex('by_key', q => q.eq('key', key)).unique();
+			if (previous) {
+				if (previous.actor !== admin.email || previous.fingerprint !== fingerprint) throw new Error('This booking was already created with different details. Open it from the calendar to edit it.');
+				if (!(await ctx.db.get(previous.bookingId))) throw new Error('This booking was already created and later removed. Start a new booking if needed.');
+				return previous.bookingId;
+			}
 		}
+		const notify = resolveNotify(notifyGuest, args);
+		const archived = archivedVillaReason?.trim() ? archivedVillaReason : undefined;
+		if (archived && args.checkIn >= todayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
+		const custom = priceOverride ? cleanPriceOverride(priceOverride) : null;
+		const { bookingId } = await createBookingRecord(
+			ctx,
+			{ ...args, source: 'admin', actor: admin.email, guestEmailsOff: !notify, archivedVillaReason: archived ? cleanReason(archived, 'Reason') : undefined },
+			{ allowPastCheckIn: true, allowArchivedProperty: Boolean(archived) }
+		);
+		await ctx.db.patch(bookingId, { confirmationCode: demoCode('CONF', bookingId as string) });
+		let booking = (await ctx.db.get(bookingId))!;
+		if (custom) {
+			booking = await writeBooking(ctx, booking, {
+				total: custom.total,
+				priceOverride: { total: custom.total, quotedTotal: booking.total, reason: custom.reason, by: admin.email, at: Date.now() }
+			}, { actor: admin.email, kind: 'price_set', reason: custom.reason });
+		}
+		if (confirmed) {
+			await blockBookingDates(ctx, booking, bookingId);
+			await writeBooking(ctx, booking, { status: 'confirmed' }, { actor: admin.email, kind: 'confirmed', details: { notifiedGuest: notify } });
+			if (notify) await queueBookingEmails(ctx, booking);
+		}
+		if (key) await ctx.db.insert('bookingCreateAttempts', { key, actor: admin.email, bookingId, fingerprint, recordedAt: Date.now() });
 		return bookingId;
 	}
 });
 
 /**
- * Changes a booking's villa, dates, guest count or guest details in one transaction.
- * The price is recomputed only when the stay (villa or dates) changes. Paid bookings keep
- * what was paid, so any difference shows as a balance due or a credit.
+ * Changes a booking's villa, dates, guest count, guest details or price in one transaction.
+ * The price is recomputed only when the stay (villa or dates) changes, unless a custom price is
+ * set (`priceOverride`, with a reason) or removed (`null`, back to the villa rate). A stay with a
+ * custom price must say which when its villa or dates change. Paid bookings keep what was paid,
+ * so any difference shows as a balance due or a credit. The guest is emailed about stay, guest
+ * count or price changes when `notifyGuest` resolves true (default: not for past stays).
  */
 export const editBooking = mutation({
 	args: {
@@ -369,14 +726,19 @@ export const editBooking = mutation({
 		guests: v.number(),
 		guestName: v.string(),
 		guestPhone: v.string(),
-		guestEmail: v.optional(v.string())
+		guestEmail: v.optional(v.string()),
+		expectedRevision: v.optional(v.number()),
+		priceOverride: v.optional(v.union(v.null(), priceOverrideInput)),
+		notifyGuest: v.optional(v.boolean()),
+		archivedVillaReason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) throw new Error('Booking not found');
-		if (booking.status === 'cancelled' || booking.paymentStatus === 'refunded') {
-			throw new Error('Cancelled or refunded bookings are read-only.');
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		// A price correction always names the revision it was reviewed against.
+		assertBookingRevision(booking, args.expectedRevision, args.priceOverride !== undefined);
+		if (booking.status === 'cancelled') {
+			throw new Error('Cancelled bookings are read-only. Reopen it first.');
 		}
 		if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
 			throw new Error('The guest has a Stripe checkout open. Wait for it to finish or expire before editing.');
@@ -391,10 +753,39 @@ export const editBooking = mutation({
 		if (stayChanged && property.currency !== booking.currency && (booking.paymentStatus === 'paid' || (booking.amountPaid ?? 0) > 0)) {
 			throw new Error('Paid bookings cannot move to a villa with a different currency.');
 		}
-		if (stayChanged && property.status !== 'active') throw new Error('Property is not available for booking');
+		const archivedReason = stayChanged ? archivedVillaPolicy(property, args.checkIn, args.archivedVillaReason) : undefined;
 		assertCapacity(property, args.guests);
 		// Authenticated hosts can correct historical dates and ongoing stays.
 		const nights = assertStayDates(args.checkIn, args.checkOut, { allowPastCheckIn: true });
+
+		// Price: villa rate on a stay change, a custom price, or back to the villa rate.
+		let pricing: BookingPatch = {};
+		let priceReason: string | undefined;
+		const existing = booking.priceOverride;
+		if (args.priceOverride === undefined || (args.priceOverride === null && !existing)) {
+			if (stayChanged && existing) {
+				throw new Error('This booking has a custom price. Enter the price for the new stay, or go back to the villa rate.');
+			}
+			if (stayChanged) {
+				const quote = calculateDirectQuote(property, nights);
+				pricing = { subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: quote.directTotal, currency: quote.currency };
+			}
+		} else if (args.priceOverride === null) {
+			const quote = calculateDirectQuote(property, nights);
+			pricing = { subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: quote.directTotal, currency: quote.currency, priceOverride: undefined };
+			priceReason = 'Back to the villa rate';
+		} else {
+			const custom = cleanPriceOverride(args.priceOverride);
+			const unchanged = !stayChanged && existing?.total === custom.total && existing.reason === custom.reason;
+			if (!unchanged) {
+				const quote = calculateDirectQuote(property, nights);
+				pricing = {
+					subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: custom.total, currency: quote.currency,
+					priceOverride: { total: custom.total, quotedTotal: quote.directTotal, reason: custom.reason, by: admin.email, at: Date.now() }
+				};
+				priceReason = custom.reason;
+			}
+		}
 
 		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed';
 		await releaseBookingDates(ctx, booking);
@@ -402,8 +793,10 @@ export const editBooking = mutation({
 		if (holdsDates) await blockBookingDates(ctx, args, booking._id);
 		else if (stayChanged) await assertStayFree(ctx, args.propertyId, args.checkIn, args.checkOut, booking._id);
 
-		const quote = stayChanged ? calculateDirectQuote(property, nights) : null;
-		await ctx.db.patch(booking._id, {
+		const nextTotal = pricing.total ?? booking.total;
+		const notify = resolveNotify(args.notifyGuest, { checkIn: args.checkIn, guestEmailsOff: booking.guestEmailsOff });
+		const guestFacingChange = stayChanged || args.guests !== booking.guests || nextTotal !== booking.total;
+		await writeBooking(ctx, booking, {
 			propertyId: args.propertyId,
 			tenantId: property.tenantId,
 			checkIn: args.checkIn,
@@ -412,16 +805,18 @@ export const editBooking = mutation({
 			nights,
 			...guest,
 			...guestLookupFields(guest),
-			...(quote
-				? { subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: quote.directTotal, currency: quote.currency }
-				: {}),
+			...pricing,
 			// Paid: freeze what was paid. Unpaid: drop the expired checkout so a new amount can be charged.
 			...(booking.paymentStatus === 'paid'
 				? { amountPaid: booking.amountPaid ?? booking.total }
 				: { stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined, checkoutRequest: undefined })
+		}, {
+			actor: admin.email, kind: 'edited',
+			reason: [priceReason, archivedReason && `Archived villa: ${archivedReason}`].filter(Boolean).join(' · ') || undefined,
+			details: { notifiedGuest: Boolean(guest.guestEmail && notify && guestFacingChange) }
 		});
 
-		if (guest.guestEmail && (stayChanged || args.guests !== booking.guests)) {
+		if (guest.guestEmail && notify && guestFacingChange) {
 			await ctx.scheduler.runAfter(0, internal.emails.sendBookingUpdated, { bookingId: booking._id });
 		}
 	}
@@ -433,7 +828,9 @@ function deleteBlocker(booking: Doc<'bookings'>, now: number): string | null {
 		booking.paymentStatus === 'paid' ||
 		booking.paymentStatus === 'refunded' ||
 		booking.paidAt !== undefined ||
-		booking.stripePaymentIntentId !== undefined;
+		booking.stripePaymentIntentId !== undefined ||
+		(booking.amountPaid ?? 0) > 0 ||
+		(booking.amountRefunded ?? 0) > 0;
 	if ((booking.status !== 'pending' && booking.status !== 'cancelled') || touchedMoney) {
 		return 'Only unpaid pending or cancelled bookings can be deleted.';
 	}
@@ -443,12 +840,22 @@ function deleteBlocker(booking: Doc<'bookings'>, now: number): string | null {
 	return null;
 }
 
-/** Orders keep a reference to what they charged, so a booking with a used order is cancelled, not deleted. */
-async function orderBlocker(ctx: MutationCtx, booking: Doc<'bookings'>): Promise<string | null> {
+/** Orders and financial records keep a reference to the stay, so a booking with either is cancelled, not deleted. */
+async function recordsBlocker(ctx: MutationCtx, booking: Doc<'bookings'>): Promise<string | null> {
+	const [payment, refund] = await Promise.all([
+		ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', booking._id)).first(),
+		ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', booking._id)).first()
+	]);
+	if (payment || refund) return 'This booking has payment records. Cancel it instead of deleting it.';
 	return await orderDeleteBlocker(ctx, booking._id);
 }
 
-async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>) {
+/**
+ * Deletes the booking and releases its nights. Its last state is kept in the booking history
+ * (recordChanges) and each appointment unlinked from it gets an `appointment` history row, so the
+ * removal is traceable. The appointments themselves are kept.
+ */
+async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>, actor: string) {
 	await releaseBookingDates(ctx, booking);
 	const session = booking.chatSessionId ? await ctx.db.get(booking.chatSessionId) : null;
 	if (session?.pendingBookingQuote?.bookingId === booking._id) {
@@ -462,24 +869,34 @@ async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>) {
 		.withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
 		.take(51);
 	if (appointments.length > 50) throw new Error('This booking has more than 50 service appointments. Remove some before deleting it.');
-	for (const appointment of appointments) await ctx.db.patch(appointment._id, { bookingId: undefined });
-	// The empty order created with the booking goes with it (orderBlocker refused any used order).
+	for (const appointment of appointments) {
+		await ctx.db.patch(appointment._id, { bookingId: undefined });
+		await appendRecordHistory(ctx, {
+			entityType: 'appointment', entityId: appointment._id, actor, kind: 'booking_unlinked',
+			reason: 'Its booking was deleted', before: { bookingId: booking._id }, after: { bookingId: null }
+		});
+	}
+	// The empty order created with the booking goes with it (recordsBlocker refused any used order).
 	await deletePlaceholderOrders(ctx, booking._id);
+	await appendBookingHistory(ctx, booking._id, {
+		actor, kind: 'deleted',
+		before: { ...bookingSnapshot(booking), unlinkedAppointments: appointments.map((a) => a._id) }
+	});
 	await ctx.db.delete(booking._id);
 }
 
 /** Removes a test or mistaken booking. Anything that involved money must be cancelled instead. */
 export const deleteBooking = mutation({
-	args: { bookingId: v.id('bookings') },
+	args: { bookingId: v.id('bookings'), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		const booking = await ctx.db.get(args.bookingId);
-		if (!booking) throw new Error('Booking not found');
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision, false);
 		const blocker = deleteBlocker(booking, Date.now());
 		if (blocker) throw new Error(blocker);
-		const orderBlock = await orderBlocker(ctx, booking);
-		if (orderBlock) throw new Error(orderBlock);
-		await deleteBookingRecord(ctx, booking);
+		const recordsBlock = await recordsBlocker(ctx, booking);
+		if (recordsBlock) throw new Error(recordsBlock);
+		await deleteBookingRecord(ctx, booking, admin.email);
 	}
 });
 
@@ -516,7 +933,7 @@ export const listCleanupCandidates = query({
 export const deleteBookings = mutation({
 	args: { bookingIds: v.array(v.id('bookings')) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		if (args.bookingIds.length > MAX_BATCH_DELETE) {
 			throw new Error(`Delete at most ${MAX_BATCH_DELETE} bookings at a time.`);
 		}
@@ -525,12 +942,12 @@ export const deleteBookings = mutation({
 		const skipped: Array<{ bookingId: Id<'bookings'>; reason: string }> = [];
 		for (const bookingId of new Set(args.bookingIds)) {
 			const booking = await ctx.db.get(bookingId);
-			const blocker = booking ? deleteBlocker(booking, now) ?? (await orderBlocker(ctx, booking)) : 'Booking not found';
+			const blocker = booking ? deleteBlocker(booking, now) ?? (await recordsBlocker(ctx, booking)) : 'Booking not found';
 			if (!booking || blocker) {
 				skipped.push({ bookingId, reason: blocker ?? 'Booking not found' });
 				continue;
 			}
-			await deleteBookingRecord(ctx, booking);
+			await deleteBookingRecord(ctx, booking, admin.email);
 			deleted++;
 		}
 		return { deleted, skipped };
@@ -538,13 +955,43 @@ export const deleteBookings = mutation({
 });
 
 export const updateNotes = mutation({
-	args: { bookingId: v.id('bookings'), notes: v.string() },
+	args: { bookingId: v.id('bookings'), notes: v.string(), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		if (!(await ctx.db.get(args.bookingId))) throw new Error('Booking not found');
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.expectedRevision, false);
 		const notes = args.notes.trim();
 		if (notes.length > 2000) throw new Error('Notes are limited to 2,000 characters.');
-		await ctx.db.patch(args.bookingId, { adminNotes: notes || undefined });
+		if ((notes || undefined) === booking.adminNotes) return;
+		await writeBooking(ctx, booking, { adminNotes: notes || undefined }, { actor: admin.email, kind: 'notes' });
+	}
+});
+
+/** The booking's payments, refunds and amounts, for the booking sheet and later receipt/refund screens. */
+export const bookingFinancials = query({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const booking = await ctx.db.get(args.bookingId);
+		return booking ? await stayFinancials(ctx, booking) : null;
+	}
+});
+
+/**
+ * The booking's history, newest first (recordChanges, entity type `booking`). Starts when booking
+ * history shipped; a deleted booking's history stays readable by id.
+ */
+export const bookingHistory = query({
+	args: { bookingId: v.id('bookings'), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const { numItems } = args.paginationOpts;
+		if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new Error('Page size must be 1–50');
+		return await ctx.db
+			.query('recordChanges')
+			.withIndex('by_entityType_and_entityId_and_recordedAt', (q) => q.eq('entityType', 'booking').eq('entityId', args.bookingId))
+			.order('desc')
+			.paginate(args.paginationOpts);
 	}
 });
 
@@ -558,6 +1005,15 @@ const dateBlockArgs = {
 };
 
 const MAX_BLOCKED_NIGHTS_PER_CALL = 1500;
+
+function dateBlockSnapshot(row: { propertyId: Id<'properties'>; start: string; end: string; reason: string }) {
+	return { propertyId: row.propertyId, start: row.start, end: row.end, reason: row.reason };
+}
+
+function assertDateBlockUnchanged(row: ReturnType<typeof dateBlockSnapshot>, expected?: ReturnType<typeof dateBlockSnapshot>) {
+	if (expected && Object.keys(expected).some(key => row[key as keyof typeof row] !== expected[key as keyof typeof expected]))
+		throw new Error('This block changed. Reopen it and review the latest dates before saving.');
+}
 
 function blockReason(value: string) {
 	const reason = value.trim();
@@ -581,7 +1037,7 @@ async function validateDateBlock(
 export const addDateBlocks = mutation({
 	args: { propertyIds: v.array(v.id('properties')), start: v.string(), end: v.string(), reason: v.string() },
 	handler: async (ctx, { propertyIds, start, end, ...args }) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		if (propertyIds.length === 0) throw new Error('Pick at least one villa.');
 		if (propertyIds.length > 100) throw new Error('Pick at most 100 villas.');
 		// Date and reason problems apply to every villa, so they fail the whole request.
@@ -602,6 +1058,7 @@ export const addDateBlocks = mutation({
 			}
 			const blockId = await ctx.db.insert('dateBlocks', { propertyId, start, end, reason, createdAt: Date.now() });
 			await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!);
+			await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'created', effectiveAt: Date.parse(`${start}T00:00:00+07:00`), after: { propertyId, start, end, reason } });
 			results.push({ propertyId, blockId, error: null });
 		}
 		return results;
@@ -611,31 +1068,39 @@ export const addDateBlocks = mutation({
 export const addDateBlock = mutation({
 	args: dateBlockArgs,
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		const reason = await validateDateBlock(ctx, args);
 		const blockId = await ctx.db.insert('dateBlocks', { ...args, reason, createdAt: Date.now() });
 		await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!);
+		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'created', effectiveAt: Date.parse(`${args.start}T00:00:00+07:00`), after: { ...args, reason } });
 		return blockId;
 	}
 });
 
 export const updateDateBlock = mutation({
-	args: { blockId: v.id('dateBlocks'), ...dateBlockArgs },
-	handler: async (ctx, { blockId, ...args }) => {
-		await requireAdmin(ctx);
-		if (!(await ctx.db.get(blockId))) throw new Error('Block not found');
+	args: { blockId: v.id('dateBlocks'), ...dateBlockArgs, expected: v.optional(v.object(dateBlockArgs)) },
+	handler: async (ctx, { blockId, expected, ...args }) => {
+		const admin = await requireAdmin(ctx);
+		const before = await ctx.db.get(blockId);
+		if (!before) throw new Error('Block not found');
+		assertDateBlockUnchanged(before, expected);
 		await releaseDateBlockRows(ctx, blockId);
 		const reason = await validateDateBlock(ctx, args);
 		await ctx.db.patch(blockId, { ...args, reason });
 		await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!);
+		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'updated', effectiveAt: Date.parse(`${args.start}T00:00:00+07:00`), before: dateBlockSnapshot(before), after: { ...args, reason } });
 	}
 });
 
 export const removeDateBlock = mutation({
-	args: { blockId: v.id('dateBlocks') },
+	args: { blockId: v.id('dateBlocks'), expected: v.optional(v.object(dateBlockArgs)) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const before = await ctx.db.get(args.blockId);
+		if (!before) return;
+		assertDateBlockUnchanged(before, args.expected);
 		await releaseDateBlockRows(ctx, args.blockId);
-		if (await ctx.db.get(args.blockId)) await ctx.db.delete(args.blockId);
+		await ctx.db.delete(args.blockId);
+		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: args.blockId, actor: admin.email, kind: 'removed', effectiveAt: Date.parse(`${before.start}T00:00:00+07:00`), before: dateBlockSnapshot(before) });
 	}
 });

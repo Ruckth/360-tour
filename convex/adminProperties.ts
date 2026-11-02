@@ -4,6 +4,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 import { uploadProblem } from './lib/imageUploads';
 import { MAX_SLUG_LENGTH, SLUG_PATTERN, slugify } from './lib/slug';
+import { configurationWriter, logOtaRate } from './lib/configurationHistory';
 import { amount, imageUrl, required } from './properties';
 
 // Villa admin: create/delete drafts, slug, status, uploads, 360 rooms and hotspots.
@@ -76,7 +77,9 @@ async function deleteBlocker(ctx: QueryCtx, property: Doc<'properties'>): Promis
 }
 
 async function propertyRooms(ctx: QueryCtx, propertyId: Id<'properties'>) {
-	return await ctx.db.query('rooms').withIndex('by_property', (q) => q.eq('propertyId', propertyId)).take(MAX_ROOMS);
+	const rooms = await ctx.db.query('rooms').withIndex('by_property', (q) => q.eq('propertyId', propertyId)).take(MAX_ROOMS + 1);
+	if (rooms.length > MAX_ROOMS) throw new Error('Too many rooms to safely edit this villa. Contact support.');
+	return rooms;
 }
 
 async function getProperty(ctx: QueryCtx, propertyId: Id<'properties'>) {
@@ -120,11 +123,12 @@ export const get = query({
 export const create = mutation({
 	args: { name: v.string(), slug: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const name = required(args.name, 'Name');
 		const slug = await pickSlug(args.slug, name, 'villa', 'Slug', (s) => propertySlugTaken(ctx, s));
 		const template = await ctx.db.query('properties').first();
-		return await ctx.db.insert('properties', {
+		return await history.insertProperty({
 			tenantId: template?.tenantId,
 			slug,
 			name,
@@ -153,11 +157,12 @@ export const create = mutation({
 export const duplicate = mutation({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const source = await getProperty(ctx, args.propertyId);
 		const name = `${source.name} (copy)`;
 		const slug = await pickSlug(undefined, name, 'villa', 'Slug', (s) => propertySlugTaken(ctx, s));
-		const propertyId = await ctx.db.insert('properties', {
+		const propertyId = await history.insertProperty({
 			tenantId: source.tenantId,
 			slug,
 			name,
@@ -179,7 +184,7 @@ export const duplicate = mutation({
 		const rooms = await propertyRooms(ctx, source._id);
 		const roomSlugs = new Set(rooms.map((room) => room.slug));
 		for (const room of rooms) {
-			await ctx.db.insert('rooms', {
+			await history.insertRoom({
 				propertyId,
 				slug: room.slug,
 				name: room.name,
@@ -187,20 +192,21 @@ export const duplicate = mutation({
 				hotspots: room.hotspots.filter((hotspot) => roomSlugs.has(hotspot.targetRoomSlug))
 			});
 		}
-		await ctx.db.patch(propertyId, { tourRoomIds: source.tourRoomIds.filter((roomSlug) => roomSlugs.has(roomSlug)) });
+		await history.patchProperty(propertyId, { tourRoomIds: source.tourRoomIds.filter((roomSlug) => roomSlugs.has(roomSlug)) });
 
 		const rates = await ctx.db
 			.query('otaRates')
 			.withIndex('by_property_platform', (q) => q.eq('propertyId', source._id))
 			.take(20);
 		for (const rate of rates) {
-			await ctx.db.insert('otaRates', {
+			const rateId = await ctx.db.insert('otaRates', {
 				propertyId,
 				platform: rate.platform,
 				nightlyRate: rate.nightlyRate,
 				url: rate.url,
 				updatedAt: Date.now()
 			});
+			await logOtaRate(ctx, admin.email, null, await ctx.db.get(rateId));
 		}
 		return propertyId;
 	}
@@ -209,7 +215,8 @@ export const duplicate = mutation({
 export const setSlug = mutation({
 	args: { propertyId: v.id('properties'), slug: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const slug = validSlug(args.slug, 'Slug');
 		if (slug === property.slug) return slug;
@@ -217,7 +224,7 @@ export const setSlug = mutation({
 			throw new Error('The slug is locked because this villa has bookings: guest links and emails use it');
 		}
 		if (await propertySlugTaken(ctx, slug, property._id)) throw new Error(`Slug "${slug}" is already used`);
-		await ctx.db.patch(property._id, { slug });
+		await history.patchProperty(property._id, { slug });
 		return slug;
 	}
 });
@@ -225,19 +232,21 @@ export const setSlug = mutation({
 export const setStatus = mutation({
 	args: { propertyId: v.id('properties'), status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived')) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		if (args.status === 'active' && property.pricePerNight <= 0) {
 			throw new Error('Set a price per night before publishing');
 		}
-		await ctx.db.patch(property._id, { status: args.status });
+		await history.patchProperty(property._id, { status: args.status });
 	}
 });
 
 export const deleteDraft = mutation({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const blocker = await deleteBlocker(ctx, property);
 		if (blocker) throw new Error(blocker);
@@ -261,8 +270,16 @@ export const deleteDraft = mutation({
 			}
 			childRows.push(batch);
 		}
-		for (const batch of childRows) for (const row of batch) await ctx.db.delete(row._id);
-		await ctx.db.delete(propertyId);
+		for (const batch of childRows) for (const row of batch) {
+			const roomId = ctx.db.normalizeId('rooms', row._id);
+			if (roomId) await history.deleteRoom(roomId);
+			else {
+			 const rateId = ctx.db.normalizeId('otaRates', row._id);
+			 if (rateId) await logOtaRate(ctx, admin.email, await ctx.db.get(rateId), null);
+			 await ctx.db.delete(row._id);
+			}
+		}
+		await history.deleteProperty(propertyId);
 	}
 });
 
@@ -300,7 +317,8 @@ export const saveUploadedImage = mutation({
 export const createRoom = mutation({
 	args: { propertyId: v.id('properties'), name: v.string(), slug: v.optional(v.string()), imagePath: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const name = required(args.name, 'Room name');
 		const imagePath = imageUrl(required(args.imagePath, 'Panorama'));
@@ -308,8 +326,8 @@ export const createRoom = mutation({
 		if (rooms.length >= MAX_ROOMS) throw new Error(`A villa can have at most ${MAX_ROOMS} rooms`);
 		const taken = new Set(rooms.map((room) => room.slug));
 		const slug = await pickSlug(args.slug, name, 'room', 'Room slug', async (s) => taken.has(s));
-		const roomId = await ctx.db.insert('rooms', { propertyId: property._id, slug, name, imagePath, hotspots: [] });
-		await ctx.db.patch(property._id, { tourRoomIds: [...property.tourRoomIds.filter((id) => id !== slug), slug] });
+		const roomId = await history.insertRoom({ propertyId: property._id, slug, name, imagePath, hotspots: [] });
+		await history.patchProperty(property._id, { tourRoomIds: [...property.tourRoomIds.filter((id) => id !== slug), slug] });
 		return roomId;
 	}
 });
@@ -317,18 +335,20 @@ export const createRoom = mutation({
 export const deleteRoom = mutation({
 	args: { roomId: v.id('rooms') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const room = await getRoom(ctx, args.roomId);
 		const property = await getProperty(ctx, room.propertyId);
 		for (const other of await propertyRooms(ctx, property._id)) {
 			if (other._id === room._id) continue;
 			const hotspots = other.hotspots.filter((hotspot) => hotspot.targetRoomSlug !== room.slug);
-			if (hotspots.length !== other.hotspots.length) await ctx.db.patch(other._id, { hotspots });
+			if (hotspots.length !== other.hotspots.length) await history.patchRoom(other._id, { hotspots });
 		}
-		const snippets = await ctx.db.query('tourSnippets').withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(200);
+		const snippets = await ctx.db.query('tourSnippets').withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(MAX_DELETE_CHILDREN + 1);
+		if (snippets.length > MAX_DELETE_CHILDREN) throw new Error('Too many tour snippets to safely remove this room');
 		for (const snippet of snippets) if (snippet.roomSlug === room.slug) await ctx.db.delete(snippet._id);
-		await ctx.db.patch(property._id, { tourRoomIds: property.tourRoomIds.filter((slug) => slug !== room.slug) });
-		await ctx.db.delete(room._id);
+		await history.patchProperty(property._id, { tourRoomIds: property.tourRoomIds.filter((slug) => slug !== room.slug) });
+		await history.deleteRoom(room._id);
 	}
 });
 
@@ -336,14 +356,15 @@ export const deleteRoom = mutation({
 export const reorderRooms = mutation({
 	args: { propertyId: v.id('properties'), roomSlugs: v.array(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const slugs = new Set((await propertyRooms(ctx, property._id)).map((room) => room.slug));
 		const given = new Set(args.roomSlugs);
 		if (given.size !== args.roomSlugs.length || given.size !== slugs.size || !args.roomSlugs.every((slug) => slugs.has(slug))) {
 			throw new Error('The room order is out of date. Reload and try again.');
 		}
-		await ctx.db.patch(property._id, { tourRoomIds: args.roomSlugs });
+		await history.patchProperty(property._id, { tourRoomIds: args.roomSlugs });
 	}
 });
 
@@ -355,7 +376,8 @@ export const setHotspots = mutation({
 		)
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
+		const history = configurationWriter(ctx, admin.email);
 		const room = await getRoom(ctx, args.roomId);
 		if (args.hotspots.length > MAX_HOTSPOTS) throw new Error(`A room can have at most ${MAX_HOTSPOTS} hotspots`);
 		const targets = new Set((await propertyRooms(ctx, room.propertyId)).map((other) => other.slug));
@@ -372,6 +394,6 @@ export const setHotspots = mutation({
 			usedIds.add(id);
 			return { id, label, targetRoomSlug: hotspot.targetRoomSlug, position };
 		});
-		await ctx.db.patch(room._id, { hotspots });
+		await history.patchRoom(room._id, { hotspots });
 	}
 });

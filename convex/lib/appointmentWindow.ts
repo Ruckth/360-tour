@@ -39,6 +39,10 @@ export function turnaroundProblem(turnaroundMin: number, durationMin: number): s
 /** Only upcoming booked appointments move; arrived or running ones need a separate operational flow. */
 export const canReschedule = (appointment: Lifecycle, now: number) => appointment.status === 'booked' && appointment.start > now;
 
+/** Admin correction covers every recorded state, including mistaken future starts; public rescheduling stays future-only. */
+export const canCorrectAppointmentTime = (appointment: Lifecycle, now: number) =>
+	canReschedule(appointment, now) || appointment.start <= now || appointment.status !== 'booked';
+
 /** Turnaround still matters while the appointment holds the staff member's time. */
 export const canEditTurnaround = (appointment: Lifecycle) =>
 	appointment.status === 'booked' || appointment.status === 'arrived' || appointment.status === 'in_service';

@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { useRef, useState, type FormEvent } from "react";
+import { appointmentEntrySlot, appointmentEntryStatus } from "@/components/admin/appointment-entry";
 import { ServicePicker } from "@/components/admin/ServicePicker";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { formatMoney } from "@/components/admin/labels";
@@ -32,10 +33,10 @@ import {
   DAY_MS,
   errorText,
   formatResortTime,
-  pickSlot,
   resortIsoDate,
   resortMidnight,
   resortTime24,
+  resortDateTime,
   useNow,
 } from "@/lib/staff-bookings";
 
@@ -79,8 +80,8 @@ function rememberService(serviceId: string) {
  */
 export function NewAppointmentDialog({
   draft,
-  services,
-  staff,
+  services: initialServices,
+  staff: initialStaff,
   onClose,
   onCreated,
 }: {
@@ -92,6 +93,10 @@ export function NewAppointmentDialog({
 }) {
   const createAppointment = useMutation(api.adminServices.createAppointment);
   const { rebook } = draft;
+  const allServices = useQuery(api.adminServices.listServices, { includeArchived: true });
+  const allStaff = useQuery(api.adminServices.listStaff, { includeArchived: true });
+  const services = allServices ?? initialServices;
+  const staff = allStaff ?? initialStaff;
   const [serviceId, setServiceId] = useState<Id<"services"> | undefined>(() => {
     // The rebooked or last used service, as long as the staff member picked on the calendar performs it.
     const fits = (s: Service) =>
@@ -104,30 +109,28 @@ export function NewAppointmentDialog({
     )?._id;
   });
   const service = services.find((s) => s._id === serviceId);
-  const qualified = staff.filter((person) =>
-    service?.staffIds.includes(person._id),
-  );
-  const [staffChoice, setStaffChoice] = useState<string>(
-    draft.staffId ?? "auto",
-  );
-  const staffId = qualified.some((person) => person._id === staffChoice)
-    ? (staffChoice as Id<"staff">)
-    : undefined;
+  const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "auto");
   const [changingStaff, setChangingStaff] = useState(false);
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
-  const today = resortIsoDate(useNow());
+  const now = useNow();
+  const today = resortIsoDate(now);
+  const historicalDate = date <= today;
+  const qualified = staff.filter(person => historicalDate || (person.status === "active" && service?.staffIds.includes(person._id)));
+  const staffId = qualified.some(person => person._id === staffChoice) ? staffChoice as Id<"staff"> : undefined;
+  const [historicalReason, setHistoricalReason] = useState("");
 
   const slots = useQuery(
     api.adminServices.findOpenSlots,
-    serviceId && date >= today ? { serviceId, date, staffId } : "skip",
+    serviceId ? { serviceId, date, staffId } : "skip",
   );
   // Fall back to the next open time (or the first), so the form is always one click from booking.
-  const selectedSlot = pickSlot(slots, start);
+  const selectedSlot = appointmentEntrySlot(slots, start, staffId, now);
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
+  const review = useQuery(api.adminServices.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, staffId: assignedId, start: selectedSlot.start } : "skip");
   const assigned = staff.find((person) => person._id === assignedId);
   const parts = DAY_PARTS.map((part, i) => ({
     label: part.label,
@@ -149,6 +152,7 @@ export function NewAppointmentDialog({
       const result = await createAppointment({
         serviceId,
         start: selectedSlot.start,
+        historicalReason: historicalReason.trim() || undefined,
         // Book exactly who the preview showed.
         staffId: assignedId,
         guestName: text("guestName"),
@@ -188,7 +192,7 @@ export function NewAppointmentDialog({
           <DialogDescription>
             {rebook
               ? `A new appointment linked to ${rebook.confirmationCode}, which stays as it was. Only open times are shown.`
-              : "Only open times are shown. Booking blocks the staff member's time."}
+              : "Record a service at its actual date and time. Current and future availability is checked before saving."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex min-h-0 flex-col gap-4">
@@ -200,7 +204,7 @@ export function NewAppointmentDialog({
                   <ServicePicker
                     id="na-service"
                     labelId="na-service-label"
-                    services={services}
+                    services={services.filter(s => historicalDate || s.status === "active").map(s => s.status === "archived" ? { ...s, name: `${s.name} (archived)` } : s)}
                     value={serviceId}
                     disabled={saving}
                     onChange={(value) => {
@@ -215,7 +219,6 @@ export function NewAppointmentDialog({
                     disabled={saving}
                     id="na-date"
                     value={date}
-                    min={today}
                     required
                     onValueChange={(next) => {
                       setDate(next);
@@ -233,13 +236,11 @@ export function NewAppointmentDialog({
                     : ""}
                 </p>
               ) : null}
+              {selectedSlot && service ? <p className="text-sm">{appointmentEntryStatus(selectedSlot.start, service.durationMin, now) === "completed" ? "Completed · Unpaid. Checkout can collect payment for this service." : "Booked · Unpaid."}</p> : null}
               <div className="grid gap-2">
                 <Label>Time</Label>
-                {date < today ? (
-                  <p className="text-sm text-muted-foreground">
-                    Pick today or a future date.
-                  </p>
-                ) : slots === undefined ? (
+                {historicalDate ? <div className="grid gap-2"><Label htmlFor="na-actual-time">Actual time (Bangkok)</Label><Input id="na-actual-time" type="time" step={60} value={start === null ? "" : resortTime24(start)} onChange={event => { if (event.target.value) setStart(resortDateTime(date, event.target.value)); }} /><p className="text-xs text-muted-foreground">Enter the recorded time or choose a time below.</p></div> : null}
+                {slots === undefined ? (
                   <div
                     role="status"
                     aria-label="Finding open times"
@@ -251,7 +252,7 @@ export function NewAppointmentDialog({
                   </div>
                 ) : slots.length === 0 ? (
                   <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    No open times on this date.
+                    No available times. For past work, choose the staff member who performed it below.
                     <Button
                       type="button"
                       size="sm"
@@ -309,7 +310,7 @@ export function NewAppointmentDialog({
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="na-staff">Staff</Label>
-                {changingStaff ? (
+                {changingStaff || (historicalDate && !staffId) ? (
                   <Select
                     value={staffId ?? "auto"}
                     disabled={saving}
@@ -322,12 +323,10 @@ export function NewAppointmentDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="auto">
-                        Auto (least busy that day)
-                      </SelectItem>
+                      {!historicalDate ? <SelectItem value="auto">Auto (least busy that day)</SelectItem> : null}
                       {qualified.map((person) => (
                         <SelectItem key={person._id} value={person._id}>
-                          {person.name}
+                          {person.name}{person.status === "archived" ? " (archived)" : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -366,6 +365,10 @@ export function NewAppointmentDialog({
                   </p>
                 )}
               </div>
+              {historicalDate ? <p className="text-sm text-muted-foreground">Past work is recorded at its actual service time. Current assignments and roster may differ from what happened; verify the staff and service. No notification is sent.</p> : null}
+              {review?.problem ? <p role="alert" className="text-sm text-destructive">{review.problem}</p> : null}
+              {review?.warnings.map(warning => <p key={warning} className="text-sm text-muted-foreground">{warning}</p>)}
+              {review?.needsReason ? <div className="grid gap-2"><Label htmlFor="na-reason">Reason for the historical overlap</Label><Input id="na-reason" required maxLength={500} value={historicalReason} onChange={event => setHistoricalReason(event.target.value)} /></div> : null}
               <div className="grid gap-2">
                 <Label htmlFor="na-name">Guest name (optional)</Label>
                 <Input
@@ -419,7 +422,7 @@ export function NewAppointmentDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || !selectedSlot}>
+            <Button type="submit" disabled={saving || !selectedSlot || review === undefined || Boolean(review.problem) || Boolean(review.needsReason && !historicalReason.trim())}>
               {saving ? <Spinner className="text-current" /> : null}
               {rebook ? "Book again" : "Book appointment"}
             </Button>

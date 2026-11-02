@@ -32,7 +32,7 @@ http.route({
     if (!(await validStripeSignature(body, request.headers.get('stripe-signature'), secret))) {
       return new Response('Invalid signature', { status: 400 });
     }
-    let event: { type?: string; data?: { object?: { id?: string; client_reference_id?: string; payment_status?: string; amount_total?: number; currency?: string; payment_intent?: string; amount_refunded?: number; amount?: number } } };
+    let event: { id?: string; created?: number; type?: string; data?: { object?: { id?: string; client_reference_id?: string; payment_status?: string; amount_total?: number; currency?: string; payment_intent?: string; amount_refunded?: number; amount?: number; refunds?: { data?: Array<{ id?: string; amount?: number; currency?: string; status?: string }> } } } };
     try {
       event = JSON.parse(body);
     } catch {
@@ -64,12 +64,12 @@ http.route({
       });
     } else if (event.type === 'charge.refunded') {
       const charge = event.data?.object;
-      if (!charge?.payment_intent || !Number.isSafeInteger(charge.amount) || !Number.isSafeInteger(charge.amount_refunded)) {
+      if (!event.id || !event.created || !charge?.id || !charge.currency || !charge.payment_intent || !Number.isSafeInteger(charge.amount) || !Number.isSafeInteger(charge.amount_refunded)) {
         return new Response('Incomplete refund', { status: 400 });
       }
       try {
         await ctx.runMutation(internal.payments.recordRefund, {
-          paymentIntentId: charge.payment_intent,
+          paymentIntentId: charge.payment_intent, chargeId: charge.id, eventId: event.id, eventCreated: event.created, currency: charge.currency, refunds: (charge.refunds?.data ?? []).flatMap(r => r.id && r.amount !== undefined && r.currency ? [{ id: r.id, amount: r.amount, currency: r.currency, ...(r.status ? { status: r.status } : {}) }] : []),
           amount: charge.amount!,
           amountRefunded: charge.amount_refunded!,
         });

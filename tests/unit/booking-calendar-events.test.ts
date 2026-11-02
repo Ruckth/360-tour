@@ -184,7 +184,7 @@ describe("buildHotelCalendarEvents", () => {
     expect(buildHotelCalendarEvents({ ...BASE, data, showCancelled: true }).map((e) => e.id).sort()).toEqual(["ok", "x"]);
   });
 
-  it("marks cancelled and refunded bookings read-only, others editable", () => {
+  it("marks cancelled bookings read-only while live refunded stays remain editable", () => {
     const data = makeData({
       bookings: [
         booking({ _id: "editable", propertyId: "villa-a", checkIn: "2026-10-05", checkOut: "2026-10-06" }),
@@ -195,7 +195,7 @@ describe("buildHotelCalendarEvents", () => {
     const byId = new Map(buildHotelCalendarEvents({ ...BASE, data, showCancelled: true }).map((e) => [e.id, e.readOnly ?? false]));
     expect(byId.get("editable")).toBe(false);
     expect(byId.get("cancelled")).toBe(true);
-    expect(byId.get("refunded")).toBe(true);
+    expect(byId.get("refunded")).toBe(false);
   });
 
   it("filters to the selected villa for every kind", () => {

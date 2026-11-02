@@ -60,10 +60,18 @@ describe('appointment changes', () => {
 		});
 		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: maliId });
 		expect(slots.some((slot) => slot.start === at('10:00'))).toBe(true);
-		expect(await history(id)).toMatchObject([
-			{ kind: 'cancelled', actor: 'admin@example.com', reason: 'Guest unwell', changes: [{ field: 'status', from: 'booked', to: 'cancelled' }] },
-			{ kind: 'payment', changes: [{ field: 'paymentStatus', from: 'unpaid', to: 'paid' }] }
-		]);
+		const events = await history(id);
+		expect(events).toHaveLength(3);
+		expect(events[0]).toMatchObject({ kind: 'cancelled', actor: 'admin@example.com', reason: 'Guest unwell', changes: expect.arrayContaining([
+			{ field: 'status', from: 'booked', to: 'cancelled' },
+			{ field: 'cancelledBy', from: null, to: 'admin@example.com' }
+		]) });
+		expect(events[1]).toMatchObject({ kind: 'payment', changes: expect.arrayContaining([
+			{ field: 'paymentStatus', from: 'unpaid', to: 'paid' },
+			{ field: 'paidAt', from: null, to: Date.now() },
+			{ field: 'paidBy', from: null, to: 'admin@example.com' }
+		]) });
+		expect(events[2].changes).toContainEqual(expect.objectContaining({ field: 'created', from: null }));
 		// Still listed, so the calendar can show it on request.
 		const schedule = await admin.query(api.adminServices.listSchedule, { from: at('00:00'), to: at('23:59') });
 		expect(schedule.appointments.map((a) => a._id)).toContain(id);
@@ -124,7 +132,12 @@ describe('appointment changes', () => {
 		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: 0, start: at('16:00'), staffId: nokId })).rejects.toThrow(STALE_APPOINTMENT);
 		expect(await get(id)).toMatchObject({ start: at('13:30'), staffId: nokId, revision: 1 });
 		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: id, status: 'arrived' });
-		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: 2, start: at('16:00'), staffId: nokId })).rejects.toThrow('cannot be rescheduled');
+		await admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: 2, start: at('16:00'), staffId: nokId });
+		expect(await get(id)).toMatchObject({
+			start: at('16:00'), end: at('17:00'), blockedUntil: at('17:15'),
+			staffId: nokId, status: 'arrived', price: 2000, paymentStatus: 'unpaid', revision: 3
+		});
+		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: 2, start: at('13:30'), staffId: nokId })).rejects.toThrow(STALE_APPOINTMENT);
 	});
 
 	it('offers reschedule times that fit the booked length and ignore the appointment itself', async () => {

@@ -23,6 +23,8 @@ import {
 	quoteBookableStay,
 	type BookingSource
 } from './lib/bookingWrites';
+import { round2 } from './lib/billMath';
+import { effectiveTime, resolveNotify, stayMoney, writeBooking } from './lib/bookingMoney';
 
 function assertBookingAccess(
 	booking: Doc<'bookings'>,
@@ -106,35 +108,140 @@ export const create = mutation({
 	}
 });
 
-export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string) {
+/**
+ * A live stay a full provider refund marked `refunded` with its money written out explicitly:
+ * gross `amountPaid` and an equal `amountRefunded`. Unlike a legacy refunded flag (no refund
+ * amount), its balance is provable, so only what it still owes beyond the waived provider charge
+ * may be collected. New provider refunds no longer write this state on live stays.
+ */
+export function isDocumentedLiveRefund(booking: Doc<'bookings'>) {
+	return booking.status !== 'cancelled' && booking.paymentStatus === 'refunded' &&
+		booking.amountPaid !== undefined && booking.amountRefunded !== undefined &&
+		round2(booking.amountRefunded) === round2(booking.amountPaid);
+}
+
+/**
+ * The Stripe payment recorded before payments were itemised, when it is provable: either captured
+ * when the stay's first itemised payment was written, or (no itemised payment yet) the stay's own
+ * Stripe PaymentIntent and gross. Provider evidence must still match its amount exactly.
+ */
+export function legacyStripeCharge(booking: Doc<'bookings'>, hasItemisedPayments: boolean) {
+	if (booking.legacyStripePaymentIntentId !== undefined && booking.legacyStripeGross !== undefined) {
+		return { paymentIntentId: booking.legacyStripePaymentIntentId, gross: booking.legacyStripeGross, captured: true };
+	}
+	const gross = stayMoney(booking).gross;
+	if (hasItemisedPayments || booking.paymentMethod !== 'stripe' || !booking.stripePaymentIntentId || gross <= 0) return null;
+	return { paymentIntentId: booking.stripePaymentIntentId, gross, captured: false };
+}
+
+export type StayPaymentInput = {
+	origin: 'manual' | 'pos' | 'online';
+	method: Doc<'bookingPayments'>['method'];
+	/** Admin email, or `system:<provider>`. */
+	actor: string;
+	/** The legacy `bookings.paymentMethod` label written when it is the first payment ('admin', 'pos', 'stripe'). */
+	legacyMethod: string;
+	/** Business date the money was received; defaults to now. */
+	effectiveAt?: number;
+	billId?: Id<'bills'>;
+	idempotencyKey?: string;
+	note?: string;
+	/** Undefined: default (online always; staff paths per lib/bookingMoney resolveNotify). */
+	notifyGuest?: boolean;
+	/** The amount staff reviewed; refused if the stay now owes something else. */
+	expectedAmount?: number;
+};
+
+/**
+ * Records money received for everything the stay still owes, confirms it and holds its nights, in
+ * the caller's transaction. Writes a bookingPayments row, adds it to the gross `amountPaid` (so
+ * earlier deposits and recorded refunds stay counted) and appends the booking history. A stay that
+ * owes nothing is left alone and returns `paymentId: null`.
+ */
+export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'bookings'>, input: StayPaymentInput) {
 	const booking = await ctx.db.get(bookingId);
 	if (!booking) {
 		throw new Error('Booking not found');
 	}
-	if (booking.paymentStatus === 'paid') return booking;
-	if (paymentMethod !== 'stripe' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
+	assertNotCancelled(booking);
+	if (booking.paymentStatus === 'failed' || (booking.paymentStatus === 'refunded' && !isDocumentedLiveRefund(booking))) {
+		throw new Error('Reopen this booking before recording a payment on it.');
+	}
+	if (input.origin !== 'online' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
 		throw new Error('An active Stripe checkout must expire before changing this booking manually.');
 	}
-	assertNotCancelled(booking);
+	const money = stayMoney(booking);
+	if (input.expectedAmount !== undefined && round2(input.expectedAmount) !== money.owed) {
+		throw new Error(`This stay now owes ${money.owed}, not ${round2(input.expectedAmount)}. Review the balance and try again.`);
+	}
+	if (money.owed <= 0) return { booking, paymentId: null };
 	// Validates (no overlapping confirmed booking, no other hold or block) and holds the nights in
 	// this transaction; a conflict throws before anything is marked paid.
 	await blockBookingDates(ctx, booking, bookingId);
 
+	// The first itemised payment keeps the provable legacy Stripe payment's identity and amount, so
+	// a later refund or completion redelivery of it still reconciles (a later online payment
+	// replaces stripePaymentIntentId).
+	const hasItemised = Boolean(await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', bookingId)).first());
+	const legacy = legacyStripeCharge(booking, hasItemised);
+	const legacyEvidence = legacy && !legacy.captured
+		? { legacyStripePaymentIntentId: legacy.paymentIntentId, legacyStripeGross: legacy.gross }
+		: {};
+
+	const now = Date.now();
+	const effectiveAt = effectiveTime(input.effectiveAt, now);
+	const paymentId = await ctx.db.insert('bookingPayments', {
+		bookingId, origin: input.origin, amount: money.owed, currency: booking.currency, method: input.method,
+		...(input.billId ? { billId: input.billId } : {}),
+		effectiveAt, recordedAt: now, recordedBy: input.actor,
+		...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+		...(input.note ? { note: input.note } : {}),
+		refunded: 0, status: 'recorded'
+	});
 	const bookingIdText = bookingId as string;
-	await ctx.db.patch(bookingId, {
+	const updated = await writeBooking(ctx, booking, {
 		paymentStatus: 'paid',
 		status: 'confirmed',
-		paidAt: booking.paidAt ?? Date.now(),
+		// The first payment's business date; a later balance payment keeps it.
+		paidAt: booking.paymentStatus === 'paid' ? (booking.paidAt ?? effectiveAt) : effectiveAt,
 		// Paid in full: a deposit taken earlier is part of the total, not on top of it.
-		amountPaid: booking.total,
-		paymentMethod: booking.paymentMethod ?? paymentMethod,
+		amountPaid: round2(money.gross + money.owed),
+		paymentMethod: booking.paymentMethod ?? input.legacyMethod,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
-		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
+		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText),
+		...legacyEvidence
+	}, {
+		actor: input.actor, kind: 'payment_recorded', effectiveAt,
+		...(input.note ? { reason: input.note } : {}),
+		details: {
+			paymentId, origin: input.origin, method: input.method, amount: money.owed, ...(input.billId ? { billId: input.billId } : {}),
+			...('legacyStripeGross' in legacyEvidence ? { legacyStripeGross: legacyEvidence.legacyStripeGross } : {})
+		}
 	});
 
-	await queueBookingEmails(ctx, booking);
-	return await ctx.db.get(bookingId);
+	// The guest started an online payment themselves, so it is always confirmed to them.
+	const notify = input.origin === 'online' ? (input.notifyGuest ?? true) : resolveNotify(input.notifyGuest, booking);
+	if (notify) await queueBookingEmails(ctx, booking);
+	return { booking: updated, paymentId };
+}
+
+/**
+ * Marks what the stay owes paid. Kept for the online-payment and legacy callers: `stripe` and other
+ * providers are online payments (and a repeat delivery is a no-op), `admin` is the legacy manual
+ * "Mark paid" (method not recorded), `pos` a settled order.
+ */
+export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string, options: Partial<Omit<StayPaymentInput, 'legacyMethod'>> = {}) {
+	const origin = options.origin ?? (paymentMethod === 'admin' ? 'manual' : paymentMethod === 'pos' ? 'pos' : 'online');
+	if (origin === 'online') {
+		const booking = await ctx.db.get(bookingId);
+		if (booking?.paymentStatus === 'paid') return booking;
+	}
+	const method = options.method ?? (origin === 'manual' ? 'unrecorded' : origin === 'pos' ? 'order' : paymentMethod === 'stripe' ? 'stripe' : 'provider');
+	const { booking } = await recordStayPayment(ctx, bookingId, {
+		...options, origin, method, actor: options.actor ?? `system:${paymentMethod}`, legacyMethod: paymentMethod
+	});
+	return booking;
 }
 
 export async function queueBookingEmails(ctx: MutationCtx, booking: Doc<'bookings'>, force = false) {
@@ -181,6 +288,8 @@ export const getLifecycleEmailDetails = internalQuery({
 		const booking = await ctx.db.get(args.bookingId);
 		if (!booking?.guestEmail?.trim()) return null;
 		if (args.kind === 'cancellation' && (booking.status !== 'cancelled' || !booking.cancellationEmailQueuedAt)) return null;
+		// A historical entry recorded without telling the guest gets no automatic lifecycle emails.
+		if ((args.kind === 'preArrival' || args.kind === 'review') && booking.guestEmailsOff) return null;
 		if (args.kind === 'preArrival' && (booking.status !== 'confirmed' || !booking.preArrivalEmailQueuedAt)) return null;
 		if (args.kind === 'review' && (booking.status !== 'confirmed' || !booking.reviewEmailQueuedAt)) return null;
 		if (args.kind === 'updated' && booking.status === 'cancelled') return null;
@@ -470,7 +579,7 @@ export const cancelChatBooking = internalMutation({
 			return { state: 'needs_confirmation' as const, ...summary };
 		}
 
-		await ctx.db.patch(booking._id, { status: 'cancelled' });
+		await writeBooking(ctx, booking, { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: 'guest:chat' }, { actor: 'guest:chat', kind: 'cancelled' });
 		await queueCancellationEmail(ctx, booking);
 		await releaseBookingDates(ctx, booking);
 		await ctx.db.patch(args.sessionId, { pendingCancellation: undefined });

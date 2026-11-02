@@ -71,7 +71,7 @@ export function CheckoutView({
   const title = view?.order.title ?? (orderId && view === undefined ? "Loading order…" : "New order");
   const lines = view?.lines ?? [];
   const count = lines.reduce((n, line) => n + line.qty, 0);
-  const settled = view && view.order.state !== "unpaid";
+  const settled = view && (view.order.state === "paid" || view.order.state === "void");
 
   // A paid or void order opened by link goes straight to its receipt.
   useEffect(() => {
@@ -127,7 +127,7 @@ export function CheckoutView({
         <p role="status" className="border-b border-border/70 bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>
       ) : null}
       <div className="flex min-h-0 flex-1">
-        <CatalogPane catalog={catalog} lines={lines} onAdd={add} className="min-w-0 flex-1" />
+        {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} className="min-w-0 flex-1" />}
         {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         <aside

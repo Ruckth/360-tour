@@ -132,12 +132,29 @@ export function changeDue(tenders: readonly Tender[]) {
 	return sum(tenders.map((tender) => (tender.received ?? tender.amount) - tender.amount));
 }
 
-type BookingMoney = { status: string; paymentStatus: string; total: number; amountPaid?: number };
+type BookingMoney = { status: string; paymentStatus: string; total: number; amountPaid?: number; amountRefunded?: number; providerRefundWaived?: number };
 
-/** What was paid on a booking (online or recorded) and what is still owed. Paid without an amount means paid in full. */
+/**
+ * What was paid on a booking (online or recorded), net of recorded refunds, and what is still owed
+ * (negative: a credit owed back to the guest). `gross` is everything received; paid without an amount
+ * means paid in full. A `refunded` stay has nothing left: a legacy one (refunded before amounts were
+ * recorded) counts its whole payment as refunded, without inventing a refund record.
+ */
 export function bookingBalance(booking: BookingMoney) {
-	const paid = booking.paymentStatus === 'paid' ? (booking.amountPaid ?? booking.total) : (booking.amountPaid ?? 0);
-	return { paid, owed: round2(booking.total - paid) };
+	const gross = round2(
+		booking.paymentStatus === 'paid' || booking.paymentStatus === 'refunded' ? (booking.amountPaid ?? booking.total) : (booking.amountPaid ?? 0)
+	);
+	const refunded = booking.paymentStatus === 'refunded' ? gross : round2(Math.min(Math.max(booking.amountRefunded ?? 0, 0), gross));
+	const paid = round2(gross - refunded);
+	// A provider refund waives that charge; it is neither money received nor a new deposit.
+	const collectible = Math.max(0, round2(booking.total - paid - (booking.providerRefundWaived ?? 0)));
+	const credit = Math.max(0, round2(paid - booking.total));
+	return { paid, owed: round2(collectible - credit), gross, refunded };
+}
+
+/** Chargeable stay terms after a provider return, without treating waived money as a deposit. */
+export function bookingChargeTotal(booking: Pick<BookingMoney, 'total' | 'providerRefundWaived'>) {
+	return Math.max(0, round2(booking.total - (booking.providerRefundWaived ?? 0)));
 }
 
 /** A live booking with money still owed, which checkout can collect (e.g. a paid stay that was extended). */

@@ -1,10 +1,12 @@
 import { v } from 'convex/values';
+import { paginationOptsValidator } from 'convex/server';
+import { initializeWeeklyPattern, writeWeeklyPattern } from './lib/rosterHistory';
+import { appendRecordHistory } from './lib/recordHistory';
 import { action, internalMutation, mutation, query } from './_generated/server';
 import { internal } from './_generated/api';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
-import { assertNotOnOpenOrder } from './lib/orderLinks';
 import { avatarUploadProblem } from './lib/imageUploads';
 import { attachPhotoUpload, deleteStoredFile, deleteUnreferencedPhoto, pendingAvatarUpload } from './lib/adminPhotos';
 import {
@@ -12,11 +14,14 @@ import {
 	TIME_OFF_LOOKBACK,
 	assertAppointmentStart,
 	blocksTime,
+	boundedIntegrityRows,
 	assertStaffFree,
 	assertValidTime,
 	createAppointmentRecord,
 	findOpenSlots as openSlots,
 	guestDetails,
+	historicalWarnings,
+	resortLocalParts,
 	localDayRange,
 	localDateTimeUtc,
 	openStarts,
@@ -29,7 +34,7 @@ import {
 import {
 	canBookAgain,
 	canEditTurnaround,
-	canReschedule,
+	canCorrectAppointmentTime,
 	movedWindow,
 	turnaroundMinutes,
 	turnaroundProblem,
@@ -38,10 +43,14 @@ import {
 import {
 	appointmentHistory,
 	assertFresh,
+	cleanReason,
 	cancelAppointmentRecord,
 	recordAppointmentChange,
 	recordRebooked
 } from './lib/appointmentChanges';
+
+import { appointmentFinancials, recordAppointmentPayment, recordAppointmentRefund, correctAppointmentPayment } from './lib/appointmentFinance';
+import { manualPaymentMethod, refundMethod } from './lib/financeValidators';
 
 const DAY = 86_400_000;
 const MINUTE = 60_000;
@@ -78,7 +87,7 @@ function validateService(input: Pick<Doc<'services'>, 'durationMin' | 'bufferMin
 }
 
 async function validateStaffIds(ctx: MutationCtx, staffIds: Id<'staff'>[]) {
-	if (!staffIds.length || new Set(staffIds).size !== staffIds.length) throw new Error('Choose distinct staff members');
+	if (!staffIds.length || staffIds.length > 200 || new Set(staffIds).size !== staffIds.length) throw new Error('Choose distinct staff members');
 	for (const id of staffIds) {
 		const person = await ctx.db.get(id);
 		if (!person) throw new Error('Staff member not found');
@@ -88,6 +97,20 @@ async function validateStaffIds(ctx: MutationCtx, staffIds: Id<'staff'>[]) {
 
 const appointmentCount = (n: number) => (n === 1 ? '1 upcoming appointment' : `${n} upcoming appointments`);
 
+const staffSnapshot = (row: Doc<'staff'>) => ({ name: row.name, role: row.role, color: row.color, status: row.status, workingHours: row.workingHours, breaks: row.breaks, archivedServiceIds: row.archivedServiceIds ?? [], hasPhoto: Boolean(row.avatarUrl) });
+const serviceSnapshot = (row: Doc<'services'>) => ({ slug: row.slug, name: row.name, description: row.description, category: row.category, durationMin: row.durationMin, bufferMin: row.bufferMin, price: row.price, currency: row.currency, staffIds: row.staffIds, status: row.status, hasPhoto: Boolean(row.imageUrl) });
+const timeOffSnapshot = (row: Doc<'staffTimeOff'>) => ({ staffId: row.staffId, start: row.start, end: row.end, label: row.label });
+async function logStaff(ctx: MutationCtx, before: Doc<'staff'> | null, after: Doc<'staff'>, actor: string, kind: string) {
+	const previous = before ? staffSnapshot(before) : null;
+	const next = staffSnapshot(after);
+	if (JSON.stringify(previous) !== JSON.stringify(next) || before?.avatarUrl !== after.avatarUrl) await appendRecordHistory(ctx, { entityType: 'staff', entityId: after._id, actor, kind, before: previous, after: { ...next, photoChanged: before?.avatarUrl !== after.avatarUrl } });
+}
+async function logService(ctx: MutationCtx, before: Doc<'services'> | null, after: Doc<'services'>, actor: string, kind: string) {
+	const previous = before ? serviceSnapshot(before) : null;
+	const next = serviceSnapshot(after);
+	if (JSON.stringify(previous) !== JSON.stringify(next) || before?.imageUrl !== after.imageUrl) await appendRecordHistory(ctx, { entityType: 'service', entityId: after._id, actor, kind, before: previous, after: { ...next, photoChanged: before?.imageUrl !== after.imageUrl } });
+}
+
 /** Booked, arrived or in service appointments that aren't over yet. */
 async function countUpcoming(ctx: QueryCtx | MutationCtx, owner: { staffId: Id<'staff'> } | { serviceId: Id<'services'> }) {
 	const now = Date.now();
@@ -95,23 +118,29 @@ async function countUpcoming(ctx: QueryCtx | MutationCtx, owner: { staffId: Id<'
 		? ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) => q.eq('staffId', owner.staffId).gte('start', now - APPOINTMENT_LOOKBACK))
 		: ctx.db.query('serviceAppointments').withIndex('by_service_start', (q) => q.eq('serviceId', owner.serviceId).gte('start', now - APPOINTMENT_LOOKBACK));
 	let count = 0;
-	for await (const appointment of rows) {
+	for await (const appointment of boundedIntegrityRows(rows)) {
 		if (appointment.blockedUntil > now && blocksTime(appointment) && appointment.status !== 'completed') count++;
 	}
 	return count;
 }
 
 /** Archived staff keep their past appointments but leave every service. */
-async function archiveStaffRecord(ctx: MutationCtx, staff: Doc<'staff'>) {
+async function archiveStaffRecord(ctx: MutationCtx, staff: Doc<'staff'>, actor: string) {
+	await initializeWeeklyPattern(ctx, staff._id, actor);
 	const upcoming = await countUpcoming(ctx, { staffId: staff._id });
 	if (upcoming) throw new Error(`Reassign or cancel ${staff.name}'s ${appointmentCount(upcoming)} first`);
 	let servicesUpdated = 0;
-	for await (const service of ctx.db.query('services')) {
+	const archivedServiceIds: Id<'services'>[] = [];
+	const services = await ctx.db.query('services').take(201);
+	if (services.length > 200) throw new Error('Too many services to archive assignments safely. Contact support.');
+	for (const service of services) {
 		if (!service.staffIds.includes(staff._id)) continue;
 		await ctx.db.patch(service._id, { staffIds: service.staffIds.filter((id) => id !== staff._id), updatedAt: Date.now() });
+		archivedServiceIds.push(service._id);
+		await logService(ctx, service, (await ctx.db.get(service._id))!, actor, 'staff_archived');
 		servicesUpdated++;
 	}
-	await ctx.db.patch(staff._id, { status: 'archived', updatedAt: Date.now() });
+	await ctx.db.patch(staff._id, { status: 'archived', archivedServiceIds: [...new Set([...(staff.archivedServiceIds ?? []), ...archivedServiceIds])], updatedAt: Date.now() });
 	return { servicesUpdated };
 }
 
@@ -122,10 +151,10 @@ function assertTimeOffRange(start: number, end: number) {
 /** Booked appointments that would fall inside the time off. */
 async function timeOffConflicts(ctx: MutationCtx, staffId: Id<'staff'>, start: number, end: number) {
 	const conflicts: Array<{ appointmentId: Id<'serviceAppointments'>; start: number }> = [];
-	for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+	for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staffId).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', end)
-	)) {
-		if (appointment.blockedUntil > start && blocksTime(appointment) && appointment.status !== 'completed') conflicts.push({ appointmentId: appointment._id, start: appointment.start });
+	))) {
+		if (appointment.blockedUntil > Math.max(start, Date.now()) && blocksTime(appointment) && appointment.status !== 'completed') conflicts.push({ appointmentId: appointment._id, start: appointment.start });
 	}
 	return conflicts;
 }
@@ -139,9 +168,11 @@ export const listStaff = query({
 	args: { includeArchived: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		return args.includeArchived
-			? await ctx.db.query('staff').take(200)
-			: await ctx.db.query('staff').withIndex('by_status', (q) => q.eq('status', 'active')).take(200);
+		const rows = args.includeArchived
+			? await ctx.db.query('staff').take(201)
+			: await ctx.db.query('staff').withIndex('by_status', q => q.eq('status', 'active')).take(201);
+		if (rows.length > 200) throw new Error('Too many staff to show safely. Narrow the list or contact support.');
+		return rows;
 	}
 });
 
@@ -197,16 +228,19 @@ export const discardStaffAvatarUpload = mutation({
 export const createStaff = mutation({
 	args: { name: v.string(), role: v.string(), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.id('_storage')), color: v.string(), workingHours: v.array(hour), breaks: v.array(rest) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		if (args.avatarStorageId !== undefined && args.avatarUrl !== undefined) throw new Error('Send either a photo upload or a photo URL');
 		validateHours(args.workingHours);
 		validateHours(args.breaks);
 		const now = Date.now();
-		return await ctx.db.insert('staff', {
+		const id = await ctx.db.insert('staff', {
 			...args, name: required(args.name, 'Name'), role: required(args.role, 'Role'), color: required(args.color, 'Color'),
 			...(args.avatarStorageId ? await attachAvatarUpload(ctx, args.avatarStorageId) : {}),
 			status: 'active', createdAt: now, updatedAt: now
 		});
+		await initializeWeeklyPattern(ctx, id, admin.email);
+		await logStaff(ctx, null, (await ctx.db.get(id))!, admin.email, 'created');
+		return id;
 	}
 });
 
@@ -214,20 +248,23 @@ export const updateStaff = mutation({
 	// `avatarStorageId`: an uploaded photo to attach, or null to remove the photo. `avatarUrl` sets an external URL.
 	args: { staffId: v.id('staff'), name: v.optional(v.string()), role: v.optional(v.string()), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.union(v.id('_storage'), v.null())), color: v.optional(v.string()), status: v.optional(staffStatus), workingHours: v.optional(v.array(hour)), breaks: v.optional(v.array(rest)) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
 		const { staffId, avatarStorageId, avatarUrl, ...changes } = args;
-		if (changes.status === 'archived' && staff.status !== 'archived') await archiveStaffRecord(ctx, staff);
+		await initializeWeeklyPattern(ctx, staffId, admin.email);
+		if (changes.status === 'archived' && staff.status !== 'archived') await archiveStaffRecord(ctx, staff, admin.email);
 		validateHours(changes.workingHours ?? staff.workingHours);
 		validateHours(changes.breaks ?? staff.breaks);
 		if (changes.workingHours || changes.breaks) {
+			// Install the proposed version before availability validation; failure rolls back version, log and profile together.
+			await writeWeeklyPattern(ctx, staff, { workingHours: changes.workingHours ?? staff.workingHours, breaks: changes.breaks ?? staff.breaks }, admin.email);
 			// New hours must still cover every upcoming appointment.
 			const next = { ...staff, ...changes };
 			const now = Date.now();
-			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK)
-			)) {
+			))) {
 				if (appointment.blockedUntil <= now || !blocksTime(appointment) || appointment.status === 'completed') continue;
 				if ((await staffBusyRanges(ctx, next, appointment.start, appointment.blockedUntil, appointment._id)).length) {
 					throw new Error('Reassign or cancel the appointments outside the new hours first');
@@ -252,6 +289,17 @@ export const updateStaff = mutation({
 			...photo,
 			updatedAt: Date.now()
 		});
+		if (staff.status === 'archived' && changes.status === 'active') {
+			for (const serviceId of staff.archivedServiceIds ?? []) {
+				const service = await ctx.db.get(serviceId);
+				if (!service || service.staffIds.includes(staffId)) continue;
+				if (service.staffIds.length >= 200) throw new Error('Too many service assignments to restore safely');
+				await ctx.db.patch(serviceId, { staffIds: [...service.staffIds, staffId], updatedAt: Date.now() });
+				await logService(ctx, service, (await ctx.db.get(serviceId))!, admin.email, 'staff_restored');
+			}
+			await ctx.db.patch(staffId, { archivedServiceIds: undefined });
+		}
+		await logStaff(ctx, staff, (await ctx.db.get(staffId))!, admin.email, 'updated');
 		// Last, and in this transaction: a failed save rolls the delete back and keeps the old photo.
 		if (photo && staff.avatarStorageId) {
 			await deleteUnreferencedPhoto(ctx, staff.avatarStorageId, staff.avatarUrl, staffId);
@@ -262,10 +310,12 @@ export const updateStaff = mutation({
 export const archiveStaff = mutation({
 	args: { staffId: v.id('staff') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
-		return await archiveStaffRecord(ctx, staff);
+		const result = await archiveStaffRecord(ctx, staff, admin.email);
+		await logStaff(ctx, staff, (await ctx.db.get(staff._id))!, admin.email, 'archived');
+		return result;
 	}
 });
 
@@ -284,27 +334,31 @@ export const listServices = query({
 	args: { includeArchived: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		return args.includeArchived
-			? await ctx.db.query('services').take(200)
-			: await ctx.db.query('services').withIndex('by_status', (q) => q.eq('status', 'active')).take(200);
+		const rows = args.includeArchived
+			? await ctx.db.query('services').take(201)
+			: await ctx.db.query('services').withIndex('by_status', q => q.eq('status', 'active')).take(201);
+		if (rows.length > 200) throw new Error('Too many services to show safely. Narrow the list or contact support.');
+		return rows;
 	}
 });
 
 export const createService = mutation({
 	args: { slug: v.string(), name: v.string(), description: v.string(), category: v.string(), durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string(), staffIds: v.array(v.id('staff')), imageStorageId: v.optional(v.id('_storage')) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		const slug = required(args.slug, 'Slug').toLowerCase();
 		if (await ctx.db.query('services').withIndex('by_slug', (q) => q.eq('slug', slug)).first()) throw new Error('Service slug already exists');
 		validateService(args);
 		await validateStaffIds(ctx, args.staffIds);
 		const now = Date.now();
-		return await ctx.db.insert('services', {
+		const id = await ctx.db.insert('services', {
 			...args, slug, name: required(args.name, 'Name'), description: args.description.trim(),
 			category: required(args.category, 'Category'), currency: required(args.currency, 'Currency'),
 			...(args.imageStorageId ? await attachServiceImage(ctx, args.imageStorageId) : {}),
 			status: 'active', createdAt: now, updatedAt: now
 		});
+		await logService(ctx, null, (await ctx.db.get(id))!, admin.email, 'created');
+		return id;
 	}
 });
 
@@ -313,7 +367,7 @@ export const updateService = mutation({
 		// An uploaded photo to attach, or null to remove the photo. Omitted keeps the current one.
 		imageStorageId: v.optional(v.union(v.id('_storage'), v.null())) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		const service = await ctx.db.get(args.serviceId);
 		if (!service) throw new Error('Service not found');
 		const { serviceId, imageStorageId, ...changes } = args;
@@ -337,6 +391,7 @@ export const updateService = mutation({
 			...(changes.description !== undefined ? { description: changes.description.trim() } : {}),
 			updatedAt: Date.now()
 		});
+		await logService(ctx, service, (await ctx.db.get(serviceId))!, admin.email, 'updated');
 		// Last, and in this transaction: a failed save rolls the delete back and keeps the old photo.
 		if (photo && service.imageStorageId) await deleteUnreferencedPhoto(ctx, service.imageStorageId, service.imageUrl);
 	}
@@ -346,10 +401,12 @@ export const updateService = mutation({
 export const archiveService = mutation({
 	args: { serviceId: v.id('services') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		if (!(await ctx.db.get(args.serviceId))) throw new Error('Service not found');
+		const admin = await requireAdmin(ctx);
+		const service = await ctx.db.get(args.serviceId);
+		if (!service) throw new Error('Service not found');
 		const upcomingAppointments = await countUpcoming(ctx, { serviceId: args.serviceId });
 		await ctx.db.patch(args.serviceId, { status: 'archived', updatedAt: Date.now() });
+		await logService(ctx, service, (await ctx.db.get(args.serviceId))!, admin.email, 'archived');
 		return { upcomingAppointments };
 	}
 });
@@ -358,13 +415,14 @@ export const archiveService = mutation({
 export const setServiceStaffMatrix = mutation({
 	args: { assignments: v.array(v.object({ serviceId: v.id('services'), staffIds: v.array(v.id('staff')) })) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		if (args.assignments.length > 200) throw new Error('Save at most 200 services at once');
 		if (new Set(args.assignments.map((row) => row.serviceId)).size !== args.assignments.length) throw new Error('Each service can appear only once');
 		const staffCache = new Map<Id<'staff'>, Doc<'staff'> | null>();
 		const services: Array<{ service: Doc<'services'>; staffIds: Id<'staff'>[] }> = [];
 		const unstaffed: string[] = [];
 		for (const row of args.assignments) {
+			if (row.staffIds.length > 200) throw new Error('Assign at most 200 staff to one service');
 			const service = await ctx.db.get(row.serviceId);
 			if (!service) throw new Error('Service not found');
 			if (new Set(row.staffIds).size !== row.staffIds.length) throw new Error(`Choose distinct staff members for ${service.name}`);
@@ -383,6 +441,7 @@ export const setServiceStaffMatrix = mutation({
 			const same = staffIds.length === service.staffIds.length && staffIds.every((id) => service.staffIds.includes(id));
 			if (same) continue;
 			await ctx.db.patch(service._id, { staffIds, updatedAt: Date.now() });
+			await logService(ctx, service, (await ctx.db.get(service._id))!, admin.email, 'assignments');
 			updated++;
 		}
 		return { updated };
@@ -396,11 +455,11 @@ export const listTimeOff = query({
 		await requireAdmin(ctx);
 		const now = Date.now();
 		const rows: Doc<'staffTimeOff'>[] = [];
-		for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
+		for await (const row of boundedIntegrityRows(ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 			q.eq('staffId', args.staffId).gte('start', now - TIME_OFF_LOOKBACK)
-		)) {
+		))) {
 			if (row.end > now) rows.push(row);
-			if (rows.length >= 100) break;
+			if (rows.length > 100) throw new Error('More time off is available. Use the paginated time-off reader.');
 		}
 		return rows;
 	}
@@ -427,6 +486,7 @@ export const addTimeOff = mutation({
 			const timeOffId = conflicts.length
 				? undefined
 				: await ctx.db.insert('staffTimeOff', { staffId: person._id, start: args.start, end: args.end, label, createdByAdminEmail: admin.email });
+			if (timeOffId) await appendRecordHistory(ctx, { entityType: 'timeOff', entityId: timeOffId, actor: admin.email, kind: 'created', effectiveAt: args.start, after: { staffId: person._id, staffName: person.name, start: args.start, end: args.end, label } });
 			results.push({ staffId: person._id, name: person.name, ...(timeOffId ? { timeOffId } : {}), conflicts });
 		}
 		return results;
@@ -436,21 +496,25 @@ export const addTimeOff = mutation({
 export const updateTimeOff = mutation({
 	args: { timeOffId: v.id('staffTimeOff'), start: v.number(), end: v.number(), label: v.string(), expected: v.optional(v.object({ start: v.number(), end: v.number(), label: v.string() })) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const admin = await requireAdmin(ctx);
 		const row = await ctx.db.get(args.timeOffId);
 		if (!row) throw new Error('Time off not found');
 		if (args.expected && (row.start !== args.expected.start || row.end !== args.expected.end || row.label !== args.expected.label)) throw new Error('This time off changed since you opened it. Review the latest details and try again.');
 		await assertTimeOffFits(ctx, row.staffId, args.start, args.end);
-		await ctx.db.patch(row._id, { start: args.start, end: args.end, label: required(args.label, 'Label') });
+		const after = { start: args.start, end: args.end, label: required(args.label, 'Label') };
+		await ctx.db.patch(row._id, after);
+		await appendRecordHistory(ctx, { entityType: 'timeOff', entityId: row._id, actor: admin.email, kind: 'updated', effectiveAt: args.start, before: timeOffSnapshot(row), after: { staffId: row.staffId, ...after } });
 	}
 });
 
 export const removeTimeOff = mutation({
 	args: { timeOffId: v.id('staffTimeOff') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
-		if (!(await ctx.db.get(args.timeOffId))) throw new Error('Time off not found');
+		const admin = await requireAdmin(ctx);
+		const row = await ctx.db.get(args.timeOffId);
+		if (!row) throw new Error('Time off not found');
 		await ctx.db.delete(args.timeOffId);
+		await appendRecordHistory(ctx, { entityType: 'timeOff', entityId: row._id, actor: admin.email, kind: 'removed', effectiveAt: row.start, before: timeOffSnapshot(row) });
 	}
 });
 
@@ -477,14 +541,16 @@ export const listSchedule = query({
 				q.gte('start', args.from - APPOINTMENT_LOOKBACK).lt('start', args.to)
 			)];
 		for (const range of ranges) {
-			for await (const appointment of range) {
+			for await (const appointment of boundedIntegrityRows(range)) {
 				const occupiedUntil = blocksTime(appointment) ? appointment.blockedUntil : appointment.end;
 				if (occupiedUntil > args.from && (!selected || selected.has(appointment.staffId))) inRange.push(appointment);
+				if (inRange.length > 2000) throw new Error('Too many appointments to show safely. Narrow the calendar range.');
 			}
 		}
 		inRange.sort((a, b) => a.start - b.start);
-		const active = (await ctx.db.query('staff').withIndex('by_status', (q) => q.eq('status', 'active')).take(200))
-			.filter((person) => !selected || selected.has(person._id));
+		const activeRows = await ctx.db.query('staff').withIndex('by_status', q => q.eq('status', 'active')).take(201);
+		if (activeRows.length > 200) throw new Error('Too many staff to show safely. Contact support.');
+		const active = activeRows.filter(person => !selected || selected.has(person._id));
 		// Archived staff appear only when they have appointments in range, so their history stays visible.
 		const activeIds = new Set(active.map((person) => person._id));
 		const archivedIds = [...new Set(inRange.map((appointment) => appointment.staffId))].filter((id) => !activeIds.has(id));
@@ -492,13 +558,16 @@ export const listSchedule = query({
 		const staff = [...active, ...archived];
 		const staffSet = new Set(staff.map((person) => person._id));
 		const appointments = inRange.filter((appointment) => staffSet.has(appointment.staffId));
-		const services = await ctx.db.query('services').take(200);
+		const services = await ctx.db.query('services').take(201);
+		if (services.length > 200) throw new Error('Too many services to show safely. Contact support.');
 		const blocks: ScheduleBlock[] = [];
 		// Working time from the roster (override or weekly pattern), so calendars can shade off-hours.
+		const patternHistory: Array<{ staffId: Id<'staff'>; date: string; known: boolean; knownFrom: string }> = [];
 		const shifts: Array<{ staffId: Id<'staff'>; start: number; end: number }> = [];
 		const clip = (start: number, end: number) => (start < args.to && end > args.from ? { start: Math.max(start, args.from), end: Math.min(end, args.to) } : null);
 		for (const person of staff) {
-			for (const { date, plan, override } of await scheduleDays(ctx, person, args.from, args.to)) {
+			for (const { date, plan, override, patternHistoryKnown, patternKnownFrom } of await scheduleDays(ctx, person, args.from, args.to)) {
+				patternHistory.push({ staffId: person._id, date, known: patternHistoryKnown, knownFrom: patternKnownFrom });
 				for (const [start, end] of planWorking(date, plan)) {
 					const range = clip(start, end);
 					if (range) shifts.push({ staffId: person._id, ...range });
@@ -509,13 +578,13 @@ export const listSchedule = query({
 					if (range) blocks.push({ staffId: person._id, ...range, label: block.label, kind: 'break', date, original: block, plan, override });
 				}
 			}
-			for await (const row of ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
+			for await (const row of boundedIntegrityRows(ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', args.from - TIME_OFF_LOOKBACK).lt('start', args.to)
-			)) {
+			))) {
 				if (row.end > args.from) blocks.push({ staffId: person._id, start: Math.max(row.start, args.from), end: Math.min(row.end, args.to), label: row.label, kind: 'time_off', timeOff: row });
 			}
 		}
-		return { staff, services, appointments, blocks, shifts };
+		return { staff, services, appointments, blocks, shifts, patternHistory };
 	}
 });
 
@@ -527,15 +596,21 @@ export const findOpenSlots = query({
 	args: { serviceId: v.id('services'), date: v.string(), staffId: v.optional(v.id('staff')) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		const slots = await openSlots(ctx, args);
+		const service = await ctx.db.get(args.serviceId);
+		let slots;
+		if (service && args.staffId && args.date <= resortLocalParts(Date.now()).date) {
+			const person = await ctx.db.get(args.staffId);
+			slots = person ? await adminStarts(ctx, [person], args.date, (service.durationMin + service.bufferMin) * MINUTE) : [];
+			slots = slots.filter(slot => slot.start + (service.durationMin + service.bufferMin) * MINUTE <= Date.now() || (person?.status === 'active' && service.status === 'active' && service.staffIds.includes(person._id)));
+		} else slots = await openSlots(ctx, args);
 		const [dayStart, dayEnd] = localDayRange(args.date);
 		const ranked = new Map<Id<'staff'>, { name: string; count: number }>();
 		for (const id of new Set(slots.flatMap((slot) => slot.staffIds))) {
 			const person = await ctx.db.get(id);
 			let count = 0;
-			for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', id).gte('start', dayStart).lt('start', dayEnd)
-			)) {
+			))) {
 				if (blocksTime(appointment)) count++;
 			}
 			ranked.set(id, { name: person?.name ?? '', count });
@@ -563,13 +638,13 @@ export const createAppointment = mutation({
 	args: {
 		serviceId: v.id('services'), start: v.number(), staffId: v.optional(v.id('staff')), guestName: v.string(), guestPhone: v.string(),
 		guestEmail: v.optional(v.string()), bookingId: v.optional(v.id('bookings')), chatSessionId: v.optional(v.id('chatSessions')),
-		rebookedFromId: v.optional(v.id('serviceAppointments'))
+		rebookedFromId: v.optional(v.id('serviceAppointments')), historicalReason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const original = args.rebookedFromId ? await ctx.db.get(args.rebookedFromId) : null;
 		if (args.rebookedFromId && (!original || !canBookAgain(original))) throw new Error('Only cancelled or no-show appointments can be booked again');
-		const created = await createAppointmentRecord(ctx, { ...args, source: 'admin', actor: admin.email });
+		const created = await createAppointmentRecord(ctx, { ...args, source: 'admin', actor: admin.email }, { kind: 'admin_historical', reason: args.historicalReason });
 		if (original) await recordRebooked(ctx, original, created.confirmationCode, admin.email);
 		return created;
 	}
@@ -581,6 +656,109 @@ async function loadAppointment(ctx: QueryCtx | MutationCtx, appointmentId: Id<'s
 	return appointment;
 }
 
+async function boundedStaff(ctx: QueryCtx | MutationCtx) {
+	const rows = await ctx.db.query('staff').take(201);
+	if (rows.length > 200) throw new Error('Too many staff to show safely. Contact support.');
+	return rows;
+}
+
+/** Admin-only slot list: past slots are evidence entry, future slots still require availability. */
+async function adminStarts(ctx: QueryCtx | MutationCtx, people: Doc<'staff'>[], date: string, occupyMs: number, ignoreId?: Id<'serviceAppointments'>, nonBlocking = false) {
+	const [from, to] = localDayRange(date);
+	const future = nonBlocking ? [] : await openStarts(ctx, people.filter(p => p.status === 'active'), date, occupyMs, ignoreId);
+	const slots = [...future];
+	for (let start = from; start < to; start += 15 * MINUTE) {
+		if (start + occupyMs <= Date.now() || (nonBlocking && start >= Date.now())) slots.push({ start, staffIds: people.map(p => p._id) });
+	}
+	return slots.sort((a, b) => a.start - b.start);
+}
+
+export const previewAppointmentTime = query({
+	args: { serviceId: v.id('services'), staffId: v.id('staff'), start: v.number(), appointmentId: v.optional(v.id('serviceAppointments')) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		try { assertAppointmentStart(args.start, { kind: 'admin_historical' }); }
+		catch (error) { return { warnings: [], needsReason: false, problem: error instanceof Error ? error.message : 'Choose a valid service time' }; }
+		const service = await ctx.db.get(args.serviceId);
+		const person = await ctx.db.get(args.staffId);
+		if (!service || !person) throw new Error('Staff or service not found');
+		const appointment = args.appointmentId ? await loadAppointment(ctx, args.appointmentId) : null;
+		const occupied = appointment ? appointment.blockedUntil - appointment.start : (service.durationMin + service.bufferMin) * MINUTE;
+		if (args.start + occupied > Date.now()) {
+			let problem: string | null = null;
+			if ((!appointment || args.staffId !== appointment.staffId) && (service.status !== 'active' || !service.staffIds.includes(args.staffId))) problem = 'Choose an active service and a currently assigned staff member for current or future work.';
+			if ((!appointment || blocksTime(appointment)) && (person.status !== 'active' || (await staffBusyRanges(ctx, person, args.start, args.start + occupied, appointment?._id)).length)) problem = 'The staff member is not available for the full service and turnaround. Choose another time or correct the conflicting schedule first.';
+			return { warnings: [], needsReason: false, problem };
+		}
+		return { ...await historicalWarnings(ctx, person, service, args.start, args.start + occupied, appointment?._id), problem: null };
+	}
+});
+
+/** Deliberate correction, separate from the frictionless forward operational buttons. */
+export const correctAppointmentStatus = mutation({
+	args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), status: v.union(v.literal('booked'), v.literal('arrived'), v.literal('in_service'), v.literal('completed'), v.literal('cancelled'), v.literal('no_show')), reason: v.optional(v.string()), effectiveAt: v.number() },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const appointment = await loadAppointment(ctx, args.appointmentId);
+		assertFresh(appointment, args.expectedRevision);
+		if (appointment.status === args.status) throw new Error('Choose a different status');
+		const reason = cleanReason(args.reason);
+		if (['completed', 'cancelled', 'no_show', 'in_service'].includes(appointment.status) && !reason) throw new Error('Explain why the recorded status was mistaken');
+		if (!Number.isSafeInteger(args.effectiveAt) || args.effectiveAt > Date.now()) throw new Error('Effective time must be an actual past or current time');
+		if (args.status === 'no_show' && appointment.start > args.effectiveAt) throw new Error('No-show can only be marked after the start time');
+		const nextBlocks = args.status !== 'cancelled' && args.status !== 'no_show';
+		let warnings: string[] = [];
+		if (nextBlocks) {
+			const person = await ctx.db.get(appointment.staffId);
+			if (!person) throw new Error('Staff member not found');
+			if (appointment.blockedUntil > Date.now()) {
+				// Real current/future occupancy is never overridable.
+				await assertStaffFree(ctx, person, appointment.start, appointment.blockedUntil, appointment._id);
+			} else {
+				const service = await ctx.db.get(appointment.serviceId);
+				if (!service) throw new Error('Service not found');
+				const review = await historicalWarnings(ctx, person, service, appointment.start, appointment.blockedUntil, appointment._id);
+				warnings = review.warnings;
+				if (review.needsReason && !reason) throw new Error('Explain the historical appointment overlap before saving');
+			}
+		}
+		await recordAppointmentChange(ctx, appointment, { status: args.status,
+			cancelledAt: args.status === 'cancelled' ? args.effectiveAt : undefined,
+			cancelledBy: args.status === 'cancelled' ? admin.email : undefined,
+			cancellationReason: args.status === 'cancelled' ? reason : undefined
+		}, { actor: admin.email, kind: 'status', reason, effectiveAt: args.effectiveAt, warnings });
+	}
+});
+
+export const listAppointmentHistoryPage = query({
+	args: { appointmentId: v.id('serviceAppointments'), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		assertPageSize(args.paginationOpts.numItems);
+		return await ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', args.appointmentId)).order('desc').paginate(args.paginationOpts);
+	}
+});
+
+function assertPageSize(size: number) {
+	if (!Number.isInteger(size) || size < 1 || size > 100) throw new Error('Page size must be 1–100');
+}
+
+/** start-based range, [from,to); past/all include ended records. Consumers must follow the cursor. */
+export const listTimeOffPage = query({
+	args: { staffId: v.id('staff'), range: v.union(v.literal('upcoming'), v.literal('past'), v.literal('all')), from: v.optional(v.number()), to: v.optional(v.number()), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		assertPageSize(args.paginationOpts.numItems);
+		if ((args.from !== undefined && !Number.isSafeInteger(args.from)) || (args.to !== undefined && !Number.isSafeInteger(args.to)) || (args.from !== undefined && args.to !== undefined && args.to <= args.from)) throw new Error('Invalid time-off range');
+		const result = await ctx.db.query('staffTimeOff').withIndex('by_staff_start', q => {
+			const staff = q.eq('staffId', args.staffId);
+			return args.from !== undefined ? (args.to !== undefined ? staff.gte('start', args.from).lt('start', args.to) : staff.gte('start', args.from)) : args.to !== undefined ? staff.lt('start', args.to) : staff;
+		}).order('desc').paginate(args.paginationOpts);
+		const now = Date.now();
+		return { ...result, page: result.page.filter(row => args.range === 'all' || (args.range === 'past' ? row.end <= now : row.end > now)) };
+	}
+});
+
 /** Open start times for moving this appointment, keeping its length and turnaround; it doesn't block itself. */
 export const rescheduleOptions = query({
 	args: { appointmentId: v.id('serviceAppointments'), date: v.string() },
@@ -588,34 +766,46 @@ export const rescheduleOptions = query({
 		await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		const service = await ctx.db.get(appointment.serviceId);
-		const staff = service
-			? (await Promise.all(service.staffIds.map((id) => ctx.db.get(id)))).filter((person): person is Doc<'staff'> => person?.status === 'active')
-			: [];
-		const slots = await openStarts(ctx, staff, args.date, appointment.blockedUntil - appointment.start, appointment._id);
+		const historicalDate = args.date <= resortLocalParts(Date.now()).date;
+		const staff = historicalDate ? await boundedStaff(ctx) : service
+			? (await Promise.all([...new Set([...service.staffIds, appointment.staffId])].map(id => ctx.db.get(id)))).filter((person): person is Doc<'staff'> => !!person && (person.status === 'active' || person._id === appointment.staffId)) : [];
+		const starts = await adminStarts(ctx, staff, args.date, appointment.blockedUntil - appointment.start, appointment._id, !blocksTime(appointment));
+		const slots = starts.map(slot => slot.start + appointment.blockedUntil - appointment.start <= Date.now() ? slot : { ...slot, staffIds: slot.staffIds.filter(id => id === appointment.staffId || service?.staffIds.includes(id)) }).filter(slot => slot.staffIds.length);
 		return { staff: staff.map(({ _id, name }) => ({ _id, name })), slots };
 	}
 });
 
 /**
- * Moves an upcoming booked appointment to another time and/or qualified staff member.
- * The service length, turnaround and price stay as booked; conflicts are rechecked here.
+ * Corrects an appointment's time/staff in any status. Financial terms stay as booked.
+ * Past roster gaps are logged; historical overlaps need a reason; current/future occupancy is strict.
  */
 export const rescheduleAppointment = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), start: v.number(), staffId: v.id('staff') },
+	args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), start: v.number(), staffId: v.id('staff'), historicalReason: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
-		if (!canReschedule(appointment, Date.now())) throw new Error('This appointment cannot be rescheduled: only upcoming booked appointments can move');
+		if (!canCorrectAppointmentTime(appointment, Date.now())) throw new Error('This appointment cannot be rescheduled');
 		if (args.start === appointment.start && args.staffId === appointment.staffId) throw new Error('Nothing to change: choose another time or staff member');
-		assertAppointmentStart(args.start);
+		assertAppointmentStart(args.start, { kind: 'admin_historical' });
 		const service = await ctx.db.get(appointment.serviceId);
 		if (!service) throw new Error('Service unavailable');
 		const staff = await ctx.db.get(args.staffId);
-		if (!staff || !service.staffIds.includes(args.staffId)) throw new Error(`${staff?.name ?? 'This staff member'} doesn't perform ${service.name}`);
+		if (!staff) throw new Error('Staff member not found');
 		const window = movedWindow(appointment, args.start);
-		await assertStaffFree(ctx, staff, window.start, window.blockedUntil, appointment._id);
-		await recordAppointmentChange(ctx, appointment, { staffId: args.staffId, ...window }, { actor: admin.email, kind: 'rescheduled' });
+		const historical = window.blockedUntil <= Date.now();
+		const reason = cleanReason(args.historicalReason);
+		let warnings: string[] = [];
+		if (historical) {
+			const review = await historicalWarnings(ctx, staff, service, window.start, window.blockedUntil, appointment._id);
+			warnings = review.warnings;
+			if (review.needsReason && !reason) throw new Error('Explain the historical appointment overlap before saving');
+		} else {
+			// The existing assignment is booked truth even when the template was later archived/reassigned.
+			if (args.staffId !== appointment.staffId && (!service.staffIds.includes(args.staffId) || service.status !== 'active')) throw new Error(`${staff.name} doesn't perform ${service.name}`);
+			if (blocksTime(appointment)) await assertStaffFree(ctx, staff, window.start, window.blockedUntil, appointment._id);
+		}
+		await recordAppointmentChange(ctx, appointment, { staffId: args.staffId, staffNameSnapshot: args.staffId === appointment.staffId ? appointment.staffNameSnapshot ?? staff.name : staff.name, ...window }, { actor: admin.email, kind: 'rescheduled', reason, effectiveAt: window.start, warnings });
 	}
 });
 
@@ -649,10 +839,11 @@ const transitions: Record<Doc<'serviceAppointments'>['status'], Doc<'serviceAppo
 };
 
 export const updateAppointmentStatus = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), status: appointmentStatus },
+	args: { appointmentId: v.id('serviceAppointments'), status: appointmentStatus, expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
+		if (args.expectedRevision !== undefined) assertFresh(appointment, args.expectedRevision);
 		if (!transitions[appointment.status].includes(args.status)) throw new Error('Invalid appointment status transition');
 		if (args.status === 'no_show' && appointment.start > Date.now()) throw new Error('No-show can only be marked after the start time');
 		await recordAppointmentChange(ctx, appointment, { status: args.status }, { actor: admin.email, kind: 'status' });
@@ -660,15 +851,27 @@ export const updateAppointmentStatus = mutation({
 });
 
 export const markAppointmentPaid = mutation({
-	args: { appointmentId: v.id('serviceAppointments') },
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
-		const appointment = await loadAppointment(ctx, args.appointmentId);
-		if (appointment.status === 'cancelled') throw new Error('Cancelled appointment cannot be paid');
-		// Paying it here while checkout is charging it on an open order would collect it twice.
-		await assertNotOnOpenOrder(ctx, { appointmentId: appointment._id }, 'This appointment');
-		await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid' }, { actor: admin.email, kind: 'payment' });
-	}
+ args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), method: v.optional(manualPaymentMethod), idempotencyKey: v.optional(v.string()) },
+ handler: async (ctx, args) => {
+  const admin = await requireAdmin(ctx);
+  return await recordAppointmentPayment(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
+ }
+});
+
+export const getAppointmentFinancials = query({
+ args: { appointmentId: v.id('serviceAppointments') },
+ handler: async (ctx, args) => {
+  await requireAdmin(ctx);
+  return await appointmentFinancials(ctx, await loadAppointment(ctx, args.appointmentId));
+ }
+});
+
+export const correctAppointmentPaymentEntry = mutation({
+ args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), paymentId: v.optional(v.id('appointmentPayments')), legacyChangeId: v.optional(v.id('appointmentChanges')), idempotencyKey: v.string(), action: v.union(v.literal('amend'), v.literal('cancel')), reason: v.string(), method: v.optional(manualPaymentMethod), effectiveAt: v.optional(v.number()) },
+ handler: async (ctx, args) => {
+  const admin = await requireAdmin(ctx);
+  return await correctAppointmentPayment(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
+ }
 });
 
 type ServiceTerms = Pick<Doc<'services'>, 'durationMin' | 'bufferMin' | 'price' | 'currency'>;
@@ -691,7 +894,7 @@ async function serviceChange(ctx: MutationCtx, appointment: Doc<'serviceAppointm
 	if ((await staffBusyRanges(ctx, staff, appointment.start, blockedUntil, appointment._id)).length) {
 		throw new Error(`${staff.name} isn't free for the full ${service.durationMin + service.bufferMin} minutes this service needs`);
 	}
-	return { serviceId: service._id, end, blockedUntil, price: service.price, currency: service.currency };
+	return { serviceId: service._id, serviceNameSnapshot: service.name, end, blockedUntil, price: service.price, currency: service.currency };
 }
 
 /** Guest details, notes and optionally the service, validated together and saved in one write. */
@@ -714,13 +917,11 @@ export const updateAppointmentDetails = mutation({
 
 /** Records a refund given at the desk; no money moves through the app. */
 export const refundAppointment = mutation({
-	args: { appointmentId: v.id('serviceAppointments') },
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
-		const appointment = await loadAppointment(ctx, args.appointmentId);
-		if (appointment.paymentStatus !== 'paid') throw new Error('Only paid appointments can be refunded');
-		await recordAppointmentChange(ctx, appointment, { paymentStatus: 'refunded', refundedAt: Date.now() }, { actor: admin.email, kind: 'payment' });
-	}
+ args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), amount: v.optional(v.number()), currency: v.optional(v.string()), method: v.optional(refundMethod), reason: v.optional(v.string()), idempotencyKey: v.optional(v.string()), paymentId: v.optional(v.id('appointmentPayments')), billId: v.optional(v.id('bills')) },
+ handler: async (ctx, args) => {
+  const admin = await requireAdmin(ctx);
+  return await recordAppointmentRefund(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
+ }
 });
 
 /** Keeps the record and its payment state; frees the staff member's time. */

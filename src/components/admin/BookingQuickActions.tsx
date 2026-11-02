@@ -57,12 +57,17 @@ export function BookingQuickActions({
     }
   }
 
+  /** Paid stays are cancelled from the sheet, which asks whether to keep the payment or record a refund. */
   async function cancel() {
     if (!detail) return;
     onClose();
+    if (detail.money.net > 0) {
+      onOpenDetails();
+      return;
+    }
     if (!(await confirm(cancelConfirmOptions(detail)))) return;
     await run(
-      () => updateBooking({ bookingId: booking._id, action: "cancel", ...(isPaid ? { refundRecorded: true } : {}) }),
+      () => updateBooking({ bookingId: booking._id, action: "cancel", expectedRevision: detail.revision }),
       `${booking.guestName}: cancelled.`,
     );
   }
@@ -91,21 +96,23 @@ export function BookingQuickActions({
             <Button
               size="sm"
               onClick={() =>
-                run(() => updateBooking({ bookingId: booking._id, action: "confirm" }), `${booking.guestName}: confirmed.`)
+                run(() => updateBooking({ bookingId: booking._id, action: "confirm", expectedRevision: booking.revision }), `${booking.guestName}: confirmed.`)
               }
             >
               Confirm
             </Button>
           ) : null}
           {editable && !isPaid ? (
+            // Recording a payment needs its method and date, which the booking sheet asks for.
             <Button
               size="sm"
               variant="secondary"
-              onClick={() =>
-                run(() => updateBooking({ bookingId: booking._id, action: "markPaid" }), `${booking.guestName}: marked paid.`)
-              }
+              onClick={() => {
+                onClose();
+                onOpenDetails();
+              }}
             >
-              Mark paid
+              Record payment…
             </Button>
           ) : null}
           {detail?.accessToken ? (
@@ -120,7 +127,7 @@ export function BookingQuickActions({
           {editable ? (
             <Button size="sm" variant="outline" onClick={cancel} disabled={!detail}>
               {detail ? null : <Spinner className="text-current" />}
-              {isPaid ? "Cancel & refund" : "Cancel"}
+              {detail && detail.money.net > 0 ? "Cancel…" : "Cancel"}
             </Button>
           ) : null}
           <Button
