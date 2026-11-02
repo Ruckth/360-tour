@@ -11,7 +11,6 @@ import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { receiptPath } from "@/components/checkout/checkout-source";
@@ -19,6 +18,7 @@ import { formatResortDateTime } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { DisabledReason } from "./DisabledReason";
 import { EffectiveTimeFields, MethodPicker, NotifyGuestField, useEffectiveTime } from "./BookingMoneyFields";
+import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefundSource";
 import { formatMoney } from "./labels";
 import {
   DESK_PAYMENT_METHODS,
@@ -298,13 +298,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
   const { money } = data;
   const [reviewed] = useState(() => ({ revision: data.revision, key: newAttemptKey("refund") }));
   const [attempt, setAttempt] = useState<Parameters<typeof recordRefund>[0] | null>(null);
-  const targets = [
-    ...data.payments.filter((p) => p.status === "recorded" && p.refundable > 0).map((p) => ({
-      value: `payment:${p._id}`, label: `${formatMoney(p.amount, p.currency)} · ${PAYMENT_ORIGIN_LABELS[p.origin]}${p.order ? ` (${p.order.title})` : ""}`, left: p.refundable, stripe: p.origin === "online",
-    })),
-    ...data.legacyOrders.filter((o) => o.refundable > 0).map((o) => ({ value: `order:${o._id}`, label: `${o.title} (before itemised payments)`, left: o.refundable, stripe: false })),
-    ...(data.unitemisedRefundable > 0 ? [{ value: "unitemised", label: "Older unitemised payment", left: data.unitemisedRefundable, stripe: false }] : []),
-  ];
+  const targets = bookingRefundSources(data);
   const [target, setTarget] = useState(initialTarget ?? targets[0]?.value ?? "none");
   const chosen = targets.find((t) => t.value === target);
   const cap = Math.min(money.refundable, chosen?.left ?? money.refundable);
@@ -337,9 +331,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
         const args = attempt ?? {
           bookingId: booking._id, expectedRevision: reviewed.revision, amount: amount!, currency: money.currency, method,
           reason, effectiveAt: when.at!, idempotencyKey: reviewed.key,
-          ...(target.startsWith("payment:") ? { paymentId: target.slice(8) as Id<"bookingPayments"> } : {}),
-          ...(target.startsWith("order:") ? { billId: target.slice(6) as Id<"bills"> } : {}),
-          ...(target === "unitemised" ? { unitemised: true } : {}),
+          ...chosen?.reference,
         };
         setAttempt(args);
         await recordRefund(args);
@@ -350,15 +342,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
       {attempt ? <p className="text-sm text-muted-foreground">Retry keeps the original amount, payment, reason and date. Close and reopen to review a different correction.</p> : null}
       <fieldset disabled={Boolean(attempt)} className="grid min-w-0 gap-3 disabled:opacity-70">
       {targets.length ? (
-        <div className="grid gap-2">
-          <Label htmlFor="refund-from">Refund from</Label>
-          <Select value={target} onValueChange={setTarget}>
-            <SelectTrigger id="refund-from"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {targets.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        <BookingRefundSourcePicker id="refund-from" sources={targets} value={target} onChange={setTarget} />
       ) : null}
       <div className="grid gap-2">
         <Label htmlFor="refund-amount">Amount ({money.currency})</Label>

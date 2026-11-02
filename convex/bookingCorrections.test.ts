@@ -68,6 +68,45 @@ async function setup() {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('refund records', () => {
+	it('atomically cancels and refunds only the selected older deposit beside an itemised payment', async () => {
+		const { t, admin, create, pay, rev, financials, get } = await setup();
+		const bookingId = await create(5, 6, { confirmed: true });
+		await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 200 }));
+		await pay(bookingId);
+		const before = await get(bookingId);
+		const args = { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false, refund: { amount: 201, currency: 'THB', method: 'cash' as const, reason: 'Returned older deposit', unitemised: true, idempotencyKey: 'cancel-older-deposit' } };
+		await expect(admin.mutation(api.adminBookings.cancelStay, args)).rejects.toThrow('At most 200');
+		expect(await get(bookingId)).toEqual(before);
+		await admin.mutation(api.adminBookings.cancelStay, { ...args, refund: { ...args.refund, amount: 200 } });
+		const after = await financials(bookingId);
+		expect((await get(bookingId)).status).toBe('cancelled');
+		expect(after.unitemisedRefundable).toBe(0);
+		expect(after.payments[0].refunded).toBe(0);
+		expect(after.refunds).toMatchObject([{ amount: 200 }]);
+		expect(after.refunds[0].paymentId).toBeUndefined();
+	});
+	it('cancels a multiple-payment stay with a selected linked refund and replays the exact atomic request', async () => {
+		const { t, admin, create, pay, edit, rev, financials, get, history } = await setup();
+		const bookingId = await create(5, 6, { confirmed: true });
+		await pay(bookingId);
+		await edit(bookingId, { checkOut: isoInDays(7) });
+		await pay(bookingId);
+		const before = await get(bookingId);
+		await expect(admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'cancel', refundRecorded: true })).rejects.toThrow('Cancel keeping the payment');
+		expect(await get(bookingId)).toEqual(before);
+		const selected = (await financials(bookingId)).payments[1];
+		const args = { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false, reason: 'Guest cancelled', refund: { amount: 1000, currency: 'THB', method: 'cash' as const, reason: 'Money returned', paymentId: selected._id, effectiveAt: Date.now(), idempotencyKey: 'cancel-multi-source-1' } };
+		await admin.mutation(api.adminBookings.cancelStay, args);
+		const stored = await get(bookingId);
+		const events = await history(bookingId);
+		await expect(admin.mutation(api.adminBookings.cancelStay, args)).resolves.toEqual({ replayed: true });
+		expect(await get(bookingId)).toEqual(stored);
+		expect(await history(bookingId)).toEqual(events);
+		expect(stored.status).toBe('cancelled');
+		expect((await financials(bookingId)).refunds).toMatchObject([{ paymentId: selected._id, amount: 1000 }]);
+		expect((await financials(bookingId)).payments.find(p => p._id === selected._id)?.refunded).toBe(1000);
+		expect(await t.run(ctx => ctx.db.query('bookingRefunds').collect())).toHaveLength(1);
+	});
 	it('links an omitted sole POS refund source to its payment and receipt', async () => {
 		const { admin, create, rev, financials, refund, order, settle } = await setup();
 		const bookingId = await create(5, 6, { confirmed: true });

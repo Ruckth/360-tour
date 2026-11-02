@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { EffectiveTimeFields, MethodPicker, NotifyGuestField, useEffectiveTime } from "./BookingMoneyFields";
+import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefundSource";
 import { formatMoney, STATUS_LABELS } from "./labels";
 import { REFUND_METHODS, newAttemptKey, parseAmount, type RefundMethod } from "./admin-bookings-shared";
 
@@ -26,6 +27,12 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
   const { money } = booking;
   const [reviewed] = useState(() => ({ revision: booking.revision, key: newAttemptKey("cancel-refund") }));
   const [choice, setChoice] = useState<"keep" | "refund">("keep");
+  const data = useQuery(api.adminBookings.bookingFinancials, choice === "refund" ? { bookingId: booking._id } : "skip");
+  const sources = data ? bookingRefundSources(data) : [];
+  const [target, setTarget] = useState<string | null>(null);
+  const selected = target ?? sources[0]?.value ?? "";
+  const source = sources.find(s => s.value === selected);
+  const [attempt, setAttempt] = useState<Parameters<typeof cancelStay>[0] | null>(null);
   const [amountText, setAmountText] = useState(String(money.net));
   const [method, setMethod] = useState<RefundMethod>(booking.hasStripePayment ? "stripe" : "cash");
   const [refundReason, setRefundReason] = useState("");
@@ -35,7 +42,8 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
   const paid = money.net > 0;
   const refunding = paid && choice === "refund";
   const amount = parseAmount(amountText);
-  const amountProblem = !refunding ? null : amount === null || amount <= 0 ? "Enter an amount, at most 2 decimals." : amount > money.net ? `At most ${formatMoney(money.net, money.currency)}.` : null;
+  const cap = Math.min(money.net, source?.left ?? 0);
+  const amountProblem = !refunding ? null : amount === null || amount <= 0 ? "Enter an amount, at most 2 decimals." : amount > cap ? `At most ${formatMoney(cap, money.currency)} from this payment. Record other refunds separately.` : null;
   const kept = refunding && amount !== null ? money.net - amount : money.net;
 
   return (
@@ -53,16 +61,20 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
       confirmLabel={refunding ? "Cancel & record refund" : "Cancel booking"}
       keepLabel="Keep booking"
       destructive
-      confirmDisabled={when.at === null || Boolean(amountProblem) || (refunding && !refundReason.trim())}
+      confirmDisabled={!attempt && (when.at === null || Boolean(amountProblem) || (refunding && (!refundReason.trim() || !source || !data?.complete)))}
       footnote={refunding ? "Recording does not return money. For Stripe payments, refund in the Stripe dashboard first." : undefined}
       onConfirm={async () => {
-        await cancelStay({
+        const args = attempt ?? {
           bookingId: booking._id, expectedRevision: reviewed.revision, reason: reason.trim() || undefined, effectiveAt: when.at!, notifyGuest: notify,
-          ...(refunding ? { refund: { amount: amount!, currency: money.currency, method, reason: refundReason, effectiveAt: when.at!, idempotencyKey: reviewed.key } } : {}),
-        });
+          ...(refunding ? { refund: { amount: amount!, currency: money.currency, method, reason: refundReason, effectiveAt: when.at!, idempotencyKey: reviewed.key, ...source!.reference } } : {}),
+        };
+        if (refunding) setAttempt(args);
+        await cancelStay(args);
       }}
       onClose={onClose}
     >
+      {attempt ? <p className="text-sm text-muted-foreground">Retry sends the same cancellation and refund details. Reopen to review a different correction.</p> : null}
+      <fieldset disabled={Boolean(attempt)} className="grid min-w-0 gap-4 disabled:opacity-70">
       {paid ? (
         <div className="grid gap-2">
           <span id="cancel-money" className="text-sm font-medium">The guest paid {formatMoney(money.net, money.currency)}</span>
@@ -74,6 +86,7 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
       ) : null}
       {refunding ? (
         <>
+          {data === undefined ? <p role="status">Loading refundable payments…</p> : !data?.complete ? <p role="alert">Review the complete payment history before recording a refund. You can still cancel and keep the payment.</p> : <BookingRefundSourcePicker id="cancel-refund-source" sources={sources} value={selected} onChange={setTarget} />}
           <div className="grid gap-2">
             <Label htmlFor="cancel-refund-amount">Refund amount ({money.currency})</Label>
             <Input id="cancel-refund-amount" inputMode="decimal" value={amountText} onChange={(event) => setAmountText(event.target.value)} aria-invalid={Boolean(amountProblem)} aria-describedby="cancel-refund-hint" />
@@ -94,6 +107,7 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
         <Input id="cancel-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
       </div>
       <NotifyGuestField id="cancel-notify" guestEmail={booking.guestEmail} checked={notify} onChange={setNotify} action="the cancellation" />
+      </fieldset>
     </ChangeConfirmDialog>
   );
 }

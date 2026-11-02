@@ -200,6 +200,11 @@ export async function cancelStayRecord(ctx: MutationCtx, booking: Booking, input
 	const effectiveAt = effectiveTime(input.effectiveAt);
 	const money = stayMoney(booking);
 	const notify = resolveNotify(input.notifyGuest, booking);
+	if (input.legacyFullRefund && money.net > 0 && !money.legacyRefund) {
+		const financials = await stayFinancials(ctx, booking);
+		const sources = financials.payments.filter(p => p.refundable > 0).length + financials.legacyOrders.filter(o => o.refundable > 0).length + Number(financials.unitemisedRefundable > 0);
+		if (!financials.complete || sources > 1) throw new Error('This older cancellation request cannot identify refund sources. Cancel keeping the payment, then record each refund from its payment or receipt.');
+	}
 	let updated = await writeBooking(ctx, booking, {
 		status: 'cancelled', cancelledAt: effectiveAt, cancelledBy: input.actor, cancelReason: reason
 	}, { actor: input.actor, kind: 'cancelled', reason, effectiveAt, details: { keptPaid: money.net, notifiedGuest: notify } });

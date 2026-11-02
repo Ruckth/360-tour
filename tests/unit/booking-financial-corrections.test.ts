@@ -233,8 +233,49 @@ describe("cancel and reopen", () => {
     await click(button("Cancel & record refund"));
     expect(mutations.cancelStay).toHaveBeenCalledWith(expect.objectContaining({
       expectedRevision: 7, notifyGuest: true,
-      refund: expect.objectContaining({ amount: 20000, currency: "THB", method: "cash", reason: "Cancellation fee kept", effectiveAt: NOW }),
+      refund: expect.objectContaining({ amount: 20000, currency: "THB", method: "cash", reason: "Cancellation fee kept", effectiveAt: NOW, paymentId: cashPayment._id }),
     }));
+  });
+
+  it("selects a cancellation refund source and freezes it after a lost response", async () => {
+    mutations.cancelStay.mockRejectedValueOnce(new Error("Response lost")).mockResolvedValue(null);
+    await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
+    await click(button("Record a refund"));
+    const trigger = document.getElementById("cancel-refund-source")!;
+    await act(async () => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    const option = [...document.querySelectorAll('[role="option"]')].find(el => el.textContent?.includes("Paid online"))!;
+    expect(option).toBeDefined();
+    await act(async () => { option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    await type("cancel-refund-amount", "500");
+    await type("cancel-refund-reason", "Returned from selected payment");
+    await click(button("Cancel & record refund"));
+    expect(alertText()).toContain("Response lost");
+    expect(document.getElementById("cancel-refund-reason")?.closest("fieldset")?.disabled).toBe(true);
+    await type("cancel-refund-reason", "Changed after response loss");
+    await click(button("Cancel & record refund"));
+    const [first, retry] = mutations.cancelStay.mock.calls.map(([args]) => args);
+    expect(retry).toEqual(first);
+    expect(first.refund).toMatchObject({ paymentId: onlinePayment._id, amount: 500, reason: "Returned from selected payment" });
+  });
+
+  it("waits for payment history and caps a cancellation refund from older unitemised money", async () => {
+    queries.bookingFinancials.mockReturnValue(undefined);
+    await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
+    await click(button("Record a refund"));
+    expect(document.body.textContent).toContain("Loading refundable payments");
+    expect(button("Cancel & record refund")?.disabled).toBe(true);
+    queries.bookingFinancials.mockReturnValue({ ...financials, unitemisedRefundable: 200 });
+    await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
+    await act(async () => { document.getElementById("cancel-refund-source")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    const option = [...document.querySelectorAll('[role="option"]')].find(el => el.textContent?.includes("Older unitemised payment"))!;
+    await act(async () => { option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    await type("cancel-refund-reason", "Returned the older deposit");
+    await type("cancel-refund-amount", "201");
+    expect(button("Cancel & record refund")?.disabled).toBe(true);
+    await type("cancel-refund-amount", "200");
+    await click(button("Cancel & record refund"));
+    expect(mutations.cancelStay).toHaveBeenCalledWith(expect.objectContaining({ refund: expect.objectContaining({ amount: 200, unitemised: true }) }));
+    expect(mutations.cancelStay.mock.calls[0][0].refund.paymentId).toBeUndefined();
   });
 
   it("reopens with a required reason and an archived-villa reason", async () => {
