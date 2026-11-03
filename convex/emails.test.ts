@@ -9,7 +9,40 @@ const modules = import.meta.glob('./**/*.ts');
 const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 const today = day(0);
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
+});
+
+it.each([false, true])('sends confirmation through the real Resend SDK using fetch (provider error: %s)', async (providerError) => {
+	vi.stubEnv('RESEND_API_KEY', 're_test_only');
+	vi.stubEnv('EMAIL_FROM', 'booking@example.com');
+	const fetchMock = vi.fn(async () => new Response(JSON.stringify(providerError
+		? { name: 'validation_error', message: 'Sender not verified' }
+		: { id: 'test-email' }), {
+		status: providerError ? 422 : 200,
+		headers: { 'Content-Type': 'application/json' }
+	}));
+	vi.stubGlobal('fetch', fetchMock);
+	const t = convexTest(schema, modules);
+	const result = await t.action(internal.emails.sendBookingConfirmation, {
+		guestName: 'Guest <script>', guestEmail: 'guest@example.com', propertyName: 'Pool Villa',
+		checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, guests: 2, total: 300, currency: 'THB'
+	});
+	expect(result).toEqual(providerError ? { sent: false, reason: 'Sender not verified' } : { sent: true });
+	expect(fetchMock).toHaveBeenCalledOnce();
+	const [url, init] = vi.mocked(fetch).mock.calls[0];
+	expect(url).toBe('https://api.resend.com/emails');
+	expect(init?.method).toBe('POST');
+	expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer re_test_only');
+	const payload = JSON.parse(String(init?.body));
+	expect(payload).toMatchObject({
+		from: '"Auralis Cove Retreat" <booking@example.com>',
+		to: 'guest@example.com',
+		subject: 'Booking Confirmed: Pool Villa (2027-01-10 - 2027-01-12)'
+	});
+	expect(payload.html).toContain('Guest &lt;script&gt;');
+});
 
 async function bookingTest(checkInOffset = 2, checkOutOffset = 5) {
 	const t = convexTest(schema, modules);
