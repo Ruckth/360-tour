@@ -90,6 +90,7 @@
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.0",
     "react-phone-number-input": "^3.4.18",
+    "react-qr-code": "^2.2.0",
     "react-textarea-autosize": "^8.5.9",
     "regenerator-runtime": "^0.14.1",
     "resend": "^6.10.0",

@@ -46,6 +46,12 @@ async function paidSale(link = false) {
   await run(result.actions.settleOrder({ orderId: result.orderId, idempotencyKey: "paid-original-01", expectedDue: 100, expectedRevision: current.order.revision, expectedCustomerRevision: link ? 0 : undefined, effectiveAt: Date.parse("2026-10-01T03:00:34.567Z"), tenders: [{ method: "card", amount: 100 }] }));
   return result;
 }
+const expandHistory = async (title: string) => act(async () => {
+  const summary = [...document.querySelectorAll("summary")].find(el => el.textContent === title)!;
+  const details = summary.parentElement as HTMLDetailsElement;
+  details.open = true;
+  details.dispatchEvent(new Event("toggle"));
+});
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-01T09:12:34Z"));
   root = createRoot(document.body.appendChild(document.createElement("div")));
@@ -162,6 +168,7 @@ it("shows paginated readable item history, cleared contents, actor and dates fro
   for (let i = 0; i < 25; i++) await run(actions.addItem({ orderId, item: { kind: "extra", name: `Item ${i}`, price: 10 } }));
   await run(actions.clearOrder({ orderId }));
   await act(async () => root.render(provide(backend, createElement(OrderHistory, { orderId }))));
+  await expandHistory("Order history");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toContain("Before · removed contents");
   expect(document.body.textContent).toContain("Item 24"); expect(document.body.textContent).toContain("preview@example.com");
   expect(document.body.textContent).toContain("Effective"); expect(document.body.textContent).toContain("Recorded"); expect(document.body.textContent).not.toContain('"unitPrice"');
@@ -169,6 +176,11 @@ it("shows paginated readable item history, cleared contents, actor and dates fro
   await click("Load older order changes");
   expect(button("Load older order changes")).toBeUndefined();
   expect(document.body.textContent).toContain("Item: Tea");
+  const loaded = document.querySelector('[aria-label="Order history"]')!.textContent;
+  await act(async () => { const details = document.querySelector('details')!; details.open = false; details.dispatchEvent(new Event('toggle')); });
+  await expandHistory("Order history");
+  expect(document.querySelector('[aria-label="Order history"]')!.textContent).toBe(loaded);
+  expect(button("Load older order changes")).toBeUndefined();
 });
 
 it("recovers order history errors and displays loading, empty and continuation states", async () => {
@@ -178,6 +190,7 @@ it("recovers order history errors and displays loading, empty and continuation s
   const broken: CheckoutBackend = { ...backend, useOrderHistory: () => { if (fail) throw new Error("History offline"); return { results: [], status: "LoadingFirstPage", loadMore }; } };
   vi.spyOn(console, "error").mockImplementation(() => {});
   await act(async () => root.render(provide(broken, createElement(OrderHistory, { orderId }))));
+  await expandHistory("Order history");
   expect(document.body.textContent).toContain("Couldn't load order history");
   fail = false; await click("Try again");
   expect(document.querySelector('[aria-label="Loading order history"]')).toBeTruthy();

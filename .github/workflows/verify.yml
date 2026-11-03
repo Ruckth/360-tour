@@ -4,7 +4,8 @@ on:
   pull_request:
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Keep browser dependencies on an OS supported by the pinned Playwright version.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

@@ -14,6 +14,15 @@ const nextConfig: NextConfig = {
 
     return [
       {
+        // The customer display: pairing secrets live in the URL fragment; keep the page out of caches, referrers and search.
+        source: "/display",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+          { key: "X-Robots-Tag", value: "noindex" },
+        ],
+      },
+      {
         source: "/videos/:path*",
         headers: cacheHeaders,
       },

@@ -9,11 +9,11 @@ import { useCheckoutBackend, type CustomerPage, type FinancialRows, type OrderId
 import { InlineErrorBoundary } from "./ErrorBoundary";
 import { historyTime } from "./OrderHistory";
 import { TENDER_LABELS } from "./checkout-ui";
+import { HistoryDetails } from "./HistoryDetails";
 
 /** These are separate ledgers with independent native cursors, never a merged/capped array. */
 export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
-  return <details className="w-full text-sm print:hidden">
-    <summary className="min-h-11 cursor-pointer py-3 font-semibold">Browse all financial history</summary>
+  return <HistoryDetails orderId={orderId} title="Browse all financial history">
     <p className="mb-3 text-xs text-muted-foreground">Original receipt stays as issued. Each ledger pages independently. All times are Bangkok time. Refunds record money returned separately; this screen does not send refunds.</p>
     <div className="grid gap-5">
       <Ledger title="All payment amendments"><Corrections orderId={orderId} /></Ledger>
@@ -21,7 +21,7 @@ export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: O
       <Ledger title="All stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger>
     </div>
-  </details>;
+  </HistoryDetails>;
 }
 function Ledger({ title, children }: { title: string; children: ReactNode }) {
   return <section aria-label={title} className="grid gap-2"><h3 className="font-semibold">{title}</h3><InlineErrorBoundary message={`Couldn't load ${title.toLowerCase()}. Try again.`}>{children}</InlineErrorBoundary></section>;

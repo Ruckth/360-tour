@@ -6,6 +6,7 @@ import AdminCheckoutPage from "@/app/admin/checkout/page";
 
 const nav = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn(), push: vi.fn(), notice: undefined as string | undefined, orderId: null as string | null, retry: undefined as (() => void) | undefined }));
 const openOrderFor = vi.hoisted(() => vi.fn());
+const showOnDisplay = vi.hoisted(() => vi.fn<(orderId: string | null | undefined) => { error: string | null; retry: () => void }>());
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: nav.replace, push: nav.push }),
@@ -15,6 +16,7 @@ vi.mock("@/components/checkout/convex-backend", () => {
   const actions = { openOrderFor };
   return { convexCheckoutBackend: { useActions: () => actions } };
 });
+vi.mock("@/components/admin/useShowOrderOnDisplay", () => ({ useShowOrderOnDisplay: showOnDisplay }));
 vi.mock("@/components/checkout/CheckoutView", () => ({
   CheckoutView: ({ notice, orderId, onNoticeRetry }: { notice?: string; orderId: string | null; onNoticeRetry?: () => void }) => {
     nav.notice = notice;
@@ -35,6 +37,8 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   nav.replace.mockReset();
   openOrderFor.mockReset();
+  showOnDisplay.mockReset();
+  showOnDisplay.mockReturnValue({ error: null, retry: () => undefined });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => {
@@ -106,4 +110,30 @@ it("reopens the same booking after leaving and ignores the earlier attempt", asy
   expect(nav.replace).toHaveBeenLastCalledWith("/admin/checkout?order=new-attempt");
   await act(async () => finishFirst({ orderId: "old-attempt" }));
   expect(nav.replace).toHaveBeenCalledTimes(1);
+});
+
+it("shows the order on screen on the customer display, and nothing for a new order", async () => {
+  await show("order=k17orderaa0001");
+  expect(showOnDisplay).toHaveBeenLastCalledWith("k17orderaa0001");
+  await show("");
+  expect(showOnDisplay).toHaveBeenLastCalledWith(null);
+});
+
+it("leaves the customer display alone while a booking link opens, and shows idle if it fails", async () => {
+  let fail!: (error: Error) => void;
+  openOrderFor.mockReturnValue(new Promise((_, reject) => (fail = reject)));
+  await show("booking=k17booking0001");
+  expect(showOnDisplay).toHaveBeenLastCalledWith(undefined);
+  expect(showOnDisplay).not.toHaveBeenCalledWith(null);
+  await act(async () => fail(new Error("This booking has nothing left to pay")));
+  expect(showOnDisplay).toHaveBeenLastCalledWith(null);
+});
+
+it("shows a failed display update in the checkout banner, with a retry", async () => {
+  const retry = vi.fn();
+  showOnDisplay.mockReturnValue({ error: "The customer display didn't update. Not authorized", retry });
+  await show("order=k17orderaa0001");
+  expect(nav.notice).toBe("The customer display didn't update. Not authorized");
+  await act(async () => nav.retry!());
+  expect(retry).toHaveBeenCalled();
 });

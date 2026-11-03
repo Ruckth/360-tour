@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
+import { HistoryDetails } from "./HistoryDetails";
 
 export const historyTime = (at: number) =>
   new Intl.DateTimeFormat("en-GB", {
@@ -125,17 +126,14 @@ export function HistoryValues({
 
 export function OrderHistory({ orderId }: { orderId: OrderId }) {
   return (
-    <details className="w-full text-sm print:hidden">
-      <summary className="min-h-11 cursor-pointer py-3 font-semibold">
-        Order history
-      </summary>
+    <HistoryDetails orderId={orderId} title="Order history">
       <InlineErrorBoundary
         resetKey={orderId}
         message="Couldn't load order history. Retry to continue."
       >
         <HistoryPage orderId={orderId} />
       </InlineErrorBoundary>
-    </details>
+    </HistoryDetails>
   );
 }
 function HistoryPage({ orderId }: { orderId: OrderId }) {

@@ -41,6 +41,7 @@ import { appendBookingHistory, assertNoLiveCheckout, attemptKey, cleanReason, ef
 import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
 import { MAX_STAY_ROWS, orderStayPayment, stayPaymentReversalPatch } from './lib/stayCorrections';
+import { MAX_LINES, orderLines } from './lib/orderLines';
 import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from './lib/orderLifecycle';
 
 /**
@@ -54,7 +55,6 @@ import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, othe
  * to bookings and appointments, and customers.ts for the optional customer link.
  */
 
-const MAX_LINES = 100;
 const FREQUENT_SCAN = 300;
 const FREQUENT_COUNT = 8;
 const ORDERS_PAGE_MAX = 50;
@@ -80,6 +80,26 @@ type ReadCtx = QueryCtx | MutationCtx;
 type Order = Doc<'bills'>;
 type Line = Doc<'billLines'>;
 type LineFields = Omit<Line, '_id' | '_creationTime' | 'billId' | 'createdAt'>;
+type JoinTable = 'bookings' | 'properties' | 'serviceAppointments' | 'services';
+/** Source joins as plain reads: what every mutation uses, so nothing read before a write is reused after it. */
+function directReads(ctx: ReadCtx) {
+	const get = <T extends JoinTable>(table: T) => (id: Id<T>) => ctx.db.get(table, id);
+	return { booking: get('bookings'), property: get('properties'), appointment: get('serviceAppointments'), service: get('services') };
+}
+type OrderReads = ReturnType<typeof directReads>;
+/** Query-only: one getOrder invocation shares each join's promise, including missing docs. */
+function orderReads(ctx: QueryCtx): OrderReads {
+	const direct = directReads(ctx);
+	function reuse<T extends JoinTable>(read: (id: Id<T>) => Promise<Doc<T> | null>) {
+		const pending = new Map<Id<T>, Promise<Doc<T> | null>>();
+		return (id: Id<T>) => {
+			let result = pending.get(id);
+			if (!result) pending.set(id, (result = read(id)));
+			return result;
+		};
+	}
+	return { booking: reuse(direct.booking), property: reuse(direct.property), appointment: reuse(direct.appointment), service: reuse(direct.service) };
+}
 /** Why a booking or appointment row can't be paid as it stands. `changed` can be updated in place; `settled` and `gone` rows must go. */
 export type SourceIssue = { kind: 'changed' | 'settled' | 'gone' | 'online'; message: string };
 
@@ -95,10 +115,6 @@ function assertBaht(currency: string, what: string) {
 function oneSource(args: { bookingId?: Id<'bookings'>; appointmentId?: Id<'serviceAppointments'> }): OrderSource {
 	if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new Error('Choose one booking or appointment');
 	return args.bookingId ? { bookingId: args.bookingId } : { appointmentId: args.appointmentId! };
-}
-
-async function orderLines(ctx: ReadCtx, orderId: Id<'bills'>) {
-	return await ctx.db.query('billLines').withIndex('by_billId', (q) => q.eq('billId', orderId)).take(MAX_LINES);
 }
 
 /** The order to change, created on first use. Paid and void orders never change. */
@@ -203,8 +219,8 @@ function bookingPayable(booking: Doc<'bookings'>) {
 	return !bookingClosed(booking) && bookingBalance(booking).owed > 0;
 }
 
-async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>) {
-	const property = await ctx.db.get(booking.propertyId);
+async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>, reads: OrderReads = directReads(ctx)) {
+	const property = await reads.property(booking.propertyId);
 	const { paid } = bookingBalance(booking);
 	return {
 		kind: 'booking' as const,
@@ -240,16 +256,16 @@ async function appointmentLine(ctx: ReadCtx, appointment: Doc<'serviceAppointmen
  * they were added; payment is refused until a changed row is updated (or a settled one removed),
  * so a stay edited, paid online or cancelled meanwhile is never charged stale or twice.
  */
-async function sourceIssue(ctx: ReadCtx, line: Line): Promise<SourceIssue | null> {
+async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = directReads(ctx)): Promise<SourceIssue | null> {
 	if (line.bookingId) {
-		const booking = await ctx.db.get(line.bookingId);
+		const booking = await reads.booking(line.bookingId);
 		if (!booking) return { kind: 'gone', message: 'This booking no longer exists. Remove it from the order.' };
 		const closed = bookingClosedReason(booking);
 		if (closed) return { kind: 'settled', message: `${closed}. Remove it from the order.` };
 		if (!bookingPayable(booking)) return { kind: 'settled', message: 'This stay was paid since it was added. Remove it from the order.' };
 		const blocked = bookingCheckoutBlock(booking);
 		if (blocked) return { kind: 'online', message: blocked };
-		const fresh = await bookingLine(ctx, booking);
+		const fresh = await bookingLine(ctx, booking, reads);
 		if (
 			fresh.currency !== line.currency || fresh.name !== line.name || fresh.detail !== line.detail ||
 			fresh.unitPrice !== line.unitPrice || (fresh.deposit ?? 0) !== (line.deposit ?? 0)
@@ -258,7 +274,7 @@ async function sourceIssue(ctx: ReadCtx, line: Line): Promise<SourceIssue | null
 		}
 	}
 	if (line.appointmentId) {
-		const appointment = await ctx.db.get(line.appointmentId);
+		const appointment = await reads.appointment(line.appointmentId);
 		if (!appointment) return { kind: 'gone', message: 'This appointment no longer exists. Remove it from the order.' };
 		if (!appointmentAttachable(appointment)) return { kind: 'settled', message: 'This appointment was paid or cancelled since it was added. Remove it from the order.' };
 		if (
@@ -269,7 +285,7 @@ async function sourceIssue(ctx: ReadCtx, line: Line): Promise<SourceIssue | null
 		}
 	}
 	if (line.feeAppointmentId && line.fee) {
-		const appointment = await ctx.db.get(line.feeAppointmentId);
+		const appointment = await reads.appointment(line.feeAppointmentId);
 		if (!appointment) return { kind: 'gone', message: 'The appointment this fee is for no longer exists. Remove the fee from the order.' };
 		const blocked = feeBlocker(appointment, line.fee.kind) ?? otherFeeMessage((await liveFees(ctx, appointment._id, line.billId))[0]);
 		if (blocked) return { kind: 'settled', message: `${blocked} Remove the fee from the order.` };
@@ -345,20 +361,20 @@ type SourceRef = {
 	linked: boolean;
 };
 
-async function stayRef(ctx: ReadCtx, bookingId: Id<'bookings'>, linked: boolean): Promise<SourceRef> {
-	const booking = await ctx.db.get(bookingId);
+async function stayRef(ctx: ReadCtx, bookingId: Id<'bookings'>, linked: boolean, reads: OrderReads = directReads(ctx)): Promise<SourceRef> {
+	const booking = await reads.booking(bookingId);
 	if (!booking) return { kind: 'booking', id: bookingId, reference: 'Deleted booking', guestName: undefined, guestPhone: undefined, guestEmail: undefined, name: 'Stay', linked };
-	const property = await ctx.db.get(booking.propertyId);
+	const property = await reads.property(booking.propertyId);
 	return {
 		kind: 'booking', id: booking._id, reference: booking.confirmationCode ?? `${booking.checkIn} → ${booking.checkOut}`,
 		guestName: booking.guestName, guestPhone: booking.guestPhone || undefined, guestEmail: booking.guestEmail, name: `Stay · ${property?.name ?? 'Villa'}`, linked
 	};
 }
 
-async function appointmentRef(ctx: ReadCtx, appointmentId: Id<'serviceAppointments'>, linked: boolean, found?: Doc<'serviceAppointments'> | null): Promise<SourceRef> {
-	const appointment = found === undefined ? await ctx.db.get(appointmentId) : found;
+async function appointmentRef(ctx: ReadCtx, appointmentId: Id<'serviceAppointments'>, linked: boolean, found?: Doc<'serviceAppointments'> | null, reads: OrderReads = directReads(ctx)): Promise<SourceRef> {
+	const appointment = found === undefined ? await reads.appointment(appointmentId) : found;
 	if (!appointment) return { kind: 'appointment', id: appointmentId, reference: 'Deleted appointment', guestName: undefined, guestPhone: undefined, guestEmail: undefined, name: 'Appointment', linked };
-	const service = await ctx.db.get(appointment.serviceId);
+	const service = await reads.service(appointment.serviceId);
 	return {
 		kind: 'appointment', id: appointment._id, reference: appointment.confirmationCode,
 		guestName: appointment.guestName || undefined, guestPhone: appointment.guestPhone || undefined, guestEmail: appointment.guestEmail, name: service?.name ?? 'Appointment', linked
@@ -374,28 +390,28 @@ async function appointmentRef(ctx: ReadCtx, appointmentId: Id<'serviceAppointmen
  * (empty) order was made with the booking therefore shows that stay, without moving the booking's
  * order. Paid rows never change, so a receipt keeps the same references.
  */
-async function orderSourceRefs(ctx: ReadCtx, order: Order, lines: Array<Pick<Line, 'bookingId' | 'appointmentId'>>): Promise<SourceRef[]> {
+async function orderSourceRefs(ctx: ReadCtx, order: Order, lines: Array<Pick<Line, 'bookingId' | 'appointmentId'>>, reads: OrderReads = directReads(ctx)): Promise<SourceRef[]> {
 	const refs: SourceRef[] = [];
 	const stays = new Set<Id<'bookings'>>();
 	const appointments = new Set<Id<'serviceAppointments'>>();
 	if (order.bookingId) {
 		stays.add(order.bookingId);
-		refs.push(await stayRef(ctx, order.bookingId, true));
+		refs.push(await stayRef(ctx, order.bookingId, true, reads));
 	} else if (order.appointmentId) {
 		appointments.add(order.appointmentId);
-		refs.push(await appointmentRef(ctx, order.appointmentId, true));
+		refs.push(await appointmentRef(ctx, order.appointmentId, true, undefined, reads));
 	}
 	for (const { bookingId } of lines) {
 		if (!bookingId || stays.has(bookingId)) continue;
 		stays.add(bookingId);
-		refs.push(await stayRef(ctx, bookingId, false));
+		refs.push(await stayRef(ctx, bookingId, false, reads));
 	}
 	for (const { appointmentId } of lines) {
 		if (!appointmentId || appointments.has(appointmentId)) continue;
 		appointments.add(appointmentId);
-		const appointment = await ctx.db.get(appointmentId);
+		const appointment = await reads.appointment(appointmentId);
 		if (appointment?.bookingId && stays.has(appointment.bookingId)) continue;
-		refs.push(await appointmentRef(ctx, appointmentId, false, appointment));
+		refs.push(await appointmentRef(ctx, appointmentId, false, appointment, reads));
 	}
 	return refs;
 }
@@ -435,39 +451,64 @@ function villaPhoto(property: Doc<'properties'> | null): string | undefined {
  * The photo shown beside an order row: its service's, its room's, or the booked villa's first image.
  * Display only, read as the catalog is now; it is never copied onto the row or its receipt.
  */
-async function linePhoto(ctx: ReadCtx, line: Line) {
-	if (line.serviceId) return (await ctx.db.get(line.serviceId))?.imageUrl;
-	const propertyId = line.propertyId ?? (line.bookingId ? (await ctx.db.get(line.bookingId))?.propertyId : undefined);
-	return propertyId ? villaPhoto(await ctx.db.get(propertyId)) : undefined;
+async function linePhoto(ctx: ReadCtx, line: Line, reads: OrderReads = directReads(ctx)) {
+	if (line.serviceId) return (await reads.service(line.serviceId))?.imageUrl;
+	const propertyId = line.propertyId ?? (line.bookingId ? (await reads.booking(line.bookingId))?.propertyId : undefined);
+	return propertyId ? villaPhoto(await reads.property(propertyId)) : undefined;
 }
 
+/** Stable catalog dependencies stay separate from frequently edited order lines. */
+async function catalogItems(ctx: QueryCtx) {
+	const [services, properties, staff] = await Promise.all([
+		ctx.db.query('services').withIndex('by_status', (q) => q.eq('status', 'active')).take(200),
+		ctx.db.query('properties').withIndex('by_status', (q) => q.eq('status', 'active')).take(100),
+		ctx.db.query('staff').withIndex('by_status', (q) => q.eq('status', 'active')).take(200)
+	]);
+	// Only baht prices can go on an order (see assertBaht).
+	return {
+		services: services.filter((s) => s.currency === CURRENCY).map((s) => ({ _id: s._id, name: s.name, category: s.category, description: s.description, durationMin: s.durationMin, price: s.price, currency: s.currency, staffIds: s.staffIds, imageUrl: s.imageUrl })),
+		rooms: properties.filter((p) => p.currency === CURRENCY).map((p) => ({ _id: p._id, name: p.name, tagline: p.tagline, price: p.pricePerNight, currency: p.currency, maxGuests: p.maxGuests, imageUrl: villaPhoto(p) })),
+		/** No extras catalog exists yet; the Extras tab offers custom items. */
+		extras: [] as Array<{ name: string; price: number; category: string }>,
+		staff: staff.map((s) => ({ _id: s._id, name: s.name, color: s.color }))
+	};
+}
+
+async function catalogRanking(ctx: QueryCtx) {
+	const recent = await ctx.db.query('billLines').order('desc').take(FREQUENT_SCAN);
+	// Count rows, not quantities. Stable sort preserves newest-first encounter order on ties.
+	const counts = new Map<string, number>();
+	for (const line of recent) {
+		if (line.fee) continue;
+		const key = line.kind === 'service' ? `service:${line.serviceId}` : line.kind === 'room' ? `room:${line.propertyId}` : line.kind === 'extra' ? `extra:${line.name}` : null;
+		if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+	return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, FREQUENT_COUNT).map(([key]) => key);
+}
+
+export const stableCatalog = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+		return catalogItems(ctx);
+	}
+});
+
+export const recentCatalogRanking = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireAdmin(ctx);
+		return catalogRanking(ctx);
+	}
+});
+
+/** Compatibility endpoint; both subscription paths share the same extraction and ranking. */
 export const catalog = query({
 	args: {},
 	handler: async (ctx) => {
 		await requireAdmin(ctx);
-		const [services, properties, staff, recent] = await Promise.all([
-			ctx.db.query('services').withIndex('by_status', (q) => q.eq('status', 'active')).take(200),
-			ctx.db.query('properties').withIndex('by_status', (q) => q.eq('status', 'active')).take(100),
-			ctx.db.query('staff').withIndex('by_status', (q) => q.eq('status', 'active')).take(200),
-			ctx.db.query('billLines').order('desc').take(FREQUENT_SCAN)
-		]);
-		// Most often rung up lately, for the Frequent tab.
-		const counts = new Map<string, number>();
-		for (const line of recent) {
-			// Fee rows are one-off charges for an appointment, not items to sell again.
-			if (line.fee) continue;
-			const key = line.kind === 'service' ? `service:${line.serviceId}` : line.kind === 'room' ? `room:${line.propertyId}` : line.kind === 'extra' ? `extra:${line.name}` : null;
-			if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
-		}
-		// Only baht prices can go on an order (see assertBaht).
-		return {
-			services: services.filter((s) => s.currency === CURRENCY).map((s) => ({ _id: s._id, name: s.name, category: s.category, description: s.description, durationMin: s.durationMin, price: s.price, currency: s.currency, staffIds: s.staffIds, imageUrl: s.imageUrl })),
-			rooms: properties.filter((p) => p.currency === CURRENCY).map((p) => ({ _id: p._id, name: p.name, tagline: p.tagline, price: p.pricePerNight, currency: p.currency, maxGuests: p.maxGuests, imageUrl: villaPhoto(p) })),
-			/** No extras catalog exists yet; the Extras tab offers custom items. */
-			extras: [] as Array<{ name: string; price: number; category: string }>,
-			staff: staff.map((s) => ({ _id: s._id, name: s.name, color: s.color })),
-			frequent: [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, FREQUENT_COUNT).map(([key]) => key)
-		};
+		const [items, frequent] = await Promise.all([catalogItems(ctx), catalogRanking(ctx)]);
+		return { ...items, frequent };
 	}
 });
 
@@ -492,9 +533,11 @@ export const getOrder = query({
 			ctx.db.query('billCorrections').withIndex('by_billId_and_sequence', (q) => q.eq('billId', order._id)).order('desc').take(20),
 			ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).order('desc').take(MAX_STAY_ROWS)
 		]);
-		const sources = await orderSourceRefs(ctx, order, lines);
+		const reads = orderReads(ctx);
+		const sources = await orderSourceRefs(ctx, order, lines, reads);
+		const settled = order.status === 'paid' || order.status === 'void';
 		const staffNames = new Map<Id<'staff'>, string>();
-		for (const id of new Set(lines.flatMap((line) => (line.staffId ? [line.staffId] : [])))) {
+		for (const id of new Set(lines.flatMap((line) => (line.staffId && (!settled || line.staffName == null) ? [line.staffId] : [])))) {
 			const person = await ctx.db.get(id);
 			if (person) staffNames.set(id, person.name);
 		}
@@ -502,7 +545,7 @@ export const getOrder = query({
 		const rows = [];
 		for (const line of lines) {
 			const photoKey = line.serviceId ?? line.propertyId ?? line.bookingId;
-			if (photoKey && !photos.has(photoKey)) photos.set(photoKey, linePhoto(ctx, line));
+			if (photoKey && !photos.has(photoKey)) photos.set(photoKey, linePhoto(ctx, line, reads));
 			rows.push({
 				...line,
 				net: lineNet(line),
@@ -510,7 +553,7 @@ export const getOrder = query({
 				// A paid row keeps the name it was issued with; an open row shows the therapist's current name.
 				staffName: line.staffId ? (open ? undefined : line.staffName) ?? staffNames.get(line.staffId) ?? 'Former staff member' : undefined,
 				// History is not re-checked: a paid row stays as it was paid.
-				sourceIssue: open && isSourceRow(line) ? await sourceIssue(ctx, line) : null
+				sourceIssue: open && isSourceRow(line) ? await sourceIssue(ctx, line, reads) : null
 			});
 		}
 		return {
