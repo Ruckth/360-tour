@@ -2,7 +2,7 @@
 // Regressions for reads that used to stop at a fixed row count (see docs/plans/convex-query-optimization-audit.md).
 
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import migrationsTest from '@convex-dev/migrations/test';
 import { api, components, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
@@ -18,6 +18,8 @@ declare global {
 
 const modules = import.meta.glob('./**/*.ts');
 const adminEmail = 'admin@example.com';
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(Date.UTC(2030, 0, 1)); });
+afterEach(() => vi.useRealTimers());
 
 type Tester = ReturnType<typeof convexTest>;
 

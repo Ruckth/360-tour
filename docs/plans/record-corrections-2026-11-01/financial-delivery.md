@@ -1,6 +1,6 @@
 # Booking corrections and financial records: delivery
 
-Branch `fix/audited-record-corrections`, working tree only. Implemented by Kiro (Claude Opus 5.5). No commits, pushes, PRs, deploys, live writes, package installs, subagents or generated-file edits. Concurrent changes by other workers were preserved; schema edits are narrow patches to the bookings, bills and billPayments sections plus new tables placed next to them, and one import line.
+Branch `fix/audited-record-corrections`, working tree only. No commits, pushes, PRs, deploys, live writes, package installs, subagents or generated-file edits. Concurrent changes by other workers were preserved; schema edits are narrow patches to the bookings, bills and billPayments sections plus new tables placed next to them, and one import line.
 
 Covers audit items 3, 4 and B1, B2, B3, B4 (booking pay and POS settlement), B6, B7, B9, B10 (bookings), B11 (bookings), part of 5 (stay reopen) and part of 7 (ordinary POS line history). Appointment refunds, order discard/restore and receipt/pay panel UI are listed under remaining work.
 

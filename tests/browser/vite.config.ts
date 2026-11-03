@@ -6,6 +6,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: "@/lib/react/convex",
+        replacement: path.resolve("tests/browser/optional-convex-mock.ts"),
+      },
+      {
         find: "convex/react",
         replacement: path.resolve("tests/browser/convex-mock.ts"),
       },

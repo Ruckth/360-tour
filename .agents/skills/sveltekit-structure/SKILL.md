@@ -1,6 +1,6 @@
 ---
 name: sveltekit-structure
-# IMPORTANT: Keep description on ONE line for Claude Code compatibility
+# Keep the description on one line for skill discovery compatibility
 # prettier-ignore
 description: SvelteKit structure guidance. Use for routing, layouts, error handling, SSR, or svelte:boundary. Covers file naming, nested layouts, error boundaries, pending UI, and hydration.
 ---
@@ -73,7 +73,6 @@ PROGRESSIVE DISCLOSURE GUIDELINES:
 LLM WORKFLOW (when editing this file):
 1. Write/edit SKILL.md
 2. Format (if formatter available)
-3. Run: claude-skills-cli validate <path>
-4. If multi-line description warning: run claude-skills-cli doctor <path>
-5. Validate again to confirm
+3. Validate the frontmatter and keep the description on one line.
+4. Validate again to confirm
 -->

@@ -1,29 +1,62 @@
 import { cronJobs } from 'convex/server';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalMutation } from './_generated/server';
+import { type MutationCtx, internalMutation } from './_generated/server';
 import { releaseBookingDates } from './lib/availabilityWrites';
 import { writeBooking } from './lib/bookingMoney';
 import { resortLocalParts } from './lib/serviceSlots';
+import { bookingHoldExpiresAt, BOOKING_RULE_RANGES, getEffectiveSettings } from './lib/siteSettings';
+import type { Doc } from './_generated/dataModel';
 
-export const PENDING_BOOKING_TTL_MS = 24 * 60 * 60 * 1000;
+async function expireHold(ctx: MutationCtx, booking: Doc<'bookings'>) {
+  if (booking.source === 'admin' || booking.status !== 'pending' || booking.paymentStatus === 'paid') return false;
+  if (bookingHoldExpiresAt(booking) > Date.now()) return false;
+  await releaseBookingDates(ctx, booking);
+  // Keep the session identity/amount: a delayed signed payment webhook may still recover
+  // this stay, after rechecking that no other booking has taken its nights.
+  await writeBooking(
+    ctx,
+    booking,
+    { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: 'system:expiry', stripeCheckoutUrl: undefined },
+    { actor: 'system:expiry', kind: 'pending_expired' }
+  );
+  return true;
+}
+
+export const expireBookingHold = internalMutation({
+  args: { bookingId: v.id('bookings'), expectedRevision: v.number() },
+  handler: async (ctx, args) => {
+    const booking = await ctx.db.get(args.bookingId);
+    if (
+      !booking ||
+      booking.source === 'admin' ||
+      booking.status !== 'pending' ||
+      booking.paymentStatus === 'paid'
+    )
+      return;
+    // Staff edits bump the revision but must not disable expiry. Always re-read the
+    // current status and deadline, so old timers also respect extended checkouts.
+    const expiresAt = bookingHoldExpiresAt(booking);
+    if (expiresAt > Date.now()) {
+      await ctx.scheduler.runAt(expiresAt, internal.crons.expireBookingHold, args);
+      return;
+    }
+    await expireHold(ctx, booking);
+  }
+});
 
 export const expirePending = internalMutation({
   args: { cutoff: v.optional(v.number()), cursor: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const cutoff = args.cutoff ?? Date.now() - PENDING_BOOKING_TTL_MS;
+    // Scan from the shortest supported hold, independently of today's settings.
+    // Each booking's own deadline determines whether it may expire.
+    const cutoff = args.cutoff ?? Date.now() - BOOKING_RULE_RANGES.unpaidHoldMinutes[0] * 60_000;
     const page = await ctx.db.query('bookings')
       .withIndex('by_status_createdAt', (q) => q.eq('status', 'pending').lt('createdAt', cutoff))
       .paginate({ numItems: 100, cursor: args.cursor ?? null });
     let expired = 0;
     for (const booking of page.page) {
-      // Host-created pending bookings (phone / walk-in) stay until the host acts on them.
-      if (booking.source === 'admin') continue;
-      if (booking.paymentStatus !== 'paid' && (booking.stripeCheckoutExpiresAt ? booking.stripeCheckoutExpiresAt + 60 * 60 * 1000 : 0) <= Date.now()) {
-        await releaseBookingDates(ctx, booking);
-        await writeBooking(ctx, booking, { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: 'system:expiry' }, { actor: 'system:expiry', kind: 'pending_expired' });
-        expired++;
-      }
+      if (await expireHold(ctx, booking)) expired++;
     }
     if (!page.isDone) await ctx.scheduler.runAfter(0, internal.crons.expirePending, { cutoff, cursor: page.continueCursor });
     return expired;
@@ -67,10 +100,11 @@ export const queueLifecycleEmails = internalMutation({
     }
     // Booking dates are resort-local (Asia/Bangkok) calendar days, so "today" must be too.
     const today = args.today ?? resortLocalParts(Date.now()).date;
+    const { bookingRules } = await getEffectiveSettings(ctx);
     const day = (offset: number) => new Date(Date.parse(`${today}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
     const page = args.kind === 'preArrival'
-      ? await ctx.db.query('bookings').withIndex('by_status_checkIn', q => q.eq('status', 'confirmed').gte('checkIn', day(1)).lte('checkIn', day(3))).paginate({ numItems: 50, cursor: args.cursor ?? null })
-      : await ctx.db.query('bookings').withIndex('by_status_checkOut', q => q.eq('status', 'confirmed').gte('checkOut', day(-7)).lte('checkOut', day(-1))).paginate({ numItems: 50, cursor: args.cursor ?? null });
+      ? await ctx.db.query('bookings').withIndex('by_status_checkIn', q => q.eq('status', 'confirmed').gte('checkIn', day(1)).lte('checkIn', day(bookingRules.preArrivalDaysBefore))).paginate({ numItems: 50, cursor: args.cursor ?? null })
+      : await ctx.db.query('bookings').withIndex('by_status_checkOut', q => q.eq('status', 'confirmed').gte('checkOut', day(-7)).lte('checkOut', day(-bookingRules.reviewDaysAfter))).paginate({ numItems: 50, cursor: args.cursor ?? null });
     let queued = 0;
     for (const booking of page.page) {
       if (!booking.guestEmail?.trim()) continue;

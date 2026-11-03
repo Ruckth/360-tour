@@ -787,7 +787,8 @@ export const editBooking = mutation({
 			}
 		}
 
-		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed';
+		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed'
+			|| (booking.status === 'pending' && booking.source !== 'admin');
 		await releaseBookingDates(ctx, booking);
 		// Holding validates too (overlaps and blocks), so it replaces the separate check.
 		if (holdsDates) await blockBookingDates(ctx, args, booking._id);

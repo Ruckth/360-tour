@@ -18,7 +18,7 @@ async function setup() {
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   // Two nights at 100: total 200.
-  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2 });
+  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   const read = async () => (await t.run(ctx => ctx.db.get(bookingId)))!;
   const setTotal = (total: number) => t.run(ctx => ctx.db.patch(bookingId, { total }));
   const start = async (sessionId: string) => {

@@ -9,7 +9,6 @@ import type { EffectiveSettings } from './lib/siteSettings';
 import { callAI, classifyComplexity, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL } from './lib/chatLlm';
 import type { ChatMessage, LlmCallTrace } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
-import { CHAT_BOOKING_TTL_MS } from './bookings';
 import { getSupportedFallbackResponse } from './lib/chatFallback';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';
@@ -265,8 +264,8 @@ BOOKING IN CHAT:
 - Convert the guest's dates to YYYY-MM-DD; a year-less date means the next upcoming one.
 - You can book directly in this chat. You need: villa, check-in, check-out, number of guests, and the guest's name.
 ${contactStep}
-- As soon as you have those, call prepare_booking. It checks availability, capacity and price itself, so do not call check_availability or calculate_price first, and never write your own booking summary or total: only prepare_booking holds the booking.
-- After prepare_booking succeeds, read its summary back (villa, dates, guests, total in ฿) and ask the guest to reply "yes" to confirm.
+- As soon as you have those, call prepare_booking. It checks availability, capacity and price itself, so do not call check_availability or calculate_price first, and never write your own booking summary or total: only prepare_booking produces the proposal; no booking exists or dates are held until confirmation.
+- After prepare_booking succeeds, read its summary back (villa, dates, guests, total in ฿) and share its confirmUrl exactly and tell the guest they can tap "Confirm & pay" or reply "yes". Do not claim the stay is booked or held yet.
 - When the guest agrees to that summary (yes, ok, confirm, go ahead, ใช่, ยืนยัน, ok ค่ะ…), call confirm_booking. Never call it in the same turn as prepare_booking. If they change details, call prepare_booking again with the new details.
 - After confirm_booking, share the confirmation code and the paymentUrl exactly as returned. The booking is pending until paid.
 - If a tool returns an error (dates taken, too many guests, expired), explain it briefly and suggest another option.
@@ -277,18 +276,18 @@ ${contactStep}
 - Plain text only: no tables. Short lines or simple dashes are fine.`;
 }
 
-/** Live guest + booking state, so the model knows e.g. that a held booking is waiting for "yes". */
-function messagingStateGuidance(session: Doc<'chatSessions'>, properties: Doc<'properties'>[]) {
+/** Live guest + booking state, so the model knows e.g. that a proposal is waiting for "yes". */
+function messagingStateGuidance(session: Doc<'chatSessions'>, properties: Doc<'properties'>[], quoteValidityMinutes: number) {
 	const lines: string[] = [];
 	const name = session.visitorName?.trim();
 	lines.push(name ? `- Guest name: ${name}. Use it for bookings unless they give another name.` : '- Guest name: unknown.');
 
 	const quote = session.pendingBookingQuote;
-	const fresh = (createdAt: number) => Date.now() - createdAt < CHAT_BOOKING_TTL_MS;
-	if (quote && !quote.bookingId && fresh(quote.createdAt)) {
+	const fresh = (createdAt: number) => Date.now() - createdAt < quoteValidityMinutes * 60_000;
+	if (quote && !quote.bookingId && Date.now() < (quote.expiresAt ?? quote.createdAt + quoteValidityMinutes * 60_000)) {
 		const villa = properties.find((p) => p.slug === quote.propertySlug)?.name ?? quote.propertySlug;
 		lines.push(
-			`- HELD BOOKING waiting for the guest's yes: ${villa}, ${quote.checkIn} to ${quote.checkOut}, ${quote.guests} guests, ${quote.guestName}, total ฿${quote.total.toLocaleString('en-US')}. If the latest message agrees, call confirm_booking now.`
+			`- PROPOSAL (no booking or hold yet) waiting for the guest's yes: ${villa}, ${quote.checkIn} to ${quote.checkOut}, ${quote.guests} guests, ${quote.guestName}, total ฿${quote.total.toLocaleString('en-US')}. If the latest message agrees, call confirm_booking now.`
 		);
 	}
 	if (session.pendingCancellation && fresh(session.pendingCancellation.createdAt)) {
@@ -502,7 +501,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 - Do not ask guests to type villa/date fields that the booking card can collect for them
 - Services can be booked via LINE, WhatsApp, Messenger, or at reception
 `}- If a question is beyond your knowledge, offer to connect them with the host via WhatsApp
-- Keep responses under ${settings.ai.maxWords} words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${isMessaging ? messagingStateGuidance(session, properties) : ''}${settings.ai.extraInstructions ? `\n\nOWNER INSTRUCTIONS:\n${settings.ai.extraInstructions}` : ''}`;
+- Keep responses under ${settings.ai.maxWords} words unless detailed info is requested${channelGuidance(channel, args.siteUrl)}${isMessaging ? messagingStateGuidance(session, properties, settings.bookingRules.chatQuoteValidityMinutes) : ''}${settings.ai.extraInstructions ? `\n\nOWNER INSTRUCTIONS:\n${settings.ai.extraInstructions}` : ''}`;
 
 	const apiMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 

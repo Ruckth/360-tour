@@ -14,7 +14,7 @@ it('requires the booking token before creating a Stripe session', async () => {
   await t.run(async ctx => {
     await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
-  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2 });
+  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_test');
   vi.stubEnv('SITE_URL', 'https://example.com');
   const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
@@ -31,7 +31,7 @@ it('requires the booking token before creating a Stripe session', async () => {
   expect(await t.run(async ctx => (await ctx.db.query('availability').collect()).length)).toBe(2);
   expect(await t.action(api.payments.createCheckout, { bookingId, accessToken })).toEqual(result);
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  await t.run(async ctx => await ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1 }));
+  await t.run(async ctx => await ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1, unpaidHoldExpiresAt: Date.now() - 1, createdAt: Date.now() - 31 * 60_000 }));
   await t.mutation(internal.payments.expireCheckout, { bookingId, sessionId: 'cs_test_123' });
   expect(await t.run(async ctx => (await ctx.db.query('availability').collect()).length)).toBe(0);
   expect(await t.run(async ctx => (await ctx.db.get(bookingId))?.status)).toBe('cancelled');
@@ -44,7 +44,7 @@ it('lets host-confirmed unpaid bookings pay online with an attempt idempotency k
   await t.run(async ctx => {
     await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
-  const bookingId = await admin.mutation(api.adminBookings.createBooking, { propertySlug: 'villa', guestName: 'Guest', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2, confirmed: true });
+  const bookingId = await admin.mutation(api.adminBookings.createBooking, { propertySlug: 'villa', guestName: 'Guest', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2, confirmed: true });
   // Older than the 24h guest expiry: admin bookings stay payable.
   await t.run(async ctx => await ctx.db.patch(bookingId, { createdAt: Date.now() - 2 * 86_400_000 }));
   const accessToken = (await t.run(async ctx => await ctx.db.get(bookingId)))!.accessToken!;
@@ -70,7 +70,7 @@ it.each([false, true])('renews an expired checkout for a %s admin booking withou
   await t.run(async ctx => {
     await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
-  const bookingId = await admin.mutation(api.adminBookings.createBooking, { propertySlug: 'villa', guestName: 'Guest', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2, confirmed });
+  const bookingId = await admin.mutation(api.adminBookings.createBooking, { propertySlug: 'villa', guestName: 'Guest', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2, confirmed });
   const accessToken = (await t.run(ctx => ctx.db.get(bookingId)))!.accessToken!;
   const requests: Array<{ key: string; body: string }> = [];
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
@@ -79,7 +79,7 @@ it.each([false, true])('renews an expired checkout for a %s admin booking withou
     return new Response(JSON.stringify({ id: `cs_${n}`, url: `https://checkout.stripe.com/${n}`, expires_at: Math.floor(Date.now() / 1000) + 1800 }), { status: 200 });
   }));
   expect((await t.action(api.payments.createCheckout, { bookingId, accessToken })).url).toContain('/1');
-  await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1 }));
+  await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1, unpaidHoldExpiresAt: Date.now() - 1, createdAt: Date.now() - 31 * 60_000 }));
   await t.mutation(internal.payments.expireCheckout, { bookingId, sessionId: 'cs_1' });
   expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({ status: confirmed ? 'confirmed' : 'pending', paymentStatus: 'pending' });
   expect((await t.action(api.payments.createCheckout, { bookingId, accessToken })).url).toContain('/2');
@@ -91,7 +91,7 @@ it.each([false, true])('renews an expired checkout for a %s admin booking withou
 it('refuses to attach a Stripe session after the quote or attempt changes', async () => {
   const t = convexTest(schema, modules);
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
-  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2 });
+  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   const { request } = await t.mutation(internal.payments.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
   if (!request) throw new Error('Expected checkout request');
   const save = () => t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken, sessionId: 'cs_old', url: 'https://checkout.stripe.com/old', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
@@ -108,7 +108,7 @@ it('retries one unfinished attempt with the same Stripe key and request body', a
   vi.stubEnv('SITE_URL', 'https://example.com');
   const t = convexTest(schema, modules);
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
-  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2 });
+  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   const calls: Array<{ key: string; body: string }> = [];
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
     calls.push({ key: (init?.headers as Record<string, string>)['Idempotency-Key'], body: String(init?.body) });

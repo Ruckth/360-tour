@@ -2,7 +2,15 @@ import { v } from 'convex/values';
 import { internalQuery, mutation, query, type QueryCtx } from './_generated/server';
 import { appendRecordHistory } from './lib/recordHistory';
 import { settingsSnapshot } from './lib/configurationHistory';
-import { BUSINESS_FIELDS, mergeSiteSettings, type SettingsInput } from './lib/siteSettings';
+import {
+	bookingRulesValidator,
+	BOOKING_RULE_RANGES,
+	resolveBookingRules,
+	BUSINESS_FIELDS,
+	mergeSiteSettings,
+	type BookingRules,
+	type SettingsInput
+} from './lib/siteSettings';
 import { adminEmails, requireAdmin } from './lib/adminAuth';
 import {
 	getEffectiveSettings,
@@ -45,7 +53,8 @@ export const publicProfile = query({
 			currency: s.currency,
 			timezone: s.timezone,
 			checkInTime: s.checkInTime,
-			checkOutTime: s.checkOutTime
+			checkOutTime: s.checkOutTime,
+			bookingRules: s.bookingRules
 		};
 	}
 });
@@ -53,6 +62,7 @@ export const publicProfile = query({
 export const update = mutation({
 	args: {
 		expectedRevision: v.optional(v.number()),
+		bookingRules: v.optional(bookingRulesValidator),
 		business: v.optional(
 			v.object({
 				businessName: text,
@@ -75,7 +85,7 @@ export const update = mutation({
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		const { business, ai, email, errors } = validateSettingsInput(args);
+		const { business, ai, email, bookingRules, errors } = validateSettingsInput(args);
 		const firstError = Object.values(errors)[0];
 		if (firstError) throw new Error(firstError);
 
@@ -85,6 +95,7 @@ export const update = mutation({
 		const fields = {
 			revision: (row?.revision ?? 0) + 1,
 			...business,
+			...(bookingRules ? { bookingRules: { ...row?.bookingRules, ...bookingRules } } : {}),
 			...(ai ? { ai: { ...row?.ai, ...ai } } : {}),
 			...(email ? { email: { ...row?.email, ...email } } : {}),
 			updatedAt: Date.now(),
@@ -132,7 +143,19 @@ export const restore = mutation({
 			['fromName', 'ownerNotificationEmail', 'footer'].some((key) => typeof email[key] !== 'string')
 		)
 			throw new Error('Incomplete settings snapshot');
+		const rules: Partial<BookingRules> = {};
+		if (source.bookingRules && typeof source.bookingRules === 'object') {
+			const savedRules = source.bookingRules as Record<string, unknown>;
+			for (const key of Object.keys(BOOKING_RULE_RANGES) as (keyof typeof BOOKING_RULE_RANGES)[]) {
+				if (typeof savedRules[key] !== 'number') throw new Error('Incomplete booking rules snapshot');
+				rules[key] = savedRules[key];
+			}
+			if (typeof savedRules.sameDayCutoff !== 'string') throw new Error('Incomplete booking rules snapshot');
+			rules.sameDayCutoff = savedRules.sameDayCutoff;
+		}
 		const input: SettingsInput = {
+			// History predating booking rules restores their built-in defaults.
+			bookingRules: source.bookingRules ? rules : resolveBookingRules(null),
 			business,
 			ai: { tone: ai.tone, maxWords: ai.maxWords },
 			email: {
@@ -147,6 +170,7 @@ export const restore = mutation({
 		const before = settingsSnapshot(mergeSiteSettings(row));
 		const fields = {
 			...clean.business,
+			bookingRules: clean.bookingRules,
 			ai: { ...row?.ai, ...clean.ai },
 			email: { ...row?.email, ...clean.email },
 			revision: (row?.revision ?? 0) + 1,

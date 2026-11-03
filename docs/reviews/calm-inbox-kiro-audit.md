@@ -1,6 +1,6 @@
 # Calm inbox Kiro audit — 2026-10-03
 
-Scope: PR #25, `codex/calm-inbox`, against `f9ee4e560b55b95fa5ab80e676062a75ad2b8745`. Three Kiro CLI agents using `claude-opus-5.5` with high effort independently reviewed Standards, Spec, and performance. Separate frontend/backend Kiro agents implemented the accepted findings; the coordinator fixed workflow navigation and search debounce. A final read-only Kiro review examined the combined changes.
+Scope: PR #25, `codex/calm-inbox`, against `f9ee4e560b55b95fa5ab80e676062a75ad2b8745`. Three independent reviews covered Standards, Spec, and performance. Separate frontend/backend Kiro agents implemented the accepted findings; the coordinator fixed workflow navigation and search debounce. A final read-only Kiro review examined the combined changes.
 
 ## Standards
 

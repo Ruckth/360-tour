@@ -243,7 +243,7 @@ describe("create as confirmed", () => {
     const old = Date.now() - 25 * 60 * 60 * 1000;
     await t.run(async (ctx) => {
       await ctx.db.patch(adminBooking, { createdAt: old });
-      await ctx.db.patch(webBooking, { createdAt: old });
+      await ctx.db.patch(webBooking, { createdAt: old, unpaidHoldExpiresAt: old + 30 * 60_000 });
     });
     expect(await t.mutation(internal.crons.expirePending, {})).toBe(1);
     expect((await t.run((ctx) => ctx.db.get(adminBooking)))?.status).toBe("pending");
@@ -354,8 +354,8 @@ describe("editBooking", () => {
     expect(edited?.stripeCheckoutSessionId).toBeUndefined();
     expect(edited?.stripeCheckoutUrl).toBeUndefined();
     expect(edited?.total).toBe(34000);
-    // A pending booking without a live checkout no longer holds dates.
-    expect(await heldNights(t, bookingId)).toHaveLength(0);
+    // The guest's base hold remains active even after the checkout expires.
+    expect(await heldNights(t, bookingId)).toHaveLength(4);
   });
 
   it("is read-only once cancelled", async () => {

@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { CHAT_BOOKING_TTL_MS } from './bookings';
+import { getEffectiveSettings } from './lib/siteSettings';
 import { appointmentRevision } from './lib/appointmentWindow';
 import { cancelAppointmentRecord } from './lib/appointmentChanges';
 import { enforceRateLimit } from './lib/rateLimit';
@@ -160,7 +160,7 @@ export const confirmChatServiceBooking = internalMutation({
 				staff: firstName((await ctx.db.get(existing.staffId))?.name ?? 'Staff'), alreadyConfirmed: true
 			};
 		}
-		if (Date.now() - quote.createdAt >= CHAT_BOOKING_TTL_MS) {
+		if (Date.now() - quote.createdAt >= (await getEffectiveSettings(ctx)).bookingRules.chatQuoteValidityMinutes * 60_000) {
 			throw new Error('The prepared service booking expired. Call prepare_service_booking again.');
 		}
 		const service = await activeService(ctx, quote.serviceSlug);
@@ -234,7 +234,7 @@ export const cancelChatServiceBooking = internalMutation({
 			date: resortLocalParts(appointment.start).date, time: resortLocalParts(appointment.start).time
 		};
 		const pending = session.pendingServiceCancellation;
-		if (pending?.appointmentId !== appointment._id || pending.expectedRevision !== appointmentRevision(appointment) || pending.createdAt >= args.turnStartedAt || Date.now() - pending.createdAt >= CHAT_BOOKING_TTL_MS) {
+		if (pending?.appointmentId !== appointment._id || pending.expectedRevision !== appointmentRevision(appointment) || pending.createdAt >= args.turnStartedAt || Date.now() - pending.createdAt >= (await getEffectiveSettings(ctx)).bookingRules.chatQuoteValidityMinutes * 60_000) {
 			await ctx.db.patch(args.sessionId, {
 				bookingFlowAt: Date.now(), pendingServiceCancellation: { appointmentId: appointment._id, expectedRevision: appointmentRevision(appointment), createdAt: Date.now() }
 			});

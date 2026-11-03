@@ -10,6 +10,7 @@ import { AdminSettingsView } from "@/components/admin/AdminSettingsView";
 
 const state = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
+  tab: "",
   history: [] as unknown[],
   records: [] as unknown[],
   status: "Exhausted",
@@ -26,7 +27,7 @@ vi.mock("convex/react", () => ({
     return { results: getFunctionName(ref) === "configurationHistory:records" ? state.records : state.history, status: state.status, loadMore: state.loadMore };
   },
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : "") }));
 vi.mock("@/components/admin/SetupChecklist", () => ({ SetupChecklistCard: () => null }));
 vi.mock("@/components/ui/time-picker", () => ({
   TimePicker: ({
@@ -68,6 +69,7 @@ const change = (value: string) =>
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   state.settings = { ...mergeSiteSettings(null), revision: 4 };
+  state.tab = "";
   state.history = [event];
   state.records = [];
   state.status = "Exhausted";
@@ -168,4 +170,26 @@ it("discovers a deleted room and only subscribes to its history when the disclos
   });
   expect(state.pageCalls).toHaveBeenCalledWith("recordHistory:list", { entityType: "room", entityId: "room1" });
   expect(document.body.textContent).toContain("pool.jpg");
+});
+
+it("shows readable booking rule changes in settings history", async () => {
+  state.history = [{ ...event, before: { bookingRules: { minNights: 1, unpaidHoldMinutes: 30 } }, after: { bookingRules: { minNights: 3, unpaidHoldMinutes: 60 } } }];
+  await render(createElement(RecordHistoryPanel, { entityType: "settings", entityId: "default" }));
+  expect(document.body.textContent).toContain("Minimum nights: 3");
+  expect(document.body.textContent).toContain("Unpaid hold (minutes): 60");
+});
+it("saves booking rules using the settings revision and rejects invalid fields inline", async () => {
+  state.tab = "bookingRules";
+  await render(createElement(AdminSettingsView));
+  expect(document.querySelector<HTMLInputElement>("#settings-bookingRules-unpaidHoldMinutes")?.value).toBe("30");
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(state.update).toHaveBeenCalledWith({ expectedRevision: 4, bookingRules: mergeSiteSettings(null).bookingRules });
+  await act(async () => {
+    const field = document.querySelector<HTMLInputElement>("#settings-bookingRules-unpaidHoldMinutes")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "2");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(state.update).toHaveBeenCalledTimes(1);
+  expect(document.body.textContent).toContain("whole number from 10 to 1440");
 });

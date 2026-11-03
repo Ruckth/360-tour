@@ -12,7 +12,9 @@ import {
 	assertValidIsoDate
 } from './lib/validation';
 import { calculateDirectQuote } from './lib/pricing';
-import { demoCode } from './lib/codes';
+import { demoCode, signProposal, verifyProposal } from './lib/codes';
+import { randomSecret } from './lib/displayTokens';
+import { bookingHoldExpiresAt, getEffectiveSettings } from './lib/siteSettings';
 import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 import { requireAdmin } from './lib/adminAuth';
 import { internal } from './_generated/api';
@@ -345,9 +347,7 @@ export const listByProperty = query({
 	}
 });
 
-// --- AI chat booking (prepare → guest says yes → confirm) ---
-
-export const CHAT_BOOKING_TTL_MS = 15 * 60 * 1000;
+// --- AI chat booking (prepare → confirm in chat or pay page) ---
 
 const chatSourceByChannel: Record<Doc<'chatSessions'>['channel'], BookingSource> = {
 	web: 'web',
@@ -368,7 +368,7 @@ export const isChatBookingFlowActive = query({
 	args: { sessionId: v.id('chatSessions') },
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
-		return Boolean(session?.bookingFlowAt && Date.now() - session.bookingFlowAt < CHAT_BOOKING_TTL_MS);
+		return Boolean(session?.bookingFlowAt && Date.now() - session.bookingFlowAt < (await getEffectiveSettings(ctx)).bookingRules.chatQuoteValidityMinutes * 60_000);
 	}
 });
 
@@ -405,14 +405,20 @@ export const prepareChatBooking = internalMutation({
 		assertChatWriteAllowed(session, args.deadlineAt);
 		// WhatsApp numbers are verified by WhatsApp, so never trust a model-supplied phone there.
 		const guestPhone = (
-			session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone
+			session.channel === 'whatsapp' ? session.visitorPhone : (args.guestPhone ?? session.visitorPhone)
 		)?.trim();
-		if (!guestPhone) throw new Error("Ask the guest for their phone number before preparing the booking.");
+		if (!guestPhone) throw new Error('Ask the guest for their phone number before preparing the booking.');
 		const guestName = args.guestName.trim() || session.visitorName?.trim();
-		if (!guestName) throw new Error("Ask the guest for their name before preparing the booking.");
+		if (!guestName) throw new Error('Ask the guest for their name before preparing the booking.');
 
 		const { property, nights, quote } = await quoteBookableStay(ctx, args);
 		const now = Date.now();
+		const { bookingRules } = await getEffectiveSettings(ctx);
+		const proposalId = crypto.randomUUID();
+		const confirmSecret = randomSecret();
+		const expiresAt = now + bookingRules.chatQuoteValidityMinutes * 60_000;
+		const payload = `${args.sessionId}.${proposalId}.${expiresAt}`;
+		const confirmToken = `${payload}.${await signProposal(payload, confirmSecret)}`;
 		await ctx.db.patch(args.sessionId, {
 			bookingFlowAt: now,
 			pendingBookingQuote: {
@@ -425,11 +431,16 @@ export const prepareChatBooking = internalMutation({
 				nights,
 				total: quote.directTotal,
 				currency: quote.currency,
-				createdAt: now
+				createdAt: now,
+				proposalId,
+				confirmSecret,
+				expiresAt
 			}
 		});
 
 		return {
+			confirmToken,
+			expiresAt,
 			property: property.name,
 			checkIn: args.checkIn,
 			checkOut: args.checkOut,
@@ -443,47 +454,151 @@ export const prepareChatBooking = internalMutation({
 	}
 });
 
-export const confirmChatBooking = internalMutation({
-	args: { sessionId: v.id('chatSessions'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
+async function confirmPreparedBooking(
+	ctx: MutationCtx,
+	args: { sessionId: Id<'chatSessions'>; deadlineAt?: number; expectedProposal?: string; byGuest?: boolean }
+) {
+	const session = await loadChatSession(ctx, args.sessionId);
+	// The guest pressing Confirm & pay is not an AI write, so a staff takeover does not block it.
+	if (!args.byGuest) assertChatWriteAllowed(session, args.deadlineAt);
+	const pending = session.pendingBookingQuote;
+	assertSameProposal(pending, args.expectedProposal);
+	if (!pending) throw new Error('No prepared booking. Call prepare_booking first.');
+
+	// Already confirmed (e.g. the guest said "yes" twice): return the same booking.
+	const existing = pending.bookingId ? await ctx.db.get(pending.bookingId) : null;
+	if (existing) {
+		if (existing.status === 'cancelled')
+			throw new Error('That booking has been cancelled. Prepare a new booking if the guest requests one.');
+		return {
+			bookingId: existing._id,
+			accessToken: existing.accessToken ?? '',
+			confirmationCode: existing.confirmationCode ?? '',
+			property: (await ctx.db.get(existing.propertyId))?.name ?? 'Villa',
+			checkIn: existing.checkIn,
+			checkOut: existing.checkOut,
+			guests: existing.guests,
+			nights: existing.nights,
+			total: existing.total,
+			currency: existing.currency,
+			paymentStatus: existing.paymentStatus,
+			alreadyConfirmed: true
+		};
+	}
+
+	if (
+		Date.now() >=
+		(pending.expiresAt ??
+			pending.createdAt + (await getEffectiveSettings(ctx)).bookingRules.chatQuoteValidityMinutes * 60_000)
+	) {
+		await ctx.db.patch(args.sessionId, { pendingBookingQuote: undefined });
+		throw new Error('The prepared booking expired. Call prepare_booking again.');
+	}
+
+	const currentQuote = await quoteBookableStay(ctx, pending);
+	if (currentQuote.quote.directTotal !== pending.total || currentQuote.quote.currency !== pending.currency) {
+		throw new Error('The villa price changed. Prepare a new quote and ask the guest to confirm it.');
+	}
+	const { bookingId, accessToken } = await createBookingRecord(ctx, {
+		propertySlug: pending.propertySlug,
+		checkIn: pending.checkIn,
+		checkOut: pending.checkOut,
+		guests: pending.guests,
+		guestName: pending.guestName,
+		guestPhone: pending.guestPhone,
+		...(session.visitorEmail ? { guestEmail: session.visitorEmail } : {}),
+		source: chatSourceByChannel[session.channel],
+		chatSessionId: args.sessionId
+	});
+	const confirmationCode = demoCode('CONF', bookingId as string);
+	await ctx.db.patch(bookingId, { confirmationCode });
+	await ctx.db.patch(args.sessionId, { pendingBookingQuote: { ...pending, bookingId } });
+
+	return {
+		bookingId,
+		accessToken,
+		confirmationCode,
+		property: currentQuote.property.name,
+		checkIn: pending.checkIn,
+		checkOut: pending.checkOut,
+		guests: pending.guests,
+		nights: pending.nights,
+		total: pending.total,
+		currency: pending.currency,
+		paymentStatus: 'pending' as const,
+		alreadyConfirmed: false
+	};
+}
+
+/** Validate a capability without writing; GETs and messaging-app previews never reserve dates. */
+async function loadConfirmProposal(ctx: QueryCtx | MutationCtx, token: string) {
+	const parts = token.split('.');
+	if (parts.length !== 4) return null;
+	const [sessionKey, proposalId, expiry, signature] = parts;
+	const sessionId = ctx.db.normalizeId('chatSessions', sessionKey);
+	if (!sessionId) return null;
+	const session = await ctx.db.get(sessionId);
+	const pending = session?.pendingBookingQuote;
+	if (
+		!session ||
+		!pending?.confirmSecret ||
+		pending.proposalId !== proposalId ||
+		String(pending.expiresAt) !== expiry ||
+		// Once confirmed, the link keeps leading to that booking's payment while its hold lasts.
+		(!pending.bookingId && Date.now() >= Number(expiry))
+	)
+		return null;
+	if (!(await verifyProposal(parts.slice(0, 3).join('.'), signature, pending.confirmSecret))) return null;
+	const booking = pending.bookingId ? await ctx.db.get(pending.bookingId) : null;
+	if (pending.bookingId && (!booking
+		|| (booking.status !== 'pending' && booking.status !== 'confirmed')
+		|| stayMoney(booking).net >= booking.total
+		|| (booking.status === 'pending' && booking.source !== 'admin' && bookingHoldExpiresAt(booking) <= Date.now()))) return null;
+	return { session, pending, booking };
+}
+
+export const getConfirmProposal = query({
+	args: { token: v.string() },
 	handler: async (ctx, args) => {
-		const session = await loadChatSession(ctx, args.sessionId);
-		assertChatWriteAllowed(session, args.deadlineAt);
-		const pending = session.pendingBookingQuote;
-		assertSameProposal(pending, args.expectedProposal);
-		if (!pending) throw new Error('No prepared booking. Call prepare_booking first.');
+		const result = await loadConfirmProposal(ctx, args.token);
+		if (!result) return null;
+		const { pending, booking } = result;
+		const settings = await getEffectiveSettings(ctx);
+		const property = booking ? await ctx.db.get(booking.propertyId) : await loadProperty(ctx, pending.propertySlug);
+		if (!property) return null;
+		const stay = booking ?? pending;
+		return {
+			property: property.name,
+			checkIn: stay.checkIn,
+			checkOut: stay.checkOut,
+			guests: stay.guests,
+			nights: stay.nights,
+			total: stay.total,
+			currency: stay.currency,
+			cancellationPolicy: settings.cancellationPolicy,
+			unpaidHoldMinutes: settings.bookingRules.unpaidHoldMinutes,
+			holdExpiresAt: booking?.status === 'pending' && booking.source !== 'admin' ? bookingHoldExpiresAt(booking) : null
+		};
+	}
+});
 
-		// Already confirmed (e.g. the guest said "yes" twice): return the same booking.
-		const existing = pending.bookingId ? await ctx.db.get(pending.bookingId) : null;
-		if (existing) {
-			if (existing.status === 'cancelled') throw new Error('That booking has been cancelled. Prepare a new booking if the guest requests one.');
-			return { bookingId: existing._id, accessToken: existing.accessToken ?? '', confirmationCode: existing.confirmationCode ?? '', property: (await ctx.db.get(existing.propertyId))?.name ?? 'Villa', checkIn: existing.checkIn, checkOut: existing.checkOut, guests: existing.guests, nights: existing.nights, total: existing.total, currency: existing.currency, paymentStatus: existing.paymentStatus, alreadyConfirmed: true };
-		}
+export const confirmProposal = mutation({
+	args: { token: v.string() },
+	handler: async (ctx, args) => {
+		const result = await loadConfirmProposal(ctx, args.token);
+		if (!result) throw new Error('This summary has expired. Ask in the chat for a new one.');
+		return await confirmPreparedBooking(ctx, { sessionId: result.session._id, byGuest: true });
+	}
+});
 
-		if (Date.now() - pending.createdAt > CHAT_BOOKING_TTL_MS) {
-			await ctx.db.patch(args.sessionId, { pendingBookingQuote: undefined });
-			throw new Error('The prepared booking expired. Call prepare_booking again.');
-		}
-
-		const currentQuote = await quoteBookableStay(ctx, pending);
-		if (currentQuote.quote.directTotal !== pending.total || currentQuote.quote.currency !== pending.currency) {
-			throw new Error('The villa price changed. Prepare a new quote and ask the guest to confirm it.');
-		}
-		const { bookingId, accessToken } = await createBookingRecord(ctx, {
-			propertySlug: pending.propertySlug,
-			checkIn: pending.checkIn,
-			checkOut: pending.checkOut,
-			guests: pending.guests,
-			guestName: pending.guestName,
-			guestPhone: pending.guestPhone,
-			...(session.visitorEmail ? { guestEmail: session.visitorEmail } : {}),
-			source: chatSourceByChannel[session.channel],
-			chatSessionId: args.sessionId
-		});
-		const confirmationCode = demoCode('CONF', bookingId as string);
-		await ctx.db.patch(bookingId, { confirmationCode });
-		await ctx.db.patch(args.sessionId, { pendingBookingQuote: { ...pending, bookingId } });
-
-		return { bookingId, accessToken, confirmationCode, property: currentQuote.property.name, checkIn: pending.checkIn, checkOut: pending.checkOut, guests: pending.guests, nights: pending.nights, total: pending.total, currency: pending.currency, paymentStatus: 'pending' as const, alreadyConfirmed: false };
+export const confirmChatBooking = internalMutation({
+	args: {
+		sessionId: v.id('chatSessions'),
+		deadlineAt: v.optional(v.number()),
+		expectedProposal: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		return await confirmPreparedBooking(ctx, args);
 	}
 });
 
@@ -561,7 +676,7 @@ export const cancelChatBooking = internalMutation({
 		const confirmedByGuest =
 			pending?.bookingId === booking._id &&
 			pending.createdAt < args.turnStartedAt &&
-			Date.now() - pending.createdAt < CHAT_BOOKING_TTL_MS;
+			Date.now() - pending.createdAt < (await getEffectiveSettings(ctx)).bookingRules.chatQuoteValidityMinutes * 60_000;
 
 		const summary = {
 			reference: bookingReference(booking),

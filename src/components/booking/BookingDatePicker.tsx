@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "convex/_generated/api";
+import { BOOKING_RULE_DEFAULTS } from "convex/lib/siteSettings";
+import { useOptionalConvex } from "@/lib/react/convex";
 import { CalendarDays, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import type { DateRange, DayPickerProps } from "react-day-picker";
@@ -9,7 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { defaultLocale, isLocale } from "@/i18n/routing";
-import { dateToIso, isoToDate, todayIsoLocal } from "@/lib/booking/dates";
+import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +26,8 @@ type BookingRangePickerProps = {
   isDateDisabled: (date: Date) => boolean;
   unavailableDates?: string[];
   helperText?: string;
+  minNights?: number;
+  maxCheckIn?: string;
   compact?: boolean;
   markPastUnavailable?: boolean;
   className?: string;
@@ -49,8 +54,21 @@ export function BookingDatePicker({
   helperText?: string;
   onMonthChange?: (month: Date) => void;
 }) {
+  const convex = useOptionalConvex();
+  const [rules, setRules] = useState(BOOKING_RULE_DEFAULTS);
+  useEffect(() => {
+    let active = true;
+    if (convex) {
+      void convex.query(api.settings.publicProfile, {}).then(profile => {
+        if (active) setRules(profile.bookingRules);
+      }).catch(() => { /* Calendar hints use defaults; the server always enforces current rules. */ });
+    }
+    return () => { active = false; };
+  }, [convex]);
   return (
     <BookingRangePicker
+      minNights={rules.minNights}
+      maxCheckIn={addDaysIso(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }), rules.maxAdvanceDays)}
       checkIn={checkIn}
       checkOut={checkOut}
       onChange={onChange}
@@ -69,6 +87,8 @@ export function BookingRangePicker({
   isDateDisabled,
   unavailableDates = [],
   helperText,
+  minNights = BOOKING_RULE_DEFAULTS.minNights,
+  maxCheckIn,
   compact = false,
   markPastUnavailable = false,
   className,
@@ -109,8 +129,16 @@ export function BookingRangePicker({
     onRangeChange?.();
   }
 
+  function isPickerDateDisabled(date: Date) {
+    if (isDateDisabled(date)) return true;
+    const iso = dateToIso(date);
+    // A departure may be beyond the last allowed arrival date.
+    if (activeField === "checkOut" && checkIn && iso > checkIn) return nightsBetweenIso(checkIn, iso) < minNights;
+    return Boolean(maxCheckIn && iso > maxCheckIn);
+  }
+
   function selectDate(date: Date) {
-    if (isDateDisabled(date)) return;
+    if (isPickerDateDisabled(date)) return;
     const iso = dateToIso(date);
 
     if (activeField === "checkOut") {
@@ -127,7 +155,7 @@ export function BookingRangePicker({
 
     updateRange({
       checkIn: iso,
-      checkOut: checkOut && checkOut > iso ? checkOut : "",
+      checkOut: checkOut && nightsBetweenIso(iso, checkOut) >= minNights ? checkOut : "",
     });
     setActiveField("checkOut");
     setOpen(true);
@@ -159,7 +187,7 @@ export function BookingRangePicker({
       calendarFormatters={calendarFormatters}
       selectedRange={selectedRange}
       defaultMonth={checkOutDate ?? checkInDate}
-      isDateDisabled={isDateDisabled}
+      isDateDisabled={isPickerDateDisabled}
       isUnavailableDate={isUnavailableDate}
       unavailableDayClassName={unavailableDayClassName}
       clearLabel={clearLabel}
