@@ -96,7 +96,7 @@ export function proposalReply(name: string, result: Record<string, unknown>, mes
 	const confirm = { en: 'Reply yes to confirm this summary.', th: 'ตอบ “ใช่” เพื่อยืนยันรายละเอียดนี้ครับ', ko: '이 내용을 확인하고 동의하시면 “네”라고 답해 주세요.' }[locale];
 	if (name === 'prepare_booking' && typeof result.total === 'number') {
 		const title = { en: 'Villa booking proposal — not booked yet.', th: 'รายละเอียดที่เตรียมไว้ ยังไม่ได้สร้างการจองวิลล่าครับ', ko: '빌라 예약 제안입니다. 아직 예약되지 않았습니다.' }[locale];
-		return `${title}\n${result.property} · ${result.checkIn} → ${result.checkOut}\n${result.guests} guests · ${result.nights} nights\n${result.currency} ${result.total.toLocaleString('en-US')}\n${confirm}`;
+		return `${title}\n${result.property} · ${result.checkIn} → ${result.checkOut}\n${result.guests} guests · ${result.nights} nights\n${result.currency} ${result.total.toLocaleString('en-US')}\n${typeof result.confirmUrl === 'string' ? `${{ en: 'Confirm & pay', th: 'ยืนยันและชำระเงิน', ko: '확인 및 결제' }[locale]}: ${result.confirmUrl}\n` : ''}${confirm}`;
 	}
 	if (name === 'prepare_service_booking' && typeof result.price === 'number') {
 		const title = { en: 'Service booking proposal — not confirmed yet.', th: 'รายละเอียดที่เตรียมไว้ ยังไม่ได้ยืนยันการจองบริการครับ', ko: '서비스 예약 제안입니다. 아직 확정되지 않았습니다.' }[locale];

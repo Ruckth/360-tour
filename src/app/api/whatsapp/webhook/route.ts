@@ -1,3 +1,6 @@
+import { withMessagingImages } from "@/lib/server/messaging-images";
+import { cardBrowseMessage } from "convex/lib/replyCards";
+import { richCardsEnabled, whatsappReplyMessages, whatsappText, type WhatsAppContent } from "@/lib/chat/rich-messages";
 import { createHash } from "node:crypto";
 import { api } from "convex/_generated/api";
 import { verifyMetaSignature } from "@/lib/meta/signature";
@@ -15,8 +18,11 @@ type WhatsAppMessage = {
   from?: string;
   timestamp?: string;
   type?: string;
-  text?: {
-    body?: string;
+  text?: { body?: string };
+  interactive?: {
+    type?: string;
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string };
   };
 };
 
@@ -67,11 +73,15 @@ type ClaimedWhatsAppEvent = {
 
 class WhatsAppReplyError extends Error {
   status: number;
+  invalidPayload: boolean;
 
   constructor(status: number, body: string) {
     super(`WhatsApp reply failed (${status}): ${body}`);
     this.name = "WhatsAppReplyError";
     this.status = status;
+    let code: unknown;
+    try { code = JSON.parse(body)?.error?.code; } catch { /* Unrecognized errors are not safe to retry. */ }
+    this.invalidPayload = status === 400 && (code === 100 || code === 131009);
   }
 }
 
@@ -130,12 +140,17 @@ function getWhatsAppAppSecret() {
 }
 
 function classifyWhatsAppMessage(message: WhatsAppMessage): WhatsAppEventType {
-  if (message.type === "text" && message.text?.body?.trim()) return "message";
+  if (getMessageText(message)) return "message";
   return "unsupported";
 }
 
 function getMessageText(message: WhatsAppMessage) {
-  return message.text?.body?.trim() || undefined;
+  if (message.type === "text") return message.text?.body?.trim() || undefined;
+  if (message.type !== "interactive") return;
+  const interactive = message.interactive;
+  // Ignore the client-supplied title. Only our allowlisted browsing IDs become text.
+  return cardBrowseMessage(interactive?.type === "button_reply" ? interactive.button_reply?.id
+    : interactive?.type === "list_reply" ? interactive.list_reply?.id : undefined);
 }
 
 function getEventKey(message: WhatsAppMessage) {
@@ -146,6 +161,7 @@ function getEventKey(message: WhatsAppMessage) {
     timestamp: message.timestamp,
     type: message.type,
     text: message.text,
+    interactive: message.interactive,
   });
   return `derived:${createHash("sha256").update(stablePayload).digest("hex")}`;
 }
@@ -155,21 +171,25 @@ function parseWhatsAppTimestamp(timestamp?: string) {
   return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
 }
 
+function isReplyWindowOpen(timestamp?: number): boolean {
+  return timestamp !== undefined && timestamp <= Date.now() + 5 * 60_000 && Date.now() - timestamp < 24 * 60 * 60_000;
+}
+
 function contactForMessage(change: WhatsAppChange, message: WhatsAppMessage) {
   const contacts = change.value?.contacts ?? [];
   return contacts.find((contact) => contact.wa_id === message.from) ?? contacts[0];
 }
 
-async function sendWhatsAppTextMessage({
+async function sendWhatsAppMessage({
   accessToken,
   phoneNumberId,
   recipientId,
-  text,
+  content,
 }: {
   accessToken: string;
   phoneNumberId: string;
   recipientId: string;
-  text: string;
+  content: WhatsAppContent;
 }) {
   const version = getGraphApiVersion();
   const response = await fetch(
@@ -183,11 +203,7 @@ async function sendWhatsAppTextMessage({
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: recipientId,
-        type: "text",
-        text: {
-          preview_url: true,
-          body: text,
-        },
+        ...content,
       }),
     },
   );
@@ -291,7 +307,15 @@ async function handleWhatsAppMessage({
       return;
     }
 
-    const { responseText, outcome, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveWhatsAppReply({
+    if (!isReplyWindowOpen(eventTimestamp)) {
+      await client.mutation(api.whatsapp.markEventIgnored, {
+        serverSecret: process.env.CONVEX_SERVER_SECRET ?? "", eventId: claimed.eventId,
+        reason: "WhatsApp message is outside the 24-hour reply window or has no valid timestamp",
+      } as never);
+      return;
+    }
+
+    const { responseText, card, outcome, replyMode, timedOut, lateResult } = await measureMessagingStage(turnMetrics, "generation", () => resolveWhatsAppReply({
       client,
       messageText,
       sessionId: claimed.sessionId!,
@@ -309,12 +333,30 @@ async function handleWhatsAppMessage({
       return;
     }
 
-    whatsappReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => sendWhatsAppTextMessage({
-      accessToken,
-      phoneNumberId: phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() ?? "",
-      recipientId: whatsappUserId,
-      text: responseText,
-    }));
+    const delivery = await client.mutation(api.whatsapp.beginDelivery, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "", eventId: claimed.eventId,
+    } as never) as { started: boolean };
+    if (!delivery.started) return;
+
+    whatsappReplyStatus = await measureMessagingStage(turnMetrics, "delivery", async () => {
+      const richCard = richCardsEnabled("whatsapp") ? withMessagingImages(card, getSiteUrl(request)) : undefined;
+      const messages = whatsappReplyMessages(responseText, richCard);
+      const target = { accessToken, phoneNumberId: phoneNumberId ?? process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() ?? "", recipientId: whatsappUserId };
+      let status = 200;
+      for (const [index, content] of messages.entries()) {
+        // Re-check at delivery: generation may have crossed the session-window boundary.
+        if (!isReplyWindowOpen(eventTimestamp)) throw new Error("WhatsApp reply window expired before delivery");
+        try { status = await sendWhatsAppMessage({ ...target, content }); whatsappReplyStatus = status; }
+        catch (error) {
+          if (content.type !== "interactive" || !(error instanceof WhatsAppReplyError) || !error.invalidPayload) throw error;
+          if (!isReplyWindowOpen(eventTimestamp)) throw new Error("WhatsApp reply window expired before fallback delivery");
+          const facts = richCard?.items.map(item => [item.title, ...item.lines,
+            ...item.actions.filter(a => a.type === "uri").map(a => `${a.label}: ${a.url}`)].join("\n")).join("\n\n") ?? "";
+          status = await sendWhatsAppMessage({ ...target, content: whatsappText(index === 0 ? `${facts}\n\n${responseText}` : facts) });
+        }
+      }
+      return status;
+    });
 
     await client.mutation(api.whatsapp.completeEvent, {
       serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",

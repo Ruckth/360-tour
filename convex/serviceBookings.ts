@@ -49,6 +49,7 @@ export const listActiveServices = internalQuery({
 		const services = await ctx.db.query('services').withIndex('by_status', (q) => q.eq('status', 'active')).take(100);
 		return await Promise.all(services.map(async (service) => ({
 			name: service.name,
+			...(service.imageUrl ? { imageUrl: service.imageUrl } : {}),
 			slug: service.slug,
 			description: service.description,
 			category: service.category,

@@ -263,7 +263,7 @@ describe("retired question-bank routing", () => {
         expect(JSON.stringify(messages)).not.toContain("Candidate question-bank items");
         const toolResult = messages.find((message: { role: string }) => message.role === "tool");
         const message = toolResult
-          ? { content: "มีบริการ Traditional Thai Massage ราคา ฿1,500 ครับ" }
+          ? { content: "มีบริการ Traditional Thai Massage ราคา ฿1,500 ครับ [[ANSWERED]]" }
           : { content: null, tool_calls: [{ id: "service-list", type: "function", function: { name: "list_services", arguments: "{}" } }] };
         return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
       });
@@ -274,6 +274,7 @@ describe("retired question-bank routing", () => {
 
       expect(result.response).toContain("Traditional Thai Massage");
       expect(result.response).toContain("฿1,500");
+      expect("card" in result ? result.card : undefined).toMatchObject({ kind: "services", items: [{ title: "Traditional Thai Massage", lines: ["THB 1,500", "60 นาที", "Wellness"] }] });
       expect(fetchMock.mock.calls.some(([, init]) => String((init as RequestInit)?.body).includes("list_services"))).toBe(true);
     } finally {
       vi.unstubAllGlobals();

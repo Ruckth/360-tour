@@ -3,6 +3,8 @@ export const IMAGE_HOSTS = ['images.unsplash.com', 'qr-official.line.me'] as con
 export const IMAGE_HOST_SUFFIX = '.convex.cloud';
 
 export function allowedImageUrl(value: string): boolean {
+  // WHATWG URL parsing treats backslashes as slashes; /\host can become a new origin.
+  if (value.includes('\\') || /[\u0000-\u001f]/.test(value)) return false;
 	if (/^\/(?!\/)\S+$/.test(value)) return true;
 	if (!value.startsWith('https://') || /\s/.test(value)) return false;
 	try {

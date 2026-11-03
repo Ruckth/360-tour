@@ -55,3 +55,13 @@ test.each(['Services can be booked via LINE.', 'Your booking is not confirmed ye
 	const result = await runConciergeTurn({ message: 'Help?', messages: [], tools: BOOKING_TOOLS, deadlineAt: Date.now() + 20000, request: async () => ({ content }), execute: vi.fn() });
 	expect(result).toEqual({ content, failed: false });
 });
+
+
+test('a canonical proposal includes its signed payment link and awaits the guest', async () => {
+  const confirmUrl = 'https://resort.example/booking/pay?proposal=session.id.expiry.signature';
+  const result = await runConciergeTurn({ message: 'Book the villa', messages: [], tools: BOOKING_TOOLS, deadlineAt: Date.now() + 20000,
+    request: async () => call('prepare_booking'), execute: async () => JSON.stringify({ property: 'Villa', checkIn: '2027-01-01', checkOut: '2027-01-03', guests: 2, nights: 2, total: 9000, currency: 'THB', confirmUrl }) });
+  expect(result.outcome).toBe('awaiting_guest');
+  expect(result.content).toContain(`Confirm & pay: ${confirmUrl}`);
+  expect(result.content).toContain('not booked yet');
+});

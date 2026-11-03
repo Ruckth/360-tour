@@ -94,6 +94,7 @@
     "react-textarea-autosize": "^8.5.9",
     "regenerator-runtime": "^0.14.1",
     "resend": "^6.10.0",
+    "sharp": "0.34.5",
     "tailwind-merge": "^3.5.0",
     "tailwind-variants": "^3.2.2",
     "tailwindcss": "^4.2.2",

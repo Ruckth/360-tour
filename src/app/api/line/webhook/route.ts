@@ -1,9 +1,10 @@
+import { withMessagingImages } from "@/lib/server/messaging-images";
 import { createHash } from "node:crypto";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
 import { verifyLineSignature } from "@/lib/line/signature";
 import { measureMessagingStage, startMessagingEventMetrics, recordLateMessagingResult, resolveMessagingReply, storedReplyMode, type MessagingClient } from "@/lib/chat/messaging-reply";
-import { type LineQuickReplyItem } from "@/lib/line/quick-answers";
+import { lineReplyMessages, richCardsEnabled, richReplyFallback } from "@/lib/chat/rich-messages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,14 +37,6 @@ type LineWebhookBody = {
 };
 
 type LineEventType = "message" | "follow" | "postback" | "unsupported";
-
-type LineReplyMessage = {
-  type: "text";
-  text: string;
-  quickReply?: {
-    items: LineQuickReplyItem[];
-  };
-};
 
 type ClaimedLineEvent = {
   eventId: string;
@@ -143,21 +136,13 @@ function getUserContent(eventType: LineEventType, event: LineWebhookEvent) {
   return undefined;
 }
 
-function createLineTextMessage(text: string, quickReplyItems: LineQuickReplyItem[]) {
-  const message: LineReplyMessage = { type: "text", text };
-  if (quickReplyItems.length > 0) {
-    message.quickReply = { items: quickReplyItems };
-  }
-  return message;
-}
-
 async function replyToLine({
   accessToken,
   messages,
   replyToken,
 }: {
   accessToken: string;
-  messages: LineReplyMessage[];
+  messages: object[];
   replyToken: string;
 }) {
   const response = await fetch("https://api.line.me/v2/bot/message/reply", {
@@ -277,7 +262,7 @@ async function handleLineEvent({
     }
 
     const siteUrl = getSiteUrl(request);
-    const { responseText, outcome, replyMode, quickReplyItems, timedOut, lateResult } =
+    const { responseText, card, outcome, replyMode, quickReplyItems, timedOut, lateResult } =
       await measureMessagingStage(turnMetrics, "generation", () => resolveMessagingReply(client as unknown as MessagingClient, {
         channel: "line",
         sessionId: claimed.sessionId!,
@@ -298,11 +283,21 @@ async function handleLineEvent({
       return;
     }
 
-    lineReplyStatus = await measureMessagingStage(turnMetrics, "delivery", () => replyToLine({
-      accessToken,
-      replyToken,
-      messages: [createLineTextMessage(responseText, quickReplyItems ?? [])],
-    }));
+    const delivery = await client.mutation(api.line.beginDelivery, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "", eventId: claimed.eventId,
+    } as never) as { started: boolean };
+    if (!delivery.started) return;
+
+    lineReplyStatus = await measureMessagingStage(turnMetrics, "delivery", async () => {
+      const richCard = richCardsEnabled("line") ? withMessagingImages(card, getSiteUrl(request)) : undefined;
+      try {
+        return await replyToLine({ accessToken, replyToken, messages: lineReplyMessages(responseText, richCard, quickReplyItems) });
+      } catch (error) {
+        // A validation rejection accepted no messages. Never retry an ambiguous send.
+        if (!richCard || !(error instanceof LineReplyError) || error.status !== 400) throw error;
+        return await replyToLine({ accessToken, replyToken, messages: lineReplyMessages(richReplyFallback(responseText, richCard), undefined, quickReplyItems) });
+      }
+    });
 
     // Exactly-once delivery: a late concierge result is recorded, never delivered.
     if (timedOut && lateResult) {

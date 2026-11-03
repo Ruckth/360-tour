@@ -1,3 +1,4 @@
+import { isCardTool, replyCardFromTool, type ReplyCard } from './lib/replyCards';
 import { unknownReply, detectReplyLocale } from "./lib/unknownReply";
 import { factRetrievalEnabled } from "./lib/factRetrieval";
 import { proposalIdentity } from './lib/chatWriteGuard';
@@ -393,10 +394,10 @@ async function policyReply(
 }
 
 /** committed is present when a booking/service/cancellation write succeeded in this turn. */
-export type ConciergeReply = { response: string; model: string; outcome?: ReplyOutcome; committed?: { tool: string } };
+export type ConciergeReply = { response: string; model: string; outcome?: ReplyOutcome; card?: ReplyCard; committed?: { tool: string } };
 
 function withReplyOutcome(reply: ConciergeReply): ConciergeReply {
-  return { ...reply, ...conciergeReplyOutcome(reply.response, reply.model) };
+  return { ...reply, ...conciergeReplyOutcome(reply.response, reply.model), ...(reply.outcome ? { outcome: reply.outcome } : {}) };
 }
 
 export async function generateConciergeReply(
@@ -458,6 +459,7 @@ PROPERTIES:
 ${propertyContext}
 
 CONTEXT AND EVIDENCE:
+- For villa browsing or recommendations, call list_properties so current prices and photos are available for the reply.
 - Fetch facts for this question through tools. The property directory gives identities only: call get_property_details for amenities/capacity, calculate_price for prices, check_availability for dated availability, and list_services for services.
 ${factsEnabled ? '- Call search_business_facts for policies or business facts absent from structured settings/tools. Supply concise English search terms even for Thai/Korean questions; respond in the guest language.' : '- Business fact lookup is temporarily unavailable. Use current structured tools/settings; if they lack the answer, return [[UNKNOWN]].'}
 - For a named property, supply its slug. For follow-ups, resolve the referenced villa from the conversation; ask which villa if ambiguous. The page being viewed is only a hint, never a reason to ignore an explicitly named villa.
@@ -536,6 +538,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	let answerPropertySlug = args.propertySlug ?? session.propertySlug;
  const calls: LlmCallTrace[] = [];
  const toolsUsed: string[] = [];
+ let card: ReplyCard | undefined;
  const factRevisions: Array<{ factId: string; revision: number }> = [];
  const response = await runConciergeTurn({
 		message: args.userMessage,
@@ -551,6 +554,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 		},
 		onTool: async trace => {
 			args.toolTrace?.push(trace);
+            if (isCardTool(trace.name)) card = replyCardFromTool(trace, { siteUrl: args.siteUrl, locale: args.locale });
  toolsUsed.push(trace.name);
  if (trace.name === 'search_business_facts') {
   const evidence = JSON.parse(trace.result) as { error?: string; facts?: Array<{factId:string; revision:number}> };
@@ -589,7 +593,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
     }),
   );
 	const finalModel = response.failed ? 'tool_fallback' : selectedModel;
-	if (conciergeReplyOutcome(response.content ?? '', finalModel).outcome === 'needs_staff') {
+    const outcome = response.outcome ?? conciergeReplyOutcome(response.content ?? '', finalModel).outcome;
+	if (outcome === 'needs_staff') {
 		await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
 			sessionId: args.sessionId,
 			lastMessage: args.userMessage,
@@ -605,6 +610,8 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	return {
 		response: response.content,
 		model: finalModel,
+        outcome,
+        ...(!response.failed && outcome !== 'needs_staff' && card ? { card } : {}),
 		// Lets a messaging adapter that already timed out see that a write committed.
 		...(response.committedTool ? { committed: { tool: response.committedTool } } : {})
 	};

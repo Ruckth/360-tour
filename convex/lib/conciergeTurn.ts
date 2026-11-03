@@ -19,7 +19,7 @@ type TurnOptions = {
 };
 
 /** Bounded model/tool orchestration; writes stay sequential and are never retried here. */
-export async function runConciergeTurn(options: TurnOptions): Promise<{ content: string | null; failed: boolean; committedTool?: string }> {
+export async function runConciergeTurn(options: TurnOptions): Promise<{ content: string | null; failed: boolean; outcome?: 'answered' | 'awaiting_guest'; committedTool?: string }> {
 	const { messages, tools, message } = options;
 	const allowed = new Set(tools.map(tool => tool.function.name));
 	const prepared = new Set<string>();
@@ -94,9 +94,9 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 				messages.push({ role: 'tool', content: result, tool_call_id: call.id });
 			}
 			// A committed transaction has an authoritative reply and needs no further model call.
-			if (committed) return { content: committed, failed: false, committedTool };
-			if (proposal) return { content: proposal, failed: false };
-			if (status && !failedTool) return { content: status, failed: false };
+			if (committed) return { content: committed, failed: false, outcome: 'answered', committedTool };
+			if (proposal) return { content: proposal, failed: false, outcome: 'awaiting_guest' };
+			if (status && !failedTool) return { content: status, failed: false, outcome: 'answered' };
 			response = await request(tools);
 		}
 		if (response.tool_calls?.some(call => /^(?:prepare|confirm|cancel)_/.test(call.function.name))) return { content: toolFailureReply(message), failed: true };
@@ -116,6 +116,6 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 				try { await options.invalidateProposal?.(name); } catch { /* Keep the original failure response. */ }
 			}
 		}
-		return committed ? { content: committed, failed: false, committedTool } : { content: toolFailureReply(message), failed: true };
+		return committed ? { content: committed, failed: false, outcome: 'answered', committedTool } : { content: toolFailureReply(message), failed: true };
 	}
 }

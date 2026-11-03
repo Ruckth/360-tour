@@ -1168,6 +1168,8 @@ export default defineSchema({
 		error: v.optional(v.string()),
 		eventTimestamp: v.optional(v.number()),
 		processingStartedAt: v.number(),
+        /** A provider send may have succeeded; automatic webhook replay is unsafe. */
+        deliveryStartedAt: v.optional(v.number()),
 		processedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number()
@@ -1300,6 +1302,8 @@ export default defineSchema({
 		error: v.optional(v.string()),
 		eventTimestamp: v.optional(v.number()),
 		processingStartedAt: v.number(),
+        /** A provider send may have succeeded; automatic webhook replay is unsafe. */
+        deliveryStartedAt: v.optional(v.number()),
 		processedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number()
