@@ -13,7 +13,7 @@ Reviewed the calendar implementation from `ed07b4a` through `a86c001`, including
 
 ## Standards review and refactoring
 
-No additional production standards finding remained after review. Service changes now load the new service once and check its reviewed terms, qualification and occupancy in the same helper. Details and service updates remain atomic. Submission controls were formatted consistently. No Claude completion markers were found in tracked source or documentation.
+No additional production standards finding remained after review. Service changes now load the new service once and check its reviewed terms, qualification and occupancy in the same helper. Details and service updates remain atomic. Submission controls were formatted consistently.
 
 ## Validation
 

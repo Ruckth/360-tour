@@ -1,6 +1,6 @@
 # SvelteKit 2 + Svelte 5 + Tailwind v4 Integration Skill
 
-A comprehensive Claude skill for building modern web applications with SvelteKit 2, Svelte 5 (with runes), and Tailwind CSS v4.
+A comprehensive coding skill for building modern web applications with SvelteKit 2, Svelte 5 (with runes), and Tailwind CSS v4.
 
 ## Overview
 
@@ -113,9 +113,9 @@ npm run dev
 
 For complete setup instructions, see `references/getting-started.md`.
 
-## Usage with Claude
+## Usage
 
-This skill is designed to be used with Claude's research-first methodology:
+This skill follows a research-first methodology:
 
 1. **Research First**: Search the documentation to understand the recommended approach
 2. **Then Execute**: Implement the solution using discovered patterns and best practices
@@ -290,7 +290,7 @@ This skill contains original authored content created for educational purposes. 
 
 ## Contributing
 
-This skill was generated using the Claude Skill Builder. To report issues or suggest improvements, please open an issue on the skill repository.
+To report issues or suggest improvements, please open an issue on the skill repository.
 
 ## Changelog
 

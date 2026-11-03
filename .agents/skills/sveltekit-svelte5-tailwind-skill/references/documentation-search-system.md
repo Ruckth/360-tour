@@ -14,7 +14,7 @@ Skills that bundle indexed documentation should guide users to perform the searc
 
 **CRITICAL: Research-First Methodology**
 
-Package skills should instruct users (Claude) to follow a research-first approach:
+Package skills should instruct coding agents to follow a research-first approach:
 
 1. **When user requests an implementation:**
    - First, search the documentation to understand the package's recommended approach
@@ -29,7 +29,7 @@ Package skills should instruct users (Claude) to follow a research-first approac
 
 3. **Workflow to teach:**
    - User: "Help me [accomplish task] with {package}"
-   - Claude: Search documentation → Understand approach → Implement solution
+   - Agent: Search documentation → Understand approach → Implement solution
 
 **Do NOT assume:**
 - Access to a specialized search agent

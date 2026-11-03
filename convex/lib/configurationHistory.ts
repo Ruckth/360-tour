@@ -8,6 +8,7 @@ export function settingsSnapshot(settings: EffectiveSettings) {
 	const business = Object.fromEntries(BUSINESS_FIELDS.map((field) => [field, settings[field]]));
 	return {
 		...business,
+		bookingRules: settings.bookingRules,
 		ai: { tone: settings.ai.tone, maxWords: settings.ai.maxWords },
 		email: {
 			fromName: settings.email.fromName,

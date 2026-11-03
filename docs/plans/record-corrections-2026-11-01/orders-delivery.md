@@ -1,6 +1,6 @@
 # Order lifecycle, appointment fees and booking entry: delivery
 
-Branch `fix/audited-record-corrections`, working tree only. Implemented by Kiro (Claude Opus 5.5). No commits, pushes, deploys, live writes, installs, child agents or generated-file edits. Concurrent changes by other workers were preserved.
+Branch `fix/audited-record-corrections`, working tree only. No commits, pushes, deploys, live writes, installs, child agents or generated-file edits. Concurrent changes by other workers were preserved.
 
 Covers audit finding 1 (discard/restore), the order part of 7 (lifecycle history), B5 (no-show fee), B7 for new bookings and calendar moves, B1/B8 for new bookings (custom price, archived villa), B11 for calendar moves, and the remaining financial-delivery edge case (refunded without `refundedAt`).
 

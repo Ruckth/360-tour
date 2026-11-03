@@ -159,7 +159,7 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'prepare_booking',
 			description:
-				'Start a booking as soon as the guest wants to book and you know villa, check-in, check-out, guests and their name. Checks availability, capacity and price itself and prepares the stay for the guest to approve (availability is rechecked on confirmation); it does not create the booking yet. Read the returned summary (villa, dates, guests, total) back and ask the guest to reply "yes". Call again if they change details.',
+				'Start a booking as soon as the guest wants to book and you know villa, check-in, check-out, guests and their name. Checks availability, capacity and price itself and prepares the stay for the guest to approve (availability is rechecked on confirmation); it does not create the booking yet. Read the returned summary (villa, dates, guests, total) back and share confirmUrl as "Confirm & pay" and offer replying "yes". No booking or date hold exists yet. Call again if they change details.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -182,7 +182,7 @@ export const BOOKING_TOOLS: ToolDef[] = [
 		function: {
 			name: 'confirm_booking',
 			description:
-				'Create the booking held by prepare_booking, once the guest agrees to its summary in a later message (yes, ok, confirm, ใช่, ยืนยัน…). Returns the confirmation code and paymentUrl to share. Takes no arguments.',
+				'Create the pending booking proposed by prepare_booking (also available via its Confirm & pay link), once the guest agrees to its summary in a later message (yes, ok, confirm, ใช่, ยืนยัน…). Returns the confirmation code and paymentUrl to share. Takes no arguments.',
 			parameters: { type: 'object', properties: {} }
 		}
 	},
@@ -439,7 +439,10 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 				guestName: String(fnArgs.guestName ?? ''),
 				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {})
 			});
-			return JSON.stringify({ ...summary, next: 'Ask the guest to reply "yes" to confirm.' });
+			const { confirmToken, ...details } = summary;
+			const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
+			const confirmUrl = `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}`;
+			return JSON.stringify({ ...details, confirmUrl, next: 'Share confirmUrl as "Confirm & pay", or offer replying "yes". No booking or hold exists until confirmation.' });
 		}
 
 		case 'confirm_booking': {

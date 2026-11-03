@@ -1,5 +1,43 @@
+import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
+
+export const bookingRulesValidator = v.object({
+	unpaidHoldMinutes: v.optional(v.number()),
+	chatQuoteValidityMinutes: v.optional(v.number()),
+	preArrivalDaysBefore: v.optional(v.number()),
+	reviewDaysAfter: v.optional(v.number()),
+	minNights: v.optional(v.number()),
+	maxAdvanceDays: v.optional(v.number()),
+	sameDayCutoff: v.optional(v.string())
+});
+export const BOOKING_RULE_DEFAULTS = {
+	unpaidHoldMinutes: 30,
+	chatQuoteValidityMinutes: 15,
+	preArrivalDaysBefore: 3,
+	reviewDaysAfter: 1,
+	minNights: 1,
+	maxAdvanceDays: 365,
+	sameDayCutoff: ''
+};
+export type BookingRules = typeof BOOKING_RULE_DEFAULTS;
+export const BOOKING_RULE_RANGES = {
+	unpaidHoldMinutes: [10, 1440],
+	chatQuoteValidityMinutes: [1, 1440],
+	preArrivalDaysBefore: [1, 30],
+	reviewDaysAfter: [1, 7],
+	minNights: [1, 365],
+	maxAdvanceDays: [0, 730]
+} as const;
+/** All booking timing and policy consumers resolve defaults here; old rows need no backfill. */
+export function resolveBookingRules(row: Pick<Doc<'siteSettings'>, 'bookingRules'> | null): BookingRules {
+	const rules = { ...BOOKING_RULE_DEFAULTS };
+	for (const key of Object.keys(BOOKING_RULE_RANGES) as (keyof typeof BOOKING_RULE_RANGES)[]) {
+		rules[key] = row?.bookingRules?.[key] ?? BOOKING_RULE_DEFAULTS[key];
+	}
+	rules.sameDayCutoff = row?.bookingRules?.sameDayCutoff ?? '';
+	return rules;
+}
 
 /**
  * Built-in values used until an admin saves Settings. Business values mirror
@@ -44,6 +82,7 @@ export type BusinessSettings = Record<BusinessField, string>;
 export type AiSettings = { tone: string; extraInstructions: string; maxWords: number };
 export type EmailSettings = { fromName: string; ownerNotificationEmail: string; footer: string };
 export type EffectiveSettings = BusinessSettings & {
+	bookingRules: BookingRules;
 	ai: AiSettings;
 	email: EmailSettings;
 	demoDefaultFields?: BusinessField[];
@@ -57,6 +96,7 @@ export function mergeSiteSettings(row: Doc<'siteSettings'> | null): EffectiveSet
 	for (const field of BUSINESS_FIELDS) business[field] = row?.[field] ?? SITE_DEFAULTS[field];
 	return {
 		...business,
+		bookingRules: resolveBookingRules(row),
 		demoDefaultFields: BUSINESS_FIELDS.filter(field => row?.[field] === undefined),
 		ai: {
 			tone: row?.ai?.tone || SITE_DEFAULTS.ai.tone,
@@ -176,6 +216,7 @@ function cleanText<K extends string>(
 
 export type SettingsInput = {
 	business?: Partial<BusinessSettings>;
+	bookingRules?: Partial<BookingRules>;
 	ai?: Partial<AiSettings>;
 	email?: Partial<EmailSettings>;
 };
@@ -190,11 +231,35 @@ export function validateSettingsInput(input: SettingsInput) {
 		ai = cleanText(text, AI_RULES, 'ai.', errors);
 		if (maxWords !== undefined) {
 			if (!Number.isInteger(maxWords) || maxWords < MAX_WORDS_RANGE.min || maxWords > MAX_WORDS_RANGE.max) {
-				errors['ai.maxWords'] = `Max words must be a whole number from ${MAX_WORDS_RANGE.min} to ${MAX_WORDS_RANGE.max}.`;
+				errors['ai.maxWords'] =
+					`Max words must be a whole number from ${MAX_WORDS_RANGE.min} to ${MAX_WORDS_RANGE.max}.`;
 			}
 			ai.maxWords = maxWords;
 		}
 	}
 	const emailValues = input.email ? cleanText(input.email, EMAIL_RULES, 'email.', errors) : undefined;
-	return { business, ai, email: emailValues, errors };
+	const bookingRules = input.bookingRules ? { ...input.bookingRules } : undefined;
+	if (bookingRules) {
+		for (const key of Object.keys(BOOKING_RULE_RANGES) as (keyof typeof BOOKING_RULE_RANGES)[]) {
+			const value = bookingRules[key];
+			const [min, max] = BOOKING_RULE_RANGES[key];
+			if (value !== undefined && (!Number.isInteger(value) || value < min || value > max))
+				errors[`bookingRules.${key}`] = `${key} must be a whole number from ${min} to ${max}.`;
+		}
+		if (bookingRules.sameDayCutoff !== undefined) {
+			bookingRules.sameDayCutoff = bookingRules.sameDayCutoff.trim();
+			if (bookingRules.sameDayCutoff && !TIME.test(bookingRules.sameDayCutoff))
+				errors['bookingRules.sameDayCutoff'] = 'Use 24-hour HH:mm, e.g. 14:00.';
+		}
+	}
+	return { business, ai, email: emailValues, bookingRules, errors };
+}
+
+/** A reserved Stripe request also protects dates if its HTTP response was lost. */
+export function bookingHoldExpiresAt(booking: Doc<'bookings'>): number {
+	return Math.max(
+		booking.unpaidHoldExpiresAt ?? booking.createdAt + 24 * 60 * 60_000,
+		booking.stripeCheckoutExpiresAt ?? 0,
+		booking.checkoutRequest?.expiresAt ?? 0
+	);
 }

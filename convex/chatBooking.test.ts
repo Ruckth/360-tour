@@ -105,7 +105,7 @@ describe("AI chat booking", () => {
     await t.run(async (ctx) => {
       const session = await ctx.db.get(sessionId);
       await ctx.db.patch(sessionId, {
-        pendingBookingQuote: { ...session!.pendingBookingQuote!, createdAt: Date.now() - 16 * 60_000 },
+        pendingBookingQuote: { ...session!.pendingBookingQuote!, createdAt: Date.now() - 16 * 60_000, expiresAt: Date.now() - 60_000 },
       });
     });
 
@@ -286,7 +286,7 @@ describe("AI chat booking through generateReply", () => {
     expect(bookings[0]).toMatchObject({ source: "line", guestPhone: "0812345678" });
   });
 
-  it("tells the model the guest name and the held booking waiting for yes", async () => {
+  it("tells the model the guest name and the proposal waiting for yes", async () => {
     const { t, sessionId } = await setup("whatsapp");
     const reply = (userMessage: string) =>
       t.action(api.chatAi.generateReply, { sessionId, userMessage, channel: "whatsapp", bookingFlow: true });
@@ -314,7 +314,7 @@ describe("AI chat booking through generateReply", () => {
       await reply("yes");
       captureSystemPrompt();
     });
-    expect(systemPrompts[0]).toContain(`HELD BOOKING waiting for the guest's yes: Pool Villa, ${checkIn} to ${checkOut}, 2 guests, Rugby`);
+    expect(systemPrompts[0]).toContain(`PROPOSAL (no booking or hold yet) waiting for the guest's yes: Pool Villa, ${checkIn} to ${checkOut}, 2 guests, Rugby`);
   });
 
   it("forces a text reply when the model keeps calling tools", async () => {

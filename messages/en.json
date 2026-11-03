@@ -129,6 +129,12 @@
     "hostSupport": "Host direct support"
   },
   "Booking": {
+    "confirmAndPay": "Confirm and pay",
+    "summaryExpired": "This summary has expired. Ask in the chat for a new one.",
+    "summaryPriceChanged": "The villa price changed. Ask in the chat for a new summary.",
+    "cancellationPolicy": "Cancellation policy",
+    "holdAfterConfirm": "Dates are held for {minutes} minutes after you confirm. Starting payment extends the hold until checkout expires.",
+    "holdUntil": "Your dates are held until {time}.",
     "directBooking": "Direct Booking",
     "reserveTitle": "Reserve your villa",
     "liveInventoryNotice": "Checking live inventory and availability...",

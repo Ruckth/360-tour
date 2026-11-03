@@ -12,7 +12,7 @@ async function setup(deposit = 0) {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
-  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: '2030-01-01', checkOut: '2030-01-03', guests: 2 });
+  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   if (deposit) await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: deposit, paymentStatus: 'paid' }));
   const begin = () => t.mutation(internal.payments.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
   const start = async () => {
@@ -151,7 +151,7 @@ it('retains actual fully-refunded legacy money without inventing an original pay
 });
 it('expires pending bookings with an atomic system history and revision', async () => {
   const { t, bookingId, read } = await setup();
-  await t.run(ctx => ctx.db.patch(bookingId, { createdAt: now - 2 * 86_400_000 }));
+  await t.run(ctx => ctx.db.patch(bookingId, { createdAt: now - 2 * 86_400_000, unpaidHoldExpiresAt: now - 1 }));
   expect(await t.mutation(internal.crons.expirePending, {})).toBe(1);
   expect(await read()).toMatchObject({ status: 'cancelled', cancelledBy: 'system:expiry', revision: 1 });
   expect((await t.run(ctx => ctx.db.query('recordChanges').take(10))).some(r => r.kind === 'pending_expired')).toBe(true);

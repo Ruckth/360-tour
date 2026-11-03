@@ -129,6 +129,12 @@
     "hostSupport": "房东直接支持"
   },
   "Booking": {
+    "confirmAndPay": "确认并付款",
+    "summaryExpired": "此摘要已过期。请在聊天中索取新的摘要。",
+    "summaryPriceChanged": "别墅价格已变更。请在聊天中索取新的摘要。",
+    "cancellationPolicy": "取消政策",
+    "holdAfterConfirm": "确认后，日期将为您保留{minutes}分钟。开始付款后，保留时间将延长至付款会话过期。",
+    "holdUntil": "您的日期将保留至{time}。",
     "directBooking": "直接预订",
     "reserveTitle": "预订您的别墅",
     "liveInventoryNotice": "正在检查实时房源和可订日期...",

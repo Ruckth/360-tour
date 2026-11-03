@@ -129,6 +129,12 @@
     "hostSupport": "Soporte directo del anfitrión"
   },
   "Booking": {
+    "confirmAndPay": "Confirmar y pagar",
+    "summaryExpired": "Este resumen ha caducado. Pide uno nuevo en el chat.",
+    "summaryPriceChanged": "El precio de la villa ha cambiado. Pide un nuevo resumen en el chat.",
+    "cancellationPolicy": "Política de cancelación",
+    "holdAfterConfirm": "Las fechas se reservan durante {minutes} minutos después de confirmar. Al iniciar el pago, la reserva se amplía hasta que caduque la sesión de pago.",
+    "holdUntil": "Tus fechas están reservadas hasta {time}.",
     "directBooking": "Reserva directa",
     "reserveTitle": "Reserve su villa",
     "liveInventoryNotice": "Comprobando inventario y disponibilidad en vivo...",

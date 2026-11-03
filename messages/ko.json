@@ -129,6 +129,12 @@
     "hostSupport": "호스트 직접 지원"
   },
   "Booking": {
+    "confirmAndPay": "확인 및 결제",
+    "summaryExpired": "이 요약의 유효기간이 만료되었습니다. 채팅에서 새 요약을 요청해 주세요.",
+    "summaryPriceChanged": "빌라 가격이 변경되었습니다. 채팅에서 새 요약을 요청해 주세요.",
+    "cancellationPolicy": "취소 정책",
+    "holdAfterConfirm": "확인 후 {minutes}분 동안 날짜가 확보됩니다. 결제를 시작하면 결제 세션이 만료될 때까지 연장됩니다.",
+    "holdUntil": "날짜는 {time}까지 확보됩니다.",
     "directBooking": "직접 예약",
     "reserveTitle": "빌라 예약하기",
     "liveInventoryNotice": "실시간 객실 및 예약 가능 여부를 확인하는 중...",

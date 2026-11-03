@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import {
+  BOOKING_RULE_RANGES,
   MAX_WORDS_RANGE,
   validateSettingsInput,
   type EffectiveSettings,
@@ -69,6 +70,8 @@ export function AdminSettingsView() {
           <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
           <SettingsForm key={tab} section="business" settings={settings} />
+        ) : tab === "bookingRules" ? (
+          <SettingsForm key={tab} section="bookingRules" settings={settings} />
         ) : tab === "ai" ? (
           <SettingsForm key={tab} section="ai" settings={settings} />
         ) : (
@@ -92,12 +95,26 @@ type FieldDef = {
   required?: boolean;
 };
 
-type Section = "business" | "ai" | "email";
+type Section = "business" | "ai" | "email" | "bookingRules";
 
 const SECTIONS: Record<
   Section,
   { title: string; description: string; fields: (s: EffectiveSettings) => FieldDef[]; values: (s: EffectiveSettings) => Record<string, string> }
 > = {
+  bookingRules: {
+    title: "Booking rules",
+    description: "Timing and stay limits for online villa bookings. Staff-created bookings are exempt from stay limits and unpaid expiry.",
+    fields: () => [
+      { name: "unpaidHoldMinutes", label: "Hold unpaid bookings for", type: "number", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
+      { name: "chatQuoteValidityMinutes", label: "Chat summary valid for", type: "number", hint: "Minutes a guest has to confirm a booking summary sent in chat." },
+      { name: "preArrivalDaysBefore", label: "Pre-arrival email days before check-in", type: "number", hint: "Includes late bookings up to the day before arrival." },
+      { name: "reviewDaysAfter", label: "Review email days after check-out", type: "number", hint: "Catches up through 7 days after check-out." },
+      { name: "minNights", label: "Minimum nights", type: "number" },
+      { name: "maxAdvanceDays", label: "Maximum advance booking days", type: "number" },
+      { name: "sameDayCutoff", label: "Same-day booking cutoff", type: "time", hint: "Resort time (Asia/Bangkok). Leave blank for no cutoff." },
+    ],
+    values: (s) => Object.fromEntries(Object.entries(s.bookingRules).map(([key, value]) => [key, String(value)])),
+  },
   business: {
     title: "Business profile",
     description: "Used by the AI concierge, emails and the admin. The public website still shows its built-in content.",
@@ -183,6 +200,12 @@ const SECTIONS: Record<
 };
 
 function toInput(section: Section, values: Record<string, string>): SettingsInput {
+  if (section === "bookingRules") {
+    return { bookingRules: {
+      ...Object.fromEntries(Object.keys(BOOKING_RULE_RANGES).map(key => [key, values[key].trim() === "" ? NaN : Number(values[key])])),
+      sameDayCutoff: values.sameDayCutoff,
+    } };
+  }
   if (section === "ai") {
     const maxWords = values.maxWords.trim() === "" ? NaN : Number(values.maxWords);
     return { ai: { tone: values.tone, extraInstructions: values.extraInstructions, maxWords } };

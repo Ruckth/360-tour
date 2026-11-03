@@ -1,3 +1,4 @@
+import { bookingHoldExpiresAt } from './lib/siteSettings';
 import { v } from 'convex/values';
 import { action, internalMutation, mutation } from './_generated/server';
 import { internal } from './_generated/api';
@@ -31,7 +32,7 @@ export const beginCheckout = internalMutation({
     }
     if (!isPayable(booking)) throw new Error('Booking is no longer payable');
     const now = Date.now();
-    if (booking.status === 'pending' && booking.source !== 'admin' && now - booking.createdAt >= 24 * 60 * 60 * 1000) {
+    if (booking.status === 'pending' && booking.source !== 'admin' && now >= bookingHoldExpiresAt(booking)) {
       throw new Error('Booking expired. Please create a new booking.');
     }
     if (booking.stripeCheckoutUrl && (booking.stripeCheckoutExpiresAt ?? 0) > now) {
@@ -60,6 +61,9 @@ export const beginCheckout = internalMutation({
       siteUrl: args.siteUrl,
       guestEmail: booking.guestEmail,
     };
+    // Stripe requires at least 30 minutes. Starting checkout extends the hold to this
+    // one-hour session expiry, including an in-flight request whose response is lost.
+    await ctx.scheduler.runAt(request.expiresAt, internal.crons.expireBookingHold, { bookingId: booking._id, expectedRevision: booking.revision ?? 0 });
     await ctx.db.patch(booking._id, {
       checkoutAttempt: request.attempt,
       checkoutRequest: request,
@@ -112,7 +116,7 @@ export const saveCheckoutSession = internalMutation({
       stripeCheckoutExpiresAt: args.expiresAt,
       checkoutRequest: undefined,
     });
-    await ctx.scheduler.runAt(args.expiresAt + 60 * 60 * 1000, internal.payments.expireCheckout, {
+    await ctx.scheduler.runAt(args.expiresAt, internal.payments.expireCheckout, {
       bookingId: args.bookingId,
       sessionId: args.sessionId,
     });
@@ -132,11 +136,11 @@ export const expireCheckout = internalMutation({
       }, { actor: 'system:stripe', kind: 'checkout_expired', details: { sessionId: args.sessionId } });
       return;
     }
+    if (bookingHoldExpiresAt(booking) > Date.now()) return;
     await releaseBookingDates(ctx, booking);
     await writeBooking(ctx, booking, {
       status: 'cancelled', paymentStatus: stayMoney(booking).gross > 0 ? booking.paymentStatus : 'failed', cancelledAt: Date.now(), cancelledBy: 'system:stripe',
-      stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined,
-      checkoutRequest: undefined, stripeCheckoutAmount: undefined,
+      stripeCheckoutUrl: undefined, checkoutRequest: undefined,
     }, { actor: 'system:stripe', kind: 'checkout_expired', details: { sessionId: args.sessionId } });
   },
 });
@@ -213,7 +217,7 @@ export const completeCheckout = internalMutation({
     paymentIntentId: v.string(),
   },
   handler: async (ctx, args) => {
-    const booking = await ctx.db.get(args.bookingId);
+    let booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error('Booking not found');
     if (!Number.isSafeInteger(args.amountTotal) || args.amountTotal <= 0 || booking.currency.toLowerCase() !== args.currency.toLowerCase()) throw new Error('Checkout amount mismatch');
     const key = `stripe-checkout:${args.sessionId}`;
@@ -227,13 +231,22 @@ export const completeCheckout = internalMutation({
     // Redelivery of a completion the pre-itemisation code already recorded: the signed event names
     // this stay's legacy Stripe PaymentIntent (unique per payment) and its exact amount. A later
     // checkout may have replaced the stored session, so the session id is not required to match.
-    const hasItemised = Boolean(await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', booking._id)).first());
+    const hasItemised = Boolean(await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', args.bookingId)).first());
     const legacy = legacyStripeCharge(booking, hasItemised);
     if (legacy && legacy.paymentIntentId === args.paymentIntentId) {
       if (Math.round(legacy.gross * 100) !== args.amountTotal) throw new Error('Checkout replay mismatch');
       return;
     }
     if (booking.stripeCheckoutSessionId !== args.sessionId) throw new Error('Checkout session mismatch');
+    // An expiry can win the race with a delayed signed completion. Recover only an
+    // automatically expired stay, with the original session and amount. The payment
+    // writer rechecks occupancy atomically; a sold night fails for host reconciliation.
+    if (booking.status === 'cancelled' && (booking.cancelledBy === 'system:expiry' || booking.cancelledBy === 'system:stripe') &&
+      Math.round((booking.stripeCheckoutAmount ?? booking.total) * 100) === args.amountTotal &&
+      Math.round(checkoutBalance(booking) * 100) === args.amountTotal) {
+      booking = await writeBooking(ctx, booking, { status: 'pending', paymentStatus: 'pending', cancelledAt: undefined, cancelledBy: undefined },
+        { actor: 'system:stripe', kind: 'checkout_recovered' });
+    }
     // checkoutBalance > 0 means no credit, so it equals stayMoney().owed, which recordStayPayment checks again.
     if (!isPayable(booking) || Math.round((booking.stripeCheckoutAmount ?? booking.total) * 100) !== args.amountTotal || Math.round(checkoutBalance(booking) * 100) !== args.amountTotal) throw new Error('Checkout amount mismatch');
     const { paymentId } = await recordStayPayment(ctx, booking._id, { origin: 'online', method: 'stripe', actor: 'system:stripe', legacyMethod: 'stripe', expectedAmount: args.amountTotal / 100, idempotencyKey: key });

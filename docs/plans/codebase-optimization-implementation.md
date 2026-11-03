@@ -1,6 +1,6 @@
 # Codebase optimization implementation
 
-Implemented on 3 October 2026 using Kiro CLI (`claude-opus-5.5`, high effort), followed by independent Standards and Spec audits and regression fixes. The initial baseline was `ae5c123`; the final branch also incorporates `abe7717` from `main`, preserving the newer Luna default, optional Sol response validation, and optional guest details for manual service bookings. See [the plan](./codebase-optimization.md) and [the audit](./codebase-optimization-audit.md).
+Implemented on 3 October 2026, followed by independent Standards and Spec audits and regression fixes. The initial baseline was `ae5c123`; the final branch also incorporates `abe7717` from `main`, preserving the newer Luna default, optional Sol response validation, and optional guest details for manual service bookings. See [the plan](./codebase-optimization.md) and [the audit](./codebase-optimization-audit.md).
 
 ## Resulting behavior
 

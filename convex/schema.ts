@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { inboxReasonValidator } from './lib/inboxTypes';
 import { v } from 'convex/values';
+import { bookingRulesValidator } from './lib/siteSettings';
 import {
 	bookingPriceOverride,
 	correctedTender,
@@ -162,6 +163,8 @@ export default defineSchema({
 		legacyStripeGross: v.optional(v.number()),
 		stripeCheckoutUrl: v.optional(v.string()),
 		stripeCheckoutExpiresAt: v.optional(v.number()),
+		/** Original guest hold deadline; absent legacy bookings retain their 24-hour hold. */
+		unpaidHoldExpiresAt: v.optional(v.number()),
 		checkoutAttempt: v.optional(v.number()),
 		checkoutRequest: v.optional(v.object({
 			attempt: v.number(),
@@ -1025,6 +1028,9 @@ export default defineSchema({
 				total: v.number(),
 				currency: v.string(),
 				createdAt: v.number(),
+				confirmSecret: v.optional(v.string()),
+				proposalId: v.optional(v.string()),
+				expiresAt: v.optional(v.number()),
 				bookingId: v.optional(v.id('bookings'))
 			})
 		),
@@ -1540,6 +1546,7 @@ export default defineSchema({
 	// Admin-editable business profile; a single row with key 'default'. Missing fields fall back to lib/siteSettings defaults.
 	siteSettings: defineTable({
 		key: v.literal('default'),
+		bookingRules: v.optional(bookingRulesValidator),
 		revision: v.optional(v.number()),
 		businessName: v.optional(v.string()),
 		tagline: v.optional(v.string()),

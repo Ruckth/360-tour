@@ -129,6 +129,12 @@
     "hostSupport": "ホスト直接サポート"
   },
   "Booking": {
+    "confirmAndPay": "確定して支払う",
+    "summaryExpired": "この見積もりの有効期限が切れました。チャットで新しい見積もりを依頼してください。",
+    "summaryPriceChanged": "ヴィラの料金が変更されました。チャットで新しい見積もりを依頼してください。",
+    "cancellationPolicy": "キャンセルポリシー",
+    "holdAfterConfirm": "確定後、日程は{minutes}分間仮押さえされます。支払いを開始すると、決済セッションの有効期限まで延長されます。",
+    "holdUntil": "日程は{time}まで仮押さえされています。",
     "directBooking": "直接予約",
     "reserveTitle": "ヴィラを予約",
     "liveInventoryNotice": "リアルタイム在庫と空室状況を確認しています...",

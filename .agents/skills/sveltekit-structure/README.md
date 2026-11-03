@@ -13,5 +13,5 @@ nested layouts, error boundaries, and hydration.
 
 ## Usage
 
-This skill is automatically discovered by Claude when relevant to the
+This skill is automatically discovered by coding agents when relevant to the
 task.

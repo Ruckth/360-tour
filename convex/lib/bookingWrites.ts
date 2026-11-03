@@ -1,3 +1,7 @@
+import { getEffectiveSettings } from './siteSettings';
+import { resortLocalParts } from './serviceSlots';
+import { blockBookingDates } from './availabilityWrites';
+import { internal } from '../_generated/api';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nightsBetween, todayIso } from './dates';
@@ -33,6 +37,7 @@ export type BookingInput = StayInput & {
 /** Server-only policy: callers must authenticate the admin before enabling either relaxation. */
 type StayPolicy = {
 	allowPastCheckIn?: boolean;
+	admin?: boolean;
 	/** Accept an archived (not draft) villa, for recording a past stay there. */
 	allowArchivedProperty?: boolean;
 };
@@ -131,6 +136,16 @@ export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: Stay
 	const property = await loadProperty(ctx, input.propertySlug, policy);
 	assertCapacity(property, input.guests);
 	const nights = assertStayDates(input.checkIn, input.checkOut, policy);
+	if (!policy.admin) {
+		const { bookingRules: rules } = await getEffectiveSettings(ctx);
+		const local = resortLocalParts(Date.now());
+		if (input.checkIn < local.date) throw new Error('Check-in date cannot be in the past');
+		if (nights < rules.minNights) throw new Error(`Minimum stay is ${rules.minNights} nights.`);
+		if (nightsBetween(local.date, input.checkIn) > rules.maxAdvanceDays)
+			throw new Error(`Check-in must be within ${rules.maxAdvanceDays} days.`);
+		if (input.checkIn === local.date && rules.sameDayCutoff && local.time >= rules.sameDayCutoff)
+			throw new Error(`Same-day check-in closes at ${rules.sameDayCutoff} resort time.`);
+	}
 	await assertStayFree(ctx, property._id, input.checkIn, input.checkOut);
 
 	return { property, nights, quote: calculateDirectQuote(property, nights) };
@@ -138,11 +153,14 @@ export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: Stay
 
 export async function createBookingRecord(ctx: MutationCtx, input: BookingInput, policy: StayPolicy = {}) {
 	const { guestName, guestPhone, guestEmail } = cleanGuestDetails(input);
-	const { property, nights, quote } = await quoteBookableStay(ctx, input, policy);
+	const { property, nights, quote } = await quoteBookableStay(ctx, input, { ...policy, admin: input.source === 'admin' });
 	const actor = input.actor ?? `system:${input.source}`;
 
 	const accessToken = crypto.randomUUID();
 	const { guestPhoneDigits, guestEmailNormalized } = guestLookupFields({ guestPhone, guestEmail });
+	const createdAt = Date.now();
+	const unpaidHoldExpiresAt = input.source === 'admin' ? undefined
+		: createdAt + (await getEffectiveSettings(ctx)).bookingRules.unpaidHoldMinutes * 60_000;
 	const bookingId = await ctx.db.insert('bookings', {
 		propertyId: property._id,
 		tenantId: property.tenantId,
@@ -167,9 +185,18 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		revision: 0,
 		createdBy: actor,
 		...(input.guestEmailsOff ? { guestEmailsOff: true } : {}),
-		createdAt: Date.now()
+		createdAt,
+		unpaidHoldExpiresAt
 	});
 	const created = (await ctx.db.get(bookingId))!;
+	if (input.source !== 'admin') {
+		await blockBookingDates(ctx, created, bookingId);
+		await ctx.scheduler.runAt(
+			unpaidHoldExpiresAt!,
+			internal.crons.expireBookingHold,
+			{ bookingId, expectedRevision: created.revision ?? 0 }
+		);
+	}
 	await appendBookingHistory(ctx, bookingId, {
 		actor, kind: 'created',
 		...(input.archivedVillaReason ? { reason: input.archivedVillaReason } : {}),
