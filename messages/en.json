@@ -621,5 +621,21 @@
     "paidDate": "Paid date",
     "paymentMethodDemo": "Payment method: Demo card ending in 4242",
     "paidNotice": "Paid in full. This receipt is for demo purposes and no real card was charged."
+  },
+  "ServiceCatalog": {
+    "title": "Explore our services",
+    "intro": "Browse by category, compare current prices, and ask our concierge about a date and time.",
+    "categories": "Service categories",
+    "all": "All services",
+    "search": "Search",
+    "searchPlaceholder": "Search service names",
+    "empty": "No services match this search. Try another name or category.",
+    "unavailable": "The service catalog is temporarily unavailable. Please try again shortly.",
+    "ask": "Ask about this service",
+    "minutes": "min",
+    "next": "Next services",
+    "first": "Back to first page",
+    "moreCategories": "More categories",
+    "draft": "I am interested in {name}. Please help me choose a date and time."
   }
 }

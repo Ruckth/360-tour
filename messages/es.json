@@ -621,5 +621,21 @@
     "paidDate": "Fecha de pago",
     "paymentMethodDemo": "Método de pago: tarjeta demo terminada en 4242",
     "paidNotice": "Pagado por completo. Este recibo es solo de demostración y no se cargó ninguna tarjeta real."
+  },
+  "ServiceCatalog": {
+    "title": "Explora nuestros servicios",
+    "intro": "Busca por categoría, compara precios actuales y consulta fechas y horarios con nuestro conserje.",
+    "categories": "Categorías de servicios",
+    "all": "Todos los servicios",
+    "search": "Buscar",
+    "searchPlaceholder": "Buscar por nombre",
+    "empty": "No hay servicios coincidentes. Prueba otro nombre o categoría.",
+    "unavailable": "El catálogo no está disponible temporalmente. Inténtalo de nuevo más tarde.",
+    "ask": "Consultar este servicio",
+    "minutes": "min",
+    "next": "Servicios siguientes",
+    "first": "Primera página",
+    "moreCategories": "Más categorías",
+    "draft": "Me interesa {name}. Ayúdame a elegir una fecha y hora."
   }
 }

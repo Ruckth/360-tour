@@ -170,6 +170,7 @@ export type ChatExperienceProps = {
   lineQrImage?: string;
   /** Overlay only: open once after mount, for a widget loaded by launcher activation. */
   initialOpen?: boolean;
+  initialDraft?: string;
 };
 
 export function useChatSession({
@@ -182,6 +183,7 @@ export function useChatSession({
   lineUrl,
   lineQrImage,
   initialOpen = false,
+  initialDraft = "",
 }: ChatExperienceProps) {
   const isPageMode = mode === "page";
   const t = useTranslations("Chat");
@@ -206,7 +208,7 @@ export function useChatSession({
   const [pausedSessionId, setPausedSessionId] = useState<string | null>(null);
   const aiPaused = pausedSessionId !== null && pausedSessionId === sessionId;
   const staffReplyNoticeShownRef = useRef(false);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialDraft);
   const [isTyping, setIsTyping] = useState(false);
   const [latestExchange, setLatestExchange] = useState<LatestExchange | null>(
     null,

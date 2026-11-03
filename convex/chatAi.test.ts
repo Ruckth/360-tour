@@ -264,7 +264,7 @@ describe("retired question-bank routing", () => {
         const toolResult = messages.find((message: { role: string }) => message.role === "tool");
         const message = toolResult
           ? { content: "มีบริการ Traditional Thai Massage ราคา ฿1,500 ครับ [[ANSWERED]]" }
-          : { content: null, tool_calls: [{ id: "service-list", type: "function", function: { name: "list_services", arguments: "{}" } }] };
+          : { content: null, tool_calls: [{ id: "service-list", type: "function", function: { name: "list_services", arguments: JSON.stringify({ query: "Massage" }) } }] };
         return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
       });
       vi.stubGlobal("fetch", fetchMock);

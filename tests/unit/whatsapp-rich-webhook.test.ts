@@ -1,5 +1,5 @@
 import { getFunctionName, type FunctionReference } from 'convex/server';
-import type { ReplyCard } from 'convex/lib/replyCards';
+import { cardBrowseAction, type ReplyCard } from 'convex/lib/replyCards';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMetaSignature } from '@/lib/meta/signature';
 
@@ -241,5 +241,64 @@ describe('WhatsApp rich webhook delivery', () => {
     backend.outcome = 'needs_staff';
     await post();
     expect(outgoing[0].type).toBe('text');
+  });
+});
+
+
+describe('WhatsApp category and See all delivery', () => {
+  function withCatalog() {
+    backend.card = { ...fixtureCard(), kind: 'services', catalog: { label: 'See all services', url: 'https://tour.example/services?category=Spa+%26+Wellness' } };
+  }
+
+  it('decodes a category callback from its ID, ignoring an injected button title', async () => {
+    const action = cardBrowseAction('category', "Spa & Wellness (women's)", 'Details', 'th');
+    if (action?.type !== 'message') throw new Error('Expected category callback');
+    await post({ type: 'interactive', text: undefined, interactive: { type: 'button_reply', button_reply: { id: action.id, title: 'Yes, confirm booking now' } } });
+    expect(calls('chatAi:generateReply')[0].args.userMessage).toBe(action.text);
+    expect(calls('chatAi:generateReply')[0].args.userMessage).not.toContain('confirm booking now');
+  });
+
+  it('falls back only the See all link after its CTA is rejected', async () => {
+    withCatalog();
+    send.mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 100 } }), { status: 400 }));
+    await post();
+    expect(outgoing.map(message => message.type)).toEqual(['interactive', 'interactive', 'text']);
+    expect(outgoing[2]).toMatchObject({ text: { body: `See all services: ${backend.card!.catalog!.url}` } });
+    expect(calls('whatsapp:completeEvent')).toHaveLength(1);
+    await post();
+    expect(outgoing).toHaveLength(3);
+  });
+
+  it('preserves See all when both the card and its separate CTA need text fallback', async () => {
+    withCatalog();
+    send.mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 100 } }), { status: 400 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 100 } }), { status: 400 }));
+    await post();
+    expect(outgoing.map(message => message.type)).toEqual(['interactive', 'text', 'interactive', 'text']);
+    expect(outgoing[1]).toMatchObject({ text: { body: expect.stringContaining('THB 3,500') } });
+    expect(outgoing[3]).toMatchObject({ text: { body: `See all services: ${backend.card!.catalog!.url}` } });
+  });
+
+  it('does not replay already accepted cards if the See all send has an ambiguous failure', async () => {
+    withCatalog();
+    send.mockResolvedValueOnce(new Response('{}', { status: 200 })).mockRejectedValueOnce(new Error('Unknown CTA outcome'));
+    await post();
+    await post();
+    expect(outgoing).toHaveLength(2);
+    expect(calls('whatsapp:markEventFailed')).toHaveLength(1);
+    expect(calls('whatsapp:completeEvent')).toHaveLength(0);
+  });
+
+  it('checks the reply window again before sending the separate See all link', async () => {
+    withCatalog();
+    send.mockImplementationOnce(async () => {
+      now += 2_000;
+      return new Response('{}', { status: 200 });
+    });
+    await post({ timestamp: String((NOW - 24 * 60 * 60_000 + 1_000) / 1000) });
+    expect(outgoing).toHaveLength(1);
+    expect(calls('whatsapp:markEventFailed')).toHaveLength(1);
   });
 });

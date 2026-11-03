@@ -22,8 +22,12 @@ export const TOOLS: ToolDef[] = [
 		type: 'function',
 		function: {
 			name: 'list_services',
-			description: 'List active resort services with descriptions, durations, prices, and available staff.',
-			parameters: { type: 'object', properties: {} }
+			description: 'Browse active resort services. With no filters, returns categories first. Pass an exact category from that result, or query a service name, to get up to five services with current prices and a See all link.',
+			parameters: { type: 'object', properties: {
+				category: { type: 'string', description: 'Exact category from list_services, such as Wellness' },
+				query: { type: 'string', description: 'Service name search, such as massage or yoga' },
+				limit: { type: 'integer', minimum: 1, maximum: 5, description: 'Number of suggestions (default 5)' }
+			} }
 		}
 	},
 	{
@@ -304,8 +308,16 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 	}
 
 	switch (fnName) {
-		case 'list_services':
-			return JSON.stringify({ services: await ctx.runQuery(internal.serviceBookings.listActiveServices, {}) });
+		case 'list_services': {
+			const filters = { ...(typeof fnArgs.category === 'string' ? { category: fnArgs.category } : {}),
+				...(typeof fnArgs.query === 'string' ? { query: fnArgs.query } : {}),
+				...(typeof fnArgs.limit === 'number' ? { limit: fnArgs.limit } : {}) };
+			const result = await ctx.runQuery(internal.publicServices.browseForChat, filters);
+			const search = new URLSearchParams();
+			if (filters.category) search.set('category', filters.category);
+			if (filters.query) search.set('q', filters.query);
+			return JSON.stringify({ ...result, catalogUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/services${search.size ? `?${search}` : ''}` });
+		}
 
 		case 'check_service_availability':
 			return JSON.stringify(await ctx.runQuery(internal.serviceBookings.checkServiceAvailability, {

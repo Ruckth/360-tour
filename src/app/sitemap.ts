@@ -9,7 +9,7 @@ export const revalidate = 60;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
   const { villas } = await getVillaCatalog(defaultLocale);
-  const paths = ['/', '/experiences', '/booking', ...villas.map(villa => `/rooms/${villa.id}`)];
+  const paths = ['/', '/experiences', '/services', '/booking', ...villas.map(villa => `/rooms/${villa.id}`)];
   const localized = paths.flatMap(path => locales.map(locale => ({
     url: `${base}${localizeHref(path, locale)}`,
     changeFrequency: path === '/' ? 'weekly' as const : 'monthly' as const,

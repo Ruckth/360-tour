@@ -621,5 +621,21 @@
     "paidDate": "결제일",
     "paymentMethodDemo": "결제 수단: 4242로 끝나는 데모 카드",
     "paidNotice": "전액 결제됨. 이 영수증은 데모용이며 실제 카드가 청구되지 않았습니다."
+  },
+  "ServiceCatalog": {
+    "title": "서비스 둘러보기",
+    "intro": "카테고리별로 현재 가격을 비교하고 원하는 날짜와 시간을 문의하세요.",
+    "categories": "서비스 카테고리",
+    "all": "모든 서비스",
+    "search": "검색",
+    "searchPlaceholder": "서비스 이름 검색",
+    "empty": "검색 결과가 없습니다. 다른 이름이나 카테고리를 선택해 주세요.",
+    "unavailable": "서비스 목록을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.",
+    "ask": "이 서비스 문의",
+    "minutes": "분",
+    "next": "다음 서비스",
+    "first": "첫 페이지로",
+    "moreCategories": "카테고리 더 보기",
+    "draft": "{name} 서비스에 관심이 있어요. 날짜와 시간을 정하고 싶어요."
   }
 }

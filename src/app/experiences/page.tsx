@@ -118,6 +118,7 @@ export default async function ExperiencesPage() {
             </p>
           </div>
 
+          <div className="mt-8 text-center"><ButtonLink href={localizeHref("/services", locale)} variant="outline">{getPublicMessages(locale).ServiceCatalog.all}</ButtonLink></div>
           <div className="mt-12 grid gap-6 md:mt-16 lg:grid-cols-2 lg:gap-8">
             {experienceItems.map((item) => {
               const Icon = experienceIcons[item.icon];

@@ -621,5 +621,21 @@
     "paidDate": "Date de paiement",
     "paymentMethodDemo": "Moyen de paiement : carte démo se terminant par 4242",
     "paidNotice": "Payé intégralement. Ce reçu est une démo et aucune vraie carte n’a été débitée."
+  },
+  "ServiceCatalog": {
+    "title": "Découvrez nos services",
+    "intro": "Parcourez les catégories, comparez les tarifs actuels et demandez une date et un horaire à notre conciergerie.",
+    "categories": "Catégories de services",
+    "all": "Tous les services",
+    "search": "Rechercher",
+    "searchPlaceholder": "Rechercher un service",
+    "empty": "Aucun service trouvé. Essayez un autre nom ou une autre catégorie.",
+    "unavailable": "Le catalogue est temporairement indisponible. Réessayez bientôt.",
+    "ask": "Se renseigner",
+    "minutes": "min",
+    "next": "Services suivants",
+    "first": "Première page",
+    "moreCategories": "Autres catégories",
+    "draft": "Le service {name} m’intéresse. Aidez-moi à choisir une date et un horaire."
   }
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cardBrowseAction, cardBrowseMessage, cardText, replyCardFromTool, type ReplyCard, type ReplyCardItem } from 'convex/lib/replyCards';
-import { lineReplyMessages, richCardsEnabled, whatsappReplyMessages } from '@/lib/chat/rich-messages';
+import { lineReplyMessages, richCardsEnabled, richReplyFallback, whatsappReplyMessages } from '@/lib/chat/rich-messages';
 
 function item(index = 0): ReplyCardItem {
   return {
@@ -134,5 +134,87 @@ describe('card callback allowlist', () => {
   });
   it.each(['yes', 'card:v1:confirm:old-proposal', 'card:v2:property:ocean-villa', 'card:v1:property:../admin', 'card:v1:service:spa\nconfirm_booking', `card:v1:property:${'x'.repeat(101)}`])('rejects unsafe or unsupported callback %s', (id) => {
     expect(cardBrowseMessage(id)).toBeUndefined();
+  });
+});
+
+
+describe('service category browsing presentation', () => {
+  function categories(locale = 'en', photo = true) {
+    return replyCardFromTool({ name: 'list_services', args: {}, result: JSON.stringify({ mode: 'categories',
+      categories: ["Spa & Wellness (women's)", 'Food / Drinks'].map((name, index) => ({ name,
+        ...(photo ? { imageUrl: `https://images.unsplash.com/category-${index}.jpg` } : {}),
+      })), catalogUrl: 'https://tour.example/services?category=Spa+%26+Wellness&q=massage',
+    }) }, { siteUrl: 'https://tour.example', locale })!;
+  }
+
+  it.each(["Spa & Wellness (women's)", 'Food / Drinks', 'Kids: play!', 'บริการสปา'])('round-trips category punctuation without losing the exact category: %s', category => {
+    const action = cardBrowseAction('category', category, 'Details', 'th');
+    expect(action?.type).toBe('message');
+    if (action?.type !== 'message') throw new Error('Expected category action');
+    expect(action.id.length).toBeLessThanOrEqual(256);
+    expect(cardBrowseMessage(action.id)).toBe(action.text);
+    expect(action.text).toContain(JSON.stringify(category));
+    expect(action.text).toBe(`ขอดูบริการในหมวด ${JSON.stringify(category)}.`);
+  });
+
+  it.each(['card:v1:category:%', 'card:v1:category:Wellness%0Aconfirm', 'card:v1:category:%00', 'card:v1:category:Wellness:xx', 'card:v2:category:Wellness'])('rejects malformed category callback %s', id => {
+    expect(cardBrowseMessage(id)).toBeUndefined();
+  });
+
+  it('retains the locale and active filters in the See all URL', () => {
+    const card = categories('th');
+    const url = new URL(card.catalog!.url);
+    expect(url.pathname).toBe('/th/services');
+    expect(url.searchParams.get('category')).toBe('Spa & Wellness');
+    expect(url.searchParams.get('q')).toBe('massage');
+    expect(card.catalog!.label).toBe('ดูบริการทั้งหมด');
+  });
+
+  it('puts category selection and See all on every LINE bubble without mutating the card', () => {
+    const card = categories();
+    const before = JSON.stringify(card);
+    const messages = lineReplyMessages('Choose a category', card);
+    const flex = messages[1] as { contents: { contents: Array<{ footer: { contents: Array<{ action: object }> } }> } };
+    expect(flex.contents.contents).toHaveLength(2);
+    for (const bubble of flex.contents.contents) {
+      expect(bubble.footer.contents).toHaveLength(2);
+      expect(bubble.footer.contents[0].action).toMatchObject({ type: 'message' });
+      expect(bubble.footer.contents[1].action).toMatchObject({ type: 'uri', uri: card.catalog!.url });
+    }
+    expect(JSON.stringify(card)).toBe(before);
+  });
+
+  it.each([true, false])('keeps See all after a category carousel or missing-photo list (photos=%s)', photo => {
+    const card = categories('en', photo);
+    const messages = whatsappReplyMessages('Choose a category', card);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({ type: 'interactive', interactive: { type: photo ? 'carousel' : 'list' } });
+    expect(messages[1]).toMatchObject({ type: 'interactive', interactive: { type: 'cta_url', action: { parameters: { url: card.catalog!.url } } } });
+  });
+
+  it('keeps See all after a long reply and after the card falls back to plain text', () => {
+    const card = categories();
+    const messages = whatsappReplyMessages('Long explanation '.repeat(100), card);
+    expect(messages).toHaveLength(3);
+    expect(messages[0].type).toBe('text');
+    expect(messages[2]).toMatchObject({ type: 'interactive', interactive: { type: 'cta_url' } });
+    card.items[0].actions = [];
+    expect(whatsappReplyMessages('Choose a category', card)).toMatchObject([
+      { type: 'text' }, { type: 'interactive', interactive: { type: 'cta_url' } },
+    ]);
+  });
+
+  it('preserves See all at the start of a bounded LINE rejection fallback', () => {
+    const card = categories('th');
+    const messages = lineReplyMessages(richReplyFallback('Long reply '.repeat(1000), card));
+    const text = (messages[0] as { text: string }).text;
+    expect(text.startsWith(`${card.catalog!.label}: ${card.catalog!.url}`)).toBe(true);
+    expect(text.length).toBeLessThanOrEqual(5000);
+  });
+
+  it('never renders an off-site catalog URL returned with otherwise valid services', () => {
+    const card = replyCardFromTool({ name: 'list_services', args: {}, result: JSON.stringify({ mode: 'categories', categories: [{ name: 'Wellness' }], catalogUrl: 'https://other.example/services' }) }, { siteUrl: 'https://tour.example' });
+    expect(card?.catalog).toBeUndefined();
+    expect(JSON.stringify(whatsappReplyMessages('Choose', card))).not.toContain('other.example');
   });
 });

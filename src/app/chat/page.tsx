@@ -1,3 +1,4 @@
+import { getPublicService } from "@/lib/server/services";
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
 import { AIChatPage } from "@/components/chat/AIChatWidget";
@@ -29,12 +30,17 @@ export default async function ChatPage({
   const locale = await getLocale();
   const params = await searchParams;
   const propertyId = getParam(params, "property");
+  const serviceSlug = getParam(params, "service");
+  const service = serviceSlug ? await getPublicService(serviceSlug) : null;
+  const draft = service ? getPublicMessages(locale).ServiceCatalog.draft.replace("{name}", service.name) : undefined;
   const property = propertyId
     ? (await getVillaCatalog(locale)).villas.find((villa) => villa.id === propertyId)
     : undefined;
 
   return (
     <AIChatPage
+      key={service?.slug ?? "default"}
+      initialDraft={draft}
       propertySlug={property?.id}
       propertyName={property?.name}
       contactEmail={resort.contactEmail}

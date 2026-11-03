@@ -33,16 +33,16 @@ vi.mock("@/lib/react/convex-api", () => ({
 
 let root: Root | null;
 let chat: ReturnType<typeof useChatSession>;
-function Harness() {
-  const value = useChatSession({ mode: "page", contactEmail: "test@example.com", whatsappNumber: "123" });
+function Harness({ initialDraft }: { initialDraft?: string }) {
+  const value = useChatSession({ mode: "page", initialDraft, contactEmail: "test@example.com", whatsappNumber: "123" });
   useEffect(() => { chat = value; }, [value]);
   return null;
 }
-async function mount() {
+async function mount(initialDraft?: string) {
   const node = document.createElement("div");
   document.body.append(node);
   root = createRoot(node);
-  await act(async () => { root!.render(createElement(Harness)); });
+  await act(async () => { root!.render(createElement(Harness, { initialDraft })); });
 }
 async function unmount() {
   await act(async () => { root?.unmount(); root = null; });
@@ -135,4 +135,15 @@ describe("public chat lifecycle", () => {
     expect(mocks.touch).not.toHaveBeenCalled();
     expect(localStorage.getItem(SESSION_ID_STORAGE_KEY)).toBeNull();
   });
+});
+
+
+it("keeps a service question as an editable draft without sending it on session creation", async () => {
+  await mount("I'd like to know about Thai Massage.");
+  expect(chat.input).toBe("I'd like to know about Thai Massage.");
+  expect(mocks.ask).not.toHaveBeenCalled();
+  expect(chat.messages).toEqual([]);
+  await act(async () => { chat.setInput("Can two people book a massage?"); });
+  expect(chat.input).toBe("Can two people book a massage?");
+  expect(mocks.ask).not.toHaveBeenCalled();
 });

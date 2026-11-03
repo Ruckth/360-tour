@@ -11,8 +11,13 @@ prose. Failed turns, handoffs, policy replies and outer timeouts stay text-only.
 
 Supported cards: villa gallery/details, price quote, villa proposal and payment,
 service gallery, service proposal and confirmation. Availability/time-slot answers,
-booking history and cancellation currently retain the existing text flow. Galleries
-are capped at ten items. Service category browsing is a separate follow-up.
+booking history and cancellation currently retain the existing text flow. Villa galleries are capped at ten items. Service browsing starts with up to eight
+categories, then returns at most five matches for a category or name search.
+A localized “See all services” link opens `/services`, with search, category filters
+and pagination. Only active services and public fields are returned. The catalog
+links to chat with an editable question; opening it does not send or book anything.
+Service names, descriptions and categories retain the operator’s stored wording.
+The category and name indexes are additive and need no data backfill.
 
 ## Channel formats
 
@@ -24,7 +29,9 @@ are capped at ten items. Service category browsing is a separate follow-up.
   items without representable callbacks fall back to text rather than disappear.
   Long AI text precedes the card in a separate message. Only explicit invalid-payload
   responses (HTTP 400, code 100 or 131009) allow a text fallback. A previously sent
-  introduction is not repeated.
+  introduction is not repeated. Service galleries append a separate catalog CTA so
+  it remains reachable alongside carousel reply buttons; if that CTA is rejected,
+  only its label and URL fall back to text.
 - WhatsApp button/list IDs map to allowlisted browsing requests. Callback titles
   are ignored. A villa confirmation button opens its exact signed proposal URL;
   service confirmation remains a separate typed guest reply, because a generic

@@ -5,7 +5,7 @@ export type ReplyCardAction =
   | { type: 'uri'; label: string; url: string }
   | { type: 'message'; label: string; id: string; text: string };
 export type ReplyCardItem = { title: string; lines: string[]; imageUrl?: string; actions: ReplyCardAction[] };
-export type ReplyCard = { kind: 'properties' | 'property' | 'quote' | 'booking' | 'services' | 'service'; items: ReplyCardItem[] };
+export type ReplyCard = { kind: 'properties' | 'property' | 'quote' | 'booking' | 'services' | 'service'; items: ReplyCardItem[]; catalog?: { label: string; url: string } };
 export type ReplyToolTrace = { name: string; args: Record<string, unknown>; result: string };
 
 const copy = {
@@ -70,8 +70,17 @@ const browseCopy: Record<string, [string, string]> = {
   hi: ['विला का विवरण दिखाएँ:', 'मुझे इस सेवा में रुचि है:'],
 };
 
-export function cardBrowseAction(kind: 'property' | 'service', slug: string, label: string, locale = 'en'): ReplyCardAction | undefined {
-  if (!/^[\p{L}\p{N}\p{M}_ -]{1,100}$/u.test(slug)) return;
+const categoryBrowseCopy: Record<string, string> = {
+  en: 'Show services in category', th: 'ขอดูบริการในหมวด',
+  ko: '다음 카테고리의 서비스를 보여 주세요:', 'zh-CN': '请列出此类别的服务：',
+  ja: 'このカテゴリーのサービスを教えてください：', fr: 'Montrez les services de la catégorie',
+  de: 'Zeigen Sie die Angebote in der Kategorie', es: 'Muéstrame los servicios de la categoría',
+  ru: 'Покажите услуги в категории', it: 'Mostra i servizi della categoria',
+  hi: 'इस श्रेणी की सेवाएँ दिखाएँ:',
+};
+
+export function cardBrowseAction(kind: 'property' | 'service' | 'category', slug: string, label: string, locale = 'en'): ReplyCardAction | undefined {
+  if (!slug || slug.length > 100 || /[\u0000-\u001f]/.test(slug) || (kind !== 'category' && !/^[\p{L}\p{N}\p{M}_ -]{1,100}$/u.test(slug))) return;
   const id = `card:v1:${kind}:${encodeURIComponent(slug)}${locale !== 'en' && browseCopy[locale] ? `:${locale}` : ''}`;
   if (id.length > 256) return;
   return { type: 'message', id, label, text: cardBrowseMessage(id)! };
@@ -79,14 +88,15 @@ export function cardBrowseAction(kind: 'property' | 'service', slug: string, lab
 export function cardBrowseMessage(id: unknown): string | undefined {
   if (typeof id !== 'string') return;
   if (id.length > 256) return;
-  const match = /^card:v1:(property|service):([a-zA-Z0-9_%~-]+)(?::([a-zA-Z-]+))?$/.exec(id);
+  const match = /^card:v1:(property|service|category):([a-zA-Z0-9_%~.!*'()-]+)(?::([a-zA-Z-]+))?$/.exec(id);
   if (!match) return;
   let slug: string;
   try { slug = decodeURIComponent(match[2]); } catch { return; }
-  if (!/^[\p{L}\p{N}\p{M}_ -]{1,100}$/u.test(slug)) return;
+  if (!slug || slug.length > 100 || /[\u0000-\u001f]/.test(slug) || (match[1] !== 'category' && !/^[\p{L}\p{N}\p{M}_ -]{1,100}$/u.test(slug))) return;
   const locale = match[3] ?? 'en';
   const phrases = browseCopy[locale];
   if (!phrases) return;
+  if (match[1] === 'category') return `${categoryBrowseCopy[locale]} ${JSON.stringify(slug)}.`;
   return match[1] === 'property'
     ? `${phrases[0]} ${slug}.`
     : `${phrases[1]} ${slug}.${locale === 'en' ? ' Ask me which date and time I would like.' : ''}`;
@@ -110,6 +120,7 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
     return url ? { type: 'uri', label, url } : undefined;
   };
   let kind: ReplyCard['kind'];
+  let catalog: ReplyCard['catalog'];
   switch (trace.name) {
     case 'list_properties':
     case 'get_property_details': {
@@ -123,6 +134,18 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
     }
     case 'list_services': {
       kind = 'services';
+      let catalogUrl = siteLink(str(result.catalogUrl), options.siteUrl);
+      if (catalogUrl && options.locale && options.locale !== 'en' && options.locale in copy) {
+        const localized = new URL(catalogUrl);
+        localized.pathname = `/${options.locale}/services`;
+        catalogUrl = localized.href;
+      }
+      const allLabels: Record<string, string> = { en: 'See all services', th: 'ดูบริการทั้งหมด', ko: '모든 서비스 보기', 'zh-CN': '查看全部服务', ja: 'すべてのサービス', fr: 'Tous les services', de: 'Alle Angebote', es: 'Todos los servicios', ru: 'Все услуги', it: 'Tutti i servizi', hi: 'सभी सेवाएँ देखें' };
+      if (catalogUrl) catalog = { label: allLabels[options.locale ?? 'en'] ?? allLabels.en, url: catalogUrl };
+      if (result.mode === 'categories') {
+        for (const category of rows(result.categories)) add(category.name, [], [cardBrowseAction('category', str(category.name), details, options.locale)], category.imageUrl);
+        break;
+      }
       for (const s of rows(result.services)) add(s.name, [money(s.price, s.currency), typeof s.durationMin === 'number' ? `${s.durationMin} ${minutes}` : '', str(s.category)],
         [cardBrowseAction('service', str(s.slug), times, options.locale)], s.imageUrl);
       break;
@@ -158,7 +181,7 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
     }
     default: return;
   }
-  return items.length ? { kind, items } : undefined;
+  return items.length ? { kind, items, ...(catalog ? { catalog } : {}) } : undefined;
 }
 
 /** A later failed read/write must not leave an earlier success card visible. */

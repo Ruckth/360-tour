@@ -9,6 +9,7 @@ export function richCardsEnabled(channel: 'line' | 'whatsapp'): boolean {
 export function richReplyFallback(text: string, card?: ReplyCard): string {
   if (!card) return text;
   const urls = card.items.flatMap(item => item.actions.filter(action => action.type === 'uri').map(action => `${action.label}: ${action.url}`));
+  if (card.catalog) urls.push(`${card.catalog.label}: ${card.catalog.url}`);
   return [...urls, text].join('\n\n');
 }
 
@@ -36,7 +37,7 @@ export function lineReplyMessages(text: string, card?: ReplyCard, quickReplyItem
   const messages: object[] = [{ type: 'text', text: cardText(text || '…', 5000),
     ...(quickReplyItems.length ? { quickReply: { items: quickReplyItems } } : {}) }];
   if (card?.items.length) {
-    const items = card.items.slice(0, 10);
+    const items = card.items.slice(0, 10).map(item => card.catalog ? { ...item, actions: [...item.actions.slice(0, 1), { type: 'uri' as const, label: card.catalog.label, url: card.catalog.url }] } : item);
     messages.push({ type: 'flex', altText: cardText(items.map(item => item.title).join(' · '), 400),
       contents: items.length === 1 ? bubble(items[0]) : { type: 'carousel', contents: items.map(bubble) } });
   }
@@ -69,7 +70,7 @@ function urlAction(action: Extract<ReplyCardAction, { type: 'uri' }>): UrlAction
 }
 
 /** Keep the complete AI reply in a preceding text message if it cannot fit the card body. */
-export function whatsappReplyMessages(text: string, card?: ReplyCard): WhatsAppContent[] {
+function whatsappCardMessages(text: string, card?: ReplyCard): WhatsAppContent[] {
   if (!card?.items.length) return [whatsappText(text)];
   const items = card.items.slice(0, 10);
   const first = items[0];
@@ -105,4 +106,12 @@ export function whatsappReplyMessages(text: string, card?: ReplyCard): WhatsAppC
     action: { buttons: first.actions.filter(a => a.type === 'message').map(a => ({ type: 'reply', reply: { id: a.id, title: cardText(a.label, 20) } })) },
   } }];
   return [whatsappText(singleBody)];
+}
+
+/** A separate catalogue CTA remains visible even when every carousel card uses reply buttons. */
+export function whatsappReplyMessages(text: string, card?: ReplyCard): WhatsAppContent[] {
+  const messages = whatsappCardMessages(text, card);
+  if (card?.catalog) messages.push({ type: 'interactive', interactive: { type: 'cta_url',
+    body: { text: card.catalog.label }, action: { name: 'cta_url', parameters: { display_text: cardText(card.catalog.label, 20), url: card.catalog.url } } } });
+  return messages;
 }
