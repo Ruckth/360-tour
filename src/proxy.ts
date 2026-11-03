@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { adminRedirectPath } from "@/components/admin/admin-routes";
 import { routing } from "@/i18n/routing";
 import { isClerkConfigured } from "@/lib/clerk-config";
+import { bypassesI18n } from "@/lib/i18n-exempt";
 
 const handleI18nRouting = createMiddleware(routing);
 const clerkEnabled = isClerkConfigured();
@@ -16,14 +17,7 @@ function handleRequest(request: NextRequest) {
     return target ? NextResponse.redirect(new URL(target, request.url)) : NextResponse.next();
   }
 
-  if (
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/admin") ||
-    pathname.startsWith("/dev/") ||
-    pathname.startsWith("/__clerk") ||
-    pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/sign-up")
-  ) {
+  if (bypassesI18n(pathname)) {
     return NextResponse.next();
   }
 

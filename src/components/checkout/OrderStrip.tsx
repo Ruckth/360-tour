@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { CalendarDays, Link2, ListOrdered, Plus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
-import { useDeferredValue, useRef, useState, type FormEvent } from "react";
+import { useDeferredValue, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -36,6 +36,7 @@ export function OrderStrip({
   run,
   onOrderChange,
   canStartNew = false,
+  displayControl,
 }: {
   view: OrderView | null | undefined;
   title: string;
@@ -43,6 +44,8 @@ export function OrderStrip({
   onOrderChange: (orderId: OrderId | null) => void;
   /** Invalid/missing source links can be cleared even when there is no loaded order. */
   canStartNew?: boolean;
+  /** Rendered beside Orders, e.g. the customer display button (not in the dev preview). */
+  displayControl?: ReactNode;
 }) {
   const actions = useCheckoutBackend().useActions();
   const [panel, setPanel] = useState<Panel>(null);
@@ -156,6 +159,7 @@ export function OrderStrip({
       </Dialog>
 
       <div className="ml-auto flex max-w-full flex-wrap justify-end gap-2">
+        {displayControl}
         <Dialog open={panel === "orders"} onOpenChange={(open) => { if (!ordersPending) changePanel(open ? "orders" : null); }}>
           <DialogTrigger asChild>
             <Button variant="ghost">

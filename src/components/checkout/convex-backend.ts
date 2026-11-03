@@ -15,7 +15,11 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useAuditHistory: (orderId) => usePaginatedQuery(api.orderHistoryPages.audit, { orderId }, { initialNumItems: 20 }),
   useBookingRefundHistory: (orderId) => usePaginatedQuery(api.orderHistoryPages.bookingRefunds, { orderId }, { initialNumItems: 20 }),
   useAppointmentRefundHistory: (orderId) => usePaginatedQuery(api.orderHistoryPages.appointmentRefunds, { orderId }, { initialNumItems: 20 }),
-  useCatalog: () => useQuery(api.pos.catalog, {}),
+  useCatalog: () => {
+    const items = useQuery(api.pos.stableCatalog, {});
+    const frequent = useQuery(api.pos.recentCatalogRanking, {});
+    return useMemo(() => items === undefined || frequent === undefined ? undefined : { ...items, frequent }, [items, frequent]);
+  },
   useOrder: (orderId) => useQuery(api.pos.getOrder, orderId ? { orderId } : SKIP),
   useOrderHistory: (orderId) => usePaginatedQuery(api.pos.orderHistory, { orderId }, { initialNumItems: 20 }),
   useOrders: (filter) => usePaginatedQuery(api.pos.listOrders, { filter }, { initialNumItems: 20 }),

@@ -5,7 +5,14 @@ import { useEffect, useState } from 'react';
 
 const CONSENT_KEY = 'analytics-consent';
 
+/** Off on the customer display: a guest-facing screen at the counter is not a visitor. */
 export function AnalyticsConsent() {
+  const pathname = usePathname();
+  if (pathname === '/display' || pathname.startsWith('/display/')) return null;
+  return <AnalyticsConsentBanner />;
+}
+
+function AnalyticsConsentBanner() {
   const pathname = usePathname();
   const [choice, setChoice] = useState<'yes' | 'no' | null>(null);
   const [ready, setReady] = useState(false);

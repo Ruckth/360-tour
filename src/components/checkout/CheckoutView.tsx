@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronUp, ReceiptText, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Sheet, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,7 @@ export function CheckoutView({
   onPaid,
   notice,
   onNoticeRetry,
+  displayControl,
 }: {
   orderId: OrderId | null;
   onOrderChange: (orderId: OrderId | null) => void;
@@ -33,6 +34,8 @@ export function CheckoutView({
   /** Shown above the catalog, e.g. a refused `?booking=` link. */
   notice?: string;
   onNoticeRetry?: () => void;
+  /** The customer display button for the top strip; only the admin page has one. */
+  displayControl?: ReactNode;
 }) {
   const backend = useCheckoutBackend();
   const catalog = backend.useCatalog();
@@ -121,7 +124,7 @@ export function CheckoutView({
   return (
     <div className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
-      <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} />
+      <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
       {message ? alert(message) : null}
       {saved && !message ? (
         <p role="status" className="border-b border-border/70 bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>

@@ -3,6 +3,8 @@
 import type { Id } from "convex/_generated/dataModel";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CustomerDisplayControl } from "@/components/admin/CustomerDisplayDialog";
+import { useShowOrderOnDisplay } from "@/components/admin/useShowOrderOnDisplay";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { orderPath, parseCheckoutSource, receiptPath } from "@/components/checkout/checkout-source";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
@@ -57,18 +59,24 @@ function CheckoutPage() {
     [router],
   );
   const onPaid = useCallback((orderId: OrderId) => router.push(receiptPath(orderId)), [router]);
+  const orderId = source.kind === "order" ? (source.id as OrderId) : null;
+  const linkFailed = openError?.target === target;
+  // While a booking link is still opening its order, the display keeps what it shows (no welcome flash).
+  const shownOrder = target && !linkFailed ? undefined : orderId;
+  const display = useShowOrderOnDisplay(shownOrder);
 
   return (
     <CheckoutView
-      orderId={source.kind === "order" ? (source.id as OrderId) : null}
+      orderId={orderId}
       onOrderChange={onOrderChange}
       onPaid={onPaid}
-      onNoticeRetry={openError?.target === target ? () => {
+      onNoticeRetry={linkFailed ? () => {
         opened.current = null;
         setOpenError(null);
         setRetry((value) => value + 1);
-      } : undefined}
-      notice={source.kind === "invalid" ? source.reason : openError?.target === target ? openError.message : undefined}
+      } : display.error ? display.retry : undefined}
+      notice={source.kind === "invalid" ? source.reason : linkFailed ? openError.message : (display.error ?? undefined)}
+      displayControl={<CustomerDisplayControl orderId={shownOrder} />}
     />
   );
 }

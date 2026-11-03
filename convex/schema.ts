@@ -745,6 +745,53 @@ export default defineSchema({
 	/** Running numbers: "order" and "receipt". Legacy rows "walkin:YYYY-MM-DD" are no longer used. */
 	billCounters: defineTable({ key: v.string(), value: v.number() }).index('by_key', ['key']),
 
+	/**
+	 * The shop's till: a single row with key 'default'. `orderId` is the order the customer display
+	 * shows, published by displays.showOrder. Only the checkout tab whose id is `driverId` (the one
+	 * that last connected or took over the display) may publish it. `publishedAt` is its last publish.
+	 */
+	tills: defineTable({
+		key: v.literal('default'),
+		orderId: v.optional(v.id('bills')),
+		driverId: v.optional(v.string()),
+		publishedAt: v.optional(v.number())
+	}).index('by_key', ['key']),
+
+	/** A guest-facing screen paired to a till. Only the SHA-256 of its device token is stored. */
+	displays: defineTable({
+		tillId: v.id('tills'),
+		name: v.string(),
+		tokenHash: v.string(),
+		status: v.union(v.literal('pending'), v.literal('active'), v.literal('revoked')),
+		pairCode: v.optional(v.string()),
+		pairCodeExpiresAt: v.optional(v.number()),
+		createdAt: v.number(),
+		pairedAt: v.optional(v.number()),
+		revokedAt: v.optional(v.number())
+	})
+		.index('by_tokenHash', ['tokenHash'])
+		.index('by_pairCode', ['pairCode'])
+		.index('by_tillId_and_status', ['tillId', 'status']),
+
+	/** Display heartbeats, kept apart from `displays` so they don't re-run every `displays.current` subscription. */
+	displayPresence: defineTable({
+		displayId: v.id('displays'),
+		lastSeenAt: v.number()
+	}).index('by_displayId', ['displayId']),
+
+	/** One-time pairing links. Only the SHA-256 of the secret is stored. Deleted once expired (displays.cleanPending). */
+	displayPairLinks: defineTable({
+		tillId: v.id('tills'),
+		secretHash: v.string(),
+		expiresAt: v.number(),
+		usedAt: v.optional(v.number()),
+		createdByEmail: v.string(),
+		/** The checkout tab that made the link; it drives the display once the link is claimed. */
+		driverId: v.string()
+	})
+		.index('by_secretHash', ['secretHash'])
+		.index('by_expiresAt', ['expiresAt']),
+
 	reviews: defineTable({
 		propertyId: v.id('properties'),
 		authorName: v.string(),
