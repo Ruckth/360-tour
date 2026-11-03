@@ -1,3 +1,4 @@
+import type { ReplyCard } from 'convex/lib/replyCards';
 import { api } from "convex/_generated/api";
 import { createTurnId, emitConciergeTurnLog, recordTool, serializeConciergeTurnLog, startTurnMetrics, timeStage, type TurnMetrics } from "convex/lib/turnMetrics";
 import { looksLikeBookingMessage } from "@/lib/chat/ai-booking-route";
@@ -74,6 +75,7 @@ export type MessagingReplyMetrics = {
 export type MessagingReplyResult = {
   outcome?: 'answered' | 'awaiting_guest' | 'needs_staff';
   responseText: string;
+  card?: ReplyCard;
   replyMode: MessagingReplyMode;
   model?: string;
   timedOut: boolean;
@@ -114,6 +116,7 @@ export function storedReplyMode(mode: MessagingReplyMode): "ai" | "unknown_fallb
 type GeneratedReply = {
   outcome?: 'answered' | 'awaiting_guest' | 'needs_staff';
   response?: string;
+  card?: ReplyCard;
   model?: string;
   committed?: CommittedOutcome;
 };
@@ -309,6 +312,7 @@ export async function resolveMessagingReply(
       responseText: reply.response ?? localizedTimeoutFallbackReply(locale),
       ...(reply.outcome ? { outcome: reply.outcome } : {}),
       replyMode,
+      ...(replyMode === 'ai' && reply.outcome !== 'needs_staff' && reply.card ? { card: reply.card } : {}),
       ...(reply.model ? { model: reply.model } : {}),
       timedOut: false,
       ...(reply.committed ? { committed: reply.committed } : {}),

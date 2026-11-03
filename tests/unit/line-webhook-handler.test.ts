@@ -1,3 +1,4 @@
+import type { ReplyCard } from 'convex/lib/replyCards';
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLineSignature } from "@/lib/line/signature";
@@ -5,6 +6,9 @@ import { createLineSignature } from "@/lib/line/signature";
 const backend = vi.hoisted(() => ({
   calls: [] as { name: string; args: Record<string, unknown> }[],
   claimed: new Set<string>(),
+  card: undefined as ReplyCard | undefined,
+  response: "Here is the host's policy.",
+  paused: false,
 }));
 
 vi.mock("convex/browser", () => ({
@@ -18,9 +22,11 @@ vi.mock("convex/browser", () => ({
         backend.claimed.add(eventKey);
         return { eventId: "evt_1", sessionId: "sess_1", duplicate, status: duplicate ? "completed" : "processing" };
       }
-      if (name === "chat:isAiPaused" || name === "bookings:isChatBookingFlowActive") return false;
+      if (name === "chat:isAiPaused") return backend.paused;
+      if (name === "bookings:isChatBookingFlowActive") return false;
       if (name === "line:recordInboundEvent") return { recorded: true, duplicate: false, userMessageId: "msg_1" };
-      if (name === "chatAi:generateReply") return { response: "Here is the host's policy.", model: "openai/test-model", outcome: "answered" };
+      if (name === "line:beginDelivery") return { started: true };
+      if (name === "chatAi:generateReply") return { response: backend.response, card: backend.card, model: "openai/test-model", outcome: "answered" };
       return null;
     }
     query(reference: unknown, args: Record<string, unknown>) { return this.call(reference, args); }
@@ -32,6 +38,9 @@ vi.mock("convex/browser", () => ({
 beforeEach(() => {
   backend.calls.length = 0;
   backend.claimed.clear();
+  backend.card = undefined;
+  backend.response = "Here is the host's policy.";
+  backend.paused = false;
   vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "https://handler-test.invalid");
   vi.stubEnv("LINE_CHANNEL_SECRET", "handler-secret");
   vi.stubEnv("LINE_CHANNEL_ACCESS_TOKEN", "private-access-token");
@@ -90,5 +99,71 @@ describe("LINE handler turn correlation", () => {
     for (const privateValue of ["Private Guest Name", "private-", "guest@example.com", "Can my pet stay?"]) {
       expect(logText).not.toContain(privateValue);
     }
+  });
+});
+
+
+describe("LINE rich replies", () => {
+  async function post() {
+    const body = JSON.stringify({ events: [{ type: "message", webhookEventId: "rich-event", replyToken: "reply-token",
+      source: { type: "user", userId: "guest-id" }, message: { id: "message-id", type: "text", text: "Show villas" } }] });
+    const { POST } = await import("@/app/api/line/webhook/route");
+    return POST(new Request("https://tour.example/api/line/webhook", { method: "POST", body,
+      headers: { "x-line-signature": createLineSignature(body, "handler-secret") } }));
+  }
+  const url = "https://tour.example/booking/pay?proposal=exact.signed.proposal";
+  function setup(send: (index: number) => Promise<Response>) {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("MESSAGING_RICH_CARDS", "line");
+    backend.card = { kind: "booking", items: [{ title: "Pool villa", lines: ["Not booked yet", "THB 9,000"], actions: [{ type: "uri", label: "Confirm & pay", url }] }] };
+    const payloads: Array<{ messages: Array<Record<string, unknown>> }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (target: string, init?: RequestInit) => {
+      if (target.includes("/profile/")) return new Response("{}");
+      payloads.push(JSON.parse(String(init?.body)));
+      return send(payloads.length);
+    }));
+    return payloads;
+  }
+  it("sends text and Flex together using one reserved reply token", async () => {
+    const sent = setup(async () => new Response("{}"));
+    await post();
+    expect(sent).toHaveLength(1);
+    expect(sent[0].messages.map(message => message.type)).toEqual(["text", "flex"]);
+    expect(JSON.stringify(sent[0])).toContain(url);
+    expect(backend.calls.filter(call => call.name === "line:beginDelivery")).toHaveLength(1);
+    await post();
+    expect(sent).toHaveLength(1);
+  });
+  it("retains the exact signed URL on validation fallback even when AI prose is oversized", async () => {
+    const sent = setup(async index => new Response("{}", { status: index === 1 ? 400 : 200 }));
+    backend.response = "Long introduction. ".repeat(400);
+    await post();
+    expect(sent).toHaveLength(2);
+    expect(sent[1].messages).toHaveLength(1);
+    expect(sent[1].messages[0].text).toContain(url);
+    expect(String(sent[1].messages[0].text).length).toBeLessThanOrEqual(5000);
+  });
+  it.each(["network", "server"])("never retries an ambiguous %s failure", async mode => {
+    const sent = setup(async () => {
+      if (mode === "network") throw new Error("Connection reset");
+      return new Response("{}", { status: 500 });
+    });
+    await post();
+    expect(sent).toHaveLength(1);
+    expect(backend.calls.some(call => call.name === "line:markEventFailed")).toBe(true);
+  });
+  it("keeps text-only behavior when the feature is disabled", async () => {
+    const sent = setup(async () => new Response("{}"));
+    vi.stubEnv("MESSAGING_RICH_CARDS", "");
+    await post();
+    expect(sent[0].messages.map(message => message.type)).toEqual(["text"]);
+  });
+  it("does not send cards after staff takeover", async () => {
+    const sent = setup(async () => new Response("{}"));
+    backend.paused = true;
+    await post();
+    expect(sent).toHaveLength(0);
+    expect(backend.calls.some(call => call.name === "line:beginDelivery")).toBe(false);
   });
 });

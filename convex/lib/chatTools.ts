@@ -397,6 +397,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 
 			return JSON.stringify({
 				name: property.name,
+				imageUrl: property.images[0],
 				slug: property.slug,
 				tagline: property.tagline,
 				description: property.description,
@@ -417,6 +418,8 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 				const oneNightQuote = calculateDirectQuote(p, 1);
 				return {
 					name: p.name,
+					imageUrl: p.images[0],
+					currency: p.currency,
 					slug: p.slug,
 					tagline: p.tagline,
 					pricePerNight: p.pricePerNight,

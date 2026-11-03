@@ -116,7 +116,8 @@ export const claimEvent = mutation({
 
 		if (
 			existing &&
-			(existing.status === 'processing' ||
+			(existing.deliveryStartedAt !== undefined ||
+                existing.status === 'processing' ||
 				existing.status === 'replied' ||
 				existing.status === 'ignored' ||
 				(existing.status === 'failed' &&
@@ -141,7 +142,7 @@ export const claimEvent = mutation({
 			eventType: args.eventType,
 			...(args.messageText ? { messageText: args.messageText } : {}),
 			...(args.postbackData ? { postbackData: args.postbackData } : {}),
-			status: 'received' as const,
+			status: 'processing' as const,
 			...(typeof args.eventTimestamp === 'number' ? { eventTimestamp: args.eventTimestamp } : {}),
 			processingStartedAt: existing?.processingStartedAt ?? now,
 			replyMode: undefined,
@@ -157,7 +158,7 @@ export const claimEvent = mutation({
 				eventId: existing._id,
 				sessionId,
 				duplicate: false,
-				status: 'received'
+				status: 'processing'
 			};
 		}
 
@@ -171,7 +172,7 @@ export const claimEvent = mutation({
 			eventId,
 			sessionId,
 			duplicate: false,
-			status: 'received'
+			status: 'processing'
 		};
 	}
 });
@@ -239,6 +240,24 @@ export const recordInboundEvent = mutation({
 			userMessageId
 		};
 	}
+});
+
+/** Persist before calling the provider: failed/ambiguous/partial sends must not replay. */
+export const beginDelivery = mutation({
+    args: { serverSecret: v.string(), eventId: v.id('lineWebhookEvents') },
+    handler: async (ctx, args) => {
+        await requireServerSecret(args.serverSecret);
+        const event = await ctx.db.get(args.eventId);
+        if (!event || event.status !== 'processing' || event.deliveryStartedAt !== undefined) return { started: false };
+        const session = event.sessionId ? await ctx.db.get(event.sessionId) : null;
+        if (!session) return { started: false };
+        if (session.aiPaused) {
+            await ctx.db.patch(event._id, { status: 'ignored', replyMode: 'ignored', error: 'AI paused: staff is replying', processedAt: Date.now(), updatedAt: Date.now() });
+            return { started: false };
+        }
+        await ctx.db.patch(event._id, { deliveryStartedAt: Date.now(), updatedAt: Date.now() });
+        return { started: true };
+    },
 });
 
 export const completeEvent = mutation({

@@ -1,3 +1,4 @@
+import type { ReplyCard } from 'convex/lib/replyCards';
 import {
   resolveMessagingReply,
   type MessagingClient,
@@ -18,6 +19,7 @@ export type WhatsAppConvexClient = MessagingClient & {
 type ResolvedWhatsAppReply = {
   outcome?: 'answered' | 'awaiting_guest' | 'needs_staff';
   responseText: string;
+  card?: ReplyCard;
   replyMode: MessagingReplyMode;
   model?: string;
   timedOut: boolean;
@@ -52,6 +54,7 @@ export async function resolveWhatsAppReply({
 
   return {
     responseText: result.responseText,
+    ...(result.card ? { card: result.card } : {}),
     ...(result.outcome ? { outcome: result.outcome } : {}),
     replyMode: result.replyMode,
     ...(result.model ? { model: result.model } : {}),
