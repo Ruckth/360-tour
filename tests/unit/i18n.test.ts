@@ -45,6 +45,7 @@ function isAllowedSameAsEnglish(key: string) {
     /^Rooms\.gs-dining\.hotspots\.gs-dining-to-lounge$/,
     /^Tour\.leadEmailPlaceholder$/,
     /^BookingDocuments\.(email|total)$/,
+    /^ServiceCatalog\.minutes$/, // "min" is the same unit abbreviation in several languages.
   ].some((pattern) => pattern.test(key));
 }
 

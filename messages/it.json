@@ -621,5 +621,21 @@
     "paidDate": "Data pagamento",
     "paymentMethodDemo": "Metodo di pagamento: carta demo che termina con 4242",
     "paidNotice": "Pagato per intero. Questa ricevuta è solo dimostrativa e nessuna carta reale è stata addebitata."
+  },
+  "ServiceCatalog": {
+    "title": "Esplora i nostri servizi",
+    "intro": "Sfoglia le categorie, confronta i prezzi attuali e chiedi al concierge una data e un orario.",
+    "categories": "Categorie di servizi",
+    "all": "Tutti i servizi",
+    "search": "Cerca",
+    "searchPlaceholder": "Cerca per nome",
+    "empty": "Nessun servizio trovato. Prova un altro nome o categoria.",
+    "unavailable": "Il catalogo non è al momento disponibile. Riprova tra poco.",
+    "ask": "Chiedi informazioni",
+    "minutes": "min",
+    "next": "Servizi successivi",
+    "first": "Prima pagina",
+    "moreCategories": "Altre categorie",
+    "draft": "Mi interessa {name}. Aiutatemi a scegliere una data e un orario."
   }
 }

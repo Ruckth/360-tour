@@ -621,5 +621,21 @@
     "paidDate": "paid date",
     "paymentMethodDemo": "Payment method: demo card ending in 4242",
     "paidNotice": "पूरा भुगतान हो गया। यह receipt demo purpose के लिए है और कोई real card charge नहीं हुआ।"
+  },
+  "ServiceCatalog": {
+    "title": "हमारी सेवाएँ देखें",
+    "intro": "श्रेणी के अनुसार देखें, मौजूदा कीमतों की तुलना करें और तारीख व समय के बारे में पूछें।",
+    "categories": "सेवा श्रेणियाँ",
+    "all": "सभी सेवाएँ",
+    "search": "खोजें",
+    "searchPlaceholder": "सेवा का नाम खोजें",
+    "empty": "कोई सेवा नहीं मिली। दूसरा नाम या श्रेणी आज़माएँ।",
+    "unavailable": "सेवा सूची अभी उपलब्ध नहीं है। थोड़ी देर बाद फिर कोशिश करें।",
+    "ask": "इस सेवा के बारे में पूछें",
+    "minutes": "मिनट",
+    "next": "अगली सेवाएँ",
+    "first": "पहले पृष्ठ पर जाएँ",
+    "moreCategories": "और श्रेणियाँ",
+    "draft": "मुझे {name} में रुचि है। कृपया तारीख और समय चुनने में मदद करें।"
   }
 }

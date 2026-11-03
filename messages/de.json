@@ -621,5 +621,21 @@
     "paidDate": "Zahlungsdatum",
     "paymentMethodDemo": "Zahlungsart: Demo-Karte endet auf 4242",
     "paidNotice": "Vollständig bezahlt. Diese Quittung dient nur Demonstrationszwecken; es wurde keine echte Karte belastet."
+  },
+  "ServiceCatalog": {
+    "title": "Unsere Angebote entdecken",
+    "intro": "Nach Kategorie stöbern, aktuelle Preise vergleichen und beim Concierge nach Datum und Uhrzeit fragen.",
+    "categories": "Angebotskategorien",
+    "all": "Alle Angebote",
+    "search": "Suchen",
+    "searchPlaceholder": "Angebotsnamen suchen",
+    "empty": "Keine passenden Angebote. Versuchen Sie einen anderen Namen oder eine andere Kategorie.",
+    "unavailable": "Der Katalog ist vorübergehend nicht verfügbar. Bitte versuchen Sie es später erneut.",
+    "ask": "Dieses Angebot anfragen",
+    "minutes": "Min.",
+    "next": "Weitere Angebote",
+    "first": "Zur ersten Seite",
+    "moreCategories": "Weitere Kategorien",
+    "draft": "Ich interessiere mich für {name}. Bitte helfen Sie mir, Datum und Uhrzeit auszuwählen."
   }
 }

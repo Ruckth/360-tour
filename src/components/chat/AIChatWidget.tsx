@@ -288,6 +288,7 @@ export function AIChatWidget(props: {
 }
 
 export function AIChatPage(props: {
+  initialDraft?: string;
   propertySlug?: string;
   propertyName?: string;
   contactEmail: string;

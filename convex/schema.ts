@@ -342,7 +342,9 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_slug', ['slug'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		.index('by_status_and_category', ['status', 'category'])
+		.searchIndex('search_name', { searchField: 'name', filterFields: ['status', 'category'] }),
 
 	staffTimeOff: defineTable({
 		staffId: v.id('staff'),

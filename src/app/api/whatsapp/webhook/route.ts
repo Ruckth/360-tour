@@ -352,7 +352,10 @@ async function handleWhatsAppMessage({
           if (!isReplyWindowOpen(eventTimestamp)) throw new Error("WhatsApp reply window expired before fallback delivery");
           const facts = richCard?.items.map(item => [item.title, ...item.lines,
             ...item.actions.filter(a => a.type === "uri").map(a => `${a.label}: ${a.url}`)].join("\n")).join("\n\n") ?? "";
-          status = await sendWhatsAppMessage({ ...target, content: whatsappText(index === 0 ? `${facts}\n\n${responseText}` : facts) });
+          const fallback = index > 0 && content.interactive.type === "cta_url"
+            ? `${content.interactive.action.parameters.display_text}: ${content.interactive.action.parameters.url}`
+            : index === 0 ? `${facts}\n\n${responseText}` : facts;
+          status = await sendWhatsAppMessage({ ...target, content: whatsappText(fallback) });
         }
       }
       return status;
