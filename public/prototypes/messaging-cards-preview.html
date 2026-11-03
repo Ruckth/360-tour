@@ -141,6 +141,13 @@ textarea{min-height:96px;resize:vertical;line-height:1.45}
 .wa-actions{margin-top:2px;display:flex;flex-direction:column;gap:2px}
 .wa-actions button{display:flex;align-items:center;justify-content:center;gap:7px;border:0;background:#fff;color:#027EB5;font-size:14px;min-height:40px;border-radius:9px;box-shadow:0 1px .5px rgba(11,20,26,.13)}
 .wa-actions svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.wa-carousel{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -10px 8px 0;padding:0 10px 4px 0;scrollbar-width:thin}
+.wa-ccard{flex:none;width:214px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px .5px rgba(11,20,26,.13);scroll-snap-align:start;display:flex;flex-direction:column}
+.wa-ccard img{display:block;width:100%;aspect-ratio:1.45/1;object-fit:cover;background:linear-gradient(135deg,#C9B48A,#6F8DA3)}
+.wa-ccard-body{padding:8px 10px 10px;font-size:14px;line-height:1.4;white-space:pre-wrap;flex:1}
+.wa-ccard-actions{border-top:1px solid #E9EDEF}
+.wa-ccard-actions button{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;border:0;background:none;color:#027EB5;font-size:14px;min-height:40px}
+.wa-ccard-actions svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .wa-input{display:flex;align-items:center;gap:8px;padding:8px 10px 22px;background:#F7F5F3}
 .wa-input .pill{flex:1;border-radius:999px;background:#fff;border:1px solid #E1DDD7;padding:8px 14px;font-size:13px;color:#8696A0}
 .wa-input .mic{width:38px;height:38px;border-radius:50%;background:#1DAA61}
@@ -670,12 +677,20 @@ function waMessages(card, aiText){
   const listAction = (button, sections) => ({ button:ctx.clip('List button', button, 20), sections:sections.map(sec=>({ title:ctx.clip('Section title', sec.title, 24), rows:sec.rows.slice(0, ctx.count('List rows', sec.rows.length, 10)).map(r=>({ id:r.id, title:ctx.clip('Row title', r.title, 24), ...(r.description?{ description:ctx.clip('Row description', r.description, 72) }:{}) })) })) });
   let it;
   switch (card.kind){
-    case 'villas': it = { type:'list', header:htext(L.ourVillas), body:{ text:body }, footer:footer('Auralis Cove Retreat'), action:listAction(L.viewVillas,[{ title:L.villasSec, rows:card.items.map(p=>({ id:`card:book:${p.slug}`, title:p.name, description:`${money(p.pricePerNight)} ${L.perNight} · ${L.upTo(p.maxGuests)}` })) }]) }; break;
+    case 'villas':
+      // Media carousel: 2-10 cards, image/video header, card body <=160 chars, identical buttons on every card,
+      // quick-reply OR one URL button (never both). Card "type" copied from Meta's published example; verify on the test number.
+      if (card.items.length < 2){ it = { type:'list', header:htext(L.ourVillas), body:{ text:body }, footer:footer('Auralis Cove Retreat'), action:listAction(L.viewVillas,[{ title:L.villasSec, rows:card.items.map(p=>({ id:`card:book:${p.slug}`, title:p.name, description:`${money(p.pricePerNight)} ${L.perNight} · ${L.upTo(p.maxGuests)}` })) }]) }; ctx.note('Carousel needs 2+ cards: list fallback', false, 'list'); break; }
+      it = { type:'carousel', body:{ text:body }, action:{ cards:card.items.slice(0, ctx.count('Carousel cards', card.items.length, 10)).map((p,i)=>({
+        card_index:i, type:'cta_url', header:{ type:'image', image:{ link:p.image } },
+        body:{ text:ctx.clip('Card body', `*${p.name}*\n${money(p.pricePerNight)} ${L.perNight} · ${L.upTo(p.maxGuests)}`, 160) },
+        action:{ buttons:[{ type:'quick_reply', quick_reply:{ id:`card:book:${p.slug}`, title:ctx.clip('Button title', L.book, 20) } }] } })) } };
+      break;
     case 'quote': it = { type:'button', header:{ type:'image', image:{ link:card.image } }, body:{ text:body }, footer:footer(card.available ? `${fmtDate(card.checkIn)} – ${fmtDate(card.checkOut)} · ${L.nightsN(card.nights)} · ${money(card.total)}` : `${L.unavailable} · ${fmtDate(card.checkIn)} – ${fmtDate(card.checkOut)}`),
       action:buttons(card.available ? [['card:dates',L.bookDates],['card:other-dates',L.otherDates]] : [['card:other-dates',L.otherDates],['card:list',L.otherVillas]]) }; break;
     case 'bookingSummary': it = { type:'button', header:htext(`${L.summary} · ${card.name}`), body:{ text:body }, footer:footer(`${fmtDate(card.checkIn)} – ${fmtDate(card.checkOut)} · ${L.guestsN(card.guests)} · ${money(card.total)}`), action:buttons([['card:confirm',L.confirm],['card:change',L.change]]) }; break;
     case 'serviceSummary': it = { type:'button', header:htext(`${L.svcSummary} · ${card.service}`), body:{ text:body }, footer:footer(`${fmtDate(card.date)} ${card.time} · ${card.staff} · ${money(card.price)}`), action:buttons([['card:confirm-service',L.confirm],['card:change',L.change]]) }; break;
-    case 'bookingConfirmed': it = { type:'cta_url', header:htext(`${L.reserved} · ${card.reference}`), body:{ text:body }, footer:footer(`${L.awaiting} · ${money(card.total)}`), action:{ name:'cta_url', parameters:{ display_text:ctx.clip('CTA text', L.pay, 20), url:card.paymentUrl } } }; break;
+    case 'bookingConfirmed': it = { type:'cta_url', header:{ type:'image', image:{ link:card.image } }, body:{ text:body }, footer:footer(`${L.reserved} · ${card.reference} · ${L.awaiting} · ${money(card.total)}`), action:{ name:'cta_url', parameters:{ display_text:ctx.clip('CTA text', L.pay, 20), url:card.paymentUrl } } }; break;
     case 'serviceConfirmed': it = { type:'button', header:htext(`${L.booked} · ${card.reference}`), body:{ text:body }, footer:footer(`${fmtDate(card.date)} ${card.time} · ${card.staff} · ${L.unpaid}`), action:buttons([['card:mine',L.mine]]) }; break;
     case 'services': it = { type:'list', header:htext(L.ourServices), body:{ text:body }, footer:footer('Auralis Cove Retreat'), action:listAction(L.viewServices,[{ title:L.servicesSec, rows:card.items.map(sv=>({ id:`card:service:${sv.slug}`, title:sv.name, description:`${L.minutes(sv.durationMin)} · ${money(sv.price)} · ${sv.category}` })) }]) }; break;
     case 'slots': it = { type:'list', header:htext(card.service), body:{ text:body }, footer:footer(`${fmtDate(card.date)} · ${L.minutes(card.durationMin)}`), action:listAction(L.chooseTime,[{ title:fmtDate(card.date), rows:card.times.map(tm=>({ id:`card:slot:${tm}`, title:tm })) }]) }; break;
@@ -769,6 +784,7 @@ function renderLine(turns){
   document.getElementById('qr-line').innerHTML = qr.map(it => `<button type="button" data-reg="${reg({ ch:'line', action:it.action })}">${esc(it.action.label)}</button>`).join('');
 }
 
+const waFormat = s => esc(s).replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
 function renderWa(turns){
   let html = `<div class="day">${esc(fmtDate(TODAY,{weekday:'short',day:'numeric',month:'short'}))}</div>`, k = 0;
   turns.forEach((tn, idx) => {
@@ -778,6 +794,13 @@ function renderWa(turns){
     tn.wa.body.forEach((msg, j) => {
       if (msg.type === 'text'){ html += `<div class="wa-row"><div class="wa-card"><div class="wa-bub ${j?'':'first'}">${esc(msg.text.body)}<span class="wa-time">${clock(k)}</span></div></div></div>`; return; }
       const it = msg.interactive;
+      if (it.type === 'carousel'){
+        html += `<div class="wa-row"><div class="wa-card"><div class="wa-bub ${j?'':'first'}">${esc(it.body.text)}<span class="wa-time">${clock(k)}</span></div></div></div>`;
+        html += `<div class="wa-carousel" role="list" aria-label="Carousel cards">${it.action.cards.map(c => `<div class="wa-ccard" role="listitem"><img alt="" src="${esc(previewSrc(c.header[c.header.type].link))}" onerror="this.removeAttribute('src')"><div class="wa-ccard-body">${waFormat(c.body.text)}</div><div class="wa-ccard-actions">${
+          c.action.buttons ? c.action.buttons.map(bt => `<button type="button" data-reg="${reg({ ch:'wa', id:bt.quick_reply.id, title:bt.quick_reply.title })}">${ICON.reply}${esc(bt.quick_reply.title)}</button>`).join('')
+          : `<button type="button" data-reg="${reg({ ch:'wa', url:c.action.parameters.url })}">${ICON.link}${esc(c.action.parameters.display_text)}</button>`}</div></div>`).join('')}</div>`;
+        return;
+      }
       let head = '';
       if (it.header?.type === 'image') head = `<img class="wa-hdr-img" alt="" src="${esc(previewSrc(it.header.image.link))}" onerror="this.removeAttribute('src')">`;
       if (it.header?.type === 'text') head = `<p class="wa-hdr-txt">${esc(it.header.text)}</p>`;

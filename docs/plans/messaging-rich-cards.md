@@ -48,11 +48,14 @@ Rules:
 
 | | LINE (`src/lib/line/flex.ts`) | WhatsApp (`src/lib/whatsapp/interactive.ts`) |
 |---|---|---|
-| Villa or service lists | Flex carousel, up to 12 bubbles, hero image | `interactive.list`, up to 10 rows (24-character title, 72-character description) |
+| Villa list | Flex carousel, up to 12 bubbles, hero image | `interactive.carousel`: 2–10 cards, each with an image header, a 160-character body and identical buttons (quick-reply **or** one URL button, never mixed). Fewer than 2 villas falls back to a list. |
+| Service list | Flex carousel with category header | `interactive.list`, up to 10 rows (24-character title, 72-character description). Lists cannot carry images, and services have no photos. |
 | Quote or summary | Flex bubble with key/value rows and Confirm / Change buttons | `interactive.button`, up to 3 buttons (20-character title), image header, AI text as the body (1,024 characters max) |
-| Confirmation and pay | Bubble with a Pay URI button | `interactive.cta_url`, a single link button |
+| Confirmation and pay | Bubble with a Pay URI button | `interactive.cta_url` with the villa photo as the image header and a single link button |
 | Time slots | Quick-reply chips (up to 13) | List rows |
 | Required fallback | `altText` (400 characters max) = short summary | When the body exceeds 1,024 characters: text message first, then the interactive card with a short body |
+
+WhatsApp rules: image headers work on reply-button, link-button and carousel messages, but not on lists. Like every non-template message, these can only be sent within the 24-hour window after the guest's last message. The concierge only ever replies to a guest message, so it is always inside that window. Meta's carousel examples use Graph API v23.0, and the webhook already defaults to v25.0. Meta's quick-reply carousel example keeps `type: "cta_url"` on each card; confirm this on the test number.
 
 Each renderer is a pure function `(card, aiText, locale) => payload[]` with golden-JSON unit tests and limit tests (truncate titles, cap counts, image must be HTTPS).
 
