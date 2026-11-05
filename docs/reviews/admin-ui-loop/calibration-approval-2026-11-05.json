@@ -1,0 +1,186 @@
+{
+  "status": "approved",
+  "recorded_at": "2026-11-05T12:04:24.105020+00:00",
+  "user_instruction": "รับรองคะแนนชุดนี้",
+  "proposal_sha256": "c7e22a57ce6ce0f4f87f34693d5c9576e890e900e7636fc1eb3ba6f9cbbb7c8e",
+  "anchor_ids": [
+    "chats-phone",
+    "settings-business-phone",
+    "chats-ipad-p",
+    "settings-business-ipad-p",
+    "chats-ipad-l",
+    "settings-business-ipad-l",
+    "chats-desktop",
+    "settings-business-desktop"
+  ],
+  "anchors": [
+    {
+      "id": "chats-phone",
+      "file": "chats-phone.png",
+      "sha256": "664da6bb21ae8c11f8c9e87315a7066c47d87da8b94926f0166c4612cdd51ca7",
+      "agreed": {
+        "overall": 8.93939393939394,
+        "categories": {
+          "typography": 10,
+          "hierarchy": 9,
+          "spacing_density": 9.333333333333334,
+          "color_contrast": 10,
+          "iconography": 8,
+          "consistency_polish": 10,
+          "clarity": 8.666666666666666,
+          "layout_responsive": 10,
+          "navigation": 6,
+          "status_glance": 7.333333333333333,
+          "states_safety": 10
+        }
+      }
+    },
+    {
+      "id": "settings-business-phone",
+      "file": "settings-business-phone.png",
+      "sha256": "2e24a1900bffd0236f854400c010bacf4aeb604936e5aec7a096eb96458801e7",
+      "agreed": {
+        "overall": 8.545454545454545,
+        "categories": {
+          "typography": 10,
+          "hierarchy": 6.666666666666667,
+          "spacing_density": 9.666666666666666,
+          "color_contrast": 10,
+          "iconography": 8,
+          "consistency_polish": 8.333333333333334,
+          "clarity": 6,
+          "layout_responsive": 10,
+          "navigation": 6,
+          "status_glance": 9.333333333333334,
+          "states_safety": 10
+        }
+      }
+    },
+    {
+      "id": "chats-ipad-p",
+      "file": "chats-ipad-p.png",
+      "sha256": "23f60f26eba7e12b52624ff492a70854a1d20541a1e4ca873ba34ff392ea094e",
+      "agreed": {
+        "overall": 8.818181818181818,
+        "categories": {
+          "typography": 10,
+          "hierarchy": 9,
+          "spacing_density": 10,
+          "color_contrast": 10,
+          "iconography": 8,
+          "consistency_polish": 8,
+          "clarity": 8,
+          "layout_responsive": 10,
+          "navigation": 6,
+          "status_glance": 8,
+          "states_safety": 10
+        }
+      }
+    },
+    {
+      "id": "settings-business-ipad-p",
+      "file": "settings-business-ipad-p.png",
+      "sha256": "91db74d548fd14c2b90fa4bb617fad292f5248f8c5dcea336772b4815f2b45b6",
+      "agreed": {
+        "overall": 8.727272727272727,
+        "categories": {
+          "typography": 10,
+          "hierarchy": 7,
+          "spacing_density": 8,
+          "color_contrast": 10,
+          "iconography": 10,
+          "consistency_polish": 9,
+          "clarity": 6,
+          "layout_responsive": 10,
+          "navigation": 6,
+          "status_glance": 10,
+          "states_safety": 10
+        }
+      }
+    },
+    {
+      "id": "chats-ipad-l",
+      "file": "chats-ipad-l.png",
+      "sha256": "ab6831529fc1c5d4b026c78a33b783e042cde78ca3cc68d81b07174cab58ee7c",
+      "agreed": {
+        "overall": 8.696969696969697,
+        "categories": {
+          "typography": 10,
+          "hierarchy": 9.666666666666666,
+          "spacing_density": 7,
+          "color_contrast": 10,
+          "iconography": 8,
+          "consistency_polish": 9.333333333333334,
+          "clarity": 8,
+          "layout_responsive": 10,
+          "navigation": 6,
+          "status_glance": 7.666666666666667,
+          "states_safety": 10
+        }
+      }
+    },
+    {
+      "id": "settings-business-ipad-l",
+      "file": "settings-business-ipad-l.png",
+      "sha256": "c6feb4c323af8ed8ba937b0d66c291bc855f65bf1c7c53d950f3a97df7be430a",
+      "agreed": {
+        "overall": 8.393939393939393,
+        "categories": {
+          "typography": 10,
+          "hierarchy": 6.333333333333333,
+          "spacing_density": 9.666666666666666,
+          "color_contrast": 10,
+          "iconography": 8.666666666666666,
+          "consistency_polish": 8.666666666666666,
+          "clarity": 6,
+          "layout_responsive": 7.666666666666667,
+          "navigation": 6,
+          "status_glance": 9.333333333333334,
+          "states_safety": 10
+        }
+      }
+    },
+    {
+      "id": "chats-desktop",
+      "file": "chats-desktop.png",
+      "sha256": "ccbd0c2d5f7f4d66dfa177ce0cf38b5ad440d2537f087fefdfaf820e241f9c1f",
+      "agreed": {
+        "overall": 9.181818181818182,
+        "categories": {
+          "typography": 10,
+          "hierarchy": 10,
+          "spacing_density": 7.666666666666667,
+          "color_contrast": 10,
+          "iconography": 8,
+          "consistency_polish": 9.333333333333334,
+          "clarity": 8,
+          "layout_responsive": 10,
+          "navigation": 10,
+          "status_glance": 8,
+          "states_safety": 10
+        }
+      }
+    },
+    {
+      "id": "settings-business-desktop",
+      "file": "settings-business-desktop.png",
+      "sha256": "0d71a0424862f677503a2ac4e93cc66a17e58f5576955d03093c5f10a0723b2e",
+      "agreed": {
+        "overall": 8.606060606060607,
+        "categories": {
+          "typography": 9,
+          "hierarchy": 6,
+          "spacing_density": 8,
+          "color_contrast": 10,
+          "iconography": 8.666666666666666,
+          "consistency_polish": 9.333333333333334,
+          "clarity": 5.333333333333333,
+          "layout_responsive": 10,
+          "navigation": 8.333333333333334,
+          "status_glance": 10,
+          "states_safety": 10
+        }
+      }
+    }
+  ]
+}

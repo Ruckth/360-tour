@@ -368,6 +368,7 @@ export const FLAWS: Record<string, { category: string; css: string }> = {
     category: "typography",
     css: "main :is(h1,h2,h3,label):nth-child(3n){font-size:11px!important}main :is(h1,h2,h3,label):nth-child(3n+1){font-size:19px!important}main :is(h1,h2,h3,label):nth-child(3n+2){font-size:15px!important}",
   },
+  // injectFlaw halves computed spacing for this probe; it does not use a stylesheet.
   cramped: { category: "spacing_density", css: "" },
   "icon-mix": {
     category: "iconography",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   aggregate,
+  calibrationModelsMatch,
   CATEGORIES,
   formatScore,
   krippendorffAlpha,
@@ -270,5 +271,21 @@ describe("neutral flows and scorecards", () => {
     expect(r.split("\n")[0]).toBe("| Typography | **7.0 †** |  |");
     expect(r.split("\n")[10]).toContain("States & safety");
     expect(r.split("\n")[11]).toContain("**Overall**");
+  });
+});
+
+
+describe("calibration evaluator identity", () => {
+  it("accepts repeated runs from the same identified model", () => {
+    expect(calibrationModelsMatch(["sol", "sol"], ["sol"], ["sol", "sol"])).toBe(true);
+  });
+  it.each([
+    [["astra"], ["sol"], ["sol"]],
+    [["sol", "astra"], ["sol"], ["sol"]],
+    [["sol"], ["sol"], ["astra"]],
+    [["sol"], [], ["sol"]],
+    [["external-B-unspecified"], ["external-B-unspecified"], ["external-B-unspecified"]],
+  ])("rejects mixed or unknown evaluator runs: %j", (...groups) => {
+    expect(calibrationModelsMatch(...groups)).toBe(false);
   });
 });

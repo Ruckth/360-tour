@@ -226,10 +226,10 @@ export function measureDOM({
         (inputs.warnings ??= []).push({ selector: selector(el), fontSize: px });
     }
   }
-  // The part of `rect` left visible by ancestors that clip their overflow.
+  // The part of `rect` left visible by the element itself and its clipping ancestors.
   const visibleRect = (el: Element, rect: DOMRect) => {
     let { left, top, right, bottom } = rect;
-    for (let a = el.parentElement; a; a = a.parentElement) {
+    for (let a: Element | null = el; a; a = a.parentElement) {
       const st = getComputedStyle(a);
       if (
         !/hidden|clip|auto|scroll/.test(
@@ -315,15 +315,19 @@ export function measureDOM({
   }
   // Direct text ranges avoid treating a card/container as a collision with every child.
   const boxes = [...textElements]
-    .map((el) => {
+    .flatMap((el) => {
       const range = document.createRange();
-      for (const n of el.childNodes)
+      const fragments = [];
+      for (const n of el.childNodes) {
         if (n.nodeType === Node.TEXT_NODE && n.textContent?.trim()) {
           range.selectNode(n);
-          break;
+          // A wrapped inline has one rectangle per line. Its bounding rectangle includes
+          // empty space between the fragments, which can contain a neighbouring label.
+          for (const rect of range.getClientRects())
+            fragments.push({ el, rect: visibleRect(el, rect) });
         }
-      // Truncated text lays out at full length; only its visible part can collide.
-      return { el, rect: visibleRect(el, range.getBoundingClientRect()) };
+      }
+      return fragments;
     })
     .filter((b) => b.rect.width && b.rect.height);
   const pinned = (el: Element) => {
