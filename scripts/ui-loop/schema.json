@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ui-score/1/audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "screen",
+    "device",
+    "observed_states",
+    "issues",
+    "categories",
+    "page_specific",
+    "feature_gaps",
+    "not_observed"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["ui-score/1"]
+    },
+    "screen": {
+      "type": "string"
+    },
+    "device": {
+      "type": "string",
+      "enum": ["phone", "ipad-p", "ipad-l", "desktop"]
+    },
+    "observed_states": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "default",
+          "empty",
+          "long",
+          "dialog",
+          "error",
+          "dark",
+          "keyboard"
+        ]
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "category",
+          "severity",
+          "screenshot",
+          "where",
+          "observation",
+          "fix",
+          "feature_gap"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "I1, I2, ... unique within this response"
+          },
+          "category": {
+            "$ref": "#/$defs/category"
+          },
+          "severity": {
+            "type": "integer",
+            "enum": [1, 2, 3, 4],
+            "description": "NN/g: 1 cosmetic, 2 minor, 3 major, 4 catastrophe"
+          },
+          "screenshot": {
+            "type": "string",
+            "description": "exact input filename"
+          },
+          "where": {
+            "type": "string",
+            "description": "quoted visible text or element label + region, e.g. \"'Assign' button, top-right of detail pane\""
+          },
+          "observation": {
+            "type": "string",
+            "description": "what is visible, not an adjective"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "feature_gap": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "categories": {
+      "type": "array",
+      "description": "exactly 11 entries, in rubric order",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "score",
+          "evidence",
+          "screenshots",
+          "blocking_issue_ids"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/category"
+          },
+          "score": {
+            "type": "integer",
+            "enum": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "evidence": {
+            "type": "string",
+            "description": "observed facts that meet the cited anchor; for 10 also what was checked"
+          },
+          "screenshots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocking_issue_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "issues preventing the next anchor up; empty only when score = 10"
+          }
+        }
+      }
+    },
+    "page_specific": {
+      "type": "array",
+      "description": "only on ipad-l; empty array on other devices",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "score", "evidence"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "S1",
+              "C1",
+              "C2",
+              "H1",
+              "H2",
+              "B1",
+              "B2",
+              "P1",
+              "P2",
+              "F1",
+              "R1",
+              "L1",
+              "T1"
+            ]
+          },
+          "score": {
+            "type": "integer",
+            "enum": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "feature_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pattern", "missing_backend", "screenshot"],
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "missing_backend": {
+            "type": "string",
+            "description": "the data or mutation that does not exist"
+          },
+          "screenshot": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "not_observed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "anything the rubric asks about that no capture shows"
+    }
+  },
+  "$defs": {
+    "category": {
+      "type": "string",
+      "enum": [
+        "typography",
+        "hierarchy",
+        "spacing_density",
+        "color_contrast",
+        "iconography",
+        "consistency_polish",
+        "clarity",
+        "layout_responsive",
+        "navigation",
+        "status_glance",
+        "states_safety"
+      ]
+    }
+  }
+}

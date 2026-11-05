@@ -132,6 +132,12 @@ importers:
         specifier: ^0.175.0
         version: 0.175.0
     devDependencies:
+      '@axe-core/playwright':
+        specifier: ^4.14.0
+        version: 4.14.0(playwright-core@1.60.0)
+      '@clerk/testing':
+        specifier: ^2.2.54
+        version: 2.2.54(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@edge-runtime/vm':
         specifier: ^5.0.0
         version: 5.0.0
@@ -198,6 +204,12 @@ packages:
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
+
+  '@axe-core/playwright@4.14.0':
+    resolution: {integrity: sha512-SGUhG5PIHd2eMdpgBF2PyQLOhX+qyDR2PT4cmoS4Qk2ak+jX/rrSvst9l0PGv5WTHolKpUMvVmoHpr4cZgf1RQ==}
+    engines: {node: '>=22.12.0'}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -301,6 +313,10 @@ packages:
       '@types/react':
         optional: true
 
+  '@clerk/backend@3.26.6':
+    resolution: {integrity: sha512-tm2ZWWFW+qBzW9SkdR0RxL++hww/ArtTzrtsu8k2cCXJIVGKaIMl/5tKi+4wy7iouvgk33Bs22fv3vKJ0RRrHg==}
+    engines: {node: '>=20.9.0'}
+
   '@clerk/backend@3.4.11':
     resolution: {integrity: sha512-WT+4FrcMMofxe+irQYUkawoRWaHHXT9/wiRYhRbSb30cOPjN95ViydqPhAyp8ZWAHInHg4mILynQQRJH14SKZQ==}
     engines: {node: '>=20.9.0'}
@@ -350,6 +366,30 @@ packages:
       react:
         optional: true
       react-dom:
+        optional: true
+
+  '@clerk/shared@4.44.0':
+    resolution: {integrity: sha512-cSkplKEZZStBciwo+4iJZOg44rfs/C2jlMPwim4t6dVn2wykUts5NVr0HVote7XNAXP5s0A+UzV1n6pkz4CCHg==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
+  '@clerk/testing@2.2.54':
+    resolution: {integrity: sha512-CRU5wRg0Fy7bpH3IZ0POhy+jtMw/McEbeG/OFmnrbvV/IWhs1WAdwBLMp9hy5nt3JhVTrZ9TBwxiWgQl7oiNPw==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      '@playwright/test': ^1
+      cypress: ^13 || ^14 || ^15
+    peerDependenciesMeta:
+      '@playwright/test':
+        optional: true
+      cypress:
         optional: true
 
   '@convex-dev/migrations@0.3.4':
@@ -2319,6 +2359,9 @@ packages:
   '@tanstack/query-core@5.100.11':
     resolution: {integrity: sha512-lmE0994apShXPj8CUxgx4ch5yUJhE9k/+tVwihBvPOyerACWdBocfFg24t8+0RhtlTd7tEgchDkhlCxNssvDxw==}
 
+  '@tanstack/query-core@5.106.0':
+    resolution: {integrity: sha512-3GuqVrhCG0bBfmLt4AU0SIm8UuZ1rzeRjDiQBnYuzW3lkri1RdawWN73jZYvB4kC8WyDUoDgBx3kyO3TbNH/6Q==}
+
   '@tweenjs/tween.js@23.1.3':
     resolution: {integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==}
 
@@ -2727,6 +2770,10 @@ packages:
     resolution: {integrity: sha512-KunSNx+TVpkAw/6ULfhnx+HWRecjqZGTOyquAoWHYLRSdK1tB5Ihce1ZW+UY3fj33bYAFWPu7W/GRSmmrCGuxA==}
     engines: {node: '>=4'}
 
+  axe-core@4.14.0:
+    resolution: {integrity: sha512-9WTZxEjsZ7b13TH8JPmbV2z8CHbl80/2hm3XPEG4JgNdQLK81IBRXmSxHfMAOkSqQeRxT/0dwNDz2GOm3zzpcQ==}
+    engines: {node: '>=4'}
+
   axobject-query@4.1.0:
     resolution: {integrity: sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==}
     engines: {node: '>= 0.4'}
@@ -2954,6 +3001,10 @@ packages:
 
   dompurify@3.4.16:
     resolution: {integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==}
+
+  dotenv@17.2.2:
+    resolution: {integrity: sha512-Sf2LSQP+bOlhKWWyhFsn0UsfdK/kCWRv1iuA2gXAwt3dyNabr6QSj00I2V10pidqz69soatm9ZwZvpQMTIOd5Q==}
+    engines: {node: '>=12'}
 
   dotenv@17.4.2:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
@@ -3529,6 +3580,9 @@ packages:
   js-cookie@3.0.5:
     resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
     engines: {node: '>=14'}
+
+  js-cookie@3.0.8:
+    resolution: {integrity: sha512-yeJd4aNAdYZQjaon2bpD/Gb0B/omw7HQOsynXXcOiWVCacbBcPlgn8S/d1X6blFSaHao7ozqtW7NZW19xpCtIw==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -4758,6 +4812,11 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
+  '@axe-core/playwright@4.14.0(playwright-core@1.60.0)':
+    dependencies:
+      axe-core: 4.14.0
+      playwright-core: 1.60.0
+
   '@babel/code-frame@7.29.0':
     dependencies:
       '@babel/helper-validator-identifier': 7.28.5
@@ -4887,6 +4946,14 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.14
 
+  '@clerk/backend@3.26.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@clerk/shared': 4.44.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      standardwebhooks: 1.0.0
+    transitivePeerDependencies:
+      - react
+      - react-dom
+
   '@clerk/backend@3.4.11(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@clerk/shared': 4.12.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -4945,6 +5012,27 @@ snapshots:
     optionalDependencies:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
+
+  '@clerk/shared@4.44.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@tanstack/query-core': 5.106.0
+      dequal: 2.0.3
+      glob-to-regexp: 0.4.1
+      js-cookie: 3.0.8
+    optionalDependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+
+  '@clerk/testing@2.2.54(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@clerk/backend': 3.26.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@clerk/shared': 4.44.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      dotenv: 17.2.2
+    optionalDependencies:
+      '@playwright/test': 1.60.0
+    transitivePeerDependencies:
+      - react
+      - react-dom
 
   '@convex-dev/migrations@0.3.4(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))':
     dependencies:
@@ -6503,6 +6591,8 @@ snapshots:
 
   '@tanstack/query-core@5.100.11': {}
 
+  '@tanstack/query-core@5.106.0': {}
+
   '@tweenjs/tween.js@23.1.3': {}
 
   '@tybys/wasm-util@0.10.2':
@@ -6966,6 +7056,8 @@ snapshots:
 
   axe-core@4.11.4: {}
 
+  axe-core@4.14.0: {}
+
   axobject-query@4.1.0: {}
 
   balanced-match@1.0.2: {}
@@ -7179,6 +7271,8 @@ snapshots:
   dompurify@3.4.16:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
+
+  dotenv@17.2.2: {}
 
   dotenv@17.4.2: {}
 
@@ -7925,6 +8019,8 @@ snapshots:
   jiti@2.6.1: {}
 
   js-cookie@3.0.5: {}
+
+  js-cookie@3.0.8: {}
 
   js-tokens@4.0.0: {}
 
