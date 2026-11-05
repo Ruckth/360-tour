@@ -50,7 +50,7 @@ export function SelectCheckbox({
     <input
       ref={ref}
       type="checkbox"
-      className="size-4 cursor-pointer accent-foreground"
+      className="size-4 cursor-pointer accent-foreground pointer-coarse:size-5"
       checked={checked}
       onChange={onChange}
       aria-label={label}

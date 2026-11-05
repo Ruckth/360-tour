@@ -2,7 +2,8 @@ import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, S
 
 /** `keywords` are extra words the sidebar search matches, e.g. the channels a page covers. */
 export type AdminNavLink = { href: string; label: string; keywords?: readonly string[] };
-export type AdminNavItem = AdminNavLink & { icon: LucideIcon; children?: readonly AdminNavLink[] };
+/** `shortLabel` names the section where space is tight: the iPad rail and the phone tab bar. */
+export type AdminNavItem = AdminNavLink & { icon: LucideIcon; shortLabel?: string; children?: readonly AdminNavLink[] };
 
 export const ADMIN_STAFF_TABS = ["calendar", "roster", "staff", "services"] as const;
 export type AdminStaffTab = (typeof ADMIN_STAFF_TABS)[number];
@@ -39,10 +40,11 @@ export function adminSettingsTabPath(tab: AdminSettingsTab): string {
 /** Sidebar sections, in order. Add a page under `src/app/admin/<section>` and list it here. */
 export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/chats", label: "Chats", icon: MessageCircle, keywords: ["inbox", "messages", "conversations"] },
-  { href: "/admin/hotel", label: "Hotel bookings", icon: BedDouble, keywords: ["reservations", "rooms"] },
+  { href: "/admin/hotel", label: "Hotel bookings", shortLabel: "Hotel", icon: BedDouble, keywords: ["reservations", "rooms"] },
   {
     href: "/admin/staff/calendar",
     label: "Staff bookings",
+    shortLabel: "Spa",
     icon: CalendarClock,
     children: ADMIN_STAFF_TABS.map((tab) => ({
       href: adminStaffTabPath(tab),
@@ -51,7 +53,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     })),
   },
   { href: "/admin/checkout", label: "Checkout", icon: ShoppingBag, keywords: ["POS", "pay", "orders", "receipt"] },
-  { href: "/admin/questions", label: "Business facts", icon: HelpCircle, keywords: ["questions", "answers", "FAQ"] },
+  { href: "/admin/questions", label: "Business facts", shortLabel: "Facts", icon: HelpCircle, keywords: ["questions", "answers", "FAQ"] },
   { href: "/admin/properties", label: "Properties", icon: Building2, keywords: ["villas"] },
   { href: "/admin/leads", label: "Leads", icon: Mail },
   {
@@ -61,6 +63,11 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     children: ADMIN_SETTINGS_TABS.map(({ id, label, keywords }) => ({ href: adminSettingsTabPath(id), label, keywords })),
   },
 ];
+
+/** The sections on the phone tab bar, besides Search and Menu: the ones staff use all day. */
+export const ADMIN_TAB_BAR: readonly AdminNavItem[] = ["/admin/chats", "/admin/hotel", "/admin/staff/calendar"].map(
+  (href) => ADMIN_NAV.find((item) => item.href === href)!,
+);
 
 /** "/admin/staff/services" -> "/admin/staff": the part of a path that picks the sidebar section. */
 function adminSection(pathname: string) {

@@ -583,7 +583,7 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                 {row.discarded ? <span className="block text-xs text-muted-foreground">Discarded {orderTime(row.discarded.at)} · {row.discarded.by ?? "Unknown"}{row.discarded.reason ? ` · ${row.discarded.reason}` : ""}</span> : null}
               </span>
               <span className="shrink-0 text-right">
-                <span className="block text-[11px] text-muted-foreground">{row.state === "unpaid" ? "Due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
+                <span className="block text-xs text-muted-foreground">{row.state === "unpaid" ? "Due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
                 <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                   {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                 </span>

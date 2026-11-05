@@ -31,17 +31,17 @@ export function Calendar({
         caption_label: "text-sm font-semibold text-foreground",
         nav: "pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between",
         button_previous:
-          "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35",
+          "pointer-events-auto inline-flex h-8 w-8 pointer-coarse:size-11 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35",
         button_next:
-          "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35",
+          "pointer-events-auto inline-flex h-8 w-8 pointer-coarse:size-11 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35",
         month_grid: "w-full border-collapse space-y-1",
         weekdays: "grid grid-cols-7",
         weekday:
           "flex h-9 items-center justify-center rounded-md text-[0.8rem] font-medium text-muted-foreground",
         week: "mt-2 grid grid-cols-7",
-        day: "relative flex h-9 w-full items-center justify-center p-0 text-center text-sm",
+        day: "relative flex h-9 pointer-coarse:h-11 w-full items-center justify-center p-0 text-center text-sm",
         day_button:
-          "inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-sm font-normal transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-45",
+          "inline-flex h-9 w-9 pointer-coarse:size-11 items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-sm font-normal transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-45",
         selected:
           props.mode === "single"
             ? "rounded-md bg-primary text-primary-foreground [&>button]:bg-primary [&>button]:text-primary-foreground hover:[&>button]:bg-primary"
@@ -83,15 +83,15 @@ function bookingCalendarClassNames(compact: boolean) {
     ),
     nav: "pointer-events-none absolute right-0 top-0 z-10 flex items-center gap-1",
     button_previous:
-      "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-muted-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
+      "pointer-events-auto inline-flex h-8 w-8 pointer-coarse:size-11 items-center justify-center rounded-full bg-transparent p-0 text-muted-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
     button_next:
-      "pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
+      "pointer-events-auto inline-flex h-8 w-8 pointer-coarse:size-11 items-center justify-center rounded-full bg-transparent p-0 text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-30",
     weekday:
       "flex h-8 items-center justify-center rounded-md text-sm font-medium text-foreground",
     week: "mt-1 grid grid-cols-7",
-    day: "relative flex h-9 w-full items-center justify-center p-0 text-center text-base",
+    day: "relative flex h-9 pointer-coarse:h-11 w-full items-center justify-center p-0 text-center text-base",
     day_button:
-      "inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-base font-medium transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-40",
+      "inline-flex h-8 w-8 pointer-coarse:size-11 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-base font-medium transition hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-40",
     outside: "text-muted-foreground opacity-45",
     disabled: "text-muted-foreground opacity-30",
     today: "font-semibold text-foreground",

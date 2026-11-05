@@ -147,7 +147,7 @@ export function CheckoutView({
           <button
             type="button"
             aria-label={`${title} · ${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the order`}
-            className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 flex min-h-14 items-center gap-3 rounded-2xl bg-primary px-5 py-3 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40"
+            className="fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-center gap-3 rounded-2xl bg-primary px-5 py-3 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40"
           >
             <ReceiptText aria-hidden className="size-5 shrink-0" />
             <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold">

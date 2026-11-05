@@ -5,7 +5,7 @@ import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type 
 import { cn } from "@/lib/utils";
 
 export const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-transparent font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-px disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-transparent font-semibold transition-all pointer-coarse:min-h-11 pointer-coarse:min-w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-px disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -17,7 +17,7 @@ export const buttonVariants = cva(
         ghost: "text-foreground hover:bg-muted",
         glass: "border-white/10 bg-white/15 text-white backdrop-blur-md hover:bg-white/25",
         gold: "bg-gold text-navy shadow-lg shadow-gold/20 hover:bg-gold-light",
-        link: "h-auto rounded-none p-0 text-primary underline-offset-4 hover:underline",
+        link: "h-auto rounded-none p-0 text-primary underline-offset-4 hover:underline pointer-coarse:min-h-0 pointer-coarse:min-w-0",
       },
       size: {
         default: "h-10 px-4 py-2 text-sm",

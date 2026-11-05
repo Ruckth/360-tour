@@ -38,14 +38,17 @@ export function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-card p-6 text-card-foreground shadow-2xl outline-none transition data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100",
+          // Centred from md up; a bottom sheet on phones. Either way capped to the window and scrolling,
+          // so a long form or the on-screen keyboard can't push the actions out of reach.
+          "fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-6 text-card-foreground shadow-2xl outline-none transition data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100",
+          "max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:max-h-[calc(100dvh-max(1rem,env(safe-area-inset-top)))] max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-b-none max-md:rounded-t-2xl max-md:border-x-0 max-md:border-b-0 max-md:pb-[max(1.5rem,env(safe-area-inset-bottom))] max-md:data-[state=closed]:translate-y-8 max-md:data-[state=closed]:scale-100",
           className,
         )}
         {...props}
       >
         {children}
         {showCloseButton ? (
-          <DialogPrimitive.Close className="absolute right-3 top-3 rounded-full p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <DialogPrimitive.Close className="absolute right-2 top-2 inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-11">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
@@ -59,7 +62,7 @@ export function DialogHeader({
   className,
   ...props
 }: ComponentPropsWithoutRef<"div">) {
-  return <div className={cn("flex flex-col gap-1.5 text-center sm:text-left", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-1.5 pe-8 text-left", className)} {...props} />;
 }
 
 export function DialogFooter({

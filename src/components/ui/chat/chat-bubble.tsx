@@ -23,7 +23,7 @@ export function ChatBubbleAvatar({ label }: { label: string }) {
   return (
     <span
       aria-hidden="true"
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold/15 text-[11px] font-semibold text-foreground"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xs font-semibold text-foreground"
     >
       {label}
     </span>

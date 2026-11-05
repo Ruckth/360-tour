@@ -336,7 +336,7 @@ function StaffCalendar() {
         return (
           <span className="flex min-w-0 flex-1 items-center gap-1 text-xs leading-4 text-muted-foreground">
             <span className="truncate">Unnamed</span>
-            <span className="shrink-0 font-mono text-[10px]" title={appointment.confirmationCode}>
+            <span className="shrink-0 font-mono text-xs" title={appointment.confirmationCode}>
               {appointment.confirmationCode.slice(-6)}
             </span>
           </span>
@@ -350,7 +350,7 @@ function StaffCalendar() {
             </span>
             <StatusBadge {...appointmentStatus(displayStatus(appointment))} className="hidden @[12rem]:inline-flex" />
           </span>
-          {!appointment.guestName ? <span className="font-mono text-[10px] text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
+          {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
           <span className="truncate text-xs text-muted-foreground">
             {formatResortTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
             {staffName ? ` · ${staffName}` : ""}
