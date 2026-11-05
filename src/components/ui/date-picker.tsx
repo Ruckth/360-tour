@@ -102,7 +102,8 @@ export function DatePicker({
         <PopoverContent
           align="start"
           collisionPadding={12}
-          className="w-[min(20rem,calc(100vw-2rem))] p-3"
+          // Wide enough on touch screens for seven 44px day buttons.
+          className="w-[min(20rem,calc(100vw-2rem))] p-3 pointer-coarse:w-[min(22.5rem,calc(100vw-1rem))]"
         >
           <Calendar
             mode="single"

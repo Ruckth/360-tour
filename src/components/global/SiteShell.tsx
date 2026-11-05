@@ -128,7 +128,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   if (pathname.startsWith("/admin")) {
-    return <div className="min-h-screen bg-background text-foreground">{children}</div>;
+    return <div className="min-h-dvh bg-background text-foreground">{children}</div>;
   }
 
   // Sign-in and sign-up live outside [locale] (see src/proxy.ts) but keep the public header and footer.

@@ -24,14 +24,22 @@ for (const viewport of [
         clientWidth: element.clientWidth,
         left: rect.left,
         right: rect.right,
+        bottom: rect.bottom,
         titleLeft: title.left,
         formLeft: form.left,
         padding: parseFloat(style.paddingLeft),
       };
     });
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
-    expect(geometry.left).toBeGreaterThanOrEqual(15);
-    expect(geometry.right).toBeLessThanOrEqual(viewport.width - 15);
+    if (viewport.width < 768) {
+      // Phones get a bottom sheet across the full width (overlays by size, admin UI rules).
+      expect(geometry.left).toBe(0);
+      expect(geometry.right).toBe(viewport.width);
+      expect(geometry.bottom).toBe(viewport.height);
+    } else {
+      expect(geometry.left).toBeGreaterThanOrEqual(15);
+      expect(geometry.right).toBeLessThanOrEqual(viewport.width - 15);
+    }
     expect(geometry.titleLeft).toBeGreaterThanOrEqual(
       geometry.left + geometry.padding,
     );

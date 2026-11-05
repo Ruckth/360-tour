@@ -4,6 +4,7 @@ import { SignInButton, useUser } from "@clerk/nextjs";
 import { Shield } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { adminNavItem } from "@/components/admin/admin-routes";
@@ -21,7 +22,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   if (!isLoaded) {
     return (
-      <div className="grid min-h-screen place-items-center">
+      <div className="grid min-h-dvh place-items-center">
         <Spinner label="Loading admin" className="size-6" />
       </div>
     );
@@ -29,7 +30,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   if (!isSignedIn) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,var(--background),var(--secondary))] px-5">
+      <div className="grid min-h-dvh place-items-center bg-[linear-gradient(135deg,var(--background),var(--secondary))] px-5">
         <section className="w-full max-w-md border border-border bg-card p-6 shadow-xl">
           <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
           <h1 className="font-serif text-4xl font-semibold text-foreground">Admin</h1>
@@ -47,7 +48,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   if (!convex) {
     return (
-      <div className="grid min-h-screen place-items-center px-5">
+      <div className="grid min-h-dvh place-items-center px-5">
         <section className="max-w-lg border border-border bg-card p-6 shadow-xl">
           <h1 className="font-serif text-3xl font-semibold">Convex is not configured</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -60,7 +61,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   if (convexAuth.isAuthEnabled && convexAuth.isLoading) {
     return (
-      <div className="grid min-h-screen place-items-center">
+      <div className="grid min-h-dvh place-items-center">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner label="Connecting" className="size-5" />
           Connecting secure admin session
@@ -71,7 +72,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   if (convexAuth.isAuthEnabled && !convexAuth.isAuthenticated) {
     return (
-      <div className="grid min-h-screen place-items-center px-5">
+      <div className="grid min-h-dvh place-items-center px-5">
         <section className="max-w-lg border border-border bg-card p-6 shadow-xl">
           <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
           <h1 className="font-serif text-3xl font-semibold">
@@ -106,12 +107,19 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
     <SidebarProvider
       open={checkoutFlow ? checkoutOpen : open}
       onOpenChange={checkoutFlow ? setCheckoutOpen : setOpen}
-      className={cn("bg-background", fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-screen")}
+      className={cn(
+        // --admin-tab-bar: the phone tab bar's height, so bars pinned to the bottom sit above it.
+        "bg-background pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] [--admin-tab-bar:calc(3.8125rem+max(0.25rem,env(safe-area-inset-bottom)))] md:[--admin-tab-bar:0px]",
+        fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-dvh",
+      )}
     >
+      {/* Navigation changes form with the window but never disappears: the sidebar from 1280px
+          (a drawer below, opened from Menu), an icon rail on iPads, a tab bar on phones. */}
       <AdminSidebar userEmail={userEmail} />
+      <AdminRail />
       <SidebarInset className="min-h-0 min-w-0">
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
-          <SidebarTrigger className="-ml-1" />
+        <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 pt-[env(safe-area-inset-top)] sm:px-6">
+          <SidebarTrigger className="-ml-1 hidden xl:inline-flex" />
           <div className="min-w-0">
             <p className="admin-eyebrow">Concierge operations</p>
             <h1 className="truncate font-serif text-2xl font-semibold tracking-tight text-foreground">
@@ -120,6 +128,7 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
           </div>
         </header>
         <ConfirmProvider>{children}</ConfirmProvider>
+        <AdminTabBar />
       </SidebarInset>
     </SidebarProvider>
   );

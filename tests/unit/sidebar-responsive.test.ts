@@ -55,7 +55,7 @@ async function mount(viewport: number) {
 }
 
 describe("responsive sidebar", () => {
-  it.each([390, 768, 820, 1024, 1180, 1366, 1399, 1399.5])(
+  it.each([390, 768, 820, 1024, 1180, 1279, 1279.5])(
     "starts closed and opens as a drawer at %spx", async (viewport) => {
       await mount(viewport);
       expect(sidebar.isMobile).toBe(true);
@@ -68,7 +68,7 @@ describe("responsive sidebar", () => {
     },
   );
 
-  it.each([1400, 1440])("retains desktop collapse at %spx", async (viewport) => {
+  it.each([1280, 1366, 1440])("retains desktop collapse at %spx", async (viewport) => {
     await mount(viewport);
     expect(sidebar.isMobile).toBe(false);
     await act(async () => sidebar.toggleSidebar());

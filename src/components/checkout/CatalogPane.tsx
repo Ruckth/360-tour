@@ -148,7 +148,7 @@ export function CatalogPane({
               <Button variant="outline" className="h-11 rounded-xl bg-card/60 px-3 sm:px-4" aria-label={`Filters${filterCount ? ` (${filterCount} on)` : ""}`}>
                 <SlidersHorizontal aria-hidden className="size-4" />
                 <span className="hidden sm:inline">Filters</span>
-                {filterCount ? <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{filterCount}</span> : null}
+                {filterCount ? <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{filterCount}</span> : null}
               </Button>
             </SheetTrigger>
             <CheckoutSheetContent side="right" className="w-80">
@@ -254,7 +254,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
         <span className="relative shrink-0">
           <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
           {count ? (
-            <span className="absolute -top-1.5 -left-1.5 min-w-5 rounded-full bg-primary px-1 text-center text-[11px] leading-5 font-semibold text-primary-foreground shadow">
+            <span className="absolute -top-1.5 -left-1.5 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
               {count}<span className="sr-only"> on the order</span>
             </span>
           ) : null}

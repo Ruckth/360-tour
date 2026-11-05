@@ -116,8 +116,8 @@ export function EntityPicker<Value extends string>({
           aria-labelledby={labelId ? `${labelId} ${valueId}` : undefined}
           disabled={disabled}
           className={cn(
-            "flex h-11 w-full min-w-0 items-center gap-2.5 rounded-lg border border-input bg-background pl-1.5 pr-3 text-left text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-            compact && "h-9",
+            "flex h-11 w-full min-w-0 items-center gap-2.5 rounded-lg border border-input bg-background pl-1.5 pr-3 text-left text-sm font-semibold text-foreground shadow-sm transition hover:bg-muted focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+            compact && "h-9 pointer-coarse:min-h-11",
             className,
           )}
         >
@@ -153,7 +153,7 @@ export function EntityPicker<Value extends string>({
           loop
           filter={matchPickerSearch}
           defaultValue={selected?.value}
-          className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground"
+          className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground"
         >
           <div className="m-1.5 mb-0.5 flex items-center gap-2 rounded-lg border border-input bg-background px-2.5 focus-within:border-ring">
             <Search

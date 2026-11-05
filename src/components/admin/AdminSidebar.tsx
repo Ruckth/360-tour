@@ -7,6 +7,7 @@ import { ChevronRight, Search, Shield } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { OPEN_ADMIN_SEARCH } from "@/components/admin/AdminNav";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
 import {
   Sidebar,
@@ -76,7 +77,11 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
       focusSearch();
     }
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener(OPEN_ADMIN_SEARCH, focusSearch);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener(OPEN_ADMIN_SEARCH, focusSearch);
+    };
   }, [focusSearch]);
 
   // ReUI c-sidebar-1: inset shell, compact workspace header, grouped nav and account footer.
@@ -101,7 +106,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
             placeholder="Search admin…"
             aria-label="Search admin pages"
             aria-keyshortcuts={shortcut === "⌘K" ? "Meta+K" : "Control+K"}
-            className={cn("pl-8 pr-10 text-base sm:text-sm [&::-webkit-search-cancel-button]:hidden", isMobile ? "h-10" : "h-9")}
+            className={cn("pl-8 pr-10 text-base sm:text-sm [&::-webkit-search-cancel-button]:hidden", isMobile ? "h-11" : "h-9")}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && searching && firstHit) {
@@ -116,7 +121,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
             }}
           />
           {!isMobile ? (
-            <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-sidebar-border px-1 font-mono text-[10px] text-sidebar-foreground/60">
+            <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-sidebar-border px-1 font-mono text-xs text-sidebar-foreground/60">
               {searching ? "↵" : shortcut}
             </kbd>
           ) : null}
@@ -146,7 +151,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                 const highlighted = current && !subShown;
                 return (
                   <SidebarMenuItem key={href}>
-                    <SidebarMenuButton asChild isActive={highlighted} tooltip={label} className={cn(isMobile && "h-10", children?.length && "pr-10")}>
+                    <SidebarMenuButton asChild isActive={highlighted} tooltip={label} className={cn(isMobile && "h-11", children?.length && "pr-11")}>
                       <Link href={href} aria-current={highlighted ? "page" : undefined} onClick={close}>
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
@@ -154,8 +159,8 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                     </SidebarMenuButton>
                     {children?.length && !searching ? (
                       <SidebarMenuAction
-                        // A full 40px tap target on phones, centred on the 40px row.
-                        className={cn(isMobile && "right-0 top-0! size-10 after:hidden")}
+                        // A full 44px tap target in the drawer, the height of its row.
+                        className={cn(isMobile && "right-0 top-0! size-11 after:hidden")}
                         aria-label={`${expanded ? "Hide" : "Show"} ${label} pages`}
                         aria-expanded={expanded}
                         onClick={() => setToggled((prev) => ({ ...prev, [href]: !expanded }))}
@@ -167,7 +172,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                       <SidebarMenuSub>
                         {children.map((child) => (
                           <SidebarMenuSubItem key={child.href}>
-                            <SidebarMenuSubButton asChild isActive={child.href === activeSub} className={cn(isMobile && "h-10")}>
+                            <SidebarMenuSubButton asChild isActive={child.href === activeSub} className={cn(isMobile && "h-11")}>
                               <Link
                                 href={child.href}
                                 aria-current={child.href === activeSub ? "page" : undefined}

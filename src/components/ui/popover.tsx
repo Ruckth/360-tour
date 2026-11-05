@@ -20,7 +20,7 @@ export function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-72 rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-xl outline-none transition data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100",
+          "z-50 w-72 max-w-[calc(100vw-1rem)] max-h-(--radix-popover-content-available-height) overflow-y-auto rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-xl outline-none transition data-[state=closed]:scale-95 data-[state=closed]:opacity-0 data-[state=open]:scale-100 data-[state=open]:opacity-100",
           className,
         )}
         {...props}
