@@ -170,6 +170,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     await setRootFont(page, ENLARGED);
 
     await sheet.getByRole("button", { name: "Cash", exact: true }).click();
+    await sheet.getByText("Payment date and time", { exact: false }).first().click();
     await expectReachable(page, sheet.getByLabel("Money received date · Bangkok time"), "payment business date");
     await expectReachable(page, sheet.getByLabel("Money received time · Bangkok time"), "payment business time");
     const paymentWidth = await sheet.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
@@ -205,6 +206,21 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     expect.soft(amount!.width, "amount field keeps room to type").toBeGreaterThanOrEqual(96);
     await shot(page, "pay-split-text200");
   });
+});
+
+test("phone cash entry and confirmation stay visible above a reduced keyboard viewport", async ({ page }) => {
+  await open(page, { width: 360, height: 800 }, "?lines=13");
+  const sheet = await openOrderSheet(page);
+  await sheet.getByRole("button", { name: "Cash", exact: true }).click();
+  const input = sheet.getByLabel("Cash received");
+  await input.focus();
+  await page.setViewportSize({ width: 360, height: 464 });
+  await input.fill("1200");
+  const confirm = sheet.getByRole("button", { name: "Confirm cash", exact: true });
+  await expect.poll(async () => {
+    const [field, balance, action] = await boxesOf([input, sheet.getByTestId("cash-balance"), confirm]);
+    return field.y >= 0 && field.y + field.height <= balance.y && balance.y + balance.height <= action.y && action.y + action.height <= 464.5;
+  }).toBe(true);
 });
 
 /** Four tenders fill the row exactly: Cash starts and Transfer ends where Split payment does. */

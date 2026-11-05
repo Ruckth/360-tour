@@ -27,6 +27,16 @@ export function formatDateTime(timestamp?: number) {
   }).format(new Date(timestamp));
 }
 
+/** One line of plain text from a message that may carry Markdown, for list previews. */
+export function plainText(value: string) {
+  return value
+    .replace(/[*_`~]+/g, "")
+    .replace(/^\s*(?:#{1,6}|[-+]|\d+\.)\s+/gm, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function truncate(value?: string, max = 96) {
   if (!value) return "";
   return value.length > max ? `${value.slice(0, max - 1)}...` : value;

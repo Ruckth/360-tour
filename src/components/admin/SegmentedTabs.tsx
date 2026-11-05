@@ -63,7 +63,9 @@ export function SegmentedTabs<T extends string>({
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className={cn("flex max-w-full overflow-x-auto border-b border-border", fill ? "w-full" : "gap-6", className)}
+      // The baseline is an inset shadow, not a border, so the selected tab's underline sits on it
+      // without overflowing the scroll box (which would clip the tab's touch area).
+      className={cn("flex max-w-full overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)]", fill ? "w-full" : "gap-6", className)}
     >
       {tabs.map((tab) => {
         const selected = tab.value === value;
@@ -78,7 +80,7 @@ export function SegmentedTabs<T extends string>({
             tabIndex={selected ? 0 : -1}
             onClick={() => onValueChange(tab.value)}
             className={cn(
-              "-mb-px inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-b-2 px-1 pb-2.5 text-sm font-medium pointer-coarse:min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-b-2 px-1 pb-2.5 text-sm font-medium pointer-coarse:min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               fill && "flex-1 pt-1",
               selected
                 ? "border-foreground text-foreground"

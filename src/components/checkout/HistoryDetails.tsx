@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { OrderId } from "./backend";
 
@@ -10,10 +11,11 @@ export function HistoryDetails({ orderId, ...props }: { orderId: OrderId; title:
 
 function DeferredDetails({ title, children }: { title: string; children: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
-  return <details className="w-full text-sm print:hidden" onToggle={event => {
+  // Disclosures stack as one ruled list (see PaymentRecord's "Receipt activity").
+  return <details className="group/details w-full border-t border-border text-sm print:hidden" onToggle={event => {
     if (event.currentTarget.open) setExpanded(true);
   }}>
-    <summary className="min-h-11 cursor-pointer py-3 font-semibold">{title}</summary>
+    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded py-2 font-semibold hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"><ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-90" />{title}</summary>
     {expanded ? children : null}
   </details>;
 }

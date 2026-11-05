@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import { useMutation } from "convex/react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -45,7 +45,7 @@ export type FactFormTarget = {
     propertyId?: Id<"properties">;
   };
   /** Prefill a blank draft fact from arbitrary text (e.g. a chat message), resolving nothing. */
-  fromMessage?: { question: string; propertyId?: Id<"properties"> };
+  fromMessage?: { question: string; propertyId?: Id<"properties">; propertySlug?: string };
 };
 
 const STATUS_LABEL: Record<BusinessFactStatus, string> = STATUS_LABELS.businessFact;
@@ -83,7 +83,8 @@ export function BusinessFactFormDialog({
 }) {
   return (
     <Dialog open={target !== null} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+      {/* Beside the page from iPad up, so the conversation it comes from stays readable. */}
+      <DialogContent panel className="max-h-[90dvh] max-w-2xl overflow-y-auto md:w-[32rem]">
         {/* Mounted per open, so the form state starts fresh each time. */}
         {target ? (
           <FactForm target={target} properties={properties} onClose={onClose} onSaved={onSaved} />
@@ -105,6 +106,20 @@ function FactForm({
   onSaved?: () => void;
 }) {
   const [form, setForm] = useState<FactFormValues>(() => initialValues(target));
+  // A fact started from a chat applies to that chat's villa until staff choose otherwise. The
+  // property list loads after the form opens, so the slug is matched once it arrives.
+  const scopedFromChat = useRef(false);
+  const [scopeChosen, setScopeChosen] = useState(false);
+  const chatSlug = target.fromMessage?.propertySlug;
+  const chatProperty = properties.find((property) => property.slug === chatSlug);
+  const needsScopeChoice = !!chatSlug && chatProperty?.status !== "active" && !scopeChosen;
+  useEffect(() => {
+    if (scopedFromChat.current || !chatSlug) return;
+    const match = properties.find((property) => property.slug === chatSlug);
+    if (!match || match.status !== "active") return;
+    scopedFromChat.current = true;
+    setForm((current) => (current.propertyId ? current : { ...current, propertyId: match._id }));
+  }, [chatSlug, properties]);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const save = useMutation(api.businessFacts.adminSave);
@@ -119,12 +134,20 @@ function FactForm({
       : activeProperties;
 
   function update<K extends keyof FactFormValues>(key: K, value: FactFormValues[K]) {
+    if (key === "propertyId") {
+      scopedFromChat.current = true;
+      setScopeChosen(true);
+    }
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
+    if (needsScopeChoice) {
+      setFormError("Choose an active villa or All properties for this fact.");
+      return;
+    }
     const invalid = validateFactForm(form);
     if (invalid) {
       setFormError(invalid.message);
@@ -163,12 +186,12 @@ function FactForm({
           {editing ? "Edit business fact" : fromUnknown ? "Create a fact from this question" : "Add a business fact"}
         </DialogTitle>
         <DialogDescription>
-          Approved facts are what the concierge can quote. Store the fact once, with the source you verified it
-          against and the properties it applies to.
+          The concierge quotes approved facts to guests. Write each fact once, with where you checked it and the
+          villas it covers.
         </DialogDescription>
       </DialogHeader>
-      <form className="grid gap-4" onSubmit={submit}>
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+      <form className="@container grid gap-4" onSubmit={submit}>
+        <div className="grid gap-4 @lg:grid-cols-[minmax(0,1fr)_12rem]">
           <div className="grid gap-2">
             <Label htmlFor="fact-title">Title</Label>
             <Input
@@ -209,28 +232,27 @@ function FactForm({
         </div>
 
         <div className="grid gap-2">
-          <Label htmlFor="fact-search-text">English search terms</Label>
+          <Label htmlFor="fact-search-text">Words guests might use</Label>
           <Textarea
             id="fact-search-text"
             value={form.searchText}
             maxLength={FACT_LIMITS.searchText}
             onChange={(event) => update("searchText", event.target.value)}
             className="min-h-20"
-            placeholder="breakfast included morning meal buffet dining"
+            placeholder="breakfast, morning meal, buffet"
             aria-describedby="fact-search-text-hint"
           />
           <p id="fact-search-text-hint" className="text-xs text-muted-foreground">
-            Thai and Korean questions are searched by these English terms, so include the words guests use in any
-            language, translated to English.
+            In English. Questions in Thai or Korean are matched through these words too.
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 @lg:grid-cols-2">
           <div className="grid gap-2">
-            <Label htmlFor="fact-scope">Scope</Label>
-            <Select value={form.propertyId || "all"} onValueChange={(value) => update("propertyId", value === "all" ? "" : value)}>
+            <Label htmlFor="fact-scope">Applies to</Label>
+            <Select value={form.propertyId || (needsScopeChoice ? "" : "all")} onValueChange={(value) => update("propertyId", value === "all" ? "" : value)}>
               <SelectTrigger id="fact-scope" className="h-10 rounded-lg">
-                <SelectValue />
+                <SelectValue placeholder="Choose villas" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All properties</SelectItem>
@@ -242,6 +264,9 @@ function FactForm({
                 ))}
               </SelectContent>
             </Select>
+            {needsScopeChoice ? (
+              <p className="text-xs text-muted-foreground">{chatProperty ? "This chat’s villa is inactive." : "This chat’s villa has not been resolved."} Choose an active villa or All properties before saving.</p>
+            ) : null}
           </div>
           <div className="grid gap-2">
             <Label htmlFor="fact-source">Source</Label>
@@ -267,7 +292,8 @@ function FactForm({
           </p>
         ) : null}
 
-        <DialogFooter>
+        {/* On phones Save sits at the top of the form, where the keyboard can't cover it. */}
+        <DialogFooter className="max-md:order-first max-md:flex-row max-md:justify-end">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>

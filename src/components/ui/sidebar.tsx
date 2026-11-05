@@ -29,7 +29,8 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+// Wide enough for the rail's short labels (see AdminNav), as on iPads.
+const SIDEBAR_WIDTH_ICON = "5.5rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 // Tailwind's xl (80rem). Below it the sidebar is a drawer behind the admin rail or tab bar;
 // keep the xl: utilities below in sync.

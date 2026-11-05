@@ -34,7 +34,7 @@ export function ToggleGroupItem({
   return (
     <ToggleGroupPrimitive.Item
       className={cn(
-        "inline-flex items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-semibold pointer-coarse:min-h-11 text-muted-foreground transition data-[state=off]:hover:bg-muted data-[state=off]:hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm",
+        "inline-flex items-center justify-center gap-1 rounded-md px-3 py-2 text-xs font-semibold pointer-coarse:min-h-11 pointer-coarse:min-w-11 text-muted-foreground transition data-[state=off]:hover:bg-muted data-[state=off]:hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm",
         className,
       )}
       {...props}

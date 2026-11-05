@@ -7,7 +7,7 @@ import { ChevronRight, Search, Shield } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { OPEN_ADMIN_SEARCH } from "@/components/admin/AdminNav";
+import { OPEN_ADMIN_SEARCH, RailTiles } from "@/components/admin/AdminNav";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
 import {
   Sidebar,
@@ -29,6 +29,18 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+
+// Clerk's own styles outrank utility classes, so its focus ring is given as a style object: the
+// admin's 2px ring with an offset, like every other control.
+const USER_BUTTON_APPEARANCE = {
+  elements: {
+    userButtonTrigger: {
+      borderRadius: "9999px",
+      "&:focus": { boxShadow: "none" },
+      "&:focus-visible": { boxShadow: "0 0 0 2px var(--sidebar), 0 0 0 4px var(--sidebar-ring)" },
+    },
+  },
+};
 
 export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
@@ -84,6 +96,20 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
     };
   }, [focusSearch]);
 
+  // Collapsed on desktop: the same labelled rail as on iPads, so no section is an unnamed icon.
+  if (iconMode) {
+    return (
+      <Sidebar variant="inset" collapsible="icon">
+        <SidebarContent role="navigation" aria-label="Admin sections" className="gap-1 p-1">
+          <RailTiles onMenu={() => setOpen(true)} onSearch={focusSearch} />
+        </SidebarContent>
+        <SidebarFooter className="items-center p-2">
+          <UserButton appearance={USER_BUTTON_APPEARANCE} />
+        </SidebarFooter>
+      </Sidebar>
+    );
+  }
+
   // ReUI c-sidebar-1: inset shell, compact workspace header, grouped nav and account footer.
   return (
     <Sidebar variant="inset" collapsible="icon">
@@ -126,16 +152,6 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
             </kbd>
           ) : null}
         </div>
-        {state === "collapsed" && !isMobile ? (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton tooltip={`Search (${shortcut})`} onClick={focusSearch}>
-                <Search aria-hidden="true" />
-                <span>Search</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        ) : null}
       </SidebarHeader>
 
       <SidebarContent role="navigation" aria-label="Admin sections">
@@ -147,7 +163,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                 const { href, label, icon: Icon, children } = item;
                 const current = href === activeHref;
                 const expanded = searching || (toggled[href] ?? current);
-                const subShown = current && expanded && !iconMode && children?.some((child) => child.href === activeSub);
+                const subShown = current && expanded && children?.some((child) => child.href === activeSub);
                 const highlighted = current && !subShown;
                 return (
                   <SidebarMenuItem key={href}>
@@ -200,8 +216,8 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
       <SidebarFooter className="p-2">
         <SidebarSeparator className="mx-0" />
         <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:justify-center">
-          <UserButton />
-          <span className="min-w-0 truncate text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden">
+          <UserButton appearance={USER_BUTTON_APPEARANCE} />
+          <span className="min-w-0 break-all text-xs text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden">
             {userEmail ?? "Admin account"}
           </span>
         </div>

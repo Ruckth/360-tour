@@ -52,24 +52,34 @@ function ActionTile({ onClick, className, ...body }: TileProps & { onClick: () =
   );
 }
 
+/** The rail's tiles: Menu and Search, then every section with its short label. */
+export function RailTiles({ onMenu, onSearch }: { onMenu: () => void; onSearch: () => void }) {
+  const current = adminNavItem(usePathname())?.href;
+  return (
+    <>
+      <ActionTile icon={Menu} label="Menu" onClick={onMenu} className="min-h-14 shrink-0" />
+      <ActionTile icon={Search} label="Search" onClick={onSearch} className="min-h-14 shrink-0" />
+      <div aria-hidden="true" className="mx-2 my-1 h-px shrink-0 bg-sidebar-border" />
+      {ADMIN_NAV.map((item) => (
+        <SectionTile key={item.href} item={item} current={item.href === current} className="min-h-14 shrink-0" />
+      ))}
+    </>
+  );
+}
+
 /**
  * iPad navigation (768–1279px): a rail of every section with short labels, always visible.
- * Menu expands it to the full sidebar, with sub-pages, search and the account.
+ * Menu expands it to the full sidebar, with sub-pages, search and the account. The collapsed
+ * desktop sidebar shows the same rail.
  */
 export function AdminRail() {
-  const current = adminNavItem(usePathname())?.href;
   const { setOpenMobile } = useSidebar();
   return (
     <nav
       aria-label="Admin sections"
       className="sticky top-0 hidden h-dvh w-[5.5rem] shrink-0 flex-col gap-1 overflow-y-auto border-r border-sidebar-border bg-sidebar p-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] text-sidebar-foreground md:flex xl:hidden"
     >
-      <ActionTile icon={Menu} label="Menu" onClick={() => setOpenMobile(true)} className="min-h-14 shrink-0" />
-      <ActionTile icon={Search} label="Search" onClick={openSearch} className="min-h-14 shrink-0" />
-      <div aria-hidden="true" className="mx-2 my-1 h-px shrink-0 bg-sidebar-border" />
-      {ADMIN_NAV.map((item) => (
-        <SectionTile key={item.href} item={item} current={item.href === current} className="min-h-14 shrink-0" />
-      ))}
+      <RailTiles onMenu={() => setOpenMobile(true)} onSearch={openSearch} />
     </nav>
   );
 }

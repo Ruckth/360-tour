@@ -51,7 +51,7 @@ export function RemovableBadge({
         aria-label={removeLabel}
         disabled={disabled}
         onClick={onRemove}
-        className="relative rounded-full p-0.5 hover:bg-background disabled:pointer-events-none pointer-coarse:after:absolute pointer-coarse:after:-inset-3.5 pointer-coarse:after:content-['']"
+        className="relative rounded-full p-0.5 after:absolute after:-inset-1 after:content-[''] hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:after:-inset-3.5"
       >
         <X className="h-3 w-3" />
       </button>

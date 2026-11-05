@@ -127,9 +127,9 @@ export function OrderPanel({
             <ReceiptText className="size-[18px]" strokeWidth={1.5} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-serif text-2xl leading-tight font-semibold lining-nums [overflow-wrap:anywhere]" data-testid="order-panel-title">{title}</h2>
+            <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-base" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? `${formatMoney(totals.due)} due` : title}</h2>
             <p className="truncate text-sm text-muted-foreground">
-              {itemCount} {itemCount === 1 ? "item" : "items"}
+              {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
               {view?.customer ? ` · ${view.customer.name}` : ""}
             </p>
           </div>
@@ -173,7 +173,7 @@ export function OrderPanel({
         <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onBack={() => setPaying(null)} onPaid={onPaid} />
       ) : (
         <>
-          <div className="min-h-[min(14rem,28dvh)] flex-1 overflow-y-auto">
+          <div className="min-h-[min(14rem,28dvh)] flex-1 overflow-y-auto [@media(max-height:36rem)]:min-h-[24dvh]">
             {orderId ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
             {lines.length === 0 ? (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground">
@@ -217,6 +217,8 @@ export function OrderPanel({
               <Button className="h-12 w-full rounded-xl" disabled={cannotPay} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
             ) : (
               // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
+              <>
+              <p className="mb-2 text-xs font-medium text-muted-foreground [@media(max-height:32rem)]:sr-only">Take payment by</p>
               <div className={cn(UP_TO_FOUR_COLUMNS, "[@media(max-height:32rem)]:grid-cols-5")}>
                 {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
                   <Button
@@ -239,6 +241,7 @@ export function OrderPanel({
                   Split payment
                 </Button>
               </div>
+              </>
             )}
           </div>
         </>
