@@ -26,6 +26,7 @@ import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 import {
   ChannelIcon,
   formatDateTime,
+  plainText,
   relativeTime,
   truncate,
   visitorLabel,
@@ -164,7 +165,7 @@ function dateTimeBadgeLabel(value: string) {
 }
 
 function emptyFilterLabel(value: EmptyChatFilter) {
-  if (value === "empty") return "Empty only";
+  if (value === "empty") return "Without messages";
   return "Not empty";
 }
 
@@ -408,7 +409,8 @@ export function ChatsView() {
     replyError: reply.error,
     replyStatus: reply.status,
     replyWindow: sessionDetail?.replyWindow,
-    onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content } }),
+    onAddBusinessFact: (message: AdminMessage) =>
+      setFactTarget({ fromMessage: { question: message.content, propertySlug: selectedSession?.propertySlug } }),
     actions: selectedSession ? (
       <AdminSessionActions
         session={{ ...selectedSession, latestGuestMessageId:
@@ -589,17 +591,18 @@ export function ChatsView() {
             className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-card lg:border-r lg:border-border/60"
           >
             <div className="grid gap-3 p-4 pb-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold">Conversations</h2>
+              {/* Phones show the page title only; shortcuts are offered where there's a mouse and keyboard. */}
+              <div className="flex items-center justify-between max-md:contents">
+                <h2 className="text-base font-semibold max-md:sr-only">Conversations</h2>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  className="size-8 text-muted-foreground"
-                  aria-label="Keyboard shortcuts"
+                  size="sm"
+                  className="hidden h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground pointer-fine:inline-flex"
                   onClick={() => setShortcutsOpen(true)}
                 >
                   <Keyboard className="size-4" aria-hidden="true" />
+                  Shortcuts
                 </Button>
               </div>
               <SegmentedTabs
@@ -635,9 +638,10 @@ export function ChatsView() {
                       type="button"
                       variant="outline"
                       className={cn("h-9 shrink-0 rounded-lg px-3", activeFilterCount > 0 && "border-ring")}
-                      aria-label={activeFilterCount > 0 ? `Chat filters, ${activeFilterCount} active` : "Chat filters"}
+                      aria-label={activeFilterCount > 0 ? `Filters ${activeFilterCount} active` : "Filters"}
                     >
                       <Filter aria-hidden="true" className="h-4 w-4" />
+                      Filters{" "}
                       {activeFilterCount > 0 ? (
                         <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
                           {activeFilterCount}
@@ -794,12 +798,15 @@ export function ChatsView() {
               {sessions.map((session) => {
                 const unansweredMessageId = session.needsReply ? (session.latestGuestMessageId ?? session.latestMessage?._id) : undefined;
                 const selected = selectedSessionId === session._id;
+                const preview = session.latestMessage ? plainText(session.latestMessage.content) : "No messages yet";
+                const waiting = session.needsReply && (session.adminStatus ?? "open") === "open";
+                const place = session.propertyName ?? session.propertySlug;
                 return (
                   <div
                     key={session._id}
                     data-session-id={session._id}
                     className={cn(
-                      "group relative mb-1 flex items-center rounded-lg border border-transparent transition hover:bg-muted/60",
+                      "group relative mb-0.5 flex items-center rounded-lg border border-transparent transition hover:bg-muted/60",
                       selected &&
                         "border-gold/15 bg-gold/10 before:absolute before:inset-y-4 before:left-0 before:w-0.5 before:rounded-full before:bg-gold-text",
                     )}
@@ -808,31 +815,34 @@ export function ChatsView() {
                       type="button"
                       onClick={() => selectSession(session._id)}
                       aria-current={selected ? "true" : undefined}
-                      className="min-w-0 flex-1 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="min-w-0 flex-1 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
-                      <span className="flex items-center justify-between gap-3">
-                        <span className="min-w-0 truncate text-sm font-semibold text-foreground">
-                          {visitorLabel(session)}
-                        </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {relativeTime(session.latestMessageAt, now)}
-                        </span>
-                      </span>
-                      <span className="mt-1 block truncate text-sm text-muted-foreground">
-                        {session.latestMessage?.content ?? "No messages yet"}
-                      </span>
-                      <span className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                        {session.needsReply && (session.adminStatus ?? "open") === "open" ? (
-                          <span
-                            className="size-1.5 shrink-0 rounded-full bg-gold-text"
-                            aria-label="Needs staff attention"
-                          />
-                        ) : null}
+                      {/* Two lines, so the landscape iPad shows about ten: who, where and how long; then what they said. */}
+                      <span className="flex min-w-0 items-center gap-1.5">
                         <ChannelIcon channel={session.channel} className="h-3.5 w-3.5 shrink-0" />
                         <span className="sr-only">{sourceLabel(session.channel)} ·</span>
-                        <span className="truncate">
-                          {session.propertyName ?? session.propertySlug ?? "General site"}
+                        <span className="min-w-0 truncate text-sm font-semibold text-foreground" title={visitorLabel(session)}>
+                          {visitorLabel(session)}
                         </span>
+                        {place ? (
+                          <span className="min-w-0 max-w-[45%] shrink-[2] truncate text-xs text-muted-foreground" title={place}>
+                            · {place}
+                          </span>
+                        ) : null}
+                        <span className={cn("ml-auto shrink-0 pl-2 text-xs", waiting ? cn("font-medium", TONES.warning.text) : "text-muted-foreground")}>
+                          {waiting ? `Waiting ${relativeTime(session.latestMessageAt, now).replace(/ ago$/, "")}` : relativeTime(session.latestMessageAt, now)}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 flex min-w-0 items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground" title={preview}>
+                          {preview}
+                        </span>
+                        {/* In the Needs-you queue every row needs you; elsewhere (search, other tabs) say so. */}
+                        {waiting && queue !== "waiting" ? (
+                          <span className={cn("shrink-0 rounded-full px-1.5 text-xs font-medium", TONES.warning.bg, TONES.warning.text)}>
+                            Needs you
+                          </span>
+                        ) : null}
                       </span>
                     </button>
                     {unansweredMessageId ? (
@@ -843,9 +853,9 @@ export function ChatsView() {
                         onClick={() => settleGuestMessage(session._id, unansweredMessageId)}
                         disabled={settlingMessageIds.has(unansweredMessageId)}
                         aria-label={`Mark the message from ${visitorLabel(session)} as settled`}
-                        title="Mark as settled: no reply needed (e)"
+                        title="No reply needed (e)"
                         className={cn(
-                          "mr-1 size-8 shrink-0 rounded-full opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+                          "mr-1 size-8 shrink-0 rounded-full opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:hidden",
                           TONES.warning.text,
                         )}
                       >
@@ -897,7 +907,11 @@ export function ChatsView() {
           <section aria-label="Selected chat" className="hidden min-h-0 bg-card lg:block">
             {/* Mobile uses the dialog below. Until the viewport is known, CSS keeps this hidden on small screens. */}
             {largeViewport !== false ? (
-              <AdminSessionDetail key={selectedSession?._id ?? "none"} {...detailProps} />
+              <AdminSessionDetail
+                key={selectedSession?._id ?? "none"}
+                {...detailProps}
+                emptyList={!loadingSessions && sessions.length === 0}
+              />
             ) : null}
           </section>
         </div>
@@ -961,7 +975,7 @@ const CHAT_SHORTCUTS: Array<[string[], string]> = [
   [["j"], "Next chat"],
   [["k"], "Previous chat"],
   [["r"], "Reply to this chat"],
-  [["e"], "Mark the guest's message settled and move on"],
+  [["e"], "No reply needed: settle the guest's message and open the next chat"],
   [["/"], "Search chats"],
   [["?"], "Show these shortcuts"],
   [["Esc"], "Leave a text box or close a dialog"],

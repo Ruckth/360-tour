@@ -7,11 +7,9 @@ import {
   Bot,
   Clock3,
   Hand,
-  Headset,
   Info,
   MessageCircle,
   Send,
-  UserRound,
 } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -150,6 +148,7 @@ export function AdminSessionDetail({
   onAddBusinessFact,
   actions,
   onBack,
+  emptyList,
 }: {
   canLoadOlderMessages: boolean;
   compact?: boolean;
@@ -173,6 +172,8 @@ export function AdminSessionDetail({
   onAddBusinessFact?: (message: AdminMessage) => void;
   /** Primary status action and the occasional-action menu, rendered inside the header. */
   actions?: ReactNode;
+  /** Set when the list beside this pane is empty: the pane says so instead of "choose one". */
+  emptyList?: boolean;
   onBack?: () => void;
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
@@ -255,9 +256,11 @@ export function AdminSessionDetail({
           <span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
             <MessageCircle className="size-5" aria-hidden="true" />
           </span>
-          <h2 className="text-base font-semibold">Your conversations, in one place</h2>
+          <h2 className="text-base font-semibold">{emptyList ? "No conversation to open" : "No conversation open"}</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Choose a conversation to read the messages and reply.
+            {emptyList
+              ? "The list beside this pane is empty for this search and these filters. Change them there to see conversations."
+              : "Choose a conversation from the list to read it and reply."}
           </p>
         </div>
       </div>
@@ -364,7 +367,7 @@ export function AdminSessionDetail({
                   : session.inboxReason === 'send_failed' ? 'Reply failed · Staff attention needed'
                   : session.inboxReason === 'sending' ? 'Sending reply…'
                   : session.inboxReason === 'answering' ? 'AI is answering…'
-                  : session.inboxReason === 'review_required' ? 'Previous conversation · Staff review needed'
+                  : session.inboxReason === 'review_required' ? 'Older chat · Check the guest got an answer'
                   : session.staffTask ? 'Staff follow-up in progress'
                   : session.aiPaused
                     ? "Staff is replying · AI paused"
@@ -436,23 +439,6 @@ export function AdminSessionDetail({
                   className={cn("group", compact ? "max-w-[92%]" : "max-w-[78%]")}
                   variant={variant}
                 >
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex size-7 shrink-0 items-center justify-center rounded-full",
-                      author === "guest" && "bg-muted text-muted-foreground",
-                      author === "ai" && cn(TONES.accent.bg, TONES.accent.text),
-                      author === "staff" && "bg-primary text-primary-foreground",
-                    )}
-                  >
-                    {author === "ai" ? (
-                      <Bot className="size-4" />
-                    ) : author === "staff" ? (
-                      <Headset className="size-4" />
-                    ) : (
-                      <UserRound className="size-4" />
-                    )}
-                  </span>
                   <div className={cn("min-w-0", !fromGuest && "text-right")}>
                     <span className="mb-1 block truncate text-xs font-medium text-muted-foreground">
                       {author === "ai" ? "AI" : author === "staff" ? "Staff" : guestName}
@@ -473,10 +459,11 @@ export function AdminSessionDetail({
                       <button
                         type="button"
                         onClick={() => onAddBusinessFact(message)}
-                        className="mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                        // Every guest question keeps a tap route, including earlier messages.
+                        className="mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100"
                       >
                         <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                        Add as business fact
+                        Answer as a business fact
                       </button>
                     ) : null}
                   </div>
@@ -529,7 +516,8 @@ export function AdminSessionDetail({
                 id={replyInputId}
                 aria-label="Type an admin reply"
                 aria-describedby={replyHintId}
-                className="min-h-11"
+                // A 3:1 field edge and a solid focus ring, 44px tall at every size.
+                className="min-h-11 border-input focus-visible:ring-ring md:min-h-11"
                 value={replyDraft}
                 onChange={(event) => onReplyDraftChange(event.target.value)}
                 onKeyDown={(event) => {

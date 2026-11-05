@@ -146,12 +146,14 @@ export function CheckoutView({
         <SheetTrigger asChild>
           <button
             type="button"
-            aria-label={`${title} · ${count} ${count === 1 ? "item" : "items"} · ${formatMoney(view?.totals.due ?? 0)} due · open the order`}
+            // Starts with the visible text, so voice control can say what it sees (WCAG 2.5.3).
+            aria-label={`View order ${count} ${count === 1 ? "item" : "items"} ${formatMoney(view?.totals.due ?? 0)} · ${title}, due · open the order`}
             className="fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-center gap-3 rounded-2xl bg-primary px-5 py-3 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40"
           >
             <ReceiptText aria-hidden className="size-5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold">
-              {count} {count === 1 ? "item" : "items"}
+            <span className="min-w-0 flex-1 text-left leading-tight">
+              <span className="block truncate text-sm font-semibold">View order</span>{" "}
+              <span className="block truncate text-xs opacity-80">{count} {count === 1 ? "item" : "items"}</span>{" "}
             </span>
             <span className="shrink-0 font-serif text-2xl leading-none font-semibold lining-nums tabular-nums">{formatMoney(view?.totals.due ?? 0)}</span>
             <ChevronUp aria-hidden className="size-5 shrink-0" />

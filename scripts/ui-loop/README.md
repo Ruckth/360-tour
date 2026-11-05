@@ -28,7 +28,10 @@ Check-only devices run default checks without PNGs; 320px and landscape phone
 results are report-only. Captures use up to four viewport images (initial +
 three scroll segments). Long/error fixtures remain pending in this wave.
 
-Diagnostic audits may run on a failing baseline; their checks gate stays false.
+Audits stop before calling a reviewer when deterministic checks fail. Use
+`--diagnostic` explicitly to inspect a failing baseline; its checks gate stays false.
+The built-in evaluator is gpt-6.1-sol and fails on provider errors instead of
+silently switching models. Screen, clean-anchor and probe model IDs must match.
 A passing gate requires all four devices, three runs, calibration agreement,
 and a separate confirmation capture/audit. Scores alone never establish PASS.
 The external reviewer reads each printed TASK.md, returns out.json there,
@@ -43,3 +46,12 @@ from sibling sections of the supplied capture directory. Use --screens to
 choose another frozen set. Agreement requires reviewer records with ≥3 runs.
 Callout notes are [{"selector":"h1","label":"Title","text":"Observation"}];
 --state chooses a live recipe (default if omitted).
+
+
+Calibration reference scores were approved on 2026-11-05; see
+`docs/reviews/admin-ui-loop/calibration-approval-2026-11-05.json`.
+The completed Wave 1 calibration did not pass planted-flaw sensitivity.
+These scores cannot establish PASS. Missing fixture states, real Safari,
+independent A/B review, pairwise comparison and confirmation remain follow-ups.
+The frozen v1 prompt also contains a check-status assertion that needs a
+versioned correction and fresh evaluator calibration before future gating.

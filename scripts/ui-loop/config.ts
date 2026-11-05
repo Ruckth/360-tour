@@ -95,7 +95,7 @@ const emptyChats: State = {
   description:
     "The message-status filter is set to conversations without messages while viewing the reply queue.",
   recipe: async (p) => {
-    await p.getByRole("button", { name: /^Chat filters/ }).click();
+    await p.getByRole("button", { name: /^Filters/ }).click();
     await p
       .getByRole("radiogroup", { name: "Message status", exact: true })
       .getByRole("radio", { name: "Empty", exact: true })
@@ -182,10 +182,21 @@ function screen(
 }
 export const SCREENS: Screen[] = [
   screen("chats", "Chats", "1-daily", "/admin/chats", "chats", [
-    dialog(
-      "Keyboard shortcuts",
-      "The keyboard shortcut dialog is opened from the chat list toolbar.",
-    ),
+    {
+      id: "dialog",
+      description:
+        "A conversation is open and the business-fact form is opened from the latest guest message.",
+      recipe: async (p) => {
+        await openChat(p);
+        const action = p
+          .getByRole("button", { name: "Answer as a business fact" })
+          .last();
+        // Mouse layouts reveal it on hover; touch layouts always show it on guest messages.
+        await action.hover().catch(() => {});
+        await action.click();
+        await p.getByRole("dialog").last().waitFor();
+      },
+    },
     emptyChats,
     keyboard("Type an admin reply", openChat),
   ]),
@@ -368,6 +379,7 @@ export const FLAWS: Record<string, { category: string; css: string }> = {
     category: "typography",
     css: "main :is(h1,h2,h3,label):nth-child(3n){font-size:11px!important}main :is(h1,h2,h3,label):nth-child(3n+1){font-size:19px!important}main :is(h1,h2,h3,label):nth-child(3n+2){font-size:15px!important}",
   },
+  // injectFlaw halves computed spacing for this probe; it does not use a stylesheet.
   cramped: { category: "spacing_density", css: "" },
   "icon-mix": {
     category: "iconography",

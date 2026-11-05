@@ -1,7 +1,7 @@
 "use client";
 
 import type { Id } from "convex/_generated/dataModel";
-import { CalendarDays, Link2, ListOrdered, Plus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
+import { CalendarDays, ChevronRight, Link2, ListOrdered, Plus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
 import { useDeferredValue, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -167,7 +167,7 @@ export function OrderStrip({
               <span>Orders</span>
             </Button>
           </DialogTrigger>
-          <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
+          <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
               <DialogDescription>Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device.</DialogDescription>
@@ -177,7 +177,7 @@ export function OrderStrip({
         </Dialog>
         <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
           <Plus aria-hidden className="size-4" />
-          <span className="hidden sm:inline">New order</span>
+          <span>New order</span>
         </Button>
       </div>
     </div>
@@ -540,7 +540,7 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
       <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
         {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value}>{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
-      <p className="text-xs text-muted-foreground">Discard retains contents and history. It releases charges for other orders; bookings are not cancelled.</p>
+      <p className="text-xs text-muted-foreground">Discard moves the order to Discarded and keeps its items and history. Its bookings stay active and can be added to another order.</p>
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">
         <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} onAction={(id, mode) => setAction({ id, mode })} />
       </InlineErrorBoundary>
@@ -582,14 +582,18 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                 </span>
                 {row.discarded ? <span className="block text-xs text-muted-foreground">Discarded {orderTime(row.discarded.at)} · {row.discarded.by ?? "Unknown"}{row.discarded.reason ? ` · ${row.discarded.reason}` : ""}</span> : null}
               </span>
-              <span className="shrink-0 text-right">
-                <span className="block text-xs text-muted-foreground">{row.state === "unpaid" ? "Due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
-                <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
-                  {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="text-right">
+                  <span className="block text-xs text-muted-foreground">{row.state === "unpaid" ? "Due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
+                  <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
+                    {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
+                  </span>
                 </span>
+                {/* The row itself opens the order. */}
+                <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </span>
             </button>
-            {filter === "unpaid" || filter === "discarded" ? <Button variant="outline" size="sm" className="mb-2" aria-label={`${filter === "unpaid" ? "Discard" : "Restore"} ${row.title}`} onClick={() => onAction(row._id, filter === "unpaid" ? "discard" : "restore")}>{filter === "unpaid" ? "Discard" : "Restore…"}</Button> : null}
+            {filter === "unpaid" || filter === "discarded" ? <Button variant="ghost" size="sm" className={cn("mb-2 -ml-2", filter === "unpaid" && "text-destructive hover:text-destructive")} aria-label={`${filter === "unpaid" ? "Discard" : "Restore"} ${row.title}`} onClick={() => onAction(row._id, filter === "unpaid" ? "discard" : "restore")}>{filter === "unpaid" ? "Discard" : "Restore…"}</Button> : null}
           </li>
         ))}
       </ul>

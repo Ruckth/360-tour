@@ -25,6 +25,7 @@ import {
 import { DEVICES, SCREENS } from "./config.ts";
 import {
   aggregate,
+  calibrationModelsMatch,
   CATEGORIES,
   lintFlow,
   flowLine,
@@ -386,19 +387,9 @@ async function readRun(p: Prepared, model: string): Promise<RunResult> {
   }
 }
 async function execute(p: Prepared): Promise<RunResult> {
-  let model = "gpt-6.1-sol";
+  const model = "gpt-6.1-sol";
   for (let validation = 0; validation < 2; validation++) {
-    let outcome = await codex(p, model);
-    if (
-      !outcome.ok &&
-      model === "gpt-6.1-sol" &&
-      /model.*(?:not found|not supported|unsupported|unavailable)|(?:unknown|unsupported|unavailable).*model|availability|not available|rate.?limit|429/i.test(
-        outcome.error,
-      )
-    ) {
-      model = "gpt-6-astra";
-      outcome = await codex(p, model);
-    }
+    const outcome = await codex(p, model);
     if (!outcome.ok)
       return { model, errors: [outcome.error], reclassifications: [] };
     const result = await readRun(p, model);
@@ -555,7 +546,7 @@ async function calibrationJobs(devices: string[]): Promise<Job[]> {
   });
 }
 export async function auditCLI() {
-  const { values: v, positionals } = args({ "model-id": "string" });
+  const { values: v, positionals } = args({ "model-id": "string", diagnostic: "boolean" });
   const section = str(v.section, "1-daily"),
     round = str(v.round, "0"),
     auditor = str(v.auditor, "A");
@@ -572,6 +563,11 @@ export async function auditCLI() {
     : await jobs(section, round, list(v.screens), list(v.devices));
   if (!ingest && !selected.length)
     throw new Error("No captured screen/device matches");
+  if (!ingest && !v.diagnostic) {
+    const failed = selected.filter((job) => !checkSummary(job).green);
+    if (failed.length)
+      throw new Error(`Deterministic checks block audit: ${failed.map((job) => `${job.screen}/${job.device}`).join(", ")}. Use --diagnostic only for non-gating baseline analysis.`);
+  }
   if (v.calibrate) selected.push(...(await calibrationJobs(list(v.devices))));
   if (ingest) pending = await json<Prepared[]>(preparedFile);
   else if (v["prepare-only"]) {
@@ -754,13 +750,14 @@ export async function auditCLI() {
       calibration[d.id] = {
         status: anchor.agreed
           ? Math.abs(clean.overall - anchor.agreed.overall) <= 0.5 &&
-            sensitivity
+            sensitivity && calibrationModelsMatch(clean.model_ids, probe.model_ids)
             ? "pass"
             : "fail"
           : "pending-agreement",
         clean: clean.overall,
         degraded: probe.overall,
         sensitivity,
+        model_ids: [...new Set([...clean.model_ids, ...probe.model_ids])],
         flaw: anchor.flaw,
       };
     }
@@ -778,10 +775,11 @@ export async function auditCLI() {
       const status =
         (calibration[record.device] as { status: string } | undefined)
           ?.status ?? "not-run";
-      record.calibration = status;
-      record.calibrated =
-        status === "pass" &&
-        !record.model_ids.some((id) => id.includes("unspecified"));
+      const models = (calibration[record.device] as { model_ids?: string[] } | undefined)?.model_ids ?? [];
+      record.calibration = status === "pass" && !calibrationModelsMatch(record.model_ids, models)
+        ? "model-mismatch"
+        : status;
+      record.calibrated = record.calibration === "pass";
       await save(path.join(out, f), record);
     }
   }

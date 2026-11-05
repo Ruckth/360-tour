@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -169,7 +169,7 @@ export function PayPanel({
           · due
         </p>
         {/* Shrinks with a narrow box (enlarged text), so the amount stays whole and inside it. */}
-        <p className="font-serif text-[min(2.25rem,15cqi)] leading-[calc(2.5/2.25)] font-semibold lining-nums tabular-nums [overflow-wrap:anywhere]">
+        <p className="mt-2 text-[min(2.25rem,15cqi)] leading-[calc(2.5/2.25)] font-semibold lining-nums tabular-nums [overflow-wrap:anywhere]">
           {formatMoney(due)}
         </p>
       </div>
@@ -178,30 +178,44 @@ export function PayPanel({
         disabled={submitting || attempted}
         className="grid min-w-0 grid-cols-1 gap-4 disabled:opacity-70"
       >
-        <div className="grid min-w-0 grid-cols-1 gap-2">
-          <Label htmlFor="payment-effective">
-            Money received date · Bangkok time
-          </Label>
-          <Input
-            id="payment-effective"
-            type="date"
-            className="min-w-0 max-w-full"
-            value={effectiveInput.split("T")[0]}
-            onChange={(e) => setEffectiveInput(`${e.target.value}T${effectiveInput.split("T")[1] ?? ""}`)}
-          />
-          <Label htmlFor="payment-effective-time">Money received time · Bangkok time</Label>
-          <Input
-            id="payment-effective-time"
-            type="time"
-            className="min-w-0 max-w-full"
-            value={effectiveInput.split("T")[1] ?? ""}
-            onChange={(e) => setEffectiveInput(`${effectiveInput.split("T")[0]}T${e.target.value}`)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Use the actual date and time received. The receipt is issued now
-            with a separate issue timestamp.
-          </p>
-        </div>
+        {/* Usually "now": the date and time are a disclosure, so the amount and Confirm fit above a
+            phone keyboard. Open, it is the same pair of fields. */}
+        <details className="group/details min-w-0 rounded-xl border border-border/70 px-2 text-sm">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+            <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-90" />
+            <span className="min-w-0">
+              Payment date and time{" "}
+              <span className="font-medium tabular-nums">{effectiveInput.replace("T", " · ")}</span>
+              <span className="text-muted-foreground"> · Bangkok</span>
+            </span>
+          </summary>
+          <div className="pb-3">
+          <div className="grid min-w-0 grid-cols-1 gap-2">
+            <Label htmlFor="payment-effective">
+              Money received date · Bangkok time
+            </Label>
+            <Input
+              id="payment-effective"
+              type="date"
+              className="min-w-0 max-w-full"
+              value={effectiveInput.split("T")[0]}
+              onChange={(e) => setEffectiveInput(`${e.target.value}T${effectiveInput.split("T")[1] ?? ""}`)}
+            />
+            <Label htmlFor="payment-effective-time">Money received time · Bangkok time</Label>
+            <Input
+              id="payment-effective-time"
+              type="time"
+              className="min-w-0 max-w-full"
+              value={effectiveInput.split("T")[1] ?? ""}
+              onChange={(e) => setEffectiveInput(`${effectiveInput.split("T")[0]}T${e.target.value}`)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Use the actual date and time received. The receipt is issued now
+              with a separate issue timestamp.
+            </p>
+          </div>
+          </div>
+        </details>
         {view.sources.some((source) => source.kind === "booking") ? (
           <label className="flex min-h-11 items-center gap-2 text-sm">
             <input
@@ -300,6 +314,17 @@ function CashForm({
   onPay: (tenders: Tender[]) => void;
 }) {
   const [received, setReceived] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Keyboard viewport changes keep the focused amount clear of the pinned confirmation bar.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const reveal = () => {
+      if (document.activeElement === inputRef.current)
+        inputRef.current?.scrollIntoView({ block: "center" });
+    };
+    viewport?.addEventListener("resize", reveal);
+    return () => viewport?.removeEventListener("resize", reveal);
+  }, []);
   const value = Number(received) || 0;
   const change = round2(value - due);
 
@@ -310,8 +335,10 @@ function CashForm({
         <Input
           disabled={submitting}
           id="cash-received"
+          ref={inputRef}
           inputMode="decimal"
           className="h-12 text-lg tabular-nums"
+          onFocus={() => inputRef.current?.scrollIntoView({ block: "center" })}
           value={received}
           onChange={(e) => setReceived(amountInput(e.target.value))}
           placeholder="0"
@@ -338,9 +365,11 @@ function CashForm({
           </Button>
         ))}
       </div>
+      {/* Keep payment feedback with the action when the phone keyboard reduces the viewport. */}
+      <div className="grid gap-2 max-md:[@media(max-height:36rem)]:sticky max-md:[@media(max-height:36rem)]:bottom-0 max-md:[@media(max-height:36rem)]:z-10 max-md:[@media(max-height:36rem)]:bg-card max-md:[@media(max-height:36rem)]:py-2">
       <div
         className={cn(
-          "@container flex flex-wrap items-baseline justify-between gap-x-3 rounded-xl border p-3",
+          "@container flex flex-wrap items-baseline justify-between gap-x-3 rounded-xl border p-3 max-md:[@media(max-height:36rem)]:py-1",
           value >= due && change > 0 ? "border-primary" : "border-border",
         )}
         aria-live="polite"
@@ -373,6 +402,7 @@ function CashForm({
         >
           Confirm cash
         </PayButton>
+      </div>
       </div>
     </>
   );

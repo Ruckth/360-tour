@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -40,8 +41,8 @@ export function PaymentRecord({ view }: { view: OrderView }) {
     >
       <h2 className="font-semibold">Current payment recording</h2>
       <p className="text-xs text-muted-foreground">
-        The original receipt above stays as issued. Corrections below update the
-        operational recording; they do not move money.
+        The issued receipt never changes. Corrections here update what was
+        recorded; they do not move money.
       </p>
       <p className="text-sm">
         Money received:{" "}
@@ -75,7 +76,7 @@ export function PaymentRecord({ view }: { view: OrderView }) {
             Correct payment recording
           </Button>
           <Button variant="ghost" onClick={() => setEditing("unreceived")}>
-            Payment entered by mistake…
+            No money was received…
           </Button>
         </div>
       ) : null}
@@ -183,8 +184,9 @@ export function PaymentRecord({ view }: { view: OrderView }) {
         ) : null}
       </section>
       {view.audit.length ? (
-        <details>
-          <summary className="min-h-11 cursor-pointer py-3 font-medium">
+        <details className="group/details border-t border-border text-sm">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded py-2 font-semibold hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+            <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-90" />
             Receipt activity
           </summary>
           <ul className="grid gap-3">

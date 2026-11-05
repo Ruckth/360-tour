@@ -334,3 +334,12 @@ export function scorecardRows(cells: (Aggregate | undefined)[]) {
     `\n| **Overall** | ${cells.map((a) => formatScore(a?.overall)).join(" | ")} |`
   );
 }
+
+
+/** Calibration is specific to one identified evaluator, never transferable across models. */
+export function calibrationModelsMatch(...groups: string[][]): boolean {
+  const model = groups[0]?.[0];
+  return !!model && !model.includes("unspecified") && groups.every(
+    (group) => group.length > 0 && group.every((id) => id === model),
+  );
+}

@@ -147,7 +147,7 @@ export function CatalogPane({
             <SheetTrigger asChild>
               <Button variant="outline" className="h-11 rounded-xl bg-card/60 px-3 sm:px-4" aria-label={`Filters${filterCount ? ` (${filterCount} on)` : ""}`}>
                 <SlidersHorizontal aria-hidden className="size-4" />
-                <span className="hidden sm:inline">Filters</span>
+                <span>Filters</span>
                 {filterCount ? <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{filterCount}</span> : null}
               </Button>
             </SheetTrigger>

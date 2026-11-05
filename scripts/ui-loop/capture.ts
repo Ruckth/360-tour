@@ -44,12 +44,13 @@ export async function injectFlaw(
     });
   else await page.addStyleTag({ content: flaw.css });
 }
-async function segments(
+export async function captureSegments(
   page: import("@playwright/test").Page,
   file: string,
+  preserveScroll = false,
 ): Promise<string[]> {
   const files: string[] = [];
-  const scroller = await page.evaluate(() => {
+  const scroller = await page.evaluate((preserveScroll) => {
     const root = document.scrollingElement as HTMLElement;
     const dialog = Array.from(
       document.querySelectorAll<HTMLElement>('[role="dialog"]'),
@@ -83,13 +84,14 @@ async function segments(
     const chosen = candidates[0];
     if (!chosen) return null;
     chosen.setAttribute("data-ui-loop-segments", "true");
-    chosen.scrollTop = 0;
+    if (!preserveScroll) chosen.scrollTop = 0;
     return {
+      position: chosen.scrollTop,
       height: chosen.clientHeight,
       max: chosen.scrollHeight - chosen.clientHeight,
     };
-  });
-  let position = 0;
+  }, preserveScroll);
+  let position = scroller?.position ?? 0;
   for (let i = 0; i < 4; i++) {
     const name = file + (i ? `-seg${i}` : "") + ".png";
     await page.screenshot({ path: name, fullPage: false });
@@ -262,7 +264,11 @@ export async function capture(options: CaptureOptions) {
             checks: record.checks,
           });
           if (device.judged || options.debugShots)
-            record.files = await segments(page, path.join(output.dir, stem));
+            record.files = await captureSegments(
+              page,
+              path.join(output.dir, stem),
+              state.id === "keyboard",
+            );
           if (!record.websocketUrls.length)
             throw new Error("No guarded Convex sync websocket observed");
           console.log(

@@ -141,7 +141,7 @@ it("retains correction inputs and key on response loss, and preserves original c
 it("requires the explicit no-money assertion and reason before voiding a mistaken entry", async () => {
   const { backend, actions, orderId } = await paidSale();
   const voidEntry = vi.spyOn(actions, "voidUnreceivedOrder");
-  await receipt(backend, orderId); await click("Payment entered by mistake…");
+  await receipt(backend, orderId); await click("No money was received…");
   expect(button("Void mistaken entry").disabled).toBe(true);
   await input("#payment-correction-reason", "Entered before checking bank; no payment arrived");
   expect(button("Void mistaken entry").disabled).toBe(true);

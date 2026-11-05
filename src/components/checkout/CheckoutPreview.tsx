@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { CheckoutBackendProvider, type OrderId } from "./backend";
 import { CheckoutView } from "./CheckoutView";
 import { createFixtureBackend } from "./fixture-backend";
@@ -10,7 +10,7 @@ import { ReceiptView } from "./ReceiptView";
  * Dev-only: the real checkout and receipt on in-memory fixtures, no sign-in or Convex needed.
  * `embedded` drops the preview banner so it can sit in the admin shell like the real page.
  */
-export function CheckoutPreview({ embedded = false, displayControl }: { embedded?: boolean; displayControl?: ReactNode }) {
+export function CheckoutPreview({ embedded = false }: { embedded?: boolean }) {
   const [backend] = useState(createFixtureBackend);
   const [orderId, setOrderId] = useState<OrderId | null>(null);
   const [receiptId, setReceiptId] = useState<OrderId | null>(null);
@@ -34,7 +34,7 @@ export function CheckoutPreview({ embedded = false, displayControl }: { embedded
             />
           </div>
         ) : (
-          <CheckoutView orderId={orderId} onOrderChange={setOrderId} onPaid={setReceiptId} displayControl={displayControl} />
+          <CheckoutView orderId={orderId} onOrderChange={setOrderId} onPaid={setReceiptId} />
         )}
       </div>
     </CheckoutBackendProvider>
