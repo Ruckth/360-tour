@@ -19,7 +19,7 @@ export function todayIsoLocal(date = new Date()): string {
   return dateToIso(date);
 }
 
-/** The resort's date (Asia/Bangkok, UTC+7, no DST) whatever the browser's time zone. */
+/** The resort's date (Asia/Bangkok, UTC+7, no DST) whatever the browser's time zone. Mirrors resortTodayIso in convex/lib/dates.ts. */
 export function todayIsoResort(now = Date.now()): string {
   return new Date(now + 7 * 3_600_000).toISOString().slice(0, 10);
 }

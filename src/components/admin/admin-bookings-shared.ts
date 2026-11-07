@@ -2,7 +2,7 @@ import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { AdminBooking } from "convex/adminBookings";
 import { format } from "date-fns";
-import { addDaysIso, isoToDate } from "@/lib/booking/dates";
+import { addDaysIso, isoToDate, todayIsoResort } from "@/lib/booking/dates";
 import type { ConfirmOptions } from "./ConfirmDialog";
 import { formatMoney, paymentLabel } from "./labels";
 import { CALENDAR_TONE_COLORS, STATUS_TONES, TONES, statusMeta } from "./status-tones";
@@ -107,9 +107,9 @@ export function newAttemptKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-/** Today as the server's booking calendar date (UTC ISO), which decides the email default. */
+/** Today as the server's booking calendar date (the resort day), which decides the email default. */
 export function serverTodayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoResort();
 }
 
 /** The server's default for emailing the guest about a change to this stay. */

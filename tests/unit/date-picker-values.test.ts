@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   dateToIso,
   dateValueProblem,
@@ -127,5 +127,21 @@ describe("resort today", () => {
     expect(todayIsoResort(Date.parse("2030-01-10T16:59:59Z"))).toBe("2030-01-10");
     expect(todayIsoResort(Date.parse("2030-01-10T17:00:00Z"))).toBe("2030-01-11");
     expect(todayIsoResort(Date.parse("2030-01-11T16:30:00-08:00"))).toBe("2030-01-12");
+  });
+});
+
+describe("admin email default", () => {
+  it("treats a stay as historical from Bangkok midnight, like the server", async () => {
+    const { notifyDefault } = await import("@/components/admin/admin-bookings-shared");
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2030-01-10T16:59:59Z"));
+      expect(notifyDefault({ checkIn: "2030-01-10" })).toBe(true);
+      vi.setSystemTime(new Date("2030-01-10T18:00:00Z"));
+      expect(notifyDefault({ checkIn: "2030-01-10" })).toBe(false);
+      expect(notifyDefault({ checkIn: "2030-01-11" })).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

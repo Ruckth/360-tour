@@ -78,7 +78,7 @@ export function attemptKey(key: string): string {
 	return trimmed;
 }
 
-/** A stay that started before today (resort calendar dates are UTC ISO dates, as everywhere in bookings). */
+/** A stay that started before the resort's today (Asia/Bangkok calendar date). */
 export const isHistoricalStay = (stay: { checkIn: string }) => stay.checkIn < resortTodayIso();
 
 /**
