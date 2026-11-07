@@ -8,14 +8,32 @@ function icalDate(value: string): string | null {
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === iso ? iso : null;
 }
 
-/** iCal DTEND is exclusive. Timed events are intentionally ignored. */
+/**
+ * iCal DTEND is exclusive. Timed events are intentionally ignored.
+ * Throws on structurally incomplete input so a truncated feed cannot release existing blocks.
+ */
 export function blockedDatesFromIcal(text: string, from: string, to: string): string[] {
-  const lines = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/);
+  const lines = text.replace(/^\uFEFF/, '').replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/);
   const dates = new Set<string>();
+  const open: string[] = [];
+  let calendars = 0;
   let event: Record<string, string> | null = null;
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { event = {}; continue; }
-    if (line === 'END:VEVENT') {
+    const boundary = /^(BEGIN|END):([A-Za-z0-9-]+)\s*$/.exec(line);
+    if (boundary) {
+      const name = boundary[2].toUpperCase();
+      if (boundary[1].toUpperCase() === 'BEGIN') {
+        const parent = open[open.length - 1];
+        if (parent === undefined ? name !== 'VCALENDAR' : name === 'VCALENDAR' || (name === 'VEVENT' && parent !== 'VCALENDAR')) {
+          throw new Error('Malformed calendar: unexpected BEGIN:' + name);
+        }
+        open.push(name);
+        if (name === 'VEVENT') event = {};
+        continue;
+      }
+      if (open.pop() !== name) throw new Error('Malformed calendar: unexpected END:' + name);
+      if (name === 'VCALENDAR') calendars++;
+      if (name !== 'VEVENT') continue;
       if (event && event.STATUS !== 'CANCELLED') {
         if (event.RRULE || event.DTSTART?.includes('T') || event.DTEND?.includes('T')) {
           throw new Error('Timed or recurring calendar events require manual review');
@@ -30,11 +48,13 @@ export function blockedDatesFromIcal(text: string, from: string, to: string): st
       event = null;
       continue;
     }
-    if (event) {
+    // Only the event's own properties count; nested components such as VALARM keep theirs.
+    if (event && open[open.length - 1] === 'VEVENT') {
       const colon = line.indexOf(':');
       if (colon >= 0) event[line.slice(0, colon).split(';')[0].toUpperCase()] = line.slice(colon + 1);
     }
   }
+  if (open.length > 0 || calendars === 0) throw new Error('Malformed calendar: incomplete VCALENDAR');
   return [...dates].sort();
 }
 

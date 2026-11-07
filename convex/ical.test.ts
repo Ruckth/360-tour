@@ -158,3 +158,31 @@ describe('sync tickets', () => {
     }
   });
 });
+
+it('keeps existing OTA nights when a 200 response holds a truncated calendar', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2030-01-01T12:00:00Z'));
+  try {
+    const { t, admin, sourceId } = await sourceSetup();
+    const source = await t.run(async ctx => await ctx.db.get(sourceId));
+    const otherSource = await admin.mutation(api.ical.addSource, { propertyId: source!.propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
+    await applyFeed(t, sourceId, ['2030-01-10', '2030-01-11']);
+    await applyFeed(t, otherSource, ['2030-01-20']);
+    const rows = async () => (await t.run(async ctx => await ctx.db.query('availability').collect())).map(r => `${r.date}:${r.icalSourceId === sourceId ? 'a' : 'b'}`).sort();
+    const before = await rows();
+    const respond = (body: string) => vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status: 200 })));
+
+    respond('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20300110\r\nDTEND;VALUE=DATE:20300112\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20300115\r\n');
+    const truncated = await admin.action(api.ical.syncSource, { sourceId });
+    expect(truncated).toMatchObject({ ok: false, error: expect.stringContaining('Malformed calendar') });
+    expect(await rows()).toEqual(before);
+    expect((await t.run(async ctx => await ctx.db.get(sourceId)))?.lastSyncError).toContain('Malformed calendar');
+
+    respond('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n');
+    expect(await admin.action(api.ical.syncSource, { sourceId })).toEqual({ ok: true, blockedNights: 0, conflicts: 0 });
+    expect(await rows()).toEqual(['2030-01-20:b']);
+  } finally {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
+});
