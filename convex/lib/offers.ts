@@ -54,8 +54,8 @@ export type CouponProblem =
 
 export type OfferResult = {
 	subtotal: number;
-	/** Which offer the guest gets. `coupon_worse` = valid coupon but the direct offer is better. */
-	/** 'coupon' with a services-only coupon still includes the direct offer on accommodation (see `discount`). */
+	/** Which offer the guest gets. `coupon_worse` = valid coupon but the direct offer is better.
+	 * 'coupon' with a services-only coupon still includes the direct offer on accommodation (see `discount`). */
 	applied: 'none' | 'direct' | 'coupon';
 	couponStatus: 'none' | 'applied' | 'invalid' | 'coupon_worse';
 	problem?: CouponProblem;

@@ -100,7 +100,10 @@ describe('campaigns, links and resolution', () => {
     expect(await t.query(api.marketing.resolveLink, { slug: 'unknown' })).toBeNull();
     await admin.mutation(api.marketing.setCampaignStatus, { campaignId, status: 'active' });
     const linkId = await admin.mutation(api.marketing.saveLink, link);
+    expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toBeNull(); // new links start as drafts
+    await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
     expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toMatchObject({ path: '/booking?property=mossbell&mk=f1', status: 'active', offerRemoved: false });
+    await expect(admin.mutation(api.marketing.saveLink, { ...link, linkId, slug: 'f2' })).rejects.toThrow('Slug is locked after publishing');
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toMatchObject({ path: '/booking?property=mossbell&mk=f1&coupon=DCNT-F1-20', couponCode: 'DCNT-F1-20' });
     for (const status of ['paused', 'archived'] as const) {
@@ -109,12 +112,14 @@ describe('campaigns, links and resolution', () => {
     }
     await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
+    const annaId = await admin.mutation(api.marketing.saveLink, { ...link, slug: 'r/anna', locale: 'th' });
+    await admin.mutation(api.marketing.setLinkStatus, { linkId: annaId, status: 'active' });
     for (const [destination, path] of [
       [{ kind: 'home' }, '/th?mk=r%2Fanna'], [{ kind: 'booking' }, '/th/booking?mk=r%2Fanna'],
       [{ kind: 'villa', propertySlug: 'mossbell' }, '/th/rooms/mossbell?mk=r%2Fanna'],
       [{ kind: 'experiences' }, '/th/experiences?mk=r%2Fanna'], [{ kind: 'chat' }, '/th/chat?mk=r%2Fanna'],
     ] as const) {
-      await admin.mutation(api.marketing.saveLink, { ...link, linkId, slug: 'r/anna', locale: 'th', destination });
+      await admin.mutation(api.marketing.saveLink, { ...link, linkId: annaId, slug: 'r/anna', locale: 'th', destination });
       expect((await t.query(api.marketing.resolveLink, { slug: 'r/anna' }))?.path).toBe(path);
     }
   });
@@ -122,6 +127,7 @@ describe('campaigns, links and resolution', () => {
     const { t, admin, campaignId, link } = await setup();
     await admin.mutation(api.marketing.setCampaignStatus, { campaignId, status: 'active' });
     const linkId = await admin.mutation(api.marketing.saveLink, link);
+    await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
     await t.mutation(api.marketing.recordOpen, { slug: 'f1', bot: true });
     for (let i = 0; i < 121; i++) await t.mutation(api.marketing.recordOpen, { slug: 'f1', bot: false });
     expect((await t.run(ctx => ctx.db.get(linkId)))?.opens).toBe(119);

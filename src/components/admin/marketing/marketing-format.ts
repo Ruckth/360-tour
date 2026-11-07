@@ -185,6 +185,13 @@ export type QuoteVerdict = { tone: "success" | "warning" | "info" | "neutral"; t
 
 /** Which offer wins in a test quote, and why, in one short sentence each. */
 export function quoteVerdict(result: OfferResult): QuoteVerdict {
+  if (result.applied === "coupon" && result.discount > result.couponDiscount) {
+    return {
+      tone: "success",
+      title: "Both apply",
+      detail: `The code saves ${thb(result.couponDiscount)} on services. The direct offer still saves ${thb(result.directDiscount)} on the stay.`,
+    };
+  }
   if (result.applied === "coupon") {
     const more = result.couponDiscount - result.directDiscount;
     return {

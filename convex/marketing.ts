@@ -268,11 +268,14 @@ export const saveLink = mutation({
 		}
 		const values = { ...fields, placement: fields.placement, locale: fields.locale, couponId: fields.couponId, slug: checked.slug, updatedAt: Date.now(), updatedByEmail: admin.email };
 		if (linkId) {
-			if (!await ctx.db.get(linkId)) throw new Error('Link not found');
+			const existing = await ctx.db.get(linkId);
+			if (!existing) throw new Error('Link not found');
+			// Printed QR codes and shared posts point at the slug, so it is fixed once the link has been live.
+			if (existing.status !== 'draft' && existing.slug !== checked.slug) throw new Error('Slug is locked after publishing');
 			await ctx.db.patch(linkId, values);
 			return linkId;
 		}
-		return ctx.db.insert('marketingLinks', { ...values, createdAt: values.updatedAt, opens: 0, status: campaign.status === 'draft' ? 'draft' : 'active' });
+		return ctx.db.insert('marketingLinks', { ...values, createdAt: values.updatedAt, opens: 0, status: 'draft' });
 	}
 });
 

@@ -162,3 +162,12 @@ describe("QR offer card", () => {
     expect(qrCardSvg(spec)).toContain("Ben &amp; &lt;Co&gt;");
   });
 });
+
+describe('quoteVerdict for a services-only coupon on a stay', () => {
+  it('says both offers apply', async () => {
+    const { quoteVerdict } = await import('../../src/components/admin/marketing/marketing-format');
+    const v = quoteVerdict({ subtotal: 10800, applied: 'coupon', couponStatus: 'applied', directDiscount: 1350, couponDiscount: 500, capped: false, discount: 1850, total: 8950, allocation: [] });
+    expect(v.title).toBe('Both apply');
+    expect(v.detail).toContain('฿1,350');
+  });
+});
