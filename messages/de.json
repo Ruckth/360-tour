@@ -448,6 +448,7 @@
     "roomsExplored": "{visited}/{total} Räume erkundet",
     "loading": "Laden...",
     "loadFailed": "Dieser Raum konnte nicht geladen werden.",
+    "unavailable": "Die 360°-Tour dieser Villa ist noch nicht verfügbar.",
     "retry": "Erneut versuchen",
     "leadTitle": "Diesen Traum speichern",
     "leadSaved": "Gespeichert. Wir senden Ihnen die Direktbuchungsdetails dieser Villa per E-Mail.",

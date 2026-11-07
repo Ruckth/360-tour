@@ -448,6 +448,7 @@
     "roomsExplored": "{visited}/{total} stanze esplorate",
     "loading": "Chargement...",
     "loadFailed": "Impossibile caricare questa stanza.",
+    "unavailable": "Il tour a 360° di questa villa non è ancora disponibile.",
     "retry": "Riprova",
     "leadTitle": "Salva questo sogno",
     "leadSaved": "Sauvegardé. Nous vous enverrons les détails de réservation directe de cette villa.",

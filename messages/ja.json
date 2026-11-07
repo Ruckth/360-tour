@@ -448,6 +448,7 @@
     "roomsExplored": "{visited}/{total} 部屋を探索済み",
     "loading": "読み込み中...",
     "loadFailed": "この部屋を読み込めませんでした。",
+    "unavailable": "このヴィラの360°ツアーはまだご利用いただけません。",
     "retry": "再試行",
     "leadTitle": "この夢を保存",
     "leadSaved": "保存しました。このヴィラの直接予約詳細をメールでお送りします。",

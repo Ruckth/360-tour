@@ -448,6 +448,7 @@
     "roomsExplored": "{visited}/{total} pièces explorées",
     "loading": "Chargement...",
     "loadFailed": "Impossible de charger cette pièce.",
+    "unavailable": "La visite 360° de cette villa n'est pas encore disponible.",
     "retry": "Réessayer",
     "leadTitle": "Sauvegarder ce rêve",
     "leadSaved": "Sauvegardé. Nous vous enverrons les détails de réservation directe de cette villa.",
