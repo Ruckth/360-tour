@@ -78,7 +78,7 @@ Set these in the Convex production deployment:
 | --- | --- | --- |
 | `CLERK_JWT_ISSUER_DOMAIN` | Yes for admin | Required for Convex to validate Clerk tokens. |
 | `ADMIN_EMAILS` | Yes for admin | Comma-separated allowlist for `/admin`, for example `owner@example.com,manager@example.com`. |
-| `CONVEX_SERVER_SECRET` | Yes for channel webhooks | Must match Vercel exactly. Webhook event mutations reject every call while it is unset or empty, so set it in Convex and Vercel before deploying. |
+| `CONVEX_SERVER_SECRET` | Yes for channel webhooks | Must match Vercel exactly. Webhook event mutations reject every call while it is unset or empty, so set it in Convex and Vercel before deploying (`npx convex env set CONVEX_SERVER_SECRET <value>`). |
 | `AI_API_KEY` | No | Enables live AI concierge responses. |
 | `AI_API_BASE_URL` | No | Use `https://api.x.ai/v1` for xAI. |
 | `AI_SIMPLE_MODEL` | No | Current expected value is `grok-4.3`. |
