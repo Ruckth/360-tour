@@ -19,7 +19,7 @@ export function blockedDatesFromIcal(text: string, from: string, to: string): st
   let calendars = 0;
   let event: Record<string, string> | null = null;
   for (const line of lines) {
-    const boundary = /^(BEGIN|END):([A-Za-z0-9-]+)\s*$/.exec(line);
+    const boundary = /^(BEGIN|END):([A-Z0-9-]+)\s*$/i.exec(line);
     if (boundary) {
       const name = boundary[2].toUpperCase();
       if (boundary[1].toUpperCase() === 'BEGIN') {

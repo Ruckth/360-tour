@@ -29,6 +29,7 @@ describe('iCal import', () => {
       'no calendar envelope': event('20300101', '20300102'),
       'content after the calendar is truncated': ['BEGIN:VCALENDAR', 'END:VCALENDAR', 'BEGIN:VCALENDAR', ...complete],
       empty: [''],
+      'lowercase truncated event': ['BEGIN:VCALENDAR', 'begin:vevent', 'DTSTART;VALUE=DATE:20300110', 'END:VCALENDAR'],
     };
     for (const [name, lines] of Object.entries(malformed)) {
       expect(() => blockedDatesFromIcal(lines.join('\r\n'), '2030-01-01', '2030-02-01'), name).toThrow('Malformed calendar');
