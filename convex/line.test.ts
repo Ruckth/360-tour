@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
@@ -12,6 +12,8 @@ declare global {
 }
 
 const modules = import.meta.glob("./**/*.ts");
+const TEST_SERVER_SECRET = "test-server-secret";
+beforeEach(() => vi.stubEnv("CONVEX_SERVER_SECRET", TEST_SERVER_SECRET));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("LINE webhook events", () => {
@@ -38,7 +40,7 @@ describe("LINE webhook events", () => {
     const t = convexTest(schema, modules);
 
     const firstClaim = await t.mutation(api.line.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "line-event-1",
       lineUserId: "U123",
       sourceType: "user",
@@ -47,14 +49,14 @@ describe("LINE webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.line.recordInboundEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       userContent: "See prices",
     });
 
     const duplicateClaim = await t.mutation(api.line.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "line-event-1",
       lineUserId: "U123",
       sourceType: "user",
@@ -69,7 +71,7 @@ describe("LINE webhook events", () => {
     expect(duplicateClaim.sessionId).toBe(firstClaim.sessionId);
 
     await t.mutation(api.line.completeEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
@@ -101,7 +103,7 @@ describe("LINE webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.line.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "line-event-failed-reply",
       lineUserId: "U999",
       sourceType: "user",
@@ -111,13 +113,13 @@ describe("LINE webhook events", () => {
     });
 
     await t.mutation(api.line.recordInboundEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "ราคาเท่าไหร่",
     });
     await t.mutation(api.line.markEventFailed, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       error: "LINE reply failed (401): invalid token",
       lineReplyStatus: 401,
@@ -127,7 +129,7 @@ describe("LINE webhook events", () => {
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.line.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "line-event-failed-reply",
       lineUserId: "U999",
       sourceType: "user",
@@ -147,7 +149,7 @@ describe("LINE webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.line.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "line-event-question-bank",
       lineUserId: "UQB",
       sourceType: "user",
@@ -156,13 +158,13 @@ describe("LINE webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.line.recordInboundEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "Do you include airport pickup?",
     });
     await t.mutation(api.line.completeEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       assistantContent: "Yes. Direct booking includes airport pickup.",

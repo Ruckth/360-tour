@@ -1,16 +1,7 @@
-let warnedMissingSecret = false;
-
-/** Authenticate calls made by the Next.js webhook servers. */
+/** Authenticate calls made by the Next.js webhook servers. Fails closed when unconfigured. */
 export async function requireServerSecret(provided: string): Promise<void> {
 	const expected = process.env.CONVEX_SERVER_SECRET;
-	if (expected === undefined) {
-		if (!warnedMissingSecret) {
-			console.warn('CONVEX_SERVER_SECRET is not configured in Convex; webhook mutations are temporarily unauthenticated');
-			warnedMissingSecret = true;
-		}
-		return;
-	}
-	if (expected.length === 0) throw new Error('CONVEX_SERVER_SECRET is empty in Convex');
+	if (!expected) throw new Error('CONVEX_SERVER_SECRET is not configured in Convex');
 
 	// Hash both inputs so comparison always processes the same number of bytes.
 	const encoder = new TextEncoder();
