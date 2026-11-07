@@ -21,8 +21,8 @@ vi.mock("@/components/property/PropertyImage", () => ({ PropertyImage: () => nul
 const { BookingPriceSummary } = await import("@/components/booking/BookingPriceSummary");
 const { VillaSelector } = await import("@/components/booking/VillaSelector");
 
-function render(currency: string) {
-  comparison.currency = currency;
+function render(currency: string, comparisonCurrency = currency) {
+  comparison.currency = comparisonCurrency;
   const property = { slug: "villa", name: "Villa", tagline: "", images: [], pricePerNight: 100, currency, directDiscountPercent: 10 };
   return renderToStaticMarkup(createElement(BookingPriceSummary, {
     property: property as unknown as BookingProperty, nights: 2, subtotal: 200, discount: 20, total: 180,
@@ -31,7 +31,9 @@ function render(currency: string) {
 
 describe("booking price summary currency", () => {
   it("labels every USD amount, including the embedded OTA comparison, in USD", () => {
-    const html = render("USD");
+    // The card takes one currency source, the property, even if the comparison data disagrees.
+    const html = render("USD", "EUR");
+    expect(html).not.toContain("EUR");
     expect(html).not.toContain("฿");
     // Rate, subtotal, discount and total.
     for (const amount of ["USD 100", "USD 200", "-USD 20", "USD 180"]) expect(html).toContain(amount);
