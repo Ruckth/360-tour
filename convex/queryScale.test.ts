@@ -133,6 +133,10 @@ describe('booking overlap reads every relevant booking', () => {
 			ctx.db.insert('icalSources', { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics' })
 		);
 		await t.run(async (ctx) => {
+			// Model a legacy pending booking without a hold; an existing hold may keep an OTA overlap.
+			for (const row of await ctx.db.query('availability').withIndex('by_property_date', q => q.eq('propertyId', propertyId).eq('date', '2030-05-01')).take(10)) {
+				if (row.bookingId === pending.bookingId) await ctx.db.delete(row._id);
+			}
 			// A free row first, then an OTA block on the same night.
 			await ctx.db.insert('availability', { propertyId, date: '2030-05-01', status: 'available', source: 'direct' });
 			await ctx.db.insert('availability', { propertyId, date: '2030-05-01', status: 'blocked', source: 'airbnb', icalSourceId: sourceId });

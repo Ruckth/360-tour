@@ -140,7 +140,7 @@ describe("WhatsApp webhook events", () => {
 describe("durable delivery guard", () => {
   it("claims atomically before recording inbound content", async () => {
     const t = convexTest(schema, modules);
-    const args = { serverSecret: "", eventKey: "atomic-claim", whatsappUserId: "test-guest", eventType: "message" as const };
+    const args = { serverSecret: TEST_SERVER_SECRET, eventKey: "atomic-claim", whatsappUserId: "test-guest", eventType: "message" as const };
     const first = await t.mutation(api.whatsapp.claimEvent, args);
     const second = await t.mutation(api.whatsapp.claimEvent, args);
     expect(first.duplicate).toBe(false);
@@ -149,12 +149,12 @@ describe("durable delivery guard", () => {
 
   it("never replays a failed or ambiguous send once delivery began", async () => {
     const t = convexTest(schema, modules);
-    const args = { serverSecret: "", eventKey: "uncertain-send", whatsappUserId: "test-guest", eventType: "message" as const };
+    const args = { serverSecret: TEST_SERVER_SECRET, eventKey: "uncertain-send", whatsappUserId: "test-guest", eventType: "message" as const };
     const claim = await t.mutation(api.whatsapp.claimEvent, args);
-    await t.mutation(api.whatsapp.recordInboundEvent, { serverSecret: "", eventId: claim.eventId, sessionId: claim.sessionId!, userContent: "Show villas" });
-    expect(await t.mutation(api.whatsapp.beginDelivery, { serverSecret: "", eventId: claim.eventId })).toEqual({ started: true });
-    expect(await t.mutation(api.whatsapp.beginDelivery, { serverSecret: "", eventId: claim.eventId })).toEqual({ started: false });
-    await t.mutation(api.whatsapp.markEventFailed, { serverSecret: "", eventId: claim.eventId, error: "Connection lost after request body sent" });
+    await t.mutation(api.whatsapp.recordInboundEvent, { serverSecret: TEST_SERVER_SECRET, eventId: claim.eventId, sessionId: claim.sessionId!, userContent: "Show villas" });
+    expect(await t.mutation(api.whatsapp.beginDelivery, { serverSecret: TEST_SERVER_SECRET, eventId: claim.eventId })).toEqual({ started: true });
+    expect(await t.mutation(api.whatsapp.beginDelivery, { serverSecret: TEST_SERVER_SECRET, eventId: claim.eventId })).toEqual({ started: false });
+    await t.mutation(api.whatsapp.markEventFailed, { serverSecret: TEST_SERVER_SECRET, eventId: claim.eventId, error: "Connection lost after request body sent" });
     const retry = await t.mutation(api.whatsapp.claimEvent, args);
     expect(retry).toMatchObject({ duplicate: true, status: "failed" });
     const event = await t.run(ctx => ctx.db.get(claim.eventId));
@@ -165,9 +165,9 @@ describe("durable delivery guard", () => {
 
   it("blocks a send when staff takes over before the delivery mutation", async () => {
     const t = convexTest(schema, modules);
-    const claim = await t.mutation(api.whatsapp.claimEvent, { serverSecret: "", eventKey: "staff-pause", whatsappUserId: "test-guest", eventType: "message" });
+    const claim = await t.mutation(api.whatsapp.claimEvent, { serverSecret: TEST_SERVER_SECRET, eventKey: "staff-pause", whatsappUserId: "test-guest", eventType: "message" });
     await t.run(ctx => ctx.db.patch(claim.sessionId!, { aiPaused: true }));
-    expect(await t.mutation(api.whatsapp.beginDelivery, { serverSecret: "", eventId: claim.eventId })).toEqual({ started: false });
+    expect(await t.mutation(api.whatsapp.beginDelivery, { serverSecret: TEST_SERVER_SECRET, eventId: claim.eventId })).toEqual({ started: false });
     expect((await t.run(ctx => ctx.db.get(claim.eventId)))?.deliveryStartedAt).toBeUndefined();
   });
 });

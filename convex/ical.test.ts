@@ -225,10 +225,11 @@ describe('OTA nights that overlap a host block or direct booking', () => {
     expect(await free({ checkIn: '2030-01-09', checkOut: '2030-01-10' })).toBe(true);
   });
 
-  it('stay blocked after a direct booking is cancelled, while the booking stays editable', async () => {
+  it.each(['confirmed', 'pending'] as const)('stay blocked after a %s direct booking is cancelled, while the booking stays editable', async status => {
     const { t, admin, sourceId, free } = await conflictSetup();
     const stay = { propertySlug: 'villa', guestName: 'Guest', guestPhone: '66911111111', guests: 2, ...night };
     const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
+    if (status === 'pending') await t.run(ctx => ctx.db.patch(bookingId, { status, source: 'web' }));
     expect(await applyFeed(t, sourceId, ['2030-01-10', '2030-01-11'])).toEqual({ blockedNights: 2, conflicts: 1 });
 
     const propertyId = (await t.run(async ctx => await ctx.db.get(bookingId)))!.propertyId;
