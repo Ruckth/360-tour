@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   dateToIso,
   dateValueProblem,
@@ -7,6 +7,7 @@ import {
   parseLocalDateTime,
   timeMinuteOptions,
   timeValueProblem,
+  todayIsoResort,
 } from "@/lib/dates/values";
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 
@@ -117,5 +118,30 @@ describe("time and wall-clock values", () => {
     expect(
       timeValueProblem("09:15", { minuteStep: 15, stepBase: "09:10" }),
     ).toBeTruthy();
+  });
+});
+
+describe("resort today", () => {
+  it("follows Bangkok midnight whatever the browser time zone", () => {
+    // Pure UTC arithmetic: Los Angeles, Seoul and Bangkok browsers all get the same day.
+    expect(todayIsoResort(Date.parse("2030-01-10T16:59:59Z"))).toBe("2030-01-10");
+    expect(todayIsoResort(Date.parse("2030-01-10T17:00:00Z"))).toBe("2030-01-11");
+    expect(todayIsoResort(Date.parse("2030-01-11T16:30:00-08:00"))).toBe("2030-01-12");
+  });
+});
+
+describe("admin email default", () => {
+  it("treats a stay as historical from Bangkok midnight, like the server", async () => {
+    const { notifyDefault } = await import("@/components/admin/admin-bookings-shared");
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2030-01-10T16:59:59Z"));
+      expect(notifyDefault({ checkIn: "2030-01-10" })).toBe(true);
+      vi.setSystemTime(new Date("2030-01-10T18:00:00Z"));
+      expect(notifyDefault({ checkIn: "2030-01-10" })).toBe(false);
+      expect(notifyDefault({ checkIn: "2030-01-11" })).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

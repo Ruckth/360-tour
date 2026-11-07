@@ -1,7 +1,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { MAX_BILL, bookingBalance, round2 } from './billMath';
-import { todayIso } from './dates';
+import { resortTodayIso } from './dates';
 import { appendRecordHistory } from './recordHistory';
 
 /**
@@ -78,8 +78,8 @@ export function attemptKey(key: string): string {
 	return trimmed;
 }
 
-/** A stay that started before today (resort calendar dates are UTC ISO dates, as everywhere in bookings). */
-export const isHistoricalStay = (stay: { checkIn: string }) => stay.checkIn < todayIso();
+/** A stay that started before the resort's today (Asia/Bangkok calendar date). */
+export const isHistoricalStay = (stay: { checkIn: string }) => stay.checkIn < resortTodayIso();
 
 /**
  * Whether a staff action emails the guest when the caller doesn't say: yes for current and future

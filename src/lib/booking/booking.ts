@@ -48,3 +48,24 @@ export function getHighestAllowedStepIndex({
   if (!infoValid) return 2;
   return 3;
 }
+
+/** A whole-number URL count; absent, blank or malformed values are missing (Number("") is 0). */
+function urlCount(value: string): number | undefined {
+  if (!value.trim()) return undefined;
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.floor(count) : undefined;
+}
+
+/**
+ * Starting party from booking-link params. Explicit adults/children win; adults are derived
+ * from the total guest count only when the adults value is missing. Capacity is checked later.
+ */
+export function initialGuestCounts({ guests, adults, children }: { guests: string; adults: string; children: string }) {
+  const childCount = Math.max(0, urlCount(children) ?? 0);
+  const explicitAdults = urlCount(adults);
+  const totalGuests = Math.max(1, urlCount(guests) ?? 1);
+  return {
+    adults: Math.max(1, explicitAdults ?? totalGuests - childCount),
+    children: childCount,
+  };
+}

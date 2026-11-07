@@ -21,6 +21,7 @@ import {
   bookingSteps,
   DEMO_DIRECT_DISCOUNT_PERCENT,
   getHighestAllowedStepIndex,
+  initialGuestCounts,
   isValidGuestInfo,
   type BookingMode,
   type BookingProperty,
@@ -32,7 +33,7 @@ import {
   isDateInIsoList,
   nightsBetweenIso,
   rangeIntersectsDates,
-  todayIsoLocal,
+  todayIsoResort,
 } from "@/lib/booking/dates";
 import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
 import {
@@ -110,25 +111,19 @@ export function BookingFunnel({
   const t = useTranslations("Booking");
   const demoInventory = useMemo(() => getDemoInventory(messages, locale), [messages, locale]);
   const convex = useOptionalConvex();
-  const todayIso = todayIsoLocal();
+  const todayIso = todayIsoResort();
   const demoPayHref = localizeHref("/booking/pay?bookingId=demo", locale);
-  const parsedInitialGuests = Number(initialGuests);
   const parsedInitialNights = Number(initialNights);
-  const parsedInitialAdults = Number(initialAdults);
-  const parsedInitialChildren = Number(initialChildren);
   const derivedInitialCheckOut =
     initialCheckOut ||
     (initialCheckIn && Number.isFinite(parsedInitialNights) && parsedInitialNights > 0
       ? addDaysIso(initialCheckIn, Math.floor(parsedInitialNights))
       : "");
-  const startingTotalGuests =
-    Number.isFinite(parsedInitialGuests) ? Math.max(1, Math.floor(parsedInitialGuests)) : 1;
-  const startingChildren =
-    Number.isFinite(parsedInitialChildren) ? Math.max(0, Math.floor(parsedInitialChildren)) : 0;
-  const startingAdults =
-    Number.isFinite(parsedInitialAdults)
-      ? Math.max(1, Math.floor(parsedInitialAdults))
-      : Math.max(1, startingTotalGuests - startingChildren);
+  const { adults: startingAdults, children: startingChildren } = initialGuestCounts({
+    guests: initialGuests,
+    adults: initialAdults,
+    children: initialChildren,
+  });
 
   const [step, setStep] = useState<BookingStep>("select");
   const [bookingMode, setBookingMode] = useState<BookingMode>(convex ? "live" : "demo");

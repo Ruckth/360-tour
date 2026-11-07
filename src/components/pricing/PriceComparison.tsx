@@ -64,6 +64,7 @@ export function PriceComparison({
         <OtaRateComparison
           className="mt-5"
           rates={comparison.rates}
+          currency={comparison.currency}
           pricePerNight={comparison.pricePerNight}
           discountPercent={discountPercent}
           showLinks

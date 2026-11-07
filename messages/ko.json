@@ -448,6 +448,7 @@
     "roomsExplored": "{visited}/{total}개 객실 탐색",
     "loading": "로딩 중...",
     "loadFailed": "이 공간을 불러오지 못했습니다.",
+    "unavailable": "이 빌라의 360° 투어는 아직 준비되지 않았습니다.",
     "retry": "다시 시도",
     "leadTitle": "이 꿈 저장하기",
     "leadSaved": "저장되었습니다. 이 빌라의 직접 예약 정보를 이메일로 보내드릴게요.",

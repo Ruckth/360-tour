@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
-import { dateToIso, todayIsoLocal } from "@/lib/booking/dates";
+import { dateToIso, todayIsoResort } from "@/lib/booking/dates";
 import { HomeSolidBookButton } from "@/components/home/HomeSolidBookButton";
 
 const BookingRangePicker = dynamic(
@@ -31,7 +31,7 @@ export function HomeQuickBooking() {
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const router = useRouter();
-  const today = todayIsoLocal();
+  const today = todayIsoResort();
   const bookingHref = localizeHref("/booking", locale);
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");

@@ -448,6 +448,7 @@
     "roomsExplored": "已探索 {visited}/{total} 个房间",
     "loading": "正在加载...",
     "loadFailed": "无法加载此房间。",
+    "unavailable": "此别墅的 360° 导览暂未开放。",
     "retry": "重试",
     "leadTitle": "保存这个梦想",
     "leadSaved": "已保存。我们会把这间别墅的直接预订详情发送到您的邮箱。",

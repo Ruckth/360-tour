@@ -125,7 +125,32 @@ export function TourViewer({
   const nextRoom = activeRooms[(currentRoomIndex + 1) % activeRooms.length];
   const navigationLocked = transitioning || loadFailed || sceneStatus !== "ready";
 
-  if (roomsReady && !activeRooms.length) return null;
+  // A villa without tour rooms still gets a visible, closable screen: the scroll lock above
+  // must never outlive what the guest can see and dismiss.
+  if (roomsReady && !activeRooms.length) {
+    return createPortal(
+      <div
+        data-testid="tour-viewer"
+        data-scene-status="empty"
+        role="dialog"
+        aria-label={property.name}
+        className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-black px-6 text-center"
+      >
+        <p className="font-serif text-3xl font-semibold text-white md:text-4xl">{property.name}</p>
+        <p className="max-w-sm text-sm text-white/60">{tourT("unavailable")}</p>
+        <Button
+          type="button"
+          variant="gold"
+          autoFocus
+          onClick={onClose}
+          className="mt-2 rounded-full px-6 shadow-lg shadow-black/30"
+        >
+          {a11y("close")}
+        </Button>
+      </div>,
+      document.body,
+    );
+  }
 
   const viewer = (
     <div

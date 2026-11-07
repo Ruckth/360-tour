@@ -448,6 +448,7 @@
     "roomsExplored": "{visited}/{total} rooms explored",
     "loading": "Loading...",
     "loadFailed": "This room could not be loaded.",
+    "unavailable": "This villa's 360° tour isn't available yet.",
     "retry": "Try again",
     "leadTitle": "Save this dream",
     "leadSaved": "Saved. We'll keep this villa warm in your inbox with direct booking details.",

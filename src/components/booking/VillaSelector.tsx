@@ -4,8 +4,8 @@ import { useTranslations } from "next-intl";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { SwipeRail } from "@/components/ui/SwipeRail";
 import type { BookingProperty } from "@/lib/booking/booking";
-import { resort } from "@/lib/data/resort-config";
 import { cn } from "@/lib/utils";
+import { currencyPrefix } from "@/lib/villas";
 
 export function VillaSelector({
   properties,
@@ -56,7 +56,7 @@ export function VillaSelector({
         <div className="p-3">
           <p className="text-sm font-semibold text-foreground">{item.name}</p>
           <p className="text-xs text-muted-foreground">
-            {resort.currencySymbol}
+            {currencyPrefix(item.currency)}
             {item.pricePerNight.toLocaleString()}
             {villaT("perNight")}
           </p>

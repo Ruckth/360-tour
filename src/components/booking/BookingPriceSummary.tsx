@@ -5,7 +5,7 @@ import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRat
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { Card } from "@/components/ui/card";
 import type { BookingProperty } from "@/lib/booking/booking";
-import { resort } from "@/lib/data/resort-config";
+import { currencyPrefix } from "@/lib/villas";
 
 export function BookingPriceSummary({
   property,
@@ -23,6 +23,7 @@ export function BookingPriceSummary({
   const t = useTranslations("Booking");
   const villaT = useTranslations("Villa");
   const comparison = useOtaComparison(property.slug);
+  const money = (amount: number) => `${currencyPrefix(property.currency)}${amount.toLocaleString()}`;
   return (
     <Card className="h-fit min-w-0 p-4 shadow-lg md:p-5">
       <div className="flex gap-3 lg:block">
@@ -45,26 +46,26 @@ export function BookingPriceSummary({
       <div className="mt-3 space-y-1.5 text-xs text-muted-foreground lg:mt-4 lg:space-y-2 lg:text-sm">
         <div className="flex justify-between">
           <span>
-            {resort.currencySymbol}
-            {property.pricePerNight.toLocaleString()} {villaT("perNight")} x {nights || 0}
+            {money(property.pricePerNight)} {villaT("perNight")} x {nights || 0}
           </span>
-          <span>{resort.currencySymbol}{subtotal.toLocaleString()}</span>
+          <span>{money(subtotal)}</span>
         </div>
         {discount > 0 ? (
           <div className="flex justify-between text-gold">
             <span>{t("discount")}</span>
-            <span>-{resort.currencySymbol}{discount.toLocaleString()}</span>
+            <span>-{money(discount)}</span>
           </div>
         ) : null}
         <div className="flex justify-between border-t border-border pt-2 text-sm font-semibold text-foreground lg:pt-3 lg:text-base">
           <span>{t("total")}</span>
-          <span>{resort.currencySymbol}{total.toLocaleString()}</span>
+          <span>{money(total)}</span>
         </div>
       </div>
       {comparison ? (
         <OtaRateComparison
           className="mt-4"
           rates={comparison.rates}
+          currency={property.currency}
           pricePerNight={property.pricePerNight}
           discountPercent={property.directDiscountPercent}
           nights={nights}

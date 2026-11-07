@@ -1,6 +1,6 @@
 import { dateToIso, isoToDate } from "@/lib/dates/values";
 import { formatPickerDate } from "@/lib/dates/format";
-export { dateToIso, isoToDate, todayIsoLocal } from "@/lib/dates/values";
+export { dateToIso, isoToDate, todayIsoLocal, todayIsoResort } from "@/lib/dates/values";
 
 export function nightsBetweenIso(checkIn: string, checkOut: string): number {
   if (!checkIn || !checkOut) return 0;

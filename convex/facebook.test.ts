@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
@@ -12,13 +12,15 @@ declare global {
 }
 
 const modules = import.meta.glob("./**/*.ts");
+const TEST_SERVER_SECRET = "test-server-secret";
+beforeEach(() => vi.stubEnv("CONVEX_SERVER_SECRET", TEST_SERVER_SECRET));
 
 describe("Facebook webhook events", () => {
   it("claims duplicate events once and stores the Facebook transcript", async () => {
     const t = convexTest(schema, modules);
 
     const firstClaim = await t.mutation(api.facebook.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "facebook-event-1",
       facebookUserId: "fb-user-123",
       pageId: "page-123",
@@ -27,14 +29,14 @@ describe("Facebook webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.facebook.recordInboundEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       userContent: "See prices",
     });
 
     const duplicateClaim = await t.mutation(api.facebook.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "facebook-event-1",
       facebookUserId: "fb-user-123",
       pageId: "page-123",
@@ -49,7 +51,7 @@ describe("Facebook webhook events", () => {
     expect(duplicateClaim.sessionId).toBe(firstClaim.sessionId);
 
     await t.mutation(api.facebook.completeEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
@@ -87,7 +89,7 @@ describe("Facebook webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.facebook.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "facebook-event-failed-reply",
       facebookUserId: "fb-user-999",
       pageId: "page-123",
@@ -97,13 +99,13 @@ describe("Facebook webhook events", () => {
     });
 
     await t.mutation(api.facebook.recordInboundEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "ราคาเท่าไหร่",
     });
     await t.mutation(api.facebook.markEventFailed, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       error: "Facebook reply failed (401): invalid token",
       facebookReplyStatus: 401,
@@ -113,7 +115,7 @@ describe("Facebook webhook events", () => {
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.facebook.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "facebook-event-failed-reply",
       facebookUserId: "fb-user-999",
       pageId: "page-123",

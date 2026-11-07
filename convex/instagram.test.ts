@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
@@ -12,13 +12,15 @@ declare global {
 }
 
 const modules = import.meta.glob("./**/*.ts");
+const TEST_SERVER_SECRET = "test-server-secret";
+beforeEach(() => vi.stubEnv("CONVEX_SERVER_SECRET", TEST_SERVER_SECRET));
 
 describe("Instagram webhook events", () => {
   it("claims duplicate events once and stores the Instagram transcript", async () => {
     const t = convexTest(schema, modules);
 
     const firstClaim = await t.mutation(api.instagram.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "instagram-event-1",
       instagramUserId: "ig-user-123",
       instagramAccountId: "ig-account-123",
@@ -27,14 +29,14 @@ describe("Instagram webhook events", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     await t.mutation(api.instagram.recordInboundEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       userContent: "See villas",
     });
 
     const duplicateClaim = await t.mutation(api.instagram.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "instagram-event-1",
       instagramUserId: "ig-user-123",
       instagramAccountId: "ig-account-123",
@@ -49,7 +51,7 @@ describe("Instagram webhook events", () => {
     expect(duplicateClaim.sessionId).toBe(firstClaim.sessionId);
 
     await t.mutation(api.instagram.completeEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "You can explore all demo villas on the 360° tour.",
@@ -87,7 +89,7 @@ describe("Instagram webhook events", () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.instagram.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "instagram-event-failed-reply",
       instagramUserId: "ig-user-999",
       instagramAccountId: "ig-account-123",
@@ -97,13 +99,13 @@ describe("Instagram webhook events", () => {
     });
 
     await t.mutation(api.instagram.recordInboundEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       userContent: "ราคาเท่าไหร่",
     });
     await t.mutation(api.instagram.markEventFailed, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventId: claim.eventId,
       error: "Instagram reply failed (401): invalid token",
       instagramReplyStatus: 401,
@@ -113,7 +115,7 @@ describe("Instagram webhook events", () => {
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.instagram.claimEvent, {
-      serverSecret: "",
+      serverSecret: TEST_SERVER_SECRET,
       eventKey: "instagram-event-failed-reply",
       instagramUserId: "ig-user-999",
       instagramAccountId: "ig-account-123",

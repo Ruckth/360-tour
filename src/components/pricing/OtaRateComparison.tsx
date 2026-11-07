@@ -5,9 +5,9 @@ import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { calculateBookingQuote } from "@/lib/booking/quote";
-import { resort } from "@/lib/data/resort-config";
 import { useConvexQuery } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
+import { currencyPrefix } from "@/lib/villas";
 
 export type OtaComparison = FunctionReturnType<typeof api.properties.getOtaComparison>;
 type OtaRate = NonNullable<OtaComparison>["rates"][number];
@@ -26,16 +26,14 @@ export function useOtaComparison(slug: string) {
   return useConvexQuery<OtaComparison>(otaComparisonQuery, { slug }, null).data;
 }
 
-function money(amount: number) {
-  return `${resort.currencySymbol}${amount.toLocaleString()}`;
-}
-
 /**
- * Direct price vs the OTA rates the owner has entered. Shows stay totals when `nights` is
- * known, otherwise one night. Renders nothing without real rates — we never invent OTA prices.
+ * Direct price vs the OTA rates the owner has entered, all in the villa's `currency`. Shows stay
+ * totals when `nights` is known, otherwise one night. Renders nothing without real rates — we
+ * never invent OTA prices.
  */
 export function OtaRateComparison({
   rates,
+  currency,
   pricePerNight,
   discountPercent,
   nights,
@@ -43,6 +41,7 @@ export function OtaRateComparison({
   className,
 }: {
   rates: OtaRate[];
+  currency: string;
   pricePerNight: number;
   discountPercent: number;
   nights?: number;
@@ -53,12 +52,13 @@ export function OtaRateComparison({
   const locale = useLocale();
   if (rates.length === 0) return null;
 
+  const money = (amount: number) => `${currencyPrefix(currency)}${amount.toLocaleString()}`;
   const stayNights = nights && nights > 0 ? nights : 1;
   const directTotal = calculateBookingQuote({
     pricePerNight,
     nights: stayNights,
     discountPercent,
-    currency: resort.currency,
+    currency,
   }).directTotal;
   const rows = rates
     .map((rate) => {

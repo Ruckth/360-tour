@@ -333,8 +333,8 @@
     "nextPhoto": "Photo suivante",
     "language": "Langue",
     "countryCode": "Indicatif pays",
-    "close": "Fermer",
-    "closeTour": "Fermer la visite",
+    "close": "Chiudi",
+    "closeTour": "Chiudi il tour",
     "toggleTheme": "Cambia tema",
     "toggleMenu": "Apri o chiudi menu"
   },
@@ -446,8 +446,9 @@
   },
   "Tour": {
     "roomsExplored": "{visited}/{total} stanze esplorate",
-    "loading": "Chargement...",
+    "loading": "Caricamento...",
     "loadFailed": "Impossibile caricare questa stanza.",
+    "unavailable": "Il tour a 360° di questa villa non è ancora disponibile.",
     "retry": "Riprova",
     "leadTitle": "Salva questo sogno",
     "leadSaved": "Sauvegardé. Nous vous enverrons les détails de réservation directe de cette villa.",

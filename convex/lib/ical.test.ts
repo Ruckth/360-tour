@@ -15,6 +15,36 @@ describe('iCal import', () => {
     expect(() => blockedDatesFromIcal(feed, '2030-01-01', '2030-02-01')).toThrow('Timed or recurring');
   });
 
+  const event = (start: string, end: string, ...extra: string[]) =>
+    ['BEGIN:VEVENT', `DTSTART;VALUE=DATE:${start}`, `DTEND;VALUE=DATE:${end}`, ...extra, 'END:VEVENT'];
+
+  it('rejects truncated or malformed calendar structure instead of returning no dates', () => {
+    const complete = [...event('20300101', '20300102'), ...event('20300103', '20300104')];
+    const malformed = {
+      'truncated after several complete events': ['BEGIN:VCALENDAR', ...complete, 'BEGIN:VEVENT', 'DTSTART;VALUE=DATE:20300110'],
+      'calendar-only truncation': ['BEGIN:VCALENDAR', ...complete],
+      'unexpected end marker': ['BEGIN:VCALENDAR', 'END:VEVENT', 'END:VCALENDAR'],
+      'mismatched end marker': ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'END:VALARM', 'END:VCALENDAR'],
+      'nested VEVENT': ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', ...event('20300101', '20300102'), 'END:VEVENT', 'END:VCALENDAR'],
+      'no calendar envelope': event('20300101', '20300102'),
+      'content after the calendar is truncated': ['BEGIN:VCALENDAR', 'END:VCALENDAR', 'BEGIN:VCALENDAR', ...complete],
+      empty: [''],
+      'lowercase truncated event': ['BEGIN:VCALENDAR', 'begin:vevent', 'DTSTART;VALUE=DATE:20300110', 'END:VCALENDAR'],
+    };
+    for (const [name, lines] of Object.entries(malformed)) {
+      expect(() => blockedDatesFromIcal(lines.join('\r\n'), '2030-01-01', '2030-02-01'), name).toThrow('Malformed calendar');
+    }
+  });
+
+  it('accepts a well-formed empty calendar and valid nested components', () => {
+    expect(blockedDatesFromIcal('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n', '2030-01-01', '2030-02-01')).toEqual([]);
+    const feed = ['\uFEFFBEGIN:VCALENDAR',
+      'BEGIN:VTIMEZONE', 'TZID:Asia/Bangkok', 'BEGIN:STANDARD', 'DTSTART:19700101T000000', 'TZOFFSETFROM:+0700', 'END:STANDARD', 'END:VTIMEZONE',
+      ...event('20300110', '20300112', 'BEGIN:VALARM', 'ACTION:DISPLAY', 'TRIGGER:-PT15M', 'STATUS:CANCELLED', 'END:VALARM'),
+      'END:VCALENDAR', ''].join('\n');
+    expect(blockedDatesFromIcal(feed, '2030-01-01', '2030-02-01')).toEqual(['2030-01-10', '2030-01-11']);
+  });
+
   it('rejects private or insecure feed URLs', () => {
     for (const url of ['http://example.com/a.ics', 'https://localhost/a.ics', 'https://127.0.0.1/a.ics', 'https://user:secret@example.com/a.ics']) {
       expect(() => assertSafeIcalUrl(url)).toThrow();
