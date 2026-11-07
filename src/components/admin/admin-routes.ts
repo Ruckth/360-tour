@@ -1,4 +1,4 @@
-import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
+import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, Megaphone, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
 
 /** `keywords` are extra words the sidebar search matches, e.g. the channels a page covers. */
 export type AdminNavLink = { href: string; label: string; keywords?: readonly string[] };
@@ -37,6 +37,23 @@ export function adminSettingsTabPath(tab: AdminSettingsTab): string {
   return tab === "business" ? "/admin/settings" : `/admin/settings?tab=${tab}`;
 }
 
+/** Marketing sub-pages, in sidebar order. `/admin/marketing` opens Links & QR. */
+export const ADMIN_MARKETING_PAGES = [
+  { id: "campaigns", label: "Campaigns", keywords: ["utm", "source", "medium", "budget"] },
+  { id: "links", label: "Links & QR", keywords: ["short links", "QR code", "tracking"] },
+  { id: "coupons", label: "Coupons", keywords: ["discount", "promo code", "offers"] },
+] as const;
+export type AdminMarketingPage = (typeof ADMIN_MARKETING_PAGES)[number]["id"];
+const ADMIN_MARKETING_DEFAULT: AdminMarketingPage = "links";
+
+export function isAdminMarketingPage(value: string): value is AdminMarketingPage {
+  return ADMIN_MARKETING_PAGES.some((page) => page.id === value);
+}
+
+export function adminMarketingPath(page: AdminMarketingPage): string {
+  return `/admin/marketing/${page}`;
+}
+
 /** Sidebar sections, in order. Add a page under `src/app/admin/<section>` and list it here. */
 export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/chats", label: "Chats", icon: MessageCircle, keywords: ["inbox", "messages", "conversations"] },
@@ -56,6 +73,12 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/questions", label: "Business facts", shortLabel: "Facts", icon: HelpCircle, keywords: ["questions", "answers", "FAQ"] },
   { href: "/admin/properties", label: "Properties", icon: Building2, keywords: ["villas"] },
   { href: "/admin/leads", label: "Leads", icon: Mail },
+  {
+    href: adminMarketingPath(ADMIN_MARKETING_DEFAULT),
+    label: "Marketing",
+    icon: Megaphone,
+    children: ADMIN_MARKETING_PAGES.map(({ id, label, keywords }) => ({ href: adminMarketingPath(id), label, keywords })),
+  },
   {
     href: "/admin/settings",
     label: "Settings",
@@ -101,6 +124,10 @@ export function adminRedirectPath(pathname: string): string | null {
     if (!subpage) return adminStaffTabPath("calendar");
     return isAdminStaffTab(subpage) ? null : ADMIN_HOME;
   }
+  if (section === "marketing") {
+    if (!subpage) return adminMarketingPath(ADMIN_MARKETING_DEFAULT);
+    return isAdminMarketingPage(subpage) ? null : ADMIN_HOME;
+  }
   return adminNavItem(pathname) ? null : ADMIN_HOME;
 }
 
@@ -122,7 +149,7 @@ export function searchAdminNav(query: string, nav: readonly AdminNavItem[] = ADM
   });
 }
 
-/** The sub-page link for this URL: an exact path and `?tab` match, else the section's link without a tab. */
+/** The sub-page link for this URL: an exact path and `?tab` match, else the section's link without a tab, else the page it's nested under. */
 export function activeAdminSubLink(item: AdminNavItem, pathname: string, tab: string | null): string | undefined {
   const links = item.children ?? [];
   const parts = (href: string) => {
@@ -131,6 +158,8 @@ export function activeAdminSubLink(item: AdminNavItem, pathname: string, tab: st
   };
   return (
     links.find((link) => parts(link.href).path === pathname && parts(link.href).tab === tab) ??
-    links.find((link) => parts(link.href).path === pathname && parts(link.href).tab === null)
+    links.find((link) => parts(link.href).path === pathname && parts(link.href).tab === null) ??
+    // A detail page such as /admin/marketing/coupons/<id> keeps its list page highlighted.
+    links.find((link) => pathname.startsWith(`${parts(link.href).path}/`))
   )?.href;
 }

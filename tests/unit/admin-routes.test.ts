@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { ADMIN_NAV, activeAdminSubLink, adminNavItem, adminRedirectPath, adminStaffTabPath, isAdminStaffTab, searchAdminNav } from "@/components/admin/admin-routes";
+import {
+  ADMIN_NAV,
+  activeAdminSubLink,
+  adminMarketingPath,
+  adminNavItem,
+  adminRedirectPath,
+  adminStaffTabPath,
+  isAdminMarketingPage,
+  isAdminStaffTab,
+  searchAdminNav,
+} from "@/components/admin/admin-routes";
 
 describe("admin routes", () => {
   it.each([
@@ -14,6 +24,10 @@ describe("admin routes", () => {
     ["/admin/properties", "Properties"],
     ["/admin/properties/abc123", "Properties"],
     ["/admin/leads", "Leads"],
+    ["/admin/marketing/campaigns", "Marketing"],
+    ["/admin/marketing/links", "Marketing"],
+    ["/admin/marketing/coupons", "Marketing"],
+    ["/admin/marketing/coupons/abc123", "Marketing"],
     ["/admin/settings", "Settings"],
   ] as const)("maps %s to the %s sidebar item", (path, label) => {
     expect(adminNavItem(path)?.label).toBe(label);
@@ -38,6 +52,13 @@ describe("admin routes", () => {
     ["/admin/checkout", null],
     ["/admin/receipt/abc123", null],
     ["/admin/receipt", "/admin/chats"],
+    ["/admin/marketing", "/admin/marketing/links"],
+    ["/admin/marketing/", "/admin/marketing/links"],
+    ["/admin/marketing/unknown", "/admin/chats"],
+    ["/admin/marketing/campaigns", null],
+    ["/admin/marketing/links", null],
+    ["/admin/marketing/coupons", null],
+    ["/admin/marketing/coupons/abc123", null],
   ] as const)("redirects %s to %s", (path, target) => {
     expect(adminRedirectPath(path)).toBe(target);
   });
@@ -52,6 +73,19 @@ describe("admin routes", () => {
     expect(adminStaffTabPath("services")).toBe("/admin/staff/services");
   });
 
+  it("lists the marketing pages in order and builds their paths", () => {
+    const marketing = ADMIN_NAV.find((item) => item.label === "Marketing")!;
+    expect(marketing.href).toBe("/admin/marketing/links");
+    expect(marketing.children?.map((child) => [child.label, child.href])).toEqual([
+      ["Campaigns", "/admin/marketing/campaigns"],
+      ["Links & QR", "/admin/marketing/links"],
+      ["Coupons", "/admin/marketing/coupons"],
+    ]);
+    expect(isAdminMarketingPage("coupons")).toBe(true);
+    expect(isAdminMarketingPage("dashboard")).toBe(false);
+    expect(adminMarketingPath("campaigns")).toBe("/admin/marketing/campaigns");
+  });
+
   describe("sidebar search", () => {
     const shown = (query: string) =>
       searchAdminNav(query).map((item) => [item.label, item.children?.map((child) => child.label) ?? []]);
@@ -63,6 +97,8 @@ describe("admin routes", () => {
     it("finds sub-pages by label or keyword and keeps their section", () => {
       expect(shown("roster")).toEqual([["Staff bookings", ["Roster"]]]);
       expect(shown("whatsapp")).toEqual([["Settings", ["Channels"]]]);
+      expect(shown("coupon")).toEqual([["Marketing", ["Coupons"]]]);
+      expect(shown("qr")).toEqual([["Marketing", ["Links & QR"]]]);
     });
 
     it("finds a section by its own name without listing unmatched sub-pages", () => {
@@ -78,6 +114,7 @@ describe("admin routes", () => {
   describe("active sub-page", () => {
     const staff = ADMIN_NAV.find((item) => item.label === "Staff bookings")!;
     const settings = ADMIN_NAV.find((item) => item.label === "Settings")!;
+    const marketing = ADMIN_NAV.find((item) => item.label === "Marketing")!;
 
     it("matches the staff tab from the path", () => {
       expect(activeAdminSubLink(staff, "/admin/staff/roster", null)).toBe("/admin/staff/roster");
@@ -87,6 +124,12 @@ describe("admin routes", () => {
       expect(activeAdminSubLink(settings, "/admin/settings", "channels")).toBe("/admin/settings?tab=channels");
       expect(activeAdminSubLink(settings, "/admin/settings", null)).toBe("/admin/settings");
       expect(activeAdminSubLink(settings, "/admin/settings", "bogus")).toBe("/admin/settings");
+    });
+
+    it("keeps a list page active on its detail pages", () => {
+      expect(activeAdminSubLink(marketing, "/admin/marketing/links", null)).toBe("/admin/marketing/links");
+      expect(activeAdminSubLink(marketing, "/admin/marketing/coupons/abc123", null)).toBe("/admin/marketing/coupons");
+      expect(activeAdminSubLink(marketing, "/admin/marketing/couponsx", null)).toBeUndefined();
     });
   });
 });
