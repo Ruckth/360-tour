@@ -60,6 +60,21 @@ describe("a villa with no tour rooms", () => {
     expect(document.body.style.overflow).toBe("");
   });
 
+  it("shows the closable screen when the rooms query never answers", async () => {
+    rooms.loading = true;
+    vi.useFakeTimers();
+    try {
+      const onClose = await openTour();
+      await act(async () => vi.advanceTimersByTime(3_000));
+      expect(document.querySelector('[data-scene-status="empty"]')).not.toBeNull();
+      await act(async () => closeButton()!.click());
+      expect(onClose).toHaveBeenCalledOnce();
+      expect(document.body.style.overflow).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the intro close control while rooms are still loading", async () => {
     rooms.loading = true;
     const onClose = await openTour();

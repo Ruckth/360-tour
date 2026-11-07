@@ -133,7 +133,6 @@ export function TourViewer({
         data-testid="tour-viewer"
         data-scene-status="empty"
         role="dialog"
-        aria-modal="true"
         aria-label={property.name}
         className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-black px-6 text-center"
       >
