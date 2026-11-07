@@ -34,6 +34,7 @@ import type * as ical from "../ical.js";
 import type * as inboxLifecycle from "../inboxLifecycle.js";
 import type * as instagram from "../instagram.js";
 import type * as leads from "../leads.js";
+import type * as marketing from "../marketing.js";
 import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminChatMetadata from "../lib/adminChatMetadata.js";
 import type * as lib_adminPhotos from "../lib/adminPhotos.js";
@@ -151,6 +152,7 @@ declare const fullApi: ApiFromModules<{
   inboxLifecycle: typeof inboxLifecycle;
   instagram: typeof instagram;
   leads: typeof leads;
+  marketing: typeof marketing;
   "lib/adminAuth": typeof lib_adminAuth;
   "lib/adminChatMetadata": typeof lib_adminChatMetadata;
   "lib/adminPhotos": typeof lib_adminPhotos;
