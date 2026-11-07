@@ -227,8 +227,10 @@ export const applySource = internalMutation({
         else if (row.status === 'available') free ??= row;
         else if (!row.icalSourceId) taken = true;
       }
+      // Keep the feed's own row even beside a host block or booking: releasing that other
+      // owner must not free a night the OTA still holds. The overlap is reported every sync.
+      if (taken) conflicts++;
       if (own) continue;
-      if (taken) { conflicts++; continue; }
       if (free) await ctx.db.patch(free._id, { status: 'blocked', source: platform, icalSourceId: args.sourceId });
       else await ctx.db.insert('availability', { propertyId: source.propertyId, date, status: 'blocked', source: platform, icalSourceId: args.sourceId });
     }

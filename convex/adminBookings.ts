@@ -42,7 +42,7 @@ import {
 import { round2 } from './lib/billMath';
 import { demoCode } from './lib/codes';
 import { calculateDirectQuote } from './lib/pricing';
-import { nightsBetween, todayIso } from './lib/dates';
+import { nightsBetween, stayDates, todayIso } from './lib/dates';
 import { readBudget } from './lib/readBudget';
 import { appendRecordHistory } from './lib/recordHistory';
 import { manualPaymentMethod, refundMethod } from './lib/financeValidators';
@@ -56,7 +56,7 @@ import {
 	stayFinancials,
 	stayPaymentReversalPatch
 } from './lib/stayCorrections';
-import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './lib/stayOverlap';
+import { assertNoBookingOverlap, MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './lib/stayOverlap';
 import { assertValidIsoDate } from './lib/validation';
 import { assertNotOnOpenOrder, deletePlaceholderOrders, orderDeleteBlocker } from './lib/orderLinks';
 
@@ -789,9 +789,10 @@ export const editBooking = mutation({
 
 		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed'
 			|| (booking.status === 'pending' && booking.source !== 'admin');
+		const heldNights = new Set(holdsDates && args.propertyId === booking.propertyId ? stayDates(booking.checkIn, booking.checkOut) : []);
 		await releaseBookingDates(ctx, booking);
 		// Holding validates too (overlaps and blocks), so it replaces the separate check.
-		if (holdsDates) await blockBookingDates(ctx, args, booking._id);
+		if (holdsDates) await blockBookingDates(ctx, args, booking._id, heldNights);
 		else if (stayChanged) await assertStayFree(ctx, args.propertyId, args.checkIn, args.checkOut, booking._id);
 
 		const nextTotal = pricing.total ?? booking.total;
@@ -1025,12 +1026,15 @@ function blockReason(value: string) {
 
 async function validateDateBlock(
 	ctx: MutationCtx,
-	args: { propertyId: Id<'properties'>; start: string; end: string; reason: string }
+	args: { propertyId: Id<'properties'>; start: string; end: string; reason: string },
+	{ rowsCheckedOnWrite = false } = {}
 ) {
 	if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
 	assertStayDates(args.start, args.end, { allowPastCheckIn: true });
 	const reason = blockReason(args.reason);
-	await assertStayFree(ctx, args.propertyId, args.start, args.end);
+	// An edit leaves the night check to writeDateBlockRows, which lets it keep nights it held.
+	if (rowsCheckedOnWrite) await assertNoBookingOverlap(ctx, args.propertyId, args.start, args.end);
+	else await assertStayFree(ctx, args.propertyId, args.start, args.end);
 	return reason;
 }
 
@@ -1085,10 +1089,11 @@ export const updateDateBlock = mutation({
 		const before = await ctx.db.get(blockId);
 		if (!before) throw new Error('Block not found');
 		assertDateBlockUnchanged(before, expected);
+		const heldNights = new Set(args.propertyId === before.propertyId ? stayDates(before.start, before.end) : []);
 		await releaseDateBlockRows(ctx, blockId);
-		const reason = await validateDateBlock(ctx, args);
+		const reason = await validateDateBlock(ctx, args, { rowsCheckedOnWrite: true });
 		await ctx.db.patch(blockId, { ...args, reason });
-		await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!);
+		await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!, heldNights);
 		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'updated', effectiveAt: Date.parse(`${args.start}T00:00:00+07:00`), before: dateBlockSnapshot(before), after: { ...args, reason } });
 	}
 });

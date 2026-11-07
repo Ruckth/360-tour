@@ -21,11 +21,15 @@ const MAX_BLOCK_ROWS = 366;
  * confirmed/completed booking may overlap (checked on the bookings table, so a booking whose nights
  * were never mirrored still counts) and no night may have another booking's or a block's row.
  * Payment confirmation, checkout holds, admin confirm/create/edit all go through here.
+ *
+ * An OTA feed keeps its row on a night it overlaps (the conflict is reported on the feed), so a
+ * booking re-holding a night it already held (`heldNights`, or a row it still owns) keeps it.
  */
 export async function blockBookingDates(
 	ctx: MutationCtx,
 	booking: Stay,
-	bookingId: Id<'bookings'>
+	bookingId: Id<'bookings'>,
+	heldNights: ReadonlySet<string> = new Set()
 ): Promise<void> {
 	await assertNoBookingOverlap(ctx, booking.propertyId, booking.checkIn, booking.checkOut, bookingId);
 	const dates = stayDates(booking.checkIn, booking.checkOut);
@@ -34,12 +38,15 @@ export async function blockBookingDates(
 	for (const date of dates) {
 		let own: Doc<'availability'> | null = null;
 		let free: Doc<'availability'> | null = null;
+		let feed = false;
 		for (const row of await nightRows(ctx, booking.propertyId, date)) {
 			if (row.bookingId === bookingId) own = row;
 			else if (row.status === 'available') free ??= row;
 			else if (row.bookingId !== undefined) throw new Error(STAY_TAKEN_ERROR);
+			else if (row.icalSourceId !== undefined) feed = true;
 			else throw new Error(STAY_BLOCKED_ERROR);
 		}
+		if (feed && !own && !heldNights.has(date)) throw new Error(STAY_BLOCKED_ERROR);
 		holds.push({ date, existing: own ?? free });
 	}
 	for (const { date, existing } of holds) {
@@ -71,20 +78,27 @@ export async function releaseBookingDates(ctx: MutationCtx, booking: Doc<'bookin
 	}
 }
 
-/** Mirrors a host date block as one 'blocked' availability row per night. Throws on any conflict. */
+/**
+ * Mirrors a host date block as one 'blocked' availability row per night. Throws on any conflict,
+ * except an OTA feed's row on a night this block already held (`heldNights`), as for bookings.
+ */
 export async function writeDateBlockRows(
 	ctx: MutationCtx,
-	block: Doc<'dateBlocks'>
+	block: Doc<'dateBlocks'>,
+	heldNights: ReadonlySet<string> = new Set()
 ): Promise<void> {
 	for (const date of stayDates(block.start, block.end)) {
 		let free: Doc<'availability'> | null = null;
 		let written = false;
+		let feed = false;
 		for (const row of await nightRows(ctx, block.propertyId, date)) {
 			if (row.dateBlockId === block._id) written = true;
-			else if (row.status !== 'available') throw new Error(`${date} is already booked or blocked.`);
-			else free ??= row;
+			else if (row.status === 'available') free ??= row;
+			else if (row.icalSourceId !== undefined && row.bookingId === undefined) feed = true;
+			else throw new Error(`${date} is already booked or blocked.`);
 		}
 		if (written) continue;
+		if (feed && !heldNights.has(date)) throw new Error(`${date} is already booked or blocked.`);
 		if (free) await ctx.db.patch(free._id, { status: 'blocked', source: 'manual', dateBlockId: block._id });
 		else {
 			await ctx.db.insert('availability', {

@@ -186,3 +186,62 @@ it('keeps existing OTA nights when a 200 response holds a truncated calendar', a
     vi.useRealTimers();
   }
 });
+
+describe('OTA nights that overlap a host block or direct booking', () => {
+  const night = { checkIn: '2030-01-10', checkOut: '2030-01-11' };
+  async function conflictSetup() {
+    const { t, admin, sourceId } = await sourceSetup();
+    const propertyId = (await t.run(async ctx => await ctx.db.get(sourceId)))!.propertyId;
+    const free = (range: { checkIn: string; checkOut: string }) => t.query(api.availability.isAvailable, { propertyId, ...range });
+    return { t, admin, sourceId, propertyId, free };
+  }
+
+  it('stay blocked after the host block is removed, and free only once the feed is removed', async () => {
+    const { t, admin, sourceId, propertyId, free } = await conflictSetup();
+    const blockId = await admin.mutation(api.adminBookings.addDateBlock, { propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay' });
+    expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
+    // Every later sync keeps reporting the overlap.
+    expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
+    expect((await t.run(async ctx => await ctx.db.get(sourceId)))?.lastSyncError).toContain('1 date(s) overlap');
+
+    await admin.mutation(api.adminBookings.removeDateBlock, { blockId });
+    expect(await free(night)).toBe(false);
+    expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 0 });
+
+    await admin.mutation(api.ical.removeSource, { sourceId });
+    expect(await free(night)).toBe(true);
+  });
+
+  it('lets a host block that held the night be edited, but not extended onto other OTA nights', async () => {
+    const { t, admin, sourceId, propertyId, free } = await conflictSetup();
+    const blockId = await admin.mutation(api.adminBookings.addDateBlock, { propertyId, start: '2030-01-09', end: '2030-01-11', reason: 'Owner stay' });
+    await applyFeed(t, sourceId, ['2030-01-10', '2030-01-12']);
+    await admin.mutation(api.adminBookings.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay, shortened' });
+    await expect(admin.mutation(api.adminBookings.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-13', reason: 'Longer' }))
+      .rejects.toThrow('2030-01-12 is already booked or blocked.');
+    await expect(admin.mutation(api.adminBookings.addDateBlock, { propertyId, start: '2030-01-12', end: '2030-01-13', reason: 'New' })).rejects.toThrow();
+    await admin.mutation(api.adminBookings.removeDateBlock, { blockId });
+    expect(await free(night)).toBe(false);
+    expect(await free({ checkIn: '2030-01-09', checkOut: '2030-01-10' })).toBe(true);
+  });
+
+  it('stay blocked after a direct booking is cancelled, while the booking stays editable', async () => {
+    const { t, admin, sourceId, free } = await conflictSetup();
+    const stay = { propertySlug: 'villa', guestName: 'Guest', guestPhone: '66911111111', guests: 2, ...night };
+    const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
+    expect(await applyFeed(t, sourceId, ['2030-01-10', '2030-01-11'])).toEqual({ blockedNights: 2, conflicts: 1 });
+
+    const propertyId = (await t.run(async ctx => await ctx.db.get(bookingId)))!.propertyId;
+    const edit = { bookingId, propertyId, guestName: 'Guest Renamed', guestPhone: stay.guestPhone, guests: 1, ...night };
+    await admin.mutation(api.adminBookings.editBooking, edit);
+    await expect(admin.mutation(api.adminBookings.editBooking, { ...edit, checkOut: '2030-01-12' }))
+      .rejects.toThrow('Some of these dates are blocked');
+    await expect(admin.mutation(api.adminBookings.createBooking, { ...stay, guestName: 'Other', checkIn: '2030-01-11', checkOut: '2030-01-12', confirmed: true }))
+      .rejects.toThrow();
+
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'cancel' });
+    expect(await free(night)).toBe(false);
+    await admin.mutation(api.ical.removeSource, { sourceId });
+    expect(await free(night)).toBe(true);
+  });
+});
