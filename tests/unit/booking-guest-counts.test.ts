@@ -55,6 +55,7 @@ describe("booking link party size", () => {
     if (root) await act(async () => root!.unmount());
     root = undefined;
     document.body.innerHTML = "";
+    fixture.guestProps = null;
     vi.unstubAllGlobals();
   });
 
