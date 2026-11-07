@@ -19,6 +19,11 @@ export function todayIsoLocal(date = new Date()): string {
   return dateToIso(date);
 }
 
+/** The resort's date (Asia/Bangkok, UTC+7, no DST) whatever the browser's time zone. */
+export function todayIsoResort(now = Date.now()): string {
+  return new Date(now + 7 * 3_600_000).toISOString().slice(0, 10);
+}
+
 export function isTimeValue(value: string): boolean {
   return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 }

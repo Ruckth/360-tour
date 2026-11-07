@@ -1,6 +1,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { demoCode } from './codes';
+import { RESORT_OFFSET_MS } from './dates';
 import { ensureLinkedOrder } from './orderLinks';
 import { assertValidIsoDate, assertValidEmail } from './validation';
 import { requireAdmin } from './adminAuth';
@@ -8,9 +9,8 @@ import { patternForDate, patternsForRange } from './rosterHistory';
 import { appendRecordHistory } from './recordHistory';
 
 const MINUTE = 60_000;
-// Asia/Bangkok is UTC+7 with no DST. Use fixed arithmetic: zone-aware helpers returned
-// UTC clock times in the Convex production runtime, shifting every service slot by 7 hours.
-const RESORT_OFFSET = 7 * 60 * MINUTE;
+// Fixed UTC+7 arithmetic; see RESORT_OFFSET_MS.
+const RESORT_OFFSET = RESORT_OFFSET_MS;
 const DAY = 24 * 60 * MINUTE;
 export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
 export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours

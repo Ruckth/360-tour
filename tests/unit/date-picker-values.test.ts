@@ -7,6 +7,7 @@ import {
   parseLocalDateTime,
   timeMinuteOptions,
   timeValueProblem,
+  todayIsoResort,
 } from "@/lib/dates/values";
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 
@@ -117,5 +118,14 @@ describe("time and wall-clock values", () => {
     expect(
       timeValueProblem("09:15", { minuteStep: 15, stepBase: "09:10" }),
     ).toBeTruthy();
+  });
+});
+
+describe("resort today", () => {
+  it("follows Bangkok midnight whatever the browser time zone", () => {
+    // Pure UTC arithmetic: Los Angeles, Seoul and Bangkok browsers all get the same day.
+    expect(todayIsoResort(Date.parse("2030-01-10T16:59:59Z"))).toBe("2030-01-10");
+    expect(todayIsoResort(Date.parse("2030-01-10T17:00:00Z"))).toBe("2030-01-11");
+    expect(todayIsoResort(Date.parse("2030-01-11T16:30:00-08:00"))).toBe("2030-01-12");
   });
 });

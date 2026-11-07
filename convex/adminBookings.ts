@@ -42,7 +42,7 @@ import {
 import { round2 } from './lib/billMath';
 import { demoCode } from './lib/codes';
 import { calculateDirectQuote } from './lib/pricing';
-import { nightsBetween, stayDates, todayIso } from './lib/dates';
+import { nightsBetween, stayDates, resortTodayIso } from './lib/dates';
 import { readBudget } from './lib/readBudget';
 import { appendRecordHistory } from './lib/recordHistory';
 import { manualPaymentMethod, refundMethod } from './lib/financeValidators';
@@ -636,7 +636,7 @@ export const resendBookingEmails = mutation({
 function archivedVillaPolicy(property: Doc<'properties'>, checkIn: string, archivedVillaReason: string | undefined) {
 	if (property.status === 'active') return undefined;
 	if (property.status !== 'archived') throw new Error(PROPERTY_UNAVAILABLE);
-	if (checkIn >= todayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
+	if (checkIn >= resortTodayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
 	const reason = cleanReason(archivedVillaReason, 'Reason for using an archived villa', false);
 	if (!reason) throw new Error('This villa is archived. Give a reason to record a past stay in it.');
 	assertBookableProperty(property, { allowArchivedProperty: true });
@@ -684,7 +684,7 @@ export const createBooking = mutation({
 		}
 		const notify = resolveNotify(notifyGuest, args);
 		const archived = archivedVillaReason?.trim() ? archivedVillaReason : undefined;
-		if (archived && args.checkIn >= todayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
+		if (archived && args.checkIn >= resortTodayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
 		const custom = priceOverride ? cleanPriceOverride(priceOverride) : null;
 		const { bookingId } = await createBookingRecord(
 			ctx,

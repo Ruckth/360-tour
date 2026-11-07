@@ -5,7 +5,7 @@ import type { ActionCtx, MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { requireAdmin } from './lib/adminAuth';
 import { assertSafeIcalUrl, blockedDatesFromIcal } from './lib/ical';
-import { todayIso } from './lib/dates';
+import { resortTodayIso } from './lib/dates';
 import type { Doc, Id } from './_generated/dataModel';
 import { assertValidIsoDate } from './lib/validation';
 import { readBudget } from './lib/readBudget';
@@ -141,7 +141,7 @@ export const getExport = internalQuery({
   handler: async (ctx, args) => {
     const property = await ctx.db.query('properties').withIndex('by_icalExportToken', q => q.eq('icalExportToken', args.token)).unique();
     if (!property) return null;
-    const from = todayIso();
+    const from = resortTodayIso();
     const to = new Date(Date.parse(`${from}T00:00:00Z`) + 366 * DAY_MS).toISOString().slice(0, 10);
     const bookings: Array<{ id: Id<'bookings'>; start: string; end: string }> = [];
     const blocks: Array<{ id: Id<'availability'>; date: string }> = [];
@@ -263,7 +263,7 @@ async function syncSourceFeed(ctx: ActionCtx, sourceId: Id<'icalSources'>): Prom
     if (!response.ok || Number(response.headers.get('content-length')) > MAX_FEED_BYTES) throw new Error(`Feed returned ${response.status}`);
     const text = await response.text();
     if (text.length > MAX_FEED_BYTES || !text.includes('BEGIN:VCALENDAR')) throw new Error('Invalid or oversized calendar');
-    const from = todayIso();
+    const from = resortTodayIso();
     const to = new Date(Date.parse(`${from}T00:00:00Z`) + 366 * DAY_MS).toISOString().slice(0, 10);
     const dates = blockedDatesFromIcal(text, from, to);
     const applied: { blockedNights: number; conflicts: number } | null = await ctx.runMutation(internal.ical.applySource, { sourceId, ticket: started.ticket, dates });

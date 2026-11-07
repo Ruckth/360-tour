@@ -16,7 +16,7 @@ import {
   dateToIso,
   isDateInIsoList,
   rangeIntersectsDates,
-  todayIsoLocal,
+  todayIsoResort,
 } from "@/lib/booking/dates";
 import { useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
 import { calculateBookingQuote } from "@/lib/booking/quote";
@@ -42,7 +42,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const messages = usePublicMessages();
   const fallbackProperties = useMemo(() => getDemoChatProperties(messages, locale), [messages, locale]);
   const convex = useOptionalConvex();
-  const today = todayIsoLocal();
+  const today = todayIsoResort();
   const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [selectedPropertySlug, setSelectedPropertySlug] = useState(context.propertySlug ?? "");

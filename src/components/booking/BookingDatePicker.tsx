@@ -12,7 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { defaultLocale, isLocale } from "@/i18n/routing";
-import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
+import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso, todayIsoResort } from "@/lib/booking/dates";
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 import { cn } from "@/lib/utils";
 
@@ -121,7 +121,7 @@ export function BookingRangePicker({
 
   function isUnavailableDate(date: Date) {
     const iso = dateToIso(date);
-    return (markPastUnavailable || iso >= todayIsoLocal()) && unavailableDateSet.has(iso);
+    return (markPastUnavailable || iso >= todayIsoResort()) && unavailableDateSet.has(iso);
   }
 
   function updateRange(range: BookingRange) {
@@ -172,7 +172,7 @@ export function BookingRangePicker({
   }
 
   function openPicker(field: ActiveDateField) {
-    onMonthChange?.(checkOutDate ?? checkInDate ?? isoToDate(todayIsoLocal())!);
+    onMonthChange?.(checkOutDate ?? checkInDate ?? isoToDate(todayIsoResort())!);
     setActiveField(field);
     setOpen(true);
   }

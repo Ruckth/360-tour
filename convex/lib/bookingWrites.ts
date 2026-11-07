@@ -4,7 +4,7 @@ import { blockBookingDates } from './availabilityWrites';
 import { internal } from '../_generated/api';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { nightsBetween, todayIso } from './dates';
+import { nightsBetween, resortTodayIso } from './dates';
 import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from './validation';
 import { calculateDirectQuote } from './pricing';
 import { assertNoBookingOverlap, findBlockingNight, STAY_BLOCKED_ERROR } from './stayOverlap';
@@ -87,7 +87,7 @@ export async function assertStayFree(
 export function assertStayDates(checkIn: string, checkOut: string, { allowPastCheckIn = false } = {}): number {
 	assertValidIsoDate(checkIn, 'Check-in date');
 	assertValidIsoDate(checkOut, 'Check-out date');
-	if (!allowPastCheckIn && checkIn < todayIso()) {
+	if (!allowPastCheckIn && checkIn < resortTodayIso()) {
 		throw new Error('Check-in date cannot be in the past');
 	}
 	if (checkOut <= checkIn) {

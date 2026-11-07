@@ -31,6 +31,13 @@ export function stayDates(checkIn: string, checkOut: string): string[] {
 	return dates;
 }
 
-export function todayIso(): string {
-	return new Date().toISOString().split('T')[0];
+/**
+ * Asia/Bangkok is UTC+7 with no DST. Use fixed arithmetic: zone-aware helpers returned
+ * UTC clock times in the Convex production runtime.
+ */
+export const RESORT_OFFSET_MS = 7 * 60 * 60_000;
+
+/** The resort's calendar date (Asia/Bangkok), not the UTC date, for "today" rules. */
+export function resortTodayIso(now = Date.now()): string {
+	return new Date(now + RESORT_OFFSET_MS).toISOString().slice(0, 10);
 }

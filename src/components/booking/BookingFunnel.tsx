@@ -32,7 +32,7 @@ import {
   isDateInIsoList,
   nightsBetweenIso,
   rangeIntersectsDates,
-  todayIsoLocal,
+  todayIsoResort,
 } from "@/lib/booking/dates";
 import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
 import {
@@ -110,7 +110,7 @@ export function BookingFunnel({
   const t = useTranslations("Booking");
   const demoInventory = useMemo(() => getDemoInventory(messages, locale), [messages, locale]);
   const convex = useOptionalConvex();
-  const todayIso = todayIsoLocal();
+  const todayIso = todayIsoResort();
   const demoPayHref = localizeHref("/booking/pay?bookingId=demo", locale);
   const parsedInitialGuests = Number(initialGuests);
   const parsedInitialNights = Number(initialNights);
