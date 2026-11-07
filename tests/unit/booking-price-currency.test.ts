@@ -19,6 +19,7 @@ vi.mock("@/components/pricing/OtaRateComparison", async (importOriginal) => ({
 vi.mock("@/components/property/PropertyImage", () => ({ PropertyImage: () => null }));
 
 const { BookingPriceSummary } = await import("@/components/booking/BookingPriceSummary");
+const { VillaSelector } = await import("@/components/booking/VillaSelector");
 
 function render(currency: string) {
   comparison.currency = currency;
@@ -42,5 +43,17 @@ describe("booking price summary currency", () => {
     const html = render("THB");
     expect(html).not.toContain("THB ");
     for (const amount of ["฿100", "฿200", "-฿20", "฿180", "฿260", "save ฿80"]) expect(html).toContain(amount);
+  });
+});
+
+describe("villa selector currency", () => {
+  it("prices each villa card in its own currency", () => {
+    const villa = (slug: string, currency: string) => ({ _id: slug, slug, name: slug, images: [], pricePerNight: 100, currency, maxGuests: 2 });
+    const html = renderToStaticMarkup(createElement(VillaSelector, {
+      properties: [villa("usd-villa", "USD"), villa("thb-villa", "THB")] as unknown as BookingProperty[],
+      selectedId: "usd-villa", availablePropertyIds: new Set(["usd-villa", "thb-villa"]), onSelect: () => {},
+    })).replace(/<!-- -->/g, "");
+    expect(html).toContain("USD 100");
+    expect(html).toContain("฿100");
   });
 });

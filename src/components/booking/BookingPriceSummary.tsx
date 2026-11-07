@@ -65,7 +65,7 @@ export function BookingPriceSummary({
         <OtaRateComparison
           className="mt-4"
           rates={comparison.rates}
-          currency={comparison.currency}
+          currency={property.currency}
           pricePerNight={property.pricePerNight}
           discountPercent={property.directDiscountPercent}
           nights={nights}
