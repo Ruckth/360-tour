@@ -73,6 +73,8 @@ import type * as lib_inboxLifecycle from "../lib/inboxLifecycle.js";
 import type * as lib_inboxTypes from "../lib/inboxTypes.js";
 import type * as lib_knowledgeGrouping from "../lib/knowledgeGrouping.js";
 import type * as lib_legacyQa from "../lib/legacyQa.js";
+import type * as lib_marketingSlugs from "../lib/marketingSlugs.js";
+import type * as lib_offers from "../lib/offers.js";
 import type * as lib_orderBackfill from "../lib/orderBackfill.js";
 import type * as lib_orderLifecycle from "../lib/orderLifecycle.js";
 import type * as lib_orderLines from "../lib/orderLines.js";
@@ -191,6 +193,8 @@ declare const fullApi: ApiFromModules<{
   "lib/inboxTypes": typeof lib_inboxTypes;
   "lib/knowledgeGrouping": typeof lib_knowledgeGrouping;
   "lib/legacyQa": typeof lib_legacyQa;
+  "lib/marketingSlugs": typeof lib_marketingSlugs;
+  "lib/offers": typeof lib_offers;
   "lib/orderBackfill": typeof lib_orderBackfill;
   "lib/orderLifecycle": typeof lib_orderLifecycle;
   "lib/orderLines": typeof lib_orderLines;

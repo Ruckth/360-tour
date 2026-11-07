@@ -1622,7 +1622,9 @@ export default defineSchema({
 		updatedByEmail: v.string()
 	})
 		.index('by_slug', ['slug'])
-		.index('by_campaign', ['campaignId', 'status']),
+		.index('by_campaign', ['campaignId', 'status'])
+		.index('by_status', ['status'])
+		.index('by_couponId', ['couponId']),
 
 	marketingEvents: defineTable({
 		linkId: v.id('marketingLinks'),
@@ -1643,7 +1645,8 @@ export default defineSchema({
 		updatedByEmail: v.string()
 	})
 		.index('by_code', ['code'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		.index('by_campaignId', ['campaignId']),
 
 	// Immutable: a change to the offer writes a new version; redemptions keep the version they used.
 	couponVersions: defineTable({
