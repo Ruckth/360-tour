@@ -100,7 +100,8 @@ export async function syncCouponRedemption(ctx: MutationCtx, booking: Doc<'booki
 	if (state === 'consumed' && reversed) state = 'reversed';
 	if (state === redemption.state) return;
 	if (held !== (coupon.held ?? 0) || heldDiscount !== (coupon.heldDiscount ?? 0) || used !== coupon.used || discountGranted !== coupon.discountGranted) {
-		await ctx.db.patch(coupon._id, { held, heldDiscount, used, discountGranted });
+		// Checkout uses can carry satang; round so the budget check never sees binary noise.
+		await ctx.db.patch(coupon._id, { held, heldDiscount, used, discountGranted: round2(discountGranted) });
 	}
 	await ctx.db.patch(redemption._id, { state, overLimit, updatedAt: Date.now() });
 }
@@ -142,7 +143,7 @@ export async function repriceCouponBooking(ctx: MutationCtx, { coupon, redemptio
 	const delta = pricing.promotion.discount - redemption.discount;
 	if (delta !== 0) {
 		if (redemption.state === 'held') await ctx.db.patch(coupon._id, { heldDiscount: (coupon.heldDiscount ?? 0) + delta });
-		else if (redemption.state !== 'released') await ctx.db.patch(coupon._id, { discountGranted: coupon.discountGranted + delta });
+		else if (redemption.state !== 'released') await ctx.db.patch(coupon._id, { discountGranted: round2(coupon.discountGranted + delta) });
 		await ctx.db.patch(redemption._id, { discount: pricing.promotion.discount, updatedAt: Date.now() });
 	}
 }
@@ -156,10 +157,12 @@ export async function consumeOrderCoupon(ctx: MutationCtx, billId: Id<'bills'>, 
 		if (!coupon) throw new Error('Redemption coupon not found');
 		const now = Date.now();
 		redemptionId = await ctx.db.insert('couponRedemptions', {
-			couponId: coupon._id, couponVersion: promotion.couponVersion, code: promotion.code, billId,
+			couponId: coupon._id, couponVersion: promotion.couponVersion, code: coupon.code, billId,
 			state: 'consumed', discount: promotion.discount, createdAt: now, updatedAt: now
 		});
 		await ctx.db.patch(coupon._id, { used: coupon.used + 1, discountGranted: round2(coupon.discountGranted + promotion.discount) });
+		// The receipt names the code the coupon has when it is used (it may be renamed before its first use).
+		promotion = { ...promotion, code: coupon.code };
 	}
 	await ctx.db.patch(billId, { promotion: { ...promotion, redemptionId } });
 }

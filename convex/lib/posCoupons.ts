@@ -118,8 +118,8 @@ export function evaluateOrderCoupon({ lines, coupon, today, usedOnAttachedStay }
 	if (result.problem) return { ok: false, problem: problemInBaht(result.problem, unit) };
 	if (coupon.propertySlugs?.length) return { ok: false, problem: { code: 'villa_only' } };
 	if (usedOnAttachedStay) return { ok: false, problem: { code: 'already_on_stay' } };
-	// A percentage too small to round to one unit gives nothing: treat it as not applicable.
-	if (result.couponStatus !== 'applied' || result.couponDiscount <= 0) return { ok: false, problem: { code: 'nothing_eligible' } };
+	// Nothing to give: a budget remainder under one unit, or a percentage too small to round to one.
+	if (result.couponStatus !== 'applied' || result.couponDiscount <= 0) return { ok: false, problem: { code: result.capped ? 'budget_used' : 'nothing_eligible' } };
 	return {
 		ok: true,
 		discount: toBaht(result.couponDiscount),

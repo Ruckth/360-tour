@@ -208,6 +208,24 @@ describe("a coupon that no longer fits", () => {
     expect(button("Card")?.disabled).toBe(false);
   });
 
+  it("checks again once a paused coupon is live, restoring the saving and payment", async () => {
+    const backend = createFixtureBackend();
+    const { orderId } = await spaOrder(backend);
+    await write(backend.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
+    backend.setCouponSnapshot("DCNT-SPA-500", { status: "paused" });
+    await write(backend.useActions().addItem({ orderId, item: { kind: "extra", name: "Water", price: 50 } }));
+    await show(backend, orderId);
+    const warning = panel().querySelector('[data-testid="order-coupon-problem"]')!;
+    expect(warning.textContent).toContain("This coupon is paused or not published yet.");
+
+    backend.setCouponSnapshot("DCNT-SPA-500", { status: "active" });
+    await click(button("Check again", warning));
+    await settle();
+    expect(panel().querySelector('[data-testid="order-coupon-problem"]')).toBeNull();
+    expect(panel().querySelector('[data-testid="order-coupon"]')?.textContent).toContain("Saves ฿500");
+    expect(button("Card")?.disabled).toBe(false);
+  });
+
   it("never offers the coupon to a stay priced with its own booking coupon", async () => {
     const backend = createFixtureBackend({ bookings: [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 3000 } }] });
     const { orderId } = await write(backend.useActions().openOrderFor({ bookingId: "fxbkg000001" as Id<"bookings"> }));
@@ -230,7 +248,7 @@ describe("paying with a coupon", () => {
     await settle();
   }
 
-  it("refuses a coupon sold out at payment, says nothing was charged, and offers a re-check or removal", async () => {
+  it("refuses a coupon sold out at payment, records no payment, and offers a re-check or removal", async () => {
     const fixture = createFixtureBackend();
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L2-300" }));
@@ -238,17 +256,21 @@ describe("paying with a coupon", () => {
     await payByCard(fixture, orderId);
 
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
-    expect(alert.textContent).toContain("Payment not recorded. Nothing was charged.");
+    expect(alert.textContent).toContain("Payment not recorded.");
+    expect(alert.textContent).not.toContain("Nothing was charged");
     expect(alert.textContent).toContain("This coupon has no uses left.");
     expect(button("Retry payment")).toBeUndefined();
     expect((await readOrder(fixture, orderId)).order.state).toBe("unpaid");
 
     await click(button(/Check coupon again/, alert));
     await settle();
-    expect(alert.textContent).toContain("This coupon has no uses left.");
-    await click(button("Remove coupon", alert));
+    // Back on the order: the re-check stored why the coupon no longer fits, and payment waits.
+    const problem = panel().querySelector('[data-testid="order-coupon-problem"]')!;
+    expect(problem.textContent).toContain("This coupon has no uses left.");
+    expect(button("Card")?.disabled).toBe(true);
+    await click(button("Remove", problem));
     await settle();
-    // Back on the order at the full price, to review before a new attempt.
+    // At the full price, to review before a new attempt.
     expect(due()).toBe("฿2,250");
     expect(button(/^Add coupon/)).toBeDefined();
   });
@@ -260,7 +282,7 @@ describe("paying with a coupon", () => {
     fixture.setCouponSnapshot("DCNT-L-10", { maxSaving: 100 });
     await payByCard(fixture, orderId);
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
-    expect(alert.textContent).toContain("DCNT-L-10 now saves ฿100, not ฿180.");
+    expect(alert.textContent).toContain("The coupon now saves ฿100.");
     await click(button(/Check coupon again/, alert));
     await settle();
     expect(panel().querySelector('[data-testid="order-coupon"]')?.textContent).toContain("Saves ฿100");
@@ -306,9 +328,10 @@ describe("receipts with a coupon", () => {
   it("puts the code and the saving in the shared text", async () => {
     const { view } = await paidOrder();
     const text = receiptText(view, "Auralis Cove Retreat");
-    expect(text).toContain("Thai massage 60  ฿867\n  Coupon DCNT-SPA-500  -฿333");
-    expect(text).toContain("Foot spa 45  ฿433\n  Coupon DCNT-SPA-500  -฿167");
-    expect(text).toContain("Coupon DCNT-SPA-500  -฿500\nTotal  ฿1,750");
+    // Rows before the coupon, each share under its row, then subtotal less coupon is the total: counted once.
+    expect(text).toContain("Thai massage 60  ฿1,200\n  Coupon DCNT-SPA-500  -฿333");
+    expect(text).toContain("Foot spa 45  ฿600\n  Coupon DCNT-SPA-500  -฿167");
+    expect(text).toContain("Subtotal  ฿2,250\nCoupon DCNT-SPA-500  -฿500\nTotal  ฿1,750");
     expect(text).toContain("You saved ฿500 with DCNT-SPA-500");
     expect(text).toContain("Cash  ฿2,000\nChange  ฿250");
   });
@@ -327,7 +350,6 @@ describe("order history", () => {
     expect(entry.textContent).toContain("Coupon: DCNT-SPA-500");
     expect(entry.textContent).toContain("Coupon version: v1");
     expect(entry.textContent).toContain("Discount: ฿500");
-    expect(entry.textContent).toContain("Coupon share: ฿333");
   });
 
   it("formats a removed coupon", async () => {

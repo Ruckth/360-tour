@@ -148,18 +148,24 @@ function orderCouponUnavailable(problem: PosCouponProblem): never {
 	throw new ConvexError({ code: 'coupon_unavailable', message: posCouponMessage(problem), problem });
 }
 
-/** Frozen rules, live availability and the real business date; drafts reserve nothing. */
+/**
+ * Frozen benefit and eligibility, live status and counters, and the real business date; drafts
+ * reserve nothing. The usage limit and budget always come from the current version: they are how
+ * a marketer stops a promotion, so lowering them stops open orders too.
+ */
 async function quoteOrderCoupon(ctx: ReadCtx, lines: Line[], couponId: Id<'coupons'>, version: number): Promise<OrderCouponResult> {
 	const coupon = await ctx.db.get(couponId);
 	if (!coupon) return { ok: false, problem: { code: 'not_found' } };
 	const rules = await couponVersion(ctx, couponId, version);
+	const limits = coupon.currentVersion === version ? rules : await couponVersion(ctx, couponId, coupon.currentVersion);
 	let usedOnAttachedStay = false;
 	for (const bookingId of new Set(lines.flatMap(line => line.bookingId ? [line.bookingId] : []))) {
 		if ((await ctx.db.get(bookingId))?.promotion?.couponId === couponId) usedOnAttachedStay = true;
 	}
 	return evaluateOrderCoupon({
 		lines: lines.map(line => ({ ...line, id: line._id })), today: resortTodayIso(), usedOnAttachedStay,
-		coupon: { ...rules, code: coupon.code, version, status: coupon.status, used: coupon.used, held: coupon.held, discountGranted: coupon.discountGranted, heldDiscount: coupon.heldDiscount }
+		coupon: { ...rules, usageLimit: limits.usageLimit, discountBudget: limits.discountBudget, code: coupon.code, version, status: coupon.status,
+			used: coupon.used, held: coupon.held, discountGranted: coupon.discountGranted, heldDiscount: coupon.heldDiscount }
 	});
 }
 
@@ -180,7 +186,9 @@ async function refreshOrder(ctx: MutationCtx, orderId: Id<'bills'>) {
 	if (order.promotion) {
 		const result = await quoteOrderCoupon(ctx, lines, order.promotion.couponId, order.promotion.couponVersion);
 		await writeCouponShares(ctx, lines, result);
-		await ctx.db.patch(orderId, { promotion: { ...order.promotion, discount: result.ok ? result.discount : 0, problem: result.ok ? undefined : result.problem } });
+		// The code can be renamed before its first use; show the one the coupon has now.
+		const code = (await ctx.db.get(order.promotion.couponId))?.code ?? order.promotion.code;
+		await ctx.db.patch(orderId, { promotion: { ...order.promotion, code, discount: result.ok ? result.discount : 0, problem: result.ok ? undefined : result.problem } });
 	}
 	const totals = billTotals(lines);
 	assertBillSize(totals);
@@ -1217,6 +1225,23 @@ export const removeOrderCoupon = mutation({
 });
 
 /**
+ * Checks the order's coupon again with its frozen version: after payment refused it, or once a
+ * problem may be gone (a paused coupon resumed, a limit raised). The split and the revision follow,
+ * so staff review any new total before paying. Use applyOrderCoupon to adopt the current version.
+ */
+export const recheckOrderCoupon = mutation({
+	args: { orderId: v.id('bills') },
+	handler: async (ctx, args): Promise<{ revision: number; discount: number; problem: PosCouponProblem | null }> => {
+		const admin = await requireAdmin(ctx);
+		const order = await editableOrder(ctx, args.orderId, admin.email);
+		if (!order.promotion) throw new Error('This order has no coupon');
+		await refreshOrder(ctx, order._id);
+		const updated = (await ctx.db.get(order._id))!;
+		return { revision: updated.revision, discount: updated.promotion?.discount ?? 0, problem: updated.promotion?.problem ?? null };
+	}
+});
+
+/**
  * Brings a booking or appointment row in line with its source after the stay or appointment
  * changed (new dates, price, deposit, therapist or time), or removes it if it was paid or
  * cancelled elsewhere meanwhile. The order's revision changes, so any payment begun on the old
@@ -1356,7 +1381,8 @@ export const settleOrder = mutation({
 		const lines = await orderLines(ctx, order._id);
 		if (!lines.length) throw new Error('Add an item first');
 		if (order.promotion) {
-			if (order.promotion.problem) orderCouponUnavailable(order.promotion.problem);
+			// Always a fresh check: a stored problem may be gone (a paused coupon resumed), and the
+			// stored shares then differ, so staff review the new saving before paying.
 			const result = await quoteOrderCoupon(ctx, lines, order.promotion.couponId, order.promotion.couponVersion);
 			if (!result.ok) orderCouponUnavailable(result.problem);
 			const shares = new Map(result.allocation.map(share => [share.lineId, share.discount]));

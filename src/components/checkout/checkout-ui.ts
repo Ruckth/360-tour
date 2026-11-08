@@ -1,6 +1,6 @@
 import { format, isSameDay } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
-import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, type TenderMethod } from "convex/lib/billMath";
+import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, round2, type TenderMethod } from "convex/lib/billMath";
 import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import type { OrderView } from "./backend";
 
@@ -89,12 +89,14 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...(name ? [`Customer: ${name}`] : []),
     ...(bookings ? [bookings] : []),
     "",
+    // With a coupon, each row shows its price before the coupon and its share under it; the
+    // subtotal less the coupon is the total, as on the printed receipt.
     ...lines.flatMap((line) => {
       const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
-      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(line.net)), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : [])];
+      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(round2(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : [])];
     }),
     "",
-    ...(totals.coupon ? [row(coupon, formatMoney(-totals.coupon))] : []),
+    ...(totals.coupon ? [row("Subtotal", formatMoney(round2(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
     row("Total", formatMoney(totals.total)),
     row("VAT 7% included", formatMoney(totals.vat)),
     ...(totals.deposit ? [row("Paid before checkout", formatMoney(-totals.deposit))] : []),

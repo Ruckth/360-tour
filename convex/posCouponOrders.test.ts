@@ -348,3 +348,52 @@ describe('POS order coupons', () => {
 		expect((await s.order(orderId)).promotion).toBeNull();
 	});
 });
+
+describe('POS order coupons: review fixes', () => {
+	it('lowering the usage limit stops an order frozen on the earlier version', async () => {
+		const s = await setup({ usageLimit: 10 });
+		const orderId = await s.sale();
+		await s.apply(orderId);
+		await s.t.run(ctx => ctx.db.patch(s.couponId, { used: 3 }));
+		await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, usageLimit: 3 });
+		expect((await s.order(orderId)).promotion?.couponVersion).toBe(1);
+		await expect(s.pay(orderId)).rejects.toMatchObject(unavailable('sold_out'));
+		expect(await s.ledger()).toEqual([]);
+	});
+
+	it('rechecks a stored problem once the coupon is live again, and payment never trusts a stale one', async () => {
+		const s = await setup();
+		const orderId = await s.sale();
+		await s.apply(orderId);
+		await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'paused' });
+		await s.extra(orderId);
+		expect((await s.order(orderId)).promotion).toMatchObject({ discount: 0, problem: { code: 'not_active' } });
+		await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'active' });
+		// Payment re-checks: the coupon fits again, so staff must review the new saving first.
+		await expect(s.pay(orderId)).rejects.toMatchObject({ data: expect.objectContaining({ code: 'coupon_changed', discount: 500 }) });
+		const before = (await s.order(orderId)).order.revision;
+		expect(await s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).toEqual({ revision: before + 1, discount: 500, problem: null });
+		expect((await s.order(orderId)).lines.map(line => line.couponDiscount ?? 0)).toEqual([333, 167, 0]);
+		await s.pay(orderId);
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+	});
+
+	it('a code renamed before its first use reaches the order, the ledger and the receipt', async () => {
+		const s = await setup();
+		const orderId = await s.sale();
+		await s.apply(orderId);
+		await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, code: 'SPA-FIVE' });
+		await s.pay(orderId);
+		expect((await s.order(orderId)).promotion?.code).toBe('SPA-FIVE');
+		expect(await s.ledger()).toMatchObject([{ code: 'SPA-FIVE', state: 'consumed' }]);
+	});
+
+	it('recheck needs a coupon and an unpaid order', async () => {
+		const s = await setup();
+		const orderId = await s.sale();
+		await expect(s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).rejects.toThrow('This order has no coupon');
+		await s.apply(orderId);
+		await s.pay(orderId);
+		await expect(s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).rejects.toThrow('This order is already paid');
+	});
+});

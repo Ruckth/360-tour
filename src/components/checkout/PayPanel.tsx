@@ -141,12 +141,11 @@ export function PayPanel({
     }
   }
 
-  /** Re-applies the same code (or removes it), then goes back so the new total is reviewed before a new attempt. */
+  /** Checks the coupon again (or removes it), then goes back so the new total is reviewed before a new attempt. */
   async function fixCoupon(how: "recheck" | "remove") {
-    const code = view.promotion?.code;
     setCouponFix({ working: true, error: "" });
     try {
-      if (how === "recheck" && code) await actions.applyOrderCoupon({ orderId: view.order._id, code });
+      if (how === "recheck") await actions.recheckOrderCoupon({ orderId: view.order._id });
       else await actions.removeOrderCoupon({ orderId: view.order._id });
       if (mounted.current) onBack();
     } catch (err) {
@@ -286,7 +285,7 @@ export function PayPanel({
           <div className="flex items-start gap-2">
             <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
             <div className="min-w-0 [overflow-wrap:anywhere]">
-              <p className="font-semibold">Payment not recorded. Nothing was charged.</p>
+              <p className="font-semibold">Payment not recorded.</p>
               <p className="mt-0.5">{couponProblem}</p>
             </div>
           </div>

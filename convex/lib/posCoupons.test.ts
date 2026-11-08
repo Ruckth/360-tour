@@ -99,3 +99,8 @@ it('has a staff message for every problem', () => {
   expect(posCouponMessage({ code: 'min_subtotal', minEligibleSubtotal: 1500, eligibleSubtotal: 600 })).toBe('Eligible items come to ฿600. This coupon needs at least ฿1,500.');
   expect(posCouponMessage({ code: 'expired', endedOn: '2026-12-31' })).toBe('This coupon ended on 31 Dec 2026.');
 });
+
+it('a budget remainder under one unit reads as budget used', () => {
+  const nearlySpent = { ...spa500, discountBudget: 7500, discountGranted: 7499.5 };
+  expect(evaluateOrderCoupon({ lines: [massage, footSpa], coupon: nearlySpent, today })).toEqual({ ok: false, problem: { code: 'budget_used' } });
+});

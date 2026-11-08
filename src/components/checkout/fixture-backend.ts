@@ -557,25 +557,33 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (!wanted && slug) wanted = COUPON_LINKS[slug.toLowerCase()] ?? couponRefused({ code: "link_without_offer" });
       if (!wanted) throw new Error("Enter a coupon code.");
       const coupon = state.coupons.find((c) => c.rules.code === wanted) ?? couponRefused({ code: "not_found" });
+      // As the server: a link only offers a live coupon.
+      if (slug && coupon.rules.status !== "active") couponRefused({ code: "link_without_offer" });
       const result = quoteCoupon(order._id, coupon);
       if (!result.ok) couponRefused(result.problem);
-      const before = order.promotion ? promotionSnapshot(order._id) : undefined;
+      const before = order.promotion ? { code: order.promotion.code } : undefined;
       patchOrder(order._id, { promotion: { couponId: coupon.id, couponVersion: coupon.rules.version, code: coupon.rules.code, discount: 0, appliedAt: Date.now(), appliedBy: ACTOR } });
       refresh(order._id);
-      const shares = linesOf(order._id).filter((line) => line.couponDiscount).map((line) => ({ name: line.name, couponDiscount: line.couponDiscount }));
-      orderEvent(order._id, "coupon_applied", before, { ...promotionSnapshot(order._id), lines: shares });
+      orderEvent(order._id, "coupon_applied", before, promotionSnapshot(order._id));
       const after = state.orders.get(order._id)!;
       return { code: after.promotion!.code, discount: after.promotion!.discount, revision: after.revision };
     }),
     removeOrderCoupon: ({ orderId }) => later(() => {
       const order = editableOrder(orderId);
       if (!order.promotion) return { revision: order.revision };
-      const before = promotionSnapshot(order._id);
+      const before = { code: order.promotion.code, discount: order.promotion.discount };
       patchOrder(order._id, { promotion: undefined });
       state.lines = state.lines.map((line) => (line.billId === order._id ? { ...line, couponDiscount: undefined } : line));
       refresh(order._id);
       orderEvent(order._id, "coupon_removed", before);
       return { revision: state.orders.get(order._id)!.revision };
+    }),
+    recheckOrderCoupon: ({ orderId }) => later(() => {
+      const order = editableOrder(orderId);
+      if (!order.promotion) throw new Error("This order has no coupon");
+      refresh(order._id);
+      const after = state.orders.get(order._id)!;
+      return { revision: after.revision, discount: after.promotion?.discount ?? 0, problem: after.promotion?.problem ?? null };
     }),
     createCustomer: (args) => later(() => {
       const name = args.name.trim();
@@ -678,20 +686,21 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       }
       const lines = linesOf(orderId);
       if (!lines.length) throw new Error("Add an item first");
-      const totals = billTotals(lines);
-      if (totals.due !== round2(expectedDue) || order.revision !== expectedRevision) throw new Error("The order changed. Check the total and pay again.");
-      assertTenders(tenders, totals.due);
-      // As settleOrder: the coupon is checked again with its live counters and its use consumed here.
+      // As settleOrder: the coupon is checked afresh (never a stored problem) before the total, with its
+      // live counters, and every row's share must match what staff reviewed. Its use is consumed below.
       const promotion = order.promotion;
       const coupon = promotion ? state.coupons.find((c) => c.id === promotion.couponId)! : undefined;
       if (promotion && coupon) {
-        if (promotion.problem) couponRefused(promotion.problem);
         const result = quoteCoupon(orderId, coupon);
         if (!result.ok) couponRefused(result.problem);
-        if (result.discount !== promotion.discount) {
-          throw new ConvexError({ code: "coupon_changed", message: `${promotion.code} now saves ${formatMoney(result.discount)}, not ${formatMoney(promotion.discount)}. Check the coupon again before taking payment.`, discount: result.discount });
+        const shares = new Map(result.allocation.map((share) => [share.lineId, share.discount]));
+        if (result.discount !== promotion.discount || lines.some((line) => (line.couponDiscount ?? 0) !== (shares.get(line._id) ?? 0))) {
+          throw new ConvexError({ code: "coupon_changed", message: `The coupon now saves ${formatMoney(result.discount)}. Check the coupon again before taking payment.`, discount: result.discount });
         }
       }
+      const totals = billTotals(lines);
+      if (totals.due !== round2(expectedDue) || order.revision !== expectedRevision) throw new Error("The order changed. Check the total and pay again.");
+      assertTenders(tenders, totals.due);
       const customer = order.customerId ? checkedCustomer(order.customerId) : undefined;
       if (order.customerId && expectedCustomerRevision !== (customer?.revision ?? 0)) throw new Error("The customer changed. Review the customer and pay again.");
       const paymentAt = checkedEffective(effectiveAt);
@@ -777,6 +786,9 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         const payment = (state.sourcePayments.get(order._id) ?? []).find(row => line.bookingId ? row.bookingId === line.bookingId : row.appointmentId === line.appointmentId);
         if (source && payment) { source.paid = false; if (line.appointmentId && "appointmentId" in source) { source.price = payment.originalPrice; source.amountPaid = 0; source.amountRefunded = 0; } }
       }
+      // No money was received, so the coupon use is given back (a plain void keeps it).
+      const used = order.promotion ? state.coupons.find((c) => c.id === order.promotion!.couponId) : undefined;
+      if (used && order.promotion) used.rules = { ...used.rules, used: Math.max(0, used.rules.used - 1), discountGranted: Math.max(0, round2(used.rules.discountGranted - order.promotion.discount)) };
       const sequence = (order.correctionRevision ?? 0) + 1;
       addCorrection(order._id, args.idempotencyKey, sequence, "void_unreceived", reason);
       patchOrder(order._id, { status: "void", voidUnreceived: true, correctionRevision: sequence, voidedAt: Date.now(), voidedBy: ACTOR, voidReason: reason, updatedAt: Date.now() });

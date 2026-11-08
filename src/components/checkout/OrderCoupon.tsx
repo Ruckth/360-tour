@@ -48,6 +48,8 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   if (view.order.state !== "unpaid" || !view.lines.length) return null;
 
   const remove = () => run(() => actions.removeOrderCoupon({ orderId }));
+  // Same frozen version: e.g. a paused coupon was resumed or its limit raised.
+  const recheck = () => run(() => actions.recheckOrderCoupon({ orderId }));
 
   if (promotion?.problem) {
     return (
@@ -59,9 +61,14 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
           </p>
           <p className="[overflow-wrap:anywhere]">{posCouponMessage(promotion.problem)}</p>
         </div>
-        <Button size="sm" variant="outline" className="h-7 shrink-0 bg-transparent" disabled={busy} onClick={remove}>
-          Remove
-        </Button>
+        <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+          <Button size="sm" variant="outline" className="h-7 bg-transparent" disabled={busy} onClick={recheck}>
+            Check again
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 bg-transparent" disabled={busy} onClick={remove}>
+            Remove
+          </Button>
+        </div>
       </div>
     );
   }
