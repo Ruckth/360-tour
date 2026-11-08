@@ -1578,8 +1578,7 @@ const LEGACY_UNPROVEN = (name: string) =>
 	`This order was paid before stay payments were itemised, so the app can't prove how much of it was for ${name}. Correct its tenders instead, or record a refund on the booking if money was returned.`;
 
 /**
- * Voids a paid order (or corrects an earlier plain void) whose payment was recorded by mistake:
- * no money was ever received. Unlike
+ * Voids a paid order whose payment was recorded by mistake: no money was ever received. Unlike
  * voidOrder, it reopens what the order charged, exactly by what this order took: each stay loses
  * this order's itemised payment (an earlier online deposit stays), each appointment goes back to
  * unpaid at its price before checkout. It refuses, writing nothing, when any part can't be proved:
@@ -1594,7 +1593,7 @@ export const voidUnreceivedOrder = mutation({
 		if (existing) return { replayed: true };
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error('Order not found');
-		if (order.status !== 'paid' && !(order.status === 'void' && !order.voidUnreceived)) throw new Error('Only a paid order can be voided');
+		if (order.status !== 'paid') throw new Error('Only a paid order can be voided');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason')!;
 

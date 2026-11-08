@@ -662,6 +662,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const lines = linesOf(orderId);
       if (lines.length) orderEvent(orderId, "cleared", { lines: lines.map(lineSnapshot) });
       state.lines = state.lines.filter((l) => l.billId !== orderId);
+      // As on the server (pos.clearOrder): starting over drops the coupon too.
+      patchOrder(orderId, { promotion: undefined });
       audit({ billId: orderId, kind: "cleared" });
       refresh(orderId);
       return null;

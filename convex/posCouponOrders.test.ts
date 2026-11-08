@@ -200,16 +200,21 @@ describe('POS order coupons', () => {
 		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 1800 });
 	});
 
-	it.each([false, true])('releases an unreceived payment exactly once (previously voided: %s)', async previouslyVoided => {
+	it('a plain void keeps the use counted', async () => {
 		const s = await setup();
 		const orderId = await s.sale();
 		await s.apply(orderId);
 		await s.pay(orderId);
-		if (previouslyVoided) {
-			await s.admin.mutation(api.pos.voidOrder, { orderId, reason: 'Void receipt' });
-			expect((await s.ledger())[0].state).toBe('reversed');
-			expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
-		}
+		await s.admin.mutation(api.pos.voidOrder, { orderId, reason: 'Void receipt' });
+		expect((await s.ledger())[0].state).toBe('reversed');
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+	});
+
+	it('releases an unreceived payment exactly once', async () => {
+		const s = await setup();
+		const orderId = await s.sale();
+		await s.apply(orderId);
+		await s.pay(orderId);
 		const args = { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-unreceived-001', reason: 'No money received' };
 		await s.admin.mutation(api.pos.voidUnreceivedOrder, args);
 		await s.admin.mutation(api.pos.voidUnreceivedOrder, args);
