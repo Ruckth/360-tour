@@ -46,6 +46,7 @@ function toPublicBooking(booking: Doc<'bookings'>) {
 		nights: booking.nights,
 		subtotal: booking.subtotal,
 		discountAmount: booking.discountAmount,
+		promotion: booking.promotion,
 		total: booking.total,
 		currency: booking.currency,
 		paymentStatus: booking.paymentStatus,

@@ -1,5 +1,6 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
+import { writeBooking } from '../lib/bookingMoney';
 import { demoCode } from '../lib/codes';
 import { normalizeSuggestedQuestion } from '../lib/chatSuggestions';
 import { appointmentLookupFields, localDateTimeUtc, resortLocalParts } from '../lib/serviceSlots';
@@ -204,7 +205,7 @@ export async function cancelAiEvalBookings(ctx: MutationCtx) {
 	for (const booking of await ctx.db.query('bookings').order('desc').take(1000)) {
 		if (!booking.guestName.includes('AI-EVAL') || booking.status === 'cancelled') continue;
 		if (booking.paymentStatus === 'paid') continue; // never touch paid bookings
-		await ctx.db.patch(booking._id, { status: 'cancelled' });
+		await writeBooking(ctx, booking, { status: 'cancelled' }, { actor: AI_EVAL_EMAIL, kind: 'cancelled' });
 		bookings++;
 	}
 	const services = new Set((await aiEvalServices(ctx)).map((row) => row._id));

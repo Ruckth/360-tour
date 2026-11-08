@@ -151,3 +151,14 @@ describe('allocation input safety', () => {
     }
   });
 });
+
+describe('held coupon capacity and budget', () => {
+  it('counts held slots, including coupons written before held fields existed', () => {
+    expect(evaluateOffer(input({ ...f1, used: 499, held: 1 })).problem).toEqual({ code: 'sold_out' });
+    expect(evaluateOffer(input({ ...f1, used: 499 })).couponStatus).toBe('applied');
+  });
+  it('counts held discounts for exhaustion and the remaining-budget cap', () => {
+    expect(evaluateOffer(input({ ...f1, heldDiscount: 13550 })).problem).toEqual({ code: 'budget_used' });
+    expect(evaluateOffer(input({ ...f1, heldDiscount: 12000 }))).toMatchObject({ couponStatus: 'applied', couponDiscount: 1550, capped: true, total: 7450 });
+  });
+});

@@ -167,7 +167,7 @@ async function quote(ctx: QueryCtx, args: QuoteArgs, adminTest: boolean): Promis
 	const result = evaluateOffer({ lines, directDiscountPercent: property.directDiscountPercent, today: resortTodayIso(),
 		...(coupon && rules && { coupon: { ...rules, code: coupon.code, version: coupon.currentVersion,
 			status: adminTest && (coupon.status === 'draft' || coupon.status === 'paused') ? 'active' : coupon.status,
-			used: coupon.used, discountGranted: coupon.discountGranted } }) });
+			used: coupon.used, discountGranted: coupon.discountGranted, held: coupon.held, heldDiscount: coupon.heldDiscount } }) });
 	return code && !coupon ? { ...result, couponStatus: 'invalid', problem: { code: 'not_found' } } : result;
 }
 
@@ -219,7 +219,12 @@ export const getCoupon = query({
 		if (!coupon) return null;
 		const versions = await ctx.db.query('couponVersions').withIndex('by_coupon_and_version', q => q.eq('couponId', coupon._id)).order('desc').take(500);
 		const links = await ctx.db.query('marketingLinks').withIndex('by_couponId', q => q.eq('couponId', coupon._id)).take(500);
-		return { ...await enrichCoupon(ctx, coupon), versions, links: await Promise.all(links.map(link => enrichLink(ctx, link))), redemptions: [] }; // R2 TODO: redemptions
+		const rows = await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', coupon._id)).order('desc').take(50);
+		const redemptions: RedemptionRow[] = await Promise.all(rows.map(async row => {
+			const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
+			return { ...row, ...(booking && { booking: { guestName: booking.guestName, checkIn: booking.checkIn, checkOut: booking.checkOut, confirmationCode: booking.confirmationCode } }) };
+		}));
+		return { ...await enrichCoupon(ctx, coupon), versions, links: await Promise.all(links.map(link => enrichLink(ctx, link))), redemptions };
 	}
 });
 

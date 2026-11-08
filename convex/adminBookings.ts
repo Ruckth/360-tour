@@ -59,6 +59,8 @@ import {
 import { assertNoBookingOverlap, MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './lib/stayOverlap';
 import { assertValidIsoDate } from './lib/validation';
 import { assertNotOnOpenOrder, deletePlaceholderOrders, orderDeleteBlocker } from './lib/orderLinks';
+import { normalizeCouponCode } from './lib/offers';
+import { repriceCouponBooking } from './lib/couponRedemptions';
 
 const SEARCH_SCAN_LIMIT = 1000;
 
@@ -74,6 +76,7 @@ function toAdminBooking(booking: Doc<'bookings'>) {
 		guests: booking.guests,
 		nights: booking.nights,
 		total: booking.total,
+		promotion: booking.promotion,
 		currency: booking.currency,
 		status: booking.status,
 		paymentStatus: booking.paymentStatus,
@@ -675,7 +678,8 @@ export const createBooking = mutation({
 	handler: async (ctx, { idempotencyKey, confirmed, notifyGuest, archivedVillaReason, priceOverride, ...args }) => {
 		const admin = await requireAdmin(ctx);
 		const key = idempotencyKey === undefined ? undefined : attemptKey(idempotencyKey);
-		const fingerprint = JSON.stringify([args.propertySlug, args.guestName, args.guestPhone, args.guestEmail, args.checkIn, args.checkOut, args.guests, confirmed, notifyGuest, archivedVillaReason, priceOverride?.total, priceOverride?.reason]);
+		const couponCode = normalizeCouponCode(args.couponCode ?? '');
+		const fingerprint = JSON.stringify([args.propertySlug, args.guestName, args.guestPhone, args.guestEmail, args.checkIn, args.checkOut, args.guests, confirmed, notifyGuest, archivedVillaReason, priceOverride?.total, priceOverride?.reason, ...(couponCode ? [couponCode] : [])]);
 		if (key) {
 			const previous = await ctx.db.query('bookingCreateAttempts').withIndex('by_key', q => q.eq('key', key)).unique();
 			if (previous) {
@@ -789,6 +793,11 @@ export const editBooking = mutation({
 			}
 		}
 
+		if (booking.promotion && !pricing.priceOverride && (!existing || args.priceOverride === null)
+			&& (stayChanged || args.guests !== booking.guests || args.priceOverride === null)) {
+			pricing = { ...pricing, ...await repriceCouponBooking(ctx, booking, property, { checkIn: args.checkIn, checkOut: args.checkOut, nights }) };
+		}
+
 		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed'
 			|| (booking.status === 'pending' && booking.source !== 'admin');
 		const heldNights = new Set(holdsDates && args.propertyId === booking.propertyId ? stayDates(booking.checkIn, booking.checkOut) : []);
@@ -860,6 +869,7 @@ async function recordsBlocker(ctx: MutationCtx, booking: Doc<'bookings'>): Promi
  * removal is traceable. The appointments themselves are kept.
  */
 async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>, actor: string) {
+	if (booking.promotion) await writeBooking(ctx, booking, { status: 'cancelled' }, { actor, kind: 'cancelled', reason: 'Booking deleted' });
 	await releaseBookingDates(ctx, booking);
 	const session = booking.chatSessionId ? await ctx.db.get(booking.chatSessionId) : null;
 	if (session?.pendingBookingQuote?.bookingId === booking._id) {

@@ -1,3 +1,5 @@
+import { evaluateOffer, normalizeCouponCode } from './offers';
+import { couponUnavailable, couponVersion, holdCouponRedemption } from './couponRedemptions';
 import { getEffectiveSettings } from './siteSettings';
 import { resortLocalParts } from './serviceSlots';
 import { blockBookingDates } from './availabilityWrites';
@@ -156,6 +158,16 @@ export async function quoteBookableStay(ctx: QueryCtx | MutationCtx, input: Stay
 export async function createBookingRecord(ctx: MutationCtx, input: BookingInput, policy: StayPolicy = {}) {
 	const { guestName, guestPhone, guestEmail } = cleanGuestDetails(input);
 	const { property, nights, quote } = await quoteBookableStay(ctx, input, { ...policy, admin: input.source === 'admin' });
+	const code = normalizeCouponCode(input.couponCode ?? '');
+	const coupon = code ? await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', code)).unique() : null;
+	if (code && !coupon) couponUnavailable({ code: 'not_found' });
+	const rules = coupon ? await couponVersion(ctx, coupon._id, coupon.currentVersion) : null;
+	const offer = coupon && rules ? evaluateOffer({
+		lines: [{ id: 'accommodation', kind: 'accommodation', propertySlug: property.slug, checkIn: input.checkIn, checkOut: input.checkOut, nights, amount: quote.subtotal }],
+		directDiscountPercent: property.directDiscountPercent, today: resortTodayIso(),
+		coupon: { ...rules, code: coupon.code, version: coupon.currentVersion, status: coupon.status, used: coupon.used, discountGranted: coupon.discountGranted, held: coupon.held, heldDiscount: coupon.heldDiscount }
+	}) : null;
+	if (offer?.couponStatus === 'invalid') couponUnavailable(offer.problem!);
 	const actor = input.actor ?? `system:${input.source}`;
 
 	const accessToken = crypto.randomUUID();
@@ -177,9 +189,9 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		checkOut: input.checkOut,
 		guests: input.guests,
 		nights,
-		subtotal: quote.subtotal,
-		discountAmount: quote.discountAmount,
-		total: quote.directTotal,
+		subtotal: offer?.subtotal ?? quote.subtotal,
+		discountAmount: offer?.discount ?? quote.discountAmount,
+		total: offer?.total ?? quote.directTotal,
 		currency: quote.currency,
 		accessToken,
 		paymentStatus: 'pending',
@@ -190,6 +202,10 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		createdAt,
 		unpaidHoldExpiresAt
 	});
+	if (coupon && offer?.couponStatus === 'applied') {
+		const redemptionId = await holdCouponRedemption(ctx, { coupon, couponVersion: coupon.currentVersion, discount: offer.discount, bookingId });
+		await ctx.db.patch(bookingId, { promotion: { couponId: coupon._id, couponVersion: coupon.currentVersion, code: coupon.code, discount: offer.discount, redemptionId } });
+	}
 	const created = (await ctx.db.get(bookingId))!;
 	if (input.source !== 'admin') {
 		await blockBookingDates(ctx, created, bookingId);

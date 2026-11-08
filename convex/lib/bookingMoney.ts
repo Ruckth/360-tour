@@ -2,6 +2,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { MAX_BILL, bookingBalance, round2 } from './billMath';
 import { resortTodayIso } from './dates';
+import { syncCouponRedemption } from './couponRedemptions';
 import { appendRecordHistory } from './recordHistory';
 
 /**
@@ -116,7 +117,7 @@ const HISTORY_FIELDS = [
 	'propertyId', 'checkIn', 'checkOut', 'guests', 'nights', 'guestName', 'guestPhone', 'guestEmail',
 	'subtotal', 'discountAmount', 'total', 'currency', 'priceOverride', 'status', 'paymentStatus', 'paymentMethod',
 	'amountPaid', 'amountRefunded', 'paidAt', 'refundedAt', 'adminNotes', 'cancelledAt', 'cancelledBy', 'cancelReason',
-	'confirmationCode', 'guestEmailsOff'
+	'confirmationCode', 'guestEmailsOff', 'promotion'
 ] as const satisfies ReadonlyArray<keyof Booking>;
 type HistoryField = (typeof HISTORY_FIELDS)[number];
 export type BookingPatch = Partial<Omit<Booking, '_id' | '_creationTime'>>;
@@ -166,5 +167,7 @@ export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: Bo
 		before: Object.fromEntries(changed.map((field) => [field, booking[field] ?? null])),
 		after: { ...Object.fromEntries(changed.map((field) => [field, patch[field] ?? null])), ...(entry.details ?? {}) }
 	});
-	return (await ctx.db.get(booking._id))!;
+	const updated = (await ctx.db.get(booking._id))!;
+	if (updated.promotion) await syncCouponRedemption(ctx, updated);
+	return updated;
 }
