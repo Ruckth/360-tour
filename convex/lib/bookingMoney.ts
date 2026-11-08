@@ -2,6 +2,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { MAX_BILL, bookingBalance, round2 } from './billMath';
 import { resortTodayIso } from './dates';
+import { syncCouponRedemption } from './couponRedemptions';
 import { appendRecordHistory } from './recordHistory';
 
 /**
@@ -116,7 +117,7 @@ const HISTORY_FIELDS = [
 	'propertyId', 'checkIn', 'checkOut', 'guests', 'nights', 'guestName', 'guestPhone', 'guestEmail',
 	'subtotal', 'discountAmount', 'total', 'currency', 'priceOverride', 'status', 'paymentStatus', 'paymentMethod',
 	'amountPaid', 'amountRefunded', 'paidAt', 'refundedAt', 'adminNotes', 'cancelledAt', 'cancelledBy', 'cancelReason',
-	'confirmationCode', 'guestEmailsOff'
+	'confirmationCode', 'guestEmailsOff', 'promotion'
 ] as const satisfies ReadonlyArray<keyof Booking>;
 type HistoryField = (typeof HISTORY_FIELDS)[number];
 export type BookingPatch = Partial<Omit<Booking, '_id' | '_creationTime'>>;
@@ -158,7 +159,7 @@ export async function appendBookingHistory(ctx: MutationCtx, bookingId: Id<'book
  * Patches the booking, bumps its revision and appends one history row with the old and new value of
  * every changed history field (plus `details`), all in the caller's transaction. Returns the new row.
  */
-export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: BookingPatch, entry: HistoryEntry): Promise<Booking> {
+export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: BookingPatch, entry: HistoryEntry, options: { deferCouponSync?: boolean } = {}): Promise<Booking> {
 	await ctx.db.patch(booking._id, { ...patch, revision: bookingRevision(booking) + 1 });
 	const changed = HISTORY_FIELDS.filter((field: HistoryField) => field in patch && !same(patch[field], booking[field]));
 	await appendBookingHistory(ctx, booking._id, {
@@ -166,5 +167,9 @@ export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: Bo
 		before: Object.fromEntries(changed.map((field) => [field, booking[field] ?? null])),
 		after: { ...Object.fromEntries(changed.map((field) => [field, patch[field] ?? null])), ...(entry.details ?? {}) }
 	});
-	return (await ctx.db.get(booking._id))!;
+	const updated = (await ctx.db.get(booking._id))!;
+	// A verified late capture reopens and records its payment in this same transaction.
+	// Sync against that final paid state, rather than acquiring an unpaid hold in between.
+	if (updated.promotion && !options.deferCouponSync) await syncCouponRedemption(ctx, updated);
+	return updated;
 }

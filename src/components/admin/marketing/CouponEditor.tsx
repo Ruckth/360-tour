@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useConfirm } from "../ConfirmDialog";
 import { StatusBadge } from "../StatusBadge";
 import { Callout, ChoiceGroup, CouponChip, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, SideCard, UsageBar, useConfirmedChange, useNotice } from "./MarketingBits";
+import { CouponLedger } from "./CouponLedger";
 import { TestQuotePanel } from "./TestQuotePanel";
 import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, rulesChanged, type CouponForm, type CouponFormErrors } from "./coupon-form";
 import {
@@ -32,7 +33,7 @@ import {
   marketingErrorText,
   scopeLabel,
   thb,
-  usageLabel,
+  usageWithHeld,
 } from "./marketing-format";
 import type { CampaignRow, CouponDetail, CouponRow, CouponStatus, MarketingActions, MarketingProperty } from "./types";
 
@@ -601,9 +602,14 @@ function CouponBuilder({
                   <div className="grid gap-1.5">
                     <div className="flex items-baseline justify-between gap-2 text-xs">
                       <span className="text-muted-foreground">Uses</span>
-                      <span className="tabular-nums text-foreground">{usageLabel(detail.used, detail.rules.usageLimit)}</span>
+                      <span className="tabular-nums text-foreground">{usageWithHeld(detail.used, detail.held ?? 0, detail.rules.usageLimit)}</span>
                     </div>
-                    <UsageBar used={detail.used} limit={detail.rules.usageLimit} label="Uses" />
+                    <UsageBar used={detail.used + (detail.held ?? 0)} limit={detail.rules.usageLimit} label="Uses, including held" />
+                    {detail.held ? (
+                      <p className="text-xs text-muted-foreground">
+                        {detail.used.toLocaleString("en-US")} paid · {detail.held.toLocaleString("en-US")} held by unpaid bookings, back if they expire
+                      </p>
+                    ) : null}
                   </div>
                   <div className="grid gap-1.5">
                     <div className="flex items-baseline justify-between gap-2 text-xs">
@@ -613,7 +619,8 @@ function CouponBuilder({
                         {detail.rules.discountBudget !== undefined ? ` / ${thb(detail.rules.discountBudget)}` : " · no budget"}
                       </span>
                     </div>
-                    <UsageBar used={detail.discountGranted} limit={detail.rules.discountBudget} label="Discount budget used" />
+                    <UsageBar used={detail.discountGranted + (detail.heldDiscount ?? 0)} limit={detail.rules.discountBudget} label="Discount budget used, including held" />
+                    {detail.heldDiscount ? <p className="text-xs text-muted-foreground">Plus {thb(detail.heldDiscount)} held by unpaid bookings</p> : null}
                   </div>
                 </div>
               ) : null}
@@ -650,6 +657,8 @@ function CouponBuilder({
               </div>
             </SideCard>
           ) : null}
+
+          {detail ? <CouponLedger code={detail.code} redemptions={detail.redemptions} /> : null}
 
           <TestQuotePanel
             code={detail?.code}

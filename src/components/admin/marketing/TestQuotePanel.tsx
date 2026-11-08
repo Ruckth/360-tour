@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Plus, Trash2 } from "lucide-react";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -256,7 +256,6 @@ function AppliedTag() {
 
 function QuoteResult({ tested, stale }: { tested: Tested; stale: boolean }) {
   const { result, label, checkIn, code } = tested;
-  const verdict = quoteVerdict(result);
   const couponWins = result.applied === "coupon";
   // A services coupon stacks with the direct offer, so both can be applied at once.
   const directWins = directOfferApplied(result);
@@ -298,10 +297,19 @@ function QuoteResult({ tested, stale }: { tested: Tested; stale: boolean }) {
           </div>
         </dl>
       </div>
-      <div role="status" className={cn("rounded-lg border px-3 py-2 text-sm", VERDICT_BOX[verdict.tone])}>
-        <p className="font-semibold text-foreground">{verdict.title}</p>
-        <p className="text-foreground/85">{verdict.detail}</p>
-      </div>
+      <QuoteVerdictBox result={result} />
+    </div>
+  );
+}
+
+/** Which offer wins a quote, and why (quoteVerdict), in the status tones. Also used by New booking. */
+export function QuoteVerdictBox({ result, children }: { result: OfferResult; children?: ReactNode }) {
+  const verdict = quoteVerdict(result);
+  return (
+    <div role="status" className={cn("rounded-lg border px-3 py-2 text-sm", VERDICT_BOX[verdict.tone])}>
+      <p className="font-semibold text-foreground">{verdict.title}</p>
+      <p className="text-foreground/85">{verdict.detail}</p>
+      {children}
     </div>
   );
 }

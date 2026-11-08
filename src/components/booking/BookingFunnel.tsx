@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
-import { BookingPriceSummary } from "@/components/booking/BookingPriceSummary";
+import { BookingPriceSummary, PriceLines } from "@/components/booking/BookingPriceSummary";
+import { CouponField, type CouponNotice, type CouponSource } from "@/components/booking/CouponField";
+import { useCouponCopy } from "@/components/booking/coupon-copy";
+import { useCouponPreview } from "@/components/booking/useCouponPreview";
 import {
   DateStatus,
   GuestDetailsPanel,
@@ -36,6 +39,17 @@ import {
   todayIsoResort,
 } from "@/lib/booking/dates";
 import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
+import {
+  couponCodeToSend,
+  couponFromParam,
+  couponPhase,
+  couponCoversWholeStay,
+  couponUnavailableError,
+  guestErrorText,
+  stayPrice,
+  summaryNote,
+} from "@/lib/booking/coupon";
+import { normalizeCouponCode } from "convex/lib/offers";
 import {
   readBookingInventoryCache,
   writeBookingInventoryCache,
@@ -96,6 +110,7 @@ export function BookingFunnel({
   initialAdults = "",
   initialChildren = "",
   initialProperty = "garden-suite",
+  initialCoupon = "",
 }: {
   initialCheckIn?: string;
   initialCheckOut?: string;
@@ -104,11 +119,15 @@ export function BookingFunnel({
   initialAdults?: string;
   initialChildren?: string;
   initialProperty?: string;
+  /** `?coupon=` from a short link or shared URL; applied once villa and dates are chosen. */
+  initialCoupon?: string;
 }) {
   const router = useRouter();
   const locale = useLocale();
   const messages = usePublicMessages();
   const t = useTranslations("Booking");
+  const couponT = useTranslations("Coupon");
+  const villaT = useTranslations("Villa");
   const demoInventory = useMemo(() => getDemoInventory(messages, locale), [messages, locale]);
   const convex = useOptionalConvex();
   const todayIso = todayIsoResort();
@@ -146,6 +165,13 @@ export function BookingFunnel({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [dateWarning, setDateWarning] = useState("");
+  // The attached coupon code (null = none), where it came from, and the entry under "Have a code?".
+  const [couponCode, setCouponCode] = useState<string | null>(() => couponFromParam(initialCoupon) || null);
+  const [couponSource, setCouponSource] = useState<CouponSource>(() => (couponFromParam(initialCoupon) ? "link" : "typed"));
+  const [couponDraft, setCouponDraft] = useState(() => couponFromParam(initialCoupon));
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponEntryError, setCouponEntryError] = useState<string | null>(null);
+  const [couponNotice, setCouponNotice] = useState<CouponNotice | null>(null);
 
   useEffect(() => {
     router.prefetch(demoPayHref);
@@ -247,6 +273,7 @@ export function BookingFunnel({
     () => propertyList.flatMap((item) => (item.source === "live" && item._id ? [item._id] : [])),
     [propertyList],
   );
+  const requestedMonths = calendarMonths({ visibleMonth, checkIn, checkOut, today: todayIso });
   const {
     blockedDates: propertyBlockedDates,
     pendingMonths,
@@ -255,7 +282,7 @@ export function BookingFunnel({
   } = useVillaBlockedMonths(
     liveClient,
     property.source === "live" ? property._id : undefined,
-    calendarMonths({ visibleMonth, checkIn, checkOut, today: todayIso }),
+    requestedMonths,
   );
   const stayBlockedByProperty = useStayBlockedDates(liveClient, livePropertyIds, checkIn, checkOut);
   // Months still loading or that failed to load are unknown, so their days can't be picked.
@@ -271,6 +298,24 @@ export function BookingFunnel({
     currency: property.currency,
   });
   const conflicts = rangeIntersectsDates(propertyBlockedDates, checkIn, checkOut);
+  // Coupons are checked against live inventory only; the demo has nothing to redeem against.
+  const activeCouponCode = bookingMode === "live" ? couponCode : null;
+  const couponStay =
+    liveClient && property.source === "live" && nights > 0
+      ? { propertySlug: property.slug, checkIn, checkOut }
+      : null;
+  const { preview: couponPreview, retry: retryCoupon } = useCouponPreview(liveClient, activeCouponCode, couponStay);
+  const phase = couponPhase(activeCouponCode, couponPreview);
+  const price = stayPrice({
+    subtotal: quote.subtotal,
+    directDiscount: quote.discountAmount,
+    code: activeCouponCode,
+    offer: phase.kind === "applied" ? phase.result : null,
+  });
+  const couponCopy = useCouponCopy(property.currency);
+  const couponNoteMessage = summaryNote(activeCouponCode, phase, couponCopy.problemText);
+  const couponNote = couponNoteMessage ? couponCopy.text(couponNoteMessage) : null;
+  const couponChecking = phase.kind === "checking";
   const infoValid = isValidGuestInfo(guestName, guestEmail, guestPhone);
   const invalidRange = Boolean(checkIn && checkOut && nights <= 0);
   const selectedStepIndex = bookingSteps.findIndex((item) => item.key === step);
@@ -336,6 +381,57 @@ export function BookingFunnel({
     setDateWarning("");
   }
 
+  function applyCoupon() {
+    const code = normalizeCouponCode(couponDraft);
+    setCouponDraft(code);
+    setCouponNotice(null);
+    setError("");
+    if (!code) {
+      setCouponEntryError(couponT("enterCode"));
+      return;
+    }
+    setCouponEntryError(null);
+    setCouponCode(code);
+    setCouponSource("typed");
+    setCouponOpen(false);
+  }
+
+  function changeCouponDraft(value: string) {
+    setCouponDraft(value);
+    setCouponEntryError(null);
+    // Editing a refused code starts a new entry.
+    if (phase.kind === "rejected") {
+      setCouponCode(null);
+      setCouponOpen(true);
+    }
+  }
+
+  function removeCoupon() {
+    if (!couponCode) return;
+    setCouponNotice({ kind: "removed", code: couponCode, source: couponSource });
+    setCouponCode(null);
+    setCouponDraft("");
+    setCouponOpen(false);
+    setCouponEntryError(null);
+  }
+
+  function undoRemoveCoupon() {
+    if (couponNotice?.kind !== "removed") return;
+    setCouponCode(couponNotice.code);
+    setCouponSource(couponNotice.source);
+    setCouponDraft(couponNotice.code);
+    setCouponNotice(null);
+  }
+
+  /** Extends checkout by `extra` nights when every added night is loaded and free. */
+  function extendedCheckOut(extra: number) {
+    if (!checkIn || !checkOut) return null;
+    const next = addDaysIso(checkOut, extra);
+    const months = stayMonths(checkIn, next);
+    const known = months.every((month) => requestedMonths.includes(month) && !unknownMonths.has(month));
+    return known && !rangeIntersectsDates(propertyBlockedDates, checkIn, next) ? next : null;
+  }
+
   function currentStepValid() {
     if (step === "select") return selectValid;
     if (step === "guests") return guestsValid;
@@ -362,6 +458,7 @@ export function BookingFunnel({
     }
 
     setSubmitting(true);
+    let couponSent: string | undefined;
     try {
       if (bookingMode !== "live" || !convex) {
         router.push(demoPayHref);
@@ -381,6 +478,7 @@ export function BookingFunnel({
         throw new Error(t("datesNoLongerAvailable"));
       }
 
+      couponSent = couponCodeToSend(activeCouponCode, phase);
       const result = await createBooking(convex, {
         propertySlug: property.slug,
         guestName: guestName.trim(),
@@ -389,16 +487,33 @@ export function BookingFunnel({
         checkIn,
         checkOut,
         guests,
+        couponCode: couponSent,
       });
 
+      // `quoted` lets the pay page say so if the booked total isn't the one shown here.
       router.push(
         localizeHref(
-          `/booking/pay?bookingId=${encodeURIComponent(result.bookingId)}&token=${encodeURIComponent(result.accessToken)}`,
+          `/booking/pay?bookingId=${encodeURIComponent(result.bookingId)}&token=${encodeURIComponent(result.accessToken)}&quoted=${price.total}`,
           locale,
         ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("unableToCreate"));
+      const refused = couponSent ? couponUnavailableError(err) : null;
+      if (refused && couponSent) {
+        // Nothing was booked. Drop the code so the summary re-quotes at the direct price, and
+        // let the guest see the new total before continuing.
+        const detail = couponCoversWholeStay(refused)
+          ? couponT("coversWholeStay")
+          : refused.problem
+            ? couponCopy.problemText(refused.problem)
+            : refused.message ?? couponT("unavailableFallback");
+        setCouponNotice({ kind: "ran_out", code: couponSent, detail: detail.replace(/[.。]\s*$/, "") });
+        setCouponCode(null);
+        setCouponDraft("");
+        setCouponOpen(false);
+        return;
+      }
+      setError(guestErrorText(err, t("unableToCreate")));
     } finally {
       setSubmitting(false);
     }
@@ -499,6 +614,45 @@ export function BookingFunnel({
               checkIn={checkIn}
               checkOut={checkOut}
               bookingMode={bookingMode}
+              price={
+                <PriceLines
+                  currency={property.currency}
+                  priceLabel={`${couponCopy.format.money(property.pricePerNight)} ${villaT("perNight")} x ${nights || 0}`}
+                  subtotal={price.subtotal}
+                  lines={price.lines}
+                  total={price.total}
+                />
+              }
+              coupon={
+                bookingMode === "live" ? (
+                  <CouponField
+                    code={activeCouponCode}
+                    source={couponSource}
+                    phase={phase}
+                    draft={couponDraft}
+                    open={couponOpen}
+                    entryError={couponEntryError}
+                    notice={couponNotice}
+                    currency={property.currency}
+                    disabled={submitting}
+                    onDraftChange={changeCouponDraft}
+                    onOpenChange={setCouponOpen}
+                    onApply={applyCoupon}
+                    onRemove={removeCoupon}
+                    onUndo={undoRemoveCoupon}
+                    onRetry={retryCoupon}
+                    onAddNights={
+                      phase.kind === "not_used" && phase.problem.code === "min_nights" && extendedCheckOut(Math.max(1, phase.problem.missingNights))
+                        ? (extra) => {
+                            const next = extendedCheckOut(extra);
+                            if (next) updateDateRange({ checkIn, checkOut: next });
+                          }
+                        : undefined
+                    }
+                    onChangeStay={() => setStep("select")}
+                  />
+                ) : null
+              }
             />
           ) : null}
 
@@ -514,9 +668,9 @@ export function BookingFunnel({
               {t("back")}
             </Button>
             {step === "review" ? (
-              <Button onClick={submitBooking} disabled={submitting || highestAllowedStepIndex < 3}>
+              <Button onClick={submitBooking} disabled={submitting || couponChecking || highestAllowedStepIndex < 3}>
                 <CreditCard className="h-4 w-4" />
-                {submitting ? t("checking") : t("continueToPay")}
+                {submitting || couponChecking ? t("checking") : t("continueToPay")}
               </Button>
             ) : (
               <Button onClick={next} disabled={!currentStepValid()}>
@@ -529,9 +683,10 @@ export function BookingFunnel({
         <BookingPriceSummary
           property={property}
           nights={nights}
-          subtotal={quote.subtotal}
-          discount={quote.discountAmount}
-          total={quote.directTotal}
+          subtotal={price.subtotal}
+          lines={price.lines}
+          total={price.total}
+          note={couponNote}
         />
       </div>
     </div>

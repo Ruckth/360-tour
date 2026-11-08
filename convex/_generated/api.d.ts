@@ -59,6 +59,7 @@ import type * as lib_conciergePolicy from "../lib/conciergePolicy.js";
 import type * as lib_conciergeReplyOutcome from "../lib/conciergeReplyOutcome.js";
 import type * as lib_conciergeTurn from "../lib/conciergeTurn.js";
 import type * as lib_configurationHistory from "../lib/configurationHistory.js";
+import type * as lib_couponRedemptions from "../lib/couponRedemptions.js";
 import type * as lib_curatedVariants from "../lib/curatedVariants.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_displayTokens from "../lib/displayTokens.js";
@@ -179,6 +180,7 @@ declare const fullApi: ApiFromModules<{
   "lib/conciergeReplyOutcome": typeof lib_conciergeReplyOutcome;
   "lib/conciergeTurn": typeof lib_conciergeTurn;
   "lib/configurationHistory": typeof lib_configurationHistory;
+  "lib/couponRedemptions": typeof lib_couponRedemptions;
   "lib/curatedVariants": typeof lib_curatedVariants;
   "lib/dates": typeof lib_dates;
   "lib/displayTokens": typeof lib_displayTokens;

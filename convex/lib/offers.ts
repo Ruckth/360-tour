@@ -23,6 +23,9 @@ export type CouponRules = {
 	discountBudget?: number;
 	used: number;
 	discountGranted: number;
+	/** Release 2: slots / discount held by unpaid bookings; count toward usageLimit / discountBudget. */
+	held?: number;
+	heldDiscount?: number;
 };
 
 export type QuoteLine =
@@ -100,8 +103,8 @@ function couponProblem(coupon: CouponRules, accommodation: Extract<QuoteLine, { 
 	if (coupon.status !== 'active') return { code: 'not_active' };
 	if (coupon.bookFrom && today < coupon.bookFrom) return { code: 'not_started', startsOn: coupon.bookFrom };
 	if (coupon.bookTo && today > coupon.bookTo) return { code: 'expired', endedOn: coupon.bookTo };
-	if (coupon.usageLimit !== undefined && coupon.used >= coupon.usageLimit) return { code: 'sold_out' };
-	if (coupon.discountBudget !== undefined && coupon.discountGranted >= coupon.discountBudget) return { code: 'budget_used' };
+	if (coupon.usageLimit !== undefined && coupon.used + (coupon.held ?? 0) >= coupon.usageLimit) return { code: 'sold_out' };
+	if (coupon.discountBudget !== undefined && coupon.discountGranted + (coupon.heldDiscount ?? 0) >= coupon.discountBudget) return { code: 'budget_used' };
 	if (coupon.propertySlugs?.length && accommodation.some((line) => !coupon.propertySlugs!.includes(line.propertySlug))) return { code: 'wrong_property' };
 	if (accommodation.some((line) => {
 		// Checkout is exclusive; the final occupied night may equal stayTo.
@@ -139,7 +142,7 @@ export function evaluateOffer(input: OfferInput): OfferResult {
 		couponDiscount = Math.min(eligibleSubtotal, Math.round(coupon.benefit.kind === 'percent'
 			? eligibleSubtotal * coupon.benefit.percent / 100 : coupon.benefit.amount));
 		const cap = Math.min(coupon.maxSaving ?? Infinity,
-			coupon.discountBudget === undefined ? Infinity : coupon.discountBudget - coupon.discountGranted);
+			coupon.discountBudget === undefined ? Infinity : coupon.discountBudget - coupon.discountGranted - (coupon.heldDiscount ?? 0));
 		if (couponDiscount > cap) {
 			couponDiscount = Math.max(0, Math.floor(cap));
 			capped = true;

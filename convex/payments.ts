@@ -245,7 +245,7 @@ export const completeCheckout = internalMutation({
       Math.round((booking.stripeCheckoutAmount ?? booking.total) * 100) === args.amountTotal &&
       Math.round(checkoutBalance(booking) * 100) === args.amountTotal) {
       booking = await writeBooking(ctx, booking, { status: 'pending', paymentStatus: 'pending', cancelledAt: undefined, cancelledBy: undefined },
-        { actor: 'system:stripe', kind: 'checkout_recovered' });
+        { actor: 'system:stripe', kind: 'checkout_recovered' }, { deferCouponSync: true });
     }
     // checkoutBalance > 0 means no credit, so it equals stayMoney().owed, which recordStayPayment checks again.
     if (!isPayable(booking) || Math.round((booking.stripeCheckoutAmount ?? booking.total) * 100) !== args.amountTotal || Math.round(checkoutBalance(booking) * 100) !== args.amountTotal) throw new Error('Checkout amount mismatch');

@@ -137,6 +137,13 @@ export function initials(name: string) {
 
 /** Convex prefixes server errors with request metadata; keep the readable part. */
 export function errorText(err: unknown, fallback: string) {
+  // A ConvexError (e.g. `coupon_unavailable` from reopenBooking) carries its sentence in `data`.
+  if (err && typeof err === "object" && "data" in err) {
+    const data = (err as { data?: unknown }).data;
+    if (typeof data === "string" && data) return data;
+    const message = data && typeof data === "object" ? (data as { message?: unknown }).message : undefined;
+    if (typeof message === "string" && message) return message;
+  }
   if (!(err instanceof Error)) return fallback;
   return err.message.match(/Uncaught Error: (.+?)(?:\n|$)/)?.[1] ?? (err.message || fallback);
 }

@@ -52,7 +52,9 @@ export type CampaignRow = Doc<'marketingCampaigns'> & {
 };
 export type LinkRow = Doc<'marketingLinks'> & { campaignName: string; couponCode?: string; shortUrlPath: string };
 export type CouponRow = Doc<'coupons'> & { rules: Doc<'couponVersions'>; campaignName?: string };
-export type CouponDetail = CouponRow & { versions: Doc<'couponVersions'>[]; links: LinkRow[] };
+/** Release 2: one coupon use, newest first in CouponDetail. */
+export type RedemptionRow = Doc<'couponRedemptions'> & { booking?: { guestName: string; checkIn: string; checkOut: string; confirmationCode?: string } };
+export type CouponDetail = CouponRow & { versions: Doc<'couponVersions'>[]; links: LinkRow[]; redemptions: RedemptionRow[] };
 export type SlugCheck = { ok: true; slug: string } | { ok: false; slug: string; reason: 'empty' | 'invalid' | 'reserved' | 'taken' };
 export type ResolvedLink = {
 	/** Relative path to redirect to, with locale prefix and `?mk=<slug>` (and `&coupon=` when attached). */
@@ -165,7 +167,7 @@ async function quote(ctx: QueryCtx, args: QuoteArgs, adminTest: boolean): Promis
 	const result = evaluateOffer({ lines, directDiscountPercent: property.directDiscountPercent, today: resortTodayIso(),
 		...(coupon && rules && { coupon: { ...rules, code: coupon.code, version: coupon.currentVersion,
 			status: adminTest && (coupon.status === 'draft' || coupon.status === 'paused') ? 'active' : coupon.status,
-			used: coupon.used, discountGranted: coupon.discountGranted } }) });
+			used: coupon.used, discountGranted: coupon.discountGranted, held: coupon.held, heldDiscount: coupon.heldDiscount } }) });
 	return code && !coupon ? { ...result, couponStatus: 'invalid', problem: { code: 'not_found' } } : result;
 }
 
@@ -217,7 +219,12 @@ export const getCoupon = query({
 		if (!coupon) return null;
 		const versions = await ctx.db.query('couponVersions').withIndex('by_coupon_and_version', q => q.eq('couponId', coupon._id)).order('desc').take(500);
 		const links = await ctx.db.query('marketingLinks').withIndex('by_couponId', q => q.eq('couponId', coupon._id)).take(500);
-		return { ...await enrichCoupon(ctx, coupon), versions, links: await Promise.all(links.map(link => enrichLink(ctx, link))) };
+		const rows = await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', coupon._id)).order('desc').take(50);
+		const redemptions: RedemptionRow[] = await Promise.all(rows.map(async row => {
+			const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
+			return { ...row, ...(booking && { booking: { guestName: booking.guestName, checkIn: booking.checkIn, checkOut: booking.checkOut, confirmationCode: booking.confirmationCode } }) };
+		}));
+		return { ...await enrichCoupon(ctx, coupon), versions, links: await Promise.all(links.map(link => enrichLink(ctx, link))), redemptions };
 	}
 });
 

@@ -25,7 +25,7 @@ function render(currency: string, comparisonCurrency = currency) {
   comparison.currency = comparisonCurrency;
   const property = { slug: "villa", name: "Villa", tagline: "", images: [], pricePerNight: 100, currency, directDiscountPercent: 10 };
   return renderToStaticMarkup(createElement(BookingPriceSummary, {
-    property: property as unknown as BookingProperty, nights: 2, subtotal: 200, discount: 20, total: 180,
+    property: property as unknown as BookingProperty, nights: 2, subtotal: 200, lines: [{ kind: "direct", amount: 20 }], total: 180,
   })).replace(/<!-- -->/g, "");
 }
 

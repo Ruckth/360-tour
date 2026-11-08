@@ -15,6 +15,8 @@ import type {
   LinkStatus,
   MarketingProperty,
   OfferResult,
+  RedemptionRow,
+  RedemptionState,
   SlugCheck,
 } from "./types";
 
@@ -113,11 +115,12 @@ export const COUPON_STATE: Record<CouponState, StatusMeta> = {
   archived: { label: "Archived", tone: "muted" },
 };
 
-export function couponState(coupon: Pick<CouponRow, "status" | "used" | "discountGranted" | "rules">, today: string): CouponState {
+export function couponState(coupon: Pick<CouponRow, "status" | "used" | "discountGranted" | "held" | "heldDiscount" | "rules">, today: string): CouponState {
   if (coupon.status !== "active") return coupon.status;
   const { rules } = coupon;
-  if (rules.usageLimit !== undefined && coupon.used >= rules.usageLimit) return "sold_out";
-  if (rules.discountBudget !== undefined && coupon.discountGranted >= rules.discountBudget) return "budget_used";
+  // Uses held by unpaid bookings count, as they do at checkout.
+  if (rules.usageLimit !== undefined && coupon.used + (coupon.held ?? 0) >= rules.usageLimit) return "sold_out";
+  if (rules.discountBudget !== undefined && coupon.discountGranted + (coupon.heldDiscount ?? 0) >= rules.discountBudget) return "budget_used";
   if (rules.bookTo && rules.bookTo < today) return "expired";
   if (rules.bookFrom && rules.bookFrom > today) return "scheduled";
   return "active";
@@ -152,6 +155,34 @@ export function couponRulesLine(rules: Rules) {
   if (rules.minEligibleSubtotal) items.push(`min spend ${thb(rules.minEligibleSubtotal)}`);
   if (rules.benefit.kind === "percent" && rules.maxSaving) items.push(`max saving ${thb(rules.maxSaving)}`);
   return items.length ? capitalize(items.join(" · ")) : "Ongoing, no minimum";
+}
+
+/**
+ * Uses with the slots unpaid bookings hold: `used` is paid uses, `held` counts toward the limit too.
+ * "38 / 500 · 3 held", "38 used · 3 held", or without holds "35 / 500" and "22 · no limit".
+ */
+export function usageWithHeld(used: number, held: number, limit?: number) {
+  const total = used + held;
+  if (!held) return usageLabel(used, limit);
+  const heldText = `${held.toLocaleString("en-US")} held`;
+  return limit === undefined ? `${total.toLocaleString("en-US")} used · ${heldText}` : `${usageLabel(total, limit)} · ${heldText}`;
+}
+
+/** Ledger states, in the order the filter lists them. Tones follow status-tones.ts. */
+export const REDEMPTION_STATES = ["held", "consumed", "released", "reversed"] as const satisfies readonly RedemptionState[];
+
+export const REDEMPTION_STATE: Record<RedemptionState, StatusMeta & { hint: string }> = {
+  held: { label: "Held", tone: "warning", hint: "An unpaid booking is holding a use" },
+  consumed: { label: "Consumed", tone: "success", hint: "Paid" },
+  released: { label: "Released", tone: "muted", hint: "Cancelled or expired before payment; the use went back" },
+  reversed: { label: "Reversed", tone: "neutral", hint: "Cancelled or refunded after payment; the use isn’t given back" },
+};
+
+/** How many ledger rows are in each state. */
+export function redemptionCounts(rows: readonly Pick<RedemptionRow, "state">[]): Record<RedemptionState, number> {
+  const counts: Record<RedemptionState, number> = { held: 0, consumed: 0, released: 0, reversed: 0 };
+  for (const row of rows) counts[row.state] += 1;
+  return counts;
 }
 
 /** "500 limit" style usage: "38 / 500" or "22 · no limit". */
