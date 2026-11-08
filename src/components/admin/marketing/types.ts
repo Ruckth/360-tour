@@ -4,8 +4,7 @@ import type { Doc, Id } from "convex/_generated/dataModel";
 import type { CampaignRow, CouponDetail, CouponRow, LinkRow, SlugCheck } from "convex/marketing";
 import type { OfferResult } from "convex/lib/offers";
 
-// The views take data and callbacks as props; the admin pages wire them to Convex
-// (see useMarketingBackend), and the dev preview wires them to sample data.
+// The views take data and callbacks as props; MarketingScreens wires them to Convex.
 
 export type { CampaignRow, CouponDetail, CouponRow, LinkRow, SlugCheck, OfferResult };
 
@@ -24,10 +23,10 @@ export type MarketingProperty = Pick<
   "_id" | "slug" | "name" | "pricePerNight" | "currency" | "maxGuests" | "status" | "directDiscountPercent"
 >;
 
-export type SaveCampaignArgs = FunctionArgs<typeof api.marketing.saveCampaign>;
-export type SaveLinkArgs = FunctionArgs<typeof api.marketing.saveLink>;
+type SaveCampaignArgs = FunctionArgs<typeof api.marketing.saveCampaign>;
+type SaveLinkArgs = FunctionArgs<typeof api.marketing.saveLink>;
 export type SaveCouponArgs = FunctionArgs<typeof api.marketing.saveCoupon>;
-export type TestQuoteArgs = FunctionArgs<typeof api.marketing.testQuote>;
+type TestQuoteArgs = FunctionArgs<typeof api.marketing.testQuote>;
 
 export type MarketingActions = {
   saveCampaign: (args: SaveCampaignArgs) => Promise<Id<"marketingCampaigns">>;

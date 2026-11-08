@@ -11,9 +11,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
 import { TONES } from "../status-tones";
-import { Callout, FieldError, NumberField, nextEditorKey, parseWhole } from "./MarketingBits";
-import { formatDay, nightsBetween } from "./format-basics";
-import { directOfferApplied, marketingErrorText, quoteVerdict, thb } from "./marketing-format";
+import { Callout, FieldError, NumberField, SideCard, nextEditorKey } from "./MarketingBits";
+import { parseWhole } from "./coupon-form";
+import { directOfferApplied, formatDay, marketingErrorText, nightsBetween, quoteVerdict, thb } from "./marketing-format";
 import type { MarketingActions, MarketingProperty, OfferResult } from "./types";
 
 type ServiceLine = { key: number; label: string; amount: string };
@@ -100,13 +100,7 @@ export function TestQuotePanel({
   }
 
   return (
-    <section aria-labelledby={`${id}-title`} className="border border-border bg-card">
-      <header className="border-b border-border px-4 py-3">
-        <h3 id={`${id}-title`} className="text-base font-semibold text-foreground">
-          Test a quote
-        </h3>
-        <p className="text-xs text-muted-foreground">Runs the saved rules through the same pricing as the guest checkout. Nothing is held or booked.</p>
-      </header>
+    <SideCard id={`${id}-title`} title="Test a quote" description="Runs the saved rules through the same pricing as the guest checkout. Nothing is held or booked.">
       <form noValidate onSubmit={run} className="grid gap-4 p-4">
         {!code ? (
           <Callout>Save the coupon first. The test uses its saved rules.</Callout>
@@ -240,7 +234,7 @@ export function TestQuotePanel({
           </div>
         ) : null}
       </form>
-    </section>
+    </SideCard>
   );
 }
 

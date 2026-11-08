@@ -17,10 +17,9 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "../ConfirmDialog";
 import { StatusBadge } from "../StatusBadge";
-import { Callout, ChoiceGroup, CouponChip, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, UsageBar, useNotice } from "./MarketingBits";
+import { Callout, ChoiceGroup, CouponChip, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, SideCard, UsageBar, useConfirmedChange, useNotice } from "./MarketingBits";
 import { TestQuotePanel } from "./TestQuotePanel";
 import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, rulesChanged, type CouponForm, type CouponFormErrors } from "./coupon-form";
-import { formatStamp } from "./format-basics";
 import {
   COUPON_STATE,
   LINK_STATUS,
@@ -28,6 +27,7 @@ import {
   couponRulesLine,
   couponState,
   formatRange,
+  formatStamp,
   generatedTerms,
   marketingErrorText,
   scopeLabel,
@@ -38,7 +38,7 @@ import type { CampaignRow, CouponDetail, CouponRow, CouponStatus, MarketingActio
 
 const NO_CAMPAIGN = "none";
 
-export type CouponEditorProps = {
+type CouponEditorProps = {
   /** New coupon, or an existing one: `undefined` while loading, `null` when it doesn't exist. */
   detail?: CouponDetail | null;
   isNew: boolean;
@@ -159,7 +159,8 @@ function CouponBuilder({
   const [form, setForm] = useState<CouponForm>(baseline);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [statusBusy, setStatusBusy] = useState(false);
+  const { pending: statusPending, run } = useConfirmedChange<Id<"coupons">>(show);
+  const statusBusy = statusPending !== null;
   const set = <K extends keyof CouponForm>(key: K, value: CouponForm[K]) => setForm((current) => ({ ...current, [key]: value }));
 
   const archived = detail?.status === "archived";
@@ -241,16 +242,13 @@ function CouponBuilder({
     };
     const text = copy[status];
     if (dirty && status === "active" && !(await confirm({ title: "Save your changes first?", description: "Publishing uses the saved version. Your unsaved edits stay in the form.", confirmLabel: "Publish saved version" }))) return;
-    if (!(await confirm({ title: text.title, description: text.description, confirmLabel: text.label, destructive: status === "archived" }))) return;
-    setStatusBusy(true);
-    try {
-      await actions.setCouponStatus({ couponId: detail._id, status });
-      show(text.done);
-    } catch (error) {
-      show(marketingErrorText(error, "Couldn’t change the coupon."), "danger");
-    } finally {
-      setStatusBusy(false);
-    }
+    await run(
+      detail._id,
+      { title: text.title, description: text.description, confirmLabel: text.label, destructive: status === "archived" },
+      () => actions.setCouponStatus({ couponId: detail._id, status }),
+      text.done,
+      "Couldn’t change the coupon.",
+    );
   }
 
   // Reloading or closing the tab with unsaved edits asks first (the back link has its own confirm).
@@ -623,19 +621,17 @@ function CouponBuilder({
           </section>
 
           {detail && STATUS_ACTIONS[detail.status].length ? (
-            <section aria-labelledby={`${id}-status`} className="border border-border bg-card">
-              <header className="border-b border-border px-4 py-3">
-                <h3 id={`${id}-status`} className="text-base font-semibold text-foreground">
-                  Status
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  {detail.status === "draft"
-                    ? "A draft can be tested but guests can’t use it."
-                    : detail.status === "paused"
-                      ? "Paused: quotes ignore it until you resume."
-                      : "Live: guests can use it within its dates and limits."}
-                </p>
-              </header>
+            <SideCard
+              id={`${id}-status`}
+              title="Status"
+              description={
+                detail.status === "draft"
+                  ? "A draft can be tested but guests can’t use it."
+                  : detail.status === "paused"
+                    ? "Paused: quotes ignore it until you resume."
+                    : "Live: guests can use it within its dates and limits."
+              }
+            >
               <div className="flex flex-wrap gap-2 p-4">
                 {STATUS_ACTIONS[detail.status].map(({ status, label, icon: Icon, destructive }) => (
                   <Button
@@ -652,7 +648,7 @@ function CouponBuilder({
                   </Button>
                 ))}
               </div>
-            </section>
+            </SideCard>
           ) : null}
 
           <TestQuotePanel
@@ -665,13 +661,7 @@ function CouponBuilder({
           />
 
           {detail ? (
-            <section aria-labelledby={`${id}-versions`} className="border border-border bg-card">
-              <header className="border-b border-border px-4 py-3">
-                <h3 id={`${id}-versions`} className="text-base font-semibold text-foreground">
-                  Versions
-                </h3>
-                <p className="text-xs text-muted-foreground">Changing a rule saves a new version. Old versions never change.</p>
-              </header>
+            <SideCard id={`${id}-versions`} title="Versions" description="Changing a rule saves a new version. Old versions never change.">
               <ol className="grid gap-2 p-4">
                 {[...detail.versions]
                   .sort((a, b) => b.version - a.version)
@@ -689,16 +679,11 @@ function CouponBuilder({
                     </li>
                   ))}
               </ol>
-            </section>
+            </SideCard>
           ) : null}
 
           {detail ? (
-            <section aria-labelledby={`${id}-links`} className="border border-border bg-card">
-              <header className="border-b border-border px-4 py-3">
-                <h3 id={`${id}-links`} className="text-base font-semibold text-foreground">
-                  Links that suggest it
-                </h3>
-              </header>
+            <SideCard id={`${id}-links`} title="Links that suggest it">
               {detail.links.length ? (
                 <ul className="divide-y divide-border">
                   {detail.links.map((link) => (
@@ -714,7 +699,7 @@ function CouponBuilder({
                   None yet. Attach <CouponChip code={detail.code} /> to a link in Links & QR to put it on a QR card.
                 </p>
               )}
-            </section>
+            </SideCard>
           ) : null}
         </aside>
       </div>

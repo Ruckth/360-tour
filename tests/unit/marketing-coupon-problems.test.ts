@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CouponProblem } from "convex/lib/offers";
-import { couponProblemMessage, couponProblemTitle } from "@/components/admin/marketing/coupon-problems";
+import { couponProblemMessage, couponProblemTitle } from "@/components/admin/marketing/marketing-format";
 
 describe("coupon problem copy", () => {
   it.each<[CouponProblem, string, string]>([

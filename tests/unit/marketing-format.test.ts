@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { OfferResult } from "convex/lib/offers";
 import {
+  bangkokToday,
   benefitLabel,
   couponRulesLine,
   couponState,
   formatRange,
   generatedTerms,
+  nightsBetween,
   normalizeSlugInput,
   quoteVerdict,
   scopeLabel,
   shortUrl,
   slugCheckMessage,
 } from "@/components/admin/marketing/marketing-format";
-import { bangkokToday, nightsBetween } from "@/components/admin/marketing/format-basics";
 import { buildQrCard, qrCardSvg } from "@/components/admin/marketing/qr-card";
 import type { CouponRow } from "@/components/admin/marketing/types";
 

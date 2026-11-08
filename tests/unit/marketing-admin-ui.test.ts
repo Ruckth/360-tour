@@ -1,8 +1,16 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+import { act, createElement, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConvexError } from "convex/values";
+import type { Id } from "convex/_generated/dataModel";
 import { evaluateOffer, type QuoteLine } from "convex/lib/offers";
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
+import { LinksView } from "@/components/admin/marketing/LinksView";
 import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, type CouponForm } from "@/components/admin/marketing/coupon-form";
 import { countLabel, directOfferApplied, marketingErrorText, qrDirectPercent } from "@/components/admin/marketing/marketing-format";
+import type { CampaignRow } from "@/components/admin/marketing/types";
 
 const form = (patch: Partial<CouponForm>): CouponForm => ({ ...EMPTY_COUPON_FORM, code: "SPA-10", value: "10", ...patch });
 
@@ -115,5 +123,137 @@ describe("countLabel", () => {
   it("marks capped counts as lower bounds", () => {
     expect(countLabel(500, true)).toBe("500+");
     expect(countLabel(1234)).toBe("1,234");
+  });
+});
+
+vi.mock("next/link", () => ({ default: ({ children, href, ...props }: { children: ReactNode; href: string }) => createElement("a", { href, ...props }, children) }));
+
+const campaign = {
+  _id: "c1" as Id<"marketingCampaigns">,
+  _creationTime: 0,
+  name: "November escape",
+  source: "facebook",
+  medium: "social",
+  status: "draft",
+  createdAt: 0,
+  updatedAt: 0,
+  updatedByEmail: "a@example.com",
+  linkCount: 0,
+  couponCount: 0,
+  opens: 0,
+  countsCapped: false,
+} as CampaignRow;
+
+let root: Root;
+const render = (node: ReactNode) => act(async () => root.render(createElement(ConfirmProvider, null, node)));
+const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text);
+const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
+const escape = () => act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+const input = (placeholder: string) => document.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`);
+const type = (el: HTMLInputElement | null, value: string) =>
+  act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value);
+    el!.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+const NAME = "e.g. Facebook · December getaway";
+
+const actions = () => ({ saveCampaign: vi.fn().mockResolvedValue("c2"), setCampaignStatus: vi.fn().mockResolvedValue(null) });
+const campaigns = (a: ReturnType<typeof actions>) =>
+  createElement(CampaignsView, { campaigns: [campaign], links: [], coupons: [], today: "2026-11-08", linksHref: "/l", couponHref: (id) => `/c/${id}`, actions: a });
+
+beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  root = createRoot(document.body.appendChild(document.createElement("div")));
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  document.body.innerHTML = "";
+  vi.unstubAllGlobals();
+});
+
+describe("marketing editor sheets", () => {
+  it("asks before discarding unsaved edits, and keeps them on Keep editing", async () => {
+    await render(campaigns(actions()));
+    await click(button("New campaign"));
+    expect(input(NAME)).not.toBeNull();
+    await type(input(NAME), "Spa week");
+
+    await click(button("Cancel"));
+    expect(document.body.textContent).toContain("Discard your changes?");
+    await click(button("Keep editing"));
+    expect(input(NAME)?.value).toBe("Spa week");
+
+    await escape();
+    await click(button("Discard"));
+    expect(input(NAME)).toBeNull();
+  });
+
+  it("closes an untouched editor without asking", async () => {
+    await render(campaigns(actions()));
+    await click(button("New campaign"));
+    await click(button("Cancel"));
+    expect(document.body.textContent).not.toContain("Discard your changes?");
+    expect(input(NAME)).toBeNull();
+  });
+
+  it("saves with the trimmed args, closes and reports it", async () => {
+    const a = actions();
+    await render(campaigns(a));
+    await click(button("New campaign"));
+    await type(input(NAME), " Spa week ");
+    const [source, medium] = document.querySelectorAll<HTMLInputElement>("input[list]");
+    await type(source, "Facebook");
+    await type(medium, "Social");
+    await click(button("Create campaign"));
+    expect(a.saveCampaign).toHaveBeenCalledWith({ campaignId: undefined, name: "Spa week", source: "facebook", medium: "social", startsOn: undefined, endsOn: undefined, budget: undefined, notes: undefined });
+    expect(input(NAME)).toBeNull();
+    expect(document.body.textContent).toContain("Created Spa week as a draft");
+  });
+
+  it("shows a failed save's ConvexError message and keeps the form open", async () => {
+    const a = actions();
+    a.saveCampaign.mockRejectedValue(new ConvexError({ code: "invalid", message: "Name is taken" }));
+    await render(campaigns(a));
+    await click(button("New campaign"));
+    await type(input(NAME), "Spa week");
+    const [source, medium] = document.querySelectorAll<HTMLInputElement>("input[list]");
+    await type(source, "facebook");
+    await type(medium, "social");
+    await click(button("Create campaign"));
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("Name is taken");
+    expect(input(NAME)?.value).toBe("Spa week");
+  });
+
+  it("confirms a status change, runs it and reports it", async () => {
+    const a = actions();
+    await render(campaigns(a));
+    await click([...document.querySelectorAll("button")].find((el) => el.textContent === "November escape"));
+    await click(button("Start"));
+    expect(document.body.textContent).toContain("Start “November escape”?");
+    await click(button("Confirm"));
+    expect(a.setCampaignStatus).toHaveBeenCalledWith({ campaignId: "c1", status: "active" });
+    expect(document.body.textContent).toContain("November escape is active");
+  });
+
+  it("opens a link quick start from the first run, prefilled", async () => {
+    await render(
+      createElement(LinksView, {
+        links: [],
+        campaigns: [campaign],
+        coupons: [],
+        properties: [],
+        origin: "https://book.example",
+        brand: "Auralis",
+        today: "2026-11-08",
+        campaignsHref: "/c",
+        actions: { saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn().mockResolvedValue({ ok: true, slug: "f" }) },
+      }),
+    );
+    await click([...document.querySelectorAll("button")].find((el) => el.textContent?.includes("Facebook page")));
+    expect(document.body.textContent).toContain("New link");
+    expect(input("e.g. Facebook · November post")?.value).toBe("Facebook page");
+    await click(button("Cancel"));
+    expect(document.body.textContent).not.toContain("Discard your changes?");
+    expect(input("e.g. Facebook · November post")).toBeNull();
   });
 });

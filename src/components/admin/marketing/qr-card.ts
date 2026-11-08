@@ -34,8 +34,8 @@ const MUTE = "#5d6676";
 const PANEL = "#f5efe4";
 const TAGLINE = "Screenshot now, book later.";
 
-export type Fonts = { sans: string; serif: string };
-export const DEFAULT_FONTS: Fonts = {
+type Fonts = { sans: string; serif: string };
+const DEFAULT_FONTS: Fonts = {
   sans: "Manrope, 'Helvetica Neue', Arial, sans-serif",
   serif: "'Cormorant Garamond', Georgia, serif",
 };
@@ -60,7 +60,7 @@ type Item =
   | { t: "qr"; x: number; y: number; size: number }
   | TextItem;
 
-export type QrCardSpec = { width: number; height: number; items: Item[]; matrix: QrMatrix };
+type QrCardSpec = { width: number; height: number; items: Item[]; matrix: QrMatrix };
 type QrMatrix = { count: number; dark: (row: number, col: number) => boolean };
 
 const QUIET_MODULES = 4;
