@@ -44,7 +44,7 @@ export function CheckoutView({
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { run, switchTo } = useOrderWrites(orderId, onOrderChange, setError);
+  const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError);
 
   const add = useCallback((item: CatalogItem) => void run((id) => actions.addItem({ orderId: id, item })), [run, actions]);
 
@@ -102,7 +102,7 @@ export function CheckoutView({
 
   // Keyed by order, so opening another order starts from its rows, never a payment begun on the last one.
   const panel = (onClose?: () => void) => (
-    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} onSaved={onSaved} onPaid={toReceipt} onClose={onClose} />
+    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onSaved={onSaved} onPaid={toReceipt} onClose={onClose} />
   );
 
   // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).

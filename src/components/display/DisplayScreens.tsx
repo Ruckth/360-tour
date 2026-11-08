@@ -2,6 +2,7 @@
 
 import { formatOrderNumber, formatReceiptNumber } from "convex/lib/billMath";
 import type { DisplayOrderState } from "convex/lib/displayView";
+import { TicketPercent } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
@@ -128,6 +129,12 @@ function Paid({ paid }: { paid: PaidState }) {
             : t("paidInFull", { amount: formatMoney(paid.total, paid.currency) })}
         </p>
         <p className="text-xl text-muted-foreground tabular-nums lg:text-2xl">{t("vatIncludedIn", { vat: formatMoney(paid.vat, paid.currency), total: formatMoney(paid.total, paid.currency) })}</p>
+        {paid.coupon && paid.coupon.saving > 0 ? (
+          <p className="mx-auto inline-flex items-center gap-3 rounded-full border border-gold/50 bg-gold/10 px-6 py-2 text-xl font-medium text-gold-text tabular-nums [overflow-wrap:anywhere] lg:text-2xl" data-testid="display-coupon-saved">
+            <TicketPercent aria-hidden className="size-[1.1em] shrink-0" />
+            {t("savedWithCoupon", { amount: formatMoney(paid.coupon.saving, paid.currency), code: paid.coupon.code })}
+          </p>
+        ) : null}
         {paid.receiptNumber !== null ? (
           <p className="text-xl text-muted-foreground tabular-nums lg:text-2xl">{t("receiptNumber", { number: formatReceiptNumber(paid.receiptNumber) })}</p>
         ) : null}
@@ -141,6 +148,9 @@ function Order({ order }: { order: OrderState }) {
   const money = (amount: number) => formatMoney(amount, order.currency);
   const newest = useRef<HTMLLIElement>(null);
   const count = order.lines.length;
+  // The coupon has its own row; "Discounts" is what staff took off.
+  const coupon = order.coupon && order.coupon.saving > 0 ? order.coupon : null;
+  const staffDiscount = Math.round((order.discount - (coupon?.saving ?? 0)) * 100) / 100;
 
   // Also on switching orders: another order with the same line count can have taller rows.
   useEffect(() => {
@@ -166,7 +176,8 @@ function Order({ order }: { order: OrderState }) {
                 line.detail,
                 line.qty > 1 ? t("qtyTimes", { qty: line.qty, price: money(line.price) }) : null,
                 line.price !== line.unitPrice ? t("priceWas", { price: money(line.unitPrice) }) : null,
-                line.discount > 0 ? t("lineDiscount", { amount: money(line.discount) }) : null,
+                line.discount - line.couponDiscount > 0 ? t("lineDiscount", { amount: money(line.discount - line.couponDiscount) }) : null,
+                line.couponDiscount > 0 && order.coupon ? t("lineCoupon", { amount: money(line.couponDiscount), code: order.coupon.code }) : null,
                 line.deposit > 0 ? t("lineDeposit", { amount: money(line.deposit) }) : null,
               ].filter(Boolean);
               return (
@@ -198,7 +209,8 @@ function Order({ order }: { order: OrderState }) {
           <div className={cn(GLASS_CARD, "@container p-[clamp(1.5rem,3vw,2.75rem)]")}>
             <dl className="space-y-3 text-xl xl:text-2xl">
               <TotalRow label={t("subtotal")} value={money(order.subtotal)} />
-              {order.discount > 0 ? <TotalRow label={t("discounts")} value={`−${money(order.discount)}`} /> : null}
+              {staffDiscount > 0 ? <TotalRow label={t("discounts")} value={`−${money(staffDiscount)}`} /> : null}
+              {coupon ? <TotalRow label={t("couponRow", { code: coupon.code })} value={`−${money(coupon.saving)}`} highlight /> : null}
               <TotalRow label={t("vatIncluded")} value={money(order.vat)} />
               {order.deposit > 0 ? <TotalRow label={t("paidInAdvance")} value={`−${money(order.deposit)}`} /> : null}
             </dl>
@@ -217,10 +229,10 @@ function Order({ order }: { order: OrderState }) {
   );
 }
 
-function TotalRow({ label, value }: { label: string; value: string }) {
+function TotalRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 text-muted-foreground">
-      <dt>{label}</dt>
+    <div className={cn("flex items-baseline justify-between gap-6", highlight ? "font-medium text-gold-text" : "text-muted-foreground")}>
+      <dt className="min-w-0 [overflow-wrap:anywhere]">{label}</dt>
       <dd className="min-w-0 text-right tabular-nums [overflow-wrap:anywhere]">{value}</dd>
     </div>
   );

@@ -199,6 +199,15 @@ describe("coupon usage", () => {
     expect(document.querySelectorAll("[data-testid='ledger-row']")).toHaveLength(1);
   });
 
+  it("lists checkout sales beside bookings, linked to their receipts", async () => {
+    const order = { orderId: "fxbill000042" as never, title: "Order #42", receiptNumber: "R-000318", customerName: "Mia Tanaka" };
+    await render(createElement(CouponLedger, { code: "DCNT-SPA-500", redemptions: [row({ _id: "r4" as never, state: "consumed", discount: 500, createdAt: 4, booking: undefined, order })] }));
+    const entry = document.querySelector("[data-testid='ledger-row']")!;
+    expect(entry.textContent).toContain("Order #42R-000318");
+    expect(entry.textContent).toContain("Checkout · Mia Tanaka · v1");
+    expect(entry.querySelector("a")?.getAttribute("href")).toBe("/admin/receipt/fxbill000042");
+  });
+
   it("explains an empty ledger", async () => {
     await render(createElement(CouponLedger, { code: "DCNT-F1-20", redemptions: [] }));
     expect(text()).toContain("No uses yet. Bookings made with DCNT-F1-20 show here");

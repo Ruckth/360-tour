@@ -58,6 +58,8 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const voidUnreceivedOrder = useMutation(api.pos.voidUnreceivedOrder);
     const resumeCustomerMerge = useMutation(api.customers.resumeCustomerMerge);
     const voidOrder = useMutation(api.pos.voidOrder);
+    const applyOrderCoupon = useMutation(api.pos.applyOrderCoupon);
+    const removeOrderCoupon = useMutation(api.pos.removeOrderCoupon);
     const createCustomer = useMutation(api.customers.createCustomer);
     const updateCustomer = useMutation(api.customers.updateCustomer);
     const setCustomerArchived = useMutation(api.customers.setCustomerArchived);
@@ -66,8 +68,9 @@ export const convexCheckoutBackend: CheckoutBackend = {
       () => ({
         discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine,
         linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
+        applyOrderCoupon, removeOrderCoupon,
       }),
-      [discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers],
+      [applyOrderCoupon, removeOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers],
     );
   },
 };

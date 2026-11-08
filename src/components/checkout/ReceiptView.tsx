@@ -12,12 +12,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
-import { changeDue, formatReceiptNumber, lineGross, linePrice } from "convex/lib/billMath";
+import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { PaymentRecord } from "./PaymentRecord";
 import { OrderHistory } from "./OrderHistory";
-import { TENDER_LABELS, TOUCH_TARGETS, receiptBookings, receiptName, receiptText } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, receiptBookings, receiptName, receiptText } from "./checkout-ui";
 
 type Paper = "58" | "80";
 
@@ -96,6 +96,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const customerName = receiptName(view);
   const bookings = receiptBookings(view);
   const change = changeDue(payments);
+  const coupon = couponLabel(view);
+  const staffDiscount = round2(totals.discount - totals.coupon);
 
   async function share() {
     const text = receiptText(view!, business);
@@ -198,10 +200,16 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                 {line.staffName || line.qty > 1 ? (
                   <p className="text-xs opacity-70">{[line.staffName, line.qty > 1 ? `${formatMoney(linePrice(line))} each` : ""].filter(Boolean).join(" · ")}</p>
                 ) : null}
-                {line.net !== lineGross(line) ? (
-                  <div className="flex justify-between text-xs opacity-70">
+                {lineStaffDiscount(line) ? (
+                  <div className="flex justify-between gap-2 text-xs opacity-70">
                     <span>Discount</span>
-                    <span className="tabular-nums">{formatMoney(line.net - lineGross(line))}</span>
+                    <span className="tabular-nums">{formatMoney(-lineStaffDiscount(line))}</span>
+                  </div>
+                ) : null}
+                {line.couponDiscount && lineCouponDiscount(line) ? (
+                  <div className="flex justify-between gap-2 text-xs opacity-70" data-testid="receipt-line-coupon">
+                    <span className="min-w-0">{coupon}</span>
+                    <span className="shrink-0 tabular-nums">{formatMoney(-lineCouponDiscount(line))}</span>
                   </div>
                 ) : null}
               </li>
@@ -209,6 +217,13 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           </ul>
           <hr className="my-3 border-dashed border-border" />
           <dl className="space-y-1">
+            {totals.coupon ? (
+              <>
+                <div className="flex justify-between gap-2"><dt>Subtotal</dt><dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd></div>
+                {staffDiscount ? <div className="flex justify-between gap-2"><dt>Discounts</dt><dd className="tabular-nums">{formatMoney(-staffDiscount)}</dd></div> : null}
+                <div className="flex justify-between gap-2" data-testid="receipt-coupon-total"><dt className="min-w-0">{coupon}</dt><dd className="shrink-0 tabular-nums">{formatMoney(-totals.coupon)}</dd></div>
+              </>
+            ) : null}
             <div className="flex justify-between font-bold"><dt>Total</dt><dd className="tabular-nums">{formatMoney(totals.total)}</dd></div>
             <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="tabular-nums">{formatMoney(totals.vat)}</dd></div>
             {totals.deposit ? <div className="flex justify-between"><dt>Paid before checkout</dt><dd className="tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
@@ -220,6 +235,9 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             ))}
             {change ? <div className="flex justify-between"><dt>Change</dt><dd className="tabular-nums">{formatMoney(change)}</dd></div> : null}
           </dl>
+          {totals.coupon ? (
+            <p className="mt-3 border-t border-dashed border-border pt-2 text-center text-xs">You saved {formatMoney(totals.coupon)} with {view.promotion?.code ?? "a coupon"}</p>
+          ) : null}
           <p className="mt-4 text-center text-xs">Thank you</p>
         </article>
       </div>
