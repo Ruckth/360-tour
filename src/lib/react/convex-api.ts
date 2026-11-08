@@ -46,6 +46,8 @@ export type PublicBooking = {
   _id?: string;
   /** Present once bookings.getById returns it; read it with bookingPromotion() from lib/booking/coupon. */
   promotion?: PublicBookingPromotion;
+  /** Staff set a custom price; `promotion` is then omitted and the total is the agreed price. */
+  customPrice?: boolean;
   checkIn?: string;
   checkOut?: string;
   guests?: number;

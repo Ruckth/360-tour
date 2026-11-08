@@ -43,6 +43,7 @@ import {
   couponCodeToSend,
   couponFromParam,
   couponPhase,
+  couponCoversWholeStay,
   couponUnavailableError,
   guestErrorText,
   stayPrice,
@@ -501,7 +502,11 @@ export function BookingFunnel({
       if (refused && couponSent) {
         // Nothing was booked. Drop the code so the summary re-quotes at the direct price, and
         // let the guest see the new total before continuing.
-        const detail = refused.problem ? couponCopy.problemText(refused.problem) : refused.message ?? couponT("unavailableFallback");
+        const detail = couponCoversWholeStay(refused)
+          ? couponT("coversWholeStay")
+          : refused.problem
+            ? couponCopy.problemText(refused.problem)
+            : refused.message ?? couponT("unavailableFallback");
         setCouponNotice({ kind: "ran_out", code: couponSent, detail: detail.replace(/[.。]\s*$/, "") });
         setCouponCode(null);
         setCouponDraft("");

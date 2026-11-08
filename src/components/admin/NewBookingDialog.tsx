@@ -25,7 +25,7 @@ import { isPossiblePhoneNumber } from "libphonenumber-js/min";
 import { normalizeGuestPhone } from "@/lib/booking/phone";
 import { useAdminBookingDates } from "./useAdminBookingDates";
 import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
-import { couponUnavailableError } from "@/lib/booking/coupon";
+import { couponCoversWholeStay, couponUnavailableError } from "@/lib/booking/coupon";
 import { marketingErrorText } from "./marketing/marketing-format";
 import { QuoteVerdictBox } from "./marketing/TestQuotePanel";
 import { displayDate, newAttemptKey, notifyDefault, parseAmount, serverTodayIso, type AdminProperty } from "./admin-bookings-shared";
@@ -160,8 +160,13 @@ export function NewBookingDialog({
       onCreated(id);
     } catch (err) {
       // Everything entered stays, so Create booking can simply be pressed again.
-      if (couponToSend && couponUnavailableError(err)) {
-        setCouponError(marketingErrorText(err, "This code can’t be used now. Clear it to book at the villa rate."));
+      const refused = couponToSend ? couponUnavailableError(err) : null;
+      if (couponToSend && refused) {
+        setCouponError(
+          couponCoversWholeStay(refused)
+            ? `${couponToSend} covers the whole stay, so it can’t be used on a booking. Clear it, or set a custom price.`
+            : marketingErrorText(err, "This code can’t be used now. Clear it to book at the villa rate."),
+        );
         coupon.refresh();
       } else {
         setError(marketingErrorText(err, "Could not create the booking."));

@@ -269,6 +269,8 @@
     "summaryPending": "{code} · 选择日期后查看价格",
     "stayPrice": "住宿价格",
     "youSaved": "使用 {code} 节省了 {amount}",
+    "agreedPrice": "约定价格",
+    "coversWholeStay": "此优惠码可抵扣整个住宿费用，因此无法在线预订。请联系我们",
     "totalChanged": "您的总价现在为 {total}，与您确认时的价格不同。请在付款前核对。",
     "problem": {
       "notFound": "找不到该优惠码，请检查后重试",

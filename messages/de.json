@@ -269,6 +269,8 @@
     "summaryPending": "{code} · wählen Sie Daten, um Ihren Preis zu sehen",
     "stayPrice": "Aufenthaltspreis",
     "youSaved": "Sie haben mit {code} {amount} gespart",
+    "agreedPrice": "Vereinbarter Preis",
+    "coversWholeStay": "Dieser Code deckt den gesamten Aufenthalt ab und kann daher nicht online gebucht werden. Bitte kontaktieren Sie uns",
     "totalChanged": "Ihr Gesamtbetrag ist jetzt {total} und weicht vom geprüften Preis ab. Bitte prüfen Sie ihn vor der Zahlung.",
     "problem": {
       "notFound": "Wir haben diesen Code nicht gefunden. Prüfen Sie die Buchstaben und versuchen Sie es erneut",

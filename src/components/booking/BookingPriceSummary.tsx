@@ -20,6 +20,7 @@ export function PriceLines({
   subtotal,
   lines,
   total,
+  totalLabel,
   note,
   className,
   totalClassName,
@@ -30,6 +31,8 @@ export function PriceLines({
   subtotal: number;
   lines: PriceLine[];
   total: number;
+  /** Replaces "Total", e.g. "Agreed price" for a custom price. */
+  totalLabel?: string;
   /** One line about a code that isn't saving anything ("DCNT-F1-20 not used · …"). */
   note?: string | null;
   className?: string;
@@ -72,7 +75,7 @@ export function PriceLines({
           totalClassName,
         )}
       >
-        <span>{t("total")}</span>
+        <span>{totalLabel ?? t("total")}</span>
         <span data-testid="price-total" className="tabular-nums">{money(total)}</span>
       </div>
     </div>
