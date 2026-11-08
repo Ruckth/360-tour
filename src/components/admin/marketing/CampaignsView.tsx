@@ -3,7 +3,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CircleStop, Megaphone, Pause, Pencil, Play, Plus, Send, Undo2 } from "lucide-react";
 import Link from "next/link";
-import { useId, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -11,13 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { errorText } from "@/lib/staff-bookings";
 import { useConfirm } from "../ConfirmDialog";
 import { SegmentedTabs } from "../SegmentedTabs";
 import { StatusBadge } from "../StatusBadge";
 import { EmptyState, SearchBox, SkeletonRows } from "../admin-bulk";
 import { CouponChip, FieldError, FieldHint, NoticeBar, NumberField, RowMenu, SlugChip, nextEditorKey, parseWhole, useNotice, wholeText, type RowAction } from "./MarketingBits";
-import { CAMPAIGN_STATUS, COUPON_STATE, LINK_STATUS, benefitLabel, couponState, formatRange, thb } from "./marketing-format";
+import { CAMPAIGN_STATUS, COUPON_STATE, LINK_STATUS, benefitLabel, countLabel, couponState, formatRange, marketingErrorText, thb } from "./marketing-format";
 import type { CampaignRow, CampaignStatus, CouponRow, LinkRow, MarketingActions } from "./types";
 
 type Tab = "all" | CampaignStatus;
@@ -103,8 +102,22 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
     ...(archivedCount || tab === "archived" ? [{ value: "archived" as const, label: "Archived", n: archivedCount }] : []),
   ];
 
+  // Whether the open editor has unsaved edits; closing the sheet then asks first.
+  const editorDirty = useRef(false);
+  const setEditorDirty = useCallback((dirty: boolean) => {
+    editorDirty.current = dirty;
+  }, []);
   const openNew = (preset?: (typeof PRESETS)[number]) => setEditing({ preset, key: nextEditorKey() });
   const openEdit = (campaign: CampaignRow) => setEditing({ campaign, key: nextEditorKey() });
+  async function closeEditor() {
+    if (
+      editorDirty.current &&
+      !(await confirm({ title: "Discard your changes?", description: "Edits that aren’t saved are lost.", confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
+    )
+      return;
+    editorDirty.current = false;
+    setEditing(null);
+  }
 
   async function changeStatus(campaign: CampaignRow, status: CampaignStatus, destructive = false) {
     const copy = STATUS_COPY[status](campaign.name);
@@ -115,7 +128,7 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
       show(copy.done);
       return true;
     } catch (error) {
-      show(errorText(error, "Couldn’t change the campaign."), "danger");
+      show(marketingErrorText(error, "Couldn’t change the campaign."), "danger");
       return false;
     } finally {
       setPending(null);
@@ -268,12 +281,12 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
                             <td className="px-4 py-3">
                               <StatusBadge {...CAMPAIGN_STATUS[campaign.status]} />
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums">{campaign.linkCount}</td>
-                            <td className="px-4 py-3 text-right tabular-nums">{campaign.couponCount}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{countLabel(campaign.linkCount, campaign.countsCapped)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{countLabel(campaign.couponCount, campaign.countsCapped)}</td>
                             <td className="hidden whitespace-nowrap px-4 py-3 text-right tabular-nums lg:table-cell">
                               {campaign.budget !== undefined ? thb(campaign.budget) : <span className="text-muted-foreground">—</span>}
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold tabular-nums">{campaign.opens.toLocaleString("en-US")}</td>
+                            <td className="px-4 py-3 text-right font-semibold tabular-nums">{countLabel(campaign.opens, campaign.countsCapped)}</td>
                             <td className="py-2 pe-3 text-right">
                               <RowMenu label={`Actions for ${campaign.name}`} actions={menu(campaign)} className="size-9" />
                             </td>
@@ -301,15 +314,15 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
                           <span className="grid grid-cols-3 gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs">
                             <span>
                               <span className="block text-muted-foreground">Links</span>
-                              <span className="font-semibold tabular-nums text-foreground">{campaign.linkCount}</span>
+                              <span className="font-semibold tabular-nums text-foreground">{countLabel(campaign.linkCount, campaign.countsCapped)}</span>
                             </span>
                             <span>
                               <span className="block text-muted-foreground">Coupons</span>
-                              <span className="font-semibold tabular-nums text-foreground">{campaign.couponCount}</span>
+                              <span className="font-semibold tabular-nums text-foreground">{countLabel(campaign.couponCount, campaign.countsCapped)}</span>
                             </span>
                             <span>
                               <span className="block text-muted-foreground">Opens</span>
-                              <span className="font-semibold tabular-nums text-foreground">{campaign.opens.toLocaleString("en-US")}</span>
+                              <span className="font-semibold tabular-nums text-foreground">{countLabel(campaign.opens, campaign.countsCapped)}</span>
                             </span>
                           </span>
                         </button>
@@ -327,7 +340,7 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
         )}
       </section>
 
-      <Sheet open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+      <Sheet open={editing !== null} onOpenChange={(open) => !open && void closeEditor()}>
         <SheetContent side="right" className="w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-xl">
           <SheetHeader className="border-b border-border px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
             <div className="flex flex-wrap items-center gap-2">
@@ -351,10 +364,12 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
               actions={actions}
               onStatus={(campaign, status, destructive) => changeStatus(campaign, status, destructive)}
               onDone={(message) => {
+                editorDirty.current = false;
                 setEditing(null);
                 show(message);
               }}
-              onCancel={() => setEditing(null)}
+              onCancel={() => void closeEditor()}
+              onDirtyChange={setEditorDirty}
             />
           ) : null}
         </SheetContent>
@@ -379,6 +394,7 @@ function CampaignEditor({
   onStatus,
   onDone,
   onCancel,
+  onDirtyChange,
 }: {
   campaign?: CampaignRow;
   preset?: (typeof PRESETS)[number];
@@ -393,9 +409,11 @@ function CampaignEditor({
   onStatus: (campaign: CampaignRow, status: CampaignStatus, destructive?: boolean) => Promise<boolean>;
   onDone: (message: string) => void;
   onCancel: () => void;
+  /** Reports unsaved edits, so the sheet can ask before closing. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const id = useId();
-  const [form, setForm] = useState<Form>(() => ({
+  const [initial] = useState<Form>(() => ({
     name: campaign?.name ?? preset?.name ?? "",
     source: campaign?.source ?? preset?.source ?? "",
     medium: campaign?.medium ?? preset?.medium ?? "",
@@ -404,6 +422,12 @@ function CampaignEditor({
     budget: wholeText(campaign?.budget),
     notes: campaign?.notes ?? "",
   }));
+  const [form, setForm] = useState<Form>(initial);
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -443,7 +467,7 @@ function CampaignEditor({
       });
       onDone(campaign ? `Saved ${form.name.trim()}` : `Created ${form.name.trim()} as a draft`);
     } catch (error) {
-      setSaveError(errorText(error, "Couldn’t save the campaign."));
+      setSaveError(marketingErrorText(error, "Couldn’t save the campaign."));
       setSaving(false);
     }
   }
@@ -563,7 +587,7 @@ function CampaignEditor({
               <section aria-labelledby={`${id}-links`} className="grid gap-2">
                 <div className="flex items-center gap-2">
                   <h3 id={`${id}-links`} className="flex-1 text-base font-semibold text-foreground">
-                    Links
+                    Links <span className="text-sm font-normal tabular-nums text-muted-foreground">{countLabel(campaign.linkCount, campaign.countsCapped)}</span>
                   </h3>
                   <Link href={linksHref} className="text-xs font-semibold text-foreground underline-offset-2 hover:underline">
                     Links & QR
@@ -586,7 +610,7 @@ function CampaignEditor({
               </section>
               <section aria-labelledby={`${id}-coupons`} className="grid gap-2">
                 <h3 id={`${id}-coupons`} className="text-base font-semibold text-foreground">
-                  Coupons
+                  Coupons <span className="text-sm font-normal tabular-nums text-muted-foreground">{countLabel(campaign.couponCount, campaign.countsCapped)}</span>
                 </h3>
                 {campaignCoupons.length ? (
                   <ul className="divide-y divide-border rounded-lg border border-border">

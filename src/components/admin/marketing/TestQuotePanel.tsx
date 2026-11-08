@@ -8,17 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
 import { TONES } from "../status-tones";
 import { Callout, FieldError, NumberField, nextEditorKey, parseWhole } from "./MarketingBits";
 import { formatDay, nightsBetween } from "./format-basics";
-import { quoteVerdict, thb } from "./marketing-format";
+import { directOfferApplied, marketingErrorText, quoteVerdict, thb } from "./marketing-format";
 import type { MarketingActions, MarketingProperty, OfferResult } from "./types";
 
 type ServiceLine = { key: number; label: string; amount: string };
-type Tested = { key: number; label: string; result: OfferResult };
+/** A run, with the inputs and the saved coupon (code and version) it was run against. */
+type Tested = { key: number; label: string; checkIn: string; code: string; version?: number; result: OfferResult };
 
 const addDays = (iso: string, days: number) => {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -58,6 +58,10 @@ export function TestQuotePanel({
   const [result, setResult] = useState<Tested | null>(null);
   const [log, setLog] = useState<Tested[]>([]);
 
+  // Results are kept, but a run against an older saved version or code no longer describes this coupon.
+  const isStale = (tested: Tested) => tested.code !== code || tested.version !== savedVersion;
+  const versionName = (tested: Tested) => `${tested.code}${tested.version ? ` v${tested.version}` : ""}`;
+
   const nights = nightsBetween(checkIn, checkOut);
   const villaInfo = properties.find((property) => property.slug === villa);
   const serviceErrors = services.map((line) => {
@@ -85,11 +89,11 @@ export function TestQuotePanel({
     try {
       const quote = await testQuote({ code, propertySlug: villa, checkIn, checkOut, services: lines.length ? lines : undefined });
       const label = `${villaInfo?.name ?? villa} · ${nights} ${nights === 1 ? "night" : "nights"}${lines.length ? ` + ${lines.length} service${lines.length === 1 ? "" : "s"}` : ""}`;
-      const tested = { key: nextEditorKey(), label, result: quote };
+      const tested: Tested = { key: nextEditorKey(), label, checkIn, code, version: savedVersion, result: quote };
       setResult(tested);
       setLog((current) => [tested, ...current].slice(0, 5));
     } catch (err) {
-      setError(errorText(err, "Couldn’t run the quote."));
+      setError(marketingErrorText(err, "Couldn’t run the quote."));
     } finally {
       setRunning(false);
     }
@@ -205,7 +209,15 @@ export function TestQuotePanel({
           </p>
         ) : null}
 
-        <div aria-live="polite">{result && code ? <QuoteResult code={code} tested={result} checkIn={checkIn} /> : null}</div>
+        <div aria-live="polite" className="grid gap-3">
+          {result && isStale(result) ? (
+            <Callout tone="warning">
+              Tested on {versionName(result)}. The coupon has changed since; run the quote again to see {code}
+              {savedVersion ? ` v${savedVersion}` : ""}.
+            </Callout>
+          ) : null}
+          {result ? <QuoteResult tested={result} stale={isStale(result)} /> : null}
+        </div>
 
         {log.length > 1 ? (
           <div className="border-t border-border pt-3">
@@ -215,7 +227,10 @@ export function TestQuotePanel({
                 const verdict = quoteVerdict(item.result);
                 return (
                   <li key={item.key} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    <span className={cn("min-w-0 flex-1 truncate", isStale(item) && "text-muted-foreground")}>
+                      {item.label}
+                      {isStale(item) ? ` · ${versionName(item)}` : ""}
+                    </span>
                     <StatusBadge tone={verdict.tone} label={verdict.title} />
                     <span className="w-20 text-right font-semibold tabular-nums">{thb(item.result.total)}</span>
                   </li>
@@ -245,13 +260,14 @@ function AppliedTag() {
   );
 }
 
-function QuoteResult({ code, tested, checkIn }: { code: string; tested: Tested; checkIn: string }) {
-  const { result, label } = tested;
+function QuoteResult({ tested, stale }: { tested: Tested; stale: boolean }) {
+  const { result, label, checkIn, code } = tested;
   const verdict = quoteVerdict(result);
   const couponWins = result.applied === "coupon";
-  const directWins = result.applied === "direct";
+  // A services coupon stacks with the direct offer, so both can be applied at once.
+  const directWins = directOfferApplied(result);
   return (
-    <div className="grid gap-3">
+    <div className={cn("grid gap-3", stale && "opacity-60")}>
       <div className="rounded-lg border border-border">
         <dl className="divide-y divide-border text-sm">
           <div className="flex items-start justify-between gap-3 px-3 py-2">

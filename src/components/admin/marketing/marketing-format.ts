@@ -1,4 +1,6 @@
+import { ConvexError } from "convex/values";
 import { localeLabels, type Locale } from "@/i18n/routing";
+import { errorText } from "@/lib/staff-bookings";
 import type { StatusMeta } from "../status-tones";
 import type {
   CampaignStatus,
@@ -9,6 +11,7 @@ import type {
   CouponVersion,
   LinkDestination,
   LinkStatus,
+  MarketingProperty,
   OfferResult,
   SlugCheck,
 } from "./types";
@@ -179,6 +182,42 @@ export function slugCheckMessage(check: SlugCheck, takenBy?: string): string | n
     case "taken":
       return takenBy ? `Already used by ${takenBy}` : "Already used by another link";
   }
+}
+
+/**
+ * The message to show for a failed marketing call. convex/marketing.ts throws
+ * ConvexError({ code, message }) for anything an admin can act on; production
+ * redacts plain Error messages, so those fall back to the dev text or `fallback`.
+ */
+export function marketingErrorText(error: unknown, fallback: string): string {
+  if (error instanceof ConvexError && typeof error.data?.message === "string") return error.data.message as string;
+  return errorText(error, fallback);
+}
+
+/** "500+" when a count was read from a capped list, so it's only a lower bound. */
+export function countLabel(count: number, capped = false) {
+  return `${count.toLocaleString("en-US")}${capped ? "+" : ""}`;
+}
+
+/** True when the direct-booking discount is part of the applied discount (alone, or stacked with a services coupon). */
+export function directOfferApplied(result: Pick<OfferResult, "applied" | "discount" | "couponDiscount" | "directDiscount">) {
+  if (result.directDiscount <= 0) return false;
+  return result.applied === "direct" || (result.applied === "coupon" && result.discount > result.couponDiscount);
+}
+
+/**
+ * The direct-booking percent a QR card may promise. A link to one villa (its page, or booking with it
+ * preselected) uses that villa's percent. Any other link can land on any public villa, so it promises
+ * only what every one of them gives: the lowest percent across active villas.
+ */
+export function qrDirectPercent(
+  destination: LinkDestination,
+  properties: readonly Pick<MarketingProperty, "slug" | "status" | "directDiscountPercent">[],
+) {
+  const active = properties.filter((property) => property.status === "active");
+  const slug = destination.kind === "villa" || destination.kind === "booking" ? destination.propertySlug : undefined;
+  if (slug) return Math.max(0, active.find((property) => property.slug === slug)?.directDiscountPercent ?? 0);
+  return active.length ? Math.max(0, Math.min(...active.map((property) => property.directDiscountPercent))) : 0;
 }
 
 export type QuoteVerdict = { tone: "success" | "warning" | "info" | "neutral"; title: string; detail: string };

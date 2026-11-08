@@ -2,12 +2,11 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CopyPlus, Facebook, Instagram, Link2, MapPin, MessageCircle, Pause, Pencil, Play, Plus, QrCode, Send, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { errorText } from "@/lib/staff-bookings";
 import { useConfirm } from "../ConfirmDialog";
 import { SegmentedTabs } from "../SegmentedTabs";
 import { StatusBadge } from "../StatusBadge";
@@ -15,7 +14,7 @@ import { EmptyState, SearchBox } from "../admin-bulk";
 import { LinkEditor, type LinkPreset } from "./LinkEditor";
 import { Callout, CopyButton, CouponChip, NoticeBar, RowMenu, SlugChip, nextEditorKey, useNotice, type RowAction } from "./MarketingBits";
 import { QrCardDialog } from "./QrCardDialog";
-import { COUPON_STATE, LINK_STATUS, benefitLabel, couponState, destinationLabel, shortUrl } from "./marketing-format";
+import { COUPON_STATE, LINK_STATUS, benefitLabel, couponState, destinationLabel, marketingErrorText, shortUrl } from "./marketing-format";
 import type { CampaignRow, CouponRow, LinkRow, LinkStatus, MarketingActions, MarketingProperty } from "./types";
 
 type Tab = "all" | LinkStatus;
@@ -91,8 +90,24 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
     setOfferIssuesOnly(false);
   }
 
+  // Whether the open editor has unsaved edits, reported by LinkEditor; closing then asks first.
+  const editorDirty = useRef(false);
+  const setEditorDirty = useCallback((dirty: boolean) => {
+    editorDirty.current = dirty;
+  }, []);
   const openNew = (preset?: LinkPreset) => setEditing({ preset, key: nextEditorKey() });
   const openEdit = (link: LinkRow) => setEditing({ link, key: nextEditorKey() });
+  async function closeEditor() {
+    if (
+      editorDirty.current &&
+      !(await confirm({ title: "Discard your changes?", description: "Edits that aren’t saved are lost.", confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
+    )
+      return;
+    editorDirty.current = false;
+    setEditing(null);
+  }
+  // The open QR card follows the live row, so publishing from it unlocks the downloads.
+  const qrCurrent = qrLink ? (all.find((link) => link._id === qrLink._id) ?? qrLink) : null;
 
   async function changeStatus(link: LinkRow, status: LinkStatus) {
     const url = shortUrl(origin, link.shortUrlPath).display;
@@ -129,7 +144,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
       await actions.setLinkStatus({ linkId: link._id, status });
       show(text.done);
     } catch (error) {
-      show(errorText(error, "Couldn’t change the link."), "danger");
+      show(marketingErrorText(error, "Couldn’t change the link."), "danger");
     } finally {
       setPending(null);
     }
@@ -156,8 +171,10 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
         <FirstRun origin={origin} onNew={openNew} />
         <LinkSheet
           editing={editing}
-          onClose={() => setEditing(null)}
+          onClose={() => void closeEditor()}
+          onDirtyChange={setEditorDirty}
           onDone={(message) => {
+            editorDirty.current = false;
             setEditing(null);
             show(message);
           }}
@@ -426,8 +443,10 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
 
       <LinkSheet
         editing={editing}
-        onClose={() => setEditing(null)}
+        onClose={() => void closeEditor()}
+        onDirtyChange={setEditorDirty}
         onDone={(message) => {
+          editorDirty.current = false;
           setEditing(null);
           show(message);
         }}
@@ -441,7 +460,16 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
         campaignsHref={campaignsHref}
         actions={actions}
       />
-      <QrCardDialog link={qrLink} coupons={coupons ?? []} properties={properties ?? []} origin={origin} brand={brand} today={today} onClose={() => setQrLink(null)} />
+      <QrCardDialog
+        link={qrCurrent}
+        coupons={coupons ?? []}
+        properties={properties ?? []}
+        origin={origin}
+        brand={brand}
+        today={today}
+        onClose={() => setQrLink(null)}
+        onPublish={(link) => void changeStatus(link, "active")}
+      />
     </div>
   );
 }
@@ -449,6 +477,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
 function LinkSheet({
   editing,
   onClose,
+  onDirtyChange,
   onDone,
   onDuplicate,
   links,
@@ -462,6 +491,7 @@ function LinkSheet({
 }: {
   editing: Editing;
   onClose: () => void;
+  onDirtyChange: (dirty: boolean) => void;
   onDone: (message: string) => void;
   onDuplicate: (link: LinkRow) => void;
   links: LinkRow[];
@@ -498,6 +528,7 @@ function LinkSheet({
             actions={actions}
             onDone={onDone}
             onCancel={onClose}
+            onDirtyChange={onDirtyChange}
             onDuplicate={onDuplicate}
           />
         ) : null}

@@ -1,13 +1,13 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { Download, Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { Callout, CouponChip } from "./MarketingBits";
-import { COUPON_STATE, couponState, generatedTerms, offerExpiry, offerHeadline, shortUrl } from "./marketing-format";
+import { COUPON_STATE, couponState, generatedTerms, offerExpiry, offerHeadline, qrDirectPercent, shortUrl } from "./marketing-format";
 import { QR_CARD_FORMATS, buildQrCard, documentFonts, drawQrCard, qrCardSvg, type QrCardContent, type QrCardFormat } from "./qr-card";
 import type { CouponRow, LinkRow, MarketingProperty } from "./types";
 
@@ -73,6 +73,7 @@ export function QrCardDialog({
   brand,
   today,
   onClose,
+  onPublish,
 }: {
   link: LinkRow | null;
   coupons: CouponRow[];
@@ -81,11 +82,13 @@ export function QrCardDialog({
   brand: string;
   today: string;
   onClose: () => void;
+  /** Publishes a draft link from the card, so it can be downloaded. */
+  onPublish?: (link: LinkRow) => void;
 }) {
   return (
     <Dialog open={link !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-w-5xl flex-col gap-0 overflow-hidden p-0">
-        {link ? <QrCardBody link={link} coupons={coupons} properties={properties} origin={origin} brand={brand} today={today} /> : null}
+        {link ? <QrCardBody link={link} coupons={coupons} properties={properties} origin={origin} brand={brand} today={today} onPublish={onPublish} /> : null}
       </DialogContent>
     </Dialog>
   );
@@ -98,6 +101,7 @@ function QrCardBody({
   origin,
   brand,
   today,
+  onPublish,
 }: {
   link: LinkRow;
   coupons: CouponRow[];
@@ -105,13 +109,17 @@ function QrCardBody({
   origin: string;
   brand: string;
   today: string;
+  onPublish?: (link: LinkRow) => void;
 }) {
   const [format, setFormat] = useState<QrCardFormat>("square");
   const [busy, setBusy] = useState<"png" | "svg" | null>(null);
   const [error, setError] = useState("");
   const coupon = coupons.find((item) => item._id === link.couponId);
   const state = coupon ? couponState(coupon, today) : null;
-  const directPercent = Math.max(0, ...properties.filter((property) => property.status === "active").map((property) => property.directDiscountPercent));
+  // The destination villa's own percent, or what every public villa gives (see qrDirectPercent).
+  const directPercent = qrDirectPercent(link.destination, properties);
+  // A draft isn't resolved yet: scanning it shows "page not found", so it can't be downloaded.
+  const draft = link.status === "draft";
   const content = qrCardContent({ link, coupon, couponLive: state === "active", origin, brand, directPercent });
   const spec = buildQrCard(content, format);
   const svg = qrCardSvg(spec);
@@ -193,9 +201,20 @@ function QrCardBody({
               </div>
             </dl>
 
-            {link.status === "draft" ? (
-              <Callout tone="warning" title="This link is a draft">
-                Until it’s published, the QR opens the site without this offer.
+            {draft ? (
+              <Callout
+                tone="warning"
+                title="This link is a draft"
+                action={
+                  onPublish ? (
+                    <Button type="button" size="sm" variant="outline" onClick={() => onPublish(link)}>
+                      <Send aria-hidden className="size-4" />
+                      Publish
+                    </Button>
+                  ) : null
+                }
+              >
+                Scanning it shows “page not found” until you publish it, so downloads are off for now.
               </Callout>
             ) : link.status === "paused" || link.status === "archived" ? (
               <Callout tone="warning" title={`This link is ${link.status}`}>
@@ -213,11 +232,11 @@ function QrCardBody({
               </p>
             ) : null}
             <div className="grid grid-cols-2 gap-2">
-              <Button type="button" onClick={() => void savePng()} disabled={busy !== null}>
+              <Button type="button" onClick={() => void savePng()} disabled={busy !== null || draft}>
                 {busy === "png" ? <Spinner label="Making PNG" className="text-current" /> : <Download aria-hidden className="size-4" />}
                 PNG
               </Button>
-              <Button type="button" variant="outline" onClick={saveSvg} disabled={busy !== null}>
+              <Button type="button" variant="outline" onClick={saveSvg} disabled={busy !== null || draft}>
                 <Download aria-hidden className="size-4" />
                 SVG
               </Button>
