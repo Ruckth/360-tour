@@ -1,3 +1,4 @@
+import { marketingCaptureValidator } from './lib/marketingAttribution';
 import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
@@ -104,7 +105,9 @@ export const create = mutation({
 		checkOut: v.string(),
 		guests: v.number(),
 		/** Release 2: optional coupon. Throws ConvexError { code: 'coupon_unavailable', message, problem? } when it can't be used now. */
-		couponCode: v.optional(v.string())
+		couponCode: v.optional(v.string()),
+		/** Release 3a: the link this tab arrived through and, after consent, the visitor key. Untrusted. */
+		marketing: v.optional(marketingCaptureValidator)
 	},
 	handler: async (ctx, args) => {
 		assertValidEmail(args.guestEmail);

@@ -1,3 +1,4 @@
+import { marketingCaptureValidator } from './lib/marketingAttribution';
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
@@ -48,6 +49,8 @@ export const createSession = mutation({
 		visitorId: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
+		/** Release 3a: stored on the session and resolved when the chat books. Untrusted. */
+		marketing: v.optional(marketingCaptureValidator),
 		userAgent: v.optional(v.string()),
 		timeZone: v.optional(v.string()),
 		browserLanguage: v.optional(v.string()),

@@ -1,3 +1,4 @@
+import type { MarketingCapture } from './marketingAttribution';
 import { ConvexError } from 'convex/values';
 import { evaluateOffer, normalizeCouponCode } from './offers';
 import { couponUnavailable, couponVersion, holdCouponRedemption } from './couponRedemptions';
@@ -37,6 +38,8 @@ export type BookingInput = StayInput & {
 	archivedVillaReason?: string;
 	/** Release 2: optional coupon code; see holdCouponRedemption. */
 	couponCode?: string;
+	/** Release 3a: untrusted browser capture; resolved by resolveMarketingAttribution. Ignored for admin bookings. */
+	marketing?: MarketingCapture;
 };
 
 /** Server-only policy: callers must authenticate the admin before enabling either relaxation. */

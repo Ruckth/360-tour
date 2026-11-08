@@ -450,6 +450,22 @@ export const recordOpen = mutation({
 	}
 });
 
+/**
+ * Release 3a: starts a consented browser session. Called only after analytics consent, when the tab
+ * has no live session, was idle for SESSION_IDLE_MS, or arrived through a different link.
+ * - `visitorKey`: reused when it is a well-formed key (isVisitorKey); otherwise a new one is minted and returned.
+ * - `slug`: the link this tab arrived through. Any non-draft link counts; unknown or draft slugs are ignored.
+ * - `landingPath` / `referrerHost`: sanitised with cleanLandingPath / cleanReferrerHost before storing.
+ * Rate limited per visitor key and globally; over the limit it returns the key with `sessionId: null`
+ * (never throws for that). Implemented in package B8.
+ */
+export const startSession = mutation({
+	args: { visitorKey: v.optional(v.string()), slug: v.optional(v.string()), landingPath: v.string(), referrerHost: v.optional(v.string()) },
+	handler: async (_ctx, _args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
+		throw new ConvexError({ code: 'not_implemented', message: 'marketing.startSession is implemented in package B8.' });
+	}
+});
+
 /** Guest quote preview. Reserves nothing. */
 export const previewCoupon = query({
 	args: quoteArgs,

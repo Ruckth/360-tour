@@ -11,6 +11,7 @@ import {
 	storedRefundMethod
 } from './lib/financeValidators';
 import { posCouponProblemValidator } from './lib/posCoupons';
+import { marketingAttributionValidator, marketingCaptureValidator } from './lib/marketingAttribution';
 
 export default defineSchema({
  appointmentFeeAttempts: defineTable({
@@ -146,6 +147,8 @@ export default defineSchema({
 			discount: v.number(),
 			redemptionId: v.id('couponRedemptions')
 		})),
+		/** Release 3a: which marketing link brought a web or web-chat booking. Set once at creation; never on admin bookings. */
+		marketingAttribution: v.optional(marketingAttributionValidator),
 		/** Bumped on every staff/system write that goes through lib/bookingMoney; absent = 0. */
 		revision: v.optional(v.number()),
 		/** Who entered it (admin email or `system:<channel>`); absent on legacy rows. */
@@ -610,7 +613,9 @@ export default defineSchema({
 			/** Set when the order is paid. */
 			redemptionId: v.optional(v.id('couponRedemptions')),
 			appliedAt: v.number(),
-			appliedBy: v.string()
+			appliedBy: v.string(),
+			/** Release 3a: set when staff applied the coupon by scanning or pasting a marketing link. Coupon origin only. */
+			viaLinkId: v.optional(v.id('marketingLinks'))
 		})),
 		createdBy: v.string(),
 		createdAt: v.number(),
@@ -1007,6 +1012,8 @@ export default defineSchema({
 		visitorContactHandle: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
+		/** Release 3a: web chat only. The untrusted capture sent at createSession; resolved when the chat books. */
+		marketingCapture: v.optional(marketingCaptureValidator),
 		userAgent: v.optional(v.string()),
 		timeZone: v.optional(v.string()),
 		browserLanguage: v.optional(v.string()),
@@ -1661,6 +1668,20 @@ export default defineSchema({
 		bot: v.boolean(),
 		occurredAt: v.number()
 	}).index('by_link_and_time', ['linkId', 'occurredAt']),
+
+	// Release 3a: one consented browser session (see convex/lib/marketingAttribution.ts). No personal data.
+	marketingSessions: defineTable({
+		/** Server-minted, kept in the browser only after analytics consent. */
+		visitorKey: v.string(),
+		linkId: v.optional(v.id('marketingLinks')),
+		campaignId: v.optional(v.id('marketingCampaigns')),
+		landingPath: v.string(),
+		referrerHost: v.optional(v.string()),
+		startedAt: v.number()
+	})
+		.index('by_visitorKey_and_startedAt', ['visitorKey', 'startedAt'])
+		.index('by_linkId_and_startedAt', ['linkId', 'startedAt'])
+		.index('by_startedAt', ['startedAt']),
 
 	coupons: defineTable({
 		code: v.string(),
