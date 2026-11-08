@@ -332,6 +332,27 @@ describe('display order projection', () => {
 		return { ...context, current, show, view, settle };
 	}
 
+	it('shows coupon savings and line shares, hides invalid coupons and freezes the paid display', async () => {
+		const { admin, current, show, settle, view } = await showing();
+		const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
+		const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 1200, currency: 'THB', staffIds: [staffId] });
+		const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 500 }, scope: 'services', minEligibleSubtotal: 1500 });
+		await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
+		const { lineId } = await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
+		await admin.mutation(api.pos.overrideLinePrice, { lineId, price: 600, note: 'Foot spa' });
+		await admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA-500' });
+		await show(orderId);
+		expect(await current()).toMatchObject({ state: 'order', coupon: { code: 'SPA-500', saving: 500 }, total: 1300, due: 1300, lines: [{ couponDiscount: 333, total: 867 }, { couponDiscount: 167, total: 433 }] });
+		await admin.mutation(api.pos.removeLine, { lineId });
+		expect(await current()).toMatchObject({ state: 'order', coupon: null, total: 1200, lines: [{ couponDiscount: 0 }] });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
+		expect((await view(orderId)).promotion?.problem).toBeNull();
+		await settle(orderId);
+		await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
+		expect(await current()).toMatchObject({ state: 'paid', coupon: { code: 'SPA-500', saving: 500 }, total: 1900, amountPaid: 1900 });
+	});
+
 	it('shows a draft with items, with the customer first name only and no other fields', async () => {
 		const { admin, current, show } = await showing();
 		const customerId = await admin.mutation(api.customers.createCustomer, { name: '  Anna Maria Lee ', phone: '+66 81 234 5678', email: 'anna@example.com', notes: 'VIP, allergic to nuts' });
@@ -342,8 +363,8 @@ describe('display order projection', () => {
 		const state = await current();
 		expect(state).toEqual({
 			state: 'order', businessName: 'Auralis Cove Retreat', customerFirstName: 'Anna', orderNumber: 1, currency: 'THB',
-			lines: [{ name: 'Coconut', detail: null, qty: 1, unitPrice: 80, price: 80, discount: 0, total: 80, deposit: 0 }],
-			subtotal: 80, discount: 0, deposit: 0, total: 80, vat: 5.23, due: 80, activeAt: Date.now()
+			lines: [{ name: 'Coconut', detail: null, qty: 1, unitPrice: 80, price: 80, discount: 0, couponDiscount: 0, total: 80, deposit: 0 }],
+			subtotal: 80, discount: 0, coupon: null, deposit: 0, total: 80, vat: 5.23, due: 80, activeAt: Date.now()
 		});
 		const json = JSON.stringify(state);
 		for (const secret of ['Maria', 'Lee', '+66', 'anna@example.com', 'VIP', 'admin@example.com', HERE, orderId, customerId]) expect(json).not.toContain(secret);
@@ -380,7 +401,7 @@ describe('display order projection', () => {
 		});
 		expect(state.deposit).toBe(10000);
 		expect(state.lines.map((line) => line.total)).toEqual(checkout.lines.map((line) => line.net));
-		expect(state.lines.find((line) => line.name === 'Juice')).toEqual({ name: 'Juice', detail: null, qty: 2, unitPrice: 120, price: 99.5, discount: 10, total: 189, deposit: 0 });
+		expect(state.lines.find((line) => line.name === 'Juice')).toEqual({ name: 'Juice', detail: null, qty: 2, unitPrice: 120, price: 99.5, discount: 10, couponDiscount: 0, total: 189, deposit: 0 });
 		expect(state.lines[0]).toMatchObject({ deposit: 10000, detail: expect.any(String) });
 		expect(state.customerFirstName).toBeNull();
 	});
@@ -443,7 +464,7 @@ describe('display order projection', () => {
 		const state = await current();
 		expect(state).toEqual({
 			state: 'paid', businessName: 'Auralis Cove Retreat', customerFirstName: 'Somchai', orderNumber: 1, currency: 'THB',
-			total: 2000, vat: 130.84, amountPaid: 2000, receiptNumber: 1, paidAt: Date.now()
+			total: 2000, vat: 130.84, amountPaid: 2000, coupon: null, receiptNumber: 1, paidAt: Date.now()
 		});
 		expect(JSON.stringify(state)).not.toMatch(/Jaidee|\+66|cash|admin@example\.com/);
 	});

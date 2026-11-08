@@ -364,3 +364,24 @@ describe('marketing destination and pricing follow-up regressions', () => {
       .rejects.toThrow('invalid_accommodation_amount');
   });
 });
+
+describe('POS coupon ledger', () => {
+  it('lists consumed checkout uses with the order title, formatted receipt and frozen customer name', async () => {
+    const { t, admin } = await setup();
+    const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 500 }, scope: 'services' });
+    await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
+    const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 1800, currency: 'THB', staffIds: [staffId] });
+    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
+    const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Anna Lee' });
+    await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
+    await admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA-500' });
+    const view = (await admin.query(api.pos.getOrder, { orderId }))!;
+    await admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: 'ledger-pos-pay-001', expectedRevision: view.order.revision, expectedDue: 1300, expectedCustomerRevision: 0, tenders: [{ method: 'cash', amount: 1300 }] });
+    const detail = await admin.query(api.marketing.getCoupon, { couponId });
+    expect(detail?.redemptions).toMatchObject([{ state: 'consumed', discount: 500, order: { orderId, title: 'Order #1', receiptNumber: 'R-000001', customerName: 'Anna Lee' } }]);
+    expect(detail?.redemptions[0].booking).toBeUndefined();
+    await t.run(ctx => ctx.db.patch(customerId, { name: 'Changed later' }));
+    expect((await admin.query(api.marketing.getCoupon, { couponId }))?.redemptions[0].order?.customerName).toBe('Anna Lee');
+  });
+});
