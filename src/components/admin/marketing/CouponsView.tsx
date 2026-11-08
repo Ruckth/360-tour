@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SegmentedTabs } from "../SegmentedTabs";
 import { StatusBadge } from "../StatusBadge";
 import { EmptyState, SearchBox, SkeletonRows } from "../admin-bulk";
-import { UsageBar } from "./MarketingBits";
+import { FirstRunEmpty, UsageBar, countTabs } from "./MarketingBits";
 import { COUPON_STATE, benefitLabel, couponState, formatRange, scopeLabel, thb, usageLabel, type CouponState } from "./marketing-format";
 import type { CampaignRow, CouponRow, MarketingProperty } from "./types";
 
@@ -18,7 +18,7 @@ const TAB_ORDER: CouponState[] = ["active", "scheduled", "sold_out", "budget_use
 const ALL = "all";
 const NONE = "none";
 
-export type CouponsViewProps = {
+type CouponsViewProps = {
   coupons?: CouponRow[];
   campaigns?: CampaignRow[];
   properties?: MarketingProperty[];
@@ -82,21 +82,22 @@ export function CouponsView({ coupons, campaigns, properties, today, couponHref,
         {coupons === undefined ? (
           <SkeletonRows label="Loading coupons" />
         ) : all.length === 0 ? (
-          <div className="grid justify-items-center gap-3 px-4 py-14 text-center">
-            <span className="grid size-12 place-items-center rounded-full bg-gold/15 text-gold-text">
-              <TicketPercent aria-hidden className="size-5" />
-            </span>
-            <p className="text-base font-semibold text-foreground">No coupons yet</p>
-            <p className="max-w-md text-sm leading-6 text-muted-foreground">
-              A coupon is a code guests type at checkout, like <span className="font-mono font-semibold text-foreground">DCNT-F1-20</span>. The rules
-              you save decide the discount; the code is only a label.
-            </p>
+          <FirstRunEmpty
+            icon={TicketPercent}
+            title="No coupons yet"
+            description={
+              <>
+                A coupon is a code guests type at checkout, like <span className="font-mono font-semibold text-foreground">DCNT-F1-20</span>. The rules you
+                save decide the discount; the code is only a label.
+              </>
+            }
+          >
             <ButtonLink href={newCouponHref} size="sm">
               <Plus aria-hidden className="size-4" />
               New coupon
             </ButtonLink>
             <p className="mt-2 max-w-md text-xs text-muted-foreground">You don’t need one to track links: website guests already get the direct offer.</p>
-          </div>
+          </FirstRunEmpty>
         ) : (
           <>
             <div className="px-4 pt-3">
@@ -105,15 +106,7 @@ export function CouponsView({ coupons, campaigns, properties, today, couponHref,
                 controls="marketing-coupons-list"
                 value={tab}
                 onValueChange={setTab}
-                tabs={tabs.map(({ value, label, n }) => ({
-                  value,
-                  label: (
-                    <>
-                      {label}
-                      <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">{n}</span>
-                    </>
-                  ),
-                }))}
+                tabs={countTabs(tabs)}
               />
             </div>
             <div id="marketing-coupons-list">

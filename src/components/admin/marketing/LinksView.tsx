@@ -2,19 +2,18 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CopyPlus, Facebook, Instagram, Link2, MapPin, MessageCircle, Pause, Pencil, Play, Plus, QrCode, Send, TriangleAlert } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConfirm } from "../ConfirmDialog";
 import { SegmentedTabs } from "../SegmentedTabs";
 import { StatusBadge } from "../StatusBadge";
 import { EmptyState, SearchBox } from "../admin-bulk";
 import { LinkEditor, type LinkPreset } from "./LinkEditor";
-import { Callout, CopyButton, CouponChip, NoticeBar, RowMenu, SlugChip, nextEditorKey, useNotice, type RowAction } from "./MarketingBits";
+import { Callout, CopyButton, CouponChip, EditorSheet, NoticeBar, RowMenu, SlugChip, countTabs, useConfirmedChange, useEditorSheet, useNotice, type RowAction } from "./MarketingBits";
 import { QrCardDialog } from "./QrCardDialog";
-import { COUPON_STATE, LINK_STATUS, benefitLabel, couponState, destinationLabel, marketingErrorText, shortUrl } from "./marketing-format";
+import { COUPON_STATE, LINK_STATUS, benefitLabel, couponState, destinationLabel, shortUrl } from "./marketing-format";
 import type { CampaignRow, CouponRow, LinkRow, LinkStatus, MarketingActions, MarketingProperty } from "./types";
 
 type Tab = "all" | LinkStatus;
@@ -35,7 +34,7 @@ const QUICK_STARTS = [
 
 const ALL_CAMPAIGNS = "all";
 
-export type LinksViewProps = {
+type LinksViewProps = {
   /** `undefined` while loading. */
   links?: LinkRow[];
   campaigns?: CampaignRow[];
@@ -50,18 +49,15 @@ export type LinksViewProps = {
   actions: Pick<MarketingActions, "saveLink" | "setLinkStatus" | "checkSlug">;
 };
 
-type Editing = { link?: LinkRow; preset?: LinkPreset; key: number } | null;
-
 export function LinksView({ links, campaigns, coupons, properties, origin, brand, today, campaignsHref, actions }: LinksViewProps) {
-  const confirm = useConfirm();
   const { notice, show, clear } = useNotice();
+  const { pending, run } = useConfirmedChange<Id<"marketingLinks">>(show);
+  const sheet = useEditorSheet<{ link?: LinkRow; preset?: LinkPreset }>();
   const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
   const [campaignFilter, setCampaignFilter] = useState<string>(ALL_CAMPAIGNS);
   const [offerIssuesOnly, setOfferIssuesOnly] = useState(false);
-  const [editing, setEditing] = useState<Editing>(null);
   const [qrLink, setQrLink] = useState<LinkRow | null>(null);
-  const [pending, setPending] = useState<Id<"marketingLinks"> | null>(null);
 
   const loading = links === undefined || campaigns === undefined || coupons === undefined || properties === undefined;
   const couponOf = (link: LinkRow) => coupons?.find((coupon) => coupon._id === link.couponId);
@@ -90,26 +86,12 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
     setOfferIssuesOnly(false);
   }
 
-  // Whether the open editor has unsaved edits, reported by LinkEditor; closing then asks first.
-  const editorDirty = useRef(false);
-  const setEditorDirty = useCallback((dirty: boolean) => {
-    editorDirty.current = dirty;
-  }, []);
-  const openNew = (preset?: LinkPreset) => setEditing({ preset, key: nextEditorKey() });
-  const openEdit = (link: LinkRow) => setEditing({ link, key: nextEditorKey() });
-  async function closeEditor() {
-    if (
-      editorDirty.current &&
-      !(await confirm({ title: "Discard your changes?", description: "Edits that aren’t saved are lost.", confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
-    )
-      return;
-    editorDirty.current = false;
-    setEditing(null);
-  }
+  const openNew = (preset?: LinkPreset) => sheet.open({ preset });
+  const openEdit = (link: LinkRow) => sheet.open({ link });
   // The open QR card follows the live row, so publishing from it unlocks the downloads.
   const qrCurrent = qrLink ? (all.find((link) => link._id === qrLink._id) ?? qrLink) : null;
 
-  async function changeStatus(link: LinkRow, status: LinkStatus) {
+  function changeStatus(link: LinkRow, status: LinkStatus) {
     const url = shortUrl(origin, link.shortUrlPath).display;
     const destination = destinationLabel(link.destination, villaName).toLowerCase();
     const copy: Record<LinkStatus, { title: string; description: string; confirmLabel: string; done: string; destructive?: boolean }> = {
@@ -138,16 +120,13 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
       draft: { title: "", description: "", confirmLabel: "", done: "" },
     };
     const text = copy[status];
-    if (!(await confirm({ title: text.title, description: text.description, confirmLabel: text.confirmLabel, destructive: text.destructive }))) return;
-    setPending(link._id);
-    try {
-      await actions.setLinkStatus({ linkId: link._id, status });
-      show(text.done);
-    } catch (error) {
-      show(marketingErrorText(error, "Couldn’t change the link."), "danger");
-    } finally {
-      setPending(null);
-    }
+    return run(
+      link._id,
+      { title: text.title, description: text.description, confirmLabel: text.confirmLabel, destructive: text.destructive },
+      () => actions.setLinkStatus({ linkId: link._id, status }),
+      text.done,
+      "Couldn’t change the link.",
+    );
   }
 
   function rowActions(link: LinkRow): RowAction[] {
@@ -164,21 +143,26 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
 
   const counts = (value: Tab) => (value === "all" ? all.length : all.filter((link) => link.status === value).length);
 
-  if (!loading && all.length === 0) {
-    return (
-      <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-4 px-4 py-4 sm:px-6">
-        <NoticeBar notice={notice} onClose={clear} />
-        <FirstRun origin={origin} onNew={openNew} />
-        <LinkSheet
-          editing={editing}
-          onClose={() => void closeEditor()}
-          onDirtyChange={setEditorDirty}
-          onDone={(message) => {
-            editorDirty.current = false;
-            setEditing(null);
-            show(message);
-          }}
-          onDuplicate={(link) => openNew({ from: link })}
+  const { editing } = sheet;
+  const editorSheet = (
+    <EditorSheet
+      open={editing !== null}
+      onClose={() => void sheet.close()}
+      wide
+      header={
+        <>
+          <SheetTitle>{editing?.link ? `Edit ${editing.link.shortUrlPath}` : "New link"}</SheetTitle>
+          <SheetDescription>
+            {editing?.link ? "Changes apply to everyone who opens the link from now on." : "It starts counting opens as soon as it’s live."}
+          </SheetDescription>
+        </>
+      }
+    >
+      {editing && campaigns && coupons && properties ? (
+        <LinkEditor
+          key={editing.key}
+          link={editing.link}
+          preset={editing.preset}
           links={all}
           campaigns={campaigns}
           coupons={coupons}
@@ -187,7 +171,24 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
           today={today}
           campaignsHref={campaignsHref}
           actions={actions}
+          onDone={(message) => {
+            sheet.done();
+            show(message);
+          }}
+          onCancel={() => void sheet.close()}
+          onDirtyChange={sheet.setDirty}
+          onDuplicate={(link) => openNew({ from: link })}
         />
+      ) : null}
+    </EditorSheet>
+  );
+
+  if (!loading && all.length === 0) {
+    return (
+      <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-4 px-4 py-4 sm:px-6">
+        <NoticeBar notice={notice} onClose={clear} />
+        <FirstRun origin={origin} onNew={openNew} />
+        {editorSheet}
       </div>
     );
   }
@@ -227,15 +228,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
           controls="marketing-links-list"
           value={tab}
           onValueChange={setTab}
-          tabs={TABS.map(({ value, label }) => ({
-            value,
-            label: (
-              <>
-                {label}
-                {loading ? null : <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">{counts(value)}</span>}
-              </>
-            ),
-          }))}
+          tabs={countTabs(TABS.map(({ value, label }) => ({ value, label, n: loading ? undefined : counts(value) })))}
         />
         <div className="flex flex-wrap items-center gap-2">
           <SearchBox value={query} onChange={setQuery} label="Search links, campaigns, codes" />
@@ -441,25 +434,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
         )}
       </section>
 
-      <LinkSheet
-        editing={editing}
-        onClose={() => void closeEditor()}
-        onDirtyChange={setEditorDirty}
-        onDone={(message) => {
-          editorDirty.current = false;
-          setEditing(null);
-          show(message);
-        }}
-        onDuplicate={(link) => openNew({ from: link })}
-        links={all}
-        campaigns={campaigns}
-        coupons={coupons}
-        properties={properties}
-        origin={origin}
-        today={today}
-        campaignsHref={campaignsHref}
-        actions={actions}
-      />
+      {editorSheet}
       <QrCardDialog
         link={qrCurrent}
         coupons={coupons ?? []}
@@ -474,68 +449,6 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   );
 }
 
-function LinkSheet({
-  editing,
-  onClose,
-  onDirtyChange,
-  onDone,
-  onDuplicate,
-  links,
-  campaigns,
-  coupons,
-  properties,
-  origin,
-  today,
-  campaignsHref,
-  actions,
-}: {
-  editing: Editing;
-  onClose: () => void;
-  onDirtyChange: (dirty: boolean) => void;
-  onDone: (message: string) => void;
-  onDuplicate: (link: LinkRow) => void;
-  links: LinkRow[];
-  campaigns?: CampaignRow[];
-  coupons?: CouponRow[];
-  properties?: MarketingProperty[];
-  origin: string;
-  today: string;
-  campaignsHref: string;
-  actions: LinksViewProps["actions"];
-}) {
-  const link = editing?.link;
-  return (
-    <Sheet open={editing !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-2xl">
-        <SheetHeader className="border-b border-border px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
-          <SheetTitle>{link ? `Edit ${link.shortUrlPath}` : "New link"}</SheetTitle>
-          <SheetDescription>
-            {link ? "Changes apply to everyone who opens the link from now on." : "It starts counting opens as soon as it’s live."}
-          </SheetDescription>
-        </SheetHeader>
-        {editing && campaigns && coupons && properties ? (
-          <LinkEditor
-            key={editing.key}
-            link={link}
-            preset={editing.preset}
-            links={links}
-            campaigns={campaigns}
-            coupons={coupons}
-            properties={properties}
-            origin={origin}
-            today={today}
-            campaignsHref={campaignsHref}
-            actions={actions}
-            onDone={onDone}
-            onCancel={onClose}
-            onDirtyChange={onDirtyChange}
-            onDuplicate={onDuplicate}
-          />
-        ) : null}
-      </SheetContent>
-    </Sheet>
-  );
-}
 
 function CouponCell({ link, coupon, today }: { link: LinkRow; coupon?: CouponRow; today: string }) {
   if (!link.couponCode && !coupon) return <span className="text-muted-foreground">None</span>;

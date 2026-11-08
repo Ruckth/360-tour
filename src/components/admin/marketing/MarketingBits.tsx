@@ -1,12 +1,16 @@
 "use client";
 
 import { Check, CircleAlert, CircleCheck, Copy, Info, MoreHorizontal, TicketPercent, TriangleAlert, type LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { useConfirm, type ConfirmOptions } from "../ConfirmDialog";
 import { TONES } from "../status-tones";
+import { marketingErrorText } from "./marketing-format";
 
 // Small building blocks shared by the marketing screens.
 
@@ -157,6 +161,166 @@ export function useNotice() {
   return { notice, show, clear: () => setNotice(null) };
 }
 
+/**
+ * Confirms, runs one change (a status change) and reports it in the notice bar.
+ * `pending` is the id being changed, so its buttons can be disabled meanwhile.
+ */
+export function useConfirmedChange<K>(show: ReturnType<typeof useNotice>["show"]) {
+  const confirm = useConfirm();
+  const [pending, setPending] = useState<K | null>(null);
+  async function run(id: K, options: ConfirmOptions, change: () => Promise<unknown>, done: string, failed: string) {
+    if (!(await confirm(options))) return;
+    setPending(id);
+    try {
+      await change();
+      show(done);
+    } catch (error) {
+      show(marketingErrorText(error, failed), "danger");
+    } finally {
+      setPending(null);
+    }
+  }
+  return { pending, run };
+}
+
+/** Status-filter tabs with a count after each label (no count while it's unknown). */
+export function countTabs<T extends string>(tabs: readonly { value: T; label: string; n?: number }[]) {
+  return tabs.map(({ value, label, n }) => ({
+    value,
+    label: (
+      <>
+        {label}
+        {n === undefined ? null : <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">{n}</span>}
+      </>
+    ),
+  }));
+}
+
+const DISCARD_CHANGES: ConfirmOptions = {
+  title: "Discard your changes?",
+  description: "Edits that aren’t saved are lost.",
+  confirmLabel: "Discard",
+  cancelLabel: "Keep editing",
+  destructive: true,
+};
+
+/**
+ * Open/close state for an editor sheet. Each open gets a fresh key (so the editor remounts with its
+ * starting values); closing asks first while the editor reports unsaved edits through `setDirty`.
+ */
+export function useEditorSheet<T extends object>() {
+  const confirm = useConfirm();
+  const [editing, setEditing] = useState<(T & { key: number }) | null>(null);
+  const dirty = useRef(false);
+  const setDirty = useCallback((value: boolean) => {
+    dirty.current = value;
+  }, []);
+  function done() {
+    dirty.current = false;
+    setEditing(null);
+  }
+  return {
+    editing,
+    setDirty,
+    open: (value: T) => setEditing({ ...value, key: nextEditorKey() }),
+    /** After a save: closes without asking. */
+    done,
+    async close() {
+      if (dirty.current && !(await confirm(DISCARD_CHANGES))) return;
+      done();
+    },
+  };
+}
+
+/** The right-hand sheet the link and campaign editors open in. `header` holds its title and description. */
+export function EditorSheet({ open, onClose, wide = false, header, children }: { open: boolean; onClose: () => void; wide?: boolean; header: ReactNode; children: ReactNode }) {
+  return (
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent side="right" className={wide ? "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-2xl" : "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-xl"}>
+        <SheetHeader className="border-b border-border px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">{header}</SheetHeader>
+        {children}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/**
+ * Form state for a sheet editor: the values, unsaved-edit reporting, and a submit that shows field
+ * errors (focusing the first) or saves, keeping a failed save's message for the footer.
+ */
+export function useEditorForm<F extends object>(initial: () => F, onDirtyChange?: (dirty: boolean) => void) {
+  const [start] = useState(initial);
+  const [form, setForm] = useState<F>(start);
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const dirty = JSON.stringify(form) !== JSON.stringify(start);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
+
+  async function submit(event: FormEvent, invalidFieldId: string | undefined, save: () => Promise<void>, fallback: string) {
+    event.preventDefault();
+    setSubmitted(true);
+    setSaveError("");
+    if (invalidFieldId) {
+      document.getElementById(invalidFieldId)?.focus();
+      return;
+    }
+    setSaving(true);
+    try {
+      await save();
+    } catch (error) {
+      setSaveError(marketingErrorText(error, fallback));
+      setSaving(false);
+    }
+  }
+  const set = <K extends keyof F>(key: K, value: F[K]) => setForm((current) => ({ ...current, [key]: value }));
+  return { form, set, submitted, saving, saveError, submit };
+}
+
+/** A sheet editor's form: scrolling fields, then the save error and Cancel / submit footer. */
+export function SheetForm({
+  onSubmit,
+  onCancel,
+  saving,
+  error,
+  submitLabel,
+  children,
+}: {
+  onSubmit: (event: FormEvent) => void;
+  onCancel: () => void;
+  saving: boolean;
+  error: string;
+  submitLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <form noValidate onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+        <div className="grid gap-6">{children}</div>
+      </div>
+      <div className="grid gap-2 border-t border-border px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
+        {error ? (
+          <p role="alert" className="text-sm font-medium text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving} className="flex-1 sm:flex-none">
+            {saving ? <Spinner label="Saving" className="text-current" /> : null}
+            {submitLabel}
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 export function NoticeBar({ notice, onClose }: { notice: Notice | null; onClose: () => void }) {
   return (
     <div aria-live="polite" className={notice ? undefined : "sr-only"}>
@@ -219,10 +383,6 @@ export function NumberField({
     </div>
   );
 }
-
-export { parseWhole } from "./coupon-form";
-
-export const wholeText = (value?: number) => (value === undefined ? "" : value.toLocaleString("en-US"));
 
 /** Usage against a limit; amber from 80 %, red when used up. */
 export function UsageBar({ used, limit, label }: { used: number; limit?: number; label: string }) {
@@ -332,6 +492,35 @@ export function ChoiceGroup<T extends string>({
         })}
       </div>
     </fieldset>
+  );
+}
+
+/** A list's first-run state: gold icon, title, what the thing is, then the actions to start. */
+export function FirstRunEmpty({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: ReactNode; children: ReactNode }) {
+  return (
+    <div className="grid justify-items-center gap-3 px-4 py-14 text-center">
+      <span className="grid size-12 place-items-center rounded-full bg-gold/15 text-gold-text">
+        <Icon aria-hidden className="size-5" />
+      </span>
+      <p className="text-base font-semibold text-foreground">{title}</p>
+      <p className="max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
+      {children}
+    </div>
+  );
+}
+
+/** A titled card in the coupon page's side column (status, test a quote, versions, links). */
+export function SideCard({ id, title, description, children }: { id: string; title: string; description?: ReactNode; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id} className="border border-border bg-card">
+      <header className="border-b border-border px-4 py-3">
+        <h3 id={id} className="text-base font-semibold text-foreground">
+          {title}
+        </h3>
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
+      </header>
+      {children}
+    </section>
   );
 }
 

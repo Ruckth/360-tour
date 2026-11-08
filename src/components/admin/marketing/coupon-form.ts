@@ -24,9 +24,10 @@ export type CouponForm = {
   terms: string;
 };
 
-export type CouponRules = Omit<SaveCouponArgs, "couponId" | "code" | "campaignId">;
+type CouponRules = Omit<SaveCouponArgs, "couponId" | "code" | "campaignId">;
 
-const text = (value?: number) => (value === undefined ? "" : value.toLocaleString("en-US"));
+/** 1500 → "1,500", undefined → "": a stored whole number as form text. */
+export const wholeText = (value?: number) => (value === undefined ? "" : value.toLocaleString("en-US"));
 
 export const EMPTY_COUPON_FORM: CouponForm = {
   code: "",
@@ -55,8 +56,8 @@ export function couponFormFrom(detail: { code: string; campaignId?: CouponDetail
     code: detail.code,
     campaignId: detail.campaignId ?? "",
     kind: rules.benefit.kind,
-    value: rules.benefit.kind === "percent" ? String(rules.benefit.percent) : text(rules.benefit.amount),
-    maxSaving: text(rules.maxSaving),
+    value: rules.benefit.kind === "percent" ? String(rules.benefit.percent) : wholeText(rules.benefit.amount),
+    maxSaving: wholeText(rules.maxSaving),
     scope: rules.scope,
     allVillas: !rules.propertySlugs?.length,
     villas: rules.propertySlugs ?? [],
@@ -64,10 +65,10 @@ export function couponFormFrom(detail: { code: string; campaignId?: CouponDetail
     bookTo: rules.bookTo ?? "",
     stayFrom: rules.stayFrom ?? "",
     stayTo: rules.stayTo ?? "",
-    minNights: text(rules.minNights),
-    minSubtotal: text(rules.minEligibleSubtotal),
-    usageLimit: text(rules.usageLimit),
-    budget: text(rules.discountBudget),
+    minNights: wholeText(rules.minNights),
+    minSubtotal: wholeText(rules.minEligibleSubtotal),
+    usageLimit: wholeText(rules.usageLimit),
+    budget: wholeText(rules.discountBudget),
     terms: rules.terms ?? "",
   };
 }

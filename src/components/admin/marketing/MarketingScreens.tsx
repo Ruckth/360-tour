@@ -11,12 +11,12 @@ import { CampaignsView } from "./CampaignsView";
 import { CouponEditor } from "./CouponEditor";
 import { CouponsView } from "./CouponsView";
 import { LinksView } from "./LinksView";
-import { bangkokToday } from "./format-basics";
+import { bangkokToday } from "./marketing-format";
 import type { MarketingActions } from "./types";
 
 // The admin pages: Convex queries and mutations wired into the prop-driven views.
 
-export const couponPath = (couponId: Id<"coupons"> | "new") => `${adminMarketingPath("coupons")}/${couponId}`;
+const couponPath = (couponId: Id<"coupons"> | "new") => `${adminMarketingPath("coupons")}/${couponId}`;
 
 function useMarketingActions(): MarketingActions {
   const convex = useConvex();

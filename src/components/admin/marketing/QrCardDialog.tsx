@@ -24,7 +24,7 @@ function download(blob: Blob, filename: string) {
 }
 
 /** What the card says: the live coupon's offer, else the direct-booking offer. */
-export function qrCardContent({
+function qrCardContent({
   link,
   coupon,
   couponLive,
