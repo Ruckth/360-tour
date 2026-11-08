@@ -10,6 +10,7 @@ import {
 	storedPaymentMethod,
 	storedRefundMethod
 } from './lib/financeValidators';
+import { posCouponProblemValidator } from './lib/posCoupons';
 
 export default defineSchema({
  appointmentFeeAttempts: defineTable({
@@ -593,6 +594,24 @@ export default defineSchema({
 		discardReason: v.optional(v.string()),
 		/** Attempt key of the latest discard or restore, so a retried request returns the first result. */
 		lifecycleKey: v.optional(v.string()),
+		/**
+		 * Marketing release 2b: the order's one coupon (pos.applyOrderCoupon). Its version is frozen when
+		 * applied; the rows carry the split (billLines.couponDiscount). Nothing is held while unpaid:
+		 * settleOrder re-checks it and writes a consumed couponRedemptions row in the same transaction.
+		 */
+		promotion: v.optional(v.object({
+			couponId: v.id('coupons'),
+			couponVersion: v.number(),
+			code: v.string(),
+			/** Sum of the rows' couponDiscount; 0 while `problem` is set. */
+			discount: v.number(),
+			/** Why the coupon no longer fits the order as it stands; settle refuses while set. */
+			problem: v.optional(posCouponProblemValidator),
+			/** Set when the order is paid. */
+			redemptionId: v.optional(v.id('couponRedemptions')),
+			appliedAt: v.number(),
+			appliedBy: v.string()
+		})),
 		createdBy: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number()
@@ -674,6 +693,8 @@ export default defineSchema({
 		priceOverride: v.optional(v.object({ price: v.number(), note: v.string(), by: v.string(), at: v.number() })),
 		/** Paid before checkout (an attached booking's online payment); deducted from what is due. */
 		deposit: v.optional(v.number()),
+		/** This row's share of the order's coupon (bills.promotion), in baht. Recomputed while unpaid, frozen once paid. */
+		couponDiscount: v.optional(v.number()),
 		/**
 		 * A no-show or late-cancellation fee (pos.addAppointmentFee), on an `extra` row. It refers to the
 		 * appointment without charging it: the appointment keeps its status and stays unpaid.
@@ -1666,6 +1687,8 @@ export default defineSchema({
 		couponVersion: v.number(),
 		code: v.string(),
 		bookingId: v.optional(v.id('bookings')),
+		/** Release 2b: a checkout order's coupon use. Exactly one of bookingId / billId is set. */
+		billId: v.optional(v.id('bills')),
 		state: v.union(v.literal('held'), v.literal('consumed'), v.literal('released'), v.literal('reversed')),
 		discount: v.number(),
 		// Captured money is always honoured: set when a late payment consumed a slot past the limit or budget.
@@ -1674,6 +1697,7 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_bookingId', ['bookingId'])
+		.index('by_billId', ['billId'])
 		.index('by_couponId_and_state', ['couponId', 'state'])
 		.index('by_couponId_and_createdAt', ['couponId', 'createdAt']),
 

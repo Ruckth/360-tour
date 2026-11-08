@@ -31,7 +31,7 @@ import { OrderHistory } from "./OrderHistory";
 import { PayPanel } from "./PayPanel";
 import type { Run } from "./useOrderWrites";
 
-const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, total: 0, vat: 0, deposit: 0, due: 0 };
+const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
 /**
  * A service row's new start after its date or its time changes, in resort time (Bangkok, like

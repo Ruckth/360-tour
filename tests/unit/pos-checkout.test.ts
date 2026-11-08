@@ -21,7 +21,7 @@ import { amountInput, orderTime, receiptText } from "@/components/checkout/check
 
 describe("bill math", () => {
   it("shows the 7% VAT already included in the total", () => {
-    expect(billTotals([{ unitPrice: 1070, qty: 1 }])).toEqual({ subtotal: 1070, discount: 0, total: 1070, vat: 70, deposit: 0, due: 1070 });
+    expect(billTotals([{ unitPrice: 1070, qty: 1 }])).toEqual({ subtotal: 1070, discount: 0, coupon: 0, total: 1070, vat: 70, deposit: 0, due: 1070 });
     expect(billTotals([{ unitPrice: 1200, qty: 1 }, { unitPrice: 600, qty: 1 }]).vat).toBe(117.76);
   });
 

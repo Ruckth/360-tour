@@ -37,6 +37,7 @@ import {
 	type OrderSource
 } from './lib/orderLinks';
 import { appointmentLookupFields, resortLocalParts } from './lib/serviceSlots';
+import type { OrderPromotionView } from './lib/posCoupons';
 import { appendBookingHistory, assertNoLiveCheckout, attemptKey, cleanReason, effectiveTime, stayMoney, writeBooking } from './lib/bookingMoney';
 import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
@@ -553,7 +554,9 @@ export const getOrder = query({
 				// A paid row keeps the name it was issued with; an open row shows the therapist's current name.
 				staffName: line.staffId ? (open ? undefined : line.staffName) ?? staffNames.get(line.staffId) ?? 'Former staff member' : undefined,
 				// History is not re-checked: a paid row stays as it was paid.
-				sourceIssue: open && isSourceRow(line) ? await sourceIssue(ctx, line, reads) : null
+				sourceIssue: open && isSourceRow(line) ? await sourceIssue(ctx, line, reads) : null,
+				/** R2b: a booking row's own promotion (the stay was priced with it; checkout never discounts it again). */
+				stayCoupon: null as { code: string; discount: number } | null
 			});
 		}
 		return {
@@ -570,6 +573,8 @@ export const getOrder = query({
 			sources,
 			parentOrder: parent ? { _id: parent._id, title: orderTitle(parent.orderNumber) } : null,
 			lines: rows,
+			/** R2b: the order's coupon; the split is on each row's `couponDiscount`, the total in `totals.coupon`. */
+			promotion: null as OrderPromotionView | null,
 			/** As recorded when the receipt was issued; never changed (see `paymentRecord` for corrections). */
 			payments,
 			audit,
@@ -1111,6 +1116,34 @@ export const removeLine = mutation({
 				before: { feeKind: line.fee.kind, amount: line.unitPrice, billId: order._id }
 			});
 		}
+	}
+});
+
+/**
+ * Marketing release 2b. Applies one coupon to an unpaid order, replacing any coupon already on it.
+ * `code` is typed or read from a pasted link (lib/posCoupons parseCouponInput); `slug` is a scanned
+ * short link, resolved here to its active coupon. The order's current coupon version is frozen on
+ * `bills.promotion`; the split lands on billLines.couponDiscount and the revision changes, so any
+ * payment reviewed before has to be reviewed again. Nothing is held: settleOrder consumes the use.
+ * When it can't apply, throws ConvexError { code: 'coupon_unavailable', message, problem:
+ * PosCouponProblem } and writes nothing. Applying the code already on the order re-checks it.
+ */
+export const applyOrderCoupon = mutation({
+	args: { orderId: v.id('bills'), code: v.optional(v.string()), slug: v.optional(v.string()) },
+	handler: async (ctx, args): Promise<{ code: string; discount: number; revision: number }> => {
+		await requireAdmin(ctx);
+		void args;
+		throw new Error('Not implemented (marketing R2b contract)');
+	}
+});
+
+/** Removes the order's coupon and every row's share of it. A no-op when the order has none. */
+export const removeOrderCoupon = mutation({
+	args: { orderId: v.id('bills') },
+	handler: async (ctx, args): Promise<{ revision: number }> => {
+		await requireAdmin(ctx);
+		void args;
+		throw new Error('Not implemented (marketing R2b contract)');
 	}
 });
 
