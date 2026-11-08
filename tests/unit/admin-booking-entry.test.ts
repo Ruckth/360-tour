@@ -9,7 +9,7 @@ import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import { MoveBookingDialog, type Move } from "@/components/admin/AdminBookingsView";
 
 const mutations = vi.hoisted(() => ({ createBooking: vi.fn(), editBooking: vi.fn() }));
-const queries = vi.hoisted(() => ({ getForAdmin: vi.fn(), findGuests: vi.fn() }));
+const queries = vi.hoisted(() => ({ getForAdmin: vi.fn(), findGuests: vi.fn(), quoteBookingEdit: vi.fn() }));
 // Availability months: loaded, nothing blocked. One stable client, like ConvexProvider's.
 const client = vi.hoisted(() => ({ watchQuery: () => ({ localQueryResult: () => [], onUpdate: () => () => undefined }) }));
 vi.mock("convex/react", () => ({
@@ -24,6 +24,12 @@ vi.mock("convex/react", () => ({
     return queries[name]?.(args);
   },
   useConvex: () => client,
+  useQueries: (requests: Record<string, { query: FunctionReference<"query">; args: unknown }>) => Object.fromEntries(
+    Object.entries(requests).map(([key, request]) => {
+      const name = getFunctionName(request.query).split(":").pop() as keyof typeof queries;
+      return [key, queries[name]?.(request.args)];
+    }),
+  ),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 // The real phone widget is a country combobox; a plain input keeps these tests about the booking rules.
@@ -60,6 +66,7 @@ beforeEach(() => {
   for (const mutation of Object.values(mutations)) mutation.mockReset().mockResolvedValue(null);
   for (const query of Object.values(queries)) query.mockReset();
   queries.findGuests.mockReturnValue([]);
+  queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 0, total: 30000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => {
@@ -197,6 +204,7 @@ describe("moving a booking on the calendar", () => {
     expect(mutations.editBooking.mock.calls[1][0]).toEqual(mutations.editBooking.mock.calls[0][0]);
     expect(mutations.editBooking.mock.calls[0][0]).toMatchObject({
       bookingId: "b1", expectedRevision: 4, propertyId: "p1", checkIn: "2026-11-21", checkOut: "2026-11-24", notifyGuest: false,
+      expectedPrice: { total: 30000, currency: "THB" },
     });
     expect(onMoved).toHaveBeenCalledWith(expect.stringContaining("Mia: moved to"));
   });
@@ -242,5 +250,36 @@ describe("moving a booking on the calendar", () => {
     queries.getForAdmin.mockReturnValue(undefined);
     await render(createElement(MoveBookingDialog, props()));
     expect(button("Move booking")?.disabled).toBe(true);
+  });
+
+  it("reviews the server's coupon price and submits it instead of a direct-rate estimate", async () => {
+    queries.getForAdmin.mockReturnValue(detail());
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 6000, total: 24000, currency: "THB", promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 6000 }, couponRemoved: false, repriced: true });
+    await render(createElement(MoveBookingDialog, props()));
+    expect(text()).toContain("New total ฿24,000");
+    await click(button("Move booking"));
+    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 24000, currency: "THB" } }));
+    expect(queries.quoteBookingEdit).toHaveBeenCalledWith({ bookingId: "b1", propertySlug: "pool-villa", checkIn: "2026-11-21", checkOut: "2026-11-24", guests: 2 });
+  });
+
+  it("cannot move until the quote is ready, including a refused quote", async () => {
+    queries.getForAdmin.mockReturnValue(detail());
+    queries.quoteBookingEdit.mockReturnValue(undefined);
+    await render(createElement(MoveBookingDialog, props()));
+    expect(button("Move booking")?.disabled).toBe(true);
+    queries.quoteBookingEdit.mockReturnValue(new Error("Those dates are no longer available."));
+    await render(createElement(MoveBookingDialog, props()));
+    expect(alertText()).toContain("Those dates are no longer available.");
+    expect(button("Move booking")?.disabled).toBe(true);
+    expect(mutations.editBooking).not.toHaveBeenCalled();
+  });
+
+  it("shows the quoted currency and sends it for the server to check", async () => {
+    queries.getForAdmin.mockReturnValue(detail());
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 300, discountAmount: 0, total: 300, currency: "USD", promotion: null, couponRemoved: false, repriced: true });
+    await render(createElement(MoveBookingDialog, props()));
+    expect(text()).toContain("New total $300");
+    await click(button("Move booking"));
+    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 300, currency: "USD" } }));
   });
 });

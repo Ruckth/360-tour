@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from "convex/adminBookings";
-import { calculateDirectQuote } from "convex/lib/pricing";
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -35,7 +34,8 @@ import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { NotifyGuestField } from "./BookingMoneyFields";
 import { BookingQuickActions, type QuickTarget } from "./BookingQuickActions";
-import { BookingSheet } from "./BookingSheet";
+import { BookingSheet, useBookingEditQuote } from "./BookingSheet";
+import { bookingEditPrice, reviewedPrice } from "./booking-edit-price";
 import { DateBlockDialog, type BlockTarget } from "./DateBlockDialog";
 import { IcalSourcesDialog } from "./IcalSourcesDialog";
 import { NewBookingDialog, type NewBookingPrefill } from "./NewBookingDialog";
@@ -407,17 +407,25 @@ export function MoveBookingDialog({
   const property = properties.find((p) => p._id === propertyId);
   const fromVilla = properties.find((p) => p._id === booking.propertyId)?.name ?? "Villa";
   const nights = nightsBetweenIso(checkIn, checkOut);
-  const newTotal = property ? calculateDirectQuote(property, nights).directTotal : booking.total;
-  const difference = newTotal - booking.total;
-  const balance = booking.amountPaid !== undefined ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
   const customPrice = detail?.priceOverride ?? null;
   const changedMeanwhile = detail ? detail.revision !== booking.revision : false;
+  const quote = useBookingEditQuote(
+    detail && property && !customPrice && !changedMeanwhile
+      ? { bookingId: booking._id, propertySlug: property.slug, checkIn, checkOut, guests: booking.guests }
+      : null,
+  );
+  const price = bookingEditPrice({ current: booking, quote });
+  const expectedPrice = reviewedPrice(price);
+  const newTotal = expectedPrice?.total ?? booking.total;
+  const currency = expectedPrice?.currency ?? booking.currency;
+  const difference = currency === booking.currency ? newTotal - booking.total : null;
+  const balance = booking.amountPaid !== undefined && currency === booking.currency ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
   const notify = notifyChoice ?? notifyDefault({ checkIn, guestEmailsOff: detail?.guestEmailsOff });
   const customRefused = CUSTOM_PRICE_REFUSAL.test(error);
-  const ready = detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property);
+  const ready = detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property) && Boolean(expectedPrice);
 
   async function save() {
-    if (!ready || saving) return;
+    if (!ready || !expectedPrice || saving) return;
     setSaving(true);
     setError("");
     try {
@@ -432,6 +440,7 @@ export function MoveBookingDialog({
         guestPhone: booking.guestPhone,
         guestEmail: booking.guestEmail,
         notifyGuest: notify,
+        expectedPrice,
       });
       onMoved(`${booking.guestName}: moved to ${displayDate(checkIn)} → ${displayDate(checkOut)}.`);
     } catch (err) {
@@ -468,17 +477,22 @@ export function MoveBookingDialog({
           <p role="alert" className="text-sm text-destructive">
             This booking changed since the calendar showed it. Close this and drag it again to see the latest details.
           </p>
+        ) : price.kind === "loading" || price.kind === "idle" ? (
+          <Spinner label="Checking the price" />
+        ) : price.kind === "error" ? (
+          <p role="alert" className="text-sm text-destructive">{price.message}</p>
         ) : (
           <div className="grid gap-3 text-sm">
             <div className="rounded-lg border border-border bg-muted/40 p-3">
               <p className="font-medium">
-                New total {formatMoney(newTotal, booking.currency)}{" "}
+                New total {formatMoney(newTotal, currency)}{" "}
                 <span className="font-normal text-muted-foreground">
-                  (was {formatMoney(booking.total, booking.currency)},{" "}
-                  {difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${formatMoney(Math.abs(difference), booking.currency)}`})
+                  (was {formatMoney(booking.total, booking.currency)}
+                  {difference === null ? "" : `, ${difference === 0 ? "no change" : `${difference > 0 ? "+" : "−"}${formatMoney(Math.abs(difference), booking.currency)}`}`})
                 </span>
               </p>
-              {booking.amountPaid !== undefined ? (
+              {price.kind === "changed" && price.note ? <p className="text-muted-foreground">{price.note}</p> : null}
+              {booking.amountPaid !== undefined && currency === booking.currency ? (
                 <p className="text-muted-foreground">
                   Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
                   {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}

@@ -645,7 +645,7 @@ type EditQuoteArgs = {
 };
 
 /** adminBookings.quoteBookingEdit, live. A refusal (e.g. dates the villa can't take) comes back as an error state, not a throw. */
-function useBookingEditQuote(args: EditQuoteArgs | null): BookingEditQuoteState {
+export function useBookingEditQuote(args: EditQuoteArgs | null): BookingEditQuoteState {
   const key = args ? JSON.stringify(args) : "";
   const queries = useMemo(
     (): RequestForQueries => (key ? { quote: { query: api.adminBookings.quoteBookingEdit, args: JSON.parse(key) as EditQuoteArgs } } : {}),
