@@ -668,7 +668,9 @@ export const createBooking = mutation({
 		notifyGuest: v.optional(v.boolean()),
 		/** Required to record a past stay in a villa that has since been archived. */
 		archivedVillaReason: v.optional(v.string()),
-		priceOverride: v.optional(priceOverrideInput)
+		priceOverride: v.optional(priceOverrideInput),
+		/** Release 2: optional coupon, same rules and errors as the public create. */
+		couponCode: v.optional(v.string())
 	},
 	handler: async (ctx, { idempotencyKey, confirmed, notifyGuest, archivedVillaReason, priceOverride, ...args }) => {
 		const admin = await requireAdmin(ctx);

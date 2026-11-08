@@ -32,6 +32,8 @@ export type BookingInput = StayInput & {
 	guestEmailsOff?: boolean;
 	/** Why an archived villa is used (staff historical entry only); logged in the booking history. */
 	archivedVillaReason?: string;
+	/** Release 2: optional coupon code; see holdCouponRedemption. */
+	couponCode?: string;
 };
 
 /** Server-only policy: callers must authenticate the admin before enabling either relaxation. */

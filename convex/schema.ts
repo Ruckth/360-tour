@@ -137,6 +137,14 @@ export default defineSchema({
 		refundedAt: v.optional(v.number()),
 		/** A custom price set by staff instead of the villa rate; `total` follows it. */
 		priceOverride: v.optional(bookingPriceOverride),
+		// Release 2: the coupon this stay was priced with (frozen version and amount).
+		promotion: v.optional(v.object({
+			couponId: v.id('coupons'),
+			couponVersion: v.number(),
+			code: v.string(),
+			discount: v.number(),
+			redemptionId: v.id('couponRedemptions')
+		})),
 		/** Bumped on every staff/system write that goes through lib/bookingMoney; absent = 0. */
 		revision: v.optional(v.number()),
 		/** Who entered it (admin email or `system:<channel>`); absent on legacy rows. */
@@ -1640,6 +1648,9 @@ export default defineSchema({
 		currentVersion: v.number(),
 		used: v.number(),
 		discountGranted: v.number(),
+		// Release 2: slots and discount held by unpaid bookings (see convex/lib/couponRedemptions.ts).
+		held: v.optional(v.number()),
+		heldDiscount: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 		updatedByEmail: v.string()
@@ -1647,6 +1658,24 @@ export default defineSchema({
 		.index('by_code', ['code'])
 		.index('by_status', ['status'])
 		.index('by_campaignId', ['campaignId']),
+
+	// One row per coupon use. held -> consumed (first payment) | released (unpaid stay cancelled/expired);
+	// consumed -> reversed (stay cancelled after payment; the slot is NOT given back).
+	couponRedemptions: defineTable({
+		couponId: v.id('coupons'),
+		couponVersion: v.number(),
+		code: v.string(),
+		bookingId: v.optional(v.id('bookings')),
+		state: v.union(v.literal('held'), v.literal('consumed'), v.literal('released'), v.literal('reversed')),
+		discount: v.number(),
+		// Captured money is always honoured: set when a late payment consumed a slot past the limit or budget.
+		overLimit: v.optional(v.boolean()),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	})
+		.index('by_bookingId', ['bookingId'])
+		.index('by_couponId_and_state', ['couponId', 'state'])
+		.index('by_couponId_and_createdAt', ['couponId', 'createdAt']),
 
 	// Immutable: a change to the offer writes a new version; redemptions keep the version they used.
 	couponVersions: defineTable({

@@ -99,7 +99,9 @@ export const create = mutation({
 		guestPhone: v.string(),
 		checkIn: v.string(),
 		checkOut: v.string(),
-		guests: v.number()
+		guests: v.number(),
+		/** Release 2: optional coupon. Throws ConvexError { code: 'coupon_unavailable', message, problem? } when it can't be used now. */
+		couponCode: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		assertValidEmail(args.guestEmail);

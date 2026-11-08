@@ -23,6 +23,9 @@ export type CouponRules = {
 	discountBudget?: number;
 	used: number;
 	discountGranted: number;
+	/** Release 2: slots / discount held by unpaid bookings; count toward usageLimit / discountBudget. */
+	held?: number;
+	heldDiscount?: number;
 };
 
 export type QuoteLine =
