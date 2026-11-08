@@ -1,4 +1,4 @@
-import { marketingCaptureValidator } from './lib/marketingAttribution';
+import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from './lib/marketingAttribution';
 import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
@@ -464,7 +464,7 @@ export const prepareChatBooking = internalMutation({
 
 async function confirmPreparedBooking(
 	ctx: MutationCtx,
-	args: { sessionId: Id<'chatSessions'>; deadlineAt?: number; expectedProposal?: string; byGuest?: boolean }
+	args: { sessionId: Id<'chatSessions'>; deadlineAt?: number; expectedProposal?: string; byGuest?: boolean; marketing?: MarketingCapture }
 ) {
 	const session = await loadChatSession(ctx, args.sessionId);
 	// The guest pressing Confirm & pay is not an AI write, so a staff takeover does not block it.
@@ -517,7 +517,8 @@ async function confirmPreparedBooking(
 		...(session.visitorEmail ? { guestEmail: session.visitorEmail } : {}),
 		source: chatSourceByChannel[session.channel],
 		chatSessionId: args.sessionId,
-		marketing: session.channel === 'web' ? session.marketingCapture : undefined
+		// The confirming page's own capture beats the one the chat last saw.
+		marketing: session.channel === 'web' ? (args.marketing !== undefined ? cleanCapture(args.marketing) : session.marketingCapture) : undefined
 	});
 	const confirmationCode = demoCode('CONF', bookingId as string);
 	await ctx.db.patch(bookingId, { confirmationCode });
@@ -592,11 +593,15 @@ export const getConfirmProposal = query({
 });
 
 export const confirmProposal = mutation({
-	args: { token: v.string() },
+	args: {
+		token: v.string(),
+		/** Release 3a: this page's tab and consent; `{}` means none. Overrides the chat's last capture. */
+		marketing: v.optional(marketingCaptureValidator)
+	},
 	handler: async (ctx, args) => {
 		const result = await loadConfirmProposal(ctx, args.token);
 		if (!result) throw new Error('This summary has expired. Ask in the chat for a new one.');
-		return await confirmPreparedBooking(ctx, { sessionId: result.session._id, byGuest: true });
+		return await confirmPreparedBooking(ctx, { sessionId: result.session._id, byGuest: true, marketing: args.marketing });
 	}
 });
 

@@ -702,7 +702,7 @@
   },
   "Consent": {
     "label": "Opción de medición",
-    "message": "¿Podemos contar las visitas a las páginas y ver cuál de nuestros enlaces o códigos QR te trajo aquí? No se comparte nada con anunciantes, y la medición sigue desactivada hasta que aceptes.",
+    "message": "¿Podemos contar las visitas a las páginas y recordar tus visitas durante 30 días para saber qué enlaces y códigos QR nuestros funcionan? No se comparte nada con anunciantes, y esto sigue desactivado hasta que aceptes.",
     "details": "Política de privacidad",
     "decline": "No, gracias",
     "accept": "Permitir"

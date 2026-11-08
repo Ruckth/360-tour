@@ -1,5 +1,4 @@
-import { validateMarketingSlug } from './lib/marketingSlugs';
-import { isVisitorKey, marketingCaptureValidator } from './lib/marketingAttribution';
+import { cleanCapture, marketingCaptureValidator } from './lib/marketingAttribution';
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
@@ -70,13 +69,10 @@ export const createSession = mutation({
 			propertyId = property?._id;
 		}
 
-		const visitorKey = isVisitorKey(args.marketing?.visitorKey) ? args.marketing.visitorKey : undefined;
-		const checked = args.marketing?.slug === undefined ? undefined : validateMarketingSlug(args.marketing.slug);
-		const slug = checked && !checked.reason ? checked.slug : undefined;
-		const marketingCapture = { ...(visitorKey ? { visitorKey } : {}), ...(slug ? { slug } : {}) };
+		const marketingCapture = cleanCapture(args.marketing);
 		const now = Date.now();
 		return await ctx.db.insert('chatSessions', {
-			...(visitorKey || slug ? { marketingCapture } : {}),
+			...(marketingCapture ? { marketingCapture } : {}),
 			propertyId,
 			propertySlug: args.propertySlug,
 			channel: args.channel,
@@ -355,11 +351,18 @@ export const addMessage = mutation({
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
 		content: v.string(),
-		action: v.optional(chatActionValidator)
+		action: v.optional(chatActionValidator),
+		/** Release 3a: the guest's tab and consent as of this message; `{}` clears it. Web chat only. */
+		marketing: v.optional(marketingCaptureValidator)
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		// A chat can outlive the tab and the consent it started with, so each guest message refreshes them.
+		if (args.role === 'user' && args.marketing !== undefined && session.channel === 'web') {
+			const marketingCapture = cleanCapture(args.marketing);
+			if (JSON.stringify(marketingCapture) !== JSON.stringify(session.marketingCapture)) await ctx.db.patch(args.sessionId, { marketingCapture });
+		}
 
 		const timestamp = Date.now();
 		const messageId = await ctx.db.insert('chatMessages', {

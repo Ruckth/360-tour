@@ -62,13 +62,15 @@ describe("capture before consent", () => {
     expect(capture.arrivalCoupon()).toBe("");
   });
 
-  it("keeps the coupon when the same link comes back without it, and drops it for a new link", () => {
+  it("takes the coupon only from the link's own URL, so a paused link's offer doesn't come back", () => {
     visit("/?mk=f1&coupon=DCNT-F1-20");
     expect(capture.arrivalCoupon()).toBe("DCNT-F1-20");
-    visit("/th?mk=f1");
+    visit("/rooms/mossbell");
     expect(capture.arrivalCoupon()).toBe("DCNT-F1-20");
-    visit("/?mk=q1");
+    // The short link once its offer is paused: same slug, no coupon.
+    visit("/?mk=f1");
     expect(capture.arrivalCoupon()).toBe("");
+    visit("/?mk=q1");
     expect(capture.captureForBooking()).toEqual({ slug: "q1" });
   });
 });
@@ -209,8 +211,10 @@ describe("blocked storage", () => {
     expect(capture.readConsent()).toBe("yes");
     const start = startSession();
     await expect(capture.capturePageView(start, NOW)).resolves.toBeUndefined();
+    // The visitor is kept in memory, so moving around the site doesn't mint a new one each page.
+    await capture.capturePageView(start, NOW + 1000);
     expect(start).toHaveBeenCalledTimes(1);
-    expect(capture.captureForBooking()).toEqual({ slug: "f1" });
+    expect(capture.captureForBooking()).toEqual({ visitorKey: KEY, slug: "f1" });
     expect(capture.arrivalCoupon()).toBe("DCNT-F1-20");
     expect(() => capture.clearMarketingStorage()).not.toThrow();
   });

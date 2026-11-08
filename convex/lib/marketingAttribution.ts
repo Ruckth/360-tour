@@ -1,6 +1,7 @@
 import { v, type Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
+import { validateMarketingSlug } from './marketingSlugs';
 
 /**
  * Release 3a: which marketing link brought a booking.
@@ -60,6 +61,14 @@ export type MarketingCapture = Infer<typeof marketingCaptureValidator>;
 const VISITOR_KEY = /^mv_[0-9a-f]{32}$/;
 export const isVisitorKey = (key: string | undefined): key is string => key !== undefined && VISITOR_KEY.test(key);
 export const newVisitorKey = () => 'mv_' + crypto.randomUUID().replace(/-/g, '');
+
+/** Keeps only a well-formed visitor key and a valid slug; undefined when neither is left. */
+export function cleanCapture(capture: MarketingCapture | undefined): MarketingCapture | undefined {
+	const visitorKey = isVisitorKey(capture?.visitorKey) ? capture.visitorKey : undefined;
+	const checked = capture?.slug === undefined ? undefined : validateMarketingSlug(capture.slug);
+	const slug = checked && !checked.reason ? checked.slug : undefined;
+	return visitorKey || slug ? { ...(visitorKey ? { visitorKey } : {}), ...(slug ? { slug } : {}) } : undefined;
+}
 
 /** Path only (no query or fragment), capped, always starting with "/". */
 export function cleanLandingPath(path: string): string {

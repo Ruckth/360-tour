@@ -352,6 +352,8 @@ export async function askConcierge(
     propertySlug?: string;
     locale?: string;
     actionHint?: ChatActionHint;
+    /** Release 3a: see captureForBooking; `{}` clears the chat's capture. */
+    marketing?: MarketingCapture;
   },
 ) {
   return (await withConvexTimeout(

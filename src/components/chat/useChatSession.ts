@@ -1498,6 +1498,7 @@ export function useChatSession({
         propertySlug: activePropertySlug || undefined,
         locale,
         ...(selectedActionHint ? { actionHint: selectedActionHint } : {}),
+        marketing: captureForBooking() ?? {},
       });
       if (chatLifecycle.isStale(generation)) return;
       // Staff took over: their reply arrives through the transcript watch.

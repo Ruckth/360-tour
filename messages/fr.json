@@ -702,7 +702,7 @@
   },
   "Consent": {
     "label": "Choix de mesure",
-    "message": "Pouvons-nous compter les pages vues et savoir lequel de nos liens ou QR codes vous a amené ici ? Rien n’est partagé avec des annonceurs, et la mesure reste désactivée tant que vous n’avez pas accepté.",
+    "message": "Pouvons-nous compter les pages vues et nous souvenir de vos visites pendant 30 jours, pour savoir lesquels de nos liens et QR codes fonctionnent ? Rien n’est partagé avec des annonceurs, et cela reste désactivé tant que vous n’avez pas accepté.",
     "details": "Politique de confidentialité",
     "decline": "Non merci",
     "accept": "Autoriser"

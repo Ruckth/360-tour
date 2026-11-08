@@ -89,16 +89,19 @@ function tabArrival(): Arrival | null {
   const slug = slugFrom(search);
   const saved = read<Arrival>(tab, ARRIVAL_KEY);
   if (!slug) return validSlug(saved?.slug) ? saved : null;
-  // The same link seen again without its coupon (a locale switch, a shared URL) keeps the coupon.
-  const coupon = new URLSearchParams(search).get("coupon")?.trim().slice(0, 64) || (saved?.slug === slug ? saved.coupon : undefined);
+  // The coupon comes only from the link's own URL: the short link drops it once the offer is paused or removed.
+  const coupon = new URLSearchParams(search).get("coupon")?.trim().slice(0, 64);
   const arrival: Arrival = coupon ? { slug, coupon } : { slug };
   write(tab, ARRIVAL_KEY, arrival);
   return arrival;
 }
 
+// Kept in memory too, so a browser that blocks storage keeps one visitor while the page is open.
+let memoryVisitor: Visitor | null = null;
+
 /** The stored visitor, reshaped so a damaged record can never fail a booking's argument check. */
 function readVisitor(): Visitor | null {
-  const saved = read<Partial<Visitor>>(device, VISITOR_KEY);
+  const saved = read<Partial<Visitor>>(device, VISITOR_KEY) ?? memoryVisitor;
   if (typeof saved?.visitorKey !== "string") return null;
   return {
     visitorKey: saved.visitorKey,
@@ -132,7 +135,8 @@ export function capturePageView(startSession: StartSession | null, now = Date.no
     else if (visitor.sessionId === null) slug = urlSlug ?? visitor.slug;
     else if ((urlSlug && urlSlug !== visitor.slug) || now - visitor.lastActiveAt > SESSION_IDLE_MS) slug = urlSlug;
     else {
-      write(device, VISITOR_KEY, { ...visitor, lastActiveAt: now });
+      memoryVisitor = { ...visitor, lastActiveAt: now };
+      write(device, VISITOR_KEY, memoryVisitor);
       return Promise.resolve();
     }
 
@@ -147,6 +151,7 @@ export function capturePageView(startSession: StartSession | null, now = Date.no
         // Opted out while the call was running: store nothing.
         if (readConsent() !== "yes") return;
         const next: Visitor = { visitorKey: result.visitorKey, sessionId: result.sessionId, lastActiveAt: now, ...(slug ? { slug } : {}) };
+        memoryVisitor = next;
         write(device, VISITOR_KEY, next);
       })
       .catch(() => undefined)
@@ -183,5 +188,6 @@ export function arrivalCoupon(): string {
 
 /** Opt-out: forgets the visitor key and session. The tab's link stays, as it does before consent. */
 export function clearMarketingStorage() {
+  memoryVisitor = null;
   write(device, VISITOR_KEY, null);
 }

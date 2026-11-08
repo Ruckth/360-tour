@@ -413,6 +413,7 @@ export const saveCoupon = mutation({
 		const id = await ctx.db.insert('coupons', { code, campaignId, status: 'draft', currentVersion: 1, used: 0, discountGranted: 0, createdAt: now, ...audit });
 		await ctx.db.insert('couponVersions', { ...rules, couponId: id, version: 1, createdAt: now, createdByEmail: admin.email });
 		await recordChanges(ctx, 'coupon', id, admin.email, null, { code, campaignId });
+		await appendRecordHistory(ctx, { entityType: 'coupon', entityId: id, actor: admin.email, kind: 'version_added', after: { ...rules, version: 1 } });
 		return { couponId: id, version: 1 };
 	}
 });

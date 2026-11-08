@@ -204,6 +204,37 @@ describe('web chat capture', () => {
     if (!expected) expect(row).not.toHaveProperty('marketingCapture');
   });
 
+  it('refreshes the capture with each guest message, so a later tab or an opt-out is what the booking sees', async () => {
+    const s = await setup();
+    await s.session(now - day);
+    const capture = async (sessionId: Id<'chatSessions'>) => (await s.t.run(ctx => ctx.db.get(sessionId)))?.marketingCapture;
+    const say = (sessionId: Id<'chatSessions'>, role: 'user' | 'assistant', marketing?: { visitorKey?: string; slug?: string }) =>
+      s.t.mutation(api.chat.addMessage, { sessionId, role, content: 'Hi', ...(marketing ? { marketing } : {}) });
+    // Started before consent in a tab that arrived through /f1, then continued in a new tab with nothing.
+    const stale = await s.t.mutation(api.chat.createSession, { channel: 'web', marketing: { slug: 'f1' } });
+    await say(stale, 'user');
+    expect(await capture(stale)).toEqual({ slug: 'f1' });
+    await say(stale, 'user', {});
+    expect(await capture(stale)).toBeUndefined();
+    await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId: stale });
+    const unattributed = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId: stale });
+    expect(await s.t.run(ctx => ctx.db.get(unattributed.bookingId))).not.toHaveProperty('marketingAttribution');
+    // Consent given after the chat started; assistant messages never change it.
+    const later = await s.t.mutation(api.chat.createSession, { channel: 'web' });
+    await say(later, 'user', { visitorKey, slug: 'bad/slug' });
+    await say(later, 'assistant', {});
+    expect(await capture(later)).toEqual({ visitorKey });
+  });
+
+  it('lets the confirm-and-pay page replace the chat capture', async () => {
+    const s = await setup();
+    await s.session(now - day);
+    const sessionId = await s.t.mutation(api.chat.createSession, { channel: 'web', marketing: { visitorKey } });
+    const { confirmToken } = await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
+    const result = await s.t.mutation(api.bookings.confirmProposal, { token: confirmToken, marketing: {} });
+    expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).not.toHaveProperty('marketingAttribution');
+  });
+
   it('does not attribute a messaging booking even if a legacy session has a capture', async () => {
     const s = await setup();
     const sessionId = await s.t.run(ctx => ctx.db.insert('chatSessions', { channel: 'whatsapp', visitorPhone: '66811112222', marketingCapture: { slug: 'f1' }, createdAt: now }));
@@ -240,6 +271,7 @@ describe('marketing history', () => {
     await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     expect(await events('coupon', couponId)).toEqual([
       event('coupon', couponId, 'created', { code: rules.code, campaign: campaign.name }),
+      event('coupon', couponId, 'version_added', { benefit: rules.benefit, scope: rules.scope, version: 1 }),
       event('coupon', couponId, 'updated', { code: 'NEW20', campaign: null }, { code: rules.code, campaign: 'Renamed' }),
       event('coupon', couponId, 'status_changed', { status: 'active' }, { status: 'draft' }),
     ]);
@@ -255,7 +287,7 @@ describe('marketing history', () => {
     await s.admin.mutation(api.marketing.saveCoupon, { ...changedRules, couponId, code: 'NEW20' });
     const history = await events('coupon', couponId);
     expect(history[history.length - 1]).toEqual(event('coupon', couponId, 'version_added', { ...changedRules, version: 2 }));
-    expect(await rows('coupon', couponId)).toHaveLength(4);
+    expect(await rows('coupon', couponId)).toHaveLength(5);
   });
 
   it('records clearing optional campaign and link fields as null', async () => {
