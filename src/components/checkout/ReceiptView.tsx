@@ -29,6 +29,9 @@ const PAGE_SLACK_MM = 2;
 const printBox = (paper: Paper) => `width: ${paper}mm !important; max-width: none !important; margin: 0 !important; padding: 3mm !important;
   border: 0 !important; font-size: ${paper === "58" ? 10 : 11.5}px !important;`;
 
+/** Small rows (VAT, discounts, coupon shares) scale with the paper's base size, not the screen's rem. */
+const smallPrint = "font-size: 0.9em !important; line-height: 1.35 !important;";
+
 /*
  * Browsers accept a page size only as two lengths (or a named size); "58mm auto" is dropped. So the
  * page is the paper's width by the receipt's own length, measured at that width with print styles.
@@ -47,8 +50,10 @@ function printCss(paper: Paper, lengthMm: number) {
       .pos-receipt { ${printBox(paper)} position: static !important; box-shadow: none !important; border-radius: 0 !important;
         background: #fff !important; color: #000 !important; }
       .pos-receipt * { color: #000 !important; }
+      .pos-receipt .text-xs { ${smallPrint} }
     }
     .pos-receipt[data-print-measure] { ${printBox(paper)} }
+    .pos-receipt[data-print-measure] .text-xs { ${smallPrint} }
   `;
 }
 
@@ -236,7 +241,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             {change ? <div className="flex justify-between"><dt>Change</dt><dd className="tabular-nums">{formatMoney(change)}</dd></div> : null}
           </dl>
           {totals.coupon ? (
-            <p className="mt-3 border-t border-dashed border-border pt-2 text-center text-xs">You saved {formatMoney(totals.coupon)} with {view.promotion?.code ?? "a coupon"}</p>
+            <p className="mt-3 border-t border-dashed border-border pt-2 text-center text-xs">You saved {formatMoney(totals.coupon)} with <span className="whitespace-nowrap">{view.promotion?.code ?? "a coupon"}</span></p>
           ) : null}
           <p className="mt-4 text-center text-xs">Thank you</p>
         </article>
