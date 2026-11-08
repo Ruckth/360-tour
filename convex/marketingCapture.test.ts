@@ -231,7 +231,7 @@ describe('marketing history', () => {
     await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId, name: 'Card', placement: 'Lobby' });
     await s.admin.mutation(api.marketing.setLinkStatus, { linkId: s.linkId, status: 'paused' });
     expect(await events('marketingLink', s.linkId)).toEqual([
-      event('marketingLink', s.linkId, 'created', s.link),
+      event('marketingLink', s.linkId, 'created', { slug: 'f1', name: 'Post', campaign: campaign.name, destination: s.link.destination, entry: 'link' }),
       event('marketingLink', s.linkId, 'status_changed', { status: 'active' }, { status: 'draft' }),
       event('marketingLink', s.linkId, 'updated', { name: 'Card', placement: 'Lobby' }, { name: 'Post', placement: null }),
       event('marketingLink', s.linkId, 'status_changed', { status: 'paused' }, { status: 'active' }),
@@ -239,8 +239,8 @@ describe('marketing history', () => {
     await s.admin.mutation(api.marketing.saveCoupon, { ...rules, couponId, code: 'NEW20' });
     await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     expect(await events('coupon', couponId)).toEqual([
-      event('coupon', couponId, 'created', { code: rules.code, campaignId: s.campaignId }),
-      event('coupon', couponId, 'updated', { code: 'NEW20', campaignId: null }, { code: rules.code, campaignId: s.campaignId }),
+      event('coupon', couponId, 'created', { code: rules.code, campaign: campaign.name }),
+      event('coupon', couponId, 'updated', { code: 'NEW20', campaign: null }, { code: rules.code, campaign: 'Renamed' }),
       event('coupon', couponId, 'status_changed', { status: 'active' }, { status: 'draft' }),
     ]);
     const before = await s.t.run(ctx => ctx.db.query('recordChanges').take(100));

@@ -93,13 +93,20 @@ function canonical(value: unknown): string {
 		? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 }
 
+/** History shows the campaign name and coupon code staff recognise, not document ids. */
+async function readable(ctx: MutationCtx, key: string, value: unknown): Promise<[string, unknown]> {
+	if (key === 'campaignId') return ['campaign', value ? (await ctx.db.get(value as Id<'marketingCampaigns'>))?.name ?? null : null];
+	if (key === 'couponId') return ['coupon', value ? (await ctx.db.get(value as Id<'coupons'>))?.code ?? null : null];
+	return [key, value ?? null];
+}
+
 async function recordChanges(ctx: MutationCtx, entityType: string, entityId: string, actor: string,
 	before: Record<string, unknown> | null, after: Record<string, unknown>, kind = 'updated') {
 	const keys = Object.keys(after).filter(key => !before || canonical(before[key]) !== canonical(after[key]));
 	if (!keys.length) return;
-	const values = (fields: Record<string, unknown>) => Object.fromEntries(keys.map(key => [key, fields[key] ?? null]));
+	const values = async (fields: Record<string, unknown>) => Object.fromEntries(await Promise.all(keys.map(key => readable(ctx, key, fields[key]))));
 	await appendRecordHistory(ctx, { entityType, entityId, actor, kind: before ? kind : 'created',
-		...(before ? { before: values(before) } : {}), after: values(after) });
+		...(before ? { before: await values(before) } : {}), after: await values(after) });
 }
 
 function validateRange(from?: string, to?: string) {
@@ -488,14 +495,9 @@ export const startSession = mutation({
 	args: { visitorKey: v.optional(v.string()), slug: v.optional(v.string()), landingPath: v.string(), referrerHost: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
 		const visitorKey = isVisitorKey(args.visitorKey) ? args.visitorKey : newVisitorKey();
-		const budgets = [{ key: `marketing-session:${visitorKey}`, limit: 30 }, { key: 'marketing-session:global', limit: 5000 }];
 		try {
-			// Check both budgets before consuming either: rejected starts must write nothing.
-			for (const { key, limit } of budgets) {
-				const row = await ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', key)).unique();
-				if (row && row.expiresAt > Date.now() && row.count >= limit) throw new Error('Too many requests. Please try again later.');
-			}
-			for (const { key, limit } of budgets) await enforceRateLimit(ctx, key, limit, 60 * 60 * 1000);
+			await enforceRateLimit(ctx, 'marketing-session:global', 5000, 60 * 60 * 1000);
+			await enforceRateLimit(ctx, `marketing-session:${visitorKey}`, 30, 60 * 60 * 1000);
 		} catch (error) {
 			if (error instanceof Error && error.message.startsWith('Too many requests.')) return { visitorKey, sessionId: null };
 			throw error;
