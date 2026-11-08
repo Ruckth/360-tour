@@ -1,5 +1,5 @@
 import { paginationOptsValidator } from 'convex/server';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
@@ -37,7 +37,10 @@ import {
 	type OrderSource
 } from './lib/orderLinks';
 import { appointmentLookupFields, resortLocalParts } from './lib/serviceSlots';
-import type { OrderPromotionView } from './lib/posCoupons';
+import { evaluateOrderCoupon, posCouponMessage, type OrderPromotionView, type PosCouponProblem, type OrderCouponResult } from './lib/posCoupons';
+import { couponVersion, consumeOrderCoupon, syncOrderCouponRedemption } from './lib/couponRedemptions';
+import { normalizeCouponCode } from './lib/offers';
+import { resortTodayIso } from './lib/dates';
 import { appendBookingHistory, assertNoLiveCheckout, attemptKey, cleanReason, effectiveTime, stayMoney, writeBooking } from './lib/bookingMoney';
 import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
@@ -141,9 +144,44 @@ async function editableLine(ctx: MutationCtx, lineId: Id<'billLines'>, actor: st
 	return { line, order };
 }
 
+function orderCouponUnavailable(problem: PosCouponProblem): never {
+	throw new ConvexError({ code: 'coupon_unavailable', message: posCouponMessage(problem), problem });
+}
+
+/** Frozen rules, live availability and the real business date; drafts reserve nothing. */
+async function quoteOrderCoupon(ctx: ReadCtx, lines: Line[], couponId: Id<'coupons'>, version: number): Promise<OrderCouponResult> {
+	const coupon = await ctx.db.get(couponId);
+	if (!coupon) return { ok: false, problem: { code: 'not_found' } };
+	const rules = await couponVersion(ctx, couponId, version);
+	let usedOnAttachedStay = false;
+	for (const bookingId of new Set(lines.flatMap(line => line.bookingId ? [line.bookingId] : []))) {
+		if ((await ctx.db.get(bookingId))?.promotion?.couponId === couponId) usedOnAttachedStay = true;
+	}
+	return evaluateOrderCoupon({
+		lines: lines.map(line => ({ ...line, id: line._id })), today: resortTodayIso(), usedOnAttachedStay,
+		coupon: { ...rules, code: coupon.code, version, status: coupon.status, used: coupon.used, held: coupon.held, discountGranted: coupon.discountGranted, heldDiscount: coupon.heldDiscount }
+	});
+}
+
+/** Only changed shares are written; absent shares stay absent on excluded rows. */
+async function writeCouponShares(ctx: MutationCtx, lines: Line[], result: OrderCouponResult | null) {
+	const shares = new Map(result?.ok ? result.allocation.map(share => [share.lineId, share.discount]) : []);
+	for (const line of lines) {
+		const couponDiscount = shares.get(line._id);
+		if (line.couponDiscount !== couponDiscount) await ctx.db.patch(line._id, { couponDiscount });
+		line.couponDiscount = couponDiscount;
+	}
+}
+
 /** Keeps the order's item count, total and due in step with its lines, and marks it changed. */
 async function refreshOrder(ctx: MutationCtx, orderId: Id<'bills'>) {
 	const [order, lines] = await Promise.all([ctx.db.get(orderId), orderLines(ctx, orderId)]);
+	if (!order || !isOpenOrder(order)) throw new Error('Only an unpaid order can be refreshed');
+	if (order.promotion) {
+		const result = await quoteOrderCoupon(ctx, lines, order.promotion.couponId, order.promotion.couponVersion);
+		await writeCouponShares(ctx, lines, result);
+		await ctx.db.patch(orderId, { promotion: { ...order.promotion, discount: result.ok ? result.discount : 0, problem: result.ok ? undefined : result.problem } });
+	}
 	const totals = billTotals(lines);
 	assertBillSize(totals);
 	await ctx.db.patch(orderId, {
@@ -547,6 +585,7 @@ export const getOrder = query({
 		for (const line of lines) {
 			const photoKey = line.serviceId ?? line.propertyId ?? line.bookingId;
 			if (photoKey && !photos.has(photoKey)) photos.set(photoKey, linePhoto(ctx, line, reads));
+			const stay = line.bookingId ? await reads.booking(line.bookingId) : null;
 			rows.push({
 				...line,
 				net: lineNet(line),
@@ -556,9 +595,14 @@ export const getOrder = query({
 				// History is not re-checked: a paid row stays as it was paid.
 				sourceIssue: open && isSourceRow(line) ? await sourceIssue(ctx, line, reads) : null,
 				/** R2b: a booking row's own promotion (the stay was priced with it; checkout never discounts it again). */
-				stayCoupon: null as { code: string; discount: number } | null
+				stayCoupon: stay?.promotion && !stay.priceOverride ? { code: stay.promotion.code, discount: stay.promotion.discount } : null
 			});
 		}
+		const promotion: OrderPromotionView | null = order.promotion ? {
+			code: order.promotion.code, couponVersion: order.promotion.couponVersion, discount: order.promotion.discount,
+			problem: order.promotion.problem ?? null,
+			terms: (await couponVersion(ctx, order.promotion.couponId, order.promotion.couponVersion)).terms ?? null
+		} : null;
 		return {
 			order: { ...order, title: orderTitle(order.orderNumber), state: orderState(order) },
 			/** The linked profile as it is now. */
@@ -574,7 +618,7 @@ export const getOrder = query({
 			parentOrder: parent ? { _id: parent._id, title: orderTitle(parent.orderNumber) } : null,
 			lines: rows,
 			/** R2b: the order's coupon; the split is on each row's `couponDiscount`, the total in `totals.coupon`. */
-			promotion: null as OrderPromotionView | null,
+			promotion,
 			/** As recorded when the receipt was issued; never changed (see `paymentRecord` for corrections). */
 			payments,
 			audit,
@@ -1131,9 +1175,29 @@ export const removeLine = mutation({
 export const applyOrderCoupon = mutation({
 	args: { orderId: v.id('bills'), code: v.optional(v.string()), slug: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ code: string; discount: number; revision: number }> => {
-		await requireAdmin(ctx);
-		void args;
-		throw new Error('Not implemented (marketing R2b contract)');
+		const admin = await requireAdmin(ctx);
+		const order = await editableOrder(ctx, args.orderId, admin.email);
+		if ((args.code !== undefined) === (args.slug !== undefined)) throw new Error('Choose one coupon code or link');
+		let coupon: Doc<'coupons'> | null;
+		if (args.slug !== undefined) {
+			const link = await ctx.db.query('marketingLinks').withIndex('by_slug', q => q.eq('slug', args.slug!)).unique();
+			coupon = link?.couponId ? await ctx.db.get(link.couponId) : null;
+			if (link?.status !== 'active' || coupon?.status !== 'active') orderCouponUnavailable({ code: 'link_without_offer' });
+		} else {
+			coupon = await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', normalizeCouponCode(args.code!))).unique();
+		}
+		if (!coupon) orderCouponUnavailable({ code: 'not_found' });
+		const lines = await orderLines(ctx, order._id);
+		const result = await quoteOrderCoupon(ctx, lines, coupon._id, coupon.currentVersion);
+		if (!result.ok) orderCouponUnavailable(result.problem);
+		await ctx.db.patch(order._id, { promotion: { couponId: coupon._id, couponVersion: coupon.currentVersion, code: coupon.code, discount: result.discount, appliedAt: Date.now(), appliedBy: admin.email } });
+		await writeCouponShares(ctx, lines, result);
+		await refreshOrder(ctx, order._id);
+		await logOrder(ctx, order._id, admin.email, 'coupon_applied', {
+			...(order.promotion ? { before: { code: order.promotion.code } } : {}),
+			after: { code: coupon.code, couponVersion: coupon.currentVersion, discount: result.discount }
+		});
+		return { code: coupon.code, discount: result.discount, revision: order.revision + 1 };
 	}
 });
 
@@ -1141,9 +1205,14 @@ export const applyOrderCoupon = mutation({
 export const removeOrderCoupon = mutation({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args): Promise<{ revision: number }> => {
-		await requireAdmin(ctx);
-		void args;
-		throw new Error('Not implemented (marketing R2b contract)');
+		const admin = await requireAdmin(ctx);
+		const order = await editableOrder(ctx, args.orderId, admin.email);
+		if (!order.promotion) return { revision: order.revision };
+		await ctx.db.patch(order._id, { promotion: undefined });
+		await writeCouponShares(ctx, await orderLines(ctx, order._id), null);
+		await refreshOrder(ctx, order._id);
+		await logOrder(ctx, order._id, admin.email, 'coupon_removed', { before: { code: order.promotion.code, discount: order.promotion.discount } });
+		return { revision: order.revision + 1 };
 	}
 });
 
@@ -1245,6 +1314,7 @@ export const clearOrder = mutation({
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		const lines = await orderLines(ctx, order._id);
 		for (const line of lines) await ctx.db.delete(line._id);
+		await ctx.db.patch(order._id, { promotion: undefined });
 		await ctx.db.insert('billAudit', { billId: order._id, at: Date.now(), actor: admin.email, kind: 'cleared' });
 		await refreshOrder(ctx, order._id);
 		// The removed rows, so the history shows what was cleared (restoring them is the discard/restore task).
@@ -1285,6 +1355,15 @@ export const settleOrder = mutation({
 		}
 		const lines = await orderLines(ctx, order._id);
 		if (!lines.length) throw new Error('Add an item first');
+		if (order.promotion) {
+			if (order.promotion.problem) orderCouponUnavailable(order.promotion.problem);
+			const result = await quoteOrderCoupon(ctx, lines, order.promotion.couponId, order.promotion.couponVersion);
+			if (!result.ok) orderCouponUnavailable(result.problem);
+			const shares = new Map(result.allocation.map(share => [share.lineId, share.discount]));
+			if (result.discount !== order.promotion.discount || lines.some(line => (line.couponDiscount ?? 0) !== (shares.get(line._id) ?? 0))) {
+				throw new ConvexError({ code: 'coupon_changed', message: `The coupon now saves ฿${result.discount.toLocaleString('en-US', { maximumFractionDigits: 2 })}. Check the coupon again before taking payment.`, discount: result.discount });
+			}
+		}
 		const totals = billTotals(lines);
 		if (totals.due !== round2(args.expectedDue) || order.revision !== args.expectedRevision) throw new Error('The order changed. Check the total and pay again.');
 		assertTenders(args.tenders, totals.due);
@@ -1298,6 +1377,7 @@ export const settleOrder = mutation({
 
 		const now = Date.now();
 		const effectiveAt = effectiveTime(args.effectiveAt, now);
+		if (order.promotion) await consumeOrderCoupon(ctx, order._id, order.promotion);
 		for (const line of lines) {
 			if (!isSourceRow(line)) continue;
 			const issue = await sourceIssue(ctx, line);
@@ -1361,6 +1441,7 @@ export const voidOrder = mutation({
 		if (!order) throw new Error('Order not found');
 		if (order.status !== 'paid') throw new Error('Only a paid order can be voided');
 		const now = Date.now();
+		await syncOrderCouponRedemption(ctx, order._id, 'reversed');
 		await ctx.db.patch(order._id, { status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, updatedAt: now });
 		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'void', note: reason });
 		for (const row of await sourceRows(ctx, order._id)) {
@@ -1497,7 +1578,8 @@ const LEGACY_UNPROVEN = (name: string) =>
 	`This order was paid before stay payments were itemised, so the app can't prove how much of it was for ${name}. Correct its tenders instead, or record a refund on the booking if money was returned.`;
 
 /**
- * Voids a paid order whose payment was recorded by mistake: no money was ever received. Unlike
+ * Voids a paid order (or corrects an earlier plain void) whose payment was recorded by mistake:
+ * no money was ever received. Unlike
  * voidOrder, it reopens what the order charged, exactly by what this order took: each stay loses
  * this order's itemised payment (an earlier online deposit stays), each appointment goes back to
  * unpaid at its price before checkout. It refuses, writing nothing, when any part can't be proved:
@@ -1512,7 +1594,7 @@ export const voidUnreceivedOrder = mutation({
 		if (existing) return { replayed: true };
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new Error('Order not found');
-		if (order.status !== 'paid') throw new Error('Only a paid order can be voided');
+		if (order.status !== 'paid' && !(order.status === 'void' && !order.voidUnreceived)) throw new Error('Only a paid order can be voided');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason')!;
 
@@ -1548,6 +1630,7 @@ export const voidUnreceivedOrder = mutation({
 		}
 
 		const now = Date.now();
+		await syncOrderCouponRedemption(ctx, order._id, 'released');
 		const sequence = (order.correctionRevision ?? 0) + 1;
 		await ctx.db.patch(order._id, {
 			status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, voidUnreceived: true, correctionRevision: sequence, updatedAt: now

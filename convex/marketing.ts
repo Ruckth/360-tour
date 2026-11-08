@@ -4,6 +4,7 @@ import { ConvexError, v, type ObjectType } from 'convex/values';
 import { mutation, query, type QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from './lib/offers';
+import { orderTitle, formatReceiptNumber } from './lib/billMath';
 import { requireAdmin } from './lib/adminAuth';
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
 import { enforceRateLimit } from './lib/rateLimit';
@@ -226,7 +227,16 @@ export const getCoupon = query({
 		const rows = await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', coupon._id)).order('desc').take(50);
 		const redemptions: RedemptionRow[] = await Promise.all(rows.map(async row => {
 			const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
-			return { ...row, ...(booking && { booking: { guestName: booking.guestName, checkIn: booking.checkIn, checkOut: booking.checkOut, confirmationCode: booking.confirmationCode } }) };
+			const order = row.billId ? await ctx.db.get(row.billId) : null;
+			return {
+				...row,
+				...(order && { order: {
+					orderId: order._id, title: orderTitle(order.orderNumber),
+					receiptNumber: order.receiptNumber !== undefined ? formatReceiptNumber(order.receiptNumber) : null,
+					customerName: order.customerSnapshot?.name ?? null
+				} }),
+				...(booking && { booking: { guestName: booking.guestName, checkIn: booking.checkIn, checkOut: booking.checkOut, confirmationCode: booking.confirmationCode } })
+			};
 		}));
 		return { ...await enrichCoupon(ctx, coupon), versions, links: await Promise.all(links.map(link => enrichLink(ctx, link))), redemptions };
 	}

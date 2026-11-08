@@ -1,6 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { billTotals, lineDiscount, lineNet, linePrice } from './billMath';
+import { billTotals, lineCouponDiscount, lineDiscount, lineNet, linePrice } from './billMath';
 import { isOpenOrder } from './orderLinks';
 import { orderLines } from './orderLines';
 import { getEffectiveSettings } from './siteSettings';
@@ -71,10 +71,11 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 	if (!lines.length) return { state: 'idle', businessName };
 
 	const totals = billTotals(lines);
+	const coupon: DisplayCoupon | null = order.promotion && !order.promotion.problem && totals.coupon > 0 ? { code: order.promotion.code, saving: totals.coupon } : null;
 	const shared: Shared = { businessName, customerFirstName: await customerFirstName(ctx, order), orderNumber: order.orderNumber ?? null, currency: order.currency };
 	if (order.status === 'paid') {
 		// What the guest paid at the counter: the total less deposits paid before checkout.
-		return { ...shared, state: 'paid', total: totals.total, vat: totals.vat, amountPaid: totals.due, receiptNumber: order.receiptNumber ?? null, paidAt: order.paidAt ?? order.updatedAt, coupon: null };
+		return { ...shared, state: 'paid', total: totals.total, vat: totals.vat, amountPaid: totals.due, receiptNumber: order.receiptNumber ?? null, paidAt: order.paidAt ?? order.updatedAt, coupon };
 	}
 	return {
 		...shared,
@@ -86,13 +87,13 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 			unitPrice: line.unitPrice,
 			price: linePrice(line),
 			discount: lineDiscount(line),
-			couponDiscount: 0,
+			couponDiscount: lineCouponDiscount(line),
 			total: lineNet(line),
 			deposit: line.deposit ?? 0
 		})),
 		subtotal: totals.subtotal,
 		discount: totals.discount,
-		coupon: null,
+		coupon,
 		deposit: totals.deposit,
 		total: totals.total,
 		vat: totals.vat,

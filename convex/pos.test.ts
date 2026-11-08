@@ -648,7 +648,7 @@ describe('settlement', () => {
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
 		const { lineId } = await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
 		await admin.mutation(api.pos.updateLine, { lineId, discount: { type: 'percent', value: 10 } });
-		expect((await order(orderId)).totals).toEqual({ subtotal: 31200, discount: 120, total: 31080, vat: 2033.27, deposit: 10000, due: 21080 });
+		expect((await order(orderId)).totals).toEqual({ subtotal: 31200, discount: 120, coupon: 0, total: 31080, vat: 2033.27, deposit: 10000, due: 21080 });
 		await settle({ orderId, idempotencyKey: 'attempt-0001', expectedDue: 21080, tenders: [{ method: 'card', amount: 21080 }] });
 		expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'paid', amountPaid: 30000 });
 	});
