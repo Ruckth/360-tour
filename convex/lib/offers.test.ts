@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateOffer, normalizeCouponCode, type CouponRules, type OfferInput, type QuoteLine } from './offers';
+import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type CouponRules, type OfferInput, type QuoteLine } from './offers';
 
 const stay = (amount = 9000, nights = 2, propertySlug = 'mossbell'): QuoteLine => ({
   id: 'stay', kind: 'accommodation', propertySlug, checkIn: '2026-11-10',
@@ -114,16 +114,29 @@ describe('allocation input safety', () => {
     expect(() => evaluateOffer({ lines: [stay(0.6), stay(0.6)], directDiscountPercent: 100, today: '2026-11-07' }))
       .toThrow('non-negative safe integers');
   });
-  it('rejects unsafe totals before allocation', () => {
-    expect(() => evaluateOffer(input(f1, [stay(Number.MAX_SAFE_INTEGER), { ...stay(1), id: 'second' }])))
-      .toThrow('safe integer');
+  it('rejects totals above the quote ceiling before allocation', () => {
+    expect(() => evaluateOffer(input(f1, [stay(MAX_QUOTE_SUBTOTAL), { ...stay(1), id: 'second' }])))
+      .toThrow('at most');
   });
-  it('allocates safe-integer prices exactly without floating-point overspending', () => {
-    const lines = [stay(2_763_351_281_106_943), { ...stay(5_552_634_037_994_643), id: 'second' }];
-    const result = evaluateOffer({ lines, today: '2026-11-07', directDiscountPercent: 100 });
-    expect(result.allocation.map(line => line.discount)).toEqual(lines.map(line => line.amount));
-    expect(result.allocation.reduce((sum, line) => sum + line.discount, 0)).toBe(result.discount);
+  it('allocates exactly at the quote ceiling, with stable remainder ties', () => {
+    const lines: QuoteLine[] = [stay(MAX_QUOTE_SUBTOTAL - 3), ...[1, 1, 1].map((amount, index) => ({
+      id: `s${index}`, kind: 'service' as const, label: 'Service', amount,
+    }))];
+    for (const discount of [1, 2, MAX_QUOTE_SUBTOTAL / 2, MAX_QUOTE_SUBTOTAL - 1, MAX_QUOTE_SUBTOTAL]) {
+      const result = evaluateOffer({ ...input({ ...f1, scope: 'accommodation_and_services',
+        benefit: { kind: 'fixed', amount: discount }, maxSaving: undefined, discountBudget: undefined,
+      }, lines), directDiscountPercent: 0 });
+      // Oracle: exact shares via BigInt, then largest remainder with input-order ties.
+      const shares = lines.map((line, index) => {
+        const product = BigInt(discount) * BigInt(line.amount);
+        return { index, value: Number(product / BigInt(MAX_QUOTE_SUBTOTAL)), remainder: Number(product % BigInt(MAX_QUOTE_SUBTOTAL)) };
+      });
+      const remaining = discount - shares.reduce((sum, share) => sum + share.value, 0);
+      [...shares].sort((a, b) => b.remainder - a.remainder || a.index - b.index).slice(0, remaining).forEach(share => share.value++);
+      expect(result.allocation.map(line => line.discount)).toEqual(shares.map(share => share.value));
+    }
   });
+
   it('keeps whole-baht allocations within every line and preserves their sum', () => {
     for (const amount of [0, 1, 2, 3, 7, 100, 10_000_000]) {
       const lines: QuoteLine[] = [stay(amount), { id: 's', kind: 'service', label: 'Spa', amount }, { id: 's2', kind: 'service', label: 'Spa 2', amount: 1 }];

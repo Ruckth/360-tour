@@ -73,23 +73,45 @@ export function normalizeCouponCode(raw: string): string {
 	return raw.trim().toUpperCase();
 }
 
+/**
+ * Largest quote subtotal the engine accepts. Every line and discount is at most this, so
+ * discount × line ≤ 8.1e15 < 2^53 and the integer allocation below is exact.
+ * (A year in the largest villa is about ฿4.4M.)
+ */
+export const MAX_QUOTE_SUBTOTAL = 90_000_000;
+
 /** Stable largest-remainder allocation: equal remainders follow input line order. */
-function allocate(lines: QuoteLine[], eligible: QuoteLine[], discount: number): OfferResult['allocation'] {
+function allocate(eligible: QuoteLine[], discount: number): Map<QuoteLine, number> {
 	const total = eligible.reduce((sum, line) => sum + line.amount, 0);
 	const shares = eligible.map((line, index) => {
-		// Products can exceed Number's exact range even when all prices and totals are safe integers.
-		const numerator = BigInt(discount) * BigInt(line.amount);
-		const denominator = BigInt(total);
-		return { line, index, value: total > 0 ? Number(numerator / denominator) : 0,
-			remainder: total > 0 ? numerator % denominator : BigInt(0) };
+		const remainder = total > 0 ? (discount * line.amount) % total : 0;
+		return { line, index, remainder, value: total > 0 ? (discount * line.amount - remainder) / total : 0 };
 	});
 	let remaining = discount - shares.reduce((sum, share) => sum + share.value, 0);
-	for (const share of [...shares].sort((a, b) => a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1)) {
+	for (const share of [...shares].sort((a, b) => b.remainder - a.remainder || a.index - b.index)) {
 		if (remaining-- <= 0) break;
 		share.value++;
 	}
-	const byLine = new Map(shares.map((share) => [share.line, share.value]));
-	return lines.map((line) => ({ lineId: line.id, discount: byLine.get(line) ?? 0 }));
+	return new Map(shares.map((share) => [share.line, share.value]));
+}
+
+/** First failing rule wins; keep this order stable for guest-facing explanations. */
+function couponProblem(coupon: CouponRules, accommodation: Extract<QuoteLine, { kind: 'accommodation' }>[], today: string, eligibleSubtotal: number): CouponProblem | undefined {
+	if (coupon.status !== 'active') return { code: 'not_active' };
+	if (coupon.bookFrom && today < coupon.bookFrom) return { code: 'not_started', startsOn: coupon.bookFrom };
+	if (coupon.bookTo && today > coupon.bookTo) return { code: 'expired', endedOn: coupon.bookTo };
+	if (coupon.usageLimit !== undefined && coupon.used >= coupon.usageLimit) return { code: 'sold_out' };
+	if (coupon.discountBudget !== undefined && coupon.discountGranted >= coupon.discountBudget) return { code: 'budget_used' };
+	if (coupon.propertySlugs?.length && accommodation.some((line) => !coupon.propertySlugs!.includes(line.propertySlug))) return { code: 'wrong_property' };
+	if (accommodation.some((line) => {
+		// Checkout is exclusive; the final occupied night may equal stayTo.
+		const lastNight = new Date(Date.parse(`${line.checkOut}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+		return (coupon.stayFrom && line.checkIn < coupon.stayFrom) || (coupon.stayTo && lastNight > coupon.stayTo);
+	})) return { code: 'stay_outside_dates', ...(coupon.stayFrom && { stayFrom: coupon.stayFrom }), ...(coupon.stayTo && { stayTo: coupon.stayTo }) };
+	const nights = accommodation.reduce((sum, line) => sum + line.nights, 0);
+	if (coupon.minNights !== undefined && nights < coupon.minNights) return { code: 'min_nights', minNights: coupon.minNights, missingNights: coupon.minNights - nights };
+	if (eligibleSubtotal <= 0) return { code: 'nothing_eligible' };
+	if (coupon.minEligibleSubtotal !== undefined && eligibleSubtotal < coupon.minEligibleSubtotal) return { code: 'min_subtotal', minEligibleSubtotal: coupon.minEligibleSubtotal, eligibleSubtotal };
 }
 
 export function evaluateOffer(input: OfferInput): OfferResult {
@@ -98,46 +120,29 @@ export function evaluateOffer(input: OfferInput): OfferResult {
 	if (lines.some(line => !Number.isSafeInteger(line.amount) || line.amount < 0)) {
 		throw new Error('Quote line amounts must be non-negative safe integers');
 	}
-	const accommodation = lines.filter((line) => line.kind === 'accommodation');
 	const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
-	if (!Number.isSafeInteger(subtotal)) throw new Error('Quote subtotal must be a safe integer');
+	if (subtotal > MAX_QUOTE_SUBTOTAL) throw new Error(`Quote subtotal must be at most ${MAX_QUOTE_SUBTOTAL}`);
+	const accommodation = lines.filter((line) => line.kind === 'accommodation');
+	const eligible = coupon ? lines.filter((line) => line.kind !== 'extra' && (
+		coupon.scope === 'accommodation_and_services' ||
+		(coupon.scope === 'accommodation' ? line.kind === 'accommodation' : line.kind === 'service')
+	)) : [];
+	const eligibleSubtotal = eligible.reduce((sum, line) => sum + line.amount, 0);
+	const problem = coupon ? couponProblem(coupon, accommodation, today, eligibleSubtotal) : undefined;
+
 	const accommodationSubtotal = accommodation.reduce((sum, line) => sum + line.amount, 0);
-	const directDiscount = Math.min(Math.floor(accommodationSubtotal), Math.max(0,
+	const directDiscount = Math.min(accommodationSubtotal, Math.max(0,
 		Math.round(accommodationSubtotal * Math.min(100, input.directDiscountPercent) / 100)));
-	let problem: CouponProblem | undefined;
-	let eligible: QuoteLine[] = [];
 	let couponDiscount = 0;
 	let capped = false;
-	if (coupon) {
-		const nights = accommodation.reduce((sum, line) => sum + line.nights, 0);
-		eligible = lines.filter((line) => line.kind !== 'extra' && (
-			coupon.scope === 'accommodation_and_services' ||
-			(coupon.scope === 'accommodation' ? line.kind === 'accommodation' : line.kind === 'service')
-		));
-		const eligibleSubtotal = eligible.reduce((sum, line) => sum + line.amount, 0);
-		if (coupon.status !== 'active') problem = { code: 'not_active' };
-		else if (coupon.bookFrom && today < coupon.bookFrom) problem = { code: 'not_started', startsOn: coupon.bookFrom };
-		else if (coupon.bookTo && today > coupon.bookTo) problem = { code: 'expired', endedOn: coupon.bookTo };
-		else if (coupon.usageLimit !== undefined && coupon.used >= coupon.usageLimit) problem = { code: 'sold_out' };
-		else if (coupon.discountBudget !== undefined && coupon.discountGranted >= coupon.discountBudget) problem = { code: 'budget_used' };
-		else if (coupon.propertySlugs?.length && accommodation.some((line) => !coupon.propertySlugs!.includes(line.propertySlug))) problem = { code: 'wrong_property' };
-		else if (accommodation.some((line) => {
-			// Checkout is exclusive; the final occupied night may equal stayTo.
-			const lastNight = new Date(Date.parse(`${line.checkOut}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
-			return (coupon.stayFrom && line.checkIn < coupon.stayFrom) || (coupon.stayTo && lastNight > coupon.stayTo);
-		})) problem = { code: 'stay_outside_dates', ...(coupon.stayFrom && { stayFrom: coupon.stayFrom }), ...(coupon.stayTo && { stayTo: coupon.stayTo }) };
-		else if (coupon.minNights !== undefined && nights < coupon.minNights) problem = { code: 'min_nights', minNights: coupon.minNights, missingNights: coupon.minNights - nights };
-		else if (eligibleSubtotal <= 0) problem = { code: 'nothing_eligible' };
-		else if (coupon.minEligibleSubtotal !== undefined && eligibleSubtotal < coupon.minEligibleSubtotal) problem = { code: 'min_subtotal', minEligibleSubtotal: coupon.minEligibleSubtotal, eligibleSubtotal };
-		else {
-			couponDiscount = Math.min(Math.floor(eligibleSubtotal), Math.round(coupon.benefit.kind === 'percent'
-				? eligibleSubtotal * coupon.benefit.percent / 100 : coupon.benefit.amount));
-			const cap = Math.min(coupon.maxSaving ?? Infinity,
-				coupon.discountBudget === undefined ? Infinity : coupon.discountBudget - coupon.discountGranted);
-			if (couponDiscount > cap) {
-				couponDiscount = Math.max(0, Math.floor(cap));
-				capped = true;
-			}
+	if (coupon && !problem) {
+		couponDiscount = Math.min(eligibleSubtotal, Math.round(coupon.benefit.kind === 'percent'
+			? eligibleSubtotal * coupon.benefit.percent / 100 : coupon.benefit.amount));
+		const cap = Math.min(coupon.maxSaving ?? Infinity,
+			coupon.discountBudget === undefined ? Infinity : coupon.discountBudget - coupon.discountGranted);
+		if (couponDiscount > cap) {
+			couponDiscount = Math.max(0, Math.floor(cap));
+			capped = true;
 		}
 	}
 	// A services-only coupon never overlaps the direct offer (accommodation only), so both apply.
@@ -147,17 +152,14 @@ export function evaluateOffer(input: OfferInput): OfferResult {
 		? stacks || couponDiscount > directDiscount ? 'coupon' : 'direct'
 		: directDiscount > 0 ? 'direct' : 'none';
 	const discount = stacks ? directDiscount + couponDiscount : applied === 'coupon' ? couponDiscount : directDiscount;
-	const allocation = stacks
-		? sumAllocations(allocate(lines, accommodation, directDiscount), allocate(lines, eligible, couponDiscount))
-		: allocate(lines, applied === 'coupon' ? eligible : accommodation, discount);
+	const allocation = applied === 'coupon' ? allocate(eligible, couponDiscount) : allocate(accommodation, directDiscount);
+	if (stacks) {
+		for (const [line, amount] of allocate(accommodation, directDiscount)) allocation.set(line, amount);
+	}
 	return {
 		subtotal, applied,
 		couponStatus: !coupon ? 'none' : problem ? 'invalid' : applied === 'coupon' ? 'applied' : 'coupon_worse',
 		...(problem && { problem }), directDiscount, couponDiscount, capped, discount, total: subtotal - discount,
-		allocation
+		allocation: lines.map((line) => ({ lineId: line.id, discount: allocation.get(line) ?? 0 }))
 	};
-}
-
-function sumAllocations(a: OfferResult['allocation'], b: OfferResult['allocation']): OfferResult['allocation'] {
-	return a.map((entry, index) => ({ lineId: entry.lineId, discount: entry.discount + b[index].discount }));
 }

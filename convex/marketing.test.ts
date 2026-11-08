@@ -307,12 +307,19 @@ describe('marketing audit regressions', () => {
 
   it('bounds service count at 50 and accepts zero and maximum whole-baht prices', async () => {
     const { t } = await setup();
-    const services = Array.from({ length: 50 }, (_, i) => ({ label: `Service ${i}`, amount: i ? 10_000_000 : 0 }));
+    const services = Array.from({ length: 50 }, (_, i) => ({ label: `Service ${i}`, amount: i ? 1_000_000 : 0 }));
     const result = await t.query(api.marketing.previewCoupon, { ...quote, services });
     expect(Number.isFinite(result.total)).toBe(true);
     expect(result.allocation.every((line, i) => line.discount <= (i ? services[i - 1].amount : 9000))).toBe(true);
     await expect(t.query(api.marketing.previewCoupon, { ...quote, services: [...services, { label: 'Extra', amount: 0 }] }))
       .rejects.toThrow('too_many_services');
+  });
+
+  it('rejects quotes above the subtotal ceiling in both quote handlers', async () => {
+    const { t, admin, propertyId } = await setup();
+    await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 50_000_000 }));
+    await expect(t.query(api.marketing.previewCoupon, quote)).rejects.toThrow('invalid_quote_total');
+    await expect(admin.query(api.marketing.testQuote, quote)).rejects.toThrow('invalid_quote_total');
   });
 
   it('exposes actionable structured validation errors in production responses', async () => {
