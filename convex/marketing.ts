@@ -1,12 +1,14 @@
 // Marketing release 1: campaigns, short links, QR entry and the coupon catalog.
 // CONTRACT — names, args and return types are fixed so the admin UI and backend can be built in parallel.
 import { ConvexError, v, type ObjectType } from 'convex/values';
-import { mutation, query, type QueryCtx } from './_generated/server';
+import { mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from './lib/offers';
 import { orderTitle, formatReceiptNumber } from './lib/billMath';
 import { requireAdmin } from './lib/adminAuth';
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
+import { appendRecordHistory } from './lib/recordHistory';
+import { cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey } from './lib/marketingAttribution';
 import { enforceRateLimit } from './lib/rateLimit';
 import { isMarketingLocale, localizeMarketingPath, validateMarketingSlug } from './lib/marketingSlugs';
 
@@ -89,6 +91,15 @@ function auditFields(admin: { email: string }) {
 function canonical(value: unknown): string {
 	return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
 		? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+}
+
+async function recordChanges(ctx: MutationCtx, entityType: string, entityId: string, actor: string,
+	before: Record<string, unknown> | null, after: Record<string, unknown>, kind = 'updated') {
+	const keys = Object.keys(after).filter(key => !before || canonical(before[key]) !== canonical(after[key]));
+	if (!keys.length) return;
+	const values = (fields: Record<string, unknown>) => Object.fromEntries(keys.map(key => [key, fields[key] ?? null]));
+	await appendRecordHistory(ctx, { entityType, entityId, actor, kind: before ? kind : 'created',
+		...(before ? { before: values(before) } : {}), after: values(after) });
 }
 
 function validateRange(from?: string, to?: string) {
@@ -280,11 +291,14 @@ export const saveCampaign = mutation({
 		if (fields.budget !== undefined && (!Number.isFinite(fields.budget) || fields.budget < 0)) throw new ConvexError({ code: 'invalid_budget', message: 'Invalid budget. Enter a finite, non-negative amount.' });
 		const audit = auditFields(admin);
 		if (campaignId) {
-			await getOrThrow(ctx, 'marketingCampaigns', campaignId);
+			const existing = await getOrThrow(ctx, 'marketingCampaigns', campaignId);
+			await recordChanges(ctx, 'marketingCampaign', campaignId, admin.email, existing, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes });
 			await ctx.db.patch(campaignId, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes, ...audit });
 			return campaignId;
 		}
-		return ctx.db.insert('marketingCampaigns', { ...fields, ...audit, createdAt: audit.updatedAt, status: 'draft' });
+		const id = await ctx.db.insert('marketingCampaigns', { ...fields, ...audit, createdAt: audit.updatedAt, status: 'draft' });
+		await recordChanges(ctx, 'marketingCampaign', id, admin.email, null, fields);
+		return id;
 	}
 });
 
@@ -300,6 +314,7 @@ export const setCampaignStatus = mutation({
 		if (args.status !== campaign.status && !campaignTransitions[campaign.status].includes(args.status)) {
 			throw new ConvexError({ code: 'invalid_transition', message: 'This campaign status change is unavailable. Use the next action in the campaign lifecycle.' });
 		}
+		await recordChanges(ctx, 'marketingCampaign', args.campaignId, admin.email, campaign, { status: args.status }, 'status_changed');
 		await ctx.db.patch(args.campaignId, { status: args.status, ...auditFields(admin) });
 		return null;
 	}
@@ -331,10 +346,13 @@ export const saveLink = mutation({
 		if (linkId && existing) {
 			// Printed QR codes and shared posts point at the slug, so it is fixed once the link has been live.
 			if (existing.status !== 'draft' && existing.slug !== checked.slug) throw new ConvexError({ code: 'slug_locked', message: 'Slug is locked after publishing. Create a new link to use a different slug.' });
+			await recordChanges(ctx, 'marketingLink', linkId, admin.email, existing, { ...fields, slug: checked.slug, placement: fields.placement, locale: fields.locale, couponId: fields.couponId });
 			await ctx.db.patch(linkId, values);
 			return linkId;
 		}
-		return ctx.db.insert('marketingLinks', { ...values, createdAt: values.updatedAt, opens: 0, status: 'draft' });
+		const id = await ctx.db.insert('marketingLinks', { ...values, createdAt: values.updatedAt, opens: 0, status: 'draft' });
+		await recordChanges(ctx, 'marketingLink', id, admin.email, null, { ...fields, slug: checked.slug });
+		return id;
 	}
 });
 
@@ -347,6 +365,7 @@ export const setLinkStatus = mutation({
 			throw new ConvexError({ code: 'invalid_transition', message: 'A link cannot return to draft. Pause or archive it to remove its offer.' });
 		}
 		if (args.status === 'active') await validateLinkDestination(ctx, link.destination, true);
+		await recordChanges(ctx, 'marketingLink', args.linkId, admin.email, link, { status: args.status }, 'status_changed');
 		await ctx.db.patch(args.linkId, { status: args.status, ...auditFields(admin) });
 		return null;
 	}
@@ -376,12 +395,17 @@ export const saveCoupon = mutation({
 			// Compare the known rule fields individually, independent of object key ordering.
 			const changed = (Object.keys(couponRules) as (keyof RuleFields)[]).some(key => canonical(current[key]) !== canonical(rules[key]));
 			const version = coupon.currentVersion + (changed ? 1 : 0);
-			if (changed) await ctx.db.insert('couponVersions', { ...rules, couponId, version, createdAt: now, createdByEmail: admin.email });
+			if (changed) {
+				await ctx.db.insert('couponVersions', { ...rules, couponId, version, createdAt: now, createdByEmail: admin.email });
+				await appendRecordHistory(ctx, { entityType: 'coupon', entityId: couponId, actor: admin.email, kind: 'version_added', after: { ...rules, version } });
+			}
+			await recordChanges(ctx, 'coupon', couponId, admin.email, coupon, { code, campaignId });
 			await ctx.db.patch(couponId, { code, campaignId, currentVersion: version, ...audit });
 			return { couponId, version };
 		}
 		const id = await ctx.db.insert('coupons', { code, campaignId, status: 'draft', currentVersion: 1, used: 0, discountGranted: 0, createdAt: now, ...audit });
 		await ctx.db.insert('couponVersions', { ...rules, couponId: id, version: 1, createdAt: now, createdByEmail: admin.email });
+		await recordChanges(ctx, 'coupon', id, admin.email, null, { code, campaignId });
 		return { couponId: id, version: 1 };
 	}
 });
@@ -394,6 +418,7 @@ export const setCouponStatus = mutation({
 		if (coupon.status === 'archived' && args.status !== 'archived') {
 			throw new ConvexError({ code: 'invalid_transition', message: 'Archived coupons cannot change status. Create a new coupon instead.' });
 		}
+		await recordChanges(ctx, 'coupon', args.couponId, admin.email, coupon, { status: args.status }, 'status_changed');
 		await ctx.db.patch(args.couponId, { status: args.status, ...auditFields(admin) });
 		return null;
 	}
@@ -457,12 +482,37 @@ export const recordOpen = mutation({
  * - `slug`: the link this tab arrived through. Any non-draft link counts; unknown or draft slugs are ignored.
  * - `landingPath` / `referrerHost`: sanitised with cleanLandingPath / cleanReferrerHost before storing.
  * Rate limited per visitor key and globally; over the limit it returns the key with `sessionId: null`
- * (never throws for that). Implemented in package B8.
+ * (never throws for that).
  */
 export const startSession = mutation({
 	args: { visitorKey: v.optional(v.string()), slug: v.optional(v.string()), landingPath: v.string(), referrerHost: v.optional(v.string()) },
-	handler: async (_ctx, _args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
-		throw new ConvexError({ code: 'not_implemented', message: 'marketing.startSession is implemented in package B8.' });
+	handler: async (ctx, args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
+		const visitorKey = isVisitorKey(args.visitorKey) ? args.visitorKey : newVisitorKey();
+		const budgets = [{ key: `marketing-session:${visitorKey}`, limit: 30 }, { key: 'marketing-session:global', limit: 5000 }];
+		try {
+			// Check both budgets before consuming either: rejected starts must write nothing.
+			for (const { key, limit } of budgets) {
+				const row = await ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', key)).unique();
+				if (row && row.expiresAt > Date.now() && row.count >= limit) throw new Error('Too many requests. Please try again later.');
+			}
+			for (const { key, limit } of budgets) await enforceRateLimit(ctx, key, limit, 60 * 60 * 1000);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith('Too many requests.')) return { visitorKey, sessionId: null };
+			throw error;
+		}
+		const link = args.slug === undefined ? null : await ctx.db.query('marketingLinks').withIndex('by_slug', q => q.eq('slug', args.slug!)).unique();
+		let ownHost: string | undefined;
+		const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL;
+		if (siteUrl) {
+			try { ownHost = new URL(siteUrl).hostname; } catch { /* Ignore an invalid site configuration. */ }
+		}
+		const referrerHost = cleanReferrerHost(args.referrerHost, ownHost);
+		const sessionId = await ctx.db.insert('marketingSessions', {
+			visitorKey, landingPath: cleanLandingPath(args.landingPath), startedAt: Date.now(),
+			...(referrerHost ? { referrerHost } : {}),
+			...(link && link.status !== 'draft' ? { linkId: link._id, campaignId: link.campaignId } : {})
+		});
+		return { visitorKey, sessionId };
 	}
 });
 

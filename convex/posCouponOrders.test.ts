@@ -100,6 +100,25 @@ describe('POS order coupons', () => {
 		expect((await s.order(orderId)).order.promotion?.redemptionId).toBe((await s.ledger())[0]._id);
 	});
 
+	it('keeps the scanned link origin through refresh, recheck and settlement; code application clears it', async () => {
+		const s = await setup();
+		const campaignId = await s.admin.mutation(api.marketing.saveCampaign, { name: 'Spa QR', source: 'print', medium: 'qr' });
+		const linkId = await s.admin.mutation(api.marketing.saveLink, { slug: 'spa1', name: 'Spa card', campaignId, couponId: s.couponId, destination: { kind: 'home' }, entry: 'qr' });
+		await s.admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
+		const orderId = await s.sale();
+		await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, slug: 'spa1' });
+		expect((await s.order(orderId)).order.promotion?.viaLinkId).toBe(linkId);
+		await s.extra(orderId); // Calls refreshOrder.
+		expect((await s.order(orderId)).order.promotion?.viaLinkId).toBe(linkId);
+		await s.admin.mutation(api.pos.recheckOrderCoupon, { orderId });
+		expect((await s.order(orderId)).order.promotion?.viaLinkId).toBe(linkId);
+		await s.apply(orderId);
+		expect((await s.order(orderId)).order.promotion).not.toHaveProperty('viaLinkId');
+		await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, slug: 'spa1' });
+		await s.pay(orderId);
+		expect((await s.order(orderId)).order.promotion).toMatchObject({ viaLinkId: linkId, redemptionId: expect.any(String) });
+	});
+
 	it('never discounts stays, rooms, extras or appointment fee rows', async () => {
 		const s = await setup();
 		const orderId = await s.sale();
