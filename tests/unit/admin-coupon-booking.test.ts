@@ -155,17 +155,14 @@ const row = (patch: Partial<RedemptionRow>): RedemptionRow =>
 
 describe("booking sheet promotion", () => {
   it("links the coupon with its version, discount and ledger state", async () => {
-    queries.getCoupon.mockReturnValue({ redemptions: [row({ state: "consumed" })] });
-    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 1800, redemptionId: "r1" }, currency: "THB" }));
+    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 1800, redemptionId: "r1" }, currency: "THB", redemption: { state: "consumed", overLimit: false } }));
     const link = document.querySelector("a")!;
     expect(link.getAttribute("href")).toBe("/admin/marketing/coupons/c1");
     expect(document.querySelector("[data-testid='booking-promotion']")?.textContent).toBe("DCNT-F1-20· v1· −฿1,800Consumed");
-    expect(queries.getCoupon).toHaveBeenCalledWith({ couponId: "c1" });
   });
 
   it("flags a use that went over the limit", async () => {
-    queries.getCoupon.mockReturnValue({ redemptions: [row({ state: "consumed", overLimit: true })] });
-    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 1800, redemptionId: "r1" }, currency: "THB" }));
+    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 1800, redemptionId: "r1" }, currency: "THB", redemption: { state: "consumed", overLimit: true } }));
     expect(text()).toContain("Over the limit");
   });
 });
