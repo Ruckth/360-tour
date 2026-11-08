@@ -277,7 +277,7 @@ describe("consent banner", () => {
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "");
     const dialog = await banner();
     expect(dialog?.getAttribute("aria-label")).toBe("Measurement choice");
-    expect(dialog?.textContent).toContain("which of our links or QR codes brought you here");
+    expect(dialog?.textContent).toContain("remember your visits for 30 days");
     expect(dialog?.textContent).toContain("Nothing is shared with advertisers");
     expect(dialog?.querySelector("a")?.getAttribute("href")).toBe("/privacy");
     await unmount();

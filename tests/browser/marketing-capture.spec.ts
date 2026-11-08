@@ -37,7 +37,7 @@ for (const theme of ["light", "dark"] as const) {
     test(`measurement banner fits at ${width}px (${theme})`, async ({ page }) => {
       await open(page, width, "mode=consent", theme);
       const banner = page.getByRole("dialog", { name: "Measurement choice" });
-      await expect(banner).toContainText("which of our links or QR codes brought you here");
+      await expect(banner).toContainText("remember your visits for 30 days");
       await expectFits(page, banner, width, "banner");
       const box = (await banner.boundingBox())!;
       expect.soft(box.x, "side gutter").toBeGreaterThanOrEqual(16);
