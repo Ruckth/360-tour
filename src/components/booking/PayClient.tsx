@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CreditCard, ShieldCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { BookedPrice } from "@/components/booking/BookedPrice";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
@@ -14,17 +15,22 @@ import {
   type PublicBooking,
 } from "@/lib/react/convex-api";
 import { useOptionalConvex } from "@/lib/react/convex";
+import { currencyPrefix } from "@/lib/villas";
 
 export function PayClient({
   bookingId = "demo",
   accessToken = "",
+  quotedTotal = null,
 }: {
   bookingId?: string;
   accessToken?: string;
+  /** The total the funnel showed before creating the booking (`?quoted=`). */
+  quotedTotal?: number | null;
 }) {
   const router = useRouter();
   const locale = useLocale();
   const t = useTranslations("Booking");
+  const couponT = useTranslations("Coupon");
   const convex = useOptionalConvex();
   const isDemo = bookingId === "demo";
   const successHref = localizeHref(
@@ -118,7 +124,9 @@ export function PayClient({
           <ShieldCheck className="h-4 w-4 text-gold" />
           {t("bookingId", { bookingId })}
         </div>
-        {booking ? (
+        {booking && booking.subtotal !== undefined ? (
+          <BookedPrice booking={booking} className="mt-3" />
+        ) : booking ? (
           <div className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
             {t("bookingTotalStatus", {
               currency: booking.currency,
@@ -126,6 +134,13 @@ export function PayClient({
               status: booking.paymentStatus,
             })}
           </div>
+        ) : null}
+        {booking && quotedTotal !== null && booking.total !== quotedTotal ? (
+          <Alert variant="warning" className="mt-3">
+            <AlertDescription>
+              {couponT("totalChanged", { total: `${currencyPrefix(booking.currency)}${booking.total.toLocaleString()}` })}
+            </AlertDescription>
+          </Alert>
         ) : null}
         {error ? (
           <Alert variant="destructive" className="mt-4">

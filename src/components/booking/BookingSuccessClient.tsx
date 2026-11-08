@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
+import { BookedPrice } from "@/components/booking/BookedPrice";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
@@ -91,6 +92,7 @@ export function BookingSuccessClient({
         <p className="mt-4 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
           {t("reference", { reference: booking?.confirmationCode ?? bookingId })}
         </p>
+        {booking && !loading ? <BookedPrice booking={booking} showSaving={confirmed} className="mt-4" /> : null}
         {error ? (
           <Alert variant="destructive" className="mt-4 text-left">
             <AlertDescription>{error}</AlertDescription>

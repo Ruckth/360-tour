@@ -13,7 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -356,6 +356,8 @@ export function ReviewPanel({
   checkIn,
   checkOut,
   bookingMode,
+  price,
+  coupon,
 }: {
   property: BookingProperty;
   guests: number;
@@ -363,6 +365,10 @@ export function ReviewPanel({
   checkIn: string;
   checkOut: string;
   bookingMode: BookingMode;
+  /** The price lines, shown here on phones where the summary card sits below the step. */
+  price?: ReactNode;
+  /** "Have a code?" and the attached code. */
+  coupon?: ReactNode;
 }) {
   const t = useTranslations("Booking");
   const chatT = useTranslations("Chat");
@@ -405,6 +411,8 @@ export function ReviewPanel({
           })}
         </ul>
       </div>
+      {price ? <div className="rounded-xl border border-border px-4 py-3 text-xs text-muted-foreground lg:hidden">{price}</div> : null}
+      {coupon}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Shield className="h-4 w-4 text-gold" />
         {bookingMode === "live" ? t("livePaymentNote") : t("demoPaymentNote")}

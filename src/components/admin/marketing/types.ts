@@ -1,12 +1,12 @@
 import type { FunctionArgs } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import type { CampaignRow, CouponDetail, CouponRow, LinkRow, SlugCheck } from "convex/marketing";
+import type { CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck } from "convex/marketing";
 import type { OfferResult } from "convex/lib/offers";
 
 // The views take data and callbacks as props; MarketingScreens wires them to Convex.
 
-export type { CampaignRow, CouponDetail, CouponRow, LinkRow, SlugCheck, OfferResult };
+export type { CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck, OfferResult };
 
 export type CampaignStatus = Doc<"marketingCampaigns">["status"];
 export type LinkStatus = Doc<"marketingLinks">["status"];
@@ -16,6 +16,7 @@ export type LinkEntry = Doc<"marketingLinks">["entry"];
 export type CouponVersion = Doc<"couponVersions">;
 export type CouponBenefit = CouponVersion["benefit"];
 export type CouponScope = CouponVersion["scope"];
+export type RedemptionState = Doc<"couponRedemptions">["state"];
 
 /** The villa fields the marketing screens need (from `properties.adminList`). */
 export type MarketingProperty = Pick<
