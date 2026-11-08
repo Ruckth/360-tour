@@ -82,7 +82,7 @@ for (const theme of ["light", "dark"] as const) {
       await panel.getByRole("button", { name: "Card", exact: true }).click();
       await panel.getByRole("button", { name: /^Confirm .* received$/ }).click();
       const refused = panel.getByTestId("pay-coupon-problem");
-      await expect(refused).toContainText("Nothing was charged.");
+      await expect(refused).toContainText("Payment not recorded.");
       await expectInside(refused, panel, "refused at payment");
       await expectNoSideScroll(page, width);
       await shot(page, `coupon-soldout-${width}-${theme}`);
