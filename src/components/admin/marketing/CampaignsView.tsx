@@ -3,7 +3,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CircleStop, Megaphone, Pause, Pencil, Play, Plus, Send, Undo2 } from "lucide-react";
 import Link from "next/link";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -55,6 +55,8 @@ type CampaignsViewProps = {
   linksHref: string;
   couponHref: (couponId: Id<"coupons">) => string;
   actions: Pick<MarketingActions, "saveCampaign" | "setCampaignStatus">;
+  /** Renders the change history of a saved record (MarketingScreens passes RecordHistoryPanel). */
+  history?: (campaignId: Id<"marketingCampaigns">) => ReactNode;
 };
 
 /** The status changes a campaign can make from where it is. */
@@ -91,7 +93,7 @@ const STATUS_COPY: Record<CampaignStatus, (name: string) => { title: string; des
   draft: (name) => ({ title: name, description: "", done: name }),
 };
 
-export function CampaignsView({ campaigns, links, coupons, today, linksHref, couponHref, actions }: CampaignsViewProps) {
+export function CampaignsView({ campaigns, links, coupons, today, linksHref, couponHref, actions, history }: CampaignsViewProps) {
   const { notice, show, clear } = useNotice();
   const { pending, run } = useConfirmedChange<Id<"marketingCampaigns">>(show);
   const sheet = useEditorSheet<{ campaign?: CampaignRow; preset?: (typeof PRESETS)[number] }>();
@@ -350,6 +352,7 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
             couponHref={couponHref}
             pending={pending !== null}
             actions={actions}
+            history={history}
             onStatus={changeStatus}
             onDone={(message) => {
               sheet.done();
@@ -377,6 +380,7 @@ function CampaignEditor({
   couponHref,
   pending,
   actions,
+  history,
   onStatus,
   onDone,
   onCancel,
@@ -392,6 +396,7 @@ function CampaignEditor({
   couponHref: (couponId: Id<"coupons">) => string;
   pending: boolean;
   actions: CampaignsViewProps["actions"];
+  history?: CampaignsViewProps["history"];
   onStatus: (campaign: CampaignRow, status: CampaignStatus, destructive?: boolean) => Promise<void>;
   onDone: (message: string) => void;
   onCancel: () => void;
@@ -599,6 +604,7 @@ function CampaignEditor({
               <p className="text-sm text-muted-foreground">No coupon. Its links open with the direct offer only.</p>
             )}
           </section>
+          {history?.(campaign._id)}
         </>
       ) : null}
     </SheetForm>

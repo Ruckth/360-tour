@@ -12,6 +12,7 @@ import {
   type FormEvent,
 } from "react";
 import { useOptionalConvex } from "@/lib/react/convex";
+import { captureForBooking } from "@/lib/marketing/capture";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useChatPageContext } from "@/components/chat/ChatContext";
@@ -700,6 +701,7 @@ export function useChatSession({
         channel: "web",
         visitorId: getOrCreateVisitorId(),
         ...getBrowserChatMetadata(),
+        marketing: captureForBooking(),
       });
       if (chatLifecycle.isStale(generation)) return null;
       setStoredSessionId(id);

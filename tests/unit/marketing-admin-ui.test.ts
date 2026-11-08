@@ -6,11 +6,13 @@ import { ConvexError } from "convex/values";
 import type { Id } from "convex/_generated/dataModel";
 import { evaluateOffer, type QuoteLine } from "convex/lib/offers";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import { historyChanges } from "@/components/admin/RecordHistoryPanel";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
+import { CouponEditor } from "@/components/admin/marketing/CouponEditor";
 import { LinksView } from "@/components/admin/marketing/LinksView";
 import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, type CouponForm } from "@/components/admin/marketing/coupon-form";
 import { countLabel, directOfferApplied, marketingErrorText, qrDirectPercent } from "@/components/admin/marketing/marketing-format";
-import type { CampaignRow } from "@/components/admin/marketing/types";
+import type { CampaignRow, CouponDetail, LinkRow } from "@/components/admin/marketing/types";
 
 const form = (patch: Partial<CouponForm>): CouponForm => ({ ...EMPTY_COUPON_FORM, code: "SPA-10", value: "10", ...patch });
 
@@ -126,6 +128,7 @@ describe("countLabel", () => {
   });
 });
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock("next/link", () => ({ default: ({ children, href, ...props }: { children: ReactNode; href: string }) => createElement("a", { href, ...props }, children) }));
 
 const campaign = {
@@ -255,5 +258,71 @@ describe("marketing editor sheets", () => {
     await click(button("Cancel"));
     expect(document.body.textContent).not.toContain("Discard your changes?");
     expect(input("e.g. Facebook · November post")).toBeNull();
+  });
+});
+
+describe("change history in the marketing editors", () => {
+  const history = vi.fn((id: string) => createElement("p", { "data-testid": "history" }, `History of ${id}`));
+  const slot = () => document.querySelector('[data-testid="history"]')?.textContent;
+  beforeEach(() => history.mockClear());
+
+  const link = {
+    _id: "l1" as Id<"marketingLinks">, _creationTime: 0, slug: "f1", name: "Facebook page", campaignId: campaign._id,
+    destination: { kind: "home" }, entry: "link", status: "active", opens: 0, createdAt: 0, updatedAt: 0, updatedByEmail: "a@example.com",
+    campaignName: campaign.name, shortUrlPath: "/f1",
+  } as LinkRow;
+  const rules = {
+    _id: "v1" as Id<"couponVersions">, _creationTime: 0, couponId: "k1" as Id<"coupons">, version: 1, benefit: { kind: "percent", percent: 10 },
+    scope: "accommodation", createdAt: 0, createdByEmail: "a@example.com",
+  } as CouponDetail["rules"];
+  const coupon = {
+    _id: "k1" as Id<"coupons">, _creationTime: 0, code: "DCNT-F1-10", status: "draft", currentVersion: 1, used: 0, discountGranted: 0,
+    createdAt: 0, updatedAt: 0, updatedByEmail: "a@example.com", rules, versions: [rules], links: [], redemptions: [],
+  } as CouponDetail;
+  const couponEditor = (patch: { detail?: CouponDetail; isNew: boolean }) =>
+    createElement(CouponEditor, {
+      ...patch, coupons: patch.detail ? [patch.detail] : [], campaigns: [campaign], properties: [], today: "2026-11-08", listHref: "/c",
+      actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn() }, onCreated: vi.fn(), history,
+    });
+
+  it("shows a saved campaign's history, not a new one's", async () => {
+    await render(createElement(CampaignsView, { campaigns: [campaign], links: [], coupons: [], today: "2026-11-08", linksHref: "/l", couponHref: (id) => `/c/${id}`, actions: actions(), history }));
+    await click(button("New campaign"));
+    expect(slot()).toBeUndefined();
+    await click(button("Cancel"));
+    await click([...document.querySelectorAll("button")].find((el) => el.textContent === "November escape"));
+    expect(slot()).toBe("History of c1");
+  });
+
+  it("shows a saved link's history, not a new one's", async () => {
+    await render(
+      createElement(LinksView, {
+        links: [link], campaigns: [campaign], coupons: [], properties: [], origin: "https://book.example", brand: "Auralis", today: "2026-11-08", campaignsHref: "/c",
+        actions: { saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn().mockResolvedValue({ ok: true, slug: "f" }) }, history,
+      }),
+    );
+    await click(button("New link"));
+    expect(slot()).toBeUndefined();
+    await click(button("Cancel"));
+    await click(button("Facebook page"));
+    expect(slot()).toBe("History of l1");
+  });
+
+  it("shows a saved coupon's history, not a new one's", async () => {
+    await render(couponEditor({ isNew: true }));
+    expect(slot()).toBeUndefined();
+    await render(couponEditor({ detail: coupon, isNew: false }));
+    expect(slot()).toBe("History of k1");
+  });
+
+  it("labels the marketing fields the backend records", () => {
+    expect(historyChanges({ before: { benefit: { kind: "percent", percent: 10 }, maxSaving: 1500 }, after: { benefit: { kind: "fixed", amount: 500 }, maxSaving: 3000 } })).toEqual([
+      { field: "benefit", label: "Discount", before: "10% off", after: "฿500 off" },
+      { field: "maxSaving", label: "Maximum saving", before: "฿1,500", after: "฿3,000" },
+    ]);
+    expect(historyChanges({ before: { destination: { kind: "home" }, medium: "social" }, after: { destination: { kind: "villa", propertySlug: "mossbell" }, medium: "paid_social" } })).toEqual([
+      { field: "destination", label: "Opens", before: "Home", after: "Villa page · mossbell" },
+      { field: "medium", label: "Medium", before: "social", after: "paid_social" },
+    ]);
   });
 });

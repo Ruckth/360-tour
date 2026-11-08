@@ -699,5 +699,12 @@
     "first": "Back to first page",
     "moreCategories": "More categories",
     "draft": "I am interested in {name}. Please help me choose a date and time."
+  },
+  "Consent": {
+    "label": "Measurement choice",
+    "message": "May we count page views and see which of our links or QR codes brought you here? Nothing is shared with advertisers, and measurement stays off until you agree.",
+    "details": "Privacy policy",
+    "decline": "No thanks",
+    "accept": "Allow"
   }
 }

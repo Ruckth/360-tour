@@ -1,6 +1,7 @@
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { OfferResult } from "convex/lib/offers";
+import type { MarketingCapture } from "convex/lib/marketingAttribution";
 import type { BookingProperty } from "@/lib/booking/booking";
 import type { ChatActionHint } from "@/lib/chat/action-card";
 import type { PropertyTranslation } from "@/lib/i18n/public-content";
@@ -152,11 +153,13 @@ export async function createBooking(
     guests: number;
     /** Send only a code the live preview applied. Throws ConvexError `coupon_unavailable` when it can't be used now. */
     couponCode?: string;
+    /** Release 3a: see captureForBooking. */
+    marketing?: MarketingCapture;
   },
 ) {
-  const { couponCode, ...stay } = args;
+  const { couponCode, marketing, ...stay } = args;
   return (await withConvexTimeout(
-    client.mutation(api.bookings.create, (couponCode ? { ...stay, couponCode } : stay) as never),
+    client.mutation(api.bookings.create, { ...stay, ...(couponCode ? { couponCode } : {}), ...(marketing ? { marketing } : {}) } as never),
     "Creating booking",
   )) as CreateBookingResult;
 }
@@ -227,6 +230,8 @@ export async function createChatSession(
     screenSize?: string;
     viewportSize?: string;
     platform?: string;
+    /** Release 3a: see captureForBooking. */
+    marketing?: MarketingCapture;
   },
 ) {
   return (await withConvexTimeout(

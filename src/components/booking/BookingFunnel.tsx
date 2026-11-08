@@ -70,6 +70,7 @@ import {
 } from "@/lib/react/convex-api";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { localizeHref } from "@/i18n/routing";
+import { arrivalCoupon, captureForBooking } from "@/lib/marketing/capture";
 
 const BookingDatePicker = dynamic(
   () => import("@/components/booking/BookingDatePicker").then((mod) => mod.BookingDatePicker),
@@ -172,6 +173,16 @@ export function BookingFunnel({
   const [couponOpen, setCouponOpen] = useState(false);
   const [couponEntryError, setCouponEntryError] = useState<string | null>(null);
   const [couponNotice, setCouponNotice] = useState<CouponNotice | null>(null);
+
+  // Release 3a: with no `?coupon=` here, the coupon of the link this tab arrived through still counts as a link coupon.
+  useEffect(() => {
+    if (couponFromParam(initialCoupon)) return;
+    const carried = couponFromParam(arrivalCoupon());
+    if (!carried) return;
+    setCouponCode(carried);
+    setCouponSource("link");
+    setCouponDraft(carried);
+  }, [initialCoupon]);
 
   useEffect(() => {
     router.prefetch(demoPayHref);
@@ -488,6 +499,7 @@ export function BookingFunnel({
         checkOut,
         guests,
         couponCode: couponSent,
+        marketing: captureForBooking(),
       });
 
       // `quoted` lets the pay page say so if the booked total isn't the one shown here.
