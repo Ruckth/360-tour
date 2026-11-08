@@ -1,16 +1,39 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import createMiddleware from "next-intl/middleware";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server";
 import { adminRedirectPath } from "@/components/admin/admin-routes";
 import { routing } from "@/i18n/routing";
 import { isClerkConfigured } from "@/lib/clerk-config";
 import { bypassesI18n } from "@/lib/i18n-exempt";
 
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api";
+import { isMarketingBot } from "@/lib/marketing/bot";
+import { isInternalMarketingPath, marketingSlugForPath } from "@/lib/marketing/proxy";
+
 const handleI18nRouting = createMiddleware(routing);
 const clerkEnabled = isClerkConfigured();
 
-function handleRequest(request: NextRequest) {
+async function handleRequest(request: NextRequest, event: NextFetchEvent) {
   const { pathname } = request.nextUrl;
+
+  const slug = marketingSlugForPath(pathname);
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
+  if (slug && convexUrl && convexUrl !== "placeholder") {
+    try {
+      const client = new ConvexHttpClient(convexUrl);
+      const resolved = await client.query(api.marketing.resolveLink, { slug });
+      if (resolved && isInternalMarketingPath(resolved.path)) {
+        // Keep the event alive after the response without delaying the redirect.
+        event.waitUntil(client.mutation(api.marketing.recordOpen, {
+          slug, bot: isMarketingBot(request.headers.get("user-agent")),
+        }).catch(() => undefined));
+        return NextResponse.redirect(new URL(resolved.path, request.url), 302);
+      }
+    } catch {
+      // Unknown links and temporary backend failures use normal app routing.
+    }
+  }
 
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     const target = adminRedirectPath(pathname);
@@ -25,8 +48,8 @@ function handleRequest(request: NextRequest) {
 }
 
 const proxy = clerkEnabled
-  ? clerkMiddleware((_auth, request) => handleRequest(request))
-  : (request: NextRequest) => handleRequest(request);
+  ? clerkMiddleware((_auth, request, event) => handleRequest(request, event))
+  : (request: NextRequest, event: NextFetchEvent) => handleRequest(request, event);
 
 export default proxy;
 

@@ -1585,6 +1585,93 @@ export default defineSchema({
 		updatedByEmail: v.string()
 	}).index('by_key', ['key']),
 
+	// Marketing release 1: campaigns, short links and coupon catalog (see convex/marketing.ts).
+	marketingCampaigns: defineTable({
+		name: v.string(),
+		source: v.string(),
+		medium: v.string(),
+		status: v.union(v.literal('draft'), v.literal('active'), v.literal('paused'), v.literal('ended'), v.literal('archived')),
+		startsOn: v.optional(v.string()),
+		endsOn: v.optional(v.string()),
+		budget: v.optional(v.number()),
+		notes: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		updatedByEmail: v.string()
+	}).index('by_status', ['status']),
+
+	marketingLinks: defineTable({
+		slug: v.string(),
+		name: v.string(),
+		campaignId: v.id('marketingCampaigns'),
+		placement: v.optional(v.string()),
+		destination: v.union(
+			v.object({ kind: v.literal('home') }),
+			v.object({ kind: v.literal('booking'), propertySlug: v.optional(v.string()) }),
+			v.object({ kind: v.literal('villa'), propertySlug: v.string() }),
+			v.object({ kind: v.literal('experiences') }),
+			v.object({ kind: v.literal('chat') })
+		),
+		locale: v.optional(v.string()),
+		couponId: v.optional(v.id('coupons')),
+		entry: v.union(v.literal('link'), v.literal('qr')),
+		status: v.union(v.literal('draft'), v.literal('active'), v.literal('paused'), v.literal('archived')),
+		opens: v.number(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		updatedByEmail: v.string()
+	})
+		.index('by_slug', ['slug'])
+		.index('by_campaign', ['campaignId', 'status'])
+		.index('by_status', ['status'])
+		.index('by_couponId', ['couponId']),
+
+	marketingEvents: defineTable({
+		linkId: v.id('marketingLinks'),
+		kind: v.literal('open'),
+		bot: v.boolean(),
+		occurredAt: v.number()
+	}).index('by_link_and_time', ['linkId', 'occurredAt']),
+
+	coupons: defineTable({
+		code: v.string(),
+		campaignId: v.optional(v.id('marketingCampaigns')),
+		status: v.union(v.literal('draft'), v.literal('active'), v.literal('paused'), v.literal('archived')),
+		currentVersion: v.number(),
+		used: v.number(),
+		discountGranted: v.number(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		updatedByEmail: v.string()
+	})
+		.index('by_code', ['code'])
+		.index('by_status', ['status'])
+		.index('by_campaignId', ['campaignId']),
+
+	// Immutable: a change to the offer writes a new version; redemptions keep the version they used.
+	couponVersions: defineTable({
+		couponId: v.id('coupons'),
+		version: v.number(),
+		benefit: v.union(
+			v.object({ kind: v.literal('percent'), percent: v.number() }),
+			v.object({ kind: v.literal('fixed'), amount: v.number() })
+		),
+		scope: v.union(v.literal('accommodation'), v.literal('services'), v.literal('accommodation_and_services')),
+		propertySlugs: v.optional(v.array(v.string())),
+		bookFrom: v.optional(v.string()),
+		bookTo: v.optional(v.string()),
+		stayFrom: v.optional(v.string()),
+		stayTo: v.optional(v.string()),
+		minNights: v.optional(v.number()),
+		minEligibleSubtotal: v.optional(v.number()),
+		maxSaving: v.optional(v.number()),
+		usageLimit: v.optional(v.number()),
+		discountBudget: v.optional(v.number()),
+		terms: v.optional(v.string()),
+		createdAt: v.number(),
+		createdByEmail: v.string()
+	}).index('by_coupon_and_version', ['couponId', 'version']),
+
 	propertyKnowledge: defineTable({
 		propertyId: v.id('properties'),
 		category: v.union(
