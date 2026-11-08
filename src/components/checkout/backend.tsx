@@ -21,6 +21,7 @@ export type Catalog = FunctionReturnType<Pos["catalog"]>;
 export type OrderView = NonNullable<FunctionReturnType<Pos["getOrder"]>>;
 export type OrderHistoryRow = FunctionReturnType<Pos["orderHistory"]>["page"][number];
 export type OrderLine = OrderView["lines"][number];
+export type OrderPromotion = NonNullable<OrderView["promotion"]>;
 export type OrderRow = FunctionReturnType<Pos["listOrders"]>["page"][number];
 export type OrderFilter = FunctionArgs<Pos["listOrders"]>["filter"];
 export type Attachable = FunctionReturnType<Pos["listAttachable"]>[number];
@@ -45,7 +46,8 @@ export type OrdersPage = {
 type PosAction =
   | "openOrderFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine" | "updateSourceLine"
   | "discardOrder" | "restoreOrder" | "addAppointmentFee"
-  | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder";
+  | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
+  | "applyOrderCoupon" | "removeOrderCoupon";
 export type CheckoutActions = { [K in PosAction]: (args: FunctionArgs<Pos[K]>) => Promise<FunctionReturnType<Pos[K]>> } & {
   createCustomer: (args: NewCustomer) => Promise<CustomerId>;
 } & { [K in "updateCustomer" | "setCustomerArchived" | "mergeCustomers" | "resumeCustomerMerge"]: (args: FunctionArgs<Customers[K]>) => Promise<FunctionReturnType<Customers[K]>> };

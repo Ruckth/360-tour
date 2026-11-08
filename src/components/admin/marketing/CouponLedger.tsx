@@ -1,7 +1,9 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
+import { ReceiptText, TriangleAlert } from "lucide-react";
+import Link from "next/link";
 import { useId, useState } from "react";
+import { receiptPath } from "@/components/checkout/checkout-source";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
@@ -12,9 +14,9 @@ import type { RedemptionRow, RedemptionState } from "./types";
 const PAGE = 10;
 
 /**
- * The coupon's usage ledger: one row per booking that used the code, newest first, with its
- * state (held, consumed, released, reversed), guest, stay and discount. Late payments that went
- * past the limit are flagged for review.
+ * The coupon's usage ledger: one row per booking or checkout order that used the code, newest
+ * first, with its state (held, consumed, released, reversed), guest and stay or order and receipt,
+ * and discount. Late payments that went past the limit are flagged for review.
  */
 export function CouponLedger({ code, redemptions }: { code: string; redemptions: RedemptionRow[] }) {
   const id = useId();
@@ -25,7 +27,7 @@ export function CouponLedger({ code, redemptions }: { code: string; redemptions:
   const overLimit = redemptions.filter((row) => row.overLimit).length;
 
   return (
-    <SideCard id={`${id}-ledger`} title="Usage ledger" description="Each booking that used the code, newest first.">
+    <SideCard id={`${id}-ledger`} title="Usage ledger" description="Each booking or checkout sale that used the code, newest first.">
       {redemptions.length ? (
         <>
           <div className="flex flex-wrap gap-0.5 px-3 pt-3" role="group" aria-label="Show entries">
@@ -82,7 +84,7 @@ export function CouponLedger({ code, redemptions }: { code: string; redemptions:
           </dl>
         </>
       ) : (
-        <p className="p-4 text-sm text-muted-foreground">No uses yet. Bookings made with {code} show here, held until they’re paid.</p>
+        <p className="p-4 text-sm text-muted-foreground">No uses yet. Bookings made with {code} show here, held until they’re paid, and checkout sales once paid.</p>
       )}
     </SideCard>
   );
@@ -102,7 +104,23 @@ function LedgerRow({ row }: { row: RedemptionRow }) {
           {thb(row.discount)}
         </span>
       </div>
-      {row.booking ? (
+      {row.order ? (
+        <>
+          <p className="min-w-0 break-words text-sm text-foreground">
+            <Link
+              href={receiptPath(row.order.orderId)}
+              className="inline-flex items-center gap-1.5 rounded underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ReceiptText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              {row.order.title}
+            </Link>
+            {row.order.receiptNumber ? <span className="ms-2 font-mono text-xs font-semibold text-muted-foreground">{row.order.receiptNumber}</span> : null}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Checkout{row.order.customerName ? ` · ${row.order.customerName}` : ""} · v{row.couponVersion}
+          </p>
+        </>
+      ) : row.booking ? (
         <>
           <p className="min-w-0 break-words text-sm text-foreground">
             {row.booking.guestName}

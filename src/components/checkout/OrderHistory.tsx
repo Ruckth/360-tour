@@ -22,6 +22,8 @@ const labels: Record<string, string> = {
   customer_merged: "Customer references merged",
   discarded: "Order discarded",
   restored: "Order restored",
+  coupon_applied: "Coupon applied",
+  coupon_removed: "Coupon removed",
 };
 const fields: Record<string, string> = {
   name: "Item",
@@ -46,6 +48,9 @@ const fields: Record<string, string> = {
   itemCount: "Items",
   total: "Total",
   due: "Due",
+  code: "Coupon",
+  couponVersion: "Coupon version",
+  couponDiscount: "Coupon share",
 };
 
 /** Business fields only. Unknown metadata is never dumped into the UI. Empty strings are explicit. */
@@ -82,8 +87,10 @@ export function HistoryValues({
                   : "No"
                 : typeof value === "number" && key === "startAt"
                   ? historyTime(value)
+                  : typeof value === "number" && key === "couponVersion"
+                    ? `v${value}`
                   : typeof value === "number" &&
-                      ["unitPrice", "deposit", "total", "due"].includes(key)
+                      ["unitPrice", "deposit", "total", "due", "couponDiscount"].includes(key)
                     ? formatMoney(value)
                     : String(value);
           return (
@@ -93,6 +100,12 @@ export function HistoryValues({
           );
         })}
       {row.discount === null ? <p>Discount: Cleared</p> : null}
+      {/* A coupon event's saving; a row's discount is an object (amount or percent). */}
+      {typeof row.discount === "number" ? (
+        <p>
+          <span className="font-medium">Discount:</span> {formatMoney(row.discount)}
+        </p>
+      ) : null}
       {row.priceOverride === null ? <p>Price override: Cleared</p> : null}
       {row.discount && typeof row.discount === "object" ? (
         <p>

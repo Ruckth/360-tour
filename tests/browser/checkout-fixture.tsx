@@ -12,15 +12,62 @@ import "@/app.css";
  * Query parameters:
  *   lines=N      start on a new order holding N custom items (a long order with a large total)
  *   theme=dark   dark app theme (light otherwise)
+ *   scenario=    fee, source-conflict, history, or a coupon state:
+ *                coupon-entry    the spa order, no coupon yet
+ *                coupon-applied  DCNT-SPA-500 split ฿333 + ฿167 (breakfast not covered)
+ *                coupon-problem  the massage removed, so the coupon is below its minimum
+ *                coupon-stay     Anna's stay priced with DCNT-F1-20, a massage with DCNT-L-10
+ *                coupon-soldout  DCNT-L2-300 sold out by another till; paying is refused
+ *                coupon-changed  DCNT-L-10 capped since it was applied; paying is refused
+ *                coupon-paid     DCNT-SPA-500 paid by card, on the receipt
  */
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 
-const backend = createFixtureBackend({ appointments: params.get("scenario") === "fee" ? [{ appointmentId: "fxappt000002" as Id<"serviceAppointments">, status: "no_show" }] : [] });
+const scenario = params.get("scenario") ?? "";
+const backend = createFixtureBackend({
+  appointments: scenario === "fee" ? [{ appointmentId: "fxappt000002" as Id<"serviceAppointments">, status: "no_show" }] : [],
+  bookings: scenario === "coupon-stay" ? [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 3000 } }] : [],
+});
+const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
+
+/** Thai massage 60 (฿1,200), Foot spa 45 (฿600) and a breakfast basket (฿450), as in the marketing preview. */
+async function spaOrder() {
+  const actions = backend.useActions();
+  const { orderId, lineId } = await actions.addItem({ item: service(1) });
+  await actions.addItem({ orderId, item: service(7) });
+  await actions.addItem({ orderId, item: { kind: "extra", name: "Breakfast basket", price: 450 } });
+  return { orderId, massage: lineId };
+}
+
+async function couponSeed(): Promise<OrderId | null> {
+  const actions = backend.useActions();
+  if (scenario === "coupon-entry") return (await spaOrder()).orderId;
+  if (scenario === "coupon-stay") {
+    const { orderId } = await actions.openOrderFor({ bookingId: "fxbkg000001" as Id<"bookings"> });
+    await actions.addItem({ orderId, item: service(1) });
+    await actions.applyOrderCoupon({ orderId, code: "DCNT-L-10" });
+    return orderId;
+  }
+  const { orderId, massage } = await spaOrder();
+  if (scenario === "coupon-soldout" || scenario === "coupon-changed") {
+    await actions.applyOrderCoupon({ orderId, code: scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10" });
+    // Another till used the last DCNT-L2-300; DCNT-L-10 was capped by its manager.
+    backend.setCouponSnapshot(scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10", scenario === "coupon-soldout" ? { used: 50 } : { maxSaving: 100 });
+    return orderId;
+  }
+  const applied = await actions.applyOrderCoupon({ orderId, slug: "q1" });
+  if (scenario === "coupon-problem") await actions.removeLine({ lineId: massage });
+  if (scenario === "coupon-paid") {
+    await actions.settleOrder({ orderId, expectedRevision: applied.revision, expectedDue: 2250 - applied.discount, idempotencyKey: "browser-pay-coupon", tenders: [{ method: "card", amount: 2250 - applied.discount }] });
+  }
+  return orderId;
+}
 
 async function seed() {
   const actions = backend.useActions();
   let orderId: OrderId | undefined;
+  if (scenario.startsWith("coupon-")) return couponSeed();
   if (params.get("scenario") === "fee") {
     return (await actions.addAppointmentFee({ appointmentId: "fxappt000002" as Id<"serviceAppointments">, kind: "no_show", amount: 500, reason: "Guest did not attend" })).orderId;
   }
@@ -48,7 +95,7 @@ async function seed() {
 
 function Harness({ initialOrder }: { initialOrder: OrderId | null }) {
   const [orderId, setOrderId] = useState(initialOrder);
-  const [receiptId, setReceiptId] = useState<OrderId | null>(null);
+  const [receiptId, setReceiptId] = useState<OrderId | null>(scenario === "coupon-paid" ? initialOrder : null);
   return (
     <CheckoutBackendProvider backend={backend}>
       <div className="flex h-dvh flex-col bg-background text-foreground" data-fixture-ready="">

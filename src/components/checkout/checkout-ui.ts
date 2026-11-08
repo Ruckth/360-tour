@@ -1,6 +1,7 @@
 import { format, isSameDay } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
-import { MAX_BILL, changeDue, formatReceiptNumber, type TenderMethod } from "convex/lib/billMath";
+import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, type TenderMethod } from "convex/lib/billMath";
+import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import type { OrderView } from "./backend";
 
 export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
@@ -54,9 +55,28 @@ export function receiptBookings(view: BookingRefs) {
   return `${refs.length > 1 ? "Bookings" : "Booking"}: ${refs.map((ref) => ref.reference).join(", ")}`;
 }
 
+/** "Coupon DCNT-SPA-500", or just "Coupon" if the order no longer names it. */
+export function couponLabel(view: Partial<Pick<OrderView, "promotion">>) {
+  return view.promotion?.code ? `Coupon ${view.promotion.code}` : "Coupon";
+}
+
+/** Why checkout refused a coupon (apply, or settle at payment), worded for staff. Null for any other error. */
+export type CouponRefusal = { code: "coupon_unavailable" | "coupon_changed"; message: string };
+
+export function couponRefusal(err: unknown): CouponRefusal | null {
+  const data = err && typeof err === "object" && "data" in err ? (err as { data?: unknown }).data : undefined;
+  if (!data || typeof data !== "object") return null;
+  const { code, message, problem } = data as { code?: unknown; message?: unknown; problem?: unknown };
+  if (code !== "coupon_unavailable" && code !== "coupon_changed") return null;
+  const worded = problem && typeof problem === "object" && typeof (problem as { code?: unknown }).code === "string" ? posCouponMessage(problem as PosCouponProblem) : undefined;
+  const fallback = code === "coupon_changed" ? "The coupon's saving changed. Check it again." : "This coupon can't be used on this order.";
+  return { code, message: worded || (typeof message === "string" && message ? message : fallback) };
+}
+
 /** Plain-text receipt for share and copy. Tenders show what was handed over, plus change, like the printed receipt. */
-export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer" | "legacyGuest"> & BookingRefs, business: string) {
+export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer" | "legacyGuest"> & Partial<Pick<OrderView, "promotion">> & BookingRefs, business: string) {
   const { order, lines, payments, totals } = view;
+  const coupon = couponLabel(view);
   const row = (left: string, right: string) => `${left}  ${right}`;
   const change = changeDue(payments);
   const name = receiptName(view);
@@ -69,12 +89,17 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...(name ? [`Customer: ${name}`] : []),
     ...(bookings ? [bookings] : []),
     "",
-    ...lines.map((line) => row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(line.net))),
+    ...lines.flatMap((line) => {
+      const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
+      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(line.net)), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : [])];
+    }),
     "",
+    ...(totals.coupon ? [row(coupon, formatMoney(-totals.coupon))] : []),
     row("Total", formatMoney(totals.total)),
     row("VAT 7% included", formatMoney(totals.vat)),
     ...(totals.deposit ? [row("Paid before checkout", formatMoney(-totals.deposit))] : []),
     ...payments.map((p) => row(TENDER_LABELS[p.method].long, formatMoney(p.received ?? p.amount))),
     ...(change ? [row("Change", formatMoney(change))] : []),
+    ...(totals.coupon ? ["", `You saved ${formatMoney(totals.coupon)} with ${view.promotion?.code ?? "a coupon"}`] : []),
   ].join("\n");
 }
