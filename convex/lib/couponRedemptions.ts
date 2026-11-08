@@ -49,16 +49,18 @@ export async function holdCouponRedemption(ctx: MutationCtx, input: HoldInput): 
 	return id;
 }
 
-/** Each transition moves counters once; terminal reversals never restore capacity or budget. */
+/** Each transition moves counters once; real refunds never restore capacity or budget. */
 export async function syncCouponRedemption(ctx: MutationCtx, booking: Doc<'bookings'>): Promise<void> {
 	if (!booking.promotion) return;
 	const redemption = await ctx.db.get(booking.promotion.redemptionId);
 	if (!redemption) throw new Error('Booking redemption not found');
-	if (redemption.state === 'reversed') return;
 	const coupon = await ctx.db.get(redemption.couponId);
 	if (!coupon) throw new Error('Redemption coupon not found');
 	const money = stayMoney(booking);
 	const paid = money.gross > 0;
+	// Real refunds retain gross money and never restore capacity. A void of money never
+	// received can also follow cancellation, when the ledger is already reversed.
+	if (redemption.state === 'reversed' && (paid || money.refunded > 0)) return;
 	// A partial refund on a live stay (goodwill, a shortened stay) keeps the use; only a cancelled or fully refunded stay reverses it.
 	const reversed = booking.status === 'cancelled' || booking.paymentStatus === 'refunded' || (paid && money.net <= 0);
 	let state: Doc<'couponRedemptions'>['state'] = redemption.state;
@@ -69,12 +71,20 @@ export async function syncCouponRedemption(ctx: MutationCtx, booking: Doc<'booki
 	let discountGranted = coupon.discountGranted;
 	if (state === 'released' && (paid || booking.status !== 'cancelled')) {
 		const rules = await couponVersion(ctx, coupon._id, coupon.currentVersion);
-		// Honour the frozen quote on unpaid reopen too: never silently raise its price.
-		// A full coupon/budget is visible to admins as an overLimit held row.
-		overLimit = availability(coupon, rules, redemption.discount) ? true : undefined;
+		const problem = availability(coupon, rules, redemption.discount);
+		if (problem && !paid) {
+			throw new ConvexError({ code: 'coupon_unavailable', message: `${redemption.code} has no uses left, so this booking can't reopen at its coupon price. Raise the coupon's limit, or create a new booking.` });
+		}
+		// Only actual captured money may recover an exhausted reservation.
+		overLimit = problem ? true : undefined;
 		state = 'held';
 		held++;
 		heldDiscount += redemption.discount;
+	}
+	if ((state === 'consumed' || state === 'reversed') && !paid && money.refunded === 0) {
+		used--; discountGranted -= redemption.discount;
+		held++; heldDiscount += redemption.discount;
+		state = 'held';
 	}
 	if (state === 'held') {
 		if (paid) {
@@ -94,10 +104,10 @@ export async function syncCouponRedemption(ctx: MutationCtx, booking: Doc<'booki
 	await ctx.db.patch(redemption._id, { state, overLimit, updatedAt: Date.now() });
 }
 
-/** Requote an existing promotion against its immutable rules, excluding its own budget reservation. */
-export async function repriceCouponBooking(ctx: MutationCtx, booking: Doc<'bookings'>, property: Doc<'properties'>, stay: { checkIn: string; checkOut: string; nights: number }): Promise<BookingPatch> {
+/** Read-only pricing plan shared by edit previews and writes; excludes its own reservation. */
+export async function quoteCouponBooking(ctx: QueryCtx | MutationCtx, booking: Doc<'bookings'>, property: Doc<'properties'>, stay: { checkIn: string; checkOut: string; nights: number }) {
 	const promotion = booking.promotion;
-	if (!promotion) return {};
+	if (!promotion) return null;
 	const coupon = await ctx.db.get(promotion.couponId);
 	const redemption = await ctx.db.get(promotion.redemptionId);
 	if (!coupon || !redemption) throw new Error('Booking redemption not found');
@@ -112,16 +122,26 @@ export async function repriceCouponBooking(ctx: MutationCtx, booking: Doc<'booki
 			used: coupon.used, held: coupon.held, discountGranted: coupon.discountGranted - (counted && redemption.state !== 'held' ? redemption.discount : 0),
 			heldDiscount: (coupon.heldDiscount ?? 0) - (redemption.state === 'held' ? redemption.discount : 0) }
 	});
-	if (result.couponStatus !== 'applied') {
+	const pricing: BookingPatch = {
+		subtotal: result.subtotal, discountAmount: result.discount, total: result.total, currency: property.currency,
+		promotion: result.couponStatus === 'applied' ? { ...promotion, discount: result.discount } : undefined
+	};
+	return { coupon, redemption, pricing };
+}
+
+type CouponBookingQuote = NonNullable<Awaited<ReturnType<typeof quoteCouponBooking>>>;
+
+/** Apply the already evaluated plan in the edit transaction; previews never call this. */
+export async function repriceCouponBooking(ctx: MutationCtx, { coupon, redemption, pricing }: CouponBookingQuote): Promise<void> {
+	if (!pricing.promotion) {
 		if (redemption.state === 'held') await ctx.db.patch(coupon._id, { held: (coupon.held ?? 0) - 1, heldDiscount: (coupon.heldDiscount ?? 0) - redemption.discount });
 		await ctx.db.patch(redemption._id, { state: redemption.state === 'held' || redemption.state === 'released' ? 'released' : 'reversed', updatedAt: Date.now() });
-		return { subtotal: result.subtotal, discountAmount: result.discount, total: result.total, currency: property.currency, promotion: undefined };
+		return;
 	}
-	const delta = result.discount - redemption.discount;
+	const delta = pricing.promotion.discount - redemption.discount;
 	if (delta !== 0) {
 		if (redemption.state === 'held') await ctx.db.patch(coupon._id, { heldDiscount: (coupon.heldDiscount ?? 0) + delta });
-		else if (counted) await ctx.db.patch(coupon._id, { discountGranted: coupon.discountGranted + delta });
-		await ctx.db.patch(redemption._id, { discount: result.discount, updatedAt: Date.now() });
+		else if (redemption.state !== 'released') await ctx.db.patch(coupon._id, { discountGranted: coupon.discountGranted + delta });
+		await ctx.db.patch(redemption._id, { discount: pricing.promotion.discount, updatedAt: Date.now() });
 	}
-	return { subtotal: result.subtotal, discountAmount: result.discount, total: result.total, currency: property.currency, promotion: { ...promotion, discount: result.discount } };
 }

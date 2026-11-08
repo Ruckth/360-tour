@@ -46,8 +46,9 @@ function toPublicBooking(booking: Doc<'bookings'>) {
 		nights: booking.nights,
 		subtotal: booking.subtotal,
 		discountAmount: booking.discountAmount,
+		customPrice: booking.priceOverride !== undefined,
 		// Guests see the code and amount only, never internal coupon or ledger ids.
-		promotion: booking.promotion && { code: booking.promotion.code, couponVersion: booking.promotion.couponVersion, discount: booking.promotion.discount },
+		promotion: booking.priceOverride === undefined && booking.promotion ? { code: booking.promotion.code, couponVersion: booking.promotion.couponVersion, discount: booking.promotion.discount } : undefined,
 		total: booking.total,
 		currency: booking.currency,
 		paymentStatus: booking.paymentStatus,

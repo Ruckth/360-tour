@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 import { evaluateOffer, normalizeCouponCode } from './offers';
 import { couponUnavailable, couponVersion, holdCouponRedemption } from './couponRedemptions';
 import { getEffectiveSettings } from './siteSettings';
@@ -168,6 +169,9 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		coupon: { ...rules, code: coupon.code, version: coupon.currentVersion, status: coupon.status, used: coupon.used, discountGranted: coupon.discountGranted, held: coupon.held, heldDiscount: coupon.heldDiscount }
 	}) : null;
 	if (offer?.couponStatus === 'invalid') couponUnavailable(offer.problem!);
+	if (offer?.couponStatus === 'applied' && offer.total === 0) {
+		throw new ConvexError({ code: 'coupon_unavailable', message: "This code covers the whole stay, so it can't be booked online. Please contact us.", problem: { code: 'nothing_eligible' } });
+	}
 	const actor = input.actor ?? `system:${input.source}`;
 
 	const accessToken = crypto.randomUUID();

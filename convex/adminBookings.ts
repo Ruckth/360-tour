@@ -1,5 +1,5 @@
 import { mutation, query } from './_generated/server';
-import type { MutationCtx } from './_generated/server';
+import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
@@ -60,7 +60,7 @@ import { assertNoBookingOverlap, MAX_ROWS_PER_NIGHT, scanOverlappingBookings, sc
 import { assertValidIsoDate } from './lib/validation';
 import { assertNotOnOpenOrder, deletePlaceholderOrders, orderDeleteBlocker } from './lib/orderLinks';
 import { normalizeCouponCode } from './lib/offers';
-import { repriceCouponBooking } from './lib/couponRedemptions';
+import { quoteCouponBooking, repriceCouponBooking } from './lib/couponRedemptions';
 
 const SEARCH_SCAN_LIMIT = 1000;
 
@@ -341,7 +341,7 @@ const refundInput = {
 	unitemised: v.optional(v.boolean())
 };
 
-async function loadBooking(ctx: MutationCtx, bookingId: Id<'bookings'>) {
+async function loadBooking(ctx: QueryCtx | MutationCtx, bookingId: Id<'bookings'>) {
 	const booking = await ctx.db.get(bookingId);
 	if (!booking) throw new Error('Booking not found');
 	return booking;
@@ -638,12 +638,12 @@ export const resendBookingEmails = mutation({
  * An archived villa is accepted only to record a stay that started in the past, with a reason
  * that is logged. Returns the cleaned reason, or undefined for an active villa.
  */
-function archivedVillaPolicy(property: Doc<'properties'>, checkIn: string, archivedVillaReason: string | undefined) {
+function archivedVillaPolicy(property: Doc<'properties'>, checkIn: string, archivedVillaReason: string | undefined, requireReason = true) {
 	if (property.status === 'active') return undefined;
 	if (property.status !== 'archived') throw new Error(PROPERTY_UNAVAILABLE);
 	if (checkIn >= resortTodayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
 	const reason = cleanReason(archivedVillaReason, 'Reason for using an archived villa', false);
-	if (!reason) throw new Error('This villa is archived. Give a reason to record a past stay in it.');
+	if (!reason && requireReason) throw new Error('This villa is archived. Give a reason to record a past stay in it.');
 	assertBookableProperty(property, { allowArchivedProperty: true });
 	return reason;
 }
@@ -717,6 +717,93 @@ export const createBooking = mutation({
 	}
 });
 
+function assertBookingEditable(booking: Doc<'bookings'>) {
+	if (booking.status === 'cancelled') throw new Error('Cancelled bookings are read-only. Reopen it first.');
+	if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
+		throw new Error('The guest has a Stripe checkout open. Wait for it to finish or expire before editing.');
+	}
+}
+
+/** One read-only policy for preview and save, including override reset and frozen coupon rules. */
+async function planBookingEditPricing(
+	ctx: QueryCtx | MutationCtx,
+	booking: Doc<'bookings'>,
+	property: Doc<'properties'>,
+	stay: { checkIn: string; checkOut: string; nights: number },
+	priceOverride: null | { total: number; reason: string } | undefined,
+	actor: string
+) {
+	const { nights } = stay;
+	const stayChanged = property._id !== booking.propertyId || stay.checkIn !== booking.checkIn || stay.checkOut !== booking.checkOut;
+	// Price: villa rate on a stay change, a custom price, or back to the villa rate.
+	let pricing: BookingPatch = {};
+	let priceReason: string | undefined;
+	const existing = booking.priceOverride;
+	if (priceOverride === undefined || (priceOverride === null && !existing)) {
+		if (stayChanged && existing) {
+			throw new Error('This booking has a custom price. Enter the price for the new stay, or go back to the villa rate.');
+		}
+		if (stayChanged) {
+			const quote = calculateDirectQuote(property, nights);
+			pricing = { subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: quote.directTotal, currency: quote.currency };
+		}
+	} else if (priceOverride === null) {
+		const quote = calculateDirectQuote(property, nights);
+		pricing = { subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: quote.directTotal, currency: quote.currency, priceOverride: undefined };
+		priceReason = 'Back to the villa rate';
+	} else {
+		const custom = cleanPriceOverride(priceOverride);
+		const unchanged = !stayChanged && existing?.total === custom.total && existing.reason === custom.reason;
+		if (!unchanged) {
+			const quote = calculateDirectQuote(property, nights);
+			pricing = {
+				subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: custom.total, currency: quote.currency,
+				priceOverride: { total: custom.total, quotedTotal: quote.directTotal, reason: custom.reason, by: actor, at: Date.now() }
+			};
+			priceReason = custom.reason;
+		}
+	}
+
+	const resetPrice = priceOverride === null && existing !== undefined;
+	const couponQuote = booking.promotion && !pricing.priceOverride && (!existing || resetPrice) && (stayChanged || resetPrice)
+		? await quoteCouponBooking(ctx, booking, property, stay) : null;
+	if (couponQuote) pricing = { ...pricing, ...couponQuote.pricing };
+	// Guard the currency actually being written, including custom prices and override resets.
+	if (pricing.currency !== undefined && pricing.currency !== booking.currency && (booking.paymentStatus === 'paid' || stayMoney(booking).gross > 0)) {
+		throw new Error('Paid bookings cannot move to a villa with a different currency.');
+	}
+	return { pricing, priceReason, couponQuote };
+}
+
+/** Preview the same pricing editBooking applies, without reserving capacity or changing the ledger. */
+export const quoteBookingEdit = query({
+	args: {
+		bookingId: v.id('bookings'), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.number(),
+		clearPriceOverride: v.optional(v.boolean())
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingEditable(booking);
+		const property = await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', args.propertySlug)).first();
+		if (!property) throw new Error('Property not found');
+		const stayChanged = property._id !== booking.propertyId || args.checkIn !== booking.checkIn || args.checkOut !== booking.checkOut;
+		// Archived historical stays still need a reason on save; the quote has no reason input.
+		if (stayChanged) archivedVillaPolicy(property, args.checkIn, undefined, false);
+		assertCapacity(property, args.guests);
+		const nights = assertStayDates(args.checkIn, args.checkOut, { allowPastCheckIn: true });
+		const { pricing } = await planBookingEditPricing(ctx, booking, property, { checkIn: args.checkIn, checkOut: args.checkOut, nights }, args.clearPriceOverride ? null : undefined, admin.email);
+		if (stayChanged) await assertStayFree(ctx, property._id, args.checkIn, args.checkOut, booking._id);
+		const next = { ...booking, ...pricing };
+		const promotion = next.priceOverride ? undefined : next.promotion;
+		return {
+			subtotal: next.subtotal, discountAmount: next.discountAmount, total: next.total, currency: next.currency,
+			promotion: promotion ? { code: promotion.code, couponVersion: promotion.couponVersion, discount: promotion.discount } : null,
+			couponRemoved: Boolean(booking.promotion && !next.promotion), repriced: pricing.total !== undefined
+		};
+	}
+});
+
 /**
  * Changes a booking's villa, dates, guest count, guest details or price in one transaction.
  * The price is recomputed only when the stay (villa or dates) changes, unless a custom price is
@@ -745,60 +832,21 @@ export const editBooking = mutation({
 		const booking = await loadBooking(ctx, args.bookingId);
 		// A price correction always names the revision it was reviewed against.
 		assertBookingRevision(booking, args.expectedRevision, args.priceOverride !== undefined);
-		if (booking.status === 'cancelled') {
-			throw new Error('Cancelled bookings are read-only. Reopen it first.');
-		}
-		if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
-			throw new Error('The guest has a Stripe checkout open. Wait for it to finish or expire before editing.');
-		}
+		assertBookingEditable(booking);
 
 		const guest = cleanGuestDetails(args);
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) throw new Error('Property not found');
 		const stayChanged =
 			args.propertyId !== booking.propertyId || args.checkIn !== booking.checkIn || args.checkOut !== booking.checkOut;
-		// A stay change re-quotes in the villa's currency, which would leave amountPaid in the old one.
-		if (stayChanged && property.currency !== booking.currency && (booking.paymentStatus === 'paid' || (booking.amountPaid ?? 0) > 0)) {
-			throw new Error('Paid bookings cannot move to a villa with a different currency.');
-		}
+
 		const archivedReason = stayChanged ? archivedVillaPolicy(property, args.checkIn, args.archivedVillaReason) : undefined;
 		assertCapacity(property, args.guests);
 		// Authenticated hosts can correct historical dates and ongoing stays.
 		const nights = assertStayDates(args.checkIn, args.checkOut, { allowPastCheckIn: true });
 
-		// Price: villa rate on a stay change, a custom price, or back to the villa rate.
-		let pricing: BookingPatch = {};
-		let priceReason: string | undefined;
-		const existing = booking.priceOverride;
-		if (args.priceOverride === undefined || (args.priceOverride === null && !existing)) {
-			if (stayChanged && existing) {
-				throw new Error('This booking has a custom price. Enter the price for the new stay, or go back to the villa rate.');
-			}
-			if (stayChanged) {
-				const quote = calculateDirectQuote(property, nights);
-				pricing = { subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: quote.directTotal, currency: quote.currency };
-			}
-		} else if (args.priceOverride === null) {
-			const quote = calculateDirectQuote(property, nights);
-			pricing = { subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: quote.directTotal, currency: quote.currency, priceOverride: undefined };
-			priceReason = 'Back to the villa rate';
-		} else {
-			const custom = cleanPriceOverride(args.priceOverride);
-			const unchanged = !stayChanged && existing?.total === custom.total && existing.reason === custom.reason;
-			if (!unchanged) {
-				const quote = calculateDirectQuote(property, nights);
-				pricing = {
-					subtotal: quote.subtotal, discountAmount: quote.discountAmount, total: custom.total, currency: quote.currency,
-					priceOverride: { total: custom.total, quotedTotal: quote.directTotal, reason: custom.reason, by: admin.email, at: Date.now() }
-				};
-				priceReason = custom.reason;
-			}
-		}
-
-		if (booking.promotion && !pricing.priceOverride && (!existing || args.priceOverride === null)
-			&& (stayChanged || args.guests !== booking.guests || args.priceOverride === null)) {
-			pricing = { ...pricing, ...await repriceCouponBooking(ctx, booking, property, { checkIn: args.checkIn, checkOut: args.checkOut, nights }) };
-		}
+		const { pricing, priceReason, couponQuote } = await planBookingEditPricing(ctx, booking, property, { checkIn: args.checkIn, checkOut: args.checkOut, nights }, args.priceOverride, admin.email);
+		if (couponQuote) await repriceCouponBooking(ctx, couponQuote);
 
 		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed'
 			|| (booking.status === 'pending' && booking.source !== 'admin');
