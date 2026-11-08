@@ -51,9 +51,11 @@ type CouponEditorProps = {
   actions: Pick<MarketingActions, "saveCoupon" | "setCouponStatus" | "testQuote">;
   /** After the first save of a new coupon, e.g. to move to its page. */
   onCreated: (couponId: Id<"coupons">) => void;
+  /** Renders the change history of a saved coupon (MarketingScreens passes RecordHistoryPanel). */
+  history?: (couponId: Id<"coupons">) => ReactNode;
 };
 
-export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, actions, onCreated }: CouponEditorProps) {
+export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, actions, onCreated, history }: CouponEditorProps) {
   if (!isNew && detail === undefined) return <EditorSkeleton />;
   if (!isNew && detail === null) {
     return (
@@ -80,6 +82,7 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
       listHref={listHref}
       actions={actions}
       onCreated={onCreated}
+      history={history}
     />
   );
 }
@@ -142,6 +145,7 @@ function CouponBuilder({
   listHref,
   actions,
   onCreated,
+  history,
 }: {
   detail?: CouponDetail;
   coupons: CouponRow[];
@@ -151,6 +155,7 @@ function CouponBuilder({
   listHref: string;
   actions: CouponEditorProps["actions"];
   onCreated: CouponEditorProps["onCreated"];
+  history?: CouponEditorProps["history"];
 }) {
   const id = useId();
   const router = useRouter();
@@ -710,6 +715,8 @@ function CouponBuilder({
               )}
             </SideCard>
           ) : null}
+
+          {detail && history ? <div className="border border-border bg-card px-4 [&>details]:border-t-0">{history(detail._id)}</div> : null}
         </aside>
       </div>
 

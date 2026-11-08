@@ -3,6 +3,7 @@
 import { OptionalConvexProvider } from "@/lib/react/convex";
 import type { ReactNode } from "react";
 import { AnalyticsConsent } from "@/components/global/AnalyticsConsent";
+import { MarketingCapture } from "@/components/global/MarketingCapture";
 
 export function Providers({
   children,
@@ -17,6 +18,7 @@ export function Providers({
     <OptionalConvexProvider convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
       {children}
       <AnalyticsConsent />
+      <MarketingCapture />
     </OptionalConvexProvider>
   );
 }

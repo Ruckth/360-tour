@@ -32,6 +32,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { BookingFinancials } from "./BookingFinancials";
 import { BookingPromotionLine } from "./BookingPromotion";
+import { BookingMarketingSource } from "./BookingMarketingSource";
 import { bookingEditPrice, reviewedPrice, type BookingEditQuote, type BookingEditQuoteState } from "./booking-edit-price";
 import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
 import { BookingHistory } from "./BookingHistory";
@@ -270,6 +271,7 @@ function BookingDetails({
         </Detail>
         <Detail label="Source">
           <Badge variant="outline">{sourceLabel(booking.source)}</Badge>
+          <BookingMarketingSource attribution={booking.marketingAttribution} />
         </Detail>
         <Detail label="Created">
           {format(new Date(booking.createdAt), "d MMM yyyy, HH:mm")}

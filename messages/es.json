@@ -699,5 +699,12 @@
     "first": "Primera página",
     "moreCategories": "Más categorías",
     "draft": "Me interesa {name}. Ayúdame a elegir una fecha y hora."
+  },
+  "Consent": {
+    "label": "Opción de medición",
+    "message": "¿Podemos contar las visitas a las páginas y ver cuál de nuestros enlaces o códigos QR te trajo aquí? No se comparte nada con anunciantes, y la medición sigue desactivada hasta que aceptes.",
+    "details": "Política de privacidad",
+    "decline": "No, gracias",
+    "accept": "Permitir"
   }
 }

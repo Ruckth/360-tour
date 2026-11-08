@@ -103,6 +103,31 @@ const LABELS: Record<string, string> = {
   durationMin: "Duration (minutes)",
   bufferMin: "Turnaround (minutes)",
   price: "Price",
+  // Marketing campaigns, links and coupons (Release 3a).
+  source: "Source",
+  medium: "Medium",
+  startsOn: "Starts",
+  endsOn: "Ends",
+  budget: "Budget",
+  notes: "Notes",
+  campaignId: "Campaign",
+  placement: "Placement",
+  destination: "Opens",
+  couponId: "Coupon",
+  entry: "Entry",
+  code: "Code",
+  version: "Version",
+  benefit: "Discount",
+  propertySlugs: "Villas",
+  bookFrom: "Book from",
+  bookTo: "Book until",
+  stayFrom: "Stay from",
+  stayTo: "Stay until",
+  minEligibleSubtotal: "Minimum spend",
+  maxSaving: "Maximum saving",
+  usageLimit: "Usage limit",
+  discountBudget: "Discount budget",
+  terms: "Terms",
 };
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const KINDS: Record<string, string> = {
@@ -120,12 +145,26 @@ const KINDS: Record<string, string> = {
   pattern_undone: "Weekly default change undone",
   ota_rate_updated: "OTA rate changed",
   ota_rate_removed: "OTA rate removed",
+  status_changed: "Status changed",
+  version_added: "New version saved",
 };
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
+const BAHT_FIELDS = new Set(["budget", "minEligibleSubtotal", "maxSaving", "discountBudget"]);
+const DESTINATIONS: Record<string, string> = { home: "Home", booking: "Booking", villa: "Villa page", experiences: "Experiences", chat: "Chat" };
+const baht = (amount: unknown) => `฿${Number(amount).toLocaleString("en-US")}`;
 function display(value: unknown, field: string): string {
   if (value === null || value === undefined) return field === "override" ? "Weekly default" : "Not set";
+  if (BAHT_FIELDS.has(field) && typeof value === "number") return baht(value);
+  if (field === "benefit") {
+    const benefit = object(value);
+    return benefit.kind === "percent" ? `${benefit.percent}% off` : `${baht(benefit.amount)} off`;
+  }
+  if (field === "destination") {
+    const destination = object(value);
+    return [DESTINATIONS[String(destination.kind)] ?? "Page", destination.propertySlug].filter(Boolean).join(" · ");
+  }
   if (field === "weekday" && typeof value === "number") return DAYS[value] ?? "Unknown weekday";
   if ((field === "start" || field === "end") && typeof value === "number")
     return `${new Date(value).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })} (Bangkok)`;
