@@ -77,11 +77,14 @@ export function normalizeCouponCode(raw: string): string {
 function allocate(lines: QuoteLine[], eligible: QuoteLine[], discount: number): OfferResult['allocation'] {
 	const total = eligible.reduce((sum, line) => sum + line.amount, 0);
 	const shares = eligible.map((line, index) => {
-		const exact = total > 0 ? discount * line.amount / total : 0;
-		return { line, index, value: Math.floor(exact), remainder: exact - Math.floor(exact) };
+		// Products can exceed Number's exact range even when all prices and totals are safe integers.
+		const numerator = BigInt(discount) * BigInt(line.amount);
+		const denominator = BigInt(total);
+		return { line, index, value: total > 0 ? Number(numerator / denominator) : 0,
+			remainder: total > 0 ? numerator % denominator : BigInt(0) };
 	});
 	let remaining = discount - shares.reduce((sum, share) => sum + share.value, 0);
-	for (const share of [...shares].sort((a, b) => b.remainder - a.remainder || a.index - b.index)) {
+	for (const share of [...shares].sort((a, b) => a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1)) {
 		if (remaining-- <= 0) break;
 		share.value++;
 	}
@@ -91,8 +94,13 @@ function allocate(lines: QuoteLine[], eligible: QuoteLine[], discount: number): 
 
 export function evaluateOffer(input: OfferInput): OfferResult {
 	const { lines, coupon, today } = input;
+	// Quotes use whole baht. Reject invalid callers before largest-remainder rounding.
+	if (lines.some(line => !Number.isSafeInteger(line.amount) || line.amount < 0)) {
+		throw new Error('Quote line amounts must be non-negative safe integers');
+	}
 	const accommodation = lines.filter((line) => line.kind === 'accommodation');
 	const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
+	if (!Number.isSafeInteger(subtotal)) throw new Error('Quote subtotal must be a safe integer');
 	const accommodationSubtotal = accommodation.reduce((sum, line) => sum + line.amount, 0);
 	const directDiscount = Math.min(Math.floor(accommodationSubtotal), Math.max(0,
 		Math.round(accommodationSubtotal * Math.min(100, input.directDiscountPercent) / 100)));

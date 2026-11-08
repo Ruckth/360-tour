@@ -101,3 +101,40 @@ describe('offer boundaries and precedence', () => {
     expect(evaluateOffer({ lines: [], directDiscountPercent: 0, today: '2026-11-07' })).toMatchObject({ applied: 'none', couponStatus: 'none', total: 0, allocation: [] });
   });
 });
+
+
+describe('allocation input safety', () => {
+  it('rejects fractional lines before rounding can allocate more than a line amount', () => {
+    const services: QuoteLine[] = [
+      { id: 's1', kind: 'service', label: 'First', amount: 0.6 },
+      { id: 's2', kind: 'service', label: 'Second', amount: 0.6 },
+    ];
+    expect(() => evaluateOffer(input({ ...f1, scope: 'services', benefit: { kind: 'fixed', amount: 1 }, minNights: undefined }, services)))
+      .toThrow('non-negative safe integers');
+    expect(() => evaluateOffer({ lines: [stay(0.6), stay(0.6)], directDiscountPercent: 100, today: '2026-11-07' }))
+      .toThrow('non-negative safe integers');
+  });
+  it('rejects unsafe totals before allocation', () => {
+    expect(() => evaluateOffer(input(f1, [stay(Number.MAX_SAFE_INTEGER), { ...stay(1), id: 'second' }])))
+      .toThrow('safe integer');
+  });
+  it('allocates safe-integer prices exactly without floating-point overspending', () => {
+    const lines = [stay(2_763_351_281_106_943), { ...stay(5_552_634_037_994_643), id: 'second' }];
+    const result = evaluateOffer({ lines, today: '2026-11-07', directDiscountPercent: 100 });
+    expect(result.allocation.map(line => line.discount)).toEqual(lines.map(line => line.amount));
+    expect(result.allocation.reduce((sum, line) => sum + line.discount, 0)).toBe(result.discount);
+  });
+  it('keeps whole-baht allocations within every line and preserves their sum', () => {
+    for (const amount of [0, 1, 2, 3, 7, 100, 10_000_000]) {
+      const lines: QuoteLine[] = [stay(amount), { id: 's', kind: 'service', label: 'Spa', amount }, { id: 's2', kind: 'service', label: 'Spa 2', amount: 1 }];
+      for (const scope of ['accommodation', 'services', 'accommodation_and_services'] as const) {
+        const result = evaluateOffer(input({ ...f1, scope, benefit: { kind: 'percent', percent: 100 }, minNights: undefined, maxSaving: undefined }, lines));
+        expect(result.allocation.reduce((sum, line) => sum + line.discount, 0)).toBe(result.discount);
+        for (const [i, allocation] of result.allocation.entries()) {
+          expect(allocation.discount).toBeGreaterThanOrEqual(0);
+          expect(allocation.discount).toBeLessThanOrEqual(lines[i].amount);
+        }
+      }
+    }
+  });
+});

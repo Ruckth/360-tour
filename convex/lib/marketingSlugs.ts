@@ -25,9 +25,9 @@ export function isMarketingLocale(value: string): boolean {
 	return (marketingLocales as readonly string[]).includes(value);
 }
 
-/** Same result as src/i18n/routing.ts `localizeHref` for internal paths: the default locale (en) has no prefix. */
+/** Explicit locales use a prefix so next-intl updates the guest preference, including for English. */
 export function localizeMarketingPath(path: string, locale: string | undefined): string {
-	const safe = locale && isMarketingLocale(locale) ? locale : 'en';
-	if (safe === 'en') return path;
+	if (locale === undefined) return path;
+	const safe = isMarketingLocale(locale) ? locale : 'en';
 	return path === '/' ? `/${safe}` : `/${safe}${path}`;
 }

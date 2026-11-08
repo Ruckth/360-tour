@@ -79,21 +79,21 @@ describe('campaigns, links and resolution', () => {
     const linkId = await admin.mutation(api.marketing.saveLink, link);
     expect(await admin.query(api.marketing.checkSlug, { slug: 'f1' })).toMatchObject({ ok: false, reason: 'taken' });
     expect(await admin.query(api.marketing.checkSlug, { slug: 'f1', linkId })).toEqual({ ok: true, slug: 'f1' });
-    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toThrow('Slug taken');
+    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toMatchObject({ data: { code: 'slug_taken' } });
     await admin.mutation(api.marketing.saveLink, { ...link, linkId, slug: 'r/anna' });
     expect(await admin.query(api.marketing.checkSlug, { slug: 'f1' })).toMatchObject({ ok: true });
     for (const slug of ['rooms', 'booking', 'en', 'zh-CN', 'r', '_next', 'offers']) {
       expect(await admin.query(api.marketing.checkSlug, { slug })).toMatchObject({ ok: false, reason: 'reserved' });
-      await expect(admin.mutation(api.marketing.saveLink, { ...link, slug })).rejects.toThrow('Slug reserved');
+      await expect(admin.mutation(api.marketing.saveLink, { ...link, slug })).rejects.toMatchObject({ data: { code: 'slug_reserved' } });
     }
-    await expect(admin.mutation(api.marketing.saveLink, { ...link, locale: '//evil' })).rejects.toThrow('Invalid locale');
-    await expect(admin.mutation(api.marketing.saveLink, { ...link, destination: { kind: 'villa', propertySlug: 'missing' } })).rejects.toThrow('Property not found');
+    await expect(admin.mutation(api.marketing.saveLink, { ...link, locale: '//evil' })).rejects.toMatchObject({ data: { code: 'invalid_locale' } });
+    await expect(admin.mutation(api.marketing.saveLink, { ...link, destination: { kind: 'villa', propertySlug: 'missing' } })).rejects.toMatchObject({ data: { code: 'property_not_found' } });
     await t.run(ctx => ctx.db.delete(propertyId));
-    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toThrow('Property not found');
+    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toMatchObject({ data: { code: 'property_not_found' } });
     await t.run(ctx => ctx.db.delete(couponId));
-    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toThrow('Coupon not found');
+    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toMatchObject({ data: { code: 'coupon_not_found' } });
     await t.run(ctx => ctx.db.delete(campaignId));
-    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toThrow('Campaign not found');
+    await expect(admin.mutation(api.marketing.saveLink, link)).rejects.toMatchObject({ data: { code: 'campaign_not_found' } });
   });
   it('resolves all destinations, locale prefixes and offer lifecycle safely', async () => {
     const { t, admin, campaignId, couponId, link } = await setup();
@@ -103,12 +103,12 @@ describe('campaigns, links and resolution', () => {
     expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toBeNull(); // new links start as drafts
     await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
     expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toMatchObject({ path: '/booking?property=mossbell&mk=f1', status: 'active', offerRemoved: false });
-    await expect(admin.mutation(api.marketing.saveLink, { ...link, linkId, slug: 'f2' })).rejects.toThrow('Slug is locked after publishing');
+    await expect(admin.mutation(api.marketing.saveLink, { ...link, linkId, slug: 'f2' })).rejects.toMatchObject({ data: { code: 'slug_locked' } });
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toMatchObject({ path: '/booking?property=mossbell&mk=f1&coupon=DCNT-F1-20', couponCode: 'DCNT-F1-20' });
     for (const status of ['paused', 'archived'] as const) {
       await admin.mutation(api.marketing.setLinkStatus, { linkId, status });
-      expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toEqual({ path: '/booking?property=mossbell&mk=f1', status, offerRemoved: true, campaignName: 'November escape' });
+      expect(await t.query(api.marketing.resolveLink, { slug: 'f1' })).toEqual({ path: '/booking?property=mossbell&mk=f1', status, offerRemoved: true });
     }
     await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
@@ -151,10 +151,10 @@ describe('coupon catalog and quote preview', () => {
     expect(next.version).toBe(2);
     const detail = await admin.query(api.marketing.getCoupon, { couponId });
     expect(detail).toMatchObject({ status: 'draft', used: 0, discountGranted: 0, currentVersion: 2, updatedByEmail: 'Admin@example.com', versions: [{ version: 2, minNights: 3 }, { version: 1, minNights: 2 }] });
-    await expect(admin.mutation(api.marketing.saveCoupon, { code: 'dcnt-f1-20', ...rules })).rejects.toThrow('Coupon code taken');
+    await expect(admin.mutation(api.marketing.saveCoupon, { code: 'dcnt-f1-20', ...rules })).rejects.toMatchObject({ data: { code: 'coupon_code_taken' } });
     await admin.mutation(api.marketing.saveCoupon, { couponId, code: 'RENAMED', ...rules, minNights: 3, terms: 'New terms' });
     await t.run(ctx => ctx.db.patch(couponId, { used: 1 }));
-    await expect(admin.mutation(api.marketing.saveCoupon, { couponId, code: 'CHANGED', ...rules })).rejects.toThrow('Cannot change a used coupon code');
+    await expect(admin.mutation(api.marketing.saveCoupon, { couponId, code: 'CHANGED', ...rules })).rejects.toMatchObject({ data: { code: 'coupon_code_locked' } });
   });
   it.each([
     { code: 'a' }, { benefit: { kind: 'percent' as const, percent: 101 } },
@@ -181,7 +181,179 @@ describe('coupon catalog and quote preview', () => {
     expect((await t.query(api.marketing.previewCoupon, { ...quote, code: '' })).couponStatus).toBe('none');
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'archived' });
     expect((await admin.query(api.marketing.testQuote, quote)).problem).toEqual({ code: 'not_active' });
-    await expect(t.query(api.marketing.previewCoupon, { ...quote, checkOut: quote.checkIn })).rejects.toThrow('Invalid stay dates');
-    await expect(t.query(api.marketing.previewCoupon, { ...quote, services: [{ label: 'Bad', amount: -1 }] })).rejects.toThrow('Invalid service amount');
+    await expect(t.query(api.marketing.previewCoupon, { ...quote, checkOut: quote.checkIn })).rejects.toMatchObject({ data: { code: 'invalid_stay_dates' } });
+    await expect(t.query(api.marketing.previewCoupon, { ...quote, services: [{ label: 'Bad', amount: -1 }] })).rejects.toMatchObject({ data: { code: 'invalid_service_amount' } });
+  });
+});
+
+
+describe('marketing audit regressions', () => {
+  it.each(['villa', 'booking'] as const)('requires a public %s destination on publish and active edits', async kind => {
+    const { t, admin, propertyId, link } = await setup();
+    const destination = { kind, propertySlug: 'mossbell' };
+    const linkId = await admin.mutation(api.marketing.saveLink, { ...link, destination });
+    for (const status of ['draft', 'archived'] as const) {
+      await t.run(ctx => ctx.db.patch(propertyId, { status }));
+      await expect(admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' }))
+        .rejects.toThrow('villa_not_public');
+      expect((await t.run(ctx => ctx.db.get(linkId)))?.status).toBe('draft');
+    }
+    await t.run(ctx => ctx.db.patch(propertyId, { status: 'active' }));
+    await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
+    await t.run(ctx => ctx.db.patch(propertyId, { status: 'draft' }));
+    await expect(admin.mutation(api.marketing.saveLink, { ...link, linkId, destination }))
+      .rejects.toThrow('villa_not_public');
+    // Switching away from the non-public villa is allowed.
+    await admin.mutation(api.marketing.saveLink, { ...link, linkId, destination: { kind: 'booking' } });
+    await t.run(ctx => ctx.db.delete(propertyId));
+    await expect(admin.mutation(api.marketing.saveLink, { ...link, linkId, destination }))
+      .rejects.toThrow('villa_not_public');
+  });
+
+  it.each(['active', 'paused', 'archived'] as const)('never unlocks a link slug by returning from %s to draft', async status => {
+    const { t, admin, link } = await setup();
+    const linkId = await admin.mutation(api.marketing.saveLink, link);
+    await admin.mutation(api.marketing.setLinkStatus, { linkId, status });
+    await expect(admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'draft' }))
+      .rejects.toThrow('invalid_transition');
+    await expect(admin.mutation(api.marketing.saveLink, { ...link, linkId, slug: 'renamed' }))
+      .rejects.toThrow('locked');
+    expect(await t.query(api.marketing.resolveLink, { slug: link.slug })).not.toBeNull();
+  });
+
+  it.each(['draft', 'active', 'paused'] as const)('prevents archived coupons returning to %s', async status => {
+    const { t, admin, couponId } = await setup();
+    await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'archived' });
+    await expect(admin.mutation(api.marketing.setCouponStatus, { couponId, status }))
+      .rejects.toThrow('invalid_transition');
+    expect((await t.run(ctx => ctx.db.get(couponId)))?.status).toBe('archived');
+    await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'archived' });
+  });
+
+  it('keeps campaigns on their forward lifecycle and unarchives only to ended', async () => {
+    const { admin, campaignId } = await setup();
+    for (const status of ['draft', 'active', 'paused', 'active', 'ended', 'archived', 'ended', 'archived'] as const) {
+      await admin.mutation(api.marketing.setCampaignStatus, { campaignId, status });
+      if (status !== 'draft') {
+        await expect(admin.mutation(api.marketing.setCampaignStatus, { campaignId, status: 'draft' }))
+          .rejects.toThrow('invalid_transition');
+      }
+      if (status === 'ended' || status === 'archived') {
+        for (const target of ['active', 'paused'] as const) {
+          await expect(admin.mutation(api.marketing.setCampaignStatus, { campaignId, status: target }))
+            .rejects.toThrow('invalid_transition');
+        }
+      }
+    }
+  });
+
+  it.each(['links', 'coupons'] as const)('marks campaign counts as lower bounds when %s hit the cap', async children => {
+    const { t, admin, campaignId, link } = await setup();
+    expect(await admin.query(api.marketing.listCampaigns, {})).toMatchObject([{ countsCapped: false }]);
+    await t.run(async ctx => {
+      for (let i = children === 'coupons' ? 1 : 0; i < 499; i++) {
+        if (children === 'links') await ctx.db.insert('marketingLinks', {
+          ...link, slug: `cap-${i}`, status: 'active', opens: 2, createdAt: 0, updatedAt: 0, updatedByEmail: '',
+        });
+        else {
+          await ctx.db.insert('coupons', {
+            code: `CAP-${i}`, campaignId, status: 'draft', currentVersion: 1, used: 0, discountGranted: 0,
+            createdAt: 0, updatedAt: 0, updatedByEmail: '',
+          });
+        }
+      }
+    });
+    expect(await admin.query(api.marketing.listCampaigns, {})).toMatchObject([{ countsCapped: false }]);
+    for (let i = 499; i <= 500; i++) {
+      await t.run(async ctx => {
+        if (children === 'links') await ctx.db.insert('marketingLinks', {
+          ...link, slug: `cap-${i}`, status: 'active', opens: 2, createdAt: 0, updatedAt: 0, updatedByEmail: '',
+        });
+        else await ctx.db.insert('coupons', {
+          code: `CAP-${i}`, campaignId, status: 'draft', currentVersion: 1, used: 0, discountGranted: 0,
+          createdAt: 0, updatedAt: 0, updatedByEmail: '',
+        });
+      });
+      expect(await admin.query(api.marketing.listCampaigns, {})).toMatchObject([{
+        countsCapped: true, ...(children === 'links' ? { linkCount: 500, opens: 1000 } : { couponCount: 500 }),
+      }]);
+    }
+  });
+
+  it('omits internal campaign names from public resolution, including draft campaigns', async () => {
+    const { t, admin, link } = await setup();
+    const linkId = await admin.mutation(api.marketing.saveLink, { ...link, locale: 'en' });
+    await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
+    expect(await t.query(api.marketing.resolveLink, { slug: link.slug })).toEqual({
+      path: '/en/booking?property=mossbell&mk=f1', status: 'active', offerRemoved: false,
+    });
+  });
+
+  it('returns null for malformed, wrong-table and deleted coupon ids while preserving auth', async () => {
+    const { t, admin, campaignId, couponId } = await setup();
+    await t.run(ctx => ctx.db.delete(couponId));
+    for (const id of ['abc', '', campaignId, couponId]) {
+      expect(await admin.query(api.marketing.getCoupon, { couponId: id })).toBeNull();
+      await expect(t.query(api.marketing.getCoupon, { couponId: id })).rejects.toThrow('Not authenticated');
+    }
+  });
+
+  it.each([-1, 0.6, NaN, Infinity, 1e308, 10_000_001, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe service amount %s in public and admin quotes', async amount => {
+    const { t, admin } = await setup();
+    const args = { ...quote, services: [{ label: 'Bad', amount }] };
+    await expect(t.query(api.marketing.previewCoupon, args)).rejects.toThrow('invalid_service_amount');
+    await expect(admin.query(api.marketing.testQuote, args)).rejects.toThrow('invalid_service_amount');
+  });
+
+  it('bounds service count at 50 and accepts zero and maximum whole-baht prices', async () => {
+    const { t } = await setup();
+    const services = Array.from({ length: 50 }, (_, i) => ({ label: `Service ${i}`, amount: i ? 10_000_000 : 0 }));
+    const result = await t.query(api.marketing.previewCoupon, { ...quote, services });
+    expect(Number.isFinite(result.total)).toBe(true);
+    expect(result.allocation.every((line, i) => line.discount <= (i ? services[i - 1].amount : 9000))).toBe(true);
+    await expect(t.query(api.marketing.previewCoupon, { ...quote, services: [...services, { label: 'Extra', amount: 0 }] }))
+      .rejects.toThrow('too_many_services');
+  });
+
+  it('exposes actionable structured validation errors in production responses', async () => {
+    const { admin } = await setup();
+    const cases = [
+      [() => admin.mutation(api.marketing.saveCampaign, { name: '', source: 'fb', medium: 'social' }), 'missing_campaign_fields'],
+      [() => admin.mutation(api.marketing.saveCampaign, { name: 'x', source: 'fb', medium: 'social', budget: -1 }), 'invalid_budget'],
+      [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'AB' }), 'invalid_coupon_code'],
+      [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'NEW', usageLimit: 0 }), 'invalid_coupon_limits'],
+      [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'NEW', bookFrom: 'bad' }), 'invalid_date_range'],
+      [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'NEW', benefit: { kind: 'percent', percent: 101 } }), 'invalid_coupon_benefit'],
+      [() => admin.query(api.marketing.testQuote, { ...quote, checkOut: quote.checkIn }), 'invalid_stay_dates'],
+    ] as const;
+    for (const [call, code] of cases) {
+      await expect(call()).rejects.toMatchObject({ data: { code, message: expect.any(String) } });
+    }
+  });
+});
+
+
+describe('marketing destination and pricing follow-up regressions', () => {
+  it.each(['villa', 'booking'] as const)('falls back safely if a published %s destination is later unpublished', async kind => {
+    const { t, admin, couponId, propertyId, link } = await setup();
+    const linkId = await admin.mutation(api.marketing.saveLink, { ...link, locale: 'en', destination: { kind, propertySlug: 'mossbell' } });
+    await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
+    for (const status of ['draft', 'archived'] as const) {
+      await t.run(ctx => ctx.db.patch(propertyId, { status }));
+      expect(await t.query(api.marketing.resolveLink, { slug: link.slug })).toEqual({
+        path: '/en/booking?mk=f1', status: 'active', offerRemoved: true,
+      });
+    }
+    await t.run(ctx => ctx.db.delete(propertyId));
+    expect(await t.query(api.marketing.resolveLink, { slug: link.slug })).toEqual({
+      path: '/en/booking?mk=f1', status: 'active', offerRemoved: true,
+    });
+  });
+  it('reports fractional accommodation pricing with an actionable error before invoking the whole-baht engine', async () => {
+    const { t, propertyId } = await setup();
+    await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 0.6, directDiscountPercent: 100 }));
+    await expect(t.query(api.marketing.previewCoupon, { ...quote, checkOut: '2026-11-11' }))
+      .rejects.toThrow('invalid_accommodation_amount');
   });
 });
