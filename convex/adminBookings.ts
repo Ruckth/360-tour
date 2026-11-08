@@ -186,8 +186,10 @@ export const getForAdmin = query({
 		if (!booking) return null;
 		const property = await ctx.db.get(booking.propertyId);
 		const payable = booking.paymentStatus === 'pending' && booking.status !== 'cancelled';
+		const redemption = booking.promotion ? await ctx.db.get(booking.promotion.redemptionId) : null;
 		return {
 			...toAdminBooking(booking),
+			redemption: redemption ? { state: redemption.state, overLimit: redemption.overLimit ?? false } : null,
 			propertyName: property?.name ?? 'Unknown villa',
 			propertyStatus: property?.status ?? 'archived',
 			subtotal: booking.subtotal,

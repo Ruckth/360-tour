@@ -1,7 +1,5 @@
 "use client";
 
-import { useQuery } from "convex/react";
-import { api } from "convex/_generated/api";
 import { TicketPercent, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import type { BookingPromotion } from "@/lib/booking/coupon";
@@ -12,12 +10,14 @@ import { StatusBadge } from "./StatusBadge";
 
 /**
  * The coupon a stay was priced with, in the booking sheet's price: "DCNT-F1-20 · v1 · −฿1,800",
- * linked to the coupon, with the use's ledger state when the coupon's ledger lists it.
+ * linked to the coupon, with the use's ledger state.
  */
-export function BookingPromotionLine({ promotion, currency }: { promotion: BookingPromotion; currency: string }) {
-  // The ledger is on the coupon detail (marketing.getCoupon); it lists recent uses, so older ones show no state.
-  const coupon = useQuery(api.marketing.getCoupon, promotion.couponId && promotion.redemptionId ? { couponId: promotion.couponId } : "skip");
-  const redemption = coupon?.redemptions?.find((row) => row._id === promotion.redemptionId);
+export function BookingPromotionLine({ promotion, currency, redemption }: {
+  promotion: BookingPromotion;
+  currency: string;
+  /** From adminBookings.getForAdmin. */
+  redemption?: { state: keyof typeof REDEMPTION_STATE; overLimit: boolean } | null;
+}) {
   const meta = redemption ? REDEMPTION_STATE[redemption.state] : null;
   const label = (
     <>

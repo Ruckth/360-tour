@@ -115,11 +115,12 @@ export const COUPON_STATE: Record<CouponState, StatusMeta> = {
   archived: { label: "Archived", tone: "muted" },
 };
 
-export function couponState(coupon: Pick<CouponRow, "status" | "used" | "discountGranted" | "rules">, today: string): CouponState {
+export function couponState(coupon: Pick<CouponRow, "status" | "used" | "discountGranted" | "held" | "heldDiscount" | "rules">, today: string): CouponState {
   if (coupon.status !== "active") return coupon.status;
   const { rules } = coupon;
-  if (rules.usageLimit !== undefined && coupon.used >= rules.usageLimit) return "sold_out";
-  if (rules.discountBudget !== undefined && coupon.discountGranted >= rules.discountBudget) return "budget_used";
+  // Uses held by unpaid bookings count, as they do at checkout.
+  if (rules.usageLimit !== undefined && coupon.used + (coupon.held ?? 0) >= rules.usageLimit) return "sold_out";
+  if (rules.discountBudget !== undefined && coupon.discountGranted + (coupon.heldDiscount ?? 0) >= rules.discountBudget) return "budget_used";
   if (rules.bookTo && rules.bookTo < today) return "expired";
   if (rules.bookFrom && rules.bookFrom > today) return "scheduled";
   return "active";

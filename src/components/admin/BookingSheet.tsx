@@ -230,7 +230,7 @@ function BookingDetails({
           {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
             line.kind === "coupon" && promotion ? (
               <span key="coupon" className="block">
-                <BookingPromotionLine promotion={promotion} currency={booking.currency} />
+                <BookingPromotionLine promotion={promotion} currency={booking.currency} redemption={booking.redemption} />
               </span>
             ) : (
               <span key="direct" className="block text-muted-foreground">
