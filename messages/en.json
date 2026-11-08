@@ -269,6 +269,8 @@
     "summaryPending": "{code} · choose dates to see your price",
     "stayPrice": "Stay price",
     "youSaved": "You saved {amount} with {code}",
+    "agreedPrice": "Agreed price",
+    "coversWholeStay": "This code covers the whole stay, so it can't be booked online. Please contact us",
     "totalChanged": "Your total is now {total}, which differs from the price you reviewed. Check it before you pay.",
     "problem": {
       "notFound": "We couldn't find that code. Check the letters and try again",

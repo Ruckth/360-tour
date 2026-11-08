@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import { evaluateOffer, type CouponProblem, type CouponRules, type OfferResult } from "convex/lib/offers";
 import { locales } from "@/i18n/routing";
 import {
+  bookedPriceView,
   bookingPromotion,
   couponCodeToSend,
+  couponCoversWholeStay,
   couponFix,
   couponFromParam,
   couponPhase,
@@ -290,5 +292,40 @@ describe("booking records and errors", () => {
     expect(quotedTotalFromParam("")).toBeNull();
     expect(quotedTotalFromParam("72e2")).toBeNull();
     expect(quotedTotalFromParam(null)).toBeNull();
+  });
+});
+
+describe("booked price view", () => {
+  const promotion = { code: "DCNT-F1-20", couponVersion: 1, discount: 1800 };
+
+  it("shows the coupon line and the saving for a coupon-priced booking", () => {
+    expect(bookedPriceView({ discountAmount: 1800, promotion })).toEqual({
+      lines: [{ kind: "coupon", code: "DCNT-F1-20", amount: 1800 }],
+      totalLabel: "total",
+      saving: { code: "DCNT-F1-20", amount: 1800 },
+    });
+  });
+
+  it("shows the direct discount and no saving without a coupon", () => {
+    expect(bookedPriceView({ discountAmount: 1350 })).toEqual({ lines: [{ kind: "direct", amount: 1350 }], totalLabel: "total", saving: null });
+  });
+
+  it("shows only the stay price and agreed price for a custom price, even with a stale promotion", () => {
+    // The audit's case: custom total 9,000 on a stay first booked at 7,200 with the coupon.
+    expect(bookedPriceView({ discountAmount: 1350, customPrice: true, promotion })).toEqual({ lines: [], totalLabel: "agreedPrice", saving: null });
+    expect(bookedPriceView({ discountAmount: 1350, customPrice: true })).toEqual({ lines: [], totalLabel: "agreedPrice", saving: null });
+  });
+});
+
+describe("zero-total coupon refusal", () => {
+  it("recognises the whole-stay refusal from bookings.create", () => {
+    const err = new ConvexError({
+      code: "coupon_unavailable",
+      message: "This code covers the whole stay, so it can't be booked online. Please contact us.",
+      problem: { code: "nothing_eligible" },
+    });
+    expect(couponCoversWholeStay(couponUnavailableError(err))).toBe(true);
+    expect(couponCoversWholeStay(couponUnavailableError(new ConvexError({ code: "coupon_unavailable", problem: { code: "sold_out" } })))).toBe(false);
+    expect(couponCoversWholeStay(couponUnavailableError(new Error("boom")))).toBe(false);
   });
 });

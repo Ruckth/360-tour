@@ -1,12 +1,11 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { calculateDirectQuote } from "convex/lib/pricing";
 import { format } from "date-fns";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -33,6 +32,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { BookingFinancials } from "./BookingFinancials";
 import { BookingPromotionLine } from "./BookingPromotion";
+import { bookingEditPrice, type BookingEditQuote, type BookingEditQuoteState } from "./booking-edit-price";
 import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
 import { BookingHistory } from "./BookingHistory";
 import { CancelStayDialog, ReopenBookingDialog } from "./BookingCorrectionDialogs";
@@ -428,12 +428,33 @@ export function EditBookingDialog({
   const stayChanged =
     propertyId !== booking.propertyId || dates.checkIn !== booking.checkIn || dates.checkOut !== booking.checkOut;
   const nights = nightsBetweenIso(dates.checkIn, dates.checkOut);
-  const quoted = property && nights > 0 ? calculateDirectQuote(property, nights).directTotal : booking.total;
+  const guestCount = Number(guests);
+  // The server prices the edit with the same policy editBooking saves (coupon version, direct
+  // fallback). With a custom price on the stay it quotes the price once that's removed.
+  const quote = useBookingEditQuote(
+    property && nights > 0 && Number.isInteger(guestCount) && guestCount >= 1
+      ? {
+          bookingId: booking._id,
+          propertySlug: property.slug,
+          checkIn: dates.checkIn,
+          checkOut: dates.checkOut,
+          guests: guestCount,
+          ...(booking.priceOverride ? { clearPriceOverride: true } : {}),
+        }
+      : null,
+  );
   const customAmount = parseAmount(customTotal);
   const customProblem = custom && customAmount === null ? "Enter a price, at most 2 decimals." : custom && !customReason.trim() ? "Add the reason for the custom price." : null;
-  const newTotal = custom ? (customAmount ?? booking.total) : stayChanged || booking.priceOverride ? quoted : booking.total;
-  const difference = newTotal - booking.total;
-  const balance = booking.amountPaid !== undefined ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
+  const price = bookingEditPrice({
+    current: { total: booking.total, currency: booking.currency, promotionCode: bookingPromotion(booking)?.code },
+    custom: custom ? customAmount : undefined,
+    quote,
+  });
+  const newTotal = price.kind === "changed" ? price.total : booking.total;
+  const sameCurrency = price.kind !== "changed" || price.currency === booking.currency;
+  /** Save waits for the quote: staff confirm the price editBooking will actually write. */
+  const priceBlocked = !custom && (price.kind === "loading" || price.kind === "error");
+  const balance = booking.amountPaid !== undefined && sameCurrency ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
   const archivedVilla = stayChanged && property?.status === "archived";
   const priceChanged = custom
     ? customAmount !== booking.priceOverride?.total || customReason.trim() !== (booking.priceOverride?.reason ?? "") || stayChanged
@@ -443,7 +464,7 @@ export function EditBookingDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!availability.canSubmit || saving || customProblem || (archivedVilla && !villaReason.trim())) return;
+    if (!availability.canSubmit || saving || customProblem || priceBlocked || (archivedVilla && !villaReason.trim())) return;
     setSaving(true);
     setError("");
     try {
@@ -474,7 +495,7 @@ export function EditBookingDialog({
         <DialogHeader>
           <DialogTitle>Edit booking</DialogTitle>
           <DialogDescription>
-            Changing the villa or dates recalculates the price at the villa rate, unless you set a custom price.
+            Changing the villa or dates recalculates the price, with the booking’s coupon if it still applies, unless you set a custom price.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4">
@@ -538,7 +559,13 @@ export function EditBookingDialog({
                 <div className="grid gap-2">
                   <Label htmlFor="eb-custom-total">Stay total ({booking.currency})</Label>
                   <Input id="eb-custom-total" inputMode="decimal" value={customTotal} onChange={(e) => setCustomTotal(e.target.value)} aria-invalid={customAmount === null} />
-                  <p className="text-xs text-muted-foreground">Villa rate for these dates: {formatMoney(quoted, booking.currency)}.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {quote.status === "ready"
+                      ? `Without a custom price: ${formatMoney(quote.quote.total, quote.quote.currency)}.`
+                      : quote.status === "loading"
+                        ? "Checking the price without a custom price…"
+                        : null}
+                  </p>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="eb-custom-reason">Reason (required)</Label>
@@ -551,23 +578,32 @@ export function EditBookingDialog({
           </div>
 
           <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
-            {newTotal !== booking.total ? (
+            {price.kind === "changed" ? (
               <>
                 <p className="font-medium">
-                  New total {formatMoney(newTotal, booking.currency)}{" "}
+                  New total {formatMoney(price.total, price.currency)}{" "}
                   <span className="font-normal text-muted-foreground">
-                    (was {formatMoney(booking.total, booking.currency)},{" "}
-                    {`${difference > 0 ? "+" : "−"}${formatMoney(Math.abs(difference), booking.currency)}`})
+                    (was {formatMoney(booking.total, booking.currency)}
+                    {price.difference ? `, ${price.difference > 0 ? "+" : "−"}${formatMoney(Math.abs(price.difference), booking.currency)}` : ""})
                   </span>
                 </p>
+                {price.note ? <p data-testid="edit-price-coupon" className="text-muted-foreground">{price.note}</p> : null}
                 <p className="text-muted-foreground">
                   {nights} {nights === 1 ? "night" : "nights"}
                 </p>
               </>
+            ) : price.kind === "loading" ? (
+              <p className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
+                <Spinner className="text-current" /> Checking the price…
+              </p>
+            ) : price.kind === "error" ? (
+              <p role="alert" className="text-destructive">{price.message}</p>
+            ) : price.kind === "idle" ? (
+              <p className="text-muted-foreground">Choose the dates and guests to see the price.</p>
             ) : (
               <p className="text-muted-foreground">Price unchanged: {formatMoney(booking.total, booking.currency)}</p>
             )}
-            {booking.amountPaid !== undefined ? (
+            {booking.amountPaid !== undefined && (custom || price.kind === "changed" || price.kind === "unchanged") && sameCurrency ? (
               <p className="mt-1 text-muted-foreground">
                 Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
                 {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
@@ -586,7 +622,7 @@ export function EditBookingDialog({
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Close
             </Button>
-            <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(customProblem) || (archivedVilla && !villaReason.trim())}>
+            <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(customProblem) || priceBlocked || (archivedVilla && !villaReason.trim())}>
               {saving ? <Spinner className="text-current" /> : null}
               Save changes
             </Button>
@@ -595,4 +631,27 @@ export function EditBookingDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+type EditQuoteArgs = {
+  bookingId: Id<"bookings">;
+  propertySlug: string;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  clearPriceOverride?: boolean;
+};
+
+/** adminBookings.quoteBookingEdit, live. A refusal (e.g. dates the villa can't take) comes back as an error state, not a throw. */
+function useBookingEditQuote(args: EditQuoteArgs | null): BookingEditQuoteState {
+  const key = args ? JSON.stringify(args) : "";
+  const queries = useMemo(
+    (): RequestForQueries => (key ? { quote: { query: api.adminBookings.quoteBookingEdit, args: JSON.parse(key) as EditQuoteArgs } } : {}),
+    [key],
+  );
+  const result: unknown = useQueries(queries).quote;
+  if (!key) return { status: "idle" };
+  if (result === undefined) return { status: "loading" };
+  if (result instanceof Error) return { status: "error", message: errorText(result, "Couldn’t price this change.") };
+  return { status: "ready", quote: result as BookingEditQuote };
 }

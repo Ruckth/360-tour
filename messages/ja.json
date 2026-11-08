@@ -269,6 +269,8 @@
     "summaryPending": "{code} · 日付を選ぶと料金が表示されます",
     "stayPrice": "宿泊料金",
     "youSaved": "{code} で {amount} お得になりました",
+    "agreedPrice": "合意済みの料金",
+    "coversWholeStay": "このコードは宿泊料金の全額に適用されるため、オンラインでは予約できません。お問い合わせください",
     "totalChanged": "合計は {total} になり、確認時の料金と異なります。お支払い前にご確認ください。",
     "problem": {
       "notFound": "このコードが見つかりません。文字を確認してもう一度お試しください",

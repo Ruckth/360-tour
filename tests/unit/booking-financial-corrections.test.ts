@@ -26,7 +26,7 @@ const mutations = vi.hoisted(() => ({
   reopenBooking: vi.fn(),
   editBooking: vi.fn(),
 }));
-const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn(), getForAdmin: vi.fn() }));
+const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn(), getForAdmin: vi.fn(), quoteBookingEdit: vi.fn() }));
 const pages = vi.hoisted(() => ({ read: vi.fn(), loadMore: vi.fn() }));
 // The edit dialog's availability months: loaded, nothing blocked. One stable client, like ConvexProvider's.
 const client = vi.hoisted(() => ({ watchQuery: () => ({ localQueryResult: () => [], onUpdate: () => () => undefined }) }));
@@ -40,6 +40,10 @@ vi.mock("convex/react", () => ({
     const name = getFunctionName(ref).split(":").pop() as keyof typeof queries;
     return queries[name]?.();
   },
+  useQueries: (requests: Record<string, { query: FunctionReference<"query">; args: unknown }>) =>
+    Object.fromEntries(
+      Object.entries(requests).map(([key, { query, args }]) => [key, queries[getFunctionName(query).split(":").pop() as keyof typeof queries]?.(args)]),
+    ),
   usePaginatedQuery: (_ref: unknown, args: unknown) => pages.read(args),
   useConvex: () => client,
 }));
@@ -95,6 +99,7 @@ beforeEach(() => {
   for (const mutation of Object.values(mutations)) mutation.mockReset().mockResolvedValue(null);
   queries.bookingFinancials.mockReset().mockReturnValue(financials);
   queries.getForAdmin.mockReset().mockReturnValue(booking);
+  queries.quoteBookingEdit.mockReset().mockReturnValue({ subtotal: 20000, discountAmount: 3000, total: 17000, currency: "THB", promotion: null, couponRemoved: false, repriced: false });
   pages.read.mockReset().mockReturnValue({ results: [], status: "Exhausted", loadMore: pages.loadMore });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
@@ -343,6 +348,7 @@ describe("editing the stay price", () => {
   });
 
   it("returns a custom price to the villa rate explicitly", async () => {
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 20000, discountAmount: 3000, total: 17000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
     const custom = { ...booking, priceOverride: { total: 15000, quotedTotal: 17000, reason: "Deal", by: "a", at: 0 }, total: 15000 } as BookingDetail;
     await render(createElement(EditBookingDialog, { booking: custom, properties: [villa] as never, onClose: vi.fn() }));
     await click(document.getElementById("eb-custom"));
@@ -350,5 +356,34 @@ describe("editing the stay price", () => {
     expect(document.body.textContent).toContain("New total ฿17,000");
     await click(button("Save changes"));
     expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ priceOverride: null, expectedRevision: 7 }));
+    expect(queries.quoteBookingEdit).toHaveBeenLastCalledWith(expect.objectContaining({ bookingId: "b1", propertySlug: "pool-villa", clearPriceOverride: true }));
+  });
+
+  it("shows the server's quote for a coupon stay and waits for it before saving", async () => {
+    const promoted = { ...booking, total: 7200, amountPaid: 7200, promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 1800 } } as unknown as BookingDetail;
+    queries.quoteBookingEdit.mockReturnValue(undefined);
+    await render(createElement(EditBookingDialog, { booking: promoted, properties: [villa] as never, onClose: vi.fn() }));
+    expect(document.body.textContent).toContain("Checking the price…");
+    expect(button("Save changes")?.disabled).toBe(true);
+
+    queries.quoteBookingEdit.mockReturnValue({
+      subtotal: 13500, discountAmount: 2700, total: 10800, currency: "THB",
+      promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 2700 }, couponRemoved: false, repriced: true,
+    });
+    await type("eb-guests", "3");
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("New total ฿10,800");
+    expect(text).toContain("Repriced with DCNT-F1-20 (v1)");
+    expect(text).toContain("Balance due ฿3,600");
+    expect(queries.quoteBookingEdit).toHaveBeenLastCalledWith({ bookingId: "b1", propertySlug: "pool-villa", checkIn: "2026-10-20", checkOut: "2026-10-22", guests: 3 });
+
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 13500, discountAmount: 2025, total: 11475, currency: "THB", promotion: null, couponRemoved: true, repriced: true });
+    await type("eb-guests", "2");
+    expect(document.body.textContent).toContain("Coupon DCNT-F1-20 no longer applies — direct rate");
+
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 9000, discountAmount: 1800, total: 7200, currency: "THB", promotion: null, couponRemoved: false, repriced: false });
+    await type("eb-guests", "1");
+    expect(document.body.textContent).toContain("Price unchanged: ฿7,200");
+    expect(button("Save changes")?.disabled).toBe(false);
   });
 });

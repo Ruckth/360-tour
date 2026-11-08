@@ -269,6 +269,8 @@
     "summaryPending": "{code} · 날짜를 선택하면 가격이 표시됩니다",
     "stayPrice": "숙박 요금",
     "youSaved": "{code}(으)로 {amount} 절약했습니다",
+    "agreedPrice": "합의된 요금",
+    "coversWholeStay": "이 코드는 숙박 요금 전액에 적용되어 온라인으로 예약할 수 없습니다. 문의해 주세요",
     "totalChanged": "합계가 {total}(으)로 확인하신 가격과 다릅니다. 결제 전에 확인하세요.",
     "problem": {
       "notFound": "코드를 찾을 수 없습니다. 글자를 확인하고 다시 시도하세요",

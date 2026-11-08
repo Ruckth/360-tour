@@ -171,6 +171,27 @@ export function bookingPromotion(booking: unknown): BookingPromotion | null {
   };
 }
 
+/** What the pay and success pages show under the stay price, and what the total is called. */
+export type BookedPriceView = {
+  lines: PriceLine[];
+  /** `Booking.total` normally; `Coupon.agreedPrice` for a custom price staff agreed with the guest. */
+  totalLabel: "total" | "agreedPrice";
+  /** The "You saved…" line, when a coupon actually priced this booking. */
+  saving: { code: string; amount: number } | null;
+};
+
+/**
+ * The guest's breakdown of a booked stay. A custom price replaces the pricing, so it shows the
+ * stay price and the agreed price only: no discount lines and no saving claim, even if the stay
+ * was first booked with a coupon (the public query omits `promotion` then; this is the backstop).
+ */
+export function bookedPriceView(booking: { discountAmount?: number; customPrice?: boolean; promotion?: unknown }): BookedPriceView {
+  if (booking.customPrice) return { lines: [], totalLabel: "agreedPrice", saving: null };
+  const promotion = bookingPromotion(booking);
+  const coupon = promotion && promotion.discount > 0 ? { code: promotion.code, amount: promotion.discount } : null;
+  return { lines: discountLines(booking.discountAmount ?? 0, coupon), totalLabel: "total", saving: coupon };
+}
+
 export type CouponUnavailable = { message?: string; problem?: CouponProblem };
 
 /**
@@ -200,6 +221,15 @@ export function couponUnavailableError(error: unknown): CouponUnavailable | null
     ...(typeof message === "string" && message && { message }),
     ...(isProblem(problem) ? { problem } : {}),
   };
+}
+
+/**
+ * True when bookings.create refused the code because it would cover the whole stay (a zero total
+ * can't be paid online). Only an applied code is sent, and a services-only code never applies to a
+ * villa, so `nothing_eligible` at create means exactly this.
+ */
+export function couponCoversWholeStay(refused: CouponUnavailable | null): boolean {
+  return refused?.problem?.code === "nothing_eligible";
 }
 
 /** The extra query param the funnel adds to the pay page so it can flag a total that moved. */
