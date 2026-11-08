@@ -60,7 +60,7 @@ export async function syncCouponRedemption(ctx: MutationCtx, booking: Doc<'booki
 	const money = stayMoney(booking);
 	const paid = money.gross > 0;
 	// A partial refund on a live stay (goodwill, a shortened stay) keeps the use; only a cancelled or fully refunded stay reverses it.
-	const reversed = booking.status === 'cancelled' || booking.paymentStatus === 'refunded';
+	const reversed = booking.status === 'cancelled' || booking.paymentStatus === 'refunded' || (paid && money.net <= 0);
 	let state: Doc<'couponRedemptions'>['state'] = redemption.state;
 	let overLimit = redemption.overLimit;
 	let held = coupon.held ?? 0;
