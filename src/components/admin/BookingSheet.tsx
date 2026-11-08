@@ -32,6 +32,8 @@ import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { BookingFinancials } from "./BookingFinancials";
+import { BookingPromotionLine } from "./BookingPromotion";
+import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
 import { BookingHistory } from "./BookingHistory";
 import { CancelStayDialog, ReopenBookingDialog } from "./BookingCorrectionDialogs";
 import { NotifyGuestField } from "./BookingMoneyFields";
@@ -143,6 +145,8 @@ function BookingDetails({
   const balance = booking.amountPaid !== undefined ? balanceText(booking.total, booking.amountPaid, booking.currency) : null;
   const notesChanged = notes.trim() !== (booking.adminNotes ?? "");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Another villa";
+  // Release 2: getForAdmin may return the coupon the stay was priced with.
+  const promotion = bookingPromotion(booking);
 
   async function act(name: string, run: () => Promise<unknown>, done = "") {
     setPending(name);
@@ -223,11 +227,17 @@ function BookingDetails({
           <span className="block text-muted-foreground">
             {formatMoney(nightly, booking.currency)} × {booking.nights} = {formatMoney(booking.subtotal, booking.currency)}
           </span>
-          {booking.discountAmount > 0 ? (
-            <span className="block text-muted-foreground">
-              Direct discount −{formatMoney(booking.discountAmount, booking.currency)}
-            </span>
-          ) : null}
+          {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
+            line.kind === "coupon" && promotion ? (
+              <span key="coupon" className="block">
+                <BookingPromotionLine promotion={promotion} currency={booking.currency} />
+              </span>
+            ) : (
+              <span key="direct" className="block text-muted-foreground">
+                Direct discount −{formatMoney(line.amount, booking.currency)}
+              </span>
+            ),
+          )}
           {booking.priceOverride ? (
             <span className="block text-muted-foreground">
               Custom price (villa rate {formatMoney(booking.priceOverride.quotedTotal, booking.currency)}): {booking.priceOverride.reason}

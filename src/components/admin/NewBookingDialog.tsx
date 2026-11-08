@@ -1,8 +1,9 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
+import { normalizeCouponCode, type OfferResult } from "convex/lib/offers";
 import { UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
@@ -24,7 +25,9 @@ import { isPossiblePhoneNumber } from "libphonenumber-js/min";
 import { normalizeGuestPhone } from "@/lib/booking/phone";
 import { useAdminBookingDates } from "./useAdminBookingDates";
 import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
-import { errorText } from "@/lib/staff-bookings";
+import { couponUnavailableError } from "@/lib/booking/coupon";
+import { marketingErrorText } from "./marketing/marketing-format";
+import { QuoteVerdictBox } from "./marketing/TestQuotePanel";
 import { displayDate, newAttemptKey, notifyDefault, parseAmount, serverTodayIso, type AdminProperty } from "./admin-bookings-shared";
 import { NotifyGuestField } from "./BookingMoneyFields";
 import { formatMoney } from "./labels";
@@ -78,6 +81,9 @@ export function NewBookingDialog({
   const [villaReason, setVillaReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  /** createBooking refused the code (e.g. its last use went meanwhile). */
+  const [couponError, setCouponError] = useState("");
 
   // A stay that started before today is a record of the past: archived villas may be used for it.
   const historical = Boolean(dates.checkIn) && dates.checkIn < serverTodayIso();
@@ -99,6 +105,21 @@ export function NewBookingDialog({
             ? "Add the reason for the custom price."
             : "";
 
+  // Coupon: priced live with the guest quote (marketing.previewCoupon) for the villa and dates.
+  const couponTyped = normalizeCouponCode(couponInput);
+  const couponDebounced = normalizeCouponCode(useDebounced(couponInput, 300));
+  const couponLive = Boolean(couponTyped) && !custom;
+  const couponArgs =
+    couponLive && couponDebounced === couponTyped && property && dates.checkIn && dates.checkOut > dates.checkIn
+      ? { code: couponTyped, propertySlug: property.slug, checkIn: dates.checkIn, checkOut: dates.checkOut }
+      : null;
+  const coupon = useCouponQuote(couponArgs);
+  const couponWaiting = couponLive && Boolean(property && dates.checkIn && dates.checkOut) && (couponDebounced !== couponTyped || coupon.status === "checking");
+  const couponInvalid = couponLive && coupon.status === "ready" && coupon.result.couponStatus === "invalid";
+  // Only a code the quote applies is sent; when the quote couldn't run (e.g. an archived villa), the server decides.
+  const couponToSend = couponLive && (coupon.status === "error" || (coupon.status === "ready" && coupon.result.couponStatus === "applied")) ? couponTyped : undefined;
+  const couponProblem = couponInvalid ? "Clear the coupon code or use one that applies to this stay." : "";
+
   // Returning guests: suggest previous bookings matching the phone or email typed so far.
   const phone = useDebounced(guest.phone.trim());
   const email = useDebounced(guest.email.trim());
@@ -110,7 +131,7 @@ export function NewBookingDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!availability.canSubmit || pending.current || problem) return;
+    if (!availability.canSubmit || pending.current || problem || couponProblem || couponWaiting) return;
     if (!isPossiblePhoneNumber(guest.phone)) {
       setError("Enter a complete phone number for the selected country.");
       return;
@@ -118,6 +139,7 @@ export function NewBookingDialog({
     pending.current = true;
     setSaving(true);
     setError("");
+    setCouponError("");
     try {
       const id = await createBooking({
         idempotencyKey: creationKey,
@@ -133,11 +155,17 @@ export function NewBookingDialog({
         notifyGuest: notify,
         ...(custom && customAmount !== null ? { priceOverride: { total: customAmount, reason: customReason.trim() } } : {}),
         ...(archivedVilla ? { archivedVillaReason: villaReason.trim() } : {}),
+        ...(couponToSend ? { couponCode: couponToSend } : {}),
       });
       onCreated(id);
     } catch (err) {
       // Everything entered stays, so Create booking can simply be pressed again.
-      setError(errorText(err, "Could not create the booking."));
+      if (couponToSend && couponUnavailableError(err)) {
+        setCouponError(marketingErrorText(err, "This code can’t be used now. Clear it to book at the villa rate."));
+        coupon.refresh();
+      } else {
+        setError(marketingErrorText(err, "Could not create the booking."));
+      }
     } finally {
       pending.current = false;
       setSaving(false);
@@ -333,7 +361,58 @@ export function NewBookingDialog({
               </p>
             ) : null}
           </div>
+          <div className="grid gap-2">
+            <Label htmlFor="nb-coupon">
+              Coupon code <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id="nb-coupon"
+              value={couponInput}
+              onChange={(event) => {
+                setCouponInput(event.target.value);
+                setCouponError("");
+              }}
+              placeholder="DCNT-F1-20"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              maxLength={40}
+              disabled={saving || custom}
+              aria-invalid={couponInvalid || couponError ? true : undefined}
+              aria-describedby="nb-coupon-status"
+              className="font-mono font-semibold tracking-wide"
+            />
+            <div id="nb-coupon-status" aria-live="polite" className="grid gap-2">
+              {custom && couponTyped ? (
+                <p className="text-xs text-muted-foreground">A custom price replaces the villa rate, so the code isn’t used.</p>
+              ) : !couponLive ? (
+                <p className="text-xs text-muted-foreground">Same rules as the website: the guest gets the better of the code or the direct discount.</p>
+              ) : !property || !dates.checkIn || !dates.checkOut ? (
+                <p className="text-xs text-muted-foreground">Choose the villa and dates to check the code.</p>
+              ) : couponWaiting ? (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Spinner label="Checking the code" className="size-3.5" />
+                  Checking {couponTyped}…
+                </p>
+              ) : coupon.status === "error" ? (
+                <p className="text-xs text-muted-foreground">{coupon.message} The code is checked again when you create the booking.</p>
+              ) : coupon.status === "ready" ? (
+                <QuoteVerdictBox result={coupon.result}>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Total {formatMoney(coupon.result.total, property.currency)}
+                    {coupon.result.couponStatus === "applied" ? ` with ${couponTyped}` : coupon.result.couponStatus === "coupon_worse" ? " at the direct rate. The code isn’t sent." : ""}
+                  </p>
+                </QuoteVerdictBox>
+              ) : null}
+              {couponError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {couponError}
+                </p>
+              ) : null}
+            </div>
+          </div>
           {problem ? <p className="text-sm text-destructive">{problem}</p> : null}
+          {couponProblem ? <p className="text-sm text-destructive">{couponProblem}</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter className="gap-2 sm:flex-wrap">
             {property && dates.checkIn && dates.checkOut ? (
@@ -349,7 +428,7 @@ export function NewBookingDialog({
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               Close
             </Button>
-            <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(problem)}>
+            <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(problem) || Boolean(couponProblem) || couponWaiting}>
               {saving ? <Spinner className="text-current" /> : null}
               Create booking
             </Button>
@@ -358,4 +437,39 @@ export function NewBookingDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+type CouponQuote =
+  | { status: "idle" | "checking" }
+  | { status: "error"; message: string }
+  | { status: "ready"; result: OfferResult };
+
+/**
+ * One-off guest quote for the code on this stay. Answers for older inputs are dropped, and
+ * `refresh` asks again (after createBooking refused the code).
+ */
+function useCouponQuote(args: { code: string; propertySlug: string; checkIn: string; checkOut: string } | null) {
+  const convex = useConvex();
+  const [nonce, setNonce] = useState(0);
+  const key = args ? `${JSON.stringify(args)}#${nonce}` : "";
+  const [answer, setAnswer] = useState<{ key: string; quote: CouponQuote } | null>(null);
+  useEffect(() => {
+    if (!args) return;
+    let active = true;
+    convex
+      .query(api.marketing.previewCoupon, args)
+      .then((result) => {
+        if (active) setAnswer({ key, quote: { status: "ready", result } });
+      })
+      .catch((err: unknown) => {
+        if (active) setAnswer({ key, quote: { status: "error", message: marketingErrorText(err, "Couldn’t check the code.") } });
+      });
+    return () => {
+      active = false;
+    };
+    // `key` covers the args and the refresh nonce.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, convex]);
+  const quote: CouponQuote = !args ? { status: "idle" } : answer?.key === key ? answer.quote : { status: "checking" };
+  return { ...quote, refresh: () => setNonce((current) => current + 1) } as CouponQuote & { refresh: () => void };
 }

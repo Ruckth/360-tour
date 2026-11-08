@@ -1,5 +1,6 @@
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
+import type { OfferResult } from "convex/lib/offers";
 import type { BookingProperty } from "@/lib/booking/booking";
 import type { ChatActionHint } from "@/lib/chat/action-card";
 import type { PropertyTranslation } from "@/lib/i18n/public-content";
@@ -34,8 +35,17 @@ export type CreateBookingResult = {
   accessToken: string;
 };
 
+/** The coupon a booking was priced with (Release 2). */
+export type PublicBookingPromotion = {
+  code: string;
+  discount: number;
+  couponVersion?: number;
+};
+
 export type PublicBooking = {
   _id?: string;
+  /** Present once bookings.getById returns it; read it with bookingPromotion() from lib/booking/coupon. */
+  promotion?: PublicBookingPromotion;
   checkIn?: string;
   checkOut?: string;
   guests?: number;
@@ -138,12 +148,26 @@ export async function createBooking(
     checkIn: string;
     checkOut: string;
     guests: number;
+    /** Send only a code the live preview applied. Throws ConvexError `coupon_unavailable` when it can't be used now. */
+    couponCode?: string;
   },
 ) {
+  const { couponCode, ...stay } = args;
   return (await withConvexTimeout(
-    client.mutation(api.bookings.create, args as never),
+    client.mutation(api.bookings.create, (couponCode ? { ...stay, couponCode } : stay) as never),
     "Creating booking",
   )) as CreateBookingResult;
+}
+
+/** Guest quote for a code on one stay. Reserves nothing. */
+export async function previewCoupon(
+  client: ConvexReactClient,
+  args: { code: string; propertySlug: string; checkIn: string; checkOut: string },
+) {
+  return (await withConvexTimeout(
+    client.query(api.marketing.previewCoupon, args as never),
+    "Checking the code",
+  )) as OfferResult;
 }
 
 export async function quoteStay(

@@ -33,6 +33,8 @@ export default async function BookingPage({
       initialAdults={getParam(params, "adults")}
       initialChildren={getParam(params, "children")}
       initialProperty={getParam(params, "unit") ?? getParam(params, "property")}
+      // Short links add ?coupon=DCNT-F1-20&mk=f1; `mk` is left in the URL for attribution.
+      initialCoupon={getParam(params, "coupon")}
     />
   );
 }
