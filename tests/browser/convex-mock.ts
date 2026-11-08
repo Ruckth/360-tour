@@ -49,7 +49,7 @@ export function usePaginatedQuery() {
 
 const money = { total: 28900, currency: "THB", gross: 28900, refunded: 0, net: 28900, owed: 0, credit: 0, refundable: 0, refundContext: "credit", legacyRefund: false };
 
-export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
+function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   if (args === "skip") return undefined;
   const name = getFunctionName(query);
   // Picker fixtures supply their catalog through the real component's initial props.
@@ -69,6 +69,13 @@ export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unk
     guestName: "Returning Guest", guestPhone: params.get("phone") ?? "0812345678",
     guestEmail: "returning@example.com", stays: 2, lastCheckIn: "2025-01-30",
   }];
+  if (name === "adminBookings:quoteBookingEdit") {
+    // The stay's stored price, or 7,000 a night once its dates change.
+    const { checkIn, checkOut } = args as { checkIn: string; checkOut: string };
+    if (checkIn === "2025-01-30" && checkOut === "2025-02-03") return { subtotal: 34000, discountAmount: 5100, total: 28900, currency: "THB", promotion: null, couponRemoved: false, repriced: false };
+    const total = 7000 * Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000);
+    return { subtotal: total, discountAmount: 0, total, currency: "THB", promotion: null, couponRemoved: false, repriced: true };
+  }
   if (name === "adminBookings:getForAdmin") return {
     _id: "booking-id", createdAt: 1738231200000, propertyId: "pool-id", guestName: "Historical Guest", guestPhone: "0812345678",
     checkIn: "2025-01-30", checkOut: "2025-02-03", guests: 2, nights: 4,
@@ -79,6 +86,10 @@ export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unk
     guestEmailsOff: true, confirmationEmailed: false, notifyByDefault: false,
   };
   return [];
+}
+export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) { return fixtureQuery(query, args); }
+export function useQueries(requests: Record<string, { query: Parameters<typeof getFunctionName>[0]; args: unknown }>) {
+  return Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => [key, fixtureQuery(query, args)]));
 }
 export function useMutation() {
   return async (args: unknown) => {

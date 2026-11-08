@@ -40,7 +40,7 @@ async function setup(limits: Limits = {}) {
   const row = async (id: Id<'bookings'>) => (await t.run(ctx => ctx.db.query('couponRedemptions').withIndex('by_bookingId', q => q.eq('bookingId', id)).unique()))!;
   const create = (changes: Partial<typeof input> = {}) => admin.mutation(api.adminBookings.createBooking, { ...input, notifyGuest: false, ...changes });
   const web = (changes: Partial<typeof input> = {}) => t.mutation(api.bookings.create, { ...input, ...changes });
-  const edit = async (id: Id<'bookings'>, changes: { checkIn?: string; checkOut?: string; guests?: number; propertyId?: Id<'properties'>; priceOverride?: null | { total: number; reason: string } } = {}) => {
+  const edit = async (id: Id<'bookings'>, changes: { checkIn?: string; checkOut?: string; guests?: number; propertyId?: Id<'properties'>; priceOverride?: null | { total: number; reason: string }; expectedPrice?: { total: number; currency: string } } = {}) => {
     const b = await get(id);
     return admin.mutation(api.adminBookings.editBooking, { bookingId: id, expectedRevision: b.revision ?? 0, propertyId: b.propertyId, checkIn: b.checkIn, checkOut: b.checkOut, guests: b.guests, guestName: b.guestName, guestPhone: b.guestPhone, guestEmail: b.guestEmail, notifyGuest: false, ...changes });
   };
@@ -642,6 +642,59 @@ describe('edit quote policy and lifecycle boundaries', () => {
     expect((await s.get(id)).amountPaid).toBe(100);
     expect((await s.row(id)).state).toBe('consumed');
     expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 1800, held: 0, heldDiscount: 0 });
+    await s.reconcile();
+  });
+});
+
+describe('edit save matches the reviewed quote', () => {
+  const quoteArgs = (id: Id<'bookings'>, checkOut: string) => ({ bookingId: id, propertySlug: 'mossbell', checkIn: '2026-11-10', checkOut, guests: 2 });
+
+  it('refuses a save whose price moved after the quote and saves the re-reviewed price', async () => {
+    const s = await setup();
+    const id = await s.create();
+    const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, quoteArgs(id, '2026-11-13'));
+    expect(quote.total).toBe(10800);
+    // The villa rate changes between preview and save.
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 6000 }));
+    const before = await s.get(id);
+    const redemption = await s.row(id);
+    await expect(s.edit(id, { checkOut: '2026-11-13', expectedPrice: { total: quote.total, currency: quote.currency } }))
+      .rejects.toThrow(/price changed .*Check the new price and save again/i);
+    expect(await s.get(id)).toEqual(before);
+    expect(await s.row(id)).toEqual(redemption);
+    const fresh = await s.admin.query(api.adminBookings.quoteBookingEdit, quoteArgs(id, '2026-11-13'));
+    expect(fresh.total).not.toBe(quote.total);
+    await s.edit(id, { checkOut: '2026-11-13', expectedPrice: { total: fresh.total, currency: fresh.currency } });
+    expect(await s.get(id)).toMatchObject({ total: fresh.total, promotion: { couponVersion: 1 } });
+    await s.reconcile();
+  });
+
+  it('refuses a currency the staff did not review', async () => {
+    const s = await setup();
+    const id = await s.create();
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { currency: 'USD' }));
+    const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, quoteArgs(id, '2026-11-13'));
+    await expect(s.edit(id, { checkOut: '2026-11-13', expectedPrice: { total: quote.total, currency: 'THB' } })).rejects.toThrow(/price changed/i);
+    expect((await s.get(id)).checkOut).toBe('2026-11-12');
+  });
+
+  it('checks a custom price against the total reviewed', async () => {
+    const s = await setup();
+    const id = await s.create();
+    await expect(s.edit(id, { priceOverride: { total: 8000, reason: 'Agreed' }, expectedPrice: { total: 7200, currency: 'THB' } })).rejects.toThrow(/price changed/i);
+    await s.edit(id, { priceOverride: { total: 8000, reason: 'Agreed' }, expectedPrice: { total: 8000, currency: 'THB' } });
+    expect((await s.get(id)).total).toBe(8000);
+  });
+
+  it('keeps guest-only edits on frozen coupon pricing at the reviewed stored total', async () => {
+    const s = await setup();
+    const id = await s.create();
+    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 30 } });
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 6000 }));
+    const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, { ...quoteArgs(id, '2026-11-12'), guests: 1 });
+    expect(quote).toMatchObject({ total: 7200, repriced: false });
+    await s.edit(id, { guests: 1, expectedPrice: { total: quote.total, currency: quote.currency } });
+    expect(await s.get(id)).toMatchObject({ guests: 1, total: 7200, promotion: { couponVersion: 1, discount: 1800 } });
     await s.reconcile();
   });
 });

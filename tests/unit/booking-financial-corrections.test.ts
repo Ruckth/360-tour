@@ -343,6 +343,7 @@ describe("editing the stay price", () => {
     expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({
       bookingId: "b1", expectedRevision: 7, checkIn: "2026-10-20", checkOut: "2026-10-22",
       priceOverride: { total: 15000, reason: "Negotiated with the owner" }, notifyGuest: true,
+      expectedPrice: { total: 15000, currency: "THB" },
     }));
     expect(onClose).toHaveBeenCalled();
   });
@@ -355,7 +356,7 @@ describe("editing the stay price", () => {
     expect(document.body.textContent).toContain("Saving returns this stay to the villa rate.");
     expect(document.body.textContent).toContain("New total ฿17,000");
     await click(button("Save changes"));
-    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ priceOverride: null, expectedRevision: 7 }));
+    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ priceOverride: null, expectedRevision: 7, expectedPrice: { total: 17000, currency: "THB" } }));
     expect(queries.quoteBookingEdit).toHaveBeenLastCalledWith(expect.objectContaining({ bookingId: "b1", propertySlug: "pool-villa", clearPriceOverride: true }));
   });
 
@@ -385,5 +386,27 @@ describe("editing the stay price", () => {
     await type("eb-guests", "1");
     expect(document.body.textContent).toContain("Price unchanged: ฿7,200");
     expect(button("Save changes")?.disabled).toBe(false);
+    // A guest-only change confirms the stored total it showed.
+    await click(button("Save changes"));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ guests: 1, expectedPrice: { total: 7200, currency: "THB" } }));
+  });
+
+  it("saves the quoted total it showed and keeps the form open with the server's retry message when the price moved", async () => {
+    const onClose = vi.fn();
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 4500, total: 25500, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
+    mutations.editBooking.mockRejectedValueOnce(new Error("The price changed to THB 26,000 since you reviewed THB 25,500. Check the new price and save again."));
+    await render(createElement(EditBookingDialog, { booking, properties: [villa] as never, onClose }));
+    await type("eb-guests", "3");
+    expect(document.body.textContent).toContain("New total ฿25,500");
+    await click(button("Save changes"));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ guests: 3, expectedPrice: { total: 25500, currency: "THB" } }));
+    expect(alertText()).toContain("Check the new price and save again.");
+    expect(onClose).not.toHaveBeenCalled();
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 4000, total: 26000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
+    await render(createElement(EditBookingDialog, { booking, properties: [villa] as never, onClose }));
+    expect(document.body.textContent).toContain("New total ฿26,000");
+    await click(button("Save changes"));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ expectedPrice: { total: 26000, currency: "THB" } }));
+    expect(onClose).toHaveBeenCalled();
   });
 });

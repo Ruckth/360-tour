@@ -32,7 +32,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { BookingFinancials } from "./BookingFinancials";
 import { BookingPromotionLine } from "./BookingPromotion";
-import { bookingEditPrice, type BookingEditQuote, type BookingEditQuoteState } from "./booking-edit-price";
+import { bookingEditPrice, reviewedPrice, type BookingEditQuote, type BookingEditQuoteState } from "./booking-edit-price";
 import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
 import { BookingHistory } from "./BookingHistory";
 import { CancelStayDialog, ReopenBookingDialog } from "./BookingCorrectionDialogs";
@@ -452,8 +452,9 @@ export function EditBookingDialog({
   });
   const newTotal = price.kind === "changed" ? price.total : booking.total;
   const sameCurrency = price.kind !== "changed" || price.currency === booking.currency;
-  /** Save waits for the quote: staff confirm the price editBooking will actually write. */
-  const priceBlocked = !custom && (price.kind === "loading" || price.kind === "error");
+  /** Save waits for the quote: staff confirm the price editBooking will actually write, and it refuses any other. */
+  const expectedPrice = reviewedPrice(price);
+  const priceBlocked = !expectedPrice;
   const balance = booking.amountPaid !== undefined && sameCurrency ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
   const archivedVilla = stayChanged && property?.status === "archived";
   const priceChanged = custom
@@ -464,7 +465,7 @@ export function EditBookingDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!availability.canSubmit || saving || customProblem || priceBlocked || (archivedVilla && !villaReason.trim())) return;
+    if (!availability.canSubmit || saving || customProblem || !expectedPrice || (archivedVilla && !villaReason.trim())) return;
     setSaving(true);
     setError("");
     try {
@@ -479,6 +480,7 @@ export function EditBookingDialog({
         guestPhone,
         guestEmail: guestEmail.trim() || undefined,
         notifyGuest: notify,
+        expectedPrice,
         ...(priceChanged ? { priceOverride: custom ? { total: customAmount!, reason: customReason } : null } : {}),
         ...(archivedVilla ? { archivedVillaReason: villaReason } : {}),
       });

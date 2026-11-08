@@ -52,6 +52,11 @@ export function bookingEditPrice({
   return priced(current, q.total, q.currency, couponNote(q, current.promotionCode));
 }
 
+/** The price staff are looking at, which editBooking checks it saves; null while there's none to confirm. */
+export function reviewedPrice(price: BookingEditPrice): { total: number; currency: string } | null {
+  return price.kind === "changed" || price.kind === "unchanged" ? { total: price.total, currency: price.currency } : null;
+}
+
 function priced(current: { total: number; currency: string }, total: number, currency: string, note: string | null): BookingEditPrice {
   if (total === current.total && currency === current.currency) return note ? { kind: "changed", total, currency, difference: 0, note } : { kind: "unchanged", total, currency };
   return { kind: "changed", total, currency, difference: currency === current.currency ? total - current.total : null, note };

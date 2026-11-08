@@ -247,8 +247,11 @@ test("historical edit excludes its booking id and submits changed past dates", a
   await page.getByTestId("booking-check-in").click();
   await page.locator('[data-day="2025-01-29"] button').click();
   await page.locator('[data-day="2025-02-04"] button').click();
+  await expect(page.getByText("New total ฿42,000")).toBeVisible();
   await save.click();
   await expect(page.locator("body")).toHaveAttribute("data-submission", /"checkIn":"2025-01-29","checkOut":"2025-02-04"/);
+  // Six nights at the fixture quote: the save names the price staff saw.
+  await expect(page.locator("body")).toHaveAttribute("data-submission", /"expectedPrice":\{"total":42000,"currency":"THB"\}/);
   const requests = JSON.parse((await page.locator("body").getAttribute("data-availability-requests"))!);
   expect(requests.every((request: { excludeBookingId?: string }) => request.excludeBookingId === "booking-id")).toBe(true);
 });

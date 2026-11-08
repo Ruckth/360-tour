@@ -804,6 +804,13 @@ export const quoteBookingEdit = query({
 	}
 });
 
+/** Refuses a save whose price isn't the one staff reviewed (rates, coupon or currency moved meanwhile). */
+function assertReviewedPrice(expected: { total: number; currency: string }, saved: { total: number; currency: string }) {
+	if (expected.total === saved.total && expected.currency === saved.currency) return;
+	const money = (p: { total: number; currency: string }) => `${p.currency} ${p.total.toLocaleString('en-US')}`;
+	throw new Error(`The price changed to ${money(saved)} since you reviewed ${money(expected)}. Check the new price and save again.`);
+}
+
 /**
  * Changes a booking's villa, dates, guest count, guest details or price in one transaction.
  * The price is recomputed only when the stay (villa or dates) changes, unless a custom price is
@@ -824,6 +831,8 @@ export const editBooking = mutation({
 		guestEmail: v.optional(v.string()),
 		expectedRevision: v.optional(v.number()),
 		priceOverride: v.optional(v.union(v.null(), priceOverrideInput)),
+		/** The total staff reviewed (quoteBookingEdit, or their custom price); a different saved price is refused. */
+		expectedPrice: v.optional(v.object({ total: v.number(), currency: v.string() })),
 		notifyGuest: v.optional(v.boolean()),
 		archivedVillaReason: v.optional(v.string())
 	},
@@ -846,6 +855,7 @@ export const editBooking = mutation({
 		const nights = assertStayDates(args.checkIn, args.checkOut, { allowPastCheckIn: true });
 
 		const { pricing, priceReason, couponQuote } = await planBookingEditPricing(ctx, booking, property, { checkIn: args.checkIn, checkOut: args.checkOut, nights }, args.priceOverride, admin.email);
+		if (args.expectedPrice) assertReviewedPrice(args.expectedPrice, { total: pricing.total ?? booking.total, currency: pricing.currency ?? booking.currency });
 		if (couponQuote) await repriceCouponBooking(ctx, couponQuote);
 
 		const holdsDates = booking.status === 'confirmed' || booking.status === 'completed'
