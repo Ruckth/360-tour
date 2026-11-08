@@ -7,6 +7,7 @@ vi.mock('convex/browser', () => ({ ConvexHttpClient: class { query = mocks.query
 vi.mock('../../src/lib/clerk-config', () => ({ isClerkConfigured: () => false }));
 vi.mock('next-intl/middleware', () => ({ default: () => mocks.i18n }));
 import proxy from '../../src/proxy';
+import { routing } from '../../src/i18n/routing';
 
 describe('pure proxy decision', () => {
   it.each([['/f1', 'f1'], ['/f1/', 'f1'], ['/r/anna', 'r/anna'], ['/r/anna/', 'r/anna']])('resolves %s', (path, slug) => {
@@ -39,10 +40,18 @@ describe('proxy short link integration', () => {
     const { response, waitUntil } = call('/f1', 'Slackbot');
     const result = await response;
     expect(result?.status).toBe(302);
+    expect(result?.headers.get('cache-control')).toBe('no-store');
     expect(result?.headers.get('location')).toBe('https://book.example/booking?mk=f1&coupon=DCNT-F1-20');
     expect(mocks.mutation).toHaveBeenCalledWith(expect.anything(), { slug: 'f1', bot: true });
     expect(waitUntil).toHaveBeenCalledOnce();
     expect(mocks.i18n).not.toHaveBeenCalled();
+  });
+  it.each<Record<string, string>>([{ cookie: 'NEXT_LOCALE=th' }, { 'accept-language': 'th,en;q=0.8' }])('keeps capture parameters through real as-needed locale routing (%j)', async headers => {
+    const { default: createMiddleware } = await vi.importActual<typeof import('next-intl/middleware')>('next-intl/middleware');
+    mocks.i18n.mockImplementation(createMiddleware(routing));
+    const event = { waitUntil: vi.fn() } as unknown as NextFetchEvent;
+    const response = await proxy(new NextRequest('https://book.example/booking?mk=f1&coupon=X', { headers }), event);
+    expect(response?.headers.get('location')).toBe('https://book.example/th/booking?mk=f1&coupon=X');
   });
   it('falls through on unknown slugs and resolver failure', async () => {
     mocks.query.mockResolvedValue(null);

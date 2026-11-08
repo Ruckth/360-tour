@@ -1,4 +1,5 @@
-import { marketingCaptureValidator } from './lib/marketingAttribution';
+import { validateMarketingSlug } from './lib/marketingSlugs';
+import { isVisitorKey, marketingCaptureValidator } from './lib/marketingAttribution';
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
@@ -69,8 +70,13 @@ export const createSession = mutation({
 			propertyId = property?._id;
 		}
 
+		const visitorKey = isVisitorKey(args.marketing?.visitorKey) ? args.marketing.visitorKey : undefined;
+		const checked = args.marketing?.slug === undefined ? undefined : validateMarketingSlug(args.marketing.slug);
+		const slug = checked && !checked.reason ? checked.slug : undefined;
+		const marketingCapture = { ...(visitorKey ? { visitorKey } : {}), ...(slug ? { slug } : {}) };
 		const now = Date.now();
 		return await ctx.db.insert('chatSessions', {
+			...(visitorKey || slug ? { marketingCapture } : {}),
 			propertyId,
 			propertySlug: args.propertySlug,
 			channel: args.channel,

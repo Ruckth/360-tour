@@ -516,7 +516,8 @@ async function confirmPreparedBooking(
 		guestPhone: pending.guestPhone,
 		...(session.visitorEmail ? { guestEmail: session.visitorEmail } : {}),
 		source: chatSourceByChannel[session.channel],
-		chatSessionId: args.sessionId
+		chatSessionId: args.sessionId,
+		marketing: session.channel === 'web' ? session.marketingCapture : undefined
 	});
 	const confirmationCode = demoCode('CONF', bookingId as string);
 	await ctx.db.patch(bookingId, { confirmationCode });

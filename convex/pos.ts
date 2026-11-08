@@ -1187,8 +1187,10 @@ export const applyOrderCoupon = mutation({
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if ((args.code !== undefined) === (args.slug !== undefined)) throw new Error('Choose one coupon code or link');
 		let coupon: Doc<'coupons'> | null;
+		let viaLinkId: Id<'marketingLinks'> | undefined;
 		if (args.slug !== undefined) {
 			const link = await ctx.db.query('marketingLinks').withIndex('by_slug', q => q.eq('slug', args.slug!)).unique();
+			viaLinkId = link?._id;
 			coupon = link?.couponId ? await ctx.db.get(link.couponId) : null;
 			if (link?.status !== 'active' || coupon?.status !== 'active') orderCouponUnavailable({ code: 'link_without_offer' });
 		} else {
@@ -1198,7 +1200,7 @@ export const applyOrderCoupon = mutation({
 		const lines = await orderLines(ctx, order._id);
 		const result = await quoteOrderCoupon(ctx, lines, coupon._id, coupon.currentVersion);
 		if (!result.ok) orderCouponUnavailable(result.problem);
-		await ctx.db.patch(order._id, { promotion: { couponId: coupon._id, couponVersion: coupon.currentVersion, code: coupon.code, discount: result.discount, appliedAt: Date.now(), appliedBy: admin.email } });
+		await ctx.db.patch(order._id, { promotion: { couponId: coupon._id, couponVersion: coupon.currentVersion, code: coupon.code, discount: result.discount, appliedAt: Date.now(), appliedBy: admin.email, ...(viaLinkId ? { viaLinkId } : {}) } });
 		await writeCouponShares(ctx, lines, result);
 		await refreshOrder(ctx, order._id);
 		await logOrder(ctx, order._id, admin.email, 'coupon_applied', {
