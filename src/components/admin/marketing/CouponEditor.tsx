@@ -4,7 +4,7 @@ import type { Id } from "convex/_generated/dataModel";
 import { normalizeCouponCode } from "convex/lib/offers";
 import { Archive, ArrowLeft, Lock, Pause, Play, Send, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -14,13 +14,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "../ConfirmDialog";
 import { StatusBadge } from "../StatusBadge";
 import { Callout, ChoiceGroup, CouponChip, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, UsageBar, useNotice } from "./MarketingBits";
 import { TestQuotePanel } from "./TestQuotePanel";
-import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponRulesFrom, rulesChanged, type CouponForm, type CouponFormErrors } from "./coupon-form";
+import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, rulesChanged, type CouponForm, type CouponFormErrors } from "./coupon-form";
 import { formatStamp } from "./format-basics";
 import {
   COUPON_STATE,
@@ -30,6 +29,7 @@ import {
   couponState,
   formatRange,
   generatedTerms,
+  marketingErrorText,
   scopeLabel,
   thb,
   usageLabel,
@@ -171,7 +171,8 @@ function CouponBuilder({
   const rules = couponRulesFrom(form);
   const code = normalizeCouponCode(form.code);
   const changedRules = detail ? rulesChanged(rules, detail.rules) : true;
-  const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
+  // Compared on what would be saved, so formatting ("1500" vs "1,500"), villa order or spaces aren't edits.
+  const dirty = couponFormKey(form) !== couponFormKey(baseline);
   const nextVersion = (detail?.currentVersion ?? 0) + 1;
   const villaName = (slug: string) => properties.find((property) => property.slug === slug)?.name ?? slug;
   const state = detail ? couponState(detail, today) : null;
@@ -201,10 +202,12 @@ function CouponBuilder({
         ...rules,
       });
       setSubmitted(false);
+      // Show what was stored (normalised code, sorted villas, trimmed terms, formatted numbers).
+      setForm(couponFormFrom({ code, campaignId: form.campaignId ? (form.campaignId as Id<"marketingCampaigns">) : undefined, rules }));
       if (!detail) onCreated(result.couponId);
       else show(changedRules ? `Saved version ${result.version}` : "Saved");
     } catch (error) {
-      show(errorText(error, "Couldn’t save the coupon."), "danger");
+      show(marketingErrorText(error, "Couldn’t save the coupon."), "danger");
     } finally {
       setSaving(false);
     }
@@ -244,11 +247,19 @@ function CouponBuilder({
       await actions.setCouponStatus({ couponId: detail._id, status });
       show(text.done);
     } catch (error) {
-      show(errorText(error, "Couldn’t change the coupon."), "danger");
+      show(marketingErrorText(error, "Couldn’t change the coupon."), "danger");
     } finally {
       setStatusBusy(false);
     }
   }
+
+  // Reloading or closing the tab with unsaved edits asks first (the back link has its own confirm).
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   async function leave(event: MouseEvent) {
     if (!dirty) return;

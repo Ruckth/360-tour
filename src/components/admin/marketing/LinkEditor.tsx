@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
 import { Callout, ChoiceGroup, CopyButton, CouponChip, FactList, FieldError, FieldHint } from "./MarketingBits";
@@ -24,6 +23,7 @@ import {
   couponState,
   destinationLabel,
   localeLabel,
+  marketingErrorText,
   normalizeSlugInput,
   shortUrl,
   slugCheckMessage,
@@ -97,7 +97,7 @@ function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, sk
           if (latest.current === slug) setState({ status: "done", check });
         },
         (error: unknown) => {
-          if (latest.current === slug) setState({ status: "error", message: errorText(error, "Couldn’t check this link. Try again.") });
+          if (latest.current === slug) setState({ status: "error", message: marketingErrorText(error, "Couldn’t check this link. Try again.") });
         },
       );
     }, 350);
@@ -120,6 +120,7 @@ export function LinkEditor({
   actions,
   onDone,
   onCancel,
+  onDirtyChange,
   onDuplicate,
 }: {
   link?: LinkRow;
@@ -134,10 +135,18 @@ export function LinkEditor({
   actions: Pick<MarketingActions, "saveLink" | "checkSlug">;
   onDone: (message: string) => void;
   onCancel: () => void;
+  /** Reports unsaved edits, so the sheet can ask before closing. */
+  onDirtyChange?: (dirty: boolean) => void;
   onDuplicate: (link: LinkRow) => void;
 }) {
   const id = useId();
-  const [form, setForm] = useState<Form>(() => initialForm(link, preset));
+  const [initial] = useState<Form>(() => initialForm(link, preset));
+  const [form, setForm] = useState<Form>(initial);
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -156,6 +165,9 @@ export function LinkEditor({
   const usableCoupons = coupons.filter((coupon) => coupon.status !== "archived" || coupon._id === form.couponId);
   const coupon = coupons.find((item) => item._id === form.couponId);
   const villaName = (slug: string) => properties.find((property) => property.slug === slug)?.name ?? slug;
+  // Guests only see active villas; a link to any other villa can't go live (backend: villa_not_public).
+  const villa = form.destKind === "villa" || form.destKind === "booking" ? properties.find((property) => property.slug === form.villa) : undefined;
+  const villaHidden = villa !== undefined && villa.status !== "active";
   const url = shortUrl(origin, `/${form.slug || "…"}`);
 
   const errors = {
@@ -190,7 +202,7 @@ export function LinkEditor({
       });
       onDone(link ? `Saved /${link.slug}` : `Created /${form.slug}`);
     } catch (error) {
-      setSaveError(errorText(error, "Couldn’t save the link."));
+      setSaveError(marketingErrorText(error, "Couldn’t save the link."));
       setSaving(false);
     }
   }
@@ -354,12 +366,18 @@ export function LinkEditor({
                     {properties.map((property) => (
                       <SelectItem key={property._id} value={property.slug}>
                         {property.name}
-                        {property.status !== "active" ? ` · ${property.status === "draft" ? "draft" : "archived"}` : ""}
+                        {property.status !== "active" ? ` · ${property.status === "draft" ? "Draft" : "Archived"} · not public` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <FieldError id={`${id}-villa-error`}>{show("villa")}</FieldError>
+                {villaHidden && villa ? (
+                  <Callout tone="warning" title={`${villa.name} isn’t public`}>
+                    Guests would see “page not found”, so this link can’t be live until the villa is active.
+                    {link?.status === "active" ? " Saving this change on a live link will be refused." : " You can save it as a draft."}
+                  </Callout>
+                ) : null}
               </div>
             ) : null}
           </div>

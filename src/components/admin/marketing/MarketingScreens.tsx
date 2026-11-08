@@ -116,7 +116,8 @@ export function MarketingCouponsScreen() {
 export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const router = useRouter();
   const isNew = couponId === "new";
-  const detail = useQuery(api.marketing.getCoupon, isNew ? "skip" : { couponId: couponId as Id<"coupons"> });
+  // getCoupon takes the raw route param and returns null for ids that don't resolve, so typos show "Coupon not found".
+  const detail = useQuery(api.marketing.getCoupon, isNew ? "skip" : { couponId });
   const coupons = useQuery(api.marketing.listCoupons, {});
   const campaigns = useQuery(api.marketing.listCampaigns, {});
   const properties = useQuery(api.properties.adminList, {});

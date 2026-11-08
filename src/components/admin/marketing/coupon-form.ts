@@ -48,7 +48,8 @@ export const EMPTY_COUPON_FORM: CouponForm = {
   terms: "",
 };
 
-export function couponFormFrom(detail: Pick<CouponDetail, "code" | "campaignId" | "rules">): CouponForm {
+/** Builds the form from a saved coupon, or from the values just saved (code, campaign and rules). */
+export function couponFormFrom(detail: { code: string; campaignId?: CouponDetail["campaignId"]; rules: CouponRules }): CouponForm {
   const rules = detail.rules;
   return {
     code: detail.code,
@@ -71,11 +72,12 @@ export function couponFormFrom(detail: Pick<CouponDetail, "code" | "campaignId" 
   };
 }
 
-/** "1,500" / "" → 1500 / undefined; anything that isn't a whole number → NaN. */
+/** "1,500" / "" → 1500 / undefined; anything that isn't a whole number (or is too big to store) → NaN. */
 export function parseWhole(value: string): number | undefined {
   const cleaned = value.replace(/[,\s฿%]/g, "");
   if (!cleaned) return undefined;
-  return /^\d+$/.test(cleaned) ? Number(cleaned) : Number.NaN;
+  const parsed = /^\d+$/.test(cleaned) ? Number(cleaned) : Number.NaN;
+  return Number.isSafeInteger(parsed) ? parsed : Number.NaN;
 }
 
 const num = (value: string) => {
@@ -101,6 +103,20 @@ export function couponRulesFrom(form: CouponForm): CouponRules {
     discountBudget: num(form.budget),
     terms: form.terms.trim() || undefined,
   };
+}
+
+/**
+ * What saving the form would store: the normalised code, campaign and rules. Two forms with the same
+ * key save the same coupon, so "1500" and "1,500", villa order or a trailing space aren't edits.
+ */
+export function couponFormKey(form: CouponForm): string {
+  const rules = couponRulesFrom(form);
+  const canonical = Object.fromEntries(Object.entries(rules).filter(([, value]) => value !== undefined).sort(([a], [b]) => a.localeCompare(b)));
+  // Text that doesn't parse is dropped from the rules, so keep it in the key: typing "abc" is still an edit.
+  const unparsed = (["value", "maxSaving", "minNights", "minSubtotal", "usageLimit", "budget"] as const)
+    .filter((key) => Number.isNaN(parseWhole(form[key])))
+    .map((key) => [key, form[key]]);
+  return JSON.stringify({ code: normalizeCouponCode(form.code), campaignId: form.campaignId, rules: canonical, unparsed });
 }
 
 const RULE_KEYS = [
@@ -135,7 +151,9 @@ export function couponFormErrors(form: CouponForm, { takenCodes, used = 0 }: { t
   const errors: CouponFormErrors = {};
   const code = normalizeCouponCode(form.code);
   if (!code) errors.code = "Enter a code";
+  // Same format as saveCoupon (^[A-Z0-9-]{3,32}$), plus no leading, trailing or doubled dashes.
   else if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(code)) errors.code = "Use letters, numbers and dashes";
+  else if (code.length < 3) errors.code = "Use at least 3 characters";
   else if (code.length > 32) errors.code = "Keep it to 32 characters";
   else if (takenCodes.includes(code)) errors.code = `${code} is already used by another coupon`;
 
@@ -144,15 +162,19 @@ export function couponFormErrors(form: CouponForm, { takenCodes, used = 0 }: { t
   else if (Number.isNaN(value)) errors.value = "Use a whole number";
   else if (form.kind === "percent" && value > 100) errors.value = "A percentage can’t be over 100";
 
-  const whole: [keyof CouponFormErrors, string][] = [
-    ["maxSaving", form.kind === "percent" ? form.maxSaving : ""],
-    ["minNights", form.scope !== "services" ? form.minNights : ""],
-    ["minSubtotal", form.minSubtotal],
-    ["usageLimit", form.usageLimit],
-    ["budget", form.budget],
+  // Optional limits are positive whole numbers; empty means none (the backend rejects 0).
+  const whole: [keyof CouponFormErrors, string, string][] = [
+    ["maxSaving", form.kind === "percent" ? form.maxSaving : "", "Leave empty for no limit"],
+    ["minNights", form.scope !== "services" ? form.minNights : "", "Leave empty for no minimum"],
+    ["minSubtotal", form.minSubtotal, "Leave empty for no minimum"],
+    ["usageLimit", form.usageLimit, "Leave empty for no limit"],
+    ["budget", form.budget, "Leave empty for no limit"],
   ];
-  for (const [key, raw] of whole) if (Number.isNaN(parseWhole(raw))) errors[key] = "Use a whole number";
-  if (!errors.minNights && parseWhole(form.minNights) === 0 && form.scope !== "services") errors.minNights = "Leave empty for no minimum";
+  for (const [key, raw, zero] of whole) {
+    const parsed = parseWhole(raw);
+    if (Number.isNaN(parsed)) errors[key] = "Use a whole number";
+    else if (parsed === 0) errors[key] = zero;
+  }
   const limit = parseWhole(form.usageLimit);
   if (!errors.usageLimit && limit !== undefined && limit < used) errors.usageLimit = `It’s been used ${used} times, so the limit can’t be lower`;
 
