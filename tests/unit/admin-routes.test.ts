@@ -24,6 +24,7 @@ describe("admin routes", () => {
     ["/admin/properties", "Properties"],
     ["/admin/properties/abc123", "Properties"],
     ["/admin/leads", "Leads"],
+    ["/admin/marketing/dashboard", "Marketing"],
     ["/admin/marketing/campaigns", "Marketing"],
     ["/admin/marketing/links", "Marketing"],
     ["/admin/marketing/coupons", "Marketing"],
@@ -52,9 +53,10 @@ describe("admin routes", () => {
     ["/admin/checkout", null],
     ["/admin/receipt/abc123", null],
     ["/admin/receipt", "/admin/chats"],
-    ["/admin/marketing", "/admin/marketing/links"],
-    ["/admin/marketing/", "/admin/marketing/links"],
+    ["/admin/marketing", "/admin/marketing/dashboard"],
+    ["/admin/marketing/", "/admin/marketing/dashboard"],
     ["/admin/marketing/unknown", "/admin/chats"],
+    ["/admin/marketing/dashboard", null],
     ["/admin/marketing/campaigns", null],
     ["/admin/marketing/links", null],
     ["/admin/marketing/coupons", null],
@@ -75,14 +77,16 @@ describe("admin routes", () => {
 
   it("lists the marketing pages in order and builds their paths", () => {
     const marketing = ADMIN_NAV.find((item) => item.label === "Marketing")!;
-    expect(marketing.href).toBe("/admin/marketing/links");
+    expect(marketing.href).toBe("/admin/marketing/dashboard");
     expect(marketing.children?.map((child) => [child.label, child.href])).toEqual([
+      ["Dashboard", "/admin/marketing/dashboard"],
       ["Campaigns", "/admin/marketing/campaigns"],
       ["Links & QR", "/admin/marketing/links"],
       ["Coupons", "/admin/marketing/coupons"],
     ]);
     expect(isAdminMarketingPage("coupons")).toBe(true);
-    expect(isAdminMarketingPage("dashboard")).toBe(false);
+    expect(isAdminMarketingPage("dashboard")).toBe(true);
+    expect(isAdminMarketingPage("reports")).toBe(false);
     expect(adminMarketingPath("campaigns")).toBe("/admin/marketing/campaigns");
   });
 
@@ -99,6 +103,7 @@ describe("admin routes", () => {
       expect(shown("whatsapp")).toEqual([["Settings", ["Channels"]]]);
       expect(shown("coupon")).toEqual([["Marketing", ["Coupons"]]]);
       expect(shown("qr")).toEqual([["Marketing", ["Links & QR"]]]);
+      expect(shown("roas")).toEqual([["Marketing", ["Dashboard"]]]);
     });
 
     it("finds a section by its own name without listing unmatched sub-pages", () => {
@@ -128,6 +133,7 @@ describe("admin routes", () => {
 
     it("keeps a list page active on its detail pages", () => {
       expect(activeAdminSubLink(marketing, "/admin/marketing/links", null)).toBe("/admin/marketing/links");
+      expect(activeAdminSubLink(marketing, "/admin/marketing/dashboard", null)).toBe("/admin/marketing/dashboard");
       expect(activeAdminSubLink(marketing, "/admin/marketing/coupons/abc123", null)).toBe("/admin/marketing/coupons");
       expect(activeAdminSubLink(marketing, "/admin/marketing/couponsx", null)).toBeUndefined();
     });

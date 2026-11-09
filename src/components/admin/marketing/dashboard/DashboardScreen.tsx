@@ -1,0 +1,81 @@
+"use client";
+
+import { useConvex, useMutation, useQuery } from "convex/react";
+import { api } from "convex/_generated/api";
+import type { Id } from "convex/_generated/dataModel";
+import { useEffect, useMemo, useState } from "react";
+import { useNow } from "@/lib/staff-bookings";
+import { receiptPath } from "@/components/checkout/checkout-source";
+import type { AdminProperty } from "../../admin-bookings-shared";
+import { adminMarketingPath } from "../../admin-routes";
+import { BookingSheet } from "../../BookingSheet";
+import { bangkokToday, marketingErrorText } from "../marketing-format";
+import { DEFAULT_REQUEST, DashboardView, type ReportRequest, type ReportState } from "./DashboardView";
+
+/**
+ * The dashboard wired to Convex. The report is a one-off read (not a subscription): it's the
+ * largest read in the admin, so it runs when the dates or basis change, after a spend change, or on
+ * Refresh, and the page shows its as-of time.
+ */
+export function DashboardScreen() {
+  const convex = useConvex();
+  const today = bangkokToday(useNow());
+  const [request, setRequest] = useState<ReportRequest>(() => DEFAULT_REQUEST(today));
+  const [nonce, setNonce] = useState(0);
+  const [state, setState] = useState<ReportState>({ status: "loading" });
+  const [stay, setStay] = useState<Id<"bookings"> | null>(null);
+  const saveSpend = useMutation(api.marketingReport.saveSpend);
+  const properties = useQuery(api.properties.adminList, stay ? {} : "skip");
+
+  const { from, to } = request.range;
+  const basis = request.basis;
+  useEffect(() => {
+    let live = true;
+    setState((current) => (current.status === "ready" ? { ...current, refreshing: true } : { status: "loading" }));
+    convex.query(api.marketingReport.getReport, { from, to, basis }).then(
+      (report) => live && setState({ status: "ready", report }),
+      (error: unknown) => live && setState({ status: "error", message: marketingErrorText(error, "The report didn’t load.") }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [convex, from, to, basis, nonce]);
+
+  const sheetProperties = useMemo<AdminProperty[]>(
+    () =>
+      (properties ?? []).map((p) => ({
+        _id: p._id,
+        slug: p.slug,
+        name: p.name,
+        ...(p.images[0] ? { imageUrl: p.images[0] } : {}),
+        maxGuests: p.maxGuests,
+        status: p.status,
+        pricePerNight: p.pricePerNight,
+        directDiscountPercent: p.directDiscountPercent,
+        currency: p.currency,
+      })),
+    [properties],
+  );
+
+  return (
+    <>
+      <DashboardView
+        request={request}
+        onRequestChange={setRequest}
+        state={state}
+        onRetry={() => setNonce((n) => n + 1)}
+        today={today}
+        campaignsHref={adminMarketingPath("campaigns")}
+        linksHref={adminMarketingPath("links")}
+        orderHref={receiptPath}
+        onOpenStay={(id) => setStay(id as Id<"bookings">)}
+        onSaveSpend={async ({ id, campaignId, amount, from: spendFrom, to: spendTo, note }) => {
+          await saveSpend({ id, campaignId, amount, from: spendFrom, to: spendTo, note });
+          setNonce((n) => n + 1);
+        }}
+      />
+      {/* Hotel bookings has no deep link, so a stay opens the same booking sheet here. */}
+      <BookingSheet bookingId={stay} properties={sheetProperties} onClose={() => setStay(null)} />
+    </>
+  );
+}
