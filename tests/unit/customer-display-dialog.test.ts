@@ -47,6 +47,17 @@ afterEach(async () => {
 });
 
 describe("customer display dialog", () => {
+  it("creates no pairing link until staff ask for one (H1-07)", async () => {
+    await openDialog(null);
+    expect(document.querySelector('[role="tabpanel"]')).toBeTruthy();
+    expect(mutations["displays:createPairLink"]).not.toHaveBeenCalled();
+    expect(qrRender).not.toHaveBeenCalled();
+    expect(document.querySelector('[aria-label="Display link"]')).toBeNull();
+    await act(async () => button("Create link").click());
+    expect(mutations["displays:createPairLink"]).toHaveBeenCalledExactlyOnceWith({ clientId: "tab-here" });
+    expect(document.querySelector<HTMLInputElement>('[aria-label="Display link"]')!.value).toContain("#pair=secret");
+  });
+
   it("takes the display over with this tab's order", async () => {
     await openDialog("k17order0001");
     await act(async () => button("Show this checkout on the display").click());
@@ -73,6 +84,7 @@ it("renders the QR once through 60 countdown ticks, updates it once for a new UR
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-11-03T00:00:00Z"));
   await openDialog(null);
+  await act(async () => button("Create link").click());
   expect(qrRender).toHaveBeenCalledOnce();
   const initial = document.querySelector('[role="tabpanel"]')!.textContent;
   for (let second = 0; second < 60; second++) await act(async () => { await vi.advanceTimersByTimeAsync(1000); });

@@ -89,7 +89,7 @@ export function CustomerDisplayControl({ orderId }: { orderId: string | null | u
 
 type PairLink = { url: string; expiresAt: number };
 
-/** Mounted only while the dialog is open, so the link below lives for one opening of the dialog. */
+/** Mounted only while the dialog is open, so a link made here is shown for one opening of the dialog. */
 function PairingPanel({ clientId, orderId, displays, driver, now }: { clientId: string; orderId: string | null | undefined; displays: Display[]; driver: DisplayDriver; now: number }) {
   const id = useId();
   const [mode, setMode] = useState<Mode>("link");
@@ -145,7 +145,10 @@ function TakeOver({ clientId, orderId }: { clientId: string; orderId: string | n
   );
 }
 
-/** One link per dialog opening, created on the first view of the Link tab and reused until it expires. */
+/**
+ * A link only when staff ask for one: opening the dialog to check status, take over or disconnect
+ * puts no QR on screen. Making a new link cancels the last one (convex/displays.ts).
+ */
 function usePairLink(clientId: string) {
   const createPairLink = useMutation(api.displays.createPairLink);
   const [link, setLink] = useState<PairLink | null>(null);
@@ -181,11 +184,6 @@ function SendLink({ link, error: createError, loading, create }: ReturnType<type
   const expired = link !== null && link.expiresAt <= now;
   const error = copyError ?? createError;
 
-  // Lazily, on the first view of this tab; switching tabs keeps the same link. Expired links wait for "New link".
-  useEffect(() => {
-    if (!link && !createError) void create();
-  }, [link, createError, create]);
-
   useEffect(() => {
     setCopied(false);
     setCopyError(null);
@@ -205,17 +203,18 @@ function SendLink({ link, error: createError, loading, create }: ReturnType<type
 
   if (!link) {
     return (
-      <div className="grid min-h-56 place-items-center text-sm text-muted-foreground">
-        {error ? (
-          <div className="grid justify-items-center gap-3">
-            <p role="alert" className="text-destructive">{error}</p>
-            <Button type="button" variant="outline" onClick={() => void create()} disabled={loading}>
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <Spinner label="Creating link" className="size-5" />
-        )}
+      <div className="grid min-h-56 place-items-center text-center text-sm text-muted-foreground">
+        <div className="grid max-w-sm justify-items-center gap-3">
+          <p>
+            Make a one-time link to open on the display, by QR or sent to the device. It works for 10 minutes and stops
+            working once a display pairs or is disconnected.
+          </p>
+          <Button type="button" onClick={() => void create()} disabled={loading}>
+            {loading ? <Spinner label="Creating link" className="size-4" /> : <Link2 aria-hidden className="size-4" />}
+            Create link
+          </Button>
+          {error ? <p role="alert" className="text-destructive">{error}</p> : null}
+        </div>
       </div>
     );
   }

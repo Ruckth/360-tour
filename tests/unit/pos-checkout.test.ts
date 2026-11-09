@@ -145,16 +145,17 @@ describe("checkout inputs and labels", () => {
   });
 
   it("dates orders changed on other days", () => {
-    const now = new Date(2026, 9, 29, 9, 30).getTime();
-    expect(orderTime(new Date(2026, 9, 29, 8, 5).getTime(), now)).toBe("08:05");
-    expect(orderTime(new Date(2026, 9, 28, 23, 56).getTime(), now)).toBe("28 Oct, 23:56");
+    // Resort (Bangkok) times, whatever the device's zone.
+    const now = Date.parse("2026-10-29T09:30:00+07:00");
+    expect(orderTime(Date.parse("2026-10-29T08:05:00+07:00"), now)).toBe("08:05");
+    expect(orderTime(Date.parse("2026-10-28T23:56:00+07:00"), now)).toBe("28 Oct, 23:56");
   });
 });
 
 describe("shared receipt text", () => {
   const view = (payments: { method: "cash" | "card"; amount: number; received?: number }[], extra: Record<string, unknown> = {}) =>
     ({
-      order: { status: "paid", receiptNumber: 142, orderNumber: 1042, title: "Order #1042", paidAt: new Date(2026, 9, 29, 14, 5).getTime() },
+      order: { status: "paid", receiptNumber: 142, orderNumber: 1042, title: "Order #1042", paidAt: Date.parse("2026-10-29T14:05:00+07:00") },
       receiptCustomer: null,
       legacyGuest: null,
       source: null,

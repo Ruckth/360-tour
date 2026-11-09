@@ -5,6 +5,7 @@ import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 import { PAIR_CODE_LENGTH, normalizePairCode, randomPairCode, randomSecret, sha256 } from './lib/displayTokens';
+import { DRIVER_LEASE_MS } from './lib/displayLease';
 import { displayOrderState, type DisplayOrderState } from './lib/displayView';
 import { enforceRateLimit } from './lib/rateLimit';
 
@@ -17,6 +18,15 @@ import { enforceRateLimit } from './lib/rateLimit';
  * computer", which is a link opened in a popup) or took it over (`till.driverId`, a random id per
  * tab). showOrder from any other tab is ignored, so a second checkout never puts its order in front
  * of this guest. Every change of driver also sets the order shown, in the same write.
+ *
+ * An open order stays on screen only under the publishing checkout's lease (`till.leaseId`, one
+ * per mount of the checkout page): the checkout renews it while open and releases it when it
+ * leaves, and a crashed, closed or signed-out tab lets it run out (lib/displayLease.ts), when the
+ * server clears the order itself. Renewing is not customer activity, so the display's idle timer
+ * still counts from the last change or publish. A paid order's thank-you outlives the lease.
+ *
+ * Only the newest pairing link works (`till.pairGeneration`), and only until a display pairs or is
+ * disconnected, so a QR left on a staff screen can't take the display over later.
  */
 
 export const PAIRING_TTL_MS = 10 * 60_000;
@@ -49,6 +59,9 @@ function checkClientId(clientId: string) {
 	if (!clientId || clientId.length > CLIENT_ID_MAX) throw displayError('INVALID_CLIENT', 'Reload the checkout and try again');
 	return clientId;
 }
+
+/** Lease ids are made by the checkout tab like its client id. */
+const checkLeaseId = checkClientId;
 
 async function getDefaultTill(ctx: QueryCtx) {
 	return await ctx.db.query('tills').withIndex('by_key', (q) => q.eq('key', 'default')).unique();
@@ -100,25 +113,68 @@ function orderIdFrom(ctx: QueryCtx, orderId: string | null) {
 	return (orderId && ctx.db.normalizeId('bills', orderId)) || undefined;
 }
 
+async function leaseOf(ctx: QueryCtx, tillId: Id<'tills'>) {
+	return await ctx.db.query('displayDriverLeases').withIndex('by_tillId', (q) => q.eq('tillId', tillId)).unique();
+}
+
+/**
+ * Puts the till under `leaseId` (none: nothing that needs one is shown) until DRIVER_LEASE_MS from
+ * now. A new lease schedules its expiry check (expireLease); renewing one only moves the time that
+ * check reads, so each lease has one check pending at a time.
+ */
+async function setLease(ctx: MutationCtx, tillId: Id<'tills'>, leaseId: string | undefined) {
+	const lease = await leaseOf(ctx, tillId);
+	if (!leaseId) {
+		if (lease) await ctx.db.delete(lease._id);
+		return;
+	}
+	const expiresAt = Date.now() + DRIVER_LEASE_MS;
+	if (lease?.leaseId === leaseId) return void (await ctx.db.patch(lease._id, { expiresAt }));
+	if (lease) await ctx.db.patch(lease._id, { leaseId, expiresAt });
+	else await ctx.db.insert('displayDriverLeases', { tillId, leaseId, expiresAt });
+	await ctx.scheduler.runAt(expiresAt, internal.displays.expireLease, { tillId, leaseId });
+}
+
+/** Clears the screen. Expiry retains the current mount's identity so only that mount can resume; an explicit release retires it. */
+async function endLease(ctx: MutationCtx, till: Doc<'tills'>, expired = false) {
+	const order = till.orderId ? await ctx.db.get(till.orderId) : null;
+	// A paid order keeps its thank-you, which the display times out itself.
+	await ctx.db.patch(till._id, order?.status === 'paid' ? { leaseId: undefined } : { leaseId: expired ? till.leaseId : undefined, orderId: undefined });
+	await setLease(ctx, till._id, undefined);
+}
+
+/** Cancels every outstanding pairing link for the till: only links made after this can claim. */
+async function retireLinks(ctx: MutationCtx, till: Doc<'tills'>) {
+	await ctx.db.patch(till._id, { pairGeneration: (till.pairGeneration ?? 0) + 1 });
+}
+
 /**
  * Changes who drives the display and what it shows in one write, so a new driver or device never
  * inherits the previous customer's order. Pairing passes no order (the welcome screen) and the
- * driving tab republishes its own.
+ * driving tab republishes its own. A take-over's order gets a lease of its own, which runs out
+ * unless the new driver republishes under its lease (it does so at once).
  */
 async function handOver(ctx: MutationCtx, till: Doc<'tills'>, driverId: string | undefined, orderId: Id<'bills'> | undefined) {
-	await ctx.db.patch(till._id, { driverId, orderId, publishedAt: Date.now() });
+	const leaseId = orderId ? randomSecret() : undefined;
+	await ctx.db.patch(till._id, { driverId, orderId, publishedAt: Date.now(), leaseId });
+	await setLease(ctx, till._id, leaseId);
 }
 
-/** Admin: a one-time link secret. Only its hash is stored, so this is the only time it can be read. */
+/**
+ * Admin: a one-time link secret. Only its hash is stored, so this is the only time it can be read.
+ * Making a link cancels any earlier one still outstanding.
+ */
 export const createPairLink = mutation({
 	args: { clientId: v.string() },
 	handler: async (ctx, args) => {
 		const { email } = await requireAdmin(ctx);
 		const driverId = checkClientId(args.clientId);
 		const till = await ensureDefaultTill(ctx);
+		const generation = (till.pairGeneration ?? 0) + 1;
+		await ctx.db.patch(till._id, { pairGeneration: generation });
 		const secret = randomSecret();
 		const expiresAt = Date.now() + PAIRING_TTL_MS;
-		await ctx.db.insert('displayPairLinks', { tillId: till._id, secretHash: await sha256(secret), expiresAt, createdByEmail: email, driverId });
+		await ctx.db.insert('displayPairLinks', { tillId: till._id, secretHash: await sha256(secret), expiresAt, createdByEmail: email, driverId, generation });
 		return { secret, expiresAt };
 	}
 });
@@ -126,8 +182,10 @@ export const createPairLink = mutation({
 /**
  * Public: the display opened a pairing link. A valid link always claims; only invalid attempts
  * count toward (and are refused by) the rate limit. They return `{ ok: false }` rather than
- * throwing, so the count commits. `previousToken` is the display's code token, whose row is deleted
- * on a successful claim if it is still pending (as in startPairing; an active row is never touched).
+ * throwing, so the count commits. A link is valid once, before it expires, and only while it is
+ * the till's newest and no display has paired or been disconnected since (links stored before
+ * generations existed never are). `previousToken` is the display's code token, whose row is
+ * deleted on a successful claim if it is still pending (as in startPairing; an active row is never touched).
  */
 export const claimLink = mutation({
 	args: { secret: v.string(), deviceName: v.optional(v.string()), previousToken: v.optional(v.string()) },
@@ -135,15 +193,16 @@ export const claimLink = mutation({
 		const now = Date.now();
 		const secretHash = args.secret && args.secret.length <= SECRET_MAX ? await sha256(args.secret) : '';
 		const link = secretHash ? await ctx.db.query('displayPairLinks').withIndex('by_secretHash', (q) => q.eq('secretHash', secretHash)).unique() : null;
-		if (!link || link.usedAt || link.expiresAt <= now) {
+		const till = link ? await ctx.db.get(link.tillId) : null;
+		if (!link || !till || link.usedAt || link.expiresAt <= now || link.generation === undefined || link.generation !== till.pairGeneration) {
 			await enforceRateLimit(ctx, 'display:claim', INVALID_CLAIM_LIMIT, PAIRING_TTL_MS);
 			return { ok: false, code: 'LINK_INVALID' };
 		}
 		await ctx.db.patch(link._id, { usedAt: now });
 		await deletePending(ctx, args.previousToken);
 		await revokeActive(ctx, link.tillId);
-		const till = await ctx.db.get(link.tillId);
-		if (till) await handOver(ctx, till, link.driverId, undefined);
+		await retireLinks(ctx, till);
+		await handOver(ctx, till, link.driverId, undefined);
 		const token = randomSecret();
 		await ctx.db.insert('displays', { tillId: link.tillId, name: deviceLabel(args.deviceName), tokenHash: await sha256(token), status: 'active', createdAt: now, pairedAt: now });
 		return { ok: true, token };
@@ -194,7 +253,10 @@ export const approveCode = mutation({
 		await revokeActive(ctx, display.tillId);
 		await ctx.db.patch(display._id, { status: 'active', pairCode: undefined, pairCodeExpiresAt: undefined, pairedAt: Date.now() });
 		const till = await ctx.db.get(display.tillId);
-		if (till) await handOver(ctx, till, driverId, undefined);
+		if (till) {
+			await retireLinks(ctx, till);
+			await handOver(ctx, till, driverId, undefined);
+		}
 		return { displayId: display._id, name: display.name };
 	}
 });
@@ -210,18 +272,79 @@ export const takeDisplay = mutation({
 });
 
 /**
- * Admin: the driving checkout tab publishes the order on screen (null: a new, empty order). From
- * any other tab it does nothing (`shown: false`). The id comes from a URL (see orderIdFrom). Each
- * publish also marks the order active, so a draft left on screen idles only once nobody touches it.
+ * Admin: the driving checkout tab publishes the order on screen (null: a new, empty order) under
+ * `leaseId`, its mount's lease. From any other tab it does nothing (`shown: false`). The id comes
+ * from a URL (see orderIdFrom). Each publish also marks the order active, so a draft left on
+ * screen idles only once nobody touches it. A publish without a lease (a checkout loaded before
+ * leases) is shown for one lease, as if never renewed.
  */
 export const showOrder = mutation({
-	args: { orderId: v.union(v.string(), v.null()), clientId: v.string() },
+	args: { orderId: v.union(v.string(), v.null()), clientId: v.string(), leaseId: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const till = await getDefaultTill(ctx);
 		if (!till?.driverId || till.driverId !== args.clientId) return { shown: false };
-		await ctx.db.patch(till._id, { orderId: orderIdFrom(ctx, args.orderId), publishedAt: Date.now() });
+		const orderId = orderIdFrom(ctx, args.orderId);
+		const leaseId = orderId ? (args.leaseId === undefined ? randomSecret() : checkLeaseId(args.leaseId)) : undefined;
+		await ctx.db.patch(till._id, { orderId, publishedAt: Date.now(), leaseId });
+		await setLease(ctx, till._id, leaseId);
 		return { shown: true };
+	}
+});
+
+/**
+ * Admin: the driving checkout, still showing `orderId`, keeps its lease. Renewing is not customer
+ * activity (`publishedAt` stays). If the lease ran out meanwhile (the tab slept or lost its
+ * connection), the order comes back under it, still idle-timed from its last real activity.
+ * `renewed: false` once another tab drives, a newer lease holds the till, or this lease was
+ * released or published nothing (a new sale), so a late renewal never brings an order back.
+ */
+export const renewDriverLease = mutation({
+	args: { clientId: v.string(), leaseId: v.string(), orderId: v.union(v.string(), v.null()) },
+	handler: async (ctx, args): Promise<{ renewed: boolean }> => {
+		await requireAdmin(ctx);
+		const leaseId = checkLeaseId(args.leaseId);
+		const till = await getDefaultTill(ctx);
+		const orderId = orderIdFrom(ctx, args.orderId);
+		if (!till?.driverId || till.driverId !== args.clientId || till.leaseId !== leaseId || !orderId) return { renewed: false };
+		if (till.orderId && till.orderId !== orderId) return { renewed: false };
+		// Only an expired current lease can resume. A released or superseded lease cannot republish.
+		if (!till.orderId) await ctx.db.patch(till._id, { orderId });
+		await setLease(ctx, till._id, leaseId);
+		return { renewed: true };
+	}
+});
+
+/**
+ * Public: the checkout that published under `leaseId` is going away (another page, sign-out), so
+ * its open order leaves the screen now. Needs no sign-in, since it runs as staff sign out; it can
+ * only clear, and only with this tab's id and lease, so an earlier mount's cleanup never clears a
+ * newer publish or another tab's take-over.
+ */
+export const releaseDisplay = mutation({
+	args: { clientId: v.string(), leaseId: v.string() },
+	handler: async (ctx, args) => {
+		if (args.leaseId.length > CLIENT_ID_MAX) return null;
+		const till = await getDefaultTill(ctx);
+		if (!till?.leaseId || till.leaseId !== args.leaseId || till.driverId !== args.clientId) return null;
+		await endLease(ctx, till);
+		return null;
+	}
+});
+
+/** Scheduled at a lease's expiry: ends it unless it was renewed (then checks again then) or superseded. */
+export const expireLease = internalMutation({
+	args: { tillId: v.id('tills'), leaseId: v.string() },
+	handler: async (ctx, args) => {
+		const till = await ctx.db.get(args.tillId);
+		if (!till || till.leaseId !== args.leaseId) return null;
+		const lease = await leaseOf(ctx, till._id);
+		if (lease?.leaseId === args.leaseId && lease.expiresAt > Date.now()) {
+			await ctx.scheduler.runAt(lease.expiresAt, internal.displays.expireLease, args);
+			return null;
+		}
+		await endLease(ctx, till, true);
+		return null;
 	}
 });
 
@@ -270,7 +393,7 @@ export const listDisplays = query({
 	}
 });
 
-/** Admin: disconnect a display. With none left, no checkout drives the display and no order is shown. */
+/** Admin: disconnect a display, cancelling any pairing link still outstanding. With none left, no checkout drives the display and no order is shown. */
 export const revoke = mutation({
 	args: { displayId: v.id('displays') },
 	handler: async (ctx, args) => {
@@ -280,7 +403,9 @@ export const revoke = mutation({
 		await ctx.db.patch(display._id, { status: 'revoked', revokedAt: Date.now(), pairCode: undefined, pairCodeExpiresAt: undefined });
 		await deletePresence(ctx, display._id);
 		const till = await ctx.db.get(display.tillId);
-		if (till && !(await activeDisplays(ctx, till._id).first())) await handOver(ctx, till, undefined, undefined);
+		if (!till) return null;
+		await retireLinks(ctx, till);
+		if (!(await activeDisplays(ctx, till._id).first())) await handOver(ctx, till, undefined, undefined);
 		return null;
 	}
 });
