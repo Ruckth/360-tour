@@ -53,6 +53,7 @@ const VALID = { amount: 1, from: "2000-01-01", to: "2000-01-01" };
 
 function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete, now }: SpendDialogProps) {
   const id = useId();
+  const [opener] = useState(() => typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const confirm = useConfirm();
   const [form, setForm] = useState(() => {
     const today = bangkokToday(now ?? Date.now());
@@ -136,6 +137,10 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
   return (
     <DialogContent
       className="max-w-lg"
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        opener?.focus();
+      }}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         document.getElementById(`${id}-amount`)?.focus();

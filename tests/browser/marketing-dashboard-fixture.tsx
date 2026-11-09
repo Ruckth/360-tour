@@ -3,6 +3,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DashboardView, DEFAULT_REQUEST, type ReportRequest, type ReportState } from "@/components/admin/marketing/dashboard/DashboardView";
 import { dashboardReport, FIXTURE_AS_OF, FIXTURE_TODAY, firstRunReport } from "./marketing-dashboard-data";
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import "@/app.css";
 
 /*
@@ -56,4 +57,4 @@ function Fixture() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<Fixture />);
+createRoot(document.getElementById("root")!).render(<ConfirmProvider><Fixture /></ConfirmProvider>);
