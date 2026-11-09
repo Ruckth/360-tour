@@ -14,6 +14,9 @@ import type { ATTRIBUTION_MODEL } from './marketingAttribution';
  * Money rules (each fixed by a convex-test gate):
  * - One sale is counted once. A stay balance paid at the POS is on the stay (its bookingPayments row,
  *   origin `pos`), so the order that took it counts only its other money: tenders minus that stay part.
+ *   Exception: an old order that charged a stay before stay payments were itemised has no such row, so
+ *   that money stays on the order and is taken off the stay's unitemised amount.
+ * - A desk payment for an appointment is its own sale, also when the appointment belongs to a stay.
  * - Collected is money received (recorded payments, never `bills.total`). Cancelled payment rows and
  *   orders voided with "no money received" count nothing. An order voided with the money kept counts.
  * - Refunds are their own figure, dated by their business date. Net = collected - refunded. Net is not profit.
@@ -74,7 +77,7 @@ export type ReportSale = {
 	paidDay?: string;
 	/** At least one recorded payment (refunds keep it paid). */
 	paid: boolean;
-	/** Money received to date, every date. A stay's equals its stay money gross. */
+	/** Money received to date, every date. A stay's equals its stay money gross, less any old order's part (see above). */
 	collected: number;
 	/** Refunds to date, every date, as a positive number. */
 	refunded: number;

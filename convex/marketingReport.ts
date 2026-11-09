@@ -92,14 +92,16 @@ export const noteCouponRefusal = mutation({
 		}
 		const code = normalizeCouponCode(args.code);
 		if (!code || code.length > 100) return null;
-		try { await enforceRateLimit(ctx, 'coupon-refusal:global', 5000, 60 * 60 * 1000); }
+		// Staff surfaces get their own limit, so public traffic can't silence checkout and New booking reports.
+		try { await enforceRateLimit(ctx, args.surface === 'booking' ? 'coupon-refusal:global' : 'coupon-refusal:staff', 5000, 60 * 60 * 1000); }
 		catch (error) {
 			if (error instanceof Error && error.message.startsWith('Too many requests.')) return null;
 			throw error;
 		}
 		const coupon = await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', code)).unique();
 		const couponId = coupon?._id;
-		const problem = coupon ? args.problem : 'not_found';
+		// A link without an offer has no coupon to look up; keep that reason rather than calling it an unknown code.
+		const problem = coupon || args.problem === 'link_without_offer' ? args.problem : 'not_found';
 		const day = resortLocalParts(Date.now()).date;
 		const row = await ctx.db.query('couponRefusalDays').withIndex('by_day_and_couponId_and_problem_and_surface', q => q.eq('day', day).eq('couponId', couponId).eq('problem', problem).eq('surface', args.surface)).unique();
 		if (row) await ctx.db.patch(row._id, { count: row.count + 1 });

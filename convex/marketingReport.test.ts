@@ -216,13 +216,72 @@ describe('report attribution and limits', () => {
 		for (const basis of ['cash', 'cohort'] as const) expect(await s.report(basis)).toMatchObject({ sales: [], events: [], excluded: { nonThb: 2 } });
 	});
 
-	it('keeps completed sales when a later candidate exhausts the budget', async () => {
+	it('keeps names, spend and completed sales when a later candidate exhausts the budget', async () => {
 		const s = await setup();
+		await s.admin.mutation(api.marketingReport.saveSpend, { campaignId: s.campaignId, amount: 900, from: '2026-11-01', to: '2026-11-09' });
 		const first = await s.booking({ paymentStatus: 'paid', paidAt: now });
 		await s.booking({ paymentStatus: 'paid', paidAt: now });
-		const result = await s.t.run(ctx => readMarketingReport(ctx, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' }, new ReadBudget(1)));
+		const args = { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' as const };
+		const probe = new ReadBudget();
+		expect((await s.t.run(ctx => readMarketingReport(ctx, args, probe))).truncated).toBe(false);
+		// After the stays come three order scans and one appointment scan; stop on the second stay's refunds.
+		const result = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16_000, probe.ranges - 5)));
 		expect(result.truncated).toBe(true);
-		expect(result.sales.map(s => s.id)).toEqual([first]);
+		expect(result.sales.map(sale => sale.id)).toEqual([first]);
+		expect(result).toMatchObject({ campaigns: [{ id: s.campaignId }], links: [{ id: s.linkId }], spend: [{ amount: 900 }], properties: [{ id: s.propertyId }] });
+	});
+
+	it('answers a busy month (3 stays and 20 walk-in orders a day) inside the budget', async () => {
+		const s = await setup();
+		await s.t.run(async ctx => {
+			for (let d = 0; d < 30; d++) {
+				const at = now - d * day;
+				for (let i = 0; i < 3; i++) {
+					const bookingId = await ctx.db.insert('bookings', { propertyId: s.propertyId, guestName: 'Guest', guestPhone: '+66811112222', checkIn: '2026-12-01', checkOut: '2026-12-02', guests: 2, nights: 1, subtotal: 1000, discountAmount: 0, total: 1000, currency: 'THB', paymentStatus: 'paid', status: 'confirmed', amountPaid: 1000, paidAt: at, createdAt: at });
+					await ctx.db.insert('bookingPayments', { bookingId, origin: 'manual', method: 'cash', currency: 'THB', amount: 1000, effectiveAt: at, recordedAt: at, recordedBy: email, status: 'recorded', refunded: 0 });
+				}
+				for (let i = 0; i < 20; i++) {
+					const billId = await ctx.db.insert('bills', { status: 'paid', currency: 'THB', itemCount: 1, total: 500, due: 0, hasItems: true, revision: 1, paidAt: at, paymentEffectiveAt: at, createdBy: email, createdAt: at, updatedAt: at });
+					await ctx.db.insert('billPayments', { billId, method: 'cash', amount: 500, idempotencyKey: `busy-${d}-${i}`, createdBy: email, createdAt: at, effectiveAt: at });
+				}
+			}
+		});
+		for (const basis of ['cohort', 'cash'] as const) {
+			const report = await s.report(basis, '2026-10-11', '2026-11-09');
+			expect(report.truncated).toBe(false);
+			expect(report.sales).toHaveLength(690);
+			expect(report.sales.reduce((sum, sale) => sum + sale.collected, 0)).toBe(90 * 1000 + 600 * 500);
+			expect(report.campaigns).toHaveLength(1);
+		}
+	});
+
+	it('keeps an old order\'s stay money on the order, not twice', async () => {
+		const s = await setup();
+		// Paid before stay payments were itemised: no bookingPayments row, the money is on the order.
+		const bookingId = await s.booking({ source: 'admin', paymentStatus: 'paid', amountPaid: 1000, paidAt: now });
+		const billId = await s.t.run(async ctx => {
+			const id = await ctx.db.insert('bills', { status: 'paid', bookingId, currency: 'THB', itemCount: 2, total: 1050, due: 0, hasItems: true, revision: 1, paidAt: now, paymentEffectiveAt: now, createdBy: email, createdAt: now, updatedAt: now });
+			await ctx.db.insert('billLines', { billId: id, kind: 'booking', bookingId, name: 'Stay', unitPrice: 1000, currency: 'THB', qty: 1, createdAt: now });
+			await ctx.db.insert('billLines', { billId: id, kind: 'extra', name: 'Water', unitPrice: 50, currency: 'THB', qty: 1, createdAt: now });
+			await ctx.db.insert('billPayments', { billId: id, method: 'cash', amount: 1050, idempotencyKey: 'legacy-order', createdBy: email, createdAt: now, effectiveAt: now });
+			return id;
+		});
+		for (const basis of ['cohort', 'cash'] as const) {
+			const report = await s.report(basis);
+			expect(report.sales.reduce((sum, sale) => sum + sale.collected, 0)).toBe(1050);
+			expect(report.sales.map(sale => sale.id)).toEqual([billId]);
+		}
+	});
+
+	it('counts a desk payment for an appointment that belongs to a stay', async () => {
+		const s = await setup();
+		const bookingId = await s.booking({ source: 'admin' });
+		const appointmentId = await s.appointment();
+		await s.t.run(ctx => ctx.db.patch(appointmentId, { bookingId }));
+		await s.admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'desk-stay-appt' });
+		const cash = await s.report('cash');
+		expect(cash.sales).toMatchObject([{ id: appointmentId, kind: 'appointment', channel: 'desk', collected: 500, propertyId: s.propertyId }]);
+		expect(cash.events).toMatchObject([{ saleId: appointmentId, kind: 'payment', amount: 500 }]);
 	});
 
 	it('returns a marked partial report when any document/range/byte budget runs out', async () => {
@@ -281,6 +340,13 @@ describe('spend and diagnostic rollups', () => {
 		await s.t.run(async ctx => { const limit = await ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', 'coupon-refusal:global')).unique(); await ctx.db.patch(limit!._id, { count: 5000 }); });
 		await s.t.mutation(api.marketingReport.noteCouponRefusal, note);
 		expect(await s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId })).toEqual(summary);
+		// Public traffic can't use up the staff surfaces' limit.
+		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'pos' });
+		expect((await s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId })).total).toBe(5);
+		// A scanned link without an offer keeps its reason, without a coupon.
+		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { code: 'old-card', problem: 'link_without_offer', surface: 'pos' });
+		const linkRows = await s.t.run(ctx => ctx.db.query('couponRefusalDays').withIndex('by_couponId_and_day', q => q.eq('couponId', undefined)).take(10));
+		expect(linkRows).toEqual(expect.arrayContaining([expect.objectContaining({ problem: 'link_without_offer', surface: 'pos', count: 1 })]));
 		await expect(s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId, days: 91 })).rejects.toThrow('90 days');
 		await expect(s.t.query(api.marketingReport.couponRefusals, { couponId: s.couponId })).rejects.toThrow('authenticated');
 		vi.setSystemTime(now + day);

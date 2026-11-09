@@ -744,7 +744,10 @@ export default defineSchema({
 		createdAt: v.number(),
 		/** Business date the money was received; `createdAt` is when it was recorded. Absent = createdAt. */
 		effectiveAt: v.optional(v.number())
-	}).index('by_billId', ['billId']),
+	})
+		.index('by_billId', ['billId'])
+		// Release 3b: tenders are written with createdAt = the order's paidAt, so the report reads a range of them at once.
+		.index('by_createdAt', ['createdAt']),
 
 	/**
 	 * Audited corrections to a paid order (pos.amendOrderPayment, pos.voidUnreceivedOrder). The issued
