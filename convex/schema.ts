@@ -552,6 +552,8 @@ export default defineSchema({
 		bookingId: v.optional(v.id('bookings')),
 		/** The standalone appointment (not part of a stay) this order belongs to. */
 		appointmentId: v.optional(v.id('serviceAppointments')),
+		/** True only for a source link acquired by attaching a row to a standalone sale; released with its last source row. Legacy links without provenance retain their identity. */
+		implicitSourceLink: v.optional(v.boolean()),
 		/** For a later charge on a booking whose earlier order was already paid: that earlier order. */
 		parentOrderId: v.optional(v.id('bills')),
 		/** Who the receipt was issued to, frozen when the order is paid so later profile edits don't rewrite it. */

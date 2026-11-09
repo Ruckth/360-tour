@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { assertMoney } from './bookingMoney';
@@ -44,10 +45,16 @@ export function feeBlocker(appointment: Doc<'serviceAppointments'> | null, kind:
 	return null;
 }
 
+/** Rechecked at settlement too: corrected service prices must still cap an existing fee. */
+export function feePriceBlocker(amount: number, appointment: Doc<'serviceAppointments'>): string | null {
+	return appointment.price > 0 && amount > appointment.price ? 'A fee can’t be more than the appointment’s price.' : null;
+}
+
 /** A fee amount: more than zero, whole satang, no more than the appointment's price when it has one. */
 export function assertFeeAmount(amount: number, appointment: Doc<'serviceAppointments'>) {
 	assertMoney(amount, 'Fee');
-	if (appointment.price > 0 && amount > appointment.price) throw new Error('A fee can’t be more than the appointment’s price.');
+	const blocked = feePriceBlocker(amount, appointment);
+	if (blocked) throw new ConvexError(blocked);
 }
 
 /**
@@ -56,7 +63,7 @@ export function assertFeeAmount(amount: number, appointment: Doc<'serviceAppoint
  */
 export async function liveFees(ctx: ReadCtx, appointmentId: Id<'serviceAppointments'>, exceptOrderId?: Id<'bills'>) {
 	const rows = await ctx.db.query('billLines').withIndex('by_feeAppointmentId', (q) => q.eq('feeAppointmentId', appointmentId)).take(FEE_SCAN + 1);
-	if (rows.length > FEE_SCAN) throw new Error('This appointment has too many fee rows to check. Contact support.');
+	if (rows.length > FEE_SCAN) throw new ConvexError('This appointment has too many fee rows to check. Contact support.');
 	const live: Array<{ line: Doc<'billLines'>; order: Doc<'bills'> }> = [];
 	for (const line of rows) {
 		if (line.billId === exceptOrderId) continue;

@@ -189,6 +189,26 @@ describe("lookup failures stay in their dialog", () => {
     expect(document.body.textContent).toContain("Some older appointments can't be found by phone or email yet.");
   });
 
+  it("uses the same payer/query for completeness and announces a capped stay search", async () => {
+    const { backend, orderId } = await setup();
+    const lookup = vi.fn(() => ({ complete: false, bookingsIncomplete: true }));
+    await render({ ...backend, useAttachable: () => [], useAttachLookupStatus: lookup }, orderId);
+    await click("Add booking");
+    await typeInto('[aria-label="Search bookings"]', "regular@example.com");
+    expect(lookup).toHaveBeenLastCalledWith({ orderId, query: "regular@example.com" });
+    expect(document.body.textContent).toContain("the search is incomplete");
+    expect(document.body.textContent).toContain("No matches in the records searched.");
+    expect(document.body.textContent).not.toContain("No unpaid bookings or appointments found.");
+  });
+
+  it("waits for lookup completeness before claiming there are no matches", async () => {
+    const { backend, orderId } = await setup();
+    await render({ ...backend, useAttachable: () => [], useAttachLookupStatus: () => undefined }, orderId);
+    await click("Add booking");
+    expect(document.querySelector('[aria-label="Loading bookings"]')).toBeTruthy();
+    expect(document.body.textContent).not.toContain("No unpaid bookings or appointments found.");
+  });
+
   it("finds an appointment by its guest's email in the fixture too", async () => {
     const { backend, orderId } = await setup();
     await render(backend, orderId);

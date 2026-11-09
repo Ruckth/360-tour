@@ -470,7 +470,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
   const backend = useCheckoutBackend();
   const actions = backend.useActions();
   const rows = backend.useAttachable({ orderId, query });
-  const lookup = backend.useAttachLookupStatus();
+  const lookup = backend.useAttachLookupStatus({ orderId, query });
   const searching = query.trim().length >= 2;
 
   // Stays open while there is more to add, so a stay and its appointment take one visit.
@@ -486,10 +486,12 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
     <>
       {lookup?.complete === false ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-400/40 dark:bg-amber-400/10">
-          Some older appointments can&apos;t be found by phone or email yet. Search them by reference or guest name, or ask an admin to finish the appointment lookup migration.
+          {lookup.bookingsIncomplete
+            ? "This contact has a long booking history, so the search is incomplete. Search the stay by its reference, or open checkout from its booking."
+            : "Some older appointments can't be found by phone or email yet. Search them by reference or guest name, or ask an admin to finish the appointment lookup migration."}
         </p>
       ) : null}
-      {rows === undefined && (orderId || searching) ? (
+      {(rows === undefined || (rows.length === 0 && lookup === undefined)) && (orderId || searching) ? (
         <Spinner label="Loading bookings" />
       ) : rows?.length ? (
         <ul className="grid max-h-[50dvh] gap-2 overflow-y-auto">
@@ -517,7 +519,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
         </ul>
       ) : (
         <p className="text-sm text-muted-foreground">
-          {searching || orderId ? "No unpaid bookings or appointments found." : "Search for a booking by its reference, the guest's phone, email or name."}
+          {searching || orderId ? (lookup?.complete === false ? "No matches in the records searched." : "No unpaid bookings or appointments found.") : "Search for a booking by its reference, the guest's phone, email or name."}
         </p>
       )}
     </>
