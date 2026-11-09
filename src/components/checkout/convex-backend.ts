@@ -36,7 +36,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const text = query.trim();
     return useQuery(api.pos.listAttachable, orderId || text.length >= 2 ? { orderId: orderId ?? undefined, query: text || undefined } : SKIP);
   },
-  useAttachLookupStatus: () => useQuery(api.pos.attachLookupStatus, {}),
+  useAttachLookupStatus: ({ orderId, query }) => useQuery(api.pos.attachLookupStatus, { orderId: orderId ?? undefined, query: query.trim() || undefined }),
   useBusinessName: () => useQuery(api.settings.publicProfile, {})?.businessName,
   useActions: () => {
     const discardOrder = useMutation(api.pos.discardOrder);

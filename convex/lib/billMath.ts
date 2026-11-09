@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 /**
  * POS order math, shared by Convex and the checkout UI. Prices include 7% VAT (the receipt
  * shows the VAT portion); there is no service charge. Amounts are in the order currency.
@@ -81,51 +82,51 @@ export function billTotals(lines: readonly PricedLine[]): BillTotals {
 }
 
 export function assertDiscount(discount: LineDiscount) {
-	if (!Number.isFinite(discount.value) || discount.value < 0) throw new Error('Discount must be zero or more');
-	if (discount.type === 'percent' && discount.value > 100) throw new Error('A percent discount is at most 100%');
-	if (discount.value > MAX_BILL) throw new Error(atMost(MAX_BILL));
+	if (!Number.isFinite(discount.value) || discount.value < 0) throw new ConvexError('Discount must be zero or more');
+	if (discount.type === 'percent' && discount.value > 100) throw new ConvexError('A percent discount is at most 100%');
+	if (discount.value > MAX_BILL) throw new ConvexError(atMost(MAX_BILL));
 }
 
 /** A typed price: finite, zero or more, and within MAX_PRICE. */
 export function assertPrice(price: number) {
-	if (!Number.isFinite(price) || price < 0) throw new Error('Price must be zero or more');
-	if (price > MAX_PRICE) throw new Error(atMost(MAX_PRICE));
+	if (!Number.isFinite(price) || price < 0) throw new ConvexError('Price must be zero or more');
+	if (price > MAX_PRICE) throw new ConvexError(atMost(MAX_PRICE));
 }
 
 /** Every write to an order checks its subtotal, which also bounds booked stays and catalog prices. */
 export function assertBillSize(totals: Pick<BillTotals, 'subtotal'>) {
-	if (totals.subtotal > MAX_BILL) throw new Error(`An order is at most ${MAX_BILL.toLocaleString('en-US')}. Split it into two orders.`);
+	if (totals.subtotal > MAX_BILL) throw new ConvexError(`An order is at most ${MAX_BILL.toLocaleString('en-US')}. Split it into two orders.`);
 }
 
 /** A one-off price change needs a reason for the audit trail. Returns the trimmed note. */
 export function assertPriceOverride(price: number, note: string) {
 	assertPrice(price);
 	const trimmed = note.trim();
-	if (!trimmed) throw new Error('Add a note explaining the price change');
-	if (trimmed.length > NOTE_MAX) throw new Error(`Note must be at most ${NOTE_MAX} characters`);
+	if (!trimmed) throw new ConvexError('Add a note explaining the price change');
+	if (trimmed.length > NOTE_MAX) throw new ConvexError(`Note must be at most ${NOTE_MAX} characters`);
 	return trimmed;
 }
 
 /** One to three payments that add up to exactly what is due; cash may be handed over in excess. */
 export function assertTenders(tenders: readonly Tender[], due: number) {
 	if (due === 0 && tenders.length === 0) return;
-	if (tenders.length === 0) throw new Error('Choose how the guest pays');
-	if (tenders.length > MAX_TENDERS) throw new Error(`Split across at most ${MAX_TENDERS} payments`);
+	if (tenders.length === 0) throw new ConvexError('Choose how the guest pays');
+	if (tenders.length > MAX_TENDERS) throw new ConvexError(`Split across at most ${MAX_TENDERS} payments`);
 	for (const tender of tenders) {
-		if (!TENDER_METHODS.includes(tender.method)) throw new Error('Unknown payment method');
-		if (!Number.isFinite(tender.amount) || tender.amount <= 0) throw new Error('Each payment must be more than zero');
-		if (tender.amount > MAX_BILL) throw new Error(atMost(MAX_BILL));
-		if (round2(tender.amount) !== tender.amount) throw new Error('Payments are in whole satang (at most 2 decimals)');
+		if (!TENDER_METHODS.includes(tender.method)) throw new ConvexError('Unknown payment method');
+		if (!Number.isFinite(tender.amount) || tender.amount <= 0) throw new ConvexError('Each payment must be more than zero');
+		if (tender.amount > MAX_BILL) throw new ConvexError(atMost(MAX_BILL));
+		if (round2(tender.amount) !== tender.amount) throw new ConvexError('Payments are in whole satang (at most 2 decimals)');
 		if (tender.received !== undefined) {
-			if (tender.method !== 'cash') throw new Error('Only cash can have an amount received');
-			if (!Number.isFinite(tender.received)) throw new Error('Cash received must be an amount');
-			if (tender.received > MAX_BILL) throw new Error(atMost(MAX_BILL));
-			if (round2(tender.received) !== tender.received) throw new Error('Cash received is in whole satang (at most 2 decimals)');
-			if (!(tender.received >= tender.amount)) throw new Error('Cash received is less than the amount');
+			if (tender.method !== 'cash') throw new ConvexError('Only cash can have an amount received');
+			if (!Number.isFinite(tender.received)) throw new ConvexError('Cash received must be an amount');
+			if (tender.received > MAX_BILL) throw new ConvexError(atMost(MAX_BILL));
+			if (round2(tender.received) !== tender.received) throw new ConvexError('Cash received is in whole satang (at most 2 decimals)');
+			if (!(tender.received >= tender.amount)) throw new ConvexError('Cash received is less than the amount');
 		}
 	}
 	const paid = sum(tenders.map((tender) => tender.amount));
-	if (paid !== round2(due)) throw new Error(`Payments add up to ${paid}, but ${round2(due)} is due`);
+	if (paid !== round2(due)) throw new ConvexError(`Payments add up to ${paid}, but ${round2(due)} is due`);
 }
 
 export function changeDue(tenders: readonly Tender[]) {

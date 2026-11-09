@@ -69,8 +69,8 @@ export type CheckoutBackend = {
   useCustomerHistory(customerId: CustomerId): CustomerPage<CustomerHistoryRow>;
   useCustomerOrders(customerId: CustomerId): CustomerPage<CustomerOrderRow>;
   useAttachable(args: { orderId: OrderId | null; query: string }): Attachable[] | undefined;
-  /** Whether phone and email search reaches every unpaid appointment yet (false only mid-rollout). */
-  useAttachLookupStatus(): AttachLookupStatus | undefined;
+  /** Whether this exact lookup reached its results without a capped contact/legacy scan. */
+  useAttachLookupStatus(args: { orderId: OrderId | null; query: string }): AttachLookupStatus | undefined;
   useBusinessName(): string | undefined;
   useActions(): CheckoutActions;
 };
