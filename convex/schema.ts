@@ -762,13 +762,28 @@ export default defineSchema({
 	 * The shop's till: a single row with key 'default'. `orderId` is the order the customer display
 	 * shows, published by displays.showOrder. Only the checkout tab whose id is `driverId` (the one
 	 * that last connected or took over the display) may publish it. `publishedAt` is its last publish.
+	 * `leaseId` is the publishing checkout's lease: an open order is shown only while it holds one
+	 * (renewed in `displayDriverLeases`). Pairing links are valid only for `pairGeneration`.
 	 */
 	tills: defineTable({
 		key: v.literal('default'),
 		orderId: v.optional(v.id('bills')),
 		driverId: v.optional(v.string()),
-		publishedAt: v.optional(v.number())
+		publishedAt: v.optional(v.number()),
+		leaseId: v.optional(v.string()),
+		pairGeneration: v.optional(v.number())
 	}).index('by_key', ['key']),
+
+	/**
+	 * When the till's lease (`tills.leaseId`) runs out unless the driving checkout renews it. Kept
+	 * apart from `tills` so renewals don't re-run the checkouts' `listDisplays`; `displays.current`
+	 * reads it only while an open order is shown. One per till.
+	 */
+	displayDriverLeases: defineTable({
+		tillId: v.id('tills'),
+		leaseId: v.string(),
+		expiresAt: v.number()
+	}).index('by_tillId', ['tillId']),
 
 	/** A guest-facing screen paired to a till. Only the SHA-256 of its device token is stored. */
 	displays: defineTable({
@@ -800,7 +815,9 @@ export default defineSchema({
 		usedAt: v.optional(v.number()),
 		createdByEmail: v.string(),
 		/** The checkout tab that made the link; it drives the display once the link is claimed. */
-		driverId: v.string()
+		driverId: v.string(),
+		/** The till's `pairGeneration` when made. A newer link, a pairing or a disconnect moves it on; links without one never claim. */
+		generation: v.optional(v.number())
 	})
 		.index('by_secretHash', ['secretHash'])
 		.index('by_expiresAt', ['expiresAt']),

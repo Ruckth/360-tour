@@ -30,6 +30,7 @@ export function CheckoutView({
 }: {
   orderId: OrderId | null;
   onOrderChange: (orderId: OrderId | null) => void;
+  /** The order was paid here, or opened already paid or void: show its receipt. A redirect, so the page replaces this history entry. */
   onPaid: (orderId: OrderId) => void;
   /** Shown above the catalog, e.g. a refused `?booking=` link. */
   notice?: string;
