@@ -137,7 +137,7 @@ describe("dashboard view", () => {
   it("opens the spend dialog for the campaigns of a row without spend", async () => {
     render(ready());
     expect(spendDialog.last?.open).toBe(false);
-    click(buttons(/^instagram\./)[0]); // drill into instagram
+    click(buttons(/^instagram.*Show campaigns$/)[0]); // drill into instagram
     const add = buttons("Add spend")[0];
     click(add);
     expect(spendDialog.last).toMatchObject({
@@ -163,11 +163,11 @@ describe("dashboard view", () => {
 
   it("drills source → campaign with breadcrumbs, then opens the sales sheet", () => {
     render(ready());
-    click(buttons(/^facebook\./)[0]);
+    click(buttons(/^facebook.*Show campaigns$/)[0]);
     expect(document.querySelector('nav[aria-label="Drill-down"]')?.textContent).toContain("All sources");
-    click(buttons(/^Facebook · November escape\./)[0]);
+    click(buttons(/^Facebook · November escape.*Show links$/)[0]);
     expect(document.querySelector('nav[aria-label="Drill-down"]')?.textContent).toContain("Facebook · November escape");
-    click(buttons(/^\/a1\./)[0]);
+    click(buttons(/^\/a1.*Show sales$/)[0]);
     expect(text()).toContain("2 refunds reduced net by ฿9,600.");
     click(buttons("Open booking")[0]);
     expect(calls.stays).toHaveLength(1);
@@ -179,7 +179,7 @@ describe("dashboard view", () => {
   it("links checkout orders to the order", () => {
     render(ready());
     click(document.querySelector('[role="tab"][id="breakdown-tab-link"]')!);
-    click(buttons(/^\/q1\./)[0]);
+    click(buttons(/^\/q1.*Show sales$/)[0]);
     const link = [...document.querySelectorAll("a")].find((a) => a.textContent?.includes("Open order"));
     expect(link?.getAttribute("href")).toMatch(/^\/admin\/receipt\/order-/);
   });

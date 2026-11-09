@@ -43,6 +43,11 @@ const NOTES: Record<BreakdownView, string> = {
 const STATUS_TONE: Record<string, Tone> = { draft: "neutral", paused: "muted", ended: "muted", archived: "muted", expired: "muted" };
 const statusLabel = (status: string) => status.charAt(0).toUpperCase() + status.slice(1);
 
+/** Opaque tint for the header, footers and row hover, so the sticky name column matches its row. */
+const TINT = "bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]";
+const HOVER_TINT = "hover:bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]";
+const GROUP_HOVER_TINT = "group-hover/row:bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]";
+
 const num = (value: number) => value.toLocaleString("en-US");
 const Dash = ({ title }: { title?: string }) => (
   <span className="text-muted-foreground" title={title}>
@@ -131,7 +136,6 @@ function NameButton({ row, onOpen, card = false }: { row: BreakdownRow; onOpen: 
     <button
       type="button"
       onClick={() => onOpen(row)}
-      aria-label={`${row.name}. ${drillHint(row)}`}
       className={cn(
         "group flex w-full min-w-0 items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         card && "after:absolute after:inset-0 after:content-['']",
@@ -143,6 +147,7 @@ function NameButton({ row, onOpen, card = false }: { row: BreakdownRow; onOpen: 
           {row.status ? <StatusBadge tone={STATUS_TONE[row.status] ?? "neutral"} label={statusLabel(row.status)} /> : null}
         </span>
         {row.sub ? <span className="text-xs text-muted-foreground">{row.sub}</span> : null}
+        <span className="sr-only">. {drillHint(row)}</span>
       </span>
       {card ? null : <ChevronRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-foreground" />}
     </button>
@@ -167,7 +172,7 @@ function Divider({ view, colSpan }: { view: BreakdownView; colSpan?: number }) {
       </td>
     </tr>
   ) : (
-    <li className="bg-muted/30 px-4 py-2 text-xs text-muted-foreground md:col-span-2">{text}</li>
+    <li className="px-4 py-2 text-xs text-muted-foreground [background:color-mix(in_oklab,var(--muted)_30%,var(--card))] md:col-span-2">{text}</li>
   );
 }
 
@@ -203,7 +208,7 @@ export function DashboardBreakdown({
         key={col.key}
         scope="col"
         aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-        className={cn("py-3 font-semibold", col.key === "name" ? "sticky left-0 z-10 min-w-60 bg-muted px-4 text-left" : "px-3 text-right")}
+        className={cn("py-3 font-semibold", col.key === "name" ? cn("sticky left-0 z-10 min-w-60 px-4 text-left", TINT) : "px-3 text-right")}
       >
         <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex items-center gap-1 rounded uppercase tracking-[0.14em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
           {col.label}
@@ -214,10 +219,10 @@ export function DashboardBreakdown({
   };
 
   const tr = (row: BreakdownRow) => (
-    <tr key={row.key} className="group/row border-b border-border transition-colors hover:bg-muted/40">
+    <tr key={row.key} className={cn("group/row border-b border-border transition-colors", HOVER_TINT)}>
       {cols.map((col) =>
         col.key === "name" ? (
-          <td key={col.key} className="sticky left-0 z-10 bg-card px-4 py-3 align-top group-hover/row:bg-muted">
+          <td key={col.key} className={cn("sticky left-0 z-10 bg-card px-4 py-3 align-top transition-colors", GROUP_HOVER_TINT)}>
             <NameButton row={row} onOpen={onOpen} />
           </td>
         ) : (
@@ -230,10 +235,10 @@ export function DashboardBreakdown({
   );
 
   const footRow = (row: TotalRow) => (
-    <tr key={row.key} className="border-b border-border bg-muted/40 last:border-b-0">
+    <tr key={row.key} className={cn("border-b border-border last:border-b-0", TINT)}>
       {cols.map((col) =>
         col.key === "name" ? (
-          <th key={col.key} scope="row" className="sticky left-0 z-10 bg-muted px-4 py-3 text-left text-sm font-semibold text-foreground">
+          <th key={col.key} scope="row" className={cn("sticky left-0 z-10 px-4 py-3 text-left text-sm font-semibold text-foreground", TINT)}>
             {row.name}
             {row.note ? <span className="block text-xs font-normal text-muted-foreground">{row.note}</span> : null}
           </th>
@@ -305,7 +310,7 @@ export function DashboardBreakdown({
       <>
         <div className="hidden max-w-full overflow-x-auto lg:block">
           <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className="admin-eyebrow border-b border-border bg-muted">
+            <thead className={cn("admin-eyebrow border-b border-border", TINT)}>
               <tr>{cols.map(th)}</tr>
             </thead>
             <tbody>

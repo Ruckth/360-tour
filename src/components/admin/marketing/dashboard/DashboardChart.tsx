@@ -135,21 +135,20 @@ export function DashboardChart({ p }: { p: Prepared }) {
             aria-label={`${title}. ${data.buckets.length} ${data.interval === "day" ? "days" : "weeks"}, highest ${fmt(totals[peak] ?? 0)} (${data.buckets[peak]?.long ?? ""}). The table after the chart has every value.`}
             className="relative mx-3 mb-3 mt-2 h-60 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <div aria-hidden className="absolute inset-y-0 left-0 w-12">
+            {/* Plot box: y labels on the left, bars on the right, x labels in the 1.5rem below. */}
+            <div aria-hidden className="absolute inset-x-0 bottom-6 top-3">
               {ticks.map((value) => (
-                <span key={value} className="absolute right-2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground" style={{ bottom: `calc(1.5rem + ${(value / top) * 100}% - ${(value / top) * 1.5}rem)` }}>
+                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
                   {tick(value, money)}
                 </span>
               ))}
-            </div>
-            <div aria-hidden className="absolute inset-y-0 left-12 right-0">
-              <div className="absolute inset-x-0 bottom-6 top-0">
+              <div className="absolute inset-y-0 left-12 right-0">
                 {ticks.map((value) => (
                   <span key={value} className={cn("absolute inset-x-0 border-t", value === 0 ? "border-border" : "border-border/60")} style={{ bottom: `${(value / top) * 100}%` }} />
                 ))}
                 <div className="absolute inset-0 flex items-end gap-[2px] sm:gap-1">
                   {data.buckets.map((b, i) => (
-                    <div key={b.from} title={`${b.long}: ${fmt(totals[i])}`} className="group flex h-full min-w-0 flex-1 flex-col justify-end rounded-t-[3px] hover:bg-muted/60">
+                    <div key={b.from} title={`${b.long}: ${fmt(totals[i])}`} className="flex h-full min-w-0 flex-1 flex-col justify-end rounded-t-[3px] hover:bg-muted/60">
                       {visible
                         .slice()
                         .reverse()
@@ -161,13 +160,13 @@ export function DashboardChart({ p }: { p: Prepared }) {
                   ))}
                 </div>
               </div>
-              <div className="absolute inset-x-0 bottom-0 flex h-6 items-end gap-[2px] sm:gap-1">
-                {data.buckets.map((b, i) => (
-                  <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[11px] tabular-nums text-muted-foreground">
-                    {i % labelEvery === 0 ? (data.interval === "day" ? b.label : b.label.split("–")[0]) : ""}
-                  </span>
-                ))}
-              </div>
+            </div>
+            <div aria-hidden className="absolute bottom-0 left-12 right-0 flex h-6 items-end gap-[2px] sm:gap-1">
+              {data.buckets.map((b, i) => (
+                <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[11px] tabular-nums text-muted-foreground">
+                  {i % labelEvery === 0 ? (data.interval === "day" ? b.label : b.label.split("–")[0]) : ""}
+                </span>
+              ))}
             </div>
           </div>
           <div className="sr-only">{table}</div>

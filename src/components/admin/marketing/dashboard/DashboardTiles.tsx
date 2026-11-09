@@ -137,7 +137,9 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
         <div>
           <p className="text-xs font-medium text-muted-foreground">Business total · every paid sale</p>
           <p className="text-base font-semibold tabular-nums text-foreground">
-            {thb(all.net)} net <span className="font-normal text-muted-foreground">· {countOf(all)}</span>
+            {thb(all.net)} net
+          </p>
+          <p className="text-xs tabular-nums text-muted-foreground">{countOf(all)}
           </p>
         </div>
         <div className="grid min-w-0 gap-2">

@@ -280,7 +280,7 @@ export function ExportDialog({
         />
         <div className="grid min-w-0 gap-2">
           <p className="admin-eyebrow">First lines</p>
-          <pre data-testid="csv-preview" className="max-h-44 overflow-auto rounded-lg bg-muted/60 p-3 font-mono text-[11px] leading-5 text-foreground">
+          <pre data-testid="csv-preview" role="region" aria-label="First lines of the CSV" tabIndex={0} className="max-h-44 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg bg-muted/60 p-3 font-mono text-[11px] leading-5 text-foreground">
             {preview}
           </pre>
         </div>
