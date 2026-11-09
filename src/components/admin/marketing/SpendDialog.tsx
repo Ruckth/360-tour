@@ -139,14 +139,18 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
       className="max-w-lg"
       onCloseAutoFocus={(event) => {
         event.preventDefault();
-        opener?.focus();
+        // Back to whatever opened the dialog, unless focus already moved on (say, into a menu opened meanwhile).
+        const active = document.activeElement;
+        if (!active || active === document.body || document.getElementById(`${id}-form`)?.contains(active)) {
+          if (opener?.isConnected) opener.focus();
+        }
       }}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         document.getElementById(`${id}-amount`)?.focus();
       }}
     >
-      <form noValidate onSubmit={save} className="grid gap-4">
+      <form id={`${id}-form`} noValidate onSubmit={save} className="grid gap-4">
         <DialogHeader>
           <DialogTitle>{entry ? "Edit spend" : "Add spend"}</DialogTitle>
           <DialogDescription>
