@@ -12,6 +12,7 @@ import {
 } from './lib/financeValidators';
 import { posCouponProblemValidator } from './lib/posCoupons';
 import { marketingAttributionValidator, marketingCaptureValidator } from './lib/marketingAttribution';
+import { couponRefusalProblemValidator, couponRefusalSurfaceValidator } from './lib/marketingReport';
 
 export default defineSchema({
  appointmentFeeAttempts: defineTable({
@@ -260,7 +261,9 @@ export default defineSchema({
 		.index('by_bookingId_and_recordedAt', ['bookingId', 'recordedAt'])
 		.index('by_billId', ['billId'])
 		.index('by_providerPaymentIntentId', ['providerPaymentIntentId'])
-		.index('by_idempotencyKey', ['idempotencyKey']),
+		.index('by_idempotencyKey', ['idempotencyKey'])
+		// Release 3b: the marketing report's cash view reads money by business date.
+		.index('by_effectiveAt', ['effectiveAt']),
 
 	/** Refunds recorded on a stay. Recording one moves no money; staff give it back themselves. */
 	bookingRefunds: defineTable({
@@ -288,7 +291,8 @@ export default defineSchema({
 		.index('by_bookingId_and_recordedAt', ['bookingId', 'recordedAt'])
 		.index('by_billId', ['billId'])
 		.index('by_idempotencyKey', ['idempotencyKey'])
-		.index('by_providerRefundId', ['providerRefundId']),
+		.index('by_providerRefundId', ['providerRefundId'])
+		.index('by_effectiveAt', ['effectiveAt']),
 
 	/** High-water mark of authoritative charge.refunded snapshots, in minor units. */
 	stripeRefundCharges: defineTable({
@@ -302,7 +306,8 @@ export default defineSchema({
 		status: v.union(v.literal('recorded'), v.literal('cancelled')), refunded: v.number(),
 		amendedAt: v.optional(v.number()), amendedBy: v.optional(v.string()),
 		cancelledAt: v.optional(v.number()), cancelledBy: v.optional(v.string()), cancelReason: v.optional(v.string())
-	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt']).index('by_idempotencyKey', ['idempotencyKey']),
+	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt']).index('by_idempotencyKey', ['idempotencyKey'])
+		.index('by_effectiveAt', ['effectiveAt']),
 	appointmentPaymentCorrections: defineTable({
 		appointmentId: v.id('serviceAppointments'), paymentId: v.optional(v.id('appointmentPayments')), legacyChangeId: v.optional(v.id('appointmentChanges')), idempotencyKey: v.string(),
 		requestFingerprint: v.string(), actor: v.string(), recordedAt: v.number(), reason: v.string()
@@ -313,7 +318,8 @@ export default defineSchema({
 		paymentId: v.optional(v.id('appointmentPayments')), billId: v.optional(v.id('bills')),
 		netBefore: v.number(), netAfter: v.number()
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt'])
-		.index('by_billId', ['billId']).index('by_idempotencyKey', ['idempotencyKey']),
+		.index('by_billId', ['billId']).index('by_idempotencyKey', ['idempotencyKey'])
+		.index('by_effectiveAt', ['effectiveAt']),
 	staff: defineTable({
 		name: v.string(),
 		/** Retained on archive; restoration validates each surviving service. */
@@ -628,7 +634,10 @@ export default defineSchema({
 		.index('by_bookingId_and_status', ['bookingId', 'status'])
 		.index('by_appointmentId_and_status', ['appointmentId', 'status'])
 		.index('by_customerId_and_updatedAt', ['customerId', 'updatedAt'])
-		.index('by_customerId_and_status', ['customerId', 'status']),
+		.index('by_customerId_and_status', ['customerId', 'status'])
+		// Release 3b: settled orders by receipt time, and orders whose payment date was corrected.
+		.index('by_status_and_paidAt', ['status', 'paidAt'])
+		.index('by_paymentEffectiveAt', ['paymentEffectiveAt']),
 
 	/**
 	 * A reusable customer profile. Orders link to it by id; nothing is matched or merged by name,
@@ -1682,6 +1691,44 @@ export default defineSchema({
 		.index('by_visitorKey_and_startedAt', ['visitorKey', 'startedAt'])
 		.index('by_linkId_and_startedAt', ['linkId', 'startedAt'])
 		.index('by_startedAt', ['startedAt']),
+
+	// Release 3b: consented sessions per Bangkok day and link, kept by startSession so the report never reads raw sessions.
+	marketingSessionDays: defineTable({
+		day: v.string(),
+		/** Absent = sessions that arrived without a link. */
+		linkId: v.optional(v.id('marketingLinks')),
+		campaignId: v.optional(v.id('marketingCampaigns')),
+		count: v.number()
+	}).index('by_day_and_linkId', ['day', 'linkId']),
+
+	// Release 3b: what a campaign cost, entered by staff in whole baht and spread evenly over its days.
+	marketingSpend: defineTable({
+		campaignId: v.id('marketingCampaigns'),
+		amount: v.number(),
+		from: v.string(),
+		to: v.string(),
+		note: v.optional(v.string()),
+		/** Soft delete: kept for history, left out of every report. */
+		deletedAt: v.optional(v.number()),
+		deletedByEmail: v.optional(v.string()),
+		createdAt: v.number(),
+		createdByEmail: v.string(),
+		updatedAt: v.number(),
+		updatedByEmail: v.string()
+	})
+		.index('by_campaignId_and_from', ['campaignId', 'from'])
+		.index('by_to', ['to']),
+
+	// Release 3b: coupon refusals per Bangkok day. No guest data and never the typed text (unknown codes have no couponId).
+	couponRefusalDays: defineTable({
+		day: v.string(),
+		couponId: v.optional(v.id('coupons')),
+		problem: couponRefusalProblemValidator,
+		surface: couponRefusalSurfaceValidator,
+		count: v.number()
+	})
+		.index('by_day_and_couponId_and_problem_and_surface', ['day', 'couponId', 'problem', 'surface'])
+		.index('by_couponId_and_day', ['couponId', 'day']),
 
 	coupons: defineTable({
 		code: v.string(),
