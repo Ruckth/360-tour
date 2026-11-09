@@ -1,78 +1,102 @@
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import { mutation, query } from './_generated/server';
-import type { Id } from './_generated/dataModel';
-import {
-	couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator,
-	type CouponRefusalSummary, type ReportData, type ReportSpend
-} from './lib/marketingReport';
+import type { Doc, Id } from './_generated/dataModel';
+import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from './lib/marketingReport';
+import { requireAdmin } from './lib/adminAuth';
+import { readMarketingReport, reportSpend } from './lib/marketingReportRead';
+import { appendRecordHistory } from './lib/recordHistory';
+import { normalizeCouponCode } from './lib/offers';
+import { enforceRateLimit } from './lib/rateLimit';
+import { resortLocalParts } from './lib/serviceSlots';
+import { readRangeWithinBudget } from './lib/readBudget';
 
-/**
- * Release 3b · Report. Contract stubs: the backend package fills in every handler.
- * See convex/lib/marketingReport.ts for the money rules and the shape the dashboard reads.
- */
-
-const NOT_BUILT = 'Release 3b: not implemented yet';
-
-/**
- * Admin. One read for the dashboard and its CSV. `from`/`to` are Bangkok days, inclusive, at most
- * MAX_REPORT_DAYS apart. Property filter and last/first touch are applied by the UI on this data.
- * Must stay inside the read budget (lib/readBudget.ts); set `truncated` instead of throwing.
- */
 export const getReport = query({
 	args: { from: v.string(), to: v.string(), basis: reportBasisValidator },
-	handler: async (_ctx, _args): Promise<ReportData> => {
-		throw new Error(NOT_BUILT);
+	handler: async (ctx, args): Promise<ReportData> => {
+		await requireAdmin(ctx);
+		return readMarketingReport(ctx, args);
 	}
 });
 
-/** Admin. A campaign's spend entries, newest first, deleted ones left out. */
 export const listSpend = query({
 	args: { campaignId: v.id('marketingCampaigns') },
-	handler: async (_ctx, _args): Promise<ReportSpend[]> => {
-		throw new Error(NOT_BUILT);
+	handler: async (ctx, args): Promise<ReportSpend[]> => {
+		await requireAdmin(ctx);
+		const rows = await readRangeWithinBudget(ctx, ctx.db.query('marketingSpend').withIndex('by_campaignId_and_from', q => q.eq('campaignId', args.campaignId)).order('desc'));
+		return rows.filter(r => r.deletedAt === undefined).sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime).map(reportSpend);
 	}
 });
 
-/** Admin. Adds or edits one entry (validateSpend), with history (entityType `marketingSpend`). */
+const snapshot = (row: Pick<Doc<'marketingSpend'>, 'amount' | 'from' | 'to' | 'note'>) => ({ amount: row.amount, from: row.from, to: row.to, note: row.note ?? null });
+
 export const saveSpend = mutation({
-	args: {
-		id: v.optional(v.id('marketingSpend')),
-		campaignId: v.id('marketingCampaigns'),
-		amount: v.number(),
-		from: v.string(),
-		to: v.string(),
-		note: v.optional(v.string())
-	},
-	handler: async (_ctx, _args): Promise<Id<'marketingSpend'>> => {
-		throw new Error(NOT_BUILT);
+	args: { id: v.optional(v.id('marketingSpend')), campaignId: v.id('marketingCampaigns'), amount: v.number(), from: v.string(), to: v.string(), note: v.optional(v.string()) },
+	handler: async (ctx, args): Promise<Id<'marketingSpend'>> => {
+		const admin = await requireAdmin(ctx);
+		const problem = validateSpend(args);
+		if (problem) throw new ConvexError(problem);
+		if (!await ctx.db.get(args.campaignId)) throw new ConvexError('Campaign not found.');
+		const before = args.id ? await ctx.db.get(args.id) : null;
+		if (args.id && (!before || before.deletedAt !== undefined)) throw new ConvexError('Spend entry not found.');
+		const now = Date.now();
+		const fields = { campaignId: args.campaignId, amount: args.amount, from: args.from, to: args.to, note: args.note?.trim() || undefined, updatedAt: now, updatedByEmail: admin.email };
+		const id = args.id ?? await ctx.db.insert('marketingSpend', { ...fields, createdAt: now, createdByEmail: admin.email });
+		if (args.id) await ctx.db.patch(id, fields);
+		await appendRecordHistory(ctx, { entityType: 'marketingSpend', entityId: id, actor: admin.email, kind: before ? 'updated' : 'created', before: before ? snapshot(before) : null, after: snapshot(fields) });
+		return id;
 	}
 });
 
-/** Admin. Soft delete with history; the entry leaves every report. */
 export const deleteSpend = mutation({
 	args: { id: v.id('marketingSpend') },
-	handler: async (_ctx, _args): Promise<null> => {
-		throw new Error(NOT_BUILT);
+	handler: async (ctx, args): Promise<null> => {
+		const admin = await requireAdmin(ctx);
+		const row = await ctx.db.get(args.id);
+		if (!row) throw new ConvexError('Spend entry not found.');
+		if (row.deletedAt !== undefined) return null;
+		await ctx.db.patch(row._id, { deletedAt: Date.now(), deletedByEmail: admin.email, updatedAt: Date.now(), updatedByEmail: admin.email });
+		await appendRecordHistory(ctx, { entityType: 'marketingSpend', entityId: row._id, actor: admin.email, kind: 'deleted', before: snapshot(row), after: null });
+		return null;
 	}
 });
 
-/** Admin. Refusals for one coupon over the last `days` Bangkok days (default 30, max 90). */
 export const couponRefusals = query({
 	args: { couponId: v.id('coupons'), days: v.optional(v.number()) },
-	handler: async (_ctx, _args): Promise<CouponRefusalSummary> => {
-		throw new Error(NOT_BUILT);
+	handler: async (ctx, args): Promise<CouponRefusalSummary> => {
+		await requireAdmin(ctx);
+		const days = args.days ?? 30;
+		if (!Number.isInteger(days) || days < 1 || days > 90) throw new ConvexError('Choose between 1 and 90 days.');
+		const today = resortLocalParts(Date.now()).date;
+		const since = new Date(Date.parse(`${today}T00:00:00Z`) - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+		const rows = await readRangeWithinBudget(ctx, ctx.db.query('couponRefusalDays').withIndex('by_couponId_and_day', q => q.eq('couponId', args.couponId).gte('day', since).lte('day', today)));
+		const problems = new Map<Doc<'couponRefusalDays'>['problem'], number>();
+		const surfaces = new Map<Doc<'couponRefusalDays'>['surface'], number>();
+		for (const row of rows) { problems.set(row.problem, (problems.get(row.problem) ?? 0) + row.count); surfaces.set(row.surface, (surfaces.get(row.surface) ?? 0) + row.count); }
+		return { since, total: rows.reduce((sum, row) => sum + row.count, 0), byProblem: [...problems].map(([problem, count]) => ({ problem, count })), bySurface: [...surfaces].map(([surface, count]) => ({ surface, count })) };
 	}
 });
 
-/**
- * Counts one refusal the user just saw. Never throws for bad input or the rate limit: it drops it.
- * `booking` is public (the guest funnel); `admin_booking` and `pos` require an admin.
- * The code is normalized and looked up; an unknown code is counted without a coupon and the
- * typed text is never stored. Counts are diagnostic: a browser reports them.
- */
+/** Public diagnostics: invalid inputs, unauthorised staff surfaces and excess traffic are dropped. */
 export const noteCouponRefusal = mutation({
 	args: { code: v.string(), problem: couponRefusalProblemValidator, surface: couponRefusalSurfaceValidator },
-	handler: async (_ctx, _args): Promise<null> => {
-		throw new Error(NOT_BUILT);
+	handler: async (ctx, args): Promise<null> => {
+		if (args.surface !== 'booking') {
+			try { await requireAdmin(ctx); } catch { return null; }
+		}
+		const code = normalizeCouponCode(args.code);
+		if (!code || code.length > 100) return null;
+		try { await enforceRateLimit(ctx, 'coupon-refusal:global', 5000, 60 * 60 * 1000); }
+		catch (error) {
+			if (error instanceof Error && error.message.startsWith('Too many requests.')) return null;
+			throw error;
+		}
+		const coupon = await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', code)).unique();
+		const couponId = coupon?._id;
+		const problem = coupon ? args.problem : 'not_found';
+		const day = resortLocalParts(Date.now()).date;
+		const row = await ctx.db.query('couponRefusalDays').withIndex('by_day_and_couponId_and_problem_and_surface', q => q.eq('day', day).eq('couponId', couponId).eq('problem', problem).eq('surface', args.surface)).unique();
+		if (row) await ctx.db.patch(row._id, { count: row.count + 1 });
+		else await ctx.db.insert('couponRefusalDays', { day, couponId, problem, surface: args.surface, count: 1 });
+		return null;
 	}
 });

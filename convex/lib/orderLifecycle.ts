@@ -74,3 +74,12 @@ export function otherFeeMessage(other: { order: Doc<'bills'> } | undefined) {
 		: `A fee for this appointment was already charged on ${orderTitle(other.order.orderNumber)}${other.order.receiptNumber !== undefined ? ` (receipt ${other.order.receiptNumber})` : ''}.`;
 }
 
+
+/** The receipt's current money and business date, shared with reporting. */
+export function orderPaymentRecord(order: Doc<'bills'>, payments: Pick<Doc<'billPayments'>, 'method' | 'amount' | 'received'>[]) {
+	return {
+		effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? null,
+		tenders: order.amendedTenders ?? payments.map(({ method, amount, received }) => ({ method, amount, ...(received !== undefined ? { received } : {}) })),
+		customer: order.amendedCustomer !== undefined ? order.amendedCustomer : (order.customerSnapshot ?? null)
+	};
+}

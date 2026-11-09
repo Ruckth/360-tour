@@ -11,6 +11,7 @@ import {
 	effectiveTime,
 	resolveNotify,
 	stayMoney,
+	unitemisedStayMoney,
 	writeBooking
 } from './bookingMoney';
 import { isSettledOrder } from './orderLinks';
@@ -310,7 +311,6 @@ export async function stayFinancials(ctx: ReadCtx, booking: Booking) {
 		const refunded = round2(refunds.filter((r) => r.billId === order._id).reduce((sum, r) => sum + r.amount, 0));
 		legacyOrders.push({ _id: order._id, title: orderTitle(order.orderNumber), receiptNumber: order.receiptNumber, state: order.status, charged, refundable: Math.max(round2(charged - refunded), 0) });
 	}
-	const itemised = round2(payments.filter((p) => p.status === 'recorded').reduce((sum, p) => sum + p.amount, 0));
 	const legacy = await legacyManualPayment(ctx, booking);
 	return {
 		revision: bookingRevision(booking),
@@ -319,7 +319,7 @@ export async function stayFinancials(ctx: ReadCtx, booking: Booking) {
 		refunds: refundRows,
 		legacyOrders,
 		/** Paid before payments were itemised (or by a path that recorded no row); shown, never invented as entries. */
-		unitemised: Math.max(round2(money.gross - itemised), 0),
+		unitemised: unitemisedStayMoney(money.gross, payments),
 		unitemisedRefundable: Math.max(round2(money.net - paymentRows.reduce((sum, p) => sum + p.refundable, 0) - legacyOrders.reduce((sum, o) => sum + o.refundable, 0)), 0),
 		legacyManual: 'amount' in legacy ? { cancellable: true as const, amount: legacy.amount } : { cancellable: false as const, reason: legacy.blocked },
 		hasStripePayment: Boolean(booking.stripePaymentIntentId),

@@ -1,3 +1,6 @@
+import { useCallback, useMemo } from "react";
+import { createCouponRefusalReporter } from "@/lib/booking/coupon-refusals";
+import type { CouponRefusalSurface } from "convex/lib/marketingReport";
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { OfferResult } from "convex/lib/offers";
@@ -391,4 +394,10 @@ export async function markChatSuggestionClicked(
     client.mutation(api.chatSuggestions.markClicked, args as never),
     "Marking suggested question clicked",
   );
+}
+
+/** Once per code/problem on this page. All diagnostic failures are swallowed. */
+export function useCouponRefusalReporter(client: ConvexReactClient | null, surface: CouponRefusalSurface) {
+  const report = useMemo(() => createCouponRefusalReporter(note => client ? client.mutation(api.marketingReport.noteCouponRefusal, note) : Promise.resolve()), [client]);
+  return useCallback((code: string, problem: unknown) => { if (client) report("page", code, problem, surface); }, [client, report, surface]);
 }

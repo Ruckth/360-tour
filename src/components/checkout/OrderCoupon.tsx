@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, TicketPercent, TriangleAlert, X } from "lucide-react";
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { CouponChip } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { couponInputMessage, parseCouponInput, posCouponMessage } from "convex/lib/posCoupons";
-import { useCheckoutBackend, type OrderView } from "./backend";
+import { useCheckoutBackend, useOrderCouponRefusal, type OrderView } from "./backend";
+import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { couponRefusal } from "./checkout-ui";
 import type { Run } from "./useOrderWrites";
 
@@ -44,6 +45,10 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   const [applying, setApplying] = useState(false);
   const orderId = view.order._id;
   const promotion = view.promotion;
+  const reportRefusal = useOrderCouponRefusal(orderId);
+  const problem = promotion?.problem?.code;
+  const couponCode = promotion?.code ?? "";
+  useEffect(() => { reportRefusal(couponCode, problem); }, [reportRefusal, couponCode, problem]);
 
   if (view.order.state !== "unpaid" || !view.lines.length) return null;
 
@@ -118,6 +123,8 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
       try {
         await actions.applyOrderCoupon(parsed.kind === "code" ? { orderId, code: parsed.code } : { orderId, slug: parsed.slug });
       } catch (err) {
+        const refused = couponRefusalDetails(err);
+        if (refused) reportRefusal(refused.couponCode ?? (parsed.kind === "code" ? parsed.code : parsed.slug), refused.problem);
         failure = couponRefusal(err)?.message ?? errorText(err, "The coupon didn't apply. Try again.");
       }
     });
