@@ -272,8 +272,9 @@ describe('spend and diagnostic rollups', () => {
 		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'admin_booking', problem: 'expired' });
 		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'pos' });
 		await s.t.mutation(api.marketingReport.noteCouponRefusal, { ...note, code: 'private unknown text' });
+		await s.t.mutation(api.marketingReport.noteCouponRefusal, { ...note, problem: 'coupon_worse' });
 		const summary = await s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId });
-		expect(summary).toMatchObject({ since: '2026-10-11', total: 4, byProblem: expect.arrayContaining([{ problem: 'sold_out', count: 3 }, { problem: 'expired', count: 1 }]), bySurface: expect.arrayContaining([{ surface: 'booking', count: 2 }, { surface: 'admin_booking', count: 1 }, { surface: 'pos', count: 1 }]) });
+		expect(summary).toMatchObject({ since: '2026-10-11', total: 4, byProblem: expect.arrayContaining([{ problem: 'sold_out', count: 3 }, { problem: 'expired', count: 1 }, { problem: 'coupon_worse', count: 1 }]), bySurface: expect.arrayContaining([{ surface: 'booking', count: 2 }, { surface: 'admin_booking', count: 1 }, { surface: 'pos', count: 1 }]) });
 		const unknown = await s.t.run(ctx => ctx.db.query('couponRefusalDays').withIndex('by_couponId_and_day', q => q.eq('couponId', undefined)).take(10));
 		expect(unknown).toMatchObject([{ problem: 'not_found', count: 1 }]);
 		expect(JSON.stringify(unknown)).not.toContain('private');

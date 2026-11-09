@@ -71,8 +71,15 @@ export const couponRefusals = query({
 		const rows = await readRangeWithinBudget(ctx, ctx.db.query('couponRefusalDays').withIndex('by_couponId_and_day', q => q.eq('couponId', args.couponId).gte('day', since).lte('day', today)));
 		const problems = new Map<Doc<'couponRefusalDays'>['problem'], number>();
 		const surfaces = new Map<Doc<'couponRefusalDays'>['surface'], number>();
-		for (const row of rows) { problems.set(row.problem, (problems.get(row.problem) ?? 0) + row.count); surfaces.set(row.surface, (surfaces.get(row.surface) ?? 0) + row.count); }
-		return { since, total: rows.reduce((sum, row) => sum + row.count, 0), byProblem: [...problems].map(([problem, count]) => ({ problem, count })), bySurface: [...surfaces].map(([surface, count]) => ({ surface, count })) };
+		let total = 0;
+		for (const row of rows) {
+			problems.set(row.problem, (problems.get(row.problem) ?? 0) + row.count);
+			// "Direct offer was better" is not a refusal: listed by problem, left out of the totals.
+			if (row.problem === 'coupon_worse') continue;
+			total += row.count;
+			surfaces.set(row.surface, (surfaces.get(row.surface) ?? 0) + row.count);
+		}
+		return { since, total, byProblem: [...problems].map(([problem, count]) => ({ problem, count })), bySurface: [...surfaces].map(([surface, count]) => ({ surface, count })) };
 	}
 });
 
