@@ -46,7 +46,7 @@ import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
 import { MAX_STAY_ROWS, orderStayPayment, stayPaymentReversalPatch } from './lib/stayCorrections';
 import { MAX_LINES, orderLines } from './lib/orderLines';
-import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from './lib/orderLifecycle';
+import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, orderPaymentRecord, type FeeKind } from './lib/orderLifecycle';
 
 /**
  * Staff POS orders. An order is the persistent commercial record: a permanent order number,
@@ -144,8 +144,8 @@ async function editableLine(ctx: MutationCtx, lineId: Id<'billLines'>, actor: st
 	return { line, order };
 }
 
-function orderCouponUnavailable(problem: PosCouponProblem): never {
-	throw new ConvexError({ code: 'coupon_unavailable', message: posCouponMessage(problem), problem });
+function orderCouponUnavailable(problem: PosCouponProblem, couponCode?: string): never {
+	throw new ConvexError({ code: 'coupon_unavailable', message: posCouponMessage(problem), problem, ...(couponCode ? { couponCode } : {}) });
 }
 
 /**
@@ -636,10 +636,8 @@ export const getOrder = query({
 			 * `correctionRevision` is what a correction must send back.
 			 */
 			paymentRecord: {
-				effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? null,
-				tenders: order.amendedTenders ?? payments.map(cleanTender),
+				...orderPaymentRecord(order, payments),
 				tendersAmended: order.amendedTenders !== undefined,
-				customer: order.amendedCustomer !== undefined ? order.amendedCustomer : (order.customerSnapshot ?? null),
 				customerAmended: order.amendedCustomer !== undefined,
 				correctionRevision: order.correctionRevision ?? 0,
 				voidUnreceived: order.voidUnreceived ?? false
@@ -1192,14 +1190,14 @@ export const applyOrderCoupon = mutation({
 			const link = await ctx.db.query('marketingLinks').withIndex('by_slug', q => q.eq('slug', args.slug!)).unique();
 			viaLinkId = link?._id;
 			coupon = link?.couponId ? await ctx.db.get(link.couponId) : null;
-			if (link?.status !== 'active' || coupon?.status !== 'active') orderCouponUnavailable({ code: 'link_without_offer' });
+			if (link?.status !== 'active' || coupon?.status !== 'active') orderCouponUnavailable({ code: 'link_without_offer' }, coupon?.code);
 		} else {
 			coupon = await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', normalizeCouponCode(args.code!))).unique();
 		}
 		if (!coupon) orderCouponUnavailable({ code: 'not_found' });
 		const lines = await orderLines(ctx, order._id);
 		const result = await quoteOrderCoupon(ctx, lines, coupon._id, coupon.currentVersion);
-		if (!result.ok) orderCouponUnavailable(result.problem);
+		if (!result.ok) orderCouponUnavailable(result.problem, coupon.code);
 		await ctx.db.patch(order._id, { promotion: { couponId: coupon._id, couponVersion: coupon.currentVersion, code: coupon.code, discount: result.discount, appliedAt: Date.now(), appliedBy: admin.email, ...(viaLinkId ? { viaLinkId } : {}) } });
 		await writeCouponShares(ctx, lines, result);
 		await refreshOrder(ctx, order._id);

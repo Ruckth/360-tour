@@ -1,5 +1,7 @@
 "use client";
 
+import { useCouponRefusalReporter } from "@/lib/react/convex-api";
+import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -57,6 +59,7 @@ export function NewBookingDialog({
   onCreated: (id: Id<"bookings">) => void;
   onBlockInstead: (target: { propertyId: string; start: string; end: string }) => void;
 }) {
+  const reportRefusal = useCouponRefusalReporter(useConvex(), "admin_booking");
   const createBooking = useMutation(api.adminBookings.createBooking);
   const [creationKey] = useState(() => newAttemptKey("booking"));
   const pending = useRef(false);
@@ -120,6 +123,9 @@ export function NewBookingDialog({
   const couponToSend = couponLive && (coupon.status === "error" || (coupon.status === "ready" && coupon.result.couponStatus === "applied")) ? couponTyped : undefined;
   const couponProblem = couponInvalid ? "Clear the coupon code or use one that applies to this stay." : "";
 
+  const previewProblem = couponLive && coupon.status === "ready" ? coupon.result.problem?.code ?? (coupon.result.couponStatus === "coupon_worse" ? "coupon_worse" : undefined) : undefined;
+  useEffect(() => { reportRefusal(couponTyped, previewProblem); }, [couponTyped, previewProblem, reportRefusal]);
+
   // Returning guests: suggest previous bookings matching the phone or email typed so far.
   const phone = useDebounced(guest.phone.trim());
   const email = useDebounced(guest.email.trim());
@@ -162,6 +168,7 @@ export function NewBookingDialog({
       // Everything entered stays, so Create booking can simply be pressed again.
       const refused = couponToSend ? couponUnavailableError(err) : null;
       if (couponToSend && refused) {
+        reportRefusal(couponToSend, couponRefusalDetails(err)?.problem);
         setCouponError(
           couponCoversWholeStay(refused)
             ? `${couponToSend} covers the whole stay, so it can’t be used on a booking. Clear it, or set a custom price.`

@@ -173,3 +173,9 @@ export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: Bo
 	if (updated.promotion && !options.deferCouponSync) await syncCouponRedemption(ctx, updated);
 	return updated;
 }
+
+/** Legacy money without a payment row, shared by the stay ledger and marketing report. */
+export function unitemisedStayMoney(gross: number, payments: Pick<Doc<'bookingPayments'>, 'status' | 'amount'>[]) {
+	const itemised = round2(payments.filter(p => p.status === 'recorded').reduce((sum, p) => sum + p.amount, 0));
+	return Math.max(round2(gross - itemised), 0);
+}

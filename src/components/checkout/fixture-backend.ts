@@ -110,8 +110,8 @@ function createCoupons(): FixtureCoupon[] {
 const COUPON_LINKS: Record<string, string | null> = { q1: "DCNT-SPA-500", l: "DCNT-L-10", f1: "DCNT-F1-20", f: null, m: null };
 /** Today in Asia/Bangkok, as the offer engine wants it. */
 const businessDate = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(Date.now());
-function couponRefused(problem: PosCouponProblem): never {
-  throw new ConvexError({ code: "coupon_unavailable", message: posCouponMessage(problem), problem });
+function couponRefused(problem: PosCouponProblem, couponCode?: string): never {
+  throw new ConvexError({ code: "coupon_unavailable", message: posCouponMessage(problem), problem, ...(couponCode ? { couponCode } : {}) });
 }
 
 const ANNA: Guest = { name: "Anna Schmidt", phone: "+49 151 2345 6789", email: "anna@example.com" };
@@ -551,6 +551,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       refresh(order._id);
       return { result: "removed" as const };
     }),
+    noteCouponRefusal: async () => null,
     applyOrderCoupon: ({ orderId, code, slug }) => later(() => {
       const order = editableOrder(orderId);
       let wanted = code ? normalizeCouponCode(code) : "";
@@ -558,9 +559,9 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (!wanted) throw new Error("Enter a coupon code.");
       const coupon = state.coupons.find((c) => c.rules.code === wanted) ?? couponRefused({ code: "not_found" });
       // As the server: a link only offers a live coupon.
-      if (slug && coupon.rules.status !== "active") couponRefused({ code: "link_without_offer" });
+      if (slug && coupon.rules.status !== "active") couponRefused({ code: "link_without_offer" }, coupon.rules.code);
       const result = quoteCoupon(order._id, coupon);
-      if (!result.ok) couponRefused(result.problem);
+      if (!result.ok) couponRefused(result.problem, coupon.rules.code);
       const before = order.promotion ? { code: order.promotion.code } : undefined;
       patchOrder(order._id, { promotion: { couponId: coupon.id, couponVersion: coupon.rules.version, code: coupon.rules.code, discount: 0, appliedAt: Date.now(), appliedBy: ACTOR } });
       refresh(order._id);

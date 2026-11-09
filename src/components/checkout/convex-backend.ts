@@ -39,6 +39,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useAttachLookupStatus: () => useQuery(api.pos.attachLookupStatus, {}),
   useBusinessName: () => useQuery(api.settings.publicProfile, {})?.businessName,
   useActions: () => {
+    const noteCouponRefusal = useMutation(api.marketingReport.noteCouponRefusal);
     const discardOrder = useMutation(api.pos.discardOrder);
     const restoreOrder = useMutation(api.pos.restoreOrder);
     const addAppointmentFee = useMutation(api.pos.addAppointmentFee);
@@ -67,11 +68,11 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const mergeCustomers = useMutation(api.customers.mergeCustomers);
     return useMemo(
       () => ({
-        discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine,
+        noteCouponRefusal, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine,
         linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
         applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon,
       }),
-      [applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers],
+      [noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers],
     );
   },
 };

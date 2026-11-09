@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { errorText } from "@/lib/staff-bookings";
 import { paymentDateInput, paymentDateValue } from "./payment-time";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ import {
 import {
   newAttemptKey,
   useCheckoutBackend,
+  useOrderCouponRefusal,
   type CheckoutActions,
   type OrderId,
   type OrderView,
@@ -57,6 +59,7 @@ export function PayPanel({
   onPaid: (orderId: OrderId) => void;
 }) {
   const actions = useCheckoutBackend().useActions();
+  const reportRefusal = useOrderCouponRefusal(view.order._id);
   const [due] = useState(view.totals.due);
   const [attemptKey] = useState(newAttemptKey);
   // The order as it was when this panel opened; a change made since (even at the same total, or only
@@ -135,6 +138,8 @@ export function PayPanel({
     } catch (err) {
       lock.current = false;
       setSubmitting(false);
+      const detail = couponRefusalDetails(err);
+      if (detail) reportRefusal(view.promotion?.code ?? "", detail.problem);
       const refusal = couponRefusal(err);
       if (refusal) setCouponProblem(refusal.message);
       else setError(errorText(err, "The payment didn't go through. Try again."));

@@ -19,6 +19,7 @@ const preview = vi.hoisted(() => vi.fn());
 const client = vi.hoisted(() => ({
   watchQuery: () => ({ localQueryResult: () => [], onUpdate: () => () => undefined }),
   query: (ref: unknown, args: unknown) => preview(args),
+  mutation: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("convex/react", () => ({
   useMutation: (ref: FunctionReference<"mutation">) => mutations[getFunctionName(ref).split(":").pop() as keyof typeof mutations],
@@ -65,6 +66,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
+  client.mutation.mockReset().mockResolvedValue(null);
   mutations.createBooking.mockReset().mockResolvedValue("b1");
   queries.findGuests.mockReset().mockReturnValue([]);
   queries.getCoupon.mockReset();
@@ -107,6 +109,7 @@ describe("new booking with a coupon code", () => {
     await type("nb-coupon", "DCNT-F1-20");
     await settle();
     expect(text()).toContain("Direct offer wins");
+    expect(client.mutation).toHaveBeenCalledWith(expect.anything(), { code: "DCNT-F1-20", problem: "coupon_worse", surface: "admin_booking" });
     await submit();
     expect(mutations.createBooking.mock.calls[0][0]).not.toHaveProperty("couponCode");
   });
@@ -117,6 +120,7 @@ describe("new booking with a coupon code", () => {
     await type("nb-coupon", "DCNT-F1-20");
     await settle();
     expect(text()).toContain("Minimum nights");
+    expect(client.mutation).toHaveBeenCalledWith(expect.anything(), { code: "DCNT-F1-20", problem: "min_nights", surface: "admin_booking" });
     expect(text()).toContain("Clear the coupon code or use one that applies to this stay.");
     expect(button("Create booking")?.disabled).toBe(true);
     await type("nb-coupon", "");
@@ -130,6 +134,7 @@ describe("new booking with a coupon code", () => {
     await type("nb-coupon", "DCNT-F1-20");
     await settle();
     await submit();
+    expect(client.mutation).toHaveBeenCalledWith(expect.anything(), { code: "DCNT-F1-20", problem: "sold_out", surface: "admin_booking" });
     const alert = document.querySelector("#nb-coupon-status [role='alert']");
     expect(alert?.textContent).toBe("This offer has been fully used.");
     expect((document.getElementById("nb-name") as HTMLInputElement).value).toBe("Maya Chen");

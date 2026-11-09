@@ -146,6 +146,7 @@ describe("adding a coupon at checkout", () => {
 
   it("explains a code that can't be used on this order", async () => {
     const backend = createFixtureBackend();
+    const report = vi.spyOn(backend.useActions(), "noteCouponRefusal");
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     await click(button(/^Add coupon/));
@@ -161,6 +162,10 @@ describe("adding a coupon at checkout", () => {
       expect(panel().querySelector('form[aria-label="Add coupon"]')?.textContent, code).toContain(message);
     }
     expect(due()).toBe("฿2,250");
+    expect(report).toHaveBeenCalledTimes(cases.length);
+    expect(report).toHaveBeenCalledWith({ code: "DCNT-YOGA-200", problem: "sold_out", surface: "pos" });
+    await enter("DCNT-YOGA-200");
+    expect(report).toHaveBeenCalledTimes(cases.length);
   });
 
   it("waits for order edits still saving before the field can be used", async () => {
@@ -250,6 +255,7 @@ describe("paying with a coupon", () => {
 
   it("refuses a coupon sold out at payment, records no payment, and offers a re-check or removal", async () => {
     const fixture = createFixtureBackend();
+    const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal").mockRejectedValue(new Error("diagnostics offline"));
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L2-300" }));
     fixture.setCouponSnapshot("DCNT-L2-300", { used: 50 });
@@ -267,6 +273,7 @@ describe("paying with a coupon", () => {
     // Back on the order: the re-check stored why the coupon no longer fits, and payment waits.
     const problem = panel().querySelector('[data-testid="order-coupon-problem"]')!;
     expect(problem.textContent).toContain("This coupon has no uses left.");
+    expect(report).toHaveBeenCalledExactlyOnceWith({ code: "DCNT-L2-300", problem: "sold_out", surface: "pos" });
     expect(button("Card")?.disabled).toBe(true);
     await click(button("Remove", problem));
     await settle();
@@ -277,12 +284,14 @@ describe("paying with a coupon", () => {
 
   it("refuses a coupon whose saving changed and re-checks it at the new saving", async () => {
     const fixture = createFixtureBackend();
+    const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal");
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L-10" }));
     fixture.setCouponSnapshot("DCNT-L-10", { maxSaving: 100 });
     await payByCard(fixture, orderId);
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
     expect(alert.textContent).toContain("The coupon now saves ฿100.");
+    expect(report).toHaveBeenCalledExactlyOnceWith({ code: "DCNT-L-10", problem: "coupon_changed", surface: "pos" });
     await click(button(/Check coupon again/, alert));
     await settle();
     expect(panel().querySelector('[data-testid="order-coupon"]')?.textContent).toContain("Saves ฿100");

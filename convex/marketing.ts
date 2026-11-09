@@ -515,6 +515,11 @@ export const startSession = mutation({
 			...(referrerHost ? { referrerHost } : {}),
 			...(link && link.status !== 'draft' ? { linkId: link._id, campaignId: link.campaignId } : {})
 		});
+		const day = resortTodayIso();
+		const linkId = link && link.status !== 'draft' ? link._id : undefined;
+		const rollup = await ctx.db.query('marketingSessionDays').withIndex('by_day_and_linkId', q => q.eq('day', day).eq('linkId', linkId)).unique();
+		if (rollup) await ctx.db.patch(rollup._id, { count: rollup.count + 1 });
+		else await ctx.db.insert('marketingSessionDays', { day, linkId, campaignId: linkId ? link!.campaignId : undefined, count: 1 });
 		return { visitorKey, sessionId };
 	}
 });
