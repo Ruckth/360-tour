@@ -186,7 +186,10 @@ export type CouponRefusalSurface = Infer<typeof couponRefusalSurfaceValidator>;
 export type CouponRefusalSummary = {
 	/** First day counted (YYYY-MM-DD, Bangkok). */
 	since: string;
+	/** Refusals only: `coupon_worse` (valid, but the direct offer was better) is not a refusal and is left out. */
 	total: number;
+	/** Every problem with a count, including `coupon_worse`, which the UI shows apart as "not used". */
 	byProblem: { problem: CouponRefusalProblem; count: number }[];
+	/** Refusals only, like `total`. */
 	bySurface: { surface: CouponRefusalSurface; count: number }[];
 };
