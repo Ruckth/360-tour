@@ -8,12 +8,14 @@ import { useMemo, useSyncExternalStore } from "react";
 import { useNow } from "@/lib/staff-bookings";
 import { adminMarketingPath } from "../admin-routes";
 import { HistoryDisclosure, RecordHistoryPanel } from "../RecordHistoryPanel";
+import { CampaignSpendSection } from "./CampaignSpendSection";
 import { CampaignsView } from "./CampaignsView";
 import { CouponEditor } from "./CouponEditor";
+import { CouponRefusalsCard } from "./CouponRefusalsCard";
 import { CouponsView } from "./CouponsView";
 import { LinksView } from "./LinksView";
 import { bangkokToday } from "./marketing-format";
-import type { MarketingActions } from "./types";
+import type { CampaignRow, MarketingActions } from "./types";
 
 // The admin pages: Convex queries and mutations wired into the prop-driven views.
 
@@ -30,6 +32,32 @@ function History({ entityType, entityId, title }: { entityType: string; entityId
 const campaignHistory = (id: string) => <History entityType="marketingCampaign" entityId={id} title="Campaign history" />;
 const linkHistory = (id: string) => <History entityType="marketingLink" entityId={id} title="Link history" />;
 const couponHistory = (id: string) => <History entityType="coupon" entityId={id} title="Coupon history" />;
+
+function CampaignSpend({ campaign }: { campaign: CampaignRow }) {
+  const spend = useQuery(api.marketingReport.listSpend, { campaignId: campaign._id });
+  const saveSpend = useMutation(api.marketingReport.saveSpend);
+  const deleteSpend = useMutation(api.marketingReport.deleteSpend);
+  return (
+    <CampaignSpendSection
+      campaign={campaign}
+      spend={spend}
+      onSave={async (draft) => {
+        await saveSpend(draft);
+      }}
+      onDelete={async (id) => {
+        await deleteSpend({ id });
+      }}
+    />
+  );
+}
+const campaignSpend = (campaign: CampaignRow) => <CampaignSpend campaign={campaign} />;
+
+const REFUSAL_DAYS = 30;
+function CouponRefusals({ couponId }: { couponId: Id<"coupons"> }) {
+  const summary = useQuery(api.marketingReport.couponRefusals, { couponId, days: REFUSAL_DAYS });
+  return <CouponRefusalsCard summary={summary} days={REFUSAL_DAYS} />;
+}
+const couponRefusals = (couponId: Id<"coupons">) => <CouponRefusals couponId={couponId} />;
 
 function useMarketingActions(): MarketingActions {
   const convex = useConvex();
@@ -107,6 +135,7 @@ export function MarketingCampaignsScreen() {
       couponHref={couponPath}
       actions={useMarketingActions()}
       history={campaignHistory}
+      spend={campaignSpend}
     />
   );
 }
@@ -148,6 +177,7 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
       actions={useMarketingActions()}
       onCreated={(id) => router.replace(couponPath(id))}
       history={couponHistory}
+      refusals={couponRefusals}
     />
   );
 }
