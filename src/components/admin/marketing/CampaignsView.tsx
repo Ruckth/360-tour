@@ -57,6 +57,8 @@ type CampaignsViewProps = {
   actions: Pick<MarketingActions, "saveCampaign" | "setCampaignStatus">;
   /** Renders the change history of a saved record (MarketingScreens passes RecordHistoryPanel). */
   history?: (campaignId: Id<"marketingCampaigns">) => ReactNode;
+  /** Renders a saved campaign's Spend section (MarketingScreens passes CampaignSpendSection). */
+  spend?: (campaign: CampaignRow) => ReactNode;
 };
 
 /** The status changes a campaign can make from where it is. */
@@ -93,7 +95,7 @@ const STATUS_COPY: Record<CampaignStatus, (name: string) => { title: string; des
   draft: (name) => ({ title: name, description: "", done: name }),
 };
 
-export function CampaignsView({ campaigns, links, coupons, today, linksHref, couponHref, actions, history }: CampaignsViewProps) {
+export function CampaignsView({ campaigns, links, coupons, today, linksHref, couponHref, actions, history, spend }: CampaignsViewProps) {
   const { notice, show, clear } = useNotice();
   const { pending, run } = useConfirmedChange<Id<"marketingCampaigns">>(show);
   const sheet = useEditorSheet<{ campaign?: CampaignRow; preset?: (typeof PRESETS)[number] }>();
@@ -353,6 +355,7 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
             pending={pending !== null}
             actions={actions}
             history={history}
+            spend={spend}
             onStatus={changeStatus}
             onDone={(message) => {
               sheet.done();
@@ -381,6 +384,7 @@ function CampaignEditor({
   pending,
   actions,
   history,
+  spend,
   onStatus,
   onDone,
   onCancel,
@@ -397,6 +401,7 @@ function CampaignEditor({
   pending: boolean;
   actions: CampaignsViewProps["actions"];
   history?: CampaignsViewProps["history"];
+  spend?: CampaignsViewProps["spend"];
   onStatus: (campaign: CampaignRow, status: CampaignStatus, destructive?: boolean) => Promise<void>;
   onDone: (message: string) => void;
   onCancel: () => void;
@@ -554,6 +559,7 @@ function CampaignEditor({
 
       {campaign ? (
         <>
+          {spend?.(campaign)}
           <section aria-labelledby={`${id}-links`} className="grid gap-2">
             <div className="flex items-center gap-2">
               <h3 id={`${id}-links`} className="flex-1 text-base font-semibold text-foreground">

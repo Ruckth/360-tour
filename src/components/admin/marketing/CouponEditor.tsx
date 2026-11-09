@@ -53,9 +53,11 @@ type CouponEditorProps = {
   onCreated: (couponId: Id<"coupons">) => void;
   /** Renders the change history of a saved coupon (MarketingScreens passes RecordHistoryPanel). */
   history?: (couponId: Id<"coupons">) => ReactNode;
+  /** Renders a saved coupon's refusal counts (MarketingScreens passes CouponRefusalsCard). */
+  refusals?: (couponId: Id<"coupons">) => ReactNode;
 };
 
-export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, actions, onCreated, history }: CouponEditorProps) {
+export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, actions, onCreated, history, refusals }: CouponEditorProps) {
   if (!isNew && detail === undefined) return <EditorSkeleton />;
   if (!isNew && detail === null) {
     return (
@@ -83,6 +85,7 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
       actions={actions}
       onCreated={onCreated}
       history={history}
+      refusals={refusals}
     />
   );
 }
@@ -146,6 +149,7 @@ function CouponBuilder({
   actions,
   onCreated,
   history,
+  refusals,
 }: {
   detail?: CouponDetail;
   coupons: CouponRow[];
@@ -156,6 +160,7 @@ function CouponBuilder({
   actions: CouponEditorProps["actions"];
   onCreated: CouponEditorProps["onCreated"];
   history?: CouponEditorProps["history"];
+  refusals?: CouponEditorProps["refusals"];
 }) {
   const id = useId();
   const router = useRouter();
@@ -664,6 +669,8 @@ function CouponBuilder({
           ) : null}
 
           {detail ? <CouponLedger code={detail.code} redemptions={detail.redemptions} /> : null}
+
+          {detail ? refusals?.(detail._id) : null}
 
           <TestQuotePanel
             code={detail?.code}
