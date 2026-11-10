@@ -110,6 +110,25 @@ afterEach(async () => {
 });
 
 describe("a service row's optional date and time at checkout", () => {
+  it("restores the saved time when saving or clearing fails", async () => {
+    const { backend, actions, updateLine } = recordingBackend();
+    await show(backend, await orderWithMassage(actions));
+    await click(row("Thai massage 60").querySelector("button"));
+    updateLine.mockRejectedValueOnce(new Error("Connection lost"));
+    type(timeInput(), "14:30");
+    await settle();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
+    expect(timeInput().value).toBe("");
+    type(timeInput(), "14:30");
+    await settle();
+    expect(timeInput().value).toBe("14:30");
+    updateLine.mockRejectedValueOnce(new Error("Clear failed"));
+    await click(buttonNamed("Clear service time"));
+    await settle();
+    expect(timeInput().value).toBe("14:30");
+    expect(subtitle("Thai massage 60")).toContain("14:30");
+  });
+
   it("starts blank with two plain optional fields, and sets and clears each part on its own", async () => {
     const { backend, actions, updateLine } = recordingBackend();
     await show(backend, await orderWithMassage(actions));

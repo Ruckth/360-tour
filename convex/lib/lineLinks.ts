@@ -28,16 +28,22 @@ export async function orderLineLinks(ctx: ReadCtx, billId: Id<'bills'>, status?:
 }
 
 export function activeLineLink(ctx: ReadCtx, lineId: Id<'billLines'>) {
-	return ctx.db.query('billLineLinks').withIndex('by_lineId_and_status', (q) => q.eq('lineId', lineId).eq('status', 'active')).first();
+	return ctx.db.query('billLineLinks').withIndex('by_lineId_and_status', (q) => q.eq('lineId', lineId).eq('status', 'active')).unique();
 }
 
-/** Links to this source, newest first; `status` narrows to active or unlinked ones. */
-export function sourceLineLinks(ctx: ReadCtx, source: Source, status?: Doc<'billLineLinks'>['status'], limit = MAX_LINKS) {
+function sourceLinksQuery(ctx: ReadCtx, source: Source, status: Doc<'billLineLinks'>['status']) {
 	return 'bookingId' in source
-		? ctx.db.query('billLineLinks').withIndex('by_bookingId_and_status', (q) => (status ? q.eq('bookingId', source.bookingId).eq('status', status) : q.eq('bookingId', source.bookingId))).order('desc').take(limit)
-		: ctx.db.query('billLineLinks').withIndex('by_appointmentId_and_status', (q) => (status ? q.eq('appointmentId', source.appointmentId).eq('status', status) : q.eq('appointmentId', source.appointmentId))).order('desc').take(limit);
+		? ctx.db.query('billLineLinks').withIndex('by_bookingId_and_status', (q) => q.eq('bookingId', source.bookingId).eq('status', status))
+		: ctx.db.query('billLineLinks').withIndex('by_appointmentId_and_status', (q) => q.eq('appointmentId', source.appointmentId).eq('status', status));
 }
 
-export async function activeSourceLink(ctx: ReadCtx, source: Source) {
-	return (await sourceLineLinks(ctx, source, 'active', 1))[0] ?? null;
+/** Active ownership plus recent undone history, or a bounded page of the requested status. */
+export async function sourceLineLinks(ctx: ReadCtx, source: Source, status?: Doc<'billLineLinks'>['status'], limit = MAX_LINKS): Promise<Doc<'billLineLinks'>[]> {
+	if (status) return sourceLinksQuery(ctx, source, status).order('desc').take(limit);
+	const [active, history] = await Promise.all([activeSourceLink(ctx, source), sourceLinksQuery(ctx, source, 'unlinked').order('desc').take(limit)]);
+	return active ? [active, ...history] : history;
+}
+
+export function activeSourceLink(ctx: ReadCtx, source: Source) {
+	return sourceLinksQuery(ctx, source, 'active').unique();
 }

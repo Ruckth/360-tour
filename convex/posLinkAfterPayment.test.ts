@@ -344,6 +344,27 @@ describe('linking a paid room row to a stay', () => {
 });
 
 describe('order corrections understand links', () => {
+	it('keeps the current source receipt discoverable beyond a page of undone links', async () => {
+		const { t, admin, massage, appointment, paidRow, link } = await setup();
+		const appointmentId = await appointment();
+		const previous = await paidRow({ kind: 'service', serviceId: massage });
+		const current = await paidRow({ kind: 'service', serviceId: massage });
+		await t.run(async (ctx) => {
+			await ctx.db.patch(current.orderId, { updatedAt: 1 });
+			for (let n = 0; n < 21; n++) {
+				await ctx.db.insert('billLineLinks', {
+					billId: previous.orderId, lineId: previous.lineId, kind: 'appointment', appointmentId, amount: 1200, currency: 'THB',
+					status: 'unlinked', effectiveAt: 1, reason: 'Previous link', linkedAt: n, linkedBy: 'desk@example.com', sequence: n + 1,
+					unlinkedAt: n + 1, unlinkedBy: 'desk@example.com', unlinkReason: 'Previous unlink'
+				});
+			}
+		});
+		await link(current.orderId, current.lineId, { appointmentId });
+		const sheet = await admin.query(api.pos.ordersForBooking, { appointmentId });
+		expect(sheet?.orders[0]._id).toBe(current.orderId);
+		expect(sheet?.orders.map((row) => row._id)).toContain(previous.orderId);
+	});
+
 	it('keeps active links visible when the order has more than a page of undone links', async () => {
 		const { t, massage, appointment, paidRow, link, unlink, order } = await setup();
 		const appointmentId = await appointment();

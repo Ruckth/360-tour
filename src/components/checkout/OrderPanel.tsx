@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -381,9 +381,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * A service row's optional time. A complete time is saved as it is entered; emptying the field (or
  * Clear) saves no time once the field is left, so a half-typed time never clears a saved one.
  */
-function ServiceTimeInput({ value, onCommit }: { value: string; onCommit: (time: string) => unknown }) {
+function ServiceTimeInput({ value, onCommit }: { value: string; onCommit: (time: string) => Promise<boolean> }) {
   const [text, setText] = useState(value);
   const [saved, setSaved] = useState(value);
+  const persisted = useRef(value);
+  const attempt = useRef(0);
+  useEffect(() => { persisted.current = value; }, [value]);
+  async function commit(time: string) {
+    const current = ++attempt.current;
+    if (!await onCommit(time) && current === attempt.current) setText(persisted.current);
+  }
   // Follow a change saved elsewhere (another device, or this one) without remounting while typing.
   if (saved !== value) {
     setSaved(value);
@@ -398,12 +405,12 @@ function ServiceTimeInput({ value, onCommit }: { value: string; onCommit: (time:
         value={text}
         onChange={(e) => {
           setText(e.target.value);
-          if (isTimeValue(e.target.value) && e.target.value !== value) onCommit(e.target.value);
+          if (isTimeValue(e.target.value) && e.target.value !== value) void commit(e.target.value);
         }}
-        onBlur={(e) => { if (!e.target.value && value && !e.target.validity.badInput) onCommit(""); }}
+        onBlur={(e) => { if (!e.target.value && value && !e.target.validity.badInput) void commit(""); }}
       />
       {value ? (
-        <Button size="icon" variant="ghost" className="size-9" aria-label="Clear service time" onClick={() => { setText(""); onCommit(""); }}>
+        <Button size="icon" variant="ghost" className="size-9" aria-label="Clear service time" onClick={() => { setText(""); void commit(""); }}>
           <X aria-hidden className="size-4" />
         </Button>
       ) : null}

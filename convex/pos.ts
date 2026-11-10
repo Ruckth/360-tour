@@ -2281,7 +2281,7 @@ export const linkPaidLine = mutation({
 			billId: order._id, sequence, kind: 'linked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
 			lineId: line._id, linkId, amount, ...('appointmentId' in source ? { appointmentId: source.appointmentId } : { bookingId: source.bookingId })
 		});
-		await ctx.db.patch(order._id, { correctionRevision: sequence });
+		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
 		return { sequence, linkId, replayed: false };
 	}
 });
@@ -2360,7 +2360,7 @@ export const unlinkPaidLine = mutation({
 			billId: order._id, sequence, kind: 'unlinked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
 			lineId: link.lineId, linkId: link._id, amount: link.amount, ...(link.appointmentId ? { appointmentId: link.appointmentId } : { bookingId: link.bookingId })
 		});
-		await ctx.db.patch(order._id, { correctionRevision: sequence });
+		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
 		return { sequence, replayed: false };
 	}
 });
