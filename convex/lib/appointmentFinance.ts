@@ -14,7 +14,7 @@ const LIMIT = 200;
 export function appointmentMoney(a: Appointment) {
   const gross = a.amountPaid ?? (a.paymentStatus === 'unpaid' ? 0 : a.price);
   const refunded = a.amountRefunded ?? (a.paymentStatus === 'refunded' ? gross : 0);
-  return { gross, refunded, net: round2(gross - refunded), owed: a.paymentStatus === 'unpaid' ? a.price : 0 };
+  return { gross, refunded, net: round2(gross - refunded), owed: a.paymentStatus === 'unpaid' && a.status !== 'cancelled' && a.status !== 'no_show' ? a.price : 0 };
 }
 
 async function rows(ctx: ReadCtx, a: Appointment) {
