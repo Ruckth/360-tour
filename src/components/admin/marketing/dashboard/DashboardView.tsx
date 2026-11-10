@@ -220,7 +220,8 @@ export function DashboardView({
   const pathLabel = p ? path.map((step) => stepName(p, step)).join(" › ") : "";
 
   const firstRun = !!report && report.campaigns.length === 0 && report.links.length === 0;
-  const emptyRange = !!p && !firstRun && p.lines.length === 0 && p.sessions.tracked === 0;
+  // Spend with no sales yet is a result too (ROAS 0×), not an empty range.
+  const emptyRange = !!p && !firstRun && p.lines.length === 0 && p.sessions.tracked === 0 && p.spend.size === 0;
   const spendCampaigns = (spendFor ?? [])
     .map((id) => report?.campaigns.find((c) => c.id === id))
     .filter((c): c is ReportData["campaigns"][number] => !!c && c.status !== "archived")

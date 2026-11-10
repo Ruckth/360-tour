@@ -21,7 +21,11 @@ type Answer = { key: string; result?: OfferResult; failed?: boolean };
  * villa or dates change, and an answer for anything else is never shown, so the price can't
  * come from an older stay.
  */
-export function useCouponPreview(client: ConvexReactClient | null, code: string | null, stay: CouponStay | null): { preview: CouponPreview; retry: () => void } {
+export function useCouponPreview(
+  client: ConvexReactClient | null,
+  code: string | null,
+  stay: CouponStay | null,
+): { preview: CouponPreview; retry: () => void; /** For a refusal that only shows when booking; shares this hook's once-per-page count. */ reportRefusal: (code: string, problem: unknown) => void } {
   const reportRefusal = useCouponRefusalReporter(client, "booking");
   const key = client && code && stay ? JSON.stringify([code, stay.propertySlug, stay.checkIn, stay.checkOut]) : "";
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -56,8 +60,8 @@ export function useCouponPreview(client: ConvexReactClient | null, code: string 
     setAttempt((current) => current + 1);
   }, []);
 
-  if (!key) return { preview: { status: "idle" }, retry };
-  if (!answer || answer.key !== key) return { preview: { status: "checking" }, retry };
-  if (answer.failed || !answer.result) return { preview: { status: "error" }, retry };
-  return { preview: { status: "ready", result: answer.result }, retry };
+  if (!key) return { preview: { status: "idle" }, retry, reportRefusal };
+  if (!answer || answer.key !== key) return { preview: { status: "checking" }, retry, reportRefusal };
+  if (answer.failed || !answer.result) return { preview: { status: "error" }, retry, reportRefusal };
+  return { preview: { status: "ready", result: answer.result }, retry, reportRefusal };
 }

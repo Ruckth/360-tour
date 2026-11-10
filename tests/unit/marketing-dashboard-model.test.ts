@@ -16,6 +16,7 @@ import {
   type ReportFilters,
   type Sort,
 } from "@/components/admin/marketing/dashboard/report-model";
+import { salesCsv } from "@/components/admin/marketing/dashboard/report-csv";
 import { dashboardReport, FIXTURE_FROM, FIXTURE_TO, FIXTURE_TODAY } from "../browser/marketing-dashboard-data";
 
 const LAST: ReportFilters = { property: "all", touch: "last" };
@@ -260,6 +261,9 @@ describe("conversion and pinned rows", () => {
   });
 
   it("maps sessions by link → campaign → source", () => {
+    // A link since moved to another campaign: its sessions stay with the campaign they were counted for.
+    const moved = prepareReport(report({ sessions: [{ day: "2026-10-10", linkId: lid("la"), campaignId: cid("cb"), count: 5 }] }), LAST);
+    expect([moved.sessions.byCampaign.get("cb"), moved.sessions.byCampaign.get("ca"), moved.sessions.byLink.get("la")]).toEqual([5, undefined, 5]);
     const r = report({ sessions: [{ day: "2026-10-10", linkId: lid("lb"), count: 7 }] });
     const b = buildBreakdown(prepareReport(r, LAST), "source", [], BY_NET);
     expect(row(b.rows, "source:instagram").sessions).toBe(7);
@@ -269,6 +273,36 @@ describe("conversion and pinned rows", () => {
 
 describe("ROAS", () => {
   const spend = (amount: number, from: string, to: string, campaign = "ca") => ({ id: `sp-${from}` as Id<"marketingSpend">, campaignId: cid(campaign), amount, from, to });
+
+  it("counts a campaign's spend under one source after its source was edited", () => {
+    // Sold as facebook, then the campaign's source was changed to tiktok.
+    const r = report({
+      sales: [sale({ last: A, collected: 2000 })],
+      spend: [spend(1000, "2026-10-01", "2026-10-31")],
+      campaigns: [{ id: cid("ca"), name: "ca", source: "tiktok", medium: "social", status: "active" }],
+    });
+    const p = prepareReport(r, LAST);
+    const b = buildBreakdown(p, "source", [], BY_NET);
+    expect(row(b.rows, "source:facebook")).toMatchObject({ net: 2000, roas: { kind: "missing", campaignIds: [] } });
+    expect(row(b.rows, "source:tiktok").roas).toMatchObject({ kind: "value", spend: 1000 });
+    // The drill under the old source lists the campaign's sales there without its spend.
+    expect(row(buildBreakdown(p, "source", [{ level: "source", id: "facebook" }], BY_NET).rows, "campaign:ca").roas).toBeUndefined();
+    expect(businessTotals(p).roas).toMatchObject({ kind: "value", value: 2, spend: 1000 });
+  });
+
+  it("lists the source of an ended campaign that has spend and no results", () => {
+    const r = report({
+      sales: [sale({ last: A, collected: 2000 })],
+      spend: [spend(1000, "2026-10-01", "2026-10-31"), { ...spend(1000, "2026-10-02", "2026-10-31", "cb") }],
+      campaigns: [
+        { id: cid("ca"), name: "ca", source: "facebook", medium: "social", status: "active" },
+        { id: cid("cb"), name: "cb", source: "instagram", medium: "social", status: "ended" },
+      ],
+    });
+    const b = buildBreakdown(prepareReport(r, LAST), "source", [], BY_NET);
+    expect(row(b.rows, "source:instagram").roas).toMatchObject({ kind: "value", value: 0, spend: 1000 });
+    expect(b.totals[0].roas).toMatchObject({ kind: "value", value: 1 });
+  });
 
   it("is unavailable without spend, never zero", () => {
     const p = prepareReport(report({ sales: [sale({ last: A })] }), LAST);
@@ -354,5 +388,24 @@ describe("sales sheet order", () => {
     const ordered = sheetLines(a1.lines);
     expect(ordered.slice(0, 2).every((l) => l.refunded > 0)).toBe(true);
     expect(ordered[2].sale.createdDay >= ordered[3].sale.createdDay).toBe(true);
+  });
+});
+
+describe("sales CSV numbers", () => {
+  it("writes a refund-only sale's net as a negative number and keeps satang", () => {
+    const refunded = sale({ last: A, collected: 1000, refunded: 1000, paidDay: "2026-09-20", createdDay: "2026-09-20" });
+    const small = sale({ last: A, collected: 99.5 });
+    const r = report({
+      basis: "cash",
+      sales: [refunded, small],
+      events: [
+        { saleId: refunded.id, kind: "refund", day: "2026-10-05", amount: 1000 },
+        { saleId: small.id, kind: "payment", day: "2026-10-10", amount: 99.5 },
+      ],
+    });
+    const lines = salesCsv(prepareReport(r, LAST), "All properties").split("\r\n");
+    expect(lines.find((line) => line.includes(`,${refunded.id},`))).toMatch(/,0,1000,0,-1000$/);
+    expect(lines.find((line) => line.includes(`,${small.id},`))).toMatch(/,99\.5,0,0,99\.5$/);
+    expect(lines.some((line) => line.includes("'-"))).toBe(false);
   });
 });

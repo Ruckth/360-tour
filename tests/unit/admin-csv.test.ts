@@ -22,6 +22,12 @@ describe("csvCell", () => {
     expect(csvCell("\rx")).toBe("\"'\rx\"");
   });
 
+  it("writes a number as a number, negative or with satang", () => {
+    expect(csvCell(-1000)).toBe("-1000");
+    expect(csvCell(99.5)).toBe("99.5");
+    expect(csvCell(Number.NaN)).toBe("");
+  });
+
   it("only checks the first character", () => {
     expect(csvCell("a=b")).toBe("a=b");
     expect(csvCell("2026-09-28T00:00:00.000Z")).toBe("2026-09-28T00:00:00.000Z");

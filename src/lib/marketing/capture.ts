@@ -56,8 +56,11 @@ const device = () => window.localStorage;
 
 // Kept in memory too, so a browser that blocks storage still gets an answer for this page.
 let memoryConsent: ConsentChoice | null = null;
+// The latest answer couldn't be saved: it still wins over an older one left in storage.
+let unsavedConsent = false;
 
 export function readConsent(): ConsentChoice | null {
+  if (unsavedConsent) return memoryConsent;
   try {
     const value = window.localStorage.getItem(CONSENT_KEY);
     return value === "yes" || value === "no" ? value : memoryConsent;
@@ -70,8 +73,15 @@ export function setConsent(choice: ConsentChoice) {
   memoryConsent = choice;
   try {
     window.localStorage.setItem(CONSENT_KEY, choice);
+    unsavedConsent = false;
   } catch {
-    // Remembered for this page only.
+    // Remembered for this page only. Drop any older saved answer so it can't come back on the next page.
+    unsavedConsent = true;
+    try {
+      window.localStorage.removeItem(CONSENT_KEY);
+    } catch {
+      // Nothing more to do.
+    }
   }
   window.dispatchEvent(new Event(CONSENT_EVENT));
 }
@@ -167,6 +177,9 @@ export function capturePageView(startSession: StartSession | null, now = Date.no
       .catch(() => undefined)
       .finally(() => {
         inFlight = null;
+        // A different link arrived while this call ran (its page view was folded into this one): give it its own session.
+        const latest = slugFrom(window.location.search);
+        if (latest && latest !== slug) void capturePageView(startSession);
       });
     return inFlight;
   } catch {

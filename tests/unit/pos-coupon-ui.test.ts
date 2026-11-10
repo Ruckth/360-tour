@@ -287,7 +287,8 @@ describe("paying with a coupon", () => {
     const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal");
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L-10" }));
-    fixture.setCouponSnapshot("DCNT-L-10", { maxSaving: 100 });
+    // The discount budget is read live at payment (the benefit and its cap are frozen with the applied version): ฿100 is left.
+    fixture.setCouponSnapshot("DCNT-L-10", { discountBudget: 9900 });
     await payByCard(fixture, orderId);
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
     expect(alert.textContent).toContain("The coupon now saves ฿100.");

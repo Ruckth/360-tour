@@ -2,8 +2,8 @@ import { toCsv } from "@/lib/admin/csv";
 import { formatStamp } from "../marketing-format";
 import { slugPath, type Breakdown, type BreakdownRow, type Prepared, type Roas, type TotalRow } from "./report-model";
 
-// The dashboard's CSV export, built in the browser from the same read. Amounts are whole baht as
-// plain numbers; refunds are positive (a leading minus would be prefixed by the formula guard).
+// The dashboard's CSV export, built in the browser from the same read. Amounts are plain numbers in
+// baht, to the satang, so rows add up to their totals. Refunds are positive; net can be negative.
 
 export type ExportKind = "summary" | "sales";
 
@@ -26,8 +26,8 @@ export function csvMeta(p: Prepared, propertyName: string): string[][] {
   ];
 }
 
-const amount = (value: number) => String(Math.round(value));
-const roasCells = (roas: Roas | undefined): [string, string] =>
+const amount = (value: number) => Math.round(value * 100) / 100;
+const roasCells = (roas: Roas | undefined): [string, string | number] =>
   roas?.kind === "value" ? [roas.value.toFixed(2), amount(roas.spend)] : roas?.kind === "all_properties_only" ? ["all properties only", ""] : ["", ""];
 
 export function summaryCsv(p: Prepared, propertyName: string, table: Breakdown, path: string): string {

@@ -315,7 +315,7 @@ export function BookingFunnel({
     liveClient && property.source === "live" && nights > 0
       ? { propertySlug: property.slug, checkIn, checkOut }
       : null;
-  const { preview: couponPreview, retry: retryCoupon } = useCouponPreview(liveClient, activeCouponCode, couponStay);
+  const { preview: couponPreview, retry: retryCoupon, reportRefusal } = useCouponPreview(liveClient, activeCouponCode, couponStay);
   const phase = couponPhase(activeCouponCode, couponPreview);
   const price = stayPrice({
     subtotal: quote.subtotal,
@@ -512,6 +512,7 @@ export function BookingFunnel({
     } catch (err) {
       const refused = couponSent ? couponUnavailableError(err) : null;
       if (refused && couponSent) {
+        reportRefusal(couponSent, refused.problem?.code);
         // Nothing was booked. Drop the code so the summary re-quotes at the direct price, and
         // let the guest see the new total before continuing.
         const detail = couponCoversWholeStay(refused)

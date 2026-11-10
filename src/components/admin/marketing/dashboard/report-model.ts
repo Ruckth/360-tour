@@ -297,6 +297,9 @@ const pathMatches = (path: readonly DrillStep[]) => (line: SaleLine) =>
 
 const ACTIVE = new Set(["active"]);
 
+/** Spend follows a campaign's source as it is now, so a campaign whose source was edited isn't counted under both. */
+const spendsUnder = (p: Prepared, source: string) => (campaignId: string) => (p.campaigns.get(campaignId)?.source ?? source) === source;
+
 function campaignName(p: Prepared, id: string) {
   return p.campaigns.get(id)?.name ?? p.lines.find((l) => l.touch?.campaignId === id)?.touch?.campaignName ?? "Removed campaign";
 }
@@ -311,7 +314,7 @@ const hasActivity = (row: BreakdownRow) => row.lines.length > 0 || !!row.session
 
 function sourceRows(p: Prepared, tracked: SaleLine[]): BreakdownRow[] {
   const sources = new Set<string>();
-  for (const c of p.campaigns.values()) if (ACTIVE.has(c.status)) sources.add(c.source);
+  for (const c of p.campaigns.values()) if (ACTIVE.has(c.status) || p.spend.has(c.id)) sources.add(c.source);
   for (const line of tracked) sources.add(line.touch!.source);
   for (const source of p.sessions.bySource.keys()) sources.add(source);
   return [...sources].map((source) => {
@@ -324,7 +327,7 @@ function sourceRows(p: Prepared, tracked: SaleLine[]): BreakdownRow[] {
       name: source,
       sub: `${n} ${n === 1 ? "campaign" : "campaigns"}`,
       sessions: p.allProperties ? (p.sessions.bySource.get(source) ?? 0) : null,
-      roas: roasFor(p, [...campaignIds], lines),
+      roas: roasFor(p, [...campaignIds].filter(spendsUnder(p, source)), lines),
       drill: { level: "source", id: source },
       lines,
     });
@@ -346,7 +349,7 @@ function campaignRows(p: Prepared, tracked: SaleLine[], source?: string): Breakd
       sub: campaign ? `${campaign.source} · ${campaign.medium}` : touch ? `${touch.source} · ${touch.medium}` : undefined,
       status: campaign && campaign.status !== "active" ? campaign.status : undefined,
       sessions: p.allProperties ? (p.sessions.byCampaign.get(id) ?? 0) : null,
-      roas: roasFor(p, [id], lines),
+      roas: !source || spendsUnder(p, source)(id) ? roasFor(p, [id], lines) : undefined,
       drill: { level: "campaign", id },
       lines,
     });
@@ -463,7 +466,7 @@ export function buildBreakdown(p: Prepared, view: BreakdownView, path: DrillStep
   } else if (!top) {
     const name = last.level === "source" ? last.id : campaignName(p, last.id);
     const sessions = p.allProperties ? rows.reduce((total, row) => total + (row.sessions ?? 0), 0) : null;
-    const roas = last.level === "source" ? roasFor(p, rows.map((row) => row.key.replace(/^campaign:/, "")), scoped) : roasFor(p, [last.id], scoped);
+    const roas = last.level === "source" ? roasFor(p, rows.map((row) => row.key.replace(/^campaign:/, "")).filter(spendsUnder(p, last.id)), scoped) : roasFor(p, [last.id], scoped);
     totals.push(totalRow("scope", `Total for ${name}`, sumLines(scoped), sessions, roas));
   }
   if (top) totals.push(totalRow("business", "Business total", business.all, null, undefined, "All paid sales, tracked or not"));

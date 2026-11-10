@@ -170,6 +170,23 @@ describe("capture after consent", () => {
     expect(start).toHaveBeenCalledTimes(1);
   });
 
+  it("gives a link that arrives while a call is running its own session", async () => {
+    visit("/?mk=f1");
+    let finish!: (value: { visitorKey: string; sessionId: string }) => void;
+    const start = vi.fn()
+      .mockImplementationOnce(() => new Promise<{ visitorKey: string; sessionId: string }>((resolve) => { finish = resolve; }))
+      .mockResolvedValue({ visitorKey: KEY, sessionId: "s2" });
+    const first = capture.capturePageView(start, NOW);
+    visit("/ja?mk=q1");
+    void capture.capturePageView(start, NOW);
+    expect(start).toHaveBeenCalledTimes(1);
+    finish({ visitorKey: KEY, sessionId: "s1" });
+    await first;
+    await vi.waitFor(() => expect(visitor()).toMatchObject({ sessionId: "s2", slug: "q1" }));
+    expect(start).toHaveBeenCalledTimes(2);
+    expect(start).toHaveBeenLastCalledWith({ visitorKey: KEY, slug: "q1", landingPath: "/ja" });
+  });
+
   it("stores nothing when the visitor opts out while the call runs", async () => {
     let finish!: (value: { visitorKey: string; sessionId: string }) => void;
     const pending = capture.capturePageView(() => new Promise((resolve) => { finish = resolve; }), NOW);
@@ -217,6 +234,22 @@ describe("blocked storage", () => {
     expect(capture.captureForBooking()).toEqual({ visitorKey: KEY, slug: "f1" });
     expect(capture.arrivalCoupon()).toBe("DCNT-F1-20");
     expect(() => capture.clearMarketingStorage()).not.toThrow();
+  });
+});
+
+describe("an answer that can't be saved", () => {
+  it("keeps the newer No over the Yes still in storage, and drops that Yes", () => {
+    capture.setConsent("yes");
+    // Reads work, writes don't (a full store).
+    const store = window.localStorage;
+    const full = new Proxy(store, { get: (target, key) => (key === "setItem" ? () => { throw new DOMException("full", "QuotaExceededError"); } : typeof Reflect.get(target, key) === "function" ? Reflect.get(target, key).bind(target) : Reflect.get(target, key)) });
+    const saved = Object.getOwnPropertyDescriptor(window, "localStorage");
+    Object.defineProperty(window, "localStorage", { get: () => full, configurable: true });
+    onTestFinished(() => (saved ? Object.defineProperty(window, "localStorage", saved) : Reflect.deleteProperty(window, "localStorage")));
+    capture.setConsent("no");
+    expect(capture.readConsent()).toBe("no");
+    // The next page asks again instead of measuring on the old answer.
+    expect(store.getItem("analytics-consent-v2")).toBeNull();
   });
 });
 

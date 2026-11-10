@@ -238,6 +238,12 @@ describe("dashboard view", () => {
     render(ready({ ...emptyRangeReport(), basis: "cash" }));
     expect(text()).toContain("No payments or refunds in these dates.");
 
+    // Spend with no sales yet is a result, not an empty range.
+    const empty = emptyRangeReport();
+    render(ready({ ...empty, spend: [{ id: "sp-only" as never, campaignId: "c-fb-nov" as never, amount: 10_000, from: empty.from, to: empty.to }] }));
+    expect(text()).not.toContain("No sales or tracked visits");
+    expect(text()).toContain("0.00×");
+
     render(ready(dashboardReport({ truncated: true, nonThb: 3 })));
     expect(text()).toContain("These figures are incomplete");
     expect(text()).toContain("3 sales in another currency are left out");

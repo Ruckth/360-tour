@@ -49,4 +49,10 @@ it.each(["invalid", "coupon_worse"] as const)("reports the guest's %s preview on
   await act(async () => vi.advanceTimersByTimeAsync(200));
   expect(latest!.preview.status).toBe("ready");
   expect(mutation).toHaveBeenCalledTimes(1);
+  // A refusal that only shows when the booking is made goes through the same count: new reasons once, known ones not again.
+  latest!.reportRefusal("SPA100", "budget_used");
+  latest!.reportRefusal("SPA100", "budget_used");
+  latest!.reportRefusal("SPA100", couponStatus === "invalid" ? "sold_out" : "coupon_worse");
+  expect(mutation).toHaveBeenCalledTimes(2);
+  expect(mutation.mock.calls[1][1]).toEqual({ code: "SPA100", problem: "budget_used", surface: "booking" });
 });
