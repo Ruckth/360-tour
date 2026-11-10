@@ -11,7 +11,7 @@ import {
 } from './lib/adminChatMetadata';
 import { isChatSessionActive } from './lib/chatPresence';
 import { getChannelReplyWindow } from './lib/channelReplyWindow';
-import { answerAccepted, changeStaffOwnership, finishWithoutReply, inboxNeedsStaff, latestGuestId } from './lib/inboxLifecycle';
+import { assertNoPendingStaffSend, answerAccepted, changeStaffOwnership, finishWithoutReply, inboxNeedsStaff, latestGuestId } from './lib/inboxLifecycle';
 
 const PAGE_SIZE = 10;
 const SEARCH_SESSION_LIMIT = 50;
@@ -800,6 +800,7 @@ export const setSessionStatus = mutation({
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
+		if (args.status === 'open') await assertNoPendingStaffSend(ctx, session);
 		const now = Date.now();
 		if (args.status === 'resolved') {
 			if (args.expectedGuestMessageId !== undefined &&
