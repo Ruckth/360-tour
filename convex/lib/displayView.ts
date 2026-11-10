@@ -1,6 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { billTotals, lineDiscount, lineNet, linePrice } from './billMath';
+import { billTotals, lineCouponDiscount, lineDiscount, lineNet, linePrice } from './billMath';
 import { isOpenOrder } from './orderLinks';
 import { orderLines } from './orderLines';
 import { getEffectiveSettings } from './siteSettings';
@@ -19,10 +19,16 @@ export type DisplayLine = {
 	unitPrice: number;
 	/** What each unit costs after a price override (equal to unitPrice without one). */
 	price: number;
+	/** Every discount on the row, its coupon share included. */
 	discount: number;
+	/** R2b: the row's share of the order coupon (part of `discount`). */
+	couponDiscount: number;
 	total: number;
 	deposit: number;
 };
+
+/** R2b: the order's coupon as the guest may see it: the code and what it saves. */
+export type DisplayCoupon = { code: string; saving: number };
 
 type Shared = { businessName: string; customerFirstName: string | null; orderNumber: number | null; currency: string };
 
@@ -33,6 +39,8 @@ export type DisplayOrderState =
 			lines: DisplayLine[];
 			subtotal: number;
 			discount: number;
+			/** R2b: null without a coupon, or while it doesn't apply. */
+			coupon: DisplayCoupon | null;
 			deposit: number;
 			total: number;
 			/** The 7% VAT included in the total, as the checkout and receipt show it. */
@@ -41,7 +49,7 @@ export type DisplayOrderState =
 			/** Last activity: the order's last change or its last publish. The display idles a draft left untouched too long. */
 			activeAt: number;
 	  })
-	| (Shared & { state: 'paid'; total: number; vat: number; amountPaid: number; receiptNumber: number | null; paidAt: number });
+	| (Shared & { state: 'paid'; total: number; vat: number; amountPaid: number; receiptNumber: number | null; paidAt: number; coupon: DisplayCoupon | null });
 
 /** "Anna Lee" → "Anna". The display never shows more of a customer's name. */
 export function firstName(name: string | undefined): string | null {
@@ -76,10 +84,11 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 	if (!lines.length) return { state: 'idle', businessName };
 
 	const totals = billTotals(lines);
+	const coupon: DisplayCoupon | null = order.promotion && !order.promotion.problem && totals.coupon > 0 ? { code: order.promotion.code, saving: totals.coupon } : null;
 	const shared: Shared = { businessName, customerFirstName: await customerFirstName(ctx, order), orderNumber: order.orderNumber ?? null, currency: order.currency };
 	if (order.status === 'paid') {
 		// What the guest paid at the counter: the total less deposits paid before checkout.
-		return { ...shared, state: 'paid', total: totals.total, vat: totals.vat, amountPaid: totals.due, receiptNumber: order.receiptNumber ?? null, paidAt: order.paidAt ?? order.updatedAt };
+		return { ...shared, state: 'paid', total: totals.total, vat: totals.vat, amountPaid: totals.due, receiptNumber: order.receiptNumber ?? null, paidAt: order.paidAt ?? order.updatedAt, coupon };
 	}
 	return {
 		...shared,
@@ -91,11 +100,13 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 			unitPrice: line.unitPrice,
 			price: linePrice(line),
 			discount: lineDiscount(line),
+			couponDiscount: lineCouponDiscount(line),
 			total: lineNet(line),
 			deposit: line.deposit ?? 0
 		})),
 		subtotal: totals.subtotal,
 		discount: totals.discount,
+		coupon,
 		deposit: totals.deposit,
 		total: totals.total,
 		vat: totals.vat,

@@ -190,6 +190,8 @@ export const getForAdmin = query({
 		return {
 			...toAdminBooking(booking),
 			redemption: redemption ? { state: redemption.state, overLimit: redemption.overLimit ?? false } : null,
+			/** Release 3a: which marketing link brought the booking (frozen at creation); null when none. */
+			marketingAttribution: booking.marketingAttribution ?? null,
 			propertyName: property?.name ?? 'Unknown villa',
 			propertyStatus: property?.status ?? 'archived',
 			subtotal: booking.subtotal,

@@ -1,5 +1,6 @@
 "use client";
 
+import { captureForBooking } from "@/lib/marketing/capture";
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
@@ -63,6 +64,7 @@ export function ProposalPayClient({ token }: { token: string }) {
     try {
       const booking = await convex.mutation(api.bookings.confirmProposal, {
         token,
+        marketing: captureForBooking() ?? {},
       });
       const checkout = await convex.action(api.payments.createCheckout, {
         bookingId: booking.bookingId,

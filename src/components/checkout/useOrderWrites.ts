@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorText } from "@/lib/staff-bookings";
 import type { OrderId } from "./backend";
 
@@ -20,6 +20,8 @@ type Sale = { orderId: OrderId | null };
  */
 export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId: OrderId | null) => void, onError: (message: string) => void) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
+  // Writes queued or running, so controls that must see the settled order (the coupon field) can wait.
+  const [pending, setPending] = useState(0);
   const sale = useRef<Sale>({ orderId });
   useEffect(() => {
     if (sale.current.orderId !== orderId) sale.current = { orderId };
@@ -28,6 +30,7 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
   const run = useCallback<Run>(
     (task, then) => {
       const mine = sale.current;
+      setPending((n) => n + 1);
       const next = queue.current.then(async () => {
         try {
           if (sale.current === mine) onError("");
@@ -42,6 +45,8 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
         } catch (err) {
           if (sale.current === mine) onError(errorText(err, "That didn't save. Try again."));
           return false;
+        } finally {
+          setPending((n) => n - 1);
         }
       });
       queue.current = next;
@@ -58,5 +63,5 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
     [onOrderChange],
   );
 
-  return { run, switchTo };
+  return { run, switchTo, busy: pending > 0 };
 }

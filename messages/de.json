@@ -699,5 +699,12 @@
     "first": "Zur ersten Seite",
     "moreCategories": "Weitere Kategorien",
     "draft": "Ich interessiere mich für {name}. Bitte helfen Sie mir, Datum und Uhrzeit auszuwählen."
+  },
+  "Consent": {
+    "label": "Auswahl zur Messung",
+    "message": "Dürfen wir Seitenaufrufe zählen und uns Ihre Besuche 30 Tage lang merken, um zu sehen, welche unserer Links und QR-Codes funktionieren? Nichts wird an Werbetreibende weitergegeben, und dies bleibt aus, bis Sie zustimmen.",
+    "details": "Datenschutzerklärung",
+    "decline": "Nein, danke",
+    "accept": "Erlauben"
   }
 }

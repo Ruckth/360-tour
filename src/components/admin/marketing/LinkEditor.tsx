@@ -3,7 +3,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { BedDouble, CalendarDays, CircleCheck, Home, Link2, Lock, MessageCircle, QrCode, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { locales } from "@/i18n/routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +118,7 @@ export function LinkEditor({
   today,
   campaignsHref,
   actions,
+  history,
   onDone,
   onCancel,
   onDirtyChange,
@@ -133,6 +134,7 @@ export function LinkEditor({
   today: string;
   campaignsHref: string;
   actions: Pick<MarketingActions, "saveLink" | "checkSlug">;
+  history?: (linkId: Id<"marketingLinks">) => ReactNode;
   onDone: (message: string) => void;
   onCancel: () => void;
   /** Reports unsaved edits, so the sheet can ask before closing. */
@@ -446,6 +448,7 @@ export function LinkEditor({
           ]}
         />
       </section>
+      {link ? history?.(link._id) : null}
     </SheetForm>
   );
 }

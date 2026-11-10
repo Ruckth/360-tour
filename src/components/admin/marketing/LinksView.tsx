@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CopyPlus, Facebook, Instagram, Link2, MapPin, MessageCircle, Pause, Pencil, Play, Plus, QrCode, Send, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -47,9 +47,11 @@ type LinksViewProps = {
   today: string;
   campaignsHref: string;
   actions: Pick<MarketingActions, "saveLink" | "setLinkStatus" | "checkSlug">;
+  /** Renders the change history of a saved record (MarketingScreens passes RecordHistoryPanel). */
+  history?: (linkId: Id<"marketingLinks">) => ReactNode;
 };
 
-export function LinksView({ links, campaigns, coupons, properties, origin, brand, today, campaignsHref, actions }: LinksViewProps) {
+export function LinksView({ links, campaigns, coupons, properties, origin, brand, today, campaignsHref, actions, history }: LinksViewProps) {
   const { notice, show, clear } = useNotice();
   const { pending, run } = useConfirmedChange<Id<"marketingLinks">>(show);
   const sheet = useEditorSheet<{ link?: LinkRow; preset?: LinkPreset }>();
@@ -171,6 +173,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
           today={today}
           campaignsHref={campaignsHref}
           actions={actions}
+          history={history}
           onDone={(message) => {
             sheet.done();
             show(message);

@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vite
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { orderTime, receiptText } from "@/components/checkout/checkout-ui";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import type { Id } from "convex/_generated/dataModel";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 
 /** H1-08: receipts and the Orders list show resort (Bangkok) time on a device set to another zone. */
@@ -69,4 +70,24 @@ it("lists today's orders by the Bangkok day, with the date on other days", () =>
   const now = Date.parse("2026-11-01T22:50:00Z"); // 05:50 on 2 Nov in Bangkok
   expect(orderTime(Date.parse("2026-11-01T17:30:00Z"), now)).toBe("00:30");
   expect(orderTime(Date.parse("2026-11-01T16:30:00Z"), now)).toBe("1 Nov, 23:30");
+});
+
+it("keeps coupon savings and Bangkok issue time together on the receipt and shared text", async () => {
+  vi.setSystemTime(new Date("2026-11-01T22:30:00Z"));
+  const backend = createFixtureBackend();
+  const actions = backend.useActions();
+  const { orderId } = await run(actions.addItem({ item: { kind: "service", serviceId: "fxsvc000001" as Id<"services"> } }));
+  await run(actions.addItem({ orderId, item: { kind: "service", serviceId: "fxsvc000007" as Id<"services"> } }));
+  await run(actions.applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
+  await show(backend, createElement(Probe, { backend, orderId }));
+  expect(view!.totals).toMatchObject({ total: 1300, coupon: 500 });
+  await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 1300, idempotencyKey: "tz-coupon-receipt", tenders: [{ method: "cash", amount: 1300 }] }));
+  await show(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
+  const receipt = document.querySelector('[aria-label="Receipt"]')!.textContent;
+  expect(receipt).toContain("Issued 2 Nov 2026, 05:30");
+  expect(receipt).toContain("Coupon DCNT-SPA-500");
+  expect(receipt).toContain("1,300");
+  await show(backend, createElement(Probe, { backend, orderId }));
+  expect(receiptText(view!, "Resort")).toContain("2 Nov 2026, 05:30");
+  expect(receiptText(view!, "Resort")).toContain("Coupon DCNT-SPA-500");
 });

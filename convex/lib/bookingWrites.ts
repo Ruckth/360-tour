@@ -1,3 +1,4 @@
+import { resolveMarketingAttribution, type MarketingCapture } from './marketingAttribution';
 import { ConvexError } from 'convex/values';
 import { evaluateOffer, normalizeCouponCode } from './offers';
 import { couponUnavailable, couponVersion, holdCouponRedemption } from './couponRedemptions';
@@ -37,6 +38,8 @@ export type BookingInput = StayInput & {
 	archivedVillaReason?: string;
 	/** Release 2: optional coupon code; see holdCouponRedemption. */
 	couponCode?: string;
+	/** Release 3a: untrusted browser capture; resolved by resolveMarketingAttribution. Ignored for admin bookings. */
+	marketing?: MarketingCapture;
 };
 
 /** Server-only policy: callers must authenticate the admin before enabling either relaxation. */
@@ -177,6 +180,8 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 	const accessToken = crypto.randomUUID();
 	const { guestPhoneDigits, guestEmailNormalized } = guestLookupFields({ guestPhone, guestEmail });
 	const createdAt = Date.now();
+	const marketingAttribution = input.source !== 'admin' && input.marketing
+		? await resolveMarketingAttribution(ctx, input.marketing, createdAt) : undefined;
 	const unpaidHoldExpiresAt = input.source === 'admin' ? undefined
 		: createdAt + (await getEffectiveSettings(ctx)).bookingRules.unpaidHoldMinutes * 60_000;
 	const bookingId = await ctx.db.insert('bookings', {
@@ -188,6 +193,7 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		...(guestPhoneDigits ? { guestPhoneDigits } : {}),
 		...(guestEmailNormalized ? { guestEmailNormalized } : {}),
 		source: input.source,
+		...(marketingAttribution ? { marketingAttribution } : {}),
 		...(input.chatSessionId ? { chatSessionId: input.chatSessionId } : {}),
 		checkIn: input.checkIn,
 		checkOut: input.checkOut,

@@ -3,6 +3,12 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   define: { "process.env": "{}" },
+  optimizeDeps: {
+    entries: ["tests/browser/*.html"],
+    // Checkout's resort-time formatter must be ready before parallel fixture pages load.
+    // Discovering it later replaces shared chunks and reloads in-flight accessibility scans.
+    include: ["@date-fns/tz"],
+  },
   resolve: {
     alias: [
       {

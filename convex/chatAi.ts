@@ -2,6 +2,7 @@ import { isCardTool, replyCardFromTool, type ReplyCard } from './lib/replyCards'
 import { unknownReply, detectReplyLocale } from "./lib/unknownReply";
 import { factRetrievalEnabled } from "./lib/factRetrieval";
 import { proposalIdentity } from './lib/chatWriteGuard';
+import { marketingCaptureValidator } from './lib/marketingAttribution';
 import { action, internalMutation, type ActionCtx } from './_generated/server';
 import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
@@ -661,7 +662,9 @@ export const respond = action({
 		userMessage: v.string(),
 		propertySlug: v.optional(v.string()),
 		locale: v.optional(v.string()),
-		actionHint: v.optional(chatActionValidator)
+		actionHint: v.optional(chatActionValidator),
+		/** Release 3a: see chat.addMessage. */
+		marketing: v.optional(marketingCaptureValidator)
 	},
 	handler: async (ctx, args) => {
 		if (args.userMessage.length > 2000) throw new Error('Message is too long');
@@ -674,7 +677,8 @@ export const respond = action({
 		const userMessageId: Id<'chatMessages'> = await ctx.runMutation(api.chat.addMessage, {
 			sessionId: args.sessionId,
 			role: 'user',
-			content: args.userMessage
+			content: args.userMessage,
+			...(args.marketing ? { marketing: args.marketing } : {})
 		});
 		// Staff took over: keep the guest message for them, but the AI stays quiet.
 		if (session.aiPaused) return { response: '', model: 'ai_paused', aiPaused: true };

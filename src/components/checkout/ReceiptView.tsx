@@ -11,12 +11,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
-import { changeDue, formatReceiptNumber, lineGross, linePrice } from "convex/lib/billMath";
+import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { PaymentRecord } from "./PaymentRecord";
 import { OrderHistory } from "./OrderHistory";
-import { TENDER_LABELS, TOUCH_TARGETS, formatResort, receiptBookings, receiptName, receiptText } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptText } from "./checkout-ui";
 
 type Paper = "58" | "80";
 
@@ -27,6 +27,9 @@ const PAGE_SLACK_MM = 2;
 /** The printed receipt's box, at the paper's width. Shared by print and by the on-screen measurement. */
 const printBox = (paper: Paper) => `width: ${paper}mm !important; max-width: none !important; margin: 0 !important; padding: 3mm !important;
   border: 0 !important; font-size: ${paper === "58" ? 10 : 11.5}px !important;`;
+
+/** Small rows (VAT, discounts, coupon shares) scale with the paper's base size, not the screen's rem. */
+const smallPrint = "font-size: 0.9em !important; line-height: 1.35 !important;";
 
 /*
  * Browsers accept a page size only as two lengths (or a named size); "58mm auto" is dropped. So the
@@ -46,8 +49,10 @@ function printCss(paper: Paper, lengthMm: number) {
       .pos-receipt { ${printBox(paper)} position: static !important; box-shadow: none !important; border-radius: 0 !important;
         background: #fff !important; color: #000 !important; }
       .pos-receipt * { color: #000 !important; }
+      .pos-receipt .text-xs { ${smallPrint} }
     }
     .pos-receipt[data-print-measure] { ${printBox(paper)} }
+    .pos-receipt[data-print-measure] .text-xs { ${smallPrint} }
   `;
 }
 
@@ -95,6 +100,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const customerName = receiptName(view);
   const bookings = receiptBookings(view);
   const change = changeDue(payments);
+  const coupon = couponLabel(view);
+  const staffDiscount = round2(totals.discount - totals.coupon);
 
   async function share() {
     const text = receiptText(view!, business);
@@ -197,10 +204,16 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                 {line.staffName || line.qty > 1 ? (
                   <p className="text-xs opacity-70">{[line.staffName, line.qty > 1 ? `${formatMoney(linePrice(line))} each` : ""].filter(Boolean).join(" · ")}</p>
                 ) : null}
-                {line.net !== lineGross(line) ? (
-                  <div className="flex justify-between text-xs opacity-70">
+                {lineStaffDiscount(line) ? (
+                  <div className="flex justify-between gap-2 text-xs opacity-70">
                     <span>Discount</span>
-                    <span className="tabular-nums">{formatMoney(line.net - lineGross(line))}</span>
+                    <span className="tabular-nums">{formatMoney(-lineStaffDiscount(line))}</span>
+                  </div>
+                ) : null}
+                {line.couponDiscount && lineCouponDiscount(line) ? (
+                  <div className="flex justify-between gap-2 text-xs opacity-70" data-testid="receipt-line-coupon">
+                    <span className="min-w-0">{coupon}</span>
+                    <span className="shrink-0 tabular-nums">{formatMoney(-lineCouponDiscount(line))}</span>
                   </div>
                 ) : null}
               </li>
@@ -208,6 +221,13 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           </ul>
           <hr className="my-3 border-dashed border-border" />
           <dl className="space-y-1">
+            {totals.coupon ? (
+              <>
+                <div className="flex justify-between gap-2"><dt>Subtotal</dt><dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd></div>
+                {staffDiscount ? <div className="flex justify-between gap-2"><dt>Discounts</dt><dd className="tabular-nums">{formatMoney(-staffDiscount)}</dd></div> : null}
+                <div className="flex justify-between gap-2" data-testid="receipt-coupon-total"><dt className="min-w-0">{coupon}</dt><dd className="shrink-0 tabular-nums">{formatMoney(-totals.coupon)}</dd></div>
+              </>
+            ) : null}
             <div className="flex justify-between font-bold"><dt>Total</dt><dd className="tabular-nums">{formatMoney(totals.total)}</dd></div>
             <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="tabular-nums">{formatMoney(totals.vat)}</dd></div>
             {totals.deposit ? <div className="flex justify-between"><dt>Paid before checkout</dt><dd className="tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
@@ -219,6 +239,9 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             ))}
             {change ? <div className="flex justify-between"><dt>Change</dt><dd className="tabular-nums">{formatMoney(change)}</dd></div> : null}
           </dl>
+          {totals.coupon ? (
+            <p className="mt-3 border-t border-dashed border-border pt-2 text-center text-xs">You saved {formatMoney(totals.coupon)} with <span className="whitespace-nowrap">{view.promotion?.code ?? "a coupon"}</span></p>
+          ) : null}
           <p className="mt-4 text-center text-xs">Thank you</p>
         </article>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, Trash2, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -21,17 +21,18 @@ import {
   useNow,
 } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
-import { MAX_PRICE, MAX_QTY, MERGES_QTY, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
+import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput } from "./checkout-ui";
+import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
 import { FinancialHistory } from "./FinancialHistory";
+import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
 import { OrderHistory } from "./OrderHistory";
 import { PayPanel } from "./PayPanel";
 import type { Run } from "./useOrderWrites";
 
-const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, total: 0, vat: 0, deposit: 0, due: 0 };
+const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
 /**
  * A service row's new start after its date or its time changes, in resort time (Bangkok, like
@@ -71,6 +72,7 @@ export function OrderPanel({
   title,
   catalog,
   run,
+  busy = false,
   onSaved,
   onPaid,
   onClose,
@@ -79,6 +81,8 @@ export function OrderPanel({
   title: string;
   catalog: Catalog | undefined;
   run: Run;
+  /** Order writes are still saving (the coupon field waits for them). */
+  busy?: boolean;
   /** After Save & close, with the saved order's title. */
   onSaved: (title: string) => void;
   onPaid: (orderId: OrderId) => void;
@@ -88,6 +92,7 @@ export function OrderPanel({
   const [confirmClear, setConfirmClear] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(null);
+  const [couponOpen, setCouponOpen] = useState(false);
   const now = useNow();
   const lines = view?.lines ?? [];
   const totals = view?.totals ?? EMPTY_TOTALS;
@@ -95,7 +100,10 @@ export function OrderPanel({
   const itemCount = lines.reduce((n, line) => n + line.qty, 0);
   // Rows whose booking or appointment changed must be updated (or removed) before payment.
   const stale = lines.filter((line) => line.sourceIssue).length;
-  const cannotPay = !lines.length || stale > 0;
+  // A coupon that no longer fits must be fixed or removed first; settleOrder refuses it too.
+  const couponBlocked = Boolean(view?.promotion?.problem) && lines.length > 0;
+  const cannotPay = !lines.length || stale > 0 || couponBlocked;
+  const staffDiscount = round2(totals.discount - totals.coupon);
 
   async function saveAndClose() {
     if (!orderId) return;
@@ -137,6 +145,11 @@ export function OrderPanel({
         <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
         {paying ? null : (
           <>
+            {canAddCoupon(view) && !couponOpen ? (
+              <Button size="icon" variant="outline" className={cn("size-9 rounded-xl text-gold-text", SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Add coupon: code, QR or link">
+                <TicketPercent aria-hidden className="size-4" />
+              </Button>
+            ) : null}
             <Button variant="outline" className="h-auto min-h-10 max-w-full rounded-xl whitespace-normal" onClick={saveAndClose} disabled={!itemCount} title="Keep this unpaid order and start a new one. Reopen it from Orders.">
               <Save aria-hidden className="size-3.5" /> Save &amp; close
             </Button>
@@ -197,9 +210,19 @@ export function OrderPanel({
           </div>
 
           <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
+            {view ? <OrderCoupon view={view} run={run} busy={busy} open={couponOpen} onOpenChange={setCouponOpen} /> : null}
             <dl className="space-y-1 text-sm">
               <TotalRow label="Subtotal" value={formatMoney(totals.subtotal)} />
-              {totals.discount ? <TotalRow label="Discounts" value={formatMoney(-totals.discount)} /> : null}
+              {staffDiscount ? <TotalRow label="Discounts" value={formatMoney(-staffDiscount)} /> : null}
+              {totals.coupon ? (
+                <div className="flex justify-between gap-3 text-foreground" data-testid="order-coupon-total">
+                  <dt className="flex min-w-0 items-center gap-1.5">
+                    <TicketPercent aria-hidden className="size-3.5 shrink-0 text-gold-text" />
+                    <span className="[overflow-wrap:anywhere]">{couponLabel(view ?? {})}</span>
+                  </dt>
+                  <dd className="text-right font-medium tabular-nums">{formatMoney(-totals.coupon)}</dd>
+                </div>
+              ) : null}
               <TotalRow label="VAT 7% (included)" value={formatMoney(totals.vat)} muted />
               {totals.deposit ? <TotalRow label="Paid online (deposit)" value={formatMoney(-totals.deposit)} /> : null}
             </dl>
@@ -212,6 +235,9 @@ export function OrderPanel({
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
                 {stale === 1 ? "A booking row changed" : `${stale} booking rows changed`}. Update {stale === 1 ? "it" : "them"} before taking payment.
               </p>
+            ) : null}
+            {couponBlocked ? (
+              <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
             ) : null}
             {lines.length && totals.due === 0 ? (
               <Button className="h-12 w-full rounded-xl" disabled={cannotPay} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
@@ -276,6 +302,8 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now }: { line: Order
   const actions = useCheckoutBackend().useActions();
   const listPrice = round2(line.unitPrice * line.qty);
   const issue = line.sourceIssue;
+  // Already part of `net`: shown so staff can tell it from a line discount.
+  const couponShare = line.couponDiscount ? lineCouponDiscount(line) : 0;
   return (
     <li className={cn("rounded-lg", open && "bg-muted/40", issue && "bg-amber-50/60 dark:bg-amber-400/5")}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-h-14 w-full flex-wrap items-start gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:px-4">
@@ -288,10 +316,17 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now }: { line: Order
           <span className="block truncate text-xs text-muted-foreground">{lineSubtitle(line, now)}</span>
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid online</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
+          {line.stayCoupon ? (
+            <span className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">
+              <TicketPercent aria-hidden className="mt-px size-3.5 shrink-0 text-gold-text" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">Priced with <span className="font-mono font-semibold">{line.stayCoupon.code}</span> on the booking</span>
+            </span>
+          ) : null}
         </span>
         <span className="ml-auto shrink-0 text-right">
           <span className="block text-sm font-semibold tabular-nums">{formatMoney(line.net)}</span>
           {line.net !== listPrice ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{formatMoney(listPrice)}</span> : null}
+          {couponShare ? <span className="block text-xs font-medium whitespace-nowrap text-gold-text tabular-nums">Coupon {formatMoney(-couponShare)}</span> : null}
         </span>
         <ChevronDown aria-hidden className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
       </button>

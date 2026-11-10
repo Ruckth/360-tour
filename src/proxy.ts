@@ -28,7 +28,9 @@ async function handleRequest(request: NextRequest, event: NextFetchEvent) {
         event.waitUntil(client.mutation(api.marketing.recordOpen, {
           slug, bot: isMarketingBot(request.headers.get("user-agent")),
         }).catch(() => undefined));
-        return NextResponse.redirect(new URL(resolved.path, request.url), 302);
+        const response = NextResponse.redirect(new URL(resolved.path, request.url), 302);
+        response.headers.set("Cache-Control", "no-store");
+        return response;
       }
     } catch {
       // Unknown links and temporary backend failures use normal app routing.

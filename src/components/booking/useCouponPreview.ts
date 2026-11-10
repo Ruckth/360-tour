@@ -3,7 +3,7 @@
 import type { ConvexReactClient } from "convex/react";
 import type { OfferResult } from "convex/lib/offers";
 import { useCallback, useEffect, useState } from "react";
-import { previewCoupon } from "@/lib/react/convex-api";
+import { previewCoupon, useCouponRefusalReporter } from "@/lib/react/convex-api";
 
 export type CouponStay = { propertySlug: string; checkIn: string; checkOut: string };
 
@@ -21,7 +21,12 @@ type Answer = { key: string; result?: OfferResult; failed?: boolean };
  * villa or dates change, and an answer for anything else is never shown, so the price can't
  * come from an older stay.
  */
-export function useCouponPreview(client: ConvexReactClient | null, code: string | null, stay: CouponStay | null): { preview: CouponPreview; retry: () => void } {
+export function useCouponPreview(
+  client: ConvexReactClient | null,
+  code: string | null,
+  stay: CouponStay | null,
+): { preview: CouponPreview; retry: () => void; /** For a refusal that only shows when booking; shares this hook's once-per-page count. */ reportRefusal: (code: string, problem: unknown) => void } {
+  const reportRefusal = useCouponRefusalReporter(client, "booking");
   const key = client && code && stay ? JSON.stringify([code, stay.propertySlug, stay.checkIn, stay.checkOut]) : "";
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -33,7 +38,10 @@ export function useCouponPreview(client: ConvexReactClient | null, code: string 
     const timer = setTimeout(() => {
       previewCoupon(client, { code, propertySlug: stay.propertySlug, checkIn: stay.checkIn, checkOut: stay.checkOut })
         .then((result) => {
-          if (active) setAnswer({ key, result });
+          if (active) {
+            setAnswer({ key, result });
+            reportRefusal(code, result.problem?.code ?? (result.couponStatus === "coupon_worse" ? "coupon_worse" : undefined));
+          }
         })
         .catch(() => {
           if (active) setAnswer({ key, failed: true });
@@ -45,15 +53,15 @@ export function useCouponPreview(client: ConvexReactClient | null, code: string 
     };
     // `key` covers code and stay; `attempt` re-runs a failed check.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, client, attempt]);
+  }, [key, client, attempt, reportRefusal]);
 
   const retry = useCallback(() => {
     setAnswer(null);
     setAttempt((current) => current + 1);
   }, []);
 
-  if (!key) return { preview: { status: "idle" }, retry };
-  if (!answer || answer.key !== key) return { preview: { status: "checking" }, retry };
-  if (answer.failed || !answer.result) return { preview: { status: "error" }, retry };
-  return { preview: { status: "ready", result: answer.result }, retry };
+  if (!key) return { preview: { status: "idle" }, retry, reportRefusal };
+  if (!answer || answer.key !== key) return { preview: { status: "checking" }, retry, reportRefusal };
+  if (answer.failed || !answer.result) return { preview: { status: "error" }, retry, reportRefusal };
+  return { preview: { status: "ready", result: answer.result }, retry, reportRefusal };
 }

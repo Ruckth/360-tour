@@ -1,9 +1,10 @@
 "use client";
 
+import { createCouponRefusalReporter, type RefusalNote } from "@/lib/booking/coupon-refusals";
 import type { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useCallback, type ReactNode } from "react";
 
 /**
  * Everything the checkout UI reads and writes. The admin page implements it with Convex
@@ -21,6 +22,7 @@ export type Catalog = FunctionReturnType<Pos["catalog"]>;
 export type OrderView = NonNullable<FunctionReturnType<Pos["getOrder"]>>;
 export type OrderHistoryRow = FunctionReturnType<Pos["orderHistory"]>["page"][number];
 export type OrderLine = OrderView["lines"][number];
+export type OrderPromotion = NonNullable<OrderView["promotion"]>;
 export type OrderRow = FunctionReturnType<Pos["listOrders"]>["page"][number];
 export type OrderFilter = FunctionArgs<Pos["listOrders"]>["filter"];
 export type Attachable = FunctionReturnType<Pos["listAttachable"]>[number];
@@ -45,8 +47,10 @@ export type OrdersPage = {
 type PosAction =
   | "openOrderFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine" | "updateSourceLine"
   | "discardOrder" | "restoreOrder" | "addAppointmentFee"
-  | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder";
+  | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
+  | "applyOrderCoupon" | "removeOrderCoupon" | "recheckOrderCoupon";
 export type CheckoutActions = { [K in PosAction]: (args: FunctionArgs<Pos[K]>) => Promise<FunctionReturnType<Pos[K]>> } & {
+  noteCouponRefusal: (args: RefusalNote) => Promise<unknown>;
   createCustomer: (args: NewCustomer) => Promise<CustomerId>;
 } & { [K in "updateCustomer" | "setCustomerArchived" | "mergeCustomers" | "resumeCustomerMerge"]: (args: FunctionArgs<Customers[K]>) => Promise<FunctionReturnType<Customers[K]>> };
 
@@ -77,8 +81,12 @@ export type CheckoutBackend = {
 
 const BackendContext = createContext<CheckoutBackend | null>(null);
 
+const RefusalContext = createContext<ReturnType<typeof createCouponRefusalReporter> | null>(null);
+
 export function CheckoutBackendProvider({ backend, children }: { backend: CheckoutBackend; children: ReactNode }) {
-  return <BackendContext.Provider value={backend}>{children}</BackendContext.Provider>;
+  const actions = backend.useActions();
+  const report = useMemo(() => createCouponRefusalReporter(note => actions.noteCouponRefusal(note)), [actions]);
+  return <BackendContext.Provider value={backend}><RefusalContext.Provider value={report}>{children}</RefusalContext.Provider></BackendContext.Provider>;
 }
 
 export function useCheckoutBackend(): CheckoutBackend {
@@ -90,4 +98,10 @@ export function useCheckoutBackend(): CheckoutBackend {
 /** A key per payment attempt, reused if that attempt is retried. randomUUID needs a secure context. */
 export function newAttemptKey() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Shared across the coupon and payment panels for the lifetime of this checkout page. */
+export function useOrderCouponRefusal(orderId: OrderId) {
+  const report = useContext(RefusalContext);
+  return useCallback((code: string, problem: unknown) => report?.(orderId, code, problem, "pos"), [orderId, report]);
 }

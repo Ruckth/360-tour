@@ -1,6 +1,10 @@
+import { useCallback, useMemo } from "react";
+import { createCouponRefusalReporter } from "@/lib/booking/coupon-refusals";
+import type { CouponRefusalSurface } from "convex/lib/marketingReport";
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { OfferResult } from "convex/lib/offers";
+import type { MarketingCapture } from "convex/lib/marketingAttribution";
 import type { BookingProperty } from "@/lib/booking/booking";
 import type { ChatActionHint } from "@/lib/chat/action-card";
 import type { PropertyTranslation } from "@/lib/i18n/public-content";
@@ -152,11 +156,13 @@ export async function createBooking(
     guests: number;
     /** Send only a code the live preview applied. Throws ConvexError `coupon_unavailable` when it can't be used now. */
     couponCode?: string;
+    /** Release 3a: see captureForBooking. */
+    marketing?: MarketingCapture;
   },
 ) {
-  const { couponCode, ...stay } = args;
+  const { couponCode, marketing, ...stay } = args;
   return (await withConvexTimeout(
-    client.mutation(api.bookings.create, (couponCode ? { ...stay, couponCode } : stay) as never),
+    client.mutation(api.bookings.create, { ...stay, ...(couponCode ? { couponCode } : {}), ...(marketing ? { marketing } : {}) } as never),
     "Creating booking",
   )) as CreateBookingResult;
 }
@@ -227,6 +233,8 @@ export async function createChatSession(
     screenSize?: string;
     viewportSize?: string;
     platform?: string;
+    /** Release 3a: see captureForBooking. */
+    marketing?: MarketingCapture;
   },
 ) {
   return (await withConvexTimeout(
@@ -347,6 +355,8 @@ export async function askConcierge(
     propertySlug?: string;
     locale?: string;
     actionHint?: ChatActionHint;
+    /** Release 3a: see captureForBooking; `{}` clears the chat's capture. */
+    marketing?: MarketingCapture;
   },
 ) {
   return (await withConvexTimeout(
@@ -384,4 +394,10 @@ export async function markChatSuggestionClicked(
     client.mutation(api.chatSuggestions.markClicked, args as never),
     "Marking suggested question clicked",
   );
+}
+
+/** Once per code/problem on this page. All diagnostic failures are swallowed. */
+export function useCouponRefusalReporter(client: ConvexReactClient | null, surface: CouponRefusalSurface) {
+  const report = useMemo(() => createCouponRefusalReporter(note => client ? client.mutation(api.marketingReport.noteCouponRefusal, note) : Promise.resolve()), [client]);
+  return useCallback((code: string, problem: unknown) => { if (client) report("page", code, problem, surface); }, [client, report, surface]);
 }

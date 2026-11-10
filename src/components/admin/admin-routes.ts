@@ -37,14 +37,15 @@ export function adminSettingsTabPath(tab: AdminSettingsTab): string {
   return tab === "business" ? "/admin/settings" : `/admin/settings?tab=${tab}`;
 }
 
-/** Marketing sub-pages, in sidebar order. `/admin/marketing` opens Links & QR. */
+/** Marketing sub-pages, in sidebar order. `/admin/marketing` opens the dashboard. */
 export const ADMIN_MARKETING_PAGES = [
+  { id: "dashboard", label: "Dashboard", keywords: ["report", "ROAS", "conversion", "attribution", "spend", "export"] },
   { id: "campaigns", label: "Campaigns", keywords: ["utm", "source", "medium", "budget"] },
   { id: "links", label: "Links & QR", keywords: ["short links", "QR code", "tracking"] },
   { id: "coupons", label: "Coupons", keywords: ["discount", "promo code", "offers"] },
 ] as const;
 export type AdminMarketingPage = (typeof ADMIN_MARKETING_PAGES)[number]["id"];
-const ADMIN_MARKETING_DEFAULT: AdminMarketingPage = "links";
+const ADMIN_MARKETING_DEFAULT: AdminMarketingPage = "dashboard";
 
 export function isAdminMarketingPage(value: string): value is AdminMarketingPage {
   return ADMIN_MARKETING_PAGES.some((page) => page.id === value);

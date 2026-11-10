@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ChevronRight, Plus, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, TicketPercent, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { errorText } from "@/lib/staff-bookings";
 import { paymentDateInput, paymentDateValue } from "./payment-time";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ import {
 import {
   newAttemptKey,
   useCheckoutBackend,
+  useOrderCouponRefusal,
   type CheckoutActions,
   type OrderId,
   type OrderView,
@@ -36,6 +38,7 @@ import {
   TOUCH_TARGETS,
   UP_TO_FOUR_COLUMNS,
   amountInput,
+  couponRefusal,
 } from "./checkout-ui";
 
 const CASH_STEPS = [100, 500, 1000];
@@ -56,6 +59,7 @@ export function PayPanel({
   onPaid: (orderId: OrderId) => void;
 }) {
   const actions = useCheckoutBackend().useActions();
+  const reportRefusal = useOrderCouponRefusal(view.order._id);
   const [due] = useState(view.totals.due);
   const [attemptKey] = useState(newAttemptKey);
   // The order as it was when this panel opened; a change made since (even at the same total, or only
@@ -85,6 +89,9 @@ export function PayPanel({
   const lock = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // Settle refused the coupon (sold out, or its saving changed): nothing was recorded.
+  const [couponProblem, setCouponProblem] = useState("");
+  const [couponFix, setCouponFix] = useState<{ working: boolean; error: string }>({ working: false, error: "" });
   const orderChanged =
     view.order.revision !== revision ||
     view.totals.due !== due ||
@@ -131,7 +138,23 @@ export function PayPanel({
     } catch (err) {
       lock.current = false;
       setSubmitting(false);
-      setError(errorText(err, "The payment didn't go through. Try again."));
+      const detail = couponRefusalDetails(err);
+      if (detail) reportRefusal(view.promotion?.code ?? "", detail.problem);
+      const refusal = couponRefusal(err);
+      if (refusal) setCouponProblem(refusal.message);
+      else setError(errorText(err, "The payment didn't go through. Try again."));
+    }
+  }
+
+  /** Checks the coupon again (or removes it), then goes back so the new total is reviewed before a new attempt. */
+  async function fixCoupon(how: "recheck" | "remove") {
+    setCouponFix({ working: true, error: "" });
+    try {
+      if (how === "recheck") await actions.recheckOrderCoupon({ orderId: view.order._id });
+      else await actions.removeOrderCoupon({ orderId: view.order._id });
+      if (mounted.current) onBack();
+    } catch (err) {
+      if (mounted.current) setCouponFix({ working: false, error: couponRefusal(err)?.message ?? errorText(err, "That didn't save. Try again.") });
     }
   }
 
@@ -172,6 +195,14 @@ export function PayPanel({
         <p className="mt-2 text-[min(2.25rem,15cqi)] leading-[calc(2.5/2.25)] font-semibold lining-nums tabular-nums [overflow-wrap:anywhere]">
           {formatMoney(due)}
         </p>
+        {view.promotion && !view.promotion.problem && view.totals.coupon ? (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <TicketPercent aria-hidden className="size-3.5 shrink-0 text-gold-text" />
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              Includes coupon <span className="font-mono font-semibold">{view.promotion.code}</span> · {formatMoney(-view.totals.coupon)}
+            </span>
+          </p>
+        ) : null}
       </div>
 
       <fieldset
@@ -254,7 +285,30 @@ export function PayPanel({
           </>
         )}
       </fieldset>
-      {attempted && !submitting ? (
+      {couponProblem ? (
+        <div role="alert" data-testid="pay-coupon-problem" className="grid gap-3 rounded-xl border border-amber-300/80 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+          <div className="flex items-start gap-2">
+            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+            <div className="min-w-0 [overflow-wrap:anywhere]">
+              <p className="font-semibold">Payment not recorded.</p>
+              <p className="mt-0.5">{couponProblem}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {view.promotion ? (
+              <Button className="flex-[1_1_10rem]" disabled={couponFix.working} onClick={() => void fixCoupon("recheck")}>
+                {couponFix.working ? <Spinner className="text-current" /> : null}
+                Check coupon again
+              </Button>
+            ) : null}
+            <Button variant="outline" className="flex-[1_1_10rem] bg-transparent" disabled={couponFix.working} onClick={() => void fixCoupon("remove")}>
+              Remove coupon
+            </Button>
+          </div>
+          {couponFix.error ? <p className="text-sm font-medium">{couponFix.error}</p> : null}
+        </div>
+      ) : null}
+      {attempted && !submitting && !couponProblem ? (
         <div className="grid gap-2">
           <p className="text-sm text-muted-foreground">
             Retry checks the same payment attempt, including its reviewed

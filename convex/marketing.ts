@@ -1,12 +1,15 @@
 // Marketing release 1: campaigns, short links, QR entry and the coupon catalog.
 // CONTRACT — names, args and return types are fixed so the admin UI and backend can be built in parallel.
 import { ConvexError, v, type ObjectType } from 'convex/values';
-import { mutation, query, type QueryCtx } from './_generated/server';
+import { mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from './lib/offers';
+import { orderTitle, formatReceiptNumber } from './lib/billMath';
 import { requireAdmin } from './lib/adminAuth';
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
-import { enforceRateLimit } from './lib/rateLimit';
+import { appendRecordHistory } from './lib/recordHistory';
+import { cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey } from './lib/marketingAttribution';
+import { enforceRateLimit, rateLimitReached } from './lib/rateLimit';
 import { isMarketingLocale, localizeMarketingPath, validateMarketingSlug } from './lib/marketingSlugs';
 
 const publishStatus = v.union(v.literal('draft'), v.literal('active'), v.literal('paused'), v.literal('archived'));
@@ -53,7 +56,11 @@ export type CampaignRow = Doc<'marketingCampaigns'> & {
 export type LinkRow = Doc<'marketingLinks'> & { campaignName: string; couponCode?: string; shortUrlPath: string };
 export type CouponRow = Doc<'coupons'> & { rules: Doc<'couponVersions'>; campaignName?: string };
 /** Release 2: one coupon use, newest first in CouponDetail. */
-export type RedemptionRow = Doc<'couponRedemptions'> & { booking?: { guestName: string; checkIn: string; checkOut: string; confirmationCode?: string } };
+export type RedemptionRow = Doc<'couponRedemptions'> & {
+	booking?: { guestName: string; checkIn: string; checkOut: string; confirmationCode?: string };
+	/** Release 2b: a checkout order's use. `receiptNumber` is formatted ("R-000123"); null if never paid. */
+	order?: { orderId: Id<'bills'>; title: string; receiptNumber: string | null; customerName: string | null };
+};
 export type CouponDetail = CouponRow & { versions: Doc<'couponVersions'>[]; links: LinkRow[]; redemptions: RedemptionRow[] };
 export type SlugCheck = { ok: true; slug: string } | { ok: false; slug: string; reason: 'empty' | 'invalid' | 'reserved' | 'taken' };
 export type ResolvedLink = {
@@ -84,6 +91,22 @@ function auditFields(admin: { email: string }) {
 function canonical(value: unknown): string {
 	return JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
 		? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+}
+
+/** History shows the campaign name and coupon code staff recognise, not document ids. */
+async function readable(ctx: MutationCtx, key: string, value: unknown): Promise<[string, unknown]> {
+	if (key === 'campaignId') return ['campaign', value ? (await ctx.db.get(value as Id<'marketingCampaigns'>))?.name ?? null : null];
+	if (key === 'couponId') return ['coupon', value ? (await ctx.db.get(value as Id<'coupons'>))?.code ?? null : null];
+	return [key, value ?? null];
+}
+
+async function recordChanges(ctx: MutationCtx, entityType: string, entityId: string, actor: string,
+	before: Record<string, unknown> | null, after: Record<string, unknown>, kind = 'updated') {
+	const keys = Object.keys(after).filter(key => !before || canonical(before[key]) !== canonical(after[key]));
+	if (!keys.length) return;
+	const values = async (fields: Record<string, unknown>) => Object.fromEntries(await Promise.all(keys.map(key => readable(ctx, key, fields[key]))));
+	await appendRecordHistory(ctx, { entityType, entityId, actor, kind: before ? kind : 'created',
+		...(before ? { before: await values(before) } : {}), after: await values(after) });
 }
 
 function validateRange(from?: string, to?: string) {
@@ -222,7 +245,16 @@ export const getCoupon = query({
 		const rows = await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', coupon._id)).order('desc').take(50);
 		const redemptions: RedemptionRow[] = await Promise.all(rows.map(async row => {
 			const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
-			return { ...row, ...(booking && { booking: { guestName: booking.guestName, checkIn: booking.checkIn, checkOut: booking.checkOut, confirmationCode: booking.confirmationCode } }) };
+			const order = row.billId ? await ctx.db.get(row.billId) : null;
+			return {
+				...row,
+				...(order && { order: {
+					orderId: order._id, title: orderTitle(order.orderNumber),
+					receiptNumber: order.receiptNumber !== undefined ? formatReceiptNumber(order.receiptNumber) : null,
+					customerName: order.customerSnapshot?.name ?? null
+				} }),
+				...(booking && { booking: { guestName: booking.guestName, checkIn: booking.checkIn, checkOut: booking.checkOut, confirmationCode: booking.confirmationCode } })
+			};
 		}));
 		return { ...await enrichCoupon(ctx, coupon), versions, links: await Promise.all(links.map(link => enrichLink(ctx, link))), redemptions };
 	}
@@ -266,11 +298,14 @@ export const saveCampaign = mutation({
 		if (fields.budget !== undefined && (!Number.isFinite(fields.budget) || fields.budget < 0)) throw new ConvexError({ code: 'invalid_budget', message: 'Invalid budget. Enter a finite, non-negative amount.' });
 		const audit = auditFields(admin);
 		if (campaignId) {
-			await getOrThrow(ctx, 'marketingCampaigns', campaignId);
+			const existing = await getOrThrow(ctx, 'marketingCampaigns', campaignId);
+			await recordChanges(ctx, 'marketingCampaign', campaignId, admin.email, existing, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes });
 			await ctx.db.patch(campaignId, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes, ...audit });
 			return campaignId;
 		}
-		return ctx.db.insert('marketingCampaigns', { ...fields, ...audit, createdAt: audit.updatedAt, status: 'draft' });
+		const id = await ctx.db.insert('marketingCampaigns', { ...fields, ...audit, createdAt: audit.updatedAt, status: 'draft' });
+		await recordChanges(ctx, 'marketingCampaign', id, admin.email, null, fields);
+		return id;
 	}
 });
 
@@ -286,6 +321,7 @@ export const setCampaignStatus = mutation({
 		if (args.status !== campaign.status && !campaignTransitions[campaign.status].includes(args.status)) {
 			throw new ConvexError({ code: 'invalid_transition', message: 'This campaign status change is unavailable. Use the next action in the campaign lifecycle.' });
 		}
+		await recordChanges(ctx, 'marketingCampaign', args.campaignId, admin.email, campaign, { status: args.status }, 'status_changed');
 		await ctx.db.patch(args.campaignId, { status: args.status, ...auditFields(admin) });
 		return null;
 	}
@@ -317,10 +353,13 @@ export const saveLink = mutation({
 		if (linkId && existing) {
 			// Printed QR codes and shared posts point at the slug, so it is fixed once the link has been live.
 			if (existing.status !== 'draft' && existing.slug !== checked.slug) throw new ConvexError({ code: 'slug_locked', message: 'Slug is locked after publishing. Create a new link to use a different slug.' });
+			await recordChanges(ctx, 'marketingLink', linkId, admin.email, existing, { ...fields, slug: checked.slug, placement: fields.placement, locale: fields.locale, couponId: fields.couponId });
 			await ctx.db.patch(linkId, values);
 			return linkId;
 		}
-		return ctx.db.insert('marketingLinks', { ...values, createdAt: values.updatedAt, opens: 0, status: 'draft' });
+		const id = await ctx.db.insert('marketingLinks', { ...values, createdAt: values.updatedAt, opens: 0, status: 'draft' });
+		await recordChanges(ctx, 'marketingLink', id, admin.email, null, { ...fields, slug: checked.slug });
+		return id;
 	}
 });
 
@@ -333,6 +372,7 @@ export const setLinkStatus = mutation({
 			throw new ConvexError({ code: 'invalid_transition', message: 'A link cannot return to draft. Pause or archive it to remove its offer.' });
 		}
 		if (args.status === 'active') await validateLinkDestination(ctx, link.destination, true);
+		await recordChanges(ctx, 'marketingLink', args.linkId, admin.email, link, { status: args.status }, 'status_changed');
 		await ctx.db.patch(args.linkId, { status: args.status, ...auditFields(admin) });
 		return null;
 	}
@@ -362,12 +402,18 @@ export const saveCoupon = mutation({
 			// Compare the known rule fields individually, independent of object key ordering.
 			const changed = (Object.keys(couponRules) as (keyof RuleFields)[]).some(key => canonical(current[key]) !== canonical(rules[key]));
 			const version = coupon.currentVersion + (changed ? 1 : 0);
-			if (changed) await ctx.db.insert('couponVersions', { ...rules, couponId, version, createdAt: now, createdByEmail: admin.email });
+			if (changed) {
+				await ctx.db.insert('couponVersions', { ...rules, couponId, version, createdAt: now, createdByEmail: admin.email });
+				await appendRecordHistory(ctx, { entityType: 'coupon', entityId: couponId, actor: admin.email, kind: 'version_added', after: { ...rules, version } });
+			}
+			await recordChanges(ctx, 'coupon', couponId, admin.email, coupon, { code, campaignId });
 			await ctx.db.patch(couponId, { code, campaignId, currentVersion: version, ...audit });
 			return { couponId, version };
 		}
 		const id = await ctx.db.insert('coupons', { code, campaignId, status: 'draft', currentVersion: 1, used: 0, discountGranted: 0, createdAt: now, ...audit });
 		await ctx.db.insert('couponVersions', { ...rules, couponId: id, version: 1, createdAt: now, createdByEmail: admin.email });
+		await recordChanges(ctx, 'coupon', id, admin.email, null, { code, campaignId });
+		await appendRecordHistory(ctx, { entityType: 'coupon', entityId: id, actor: admin.email, kind: 'version_added', after: { ...rules, version: 1 } });
 		return { couponId: id, version: 1 };
 	}
 });
@@ -380,6 +426,7 @@ export const setCouponStatus = mutation({
 		if (coupon.status === 'archived' && args.status !== 'archived') {
 			throw new ConvexError({ code: 'invalid_transition', message: 'Archived coupons cannot change status. Create a new coupon instead.' });
 		}
+		await recordChanges(ctx, 'coupon', args.couponId, admin.email, coupon, { status: args.status }, 'status_changed');
 		await ctx.db.patch(args.couponId, { status: args.status, ...auditFields(admin) });
 		return null;
 	}
@@ -433,6 +480,51 @@ export const recordOpen = mutation({
 		await ctx.db.insert('marketingEvents', { linkId: link._id, kind: 'open', bot: args.bot, occurredAt: Date.now() });
 		if (!args.bot && link.status === 'active') await ctx.db.patch(link._id, { opens: link.opens + 1 });
 		return null;
+	}
+});
+
+/**
+ * Release 3a: starts a consented browser session. Called only after analytics consent, when the tab
+ * has no live session, was idle for SESSION_IDLE_MS, or arrived through a different link.
+ * - `visitorKey`: reused when it is a well-formed key (isVisitorKey); otherwise a new one is minted and returned.
+ * - `slug`: the link this tab arrived through. Any non-draft link counts; unknown or draft slugs are ignored.
+ * - `landingPath` / `referrerHost`: sanitised with cleanLandingPath / cleanReferrerHost before storing.
+ * Rate limited per visitor key and globally; over the limit it returns the key with `sessionId: null`
+ * (never throws for that).
+ */
+export const startSession = mutation({
+	args: { visitorKey: v.optional(v.string()), slug: v.optional(v.string()), landingPath: v.string(), referrerHost: v.optional(v.string()) },
+	handler: async (ctx, args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
+		const visitorKey = isVisitorKey(args.visitorKey) ? args.visitorKey : newVisitorKey();
+		// A visitor over their own limit is turned away first, so their calls can't use up everyone's allowance.
+		if (await rateLimitReached(ctx, `marketing-session:${visitorKey}`, 30)) return { visitorKey, sessionId: null };
+		try {
+			await enforceRateLimit(ctx, 'marketing-session:global', 5000, 60 * 60 * 1000);
+			await enforceRateLimit(ctx, `marketing-session:${visitorKey}`, 30, 60 * 60 * 1000);
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith('Too many requests.')) return { visitorKey, sessionId: null };
+			throw error;
+		}
+		const link = args.slug === undefined ? null : await ctx.db.query('marketingLinks').withIndex('by_slug', q => q.eq('slug', args.slug!)).unique();
+		let ownHost: string | undefined;
+		const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL;
+		if (siteUrl) {
+			try { ownHost = new URL(siteUrl).hostname; } catch { /* Ignore an invalid site configuration. */ }
+		}
+		const referrerHost = cleanReferrerHost(args.referrerHost, ownHost);
+		const sessionId = await ctx.db.insert('marketingSessions', {
+			visitorKey, landingPath: cleanLandingPath(args.landingPath), startedAt: Date.now(),
+			...(referrerHost ? { referrerHost } : {}),
+			...(link && link.status !== 'draft' ? { linkId: link._id, campaignId: link.campaignId } : {})
+		});
+		const day = resortTodayIso();
+		const linkId = link && link.status !== 'draft' ? link._id : undefined;
+		// One row per link and campaign: a link moved to another campaign keeps its earlier sessions under the first.
+		const campaignId = linkId ? link!.campaignId : undefined;
+		const rollup = await ctx.db.query('marketingSessionDays').withIndex('by_day_and_linkId_and_campaignId', q => q.eq('day', day).eq('linkId', linkId).eq('campaignId', campaignId)).unique();
+		if (rollup) await ctx.db.patch(rollup._id, { count: rollup.count + 1 });
+		else await ctx.db.insert('marketingSessionDays', { day, linkId, campaignId, count: 1 });
+		return { visitorKey, sessionId };
 	}
 });
 

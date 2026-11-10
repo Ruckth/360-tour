@@ -1,3 +1,4 @@
+import { cleanCapture, marketingCaptureValidator } from './lib/marketingAttribution';
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
@@ -63,6 +64,8 @@ export const createSession = mutation({
 		visitorId: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
+		/** Release 3a: stored on the session and resolved when the chat books. Untrusted. */
+		marketing: v.optional(marketingCaptureValidator),
 		userAgent: v.optional(v.string()),
 		timeZone: v.optional(v.string()),
 		browserLanguage: v.optional(v.string()),
@@ -81,8 +84,10 @@ export const createSession = mutation({
 			propertyId = property?._id;
 		}
 
+		const marketingCapture = cleanCapture(args.marketing);
 		const now = Date.now();
 		return await ctx.db.insert('chatSessions', {
+			...(marketingCapture ? { marketingCapture } : {}),
 			propertyId,
 			propertySlug: args.propertySlug,
 			channel: args.channel,
@@ -361,11 +366,18 @@ export const addMessage = mutation({
 		sessionId: v.id('chatSessions'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
 		content: v.string(),
-		action: v.optional(chatActionValidator)
+		action: v.optional(chatActionValidator),
+		/** Release 3a: the guest's tab and consent as of this message; `{}` clears it. Web chat only. */
+		marketing: v.optional(marketingCaptureValidator)
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		// A chat can outlive the tab and the consent it started with, so each guest message refreshes them.
+		if (args.role === 'user' && args.marketing !== undefined && session.channel === 'web') {
+			const marketingCapture = cleanCapture(args.marketing);
+			if (JSON.stringify(marketingCapture) !== JSON.stringify(session.marketingCapture)) await ctx.db.patch(args.sessionId, { marketingCapture });
+		}
 
 		const timestamp = Date.now();
 		const messageId = await ctx.db.insert('chatMessages', {

@@ -84,6 +84,12 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
     propertyName: "Tideglass Pool Residence", hasStripePayment: false, checkoutLive: false,
     revision: 0, propertyStatus: "active", priceOverride: null, money, historical: true,
     guestEmailsOff: true, confirmationEmailed: false, notifyByDefault: false,
+    // Release 3a: a tracked web booking whose first link differs from its last (marketing.html?mode=source).
+    ...(params.has("marketing") ? { source: "web", marketingAttribution: {
+      model: "last_touch_30d@1", evidence: "tracked", sessionId: "s2", capturedAt: 1738231200000,
+      last: { linkId: "l1", slug: "f1", campaignId: "c1", campaignName: "November escape · Facebook ads", source: "facebook", medium: "paid_social", entry: "link", placement: "Beach villa carousel, second card", sessionId: "s2", touchedAt: 1738224000000 },
+      first: { linkId: "l2", slug: "q1", campaignId: "c2", campaignName: "Lobby QR", source: "print", medium: "qr", entry: "qr", sessionId: "s1", touchedAt: 1737964800000 },
+    } } : {}),
   };
   return [];
 }

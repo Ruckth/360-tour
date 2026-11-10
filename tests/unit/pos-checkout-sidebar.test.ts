@@ -137,7 +137,10 @@ it('enforces the new inline stepper bounds and keeps totals correct at 99 and on
   expect(panel().querySelector('[data-testid=order-due]')?.textContent).toBe('฿9,900');
   await act(async () => {
     panel().querySelector<HTMLButtonElement>('[aria-label="One less"]')!.click();
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Wait for the queued write and re-render, not a fixed delay (the full suite runs under load).
+    for (let waited = 0; waited < 3000 && panel().querySelector('output')?.textContent !== '98'; waited += 25) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
   });
   expect(panel().querySelector('output')?.textContent).toBe('98');
   await act(async () => { await actions.updateLine({ lineId, qtyChange: -97 }); });

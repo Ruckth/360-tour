@@ -32,9 +32,15 @@ export type PricedLine = {
 	priceOverride?: { price: number };
 	/** Already paid elsewhere (e.g. a Stripe deposit on an attached booking). */
 	deposit?: number;
+	/**
+	 * This row's share of the order's coupon (pos.applyOrderCoupon). The server recomputes it on every
+	 * change to an unpaid order and it is frozen once paid, so receipts and refunds read it as stored.
+	 */
+	couponDiscount?: number;
 };
 export type Tender = { method: TenderMethod; amount: number; received?: number };
-export type BillTotals = { subtotal: number; discount: number; total: number; vat: number; deposit: number; due: number };
+/** `discount` is every discount, the coupon included; `coupon` is the coupon's part of it. */
+export type BillTotals = { subtotal: number; discount: number; coupon: number; total: number; vat: number; deposit: number; due: number };
 
 /**
  * Money rounds to the satang, halves away from zero. `toPrecision(15)` drops binary noise first,
@@ -58,13 +64,29 @@ export function lineGross(line: PricedLine) {
 	return round2(linePrice(line) * line.qty);
 }
 
-export function lineDiscount(line: PricedLine) {
+/** The staff discount (amount or percent) alone, at most the row's gross. */
+export function lineStaffDiscount(line: PricedLine) {
 	const gross = lineGross(line);
 	if (!line.discount) return 0;
 	const value = Math.max(line.discount.value, 0);
 	// Percent: satang × hundredths of a percent, so 10% of 10.05 is exactly 1.005 → 1.01.
 	const raw = line.discount.type === 'percent' ? divRound(toSatang(gross) * toSatang(value), 10000) / 100 : value;
 	return round2(Math.min(raw, gross));
+}
+
+/** What a coupon may discount on a row: its price after the staff discount. */
+export function lineCouponBase(line: PricedLine) {
+	return round2(lineGross(line) - lineStaffDiscount(line));
+}
+
+/** The row's coupon share, never more than the staff discount leaves. */
+export function lineCouponDiscount(line: PricedLine) {
+	return round2(Math.min(Math.max(line.couponDiscount ?? 0, 0), lineCouponBase(line)));
+}
+
+/** Every discount on the row: the staff discount, then the coupon share. */
+export function lineDiscount(line: PricedLine) {
+	return round2(lineStaffDiscount(line) + lineCouponDiscount(line));
 }
 
 export function lineNet(line: PricedLine) {
@@ -74,11 +96,12 @@ export function lineNet(line: PricedLine) {
 export function billTotals(lines: readonly PricedLine[]): BillTotals {
 	const subtotal = sum(lines.map(lineGross));
 	const discount = sum(lines.map(lineDiscount));
+	const coupon = sum(lines.map(lineCouponDiscount));
 	const total = round2(subtotal - discount);
 	const deposit = Math.min(sum(lines.map((line) => line.deposit ?? 0)), total);
 	// VAT included at 7%: total × 7/107, in whole satang.
 	const vat = divRound(toSatang(Math.max(total, 0)) * 7, 107) / 100;
-	return { subtotal, discount, total, vat, deposit, due: round2(total - deposit) };
+	return { subtotal, discount, coupon, total, vat, deposit, due: round2(total - deposit) };
 }
 
 export function assertDiscount(discount: LineDiscount) {

@@ -1,26 +1,27 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Button } from '@/components/ui/button';
+import { localizeHref } from '@/i18n/routing';
+import { isUntrackedPath, onConsentChange, readConsent, setConsent } from '@/lib/marketing/capture';
 
-const CONSENT_KEY = 'analytics-consent';
-
-/** Off on the customer display: a guest-facing screen at the counter is not a visitor. */
+/** Never on staff screens or the counter display: those aren't visitors. */
 export function AnalyticsConsent() {
   const pathname = usePathname();
-  if (pathname === '/display' || pathname.startsWith('/display/')) return null;
-  return <AnalyticsConsentBanner />;
+  if (isUntrackedPath(pathname)) return null;
+  return <AnalyticsConsentBanner pathname={pathname} />;
 }
 
-function AnalyticsConsentBanner() {
-  const pathname = usePathname();
-  const [choice, setChoice] = useState<'yes' | 'no' | null>(null);
+function AnalyticsConsentBanner({ pathname }: { pathname: string }) {
+  const t = useTranslations('Consent');
+  const locale = useLocale();
+  // undefined until the browser has been read, so nobody who already answered sees the banner flash.
+  const choice = useSyncExternalStore(onConsentChange, readConsent, () => undefined);
   const [ready, setReady] = useState(false);
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-
-  useEffect(() => {
-    setChoice(localStorage.getItem(CONSENT_KEY) as 'yes' | 'no' | null);
-  }, []);
 
   useEffect(() => {
     if (choice !== 'yes' || !key) return;
@@ -44,16 +45,13 @@ function AnalyticsConsentBanner() {
     void import('posthog-js').then(({ default: posthog }) => posthog.capture('$pageview'));
   }, [pathname, ready]);
 
-  if (!key || choice) return null;
-  function save(value: 'yes' | 'no') {
-    localStorage.setItem(CONSENT_KEY, value);
-    setChoice(value);
-  }
-  return <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-lg rounded-xl border border-border bg-card p-4 text-sm shadow-xl" role="dialog" aria-label="Analytics choice">
-    <p>May we collect anonymous page views to improve this site? Analytics stays off until you agree.</p>
-    <div className="mt-3 flex justify-end gap-2">
-      <button className="rounded-lg border border-border px-3 py-2" onClick={() => save('no')}>No thanks</button>
-      <button className="rounded-lg bg-foreground px-3 py-2 text-background" onClick={() => save('yes')}>Allow analytics</button>
+  if (choice !== null) return null;
+  return <div className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-lg rounded-xl border border-border bg-card p-4 text-sm text-card-foreground shadow-xl" role="dialog" aria-label={t('label')}>
+    <p className="leading-relaxed">{t('message')}</p>
+    <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+      <Link className="me-auto text-muted-foreground underline underline-offset-2 hover:text-foreground" href={localizeHref('/privacy', locale)}>{t('details')}</Link>
+      <Button variant="outline" onClick={() => setConsent('no')}>{t('decline')}</Button>
+      <Button onClick={() => setConsent('yes')}>{t('accept')}</Button>
     </div>
   </div>;
 }
