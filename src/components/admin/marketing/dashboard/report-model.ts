@@ -161,7 +161,7 @@ export type Prepared = {
   links: Map<string, ReportData["links"][number]>;
   coupons: Map<string, ReportData["coupons"][number]>;
   /** Tracked sessions (with a link), by link, campaign and source. Empty unless All properties. */
-  sessions: { byLink: Map<string, number>; byCampaign: Map<string, number>; bySource: Map<string, number>; tracked: number };
+  sessions: { byLink: Map<string, number>; byCampaign: Map<string, number>; bySource: Map<string, number>; /** campaign → link → sessions */ byCampaignLink: Map<string, Map<string, number>>; tracked: number };
   /** Spend in range per campaign (prorated by days), only campaigns with spend > 0. */
   spend: Map<string, number>;
 };
@@ -222,7 +222,7 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
   const links = new Map(report.links.map((l) => [l.id as string, l]));
   const coupons = new Map(report.coupons.map((c) => [c.id as string, c]));
 
-  const sessions = { byLink: new Map<string, number>(), byCampaign: new Map<string, number>(), bySource: new Map<string, number>(), tracked: 0 };
+  const sessions = { byLink: new Map<string, number>(), byCampaign: new Map<string, number>(), bySource: new Map<string, number>(), byCampaignLink: new Map<string, Map<string, number>>(), tracked: 0 };
   if (allProperties) {
     for (const row of report.sessions) {
       if (!row.linkId || !inRange(row.day)) continue;
@@ -231,6 +231,11 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
       add(sessions.byLink, row.linkId, row.count);
       add(sessions.byCampaign, campaignId, row.count);
       add(sessions.bySource, campaignId ? campaigns.get(campaignId)?.source : undefined, row.count);
+      if (campaignId) {
+        const ofCampaign = sessions.byCampaignLink.get(campaignId) ?? new Map<string, number>();
+        add(ofCampaign, row.linkId, row.count);
+        sessions.byCampaignLink.set(campaignId, ofCampaign);
+      }
       sessions.tracked += row.count;
     }
   }
@@ -360,7 +365,9 @@ function linkRows(p: Prepared, tracked: SaleLine[], campaignId?: string): Breakd
   const ids = new Set<string>();
   for (const l of p.links.values()) if ((!campaignId || l.campaignId === campaignId) && ACTIVE.has(l.status)) ids.add(l.id);
   for (const line of tracked) ids.add(line.touch!.linkId);
-  for (const id of p.sessions.byLink.keys()) if (!campaignId || p.links.get(id)?.campaignId === campaignId) ids.add(id);
+  // Under a campaign, a link's sessions are the ones counted while it belonged to that campaign.
+  const sessionsHere = campaignId ? p.sessions.byCampaignLink.get(campaignId) : p.sessions.byLink;
+  for (const id of sessionsHere?.keys() ?? []) ids.add(id);
   return [...ids].map((id) => {
     const link = p.links.get(id);
     const lines = tracked.filter((line) => line.touch!.linkId === id);
@@ -373,7 +380,7 @@ function linkRows(p: Prepared, tracked: SaleLine[], campaignId?: string): Breakd
         .filter(Boolean)
         .join(" · "),
       status: link && link.status !== "active" ? link.status : undefined,
-      sessions: p.allProperties ? (p.sessions.byLink.get(id) ?? 0) : null,
+      sessions: p.allProperties ? (sessionsHere?.get(id) ?? 0) : null,
       drill: { level: "sales" },
       lines,
     });

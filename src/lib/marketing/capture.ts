@@ -56,11 +56,11 @@ const device = () => window.localStorage;
 
 // Kept in memory too, so a browser that blocks storage still gets an answer for this page.
 let memoryConsent: ConsentChoice | null = null;
-// The latest answer couldn't be saved: it still wins over an older one left in storage.
-let unsavedConsent = false;
+// The latest answer couldn't be saved and the older saved one couldn't be removed either: memory wins over it.
+let staleStoredConsent = false;
 
 export function readConsent(): ConsentChoice | null {
-  if (unsavedConsent) return memoryConsent;
+  if (staleStoredConsent) return memoryConsent;
   try {
     const value = window.localStorage.getItem(CONSENT_KEY);
     return value === "yes" || value === "no" ? value : memoryConsent;
@@ -73,14 +73,15 @@ export function setConsent(choice: ConsentChoice) {
   memoryConsent = choice;
   try {
     window.localStorage.setItem(CONSENT_KEY, choice);
-    unsavedConsent = false;
+    staleStoredConsent = false;
   } catch {
-    // Remembered for this page only. Drop any older saved answer so it can't come back on the next page.
-    unsavedConsent = true;
+    // Remembered for this page only. Drop the older saved answer so it can't come back; with none
+    // saved, readConsent uses the one in memory until another tab saves a newer one.
     try {
       window.localStorage.removeItem(CONSENT_KEY);
+      staleStoredConsent = false;
     } catch {
-      // Nothing more to do.
+      staleStoredConsent = true;
     }
   }
   window.dispatchEvent(new Event(CONSENT_EVENT));
@@ -88,11 +89,16 @@ export function setConsent(choice: ConsentChoice) {
 
 /** Calls back when the choice changes, in this tab or another. For useSyncExternalStore with readConsent. */
 export function onConsentChange(onChange: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    // Another tab saved an answer: it is newer than one this tab couldn't save.
+    if (event.key === CONSENT_KEY || event.key === null) staleStoredConsent = false;
+    onChange();
+  };
   window.addEventListener(CONSENT_EVENT, onChange);
-  window.addEventListener("storage", onChange);
+  window.addEventListener("storage", onStorage);
   return () => {
     window.removeEventListener(CONSENT_EVENT, onChange);
-    window.removeEventListener("storage", onChange);
+    window.removeEventListener("storage", onStorage);
   };
 }
 

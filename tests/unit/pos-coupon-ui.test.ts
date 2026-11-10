@@ -84,6 +84,18 @@ afterEach(async () => {
 });
 
 describe("adding a coupon at checkout", () => {
+  it("puts focus back on Add coupon after cancelling", async () => {
+    const backend = createFixtureBackend();
+    const { orderId } = await spaOrder(backend);
+    await show(backend, orderId);
+    await click(button(/^Add coupon/));
+    expect(document.activeElement).toBe(field());
+    await click(panel().querySelector('button[aria-label="Cancel coupon"]'));
+    await settle();
+    // One of the two Add coupon triggers; a browser picks the one showing (no layout here to tell them apart).
+    expect(document.activeElement?.hasAttribute("data-add-coupon")).toBe(true);
+  });
+
   it("applies a typed code, splits it over the spa rows and shows it apart from staff discounts", async () => {
     const backend = createFixtureBackend();
     const { orderId } = await spaOrder(backend);

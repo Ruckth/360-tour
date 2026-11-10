@@ -146,7 +146,7 @@ export function OrderPanel({
         {paying ? null : (
           <>
             {canAddCoupon(view) && !couponOpen ? (
-              <Button size="icon" variant="outline" className={cn("size-9 rounded-xl text-gold-text", SHORT_SCREEN_ONLY)} onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Add coupon: code, QR or link">
+              <Button size="icon" variant="outline" className={cn("size-9 rounded-xl text-gold-text", SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Add coupon: code, QR or link">
                 <TicketPercent aria-hidden className="size-4" />
               </Button>
             ) : null}

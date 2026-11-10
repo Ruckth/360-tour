@@ -298,9 +298,13 @@ describe('report attribution and limits', () => {
 		const s = await setup();
 		const appointmentId = await s.appointment();
 		const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId });
+		// Each step is entered on its own day, so the refund was typed in before the report's refund batch begins.
+		vi.setSystemTime(now - 5 * day);
 		await s.payOrder(orderId, now - 5 * day);
+		vi.setSystemTime(now - 3 * day);
 		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
-		await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 200, currency: 'THB', method: 'cash', reason: 'Courtesy', billId: orderId, idempotencyKey: 'early-refund-001', effectiveAt: now - 3 * day });
+		await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 200, currency: 'THB', method: 'cash', reason: 'Courtesy', billId: orderId, idempotencyKey: 'early-refund-001' });
+		vi.setSystemTime(now);
 		await s.admin.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'later-date-001', reason: 'Wrong day', effectiveAt: now - day, tenders: [{ method: 'cash', amount: 500 }] });
 		// The range starts after the refund's day; the sale still shows what was given back.
 		expect((await s.report('cohort', '2026-11-08')).sales).toMatchObject([{ id: orderId, collected: 500, refunded: 200 }]);

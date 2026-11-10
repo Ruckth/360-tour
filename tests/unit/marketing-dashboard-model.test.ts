@@ -264,6 +264,10 @@ describe("conversion and pinned rows", () => {
     // A link since moved to another campaign: its sessions stay with the campaign they were counted for.
     const moved = prepareReport(report({ sessions: [{ day: "2026-10-10", linkId: lid("la"), campaignId: cid("cb"), count: 5 }] }), LAST);
     expect([moved.sessions.byCampaign.get("cb"), moved.sessions.byCampaign.get("ca"), moved.sessions.byLink.get("la")]).toEqual([5, undefined, 5]);
+    // Drilling into either campaign shows the link with the sessions it had under that campaign, and the Link tab shows them all.
+    const split = prepareReport(report({ sessions: [{ day: "2026-10-10", linkId: lid("lb"), campaignId: cid("ca"), count: 5 }, { day: "2026-10-11", linkId: lid("lb"), campaignId: cid("cb"), count: 2 }] }), LAST);
+    const under = (campaign: string) => row(buildBreakdown(split, "campaign", [{ level: "campaign", id: campaign }], BY_NET).rows, "link:lb")?.sessions;
+    expect([under("ca"), under("cb"), row(buildBreakdown(split, "link", [], BY_NET).rows, "link:lb").sessions]).toEqual([5, 2, 7]);
     const r = report({ sessions: [{ day: "2026-10-10", linkId: lid("lb"), count: 7 }] });
     const b = buildBreakdown(prepareReport(r, LAST), "source", [], BY_NET);
     expect(row(b.rows, "source:instagram").sessions).toBe(7);

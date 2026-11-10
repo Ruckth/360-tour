@@ -253,6 +253,28 @@ describe("an answer that can't be saved", () => {
     expect(capture.readConsent()).toBe("no");
     // The next page asks again instead of measuring on the old answer.
     expect(store.getItem("analytics-consent-v2")).toBeNull();
+    // An answer another tab saves afterwards is the newest.
+    store.setItem("analytics-consent-v2", "yes");
+    expect(capture.readConsent()).toBe("yes");
+  });
+
+  it("keeps the newer No in memory when the old Yes can't even be removed, until another tab saves", () => {
+    capture.setConsent("yes");
+    const store = window.localStorage;
+    const stuck = new Proxy(store, { get: (target, key) => (key === "setItem" || key === "removeItem" ? () => { throw new DOMException("full", "QuotaExceededError"); } : typeof Reflect.get(target, key) === "function" ? Reflect.get(target, key).bind(target) : Reflect.get(target, key)) });
+    const saved = Object.getOwnPropertyDescriptor(window, "localStorage");
+    Object.defineProperty(window, "localStorage", { get: () => stuck, configurable: true });
+    onTestFinished(() => {
+      if (saved) Object.defineProperty(window, "localStorage", saved);
+      else Reflect.deleteProperty(window, "localStorage");
+    });
+    capture.setConsent("no");
+    expect(capture.readConsent()).toBe("no");
+    const stop = capture.onConsentChange(() => {});
+    store.setItem("analytics-consent-v2", "yes");
+    window.dispatchEvent(new StorageEvent("storage", { key: "analytics-consent-v2", newValue: "yes" }));
+    expect(capture.readConsent()).toBe("yes");
+    stop();
   });
 });
 

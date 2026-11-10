@@ -130,3 +130,20 @@ test("on a short phone screen the coupon trigger sits in the order header, keepi
   await expectNoSideScroll(page, 844);
   await shot(page, "coupon-short-844x390");
 });
+
+test("cancelling the coupon field returns focus to the Add coupon that is showing", async ({ page }) => {
+  // The full-size row on a normal screen.
+  await open(page, 1280, "coupon-entry", "light");
+  let panel = await orderPanel(page, 1280);
+  await panel.getByRole("button", { name: /^Add coupon/ }).click();
+  await panel.getByRole("button", { name: "Cancel coupon" }).click();
+  await expect(panel.getByRole("button", { name: /^Add coupon/ })).toBeFocused();
+  // The compact trigger in the order header on a short screen.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/tests/browser/checkout.html?scenario=coupon-entry");
+  await page.locator("[data-fixture-ready]").waitFor();
+  panel = await orderPanel(page, 844);
+  await panel.getByRole("button", { name: "Add coupon", exact: true }).click();
+  await panel.getByRole("button", { name: "Cancel coupon" }).click();
+  await expect(panel.getByRole("button", { name: "Add coupon", exact: true })).toBeFocused();
+});
