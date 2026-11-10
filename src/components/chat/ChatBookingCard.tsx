@@ -1,5 +1,8 @@
 "use client";
 
+import { useCouponPreview } from "@/components/booking/useCouponPreview";
+import { useCouponCopy } from "@/components/booking/coupon-copy";
+import { couponPhase } from "@/lib/booking/coupon";
 import { CalendarCheck, CheckCircle2, ChevronsRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
@@ -35,6 +38,8 @@ import { cn } from "@/lib/utils";
 export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const chatT = useTranslations("Chat");
   const bookingT = useTranslations("Booking");
+  const couponT = useTranslations("Coupon");
+  const couponCopy = useCouponCopy(resort.currency);
   const navT = useTranslations("Nav");
   const villaT = useTranslations("Villa");
   const activeLocale = useLocale();
@@ -107,10 +112,11 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     if (checkOut) params.set("checkout", checkOut);
     if (selectedPropertySlug) params.set("unit", selectedPropertySlug);
     if (context.guests) params.set("guests", String(context.guests));
+    if (context.couponCode) params.set("coupon", context.couponCode);
 
     const query = params.toString();
     return localizeHref(`/booking${query ? `?${query}` : ""}`, locale);
-  }, [checkIn, checkOut, context.guests, locale, selectedPropertySlug]);
+  }, [checkIn, checkOut, context.guests, context.couponCode, locale, selectedPropertySlug]);
   const selectedProperty = useMemo(
     () =>
       properties.find(
@@ -118,6 +124,16 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
       ),
     [properties, selectedPropertySlug],
   );
+  const { preview: couponPreview } = useCouponPreview(convex, context.couponCode ?? null,
+    selectedProperty?.source === "live" && checkIn && checkOut && checkOut > checkIn
+      ? { propertySlug: selectedPropertySlug, checkIn, checkOut } : null);
+  const coupon = couponPhase(context.couponCode ?? null, couponPreview);
+  const couponMessage = coupon.kind === "applied"
+    ? couponT("appliedTitle", { code: context.couponCode ?? "", amount: couponCopy.format.money(coupon.result.couponDiscount) })
+    : coupon.kind === "worse" ? couponT("summaryWorse", { code: context.couponCode ?? "" })
+    : coupon.kind === "rejected" || coupon.kind === "not_used" ? couponCopy.problemText(coupon.problem)
+    : coupon.kind === "checking" ? couponT("checking")
+    : coupon.kind === "error" ? couponT("checkFailed") : couponT("chooseDates");
   const {
     blockedDates: selectedBlockedDates,
     pendingMonths,
@@ -337,6 +353,15 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
           {navT("book")}
         </Button>
       </div>
+
+      {context.couponCode ? (
+        <div className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3 text-sm" role="status" aria-live="polite">
+          <p className="font-semibold">{context.couponCode}</p>
+          <p>{couponMessage}</p>
+          {coupon.kind === "applied" ? <p>{couponT("appliedBody")}</p> : null}
+          {couponPreview.status === "ready" ? <p className="mt-1 font-semibold">{bookingT("total")}: {moneyFormatter.format(couponPreview.result.total)}</p> : null}
+        </div>
+      ) : null}
 
       {failedMonths.length > 0 ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-destructive" role="alert">

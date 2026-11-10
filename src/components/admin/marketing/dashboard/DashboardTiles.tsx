@@ -4,6 +4,7 @@ import { HelpCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { pluralize } from "../../admin-bulk";
 import { thb } from "../marketing-format";
+import { useMarketingAccess } from "../MarketingAccess";
 import { formatPercent, formatRoas, type BusinessTotals, type Prepared, type Roas } from "./report-model";
 
 // The headline tiles and the business-total bar under them.
@@ -21,6 +22,8 @@ function Tile({ label, value, children }: { label: string; value: ReactNode; chi
 const Strong = ({ children }: { children: ReactNode }) => <span className="font-medium text-foreground">{children}</span>;
 
 export function AddSpendLink({ onClick, label = "Add spend" }: { onClick: () => void; label?: string }) {
+  const { capabilities } = useMarketingAccess();
+  if (!capabilities.spend) return null;
   return (
     <button
       type="button"
@@ -69,11 +72,12 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
       <Tile label="Net collected" value={thb(all.net)}>
         Collected minus refunds · tracked <Strong>{thb(tracked.net)}</Strong>
       </Tile>
-      <Tile label="Payments completed" value={all.paid.toLocaleString("en-US")}>
-        Sales first paid in range · tracked <Strong>{tracked.paid.toLocaleString("en-US")}</Strong>
+      <Tile label="First-payment sales" value={all.paid.toLocaleString("en-US")}>
+        Sales receiving their first payment in range · tracked <Strong>{tracked.paid.toLocaleString("en-US")}</Strong>
+        <span className="block">{pluralize(all.couponOnlySettlements, "coupon-only checkout settlement")}</span>
       </Tile>
       <Tile label="Discounts granted" value={thb(all.discount)}>
-        Coupon discounts on sales paid in range · tracked <Strong>{thb(tracked.discount)}</Strong>
+        Coupons at first payment or checkout settlement in range · tracked <Strong>{thb(tracked.discount)}</Strong>
       </Tile>
       <RoasTile roas={totals.roas} onAddSpend={onAddSpend} />
     </>
@@ -116,7 +120,7 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
   ].filter((part) => part.key === "tracked" || part.money.sales > 0);
   const positive = Math.max(1, parts.reduce((total, part) => total + Math.max(0, part.money.net), 0));
   const share = (net: number) => Math.round((Math.max(0, net) / positive) * 100);
-  const countOf = (m: { paid: number; paidOther: number }) => (p.cash ? `${m.paid} paid` : `${m.paid} paid${m.paidOther ? ` + ${m.paidOther} orders` : ""}`);
+  const countOf = (m: { paid: number; paidOther: number; couponOnlySettlements: number }) => (p.cash ? `${m.paid} first paid · ${m.couponOnlySettlements} coupon-only` : `${m.paid} paid${m.paidOther ? ` + ${m.paidOther} orders` : ""}`);
 
   return (
     <section aria-labelledby="kpi-title" className="min-w-0 border border-border bg-card">
@@ -126,7 +130,7 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
             {p.cash ? "Money in and out" : "Results from tracked links"}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {p.cash ? "Finance view · by payment and refund date" : `${p.filters.touch === "first" ? "First touch" : "Last touch"} · sales made in these dates`}
+            {p.cash ? "Finance view · by payment, refund and coupon settlement date" : `${p.filters.touch === "first" ? "First touch" : "Last touch"} · sales made in these dates`}
           </p>
         </div>
         <button
@@ -141,12 +145,11 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
       <div className="grid grid-cols-2 gap-px bg-border md:grid-cols-3 xl:grid-cols-6">{tiles}</div>
       <div className="grid gap-3 border-t border-border px-4 py-3 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] lg:items-center lg:gap-6">
         <div>
-          <p className="text-xs font-medium text-muted-foreground">Business total · {p.cash ? "all payments and refunds" : "every paid sale"}</p>
+          <p className="text-xs font-medium text-muted-foreground">Business total · {p.cash ? "payments, refunds and coupon settlements" : "every paid sale"}</p>
           <p className="text-base font-semibold tabular-nums text-foreground">
             {thb(all.net)} net
           </p>
-          <p className="text-xs tabular-nums text-muted-foreground">{countOf(all)}
-          </p>
+          <p className="text-xs tabular-nums text-muted-foreground">{countOf(all)}</p>
         </div>
         <div className="grid min-w-0 gap-2">
           <div role="img" aria-label={`Net collected by tracking: ${parts.map((part) => `${part.label} ${thb(part.money.net)}`).join(", ")}`} className="flex h-2 w-full gap-0.5">

@@ -146,7 +146,9 @@ describe("AI chat booking", () => {
     await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 
     const first = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    if (first.needsReview) throw new Error("Expected a confirmed booking");
     const second = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    if (second.needsReview) throw new Error("Expected a confirmed booking");
 
     expect(second.bookingId).toBe(first.bookingId);
     expect(second.alreadyConfirmed).toBe(true);
@@ -349,7 +351,9 @@ async function bookViaChat(t: ReturnType<typeof convexTest>, sessionId: Id<"chat
     ...stay,
     ...(guestPhone ? { guestPhone } : {}),
   });
-  return await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+  const confirmed = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+  if (confirmed.needsReview) throw new Error("Expected a confirmed booking");
+  return confirmed;
 }
 
 describe("get_my_bookings / cancel_booking", () => {

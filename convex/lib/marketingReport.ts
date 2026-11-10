@@ -21,7 +21,7 @@ import type { ATTRIBUTION_MODEL } from './marketingAttribution';
  * - Collected is money received (recorded payments, never `bills.total`). Cancelled payment rows and
  *   orders voided with "no money received" count nothing. An order voided with the money kept counts.
  * - Refunds are their own figure, dated by their business date. Net = collected - refunded. Net is not profit.
- * - Discount is the coupon discount only, counted once the sale is paid.
+ * - Discount is the coupon discount only, counted on first payment or checkout settlement.
  * - Days are Bangkok business days (UTC+7, `resortLocalParts`). Money uses its business date
  *   (`effectiveAt`, an order's `paymentEffectiveAt ?? paidAt`), not when it was typed in.
  * - THB only. Rows in another currency are left out and counted in `excluded.nonThb`.
@@ -30,7 +30,7 @@ import type { ATTRIBUTION_MODEL } from './marketingAttribution';
 /** Live ranges are capped so one read stays inside the read budget. */
 export const MAX_REPORT_DAYS = 92;
 
-/** cohort: sales made in the range, with all their money to date. cash: money dated in the range. */
+/** cohort: sales made in the range, with all their money to date. cash: money and coupon settlements dated in the range. */
 export type ReportBasis = 'cohort' | 'cash';
 export const reportBasisValidator = v.union(v.literal('cohort'), v.literal('cash'));
 
@@ -72,17 +72,19 @@ export type ReportSale = {
 	/** Stays with tracked evidence only. Scanned and current-link sales have no separate first touch. */
 	first?: ReportTouch;
 	coupon?: { couponId: Id<'coupons'>; code: string; campaignId?: Id<'marketingCampaigns'> };
-	/** Stays: the day booked. Orders and appointments: the day first paid. */
+	/** Stays: the day booked. Orders: settlement day. Appointments: the day first paid. */
 	createdDay: string;
-	/** Day the first money was received; absent while unpaid. */
+	/** Day the first own money was received; absent without actual cash, including coupon-only orders. */
 	paidDay?: string;
-	/** At least one recorded payment (refunds keep it paid). */
+	/** Checkout orders: day settled, including fully coupon-covered orders; corrected business date. */
+	settlementDay?: string;
+	/** Stays/appointments: at least one recorded payment. Orders: settled, including coupon-only. Refunds keep it paid. */
 	paid: boolean;
 	/** Money received to date, every date. A stay's equals its stay money gross, less any old order's part (see above). */
 	collected: number;
 	/** Refunds to date, every date, as a positive number. */
 	refunded: number;
-	/** Coupon discount granted; 0 while unpaid. */
+	/** Coupon discount granted; 0 before first payment or checkout settlement. */
 	discount: number;
 };
 
@@ -108,8 +110,8 @@ export type ReportData = {
 	currency: 'THB';
 	model: typeof ATTRIBUTION_MODEL;
 	/**
-	 * cohort: stays booked in the range that are paid, plus orders and desk appointments first paid in it.
-	 * cash: every sale that has an event in `events`.
+	 * cohort: paid stays booked in range, checkout orders settled in range and desk appointments first paid in range.
+	 * cash: every sale with an event in `events` or a positive coupon discount settled in range.
 	 */
 	sales: ReportSale[];
 	/** Cash basis: payments and refunds dated in the range, each pointing at a sale above. Empty for cohort. */

@@ -18,8 +18,8 @@ import {
 //   the two are never added together.
 // - Cohort basis: money is each sale's collected / refunded / discount; Paid counts paid stays, and
 //   paid orders and desk payments are counted apart (they're in the money). Cash basis: collected and
-//   refunds are the sale's events dated in range, discount counts when paidDay is in range, and Paid
-//   counts sales whose paidDay is in range.
+//   refunds are dated events; discount uses checkout settlementDay or first paidDay for other sales.
+//   Paid counts first actual payments; coupon-only checkout settlements are counted separately.
 // - Conversion = tracked paid stays ÷ tracked sessions of the same links. Unknown, staff-entered and
 //   messaging sales count in business totals, never in conversion.
 // - ROAS = net of a campaign's sales ÷ its spend in range. A source's ROAS sums its campaigns that have
@@ -42,6 +42,8 @@ export type SaleLine = {
   paid: number;
   /** Cohort only: a paid checkout order or desk payment (counted in money, not in Paid). */
   paidOther: number;
+  /** Cash only: positive-discount checkout settlements with no own cash received. */
+  couponOnlySettlements: number;
   collected: number;
   refunded: number;
   discount: number;
@@ -51,6 +53,8 @@ export type Money = {
   sales: number;
   paid: number;
   paidOther: number;
+  /** Cash only: positive-discount checkout settlements with no own cash received. */
+  couponOnlySettlements: number;
   collected: number;
   refunded: number;
   discount: number;
@@ -202,7 +206,9 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
     if (cash) {
       const money = events.get(sale.id) ?? { collected: 0, refunded: 0 };
       const paidInRange = inRange(sale.paidDay);
-      lines.push({ sale, touch, group, paid: paidInRange ? 1 : 0, paidOther: 0, ...money, discount: paidInRange ? sale.discount : 0 });
+      const discountInRange = inRange(sale.settlementDay ?? sale.paidDay);
+      const couponOnly = sale.kind === "order" && sale.collected === 0 && sale.discount > 0 && discountInRange;
+      lines.push({ sale, touch, group, paid: paidInRange ? 1 : 0, paidOther: 0, couponOnlySettlements: couponOnly ? 1 : 0, ...money, discount: discountInRange ? sale.discount : 0 });
     } else {
       const isStay = sale.kind === "stay";
       lines.push({
@@ -211,6 +217,7 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
         group,
         paid: sale.paid && isStay ? 1 : 0,
         paidOther: sale.paid && !isStay ? 1 : 0,
+        couponOnlySettlements: 0,
         collected: sale.collected,
         refunded: sale.refunded,
         discount: sale.discount,
@@ -250,10 +257,11 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
 // ---------------------------------------------------------------- sums
 
 export function sumLines(lines: readonly SaleLine[]): Money {
-  const money: Money = { sales: lines.length, paid: 0, paidOther: 0, collected: 0, refunded: 0, discount: 0, net: 0 };
+  const money: Money = { sales: lines.length, paid: 0, paidOther: 0, couponOnlySettlements: 0, collected: 0, refunded: 0, discount: 0, net: 0 };
   for (const line of lines) {
     money.paid += line.paid;
     money.paidOther += line.paidOther;
+    money.couponOnlySettlements += line.couponOnlySettlements;
     money.collected += line.collected;
     money.refunded += line.refunded;
     money.discount += line.discount;
@@ -476,7 +484,7 @@ export function buildBreakdown(p: Prepared, view: BreakdownView, path: DrillStep
     const roas = last.level === "source" ? roasFor(p, rows.map((row) => row.key.replace(/^campaign:/, "")).filter(spendsUnder(p, last.id)), scoped) : roasFor(p, [last.id], scoped);
     totals.push(totalRow("scope", `Total for ${name}`, sumLines(scoped), sessions, roas));
   }
-  if (top) totals.push(totalRow("business", "Business total", business.all, null, undefined, "All paid sales, tracked or not"));
+  if (top) totals.push(totalRow("business", "Business total", business.all, null, undefined, p.cash ? "Payments, refunds and coupon settlements, tracked or not" : "All paid sales, tracked or not"));
 
   return { view, path, rows, pinned, totals, showSessions, showRoas };
 }

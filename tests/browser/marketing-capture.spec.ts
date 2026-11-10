@@ -75,3 +75,29 @@ test("Thai banner wraps on a phone", async ({ page }) => {
   await expectFits(page, banner, 390, "banner");
   await shot(page, "consent-390-light-th");
 });
+
+test("the choice follows across open tabs without a reload", async ({ context }) => {
+  const [a, b] = [await context.newPage(), await context.newPage()];
+  for (const tab of [a, b]) {
+    await tab.goto("/tests/browser/marketing.html?mode=choice");
+    // Survives only if the page is never reloaded.
+    await tab.evaluate(() => ((window as unknown as { kept?: boolean }).kept = true));
+  }
+  const banner = (tab: Page) => tab.getByRole("dialog", { name: "Measurement choice" });
+  await banner(a).getByRole("button", { name: "Allow" }).click();
+  await expect(banner(b)).toBeHidden();
+  await expect(b.getByText("Measurement is on in this browser.")).toBeVisible();
+
+  await b.getByRole("button", { name: "Turn off measurement" }).click();
+  await expect(b.getByText("Measurement is off in this browser.")).toBeVisible();
+  await expect(a.getByText("Measurement is off in this browser.")).toBeVisible();
+  expect(await a.evaluate(() => localStorage.getItem("marketing-visitor"))).toBeNull();
+
+  await a.getByRole("button", { name: "Turn on measurement" }).click();
+  await expect(b.getByText("Measurement is on in this browser.")).toBeVisible();
+  // Clearing the site's storage in one tab withdraws the choice in the other, which asks again.
+  await a.evaluate(() => localStorage.clear());
+  await expect(banner(b)).toBeVisible();
+  await expect(b.getByText("Measurement is off in this browser.")).toBeVisible();
+  for (const tab of [a, b]) expect(await tab.evaluate(() => (window as unknown as { kept?: boolean }).kept)).toBe(true);
+});

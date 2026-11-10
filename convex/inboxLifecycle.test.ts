@@ -23,9 +23,8 @@ async function setup() {
   const sessionId = await t.mutation(api.chat.createSession, {
     channel: "web",
   });
-  const guestId = await t.mutation(api.chat.addMessage, {
+  const guestId = await t.mutation(internal.chat.acceptGuestMessage, {
     sessionId,
-    role: "user",
     content: "Does the suite have Wi-Fi?",
   });
   const detail = async () =>
@@ -50,8 +49,8 @@ describe("automatic responder lifecycle", () => {
   });
   it("rejects No reply needed when a new guest turn arrived after the action was chosen", async () => {
     const s = await setup();
-    const newer = await s.t.mutation(api.chat.addMessage, {
-      sessionId: s.sessionId, role: "user", content: "Can I bring a pet?",
+    const newer = await s.t.mutation(internal.chat.acceptGuestMessage, {
+      sessionId: s.sessionId,  content: "Can I bring a pet?",
     });
     await expect(s.admin.mutation(api.adminChat.setSessionStatus, {
       sessionId: s.sessionId, status: "resolved", expectedGuestMessageId: s.guestId,
@@ -83,9 +82,8 @@ describe("automatic responder lifecycle", () => {
         resolutionSource: "ai",
         needsReply: false,
       });
-      await s.t.mutation(api.chat.addMessage, {
+      await s.t.mutation(internal.chat.acceptGuestMessage, {
         sessionId: s.sessionId,
-        role: "user",
         content: "What time is check-in?",
       });
       expect(await s.detail()).toMatchObject({
@@ -123,9 +121,8 @@ describe("automatic responder lifecycle", () => {
       content: "Wi-Fi is included.",
       replyToMessageId: s.guestId,
     });
-    const newer = await s.t.mutation(api.chat.addMessage, {
+    const newer = await s.t.mutation(internal.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
-      role: "user",
       content: "Can you arrange a transfer?",
     });
     await s.admin.mutation(api.adminReply.complete, { requestId: "first" });
@@ -163,9 +160,8 @@ describe("automatic responder lifecycle", () => {
   });
   it("refuses a reply drafted against a guest turn that is no longer current", async () => {
     const s = await setup();
-    await s.t.mutation(api.chat.addMessage, {
+    await s.t.mutation(internal.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
-      role: "user",
       content: "Another question",
     });
     await expect(
@@ -266,9 +262,8 @@ describe("automatic responder lifecycle", () => {
       aiPaused: true,
       keepWithStaff: true,
     });
-    await s.t.mutation(api.chat.addMessage, {
+    await s.t.mutation(internal.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
-      role: "user",
       content: "One more question.",
     });
     expect(await s.detail()).toMatchObject({
@@ -278,9 +273,8 @@ describe("automatic responder lifecycle", () => {
   });
   it("does not let a late AI answer or a failed old send overwrite a newer turn", async () => {
     const s = await setup();
-    await s.t.mutation(api.chat.addMessage, {
+    await s.t.mutation(internal.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
-      role: "user",
       content: "New question",
     });
     await s.t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
@@ -359,9 +353,8 @@ describe("automatic responder lifecycle", () => {
   });
   it("ignores a delayed handoff from an older guest turn", async () => {
     const s = await setup();
-    const current = await s.t.mutation(api.chat.addMessage, {
+    const current = await s.t.mutation(internal.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
-      role: "user",
       content: "A different question",
     });
     await s.t.run(async (ctx) => {

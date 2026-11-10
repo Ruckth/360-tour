@@ -406,9 +406,10 @@ describe('proposal confirm links', () => {
 			const chat = () => t.mutation(internal.bookings.confirmChatBooking, { sessionId });
 			const link = () => t.mutation(api.bookings.confirmProposal, { token: confirmToken });
 			const first = await (chatFirst ? chat() : link());
+			if (first.needsReview) throw new Error("Expected a confirmed booking");
 			const repeats = await Promise.all([link(), chat(), link()]);
 			expect(
-				repeats.every((result) => result.bookingId === first.bookingId && result.accessToken === first.accessToken)
+				repeats.every((result) => !result.needsReview && result.bookingId === first.bookingId && result.accessToken === first.accessToken)
 			).toBe(true);
 			expect(await t.run((ctx) => ctx.db.query('bookings').take(10))).toHaveLength(1);
 			expect(await t.run((ctx) => ctx.db.query('bills').take(10))).toHaveLength(1);
@@ -443,9 +444,11 @@ describe('proposal confirm links', () => {
 		const { t, prepare } = await setup({ chatQuoteValidityMinutes: 2 });
 		const { confirmToken, expiresAt } = await prepare();
 		const first = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		if (first.needsReview) throw new Error("Expected a confirmed booking");
 		vi.setSystemTime(expiresAt + minute);
 		expect(await t.query(api.bookings.getConfirmProposal, { token: confirmToken })).not.toBeNull();
 		const again = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		if (again.needsReview) throw new Error("Expected a confirmed booking");
 		expect(again.bookingId).toBe(first.bookingId);
 		expect(await t.run((ctx) => ctx.db.query('bookings').take(10))).toHaveLength(1);
 	});
@@ -455,12 +458,14 @@ describe('proposal confirm links', () => {
 		await t.run((ctx) => ctx.db.patch(sessionId, { aiPaused: true }));
 		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('paused');
 		const booking = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		if (booking.needsReview) throw new Error("Expected a confirmed booking");
 		expect(booking.alreadyConfirmed).toBe(false);
 	});
 	it.each(['cancelled', 'expired', 'paid'] as const)('does not offer a payable proposal after the booking is %s', async (state) => {
 		const { t, admin, prepare } = await setup({ unpaidHoldMinutes: 10 });
 		const { confirmToken } = await prepare();
 		const booking = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		if (booking.needsReview) throw new Error("Expected a confirmed booking");
 		if (state === 'cancelled') {
 			await admin.mutation(api.adminBookings.updateBooking, {
 				bookingId: booking.bookingId, action: 'cancel', expectedRevision: 0, notifyGuest: false, reason: 'Guest requested cancellation'
@@ -478,7 +483,9 @@ describe('proposal confirm links', () => {
 	it('shows the current held booking after staff correct its stay and price', async () => {
 		const { t, admin, prepare, propertyId } = await setup();
 		const { confirmToken } = await prepare();
-		const { bookingId } = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		const confirmed = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		if (confirmed.needsReview) throw new Error("Expected a confirmed booking");
+		const { bookingId } = confirmed;
 		await admin.mutation(api.adminBookings.editBooking, {
 			bookingId, propertyId, checkIn: day(15), checkOut: day(18), guests: 3,
 			guestName: stay.guestName, guestPhone: stay.guestPhone, expectedRevision: 0, notifyGuest: false
@@ -491,7 +498,7 @@ describe('proposal confirm links', () => {
 		const { t, prepare, propertyId } = await setup();
 		const { confirmToken } = await prepare();
 		await t.run((ctx) => ctx.db.patch(propertyId, { pricePerNight: 150 }));
-		await expect(t.mutation(api.bookings.confirmProposal, { token: confirmToken })).rejects.toThrow('price changed');
+		await expect(t.mutation(api.bookings.confirmProposal, { token: confirmToken })).resolves.toMatchObject({ needsReview: true });
 		expect(await t.run((ctx) => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
 	it('continues from link confirmation into the existing Stripe action', async () => {
@@ -508,7 +515,9 @@ describe('proposal confirm links', () => {
 					)
 			)
 		);
-		const { bookingId, accessToken } = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		const confirmed = await t.mutation(api.bookings.confirmProposal, { token: confirmToken });
+		if (confirmed.needsReview) throw new Error("Expected a confirmed booking");
+		const { bookingId, accessToken } = confirmed;
 		expect(await t.action(api.payments.createCheckout, { bookingId, accessToken })).toEqual({
 			url: 'https://checkout.stripe.com/test'
 		});

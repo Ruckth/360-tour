@@ -812,22 +812,20 @@ describe("adminChat.listSessions", () => {
 });
 
 describe("admin chat metadata writes", () => {
-  it("chat.addMessage increments messageCount and latestMessageAt", async () => {
+  it("chat.acceptGuestMessage increments messageCount and latestMessageAt", async () => {
     const t = convexTest(schema, modules);
     const sessionId = await t.mutation(api.chat.createSession, {
       channel: "web",
       visitorId: "visitor-metadata",
     });
 
-    await t.mutation(api.chat.addMessage, {
+    await t.mutation(internal.chat.acceptGuestMessage, {
       sessionId,
-      role: "user",
       content: "Hello",
     });
     const afterFirst = await t.query(internal.chat.getSessionInternal, { sessionId });
-    await t.mutation(api.chat.addMessage, {
+    await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
       sessionId,
-      role: "assistant",
       content: "Hi there",
     });
     const afterSecond = await t.query(internal.chat.getSessionInternal, { sessionId });
@@ -986,7 +984,7 @@ describe("admin chat unanswered warning", () => {
     expect(await needsReply()).toBe(false);
 
     await admin.mutation(api.adminChat.setKeepWithStaff, { sessionId, keep: true });
-    await t.mutation(api.chat.addMessage, { sessionId, role: "user", content: "Another staff question" });
+    await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: "Another staff question" });
     expect(await needsReply()).toBe(true);
   });
 
@@ -1131,7 +1129,7 @@ describe("adminChat inbox lifecycle", () => {
     await admin.mutation(api.adminReply.complete, { requestId: "r-1" });
     expect((await t.run((ctx) => ctx.db.get(sessionId)))?.adminStatus).toBe("resolved");
 
-    await t.mutation(api.chat.addMessage, { sessionId, role: "user", content: "Hello again" });
+    await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: "Hello again" });
     const session = await t.run((ctx) => ctx.db.get(sessionId));
     expect(session?.adminStatus).toBeUndefined();
     expect(session?.archivedAt).toBeUndefined();

@@ -1,3 +1,4 @@
+import { syncAffiliateCredit } from './affiliateCredits';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './appointmentChanges';
@@ -133,6 +134,7 @@ export async function recordAppointmentRefund(ctx: MutationCtx, a: Appointment, 
   const netAfter = round2(money.net - amount);
   const refundId = await ctx.db.insert('appointmentRefunds', { appointmentId: a._id, amount, currency: a.currency, method: input.method ?? 'unrecorded', reason, effectiveAt, recordedAt: Date.now(), recordedBy: actor, idempotencyKey: key, ...(paymentId ? { paymentId } : {}), ...(billId ? { billId } : {}), netBefore: money.net, netAfter });
   await write(ctx, a, { amountPaid: money.gross, amountRefunded: round2(money.refunded + amount), ...(netAfter === 0 ? { paymentStatus: 'refunded', refundedAt: effectiveAt } : {}) }, actor, reason, effectiveAt, [{ field: 'refundId', from: null, to: refundId }, { field: 'refundMethod', from: null, to: input.method ?? 'unrecorded' }, { field: 'refundAmount', from: null, to: amount }]);
+  if (billId) await syncAffiliateCredit(ctx, {billId}, actor);
   return { refundId, replayed: false };
 }
 

@@ -1,3 +1,4 @@
+import { chatCouponSummary } from './chatCouponCopy';
 import type { EffectiveSettings } from './siteSettings';
 
 export function replyLocale(message: string): 'en' | 'th' | 'ko' {
@@ -78,7 +79,7 @@ export function committedReply(name: string, result: Record<string, unknown>, me
 	const locale = replyLocale(message);
 	if (name === 'confirm_booking' && typeof result.confirmationCode === 'string' && typeof result.total === 'number') {
 		const title = { en: result.status === 'paid' ? 'Villa booking confirmed; payment received.' : 'Villa booking created; payment is pending.', th: result.status === 'paid' ? 'ยืนยันการจองวิลล่าแล้วครับ ชำระเงินแล้ว' : 'สร้างการจองวิลล่าแล้วครับ ยังรอชำระเงิน', ko: result.status === 'paid' ? '빌라 예약이 확정되었습니다. 결제가 완료되었습니다.' : '빌라 예약이 생성되었습니다. 결제 대기 중입니다.' }[locale];
-		return `${title}\n${result.confirmationCode}\n${result.property} · ${result.checkIn} → ${result.checkOut}\n${result.guests} guests · ${result.nights} nights\n${result.currency} ${result.total.toLocaleString('en-US')}\n${typeof result.paymentUrl === 'string' ? result.paymentUrl : ''}`.trim();
+		return `${title}\n${result.confirmationCode}\n${result.property} · ${result.checkIn} → ${result.checkOut}\n${result.guests} guests · ${result.nights} nights\n${result.currency} ${result.total.toLocaleString('en-US')}\n${chatCouponSummary(result.coupon, result.currency, locale)}\n${typeof result.paymentUrl === 'string' ? result.paymentUrl : ''}`.trim();
 	}
 	if (name === 'confirm_service_booking' && typeof result.confirmationCode === 'string') {
 		const title = { en: 'Service booking confirmed. Payment is at the resort.', th: 'ยืนยันการจองบริการแล้วครับ ชำระเงินที่รีสอร์ต', ko: '서비스 예약이 확정되었습니다. 리조트에서 결제해 주세요.' }[locale];
@@ -94,10 +95,13 @@ export function proposalReply(name: string, result: Record<string, unknown>, mes
 	if (result.error || result.ok === false) return null;
 	const locale = replyLocale(message);
 	const confirm = { en: 'Reply yes to confirm this summary.', th: 'ตอบ “ใช่” เพื่อยืนยันรายละเอียดนี้ครับ', ko: '이 내용을 확인하고 동의하시면 “네”라고 답해 주세요.' }[locale];
-	if (name === 'prepare_booking' && typeof result.total === 'number') {
-		const title = { en: 'Villa booking proposal — not booked yet.', th: 'รายละเอียดที่เตรียมไว้ ยังไม่ได้สร้างการจองวิลล่าครับ', ko: '빌라 예약 제안입니다. 아직 예약되지 않았습니다.' }[locale];
-		return `${title}\n${result.property} · ${result.checkIn} → ${result.checkOut}\n${result.guests} guests · ${result.nights} nights\n${result.currency} ${result.total.toLocaleString('en-US')}\n${typeof result.confirmUrl === 'string' ? `${{ en: 'Confirm & pay', th: 'ยืนยันและชำระเงิน', ko: '확인 및 결제' }[locale]}: ${result.confirmUrl}\n` : ''}${confirm}`;
+	if ((name === 'prepare_booking' || (name === 'confirm_booking' && result.needsReview === true)) && typeof result.total === 'number') {
+		const title = result.needsReview ? { en: 'The price or coupon changed. Review this new proposal; nothing is booked yet.', th: 'ราคาหรือคูปองเปลี่ยน กรุณาตรวจรายละเอียดใหม่ ยังไม่ได้สร้างการจองครับ', ko: '요금 또는 쿠폰이 변경되었습니다. 새 제안을 확인해 주세요. 아직 예약되지 않았습니다.' }[locale] : { en: 'Villa booking proposal — not booked yet.', th: 'รายละเอียดที่เตรียมไว้ ยังไม่ได้สร้างการจองวิลล่าครับ', ko: '빌라 예약 제안입니다. 아직 예약되지 않았습니다.' }[locale];
+		return `${title}\n${result.property} · ${result.checkIn} → ${result.checkOut}\n${result.guests} guests · ${result.nights} nights\n${result.currency} ${result.total.toLocaleString('en-US')}\n${chatCouponSummary(result.coupon, result.currency, locale)}\n${typeof result.confirmUrl === 'string' ? `${{ en: 'Confirm & pay', th: 'ยืนยันและชำระเงิน', ko: '확인 및 결제' }[locale]}: ${result.confirmUrl}\n` : ''}${confirm}`;
 	}
+  if (name === 'preview_coupon' && typeof result.total === 'number') {
+    return `${result.property} · ${result.checkIn} → ${result.checkOut}\n${chatCouponSummary(result.coupon, result.currency, locale)}\n${result.currency} ${result.total.toLocaleString('en-US')}\n${typeof result.bookingUrl === 'string' ? result.bookingUrl : ''}\n${{ en: 'No booking or hold yet. Review the final price in checkout.', th: 'ยังไม่ได้จองหรือกันวัน กรุณาตรวจราคาสุดท้ายก่อนยืนยันครับ', ko: '아직 예약되지 않았습니다. 결제 단계에서 최종 요금을 확인해 주세요.' }[locale]}`;
+  }
 	if (name === 'prepare_service_booking' && typeof result.price === 'number') {
 		const title = { en: 'Service booking proposal — not confirmed yet.', th: 'รายละเอียดที่เตรียมไว้ ยังไม่ได้ยืนยันการจองบริการครับ', ko: '서비스 예약 제안입니다. 아직 확정되지 않았습니다.' }[locale];
 		return `${title}\n${result.service} · ${result.date} ${result.time}\n${result.durationMin} min · ${result.staff}\n${result.currency} ${result.price.toLocaleString('en-US')}${typeof result.staffPreferenceIgnored === 'string' ? `\n${result.staffPreferenceIgnored}` : ''}\n${confirm}`;

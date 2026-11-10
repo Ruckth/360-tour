@@ -7,6 +7,14 @@ import { calculateDirectQuote, maxSavings } from './pricing';
 import type { ToolDef } from './chatLlm';
 
 export const TOOLS: ToolDef[] = [
+  { type: 'function', function: {
+    name: 'preview_coupon', description: "Quote a coupon code the guest supplied for their villa and dates. Uses the same live offer engine as checkout; reserves nothing. Never invent a code or discount. Share the exact saving/refusal, total and bookingUrl.",
+    parameters: { type: 'object', properties: {
+      couponCode: { type: 'string', description: 'Exact code supplied by the guest' },
+      propertySlug: { type: 'string' }, checkIn: { type: 'string', format: 'date' }, checkOut: { type: 'string', format: 'date' },
+      guests: { type: 'integer', minimum: 1 }
+    }, required: ['couponCode', 'propertySlug', 'checkIn', 'checkOut'] }
+  } },
 	{
 		type: 'function',
 		function: {
@@ -172,6 +180,7 @@ export const BOOKING_TOOLS: ToolDef[] = [
 					checkOut: { type: 'string', format: 'date', description: 'Check-out date in YYYY-MM-DD format' },
 					guests: { type: 'integer', minimum: 1, description: 'Number of guests' },
 					guestName: { type: 'string', description: 'Full name of the guest' },
+					couponCode: { type: 'string', description: 'Only a code supplied by the guest; pass it to quote, never invent one' },
 					guestPhone: {
 						type: 'string',
 						description: 'Guest phone number as they typed it (ignored on WhatsApp)'
@@ -443,6 +452,15 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			return JSON.stringify({ properties: list, currency: properties[0]?.currency ?? 'THB' });
 		}
 
+
+    case 'preview_coupon': {
+      const quote = await ctx.runQuery(internal.bookings.previewChatCoupon, {
+        sessionId: toolContext.sessionId, couponCode: String(fnArgs.couponCode), propertySlug: String(fnArgs.propertySlug),
+        checkIn: String(fnArgs.checkIn), checkOut: String(fnArgs.checkOut), ...(typeof fnArgs.guests === 'number' ? { guests: fnArgs.guests } : {})
+      });
+      const params = new URLSearchParams({ unit: quote.propertySlug, checkin: quote.checkIn, checkout: quote.checkOut, guests: String(quote.guests), coupon: quote.coupon?.code ?? '' });
+      return JSON.stringify({ ...quote, bookingUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/booking?${params}` });
+    }
 		case 'prepare_booking': {
 			const summary = await ctx.runMutation(internal.bookings.prepareChatBooking, {
 				sessionId: toolContext.sessionId,
@@ -452,11 +470,12 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 				checkOut: String(fnArgs.checkOut ?? ''),
 				guests: Number(fnArgs.guests),
 				guestName: String(fnArgs.guestName ?? ''),
-				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {})
+				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {}),
+				...(typeof fnArgs.couponCode === 'string' ? { couponCode: fnArgs.couponCode } : {})
 			});
 			const { confirmToken, ...details } = summary;
 			const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
-			const confirmUrl = `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}`;
+			const confirmUrl = `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}${summary.coupon ? `&coupon=${encodeURIComponent(summary.coupon.code)}` : ""}`;
 			return JSON.stringify({ ...details, confirmUrl, next: 'Share confirmUrl as "Confirm & pay", or offer replying "yes". No booking or hold exists until confirmation.' });
 		}
 
@@ -466,12 +485,18 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 				expectedProposal: toolContext.bookingProposal ?? '',
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			});
+      if (booking.needsReview) {
+        const { confirmToken, ...quote } = booking.quote;
+        const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
+        return JSON.stringify({ ...quote, needsReview: true, confirmUrl: `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}${quote.coupon ? `&coupon=${encodeURIComponent(quote.coupon.code)}` : ''}` });
+      }
 			return JSON.stringify({
 				confirmationCode: booking.confirmationCode,
 				property: booking.property, checkIn: booking.checkIn, checkOut: booking.checkOut, guests: booking.guests, nights: booking.nights,
 				status: booking.paymentStatus === 'paid' ? 'paid' : 'pending_payment',
 				total: booking.total,
 				currency: booking.currency,
+				...(booking.coupon ? { coupon: booking.coupon } : {}),
 				...(booking.paymentStatus === 'pending' && booking.accessToken ? { paymentUrl: paymentUrl(toolContext, booking.bookingId, booking.accessToken) } : {}),
 				alreadyConfirmed: booking.alreadyConfirmed
 			});

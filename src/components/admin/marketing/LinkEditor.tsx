@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
+import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { Callout, ChoiceGroup, CopyButton, CouponChip, FactList, FieldError, FieldHint, SheetForm, useEditorForm } from "./MarketingBits";
 import {
   COUPON_STATE,
@@ -141,13 +142,17 @@ export function LinkEditor({
   onDirtyChange?: (dirty: boolean) => void;
   onDuplicate: (link: LinkRow) => void;
 }) {
+  const access = useMarketingAccess();
+  const canonicalPartnerLink = !!link?.affiliateId && link.slug.startsWith("r/");
+  const canEdit = canEditMarketing(access, link) && !canonicalPartnerLink && (!link?.affiliateId || access.capabilities.partners);
+  const affiliateId = access.capabilities.partners ? (link?.affiliateId ?? preset?.from?.affiliateId) : undefined;
   const id = useId();
   const { form, set, submitted, saving, saveError, submit } = useEditorForm<Form>(() => initialForm(link, preset), onDirtyChange);
 
   // Once a link is live its address is printed and shared, so it can't change.
   const slugLocked = link !== undefined && link.status !== "draft";
   const unchangedSlug = link !== undefined && form.slug === link.slug;
-  const slugState = useSlugCheck(form.slug, link?._id, slugLocked || unchangedSlug, actions.checkSlug);
+  const slugState = useSlugCheck(form.slug, link?._id, !canEdit || slugLocked || unchangedSlug, actions.checkSlug);
   const slugOk = slugLocked || unchangedSlug || (slugState.status === "done" && slugState.check.ok);
   const takenBy = (slug: string) => links.find((other) => other.slug === slug && other._id !== link?._id)?.name;
   const slugMessage =
@@ -173,6 +178,7 @@ export function LinkEditor({
 
   const save = (event: FormEvent) =>
     submit(event, firstError && `${id}-${firstError}`, async () => {
+      if (!canEdit) return;
       await actions.saveLink({
         linkId: link?._id,
         slug: link && slugLocked ? link.slug : form.slug,
@@ -183,6 +189,7 @@ export function LinkEditor({
         locale: form.locale === AUTO_LOCALE ? undefined : form.locale,
         couponId: form.couponId === NO_COUPON ? undefined : (form.couponId as Id<"coupons">),
         entry: form.entry,
+        ...(affiliateId ? { affiliateId } : {}),
       });
       onDone(link ? `Saved /${link.slug}` : `Created /${form.slug}`);
     }, "Couldn’t save the link.");
@@ -190,7 +197,10 @@ export function LinkEditor({
   const couponLive = coupon ? couponState(coupon, today) : null;
 
   return (
-    <SheetForm onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={link ? "Save changes" : "Create link"}>
+    <SheetForm readOnly={!canEdit} onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={link ? "Save changes" : "Create link"}>
+      {!canEdit ? <p className="text-sm text-muted-foreground">Read-only. {canonicalPartnerLink || link?.affiliateId ? "Partner links are managed from Affiliates." : access.capabilities.draft ? "Your role can edit drafts only." : "Your role can inspect link details."}</p> : null}
+      {preset?.from?.affiliateId && !access.capabilities.partners ? <p className="text-sm text-muted-foreground">This copy is an ordinary tracking link. Its partner association is not copied.</p> : null}
+      <fieldset disabled={!canEdit} className="grid min-w-0 gap-6">
       <div className="grid gap-2">
         <Label htmlFor={`${id}-name`}>Display name</Label>
         <Input
@@ -218,7 +228,7 @@ export function LinkEditor({
             <p className="text-muted-foreground">
               Published links keep their address, so shared posts and printed QR codes keep working. Need a different one? Make a copy.
             </p>
-            <Button type="button" variant="outline" size="sm" onClick={() => onDuplicate(link)}>
+            <Button disabled={!access.capabilities.draft} type="button" variant="outline" size="sm" onClick={() => onDuplicate(link)}>
               Duplicate as a new link
             </Button>
           </div>
@@ -416,6 +426,7 @@ export function LinkEditor({
         ]}
       />
 
+      </fieldset>
       <section aria-label="Preview" aria-live="polite" className="grid gap-3 rounded-lg border border-border bg-muted/40 p-4">
         <div className="flex items-center gap-2">
           <p className="admin-eyebrow">Preview</p>

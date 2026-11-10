@@ -67,15 +67,15 @@ it('throttles staff alerts for a session to one per 30 minutes', async () => {
 	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', {
 		channel: 'web', visitorName: 'Guest', createdAt: Date.now()
 	}));
-	await t.mutation(api.chat.addMessage, { sessionId, role: 'user', content: 'I need a human agent' });
+	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	const first = await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt);
 	expect(first).toBeTruthy();
-	await t.mutation(api.chat.addMessage, { sessionId, role: 'user', content: 'Please connect me to someone' });
+	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'Please connect me to someone' });
 	await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: 'What is the answer?' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBe(first);
 	const stale = Date.now() - 31 * 60 * 1000;
 	await t.run(async ctx => await ctx.db.patch(sessionId, { lastStaffAlertAt: stale }));
-	await t.mutation(api.chat.addMessage, { sessionId, role: 'user', content: 'I need a human agent' });
+	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeGreaterThan(stale);
 });
 
@@ -130,7 +130,7 @@ it('caps staff alerts globally so anonymous sessions cannot flood the owner', as
 	const t = convexTest(schema, modules);
 	await t.run(async ctx => await ctx.db.insert('rateLimits', { key: 'staff-alert:global', count: 30, expiresAt: Date.now() + 60 * 60 * 1000 }));
 	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: Date.now() }));
-	await t.mutation(api.chat.addMessage, { sessionId, role: 'user', content: 'I need a human agent' });
+	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeFalsy();
 });
 
@@ -142,7 +142,7 @@ it('uses a rolling hour for the global staff alert cap', async () => {
 		timestamps: [now - 61 * 60 * 1000, ...Array(29).fill(now - 30 * 60 * 1000)]
 	}));
 	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: now }));
-	await t.mutation(api.chat.addMessage, { sessionId, role: 'user', content: 'I need a human agent' });
+	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeTruthy();
 	const limit = await t.run(async ctx => await ctx.db.query('rateLimits')
 		.withIndex('by_key', q => q.eq('key', 'staff-alert:global')).unique());

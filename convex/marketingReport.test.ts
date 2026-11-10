@@ -15,12 +15,12 @@ const email = 'admin@example.com';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_EMAILS', email); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
-async function setup() {
+async function setup(couponAmount = 100) {
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email, tokenIdentifier: 'admin' });
 	const propertyId = await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 1000, currency: 'THB', maxGuests: 4, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
 	const campaignId = await admin.mutation(api.marketing.saveCampaign, { name: 'November', source: 'print', medium: 'qr' });
-	const { couponId } = await admin.mutation(api.marketing.saveCoupon, { campaignId, code: 'SPA100', benefit: { kind: 'fixed', amount: 100 }, scope: 'services' });
+	const { couponId } = await admin.mutation(api.marketing.saveCoupon, { campaignId, code: 'SPA100', benefit: { kind: 'fixed', amount: couponAmount }, scope: 'services' });
 	await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
 	const linkId = await admin.mutation(api.marketing.saveLink, { campaignId, couponId, slug: 'spa', name: 'Spa card', destination: { kind: 'home' }, entry: 'qr' });
 	await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
@@ -29,7 +29,7 @@ async function setup() {
 	const report = (basis: 'cohort' | 'cash' = 'cohort', from = '2026-11-09', to = from) => admin.query(api.marketingReport.getReport, { from, to, basis });
 	const payOrder = async (orderId: Id<'bills'>, effectiveAt = now) => {
 		const view = await order(orderId);
-		const args = { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: `settle-${orderId}`, tenders: [{ method: 'cash' as const, amount: view.totals.due }], effectiveAt };
+		const args = { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: `settle-${orderId}`, tenders: view.totals.due ? [{ method: 'cash' as const, amount: view.totals.due }] : [], effectiveAt };
 		await admin.mutation(api.pos.settleOrder, args);
 		return () => admin.mutation(api.pos.settleOrder, args);
 	};
@@ -450,4 +450,78 @@ describe('spend and diagnostic rollups', () => {
 		for (let i = 0; i < 2; i++) await s.t.mutation(api.marketing.startSession, { slug: 'spa', landingPath: '/' });
 		expect((await s.report()).sessions.map(row => [row.campaignId, row.count]).sort()).toEqual([[s.campaignId, 1], [other, 2]].sort());
 	});
+});
+
+
+describe('coupon-only Finance settlements (exported API)', () => {
+	async function checkout(mixed = false) {
+		const s = await setup(500);
+		const bookingId = mixed ? await s.booking({ total: 2000, subtotal: 2000 }) : undefined;
+		const { orderId } = bookingId
+			? await s.admin.mutation(api.pos.openOrderFor, { bookingId })
+			: await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
+		if (bookingId) await s.admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
+		await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA100' });
+		await s.payOrder(orderId);
+		return { ...s, orderId, bookingId };
+	}
+
+	it.each([false, true])('includes fully covered service without fake cash (mixed stay: %s)', async mixed => {
+		const s = await checkout(mixed);
+		const cash = await s.report('cash');
+		expect(cash.sales.find(sale => sale.id === s.orderId)).toMatchObject({ collected: 0, discount: 500, settlementDay: '2026-11-09' });
+		expect(cash.sales.find(sale => sale.id === s.orderId)?.paidDay).toBeUndefined();
+		expect(cash.events.filter(e => e.saleId === s.orderId)).toEqual([]);
+		expect(cash.events.reduce((sum, e) => sum + e.amount, 0)).toBe(mixed ? 2000 : 0);
+		expect(cash.sales.filter(sale => sale.id === s.orderId)).toHaveLength(1);
+		expect((await s.report()).sales.find(sale => sale.id === s.orderId)).toMatchObject({ paid: true, collected: 0, discount: 500 });
+	});
+
+	it.each([false, true])('moves coupon settlement with its corrected date and deduplicates scans (mixed: %s)', async mixed => {
+		const s = await checkout(mixed);
+		await s.admin.mutation(api.pos.amendOrderPayment, { orderId: s.orderId, expectedCorrectionRevision: 0, idempotencyKey: 'coupon-date-001', reason: 'Yesterday', effectiveAt: now - day });
+		expect((await s.report('cash')).sales).toEqual([]);
+		const corrected = await s.report('cash', '2026-11-08');
+		expect(corrected.sales.find(sale => sale.id === s.orderId)).toMatchObject({ discount: 500, settlementDay: '2026-11-08' });
+		expect(corrected.events).toEqual(mixed ? [{ saleId: s.bookingId, kind: 'payment', day: '2026-11-08', amount: 2000 }] : []);
+		expect((await s.report('cash', '2026-11-08', '2026-11-09')).sales).toHaveLength(mixed ? 2 : 1);
+	});
+
+	it.each([true, false])('retains consumed coupon for real void, releases unreceived void (%s)', async unreceived => {
+		const s = await checkout();
+		if (unreceived) await s.admin.mutation(api.pos.voidUnreceivedOrder, { orderId: s.orderId, expectedCorrectionRevision: 0, idempotencyKey: 'coupon-void-001', reason: 'No money' });
+		else await s.admin.mutation(api.pos.voidOrder, { orderId: s.orderId, reason: 'Real void' });
+		const cash = await s.report('cash');
+		expect(cash.sales).toHaveLength(unreceived ? 0 : 1);
+		expect(cash.sales.reduce((sum, sale) => sum + sale.discount, 0)).toBe(unreceived ? 0 : 500);
+		const coupon = (await s.t.run(ctx => ctx.db.get(s.couponId)))!;
+		expect(coupon.discountGranted).toBe(unreceived ? 0 : 500);
+		expect(coupon.used).toBe(unreceived ? 0 : 1);
+	});
+
+	it('keeps positive checkout and partially paid stay first-payment dates', async () => {
+		const s = await setup();
+		const { orderId } = await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
+		await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA100' });
+		await s.payOrder(orderId);
+		const bookingId = await s.booking({ total: 2000, subtotal: 2000, amountPaid: 300, paymentStatus: 'pending' });
+		await s.payment(bookingId, 300);
+		const cash = await s.report('cash');
+		expect(cash.sales.find(sale => sale.id === orderId)).toMatchObject({ paidDay: '2026-11-09', collected: 400, discount: 100 });
+		expect(cash.sales.find(sale => sale.id === bookingId)).toMatchObject({ paidDay: '2026-11-09', collected: 300 });
+		expect(cash.events.map(e => e.amount).sort((a, b) => a - b)).toEqual([300, 400]);
+	});
+});
+
+
+it('retains consumed coupon discount after a real service refund', async () => {
+	const s = await setup();
+	const appointmentId = await s.appointment();
+	const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId });
+	await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA100' });
+	await s.payOrder(orderId);
+	await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: 1, amount: 200, currency: 'THB', method: 'cash', reason: 'Courtesy', billId: orderId, idempotencyKey: 'coupon-refund-001' });
+	const cash = await s.report('cash');
+	expect(cash.sales).toMatchObject([{ id: orderId, collected: 400, refunded: 200, discount: 100, paidDay: '2026-11-09' }]);
+	expect(await s.t.run(ctx => ctx.db.get(s.couponId))).toMatchObject({ used: 1, discountGranted: 100 });
 });

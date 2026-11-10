@@ -1,3 +1,4 @@
+import { mentionsCoupon, unverifiedCouponReply } from './lib/chatCouponCopy';
 import { isCardTool, replyCardFromTool, type ReplyCard } from './lib/replyCards';
 import { unknownReply, detectReplyLocale } from "./lib/unknownReply";
 import { factRetrievalEnabled } from "./lib/factRetrieval";
@@ -12,7 +13,7 @@ import { callAI, classifyComplexity, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL }
 import type { ChatMessage, LlmCallTrace } from './lib/chatLlm';
 import { BOOKING_TOOLS, TOOLS, executeTool } from './lib/chatTools';
 import { getSupportedFallbackResponse } from './lib/chatFallback';
-import { enforceRateLimit } from './lib/rateLimit';
+import { consumeChatAdmission } from './lib/chatAdmission';
 import { resortLocalParts } from './lib/serviceSlots';
 import type { ReplyOutcome } from './lib/inboxLifecycle';
 import { conciergeReplyOutcome } from './lib/conciergeReplyOutcome';
@@ -35,8 +36,7 @@ export const consumeChatLimit = internalMutation({
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
-		await enforceRateLimit(ctx, `chat:${args.sessionId}`, 20, 60 * 60 * 1000);
-		await enforceRateLimit(ctx, 'chat:global', 500, 60 * 60 * 1000);
+		await consumeChatAdmission(ctx, args.sessionId);
 	}
 });
 
@@ -484,6 +484,7 @@ BUSINESS PROFILE (demo defaults apply to fields not yet saved by staff):
 - WhatsApp: ${settings.whatsapp}; LINE: ${settings.lineUrl || settings.lineId}
 - Currency: ${settings.currency}
 - Prices and direct discounts must come from current tools
+- Coupons: only use a code supplied by the guest. For a coupon price question call preview_coupon with their villa and dates. In prepare_booking pass their couponCode. Read exact saving/refusal and total from the tool. Coupons replace the direct offer when better; never add both discounts. When needsReview is returned, nothing was booked; share the new summary and wait for another yes.
 ${settings.cancellationPolicy ? `- Cancellation policy: ${settings.cancellationPolicy}\n` : ''}- Check-in from ${settings.checkInTime}, check-out by ${settings.checkOutTime} (${settings.timezone} time)
 
 STYLE:
@@ -526,6 +527,10 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 	const complexModel = process.env.AI_COMPLEX_MODEL?.trim() || simpleModel;
 
 	if (!apiKey) {
+		if (mentionsCoupon(args.userMessage)) {
+			emit('fallback', 'fallback');
+			return { response: unverifiedCouponReply(args.locale ?? replyLocale(args.userMessage)), model: 'fallback', outcome: 'awaiting_guest' };
+		}
 		const fallbackResponse = getSupportedFallbackResponse(args.userMessage, currentProperty, args.locale, properties, channel, normalizeSiteUrl(args.siteUrl));
 		if (fallbackResponse === null) {
 			emit('unknown_fallback', 'unknown_fallback');
@@ -663,20 +668,17 @@ export const respond = action({
 		propertySlug: v.optional(v.string()),
 		locale: v.optional(v.string()),
 		actionHint: v.optional(chatActionValidator),
-		/** Release 3a: see chat.addMessage. */
+		/** Release 3a: see chat.acceptGuestMessage. */
 		marketing: v.optional(marketingCaptureValidator)
 	},
 	handler: async (ctx, args) => {
-		if (args.userMessage.length > 2000) throw new Error('Message is too long');
-		await ctx.runMutation(internal.chatAi.consumeChatLimit, { sessionId: args.sessionId });
 		const session = await ctx.runQuery(internal.chat.getSessionInternal, {
 			sessionId: args.sessionId
 		});
 		if (!session) throw new Error('Session not found');
 
-		const userMessageId: Id<'chatMessages'> = await ctx.runMutation(api.chat.addMessage, {
+		const userMessageId: Id<'chatMessages'> = await ctx.runMutation(internal.chat.acceptGuestMessage, {
 			sessionId: args.sessionId,
-			role: 'user',
 			content: args.userMessage,
 			...(args.marketing ? { marketing: args.marketing } : {})
 		});

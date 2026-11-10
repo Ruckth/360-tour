@@ -371,16 +371,18 @@ describe("consent banner", () => {
 });
 
 describe("turning measurement off", () => {
-  it("saves no, forgets the visitor key and reloads", async () => {
+  it("saves no and forgets the visitor key without reloading", async () => {
     capture.setConsent("yes");
     window.localStorage.setItem("marketing-visitor", JSON.stringify({ visitorKey: KEY, sessionId: "s1", lastActiveAt: NOW }));
     const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
     const { AnalyticsChoice } = await import("@/components/legal/AnalyticsChoice");
     await mount(createElement(AnalyticsChoice));
     await act(async () => button("Turn off measurement").click());
-    await vi.waitFor(() => expect(reload).toHaveBeenCalled());
     expect(window.localStorage.getItem("analytics-consent-v2")).toBe("no");
     expect(visitor()).toBeNull();
+    expect(capture.captureForBooking()).toBeUndefined();
+    expect(document.body.textContent).toContain("Measurement is off in this browser.");
+    expect(reload).not.toHaveBeenCalled();
     await unmount();
   });
 

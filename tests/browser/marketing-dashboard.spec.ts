@@ -8,7 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 const WIDTHS = [390, 820, 1180, 1440];
-const SCENARIOS = ["normal", "first-run", "loading", "error", "no-spend", "refunds", "truncated"] as const;
+const SCENARIOS = ["normal", "first-run", "untracked", "loading", "error", "no-spend", "refunds", "truncated"] as const;
 const EVIDENCE = process.env.MARKETING_EVIDENCE;
 
 async function open(page: Page, width: number, scenario: string, theme: "light" | "dark") {
@@ -39,9 +39,17 @@ for (const theme of ["light", "dark"] as const) {
         if (scenario === "loading") await expect(page.getByRole("status").filter({ hasText: "Loading marketing results" })).toBeAttached();
         if (scenario === "error") await expect(page.getByRole("alert")).toContainText("Couldn’t load marketing results");
         if (scenario === "first-run") await expect(page.getByText("See which links bring paid bookings")).toBeVisible();
+        if (scenario === "untracked") {
+          // Sales before the first campaign: the figures and export, with the setup steps beside them.
+          await expect(page.getByRole("status").filter({ hasText: "No campaigns or links yet" })).toBeVisible();
+          await expect(page.getByRole("link", { name: "Create a campaign" })).toBeVisible();
+          await expect(page.getByText("Business total").first()).toBeVisible();
+          await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+          await expect(page.getByText("See which links bring paid bookings")).toHaveCount(0);
+        }
         if (scenario === "truncated") await expect(page.getByText("These figures are incomplete")).toBeVisible();
         if (scenario === "refunds") await expect(page.getByRole("heading", { name: "Money in and out" })).toBeVisible();
-        if (["normal", "no-spend", "refunds", "truncated"].includes(scenario)) {
+        if (["normal", "untracked", "no-spend", "refunds", "truncated"].includes(scenario)) {
           await expect(page.getByRole("heading", { name: "Breakdown" })).toBeVisible();
           // The table where every column fits (iPad landscape up here), cards below; never cut off at the side.
           const table = page.locator("#breakdown table");

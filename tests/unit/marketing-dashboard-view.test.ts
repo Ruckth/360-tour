@@ -4,9 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SpendDialogProps } from "@/components/admin/marketing/SpendDialog";
 import { DashboardView, DEFAULT_REQUEST, type DashboardViewProps, type ReportState } from "@/components/admin/marketing/dashboard/DashboardView";
+import { MarketingAccessProvider, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
+import { marketingCapabilities } from "convex/lib/marketingAccess";
 import { csvMeta, salesCsv, summaryCsv } from "@/components/admin/marketing/dashboard/report-csv";
-import { buildBreakdown, prepareReport } from "@/components/admin/marketing/dashboard/report-model";
-import { dashboardReport, FIXTURE_TODAY, firstRunReport, emptyRangeReport } from "../browser/marketing-dashboard-data";
+import { buildBreakdown, businessTotals, prepareReport } from "@/components/admin/marketing/dashboard/report-model";
+import type { ReportData, ReportSale } from "convex/lib/marketingReport";
+import { dashboardReport, FIXTURE_TODAY, firstRunReport, emptyRangeReport, PROPERTIES, untrackedReport } from "../browser/marketing-dashboard-data";
 
 // The spend dialog is another package's stub: record what the dashboard opens it with.
 const spendDialog = vi.hoisted(() => ({ last: null as SpendDialogProps | null }));
@@ -38,7 +41,7 @@ describe("CSV export", () => {
     const cash = prepareReport(dashboardReport({ basis: "cash", truncated: true, nonThb: 2 }), { property: "prop-canopy", touch: "first" });
     const meta = csvMeta(cash, "Canopy Halo Loft").map((cells) => cells[0]);
     expect(meta).toContain("# Attribution: last_touch_30d@1 (first touch)");
-    expect(meta).toContain("# Basis: Finance (cash date: money dated in range)");
+    expect(meta).toContain("# Basis: Finance (cash date: money and coupon settlements dated in range)");
     expect(meta).toContain("# Property: Canopy Halo Loft");
     expect(meta.some((line) => line.startsWith("# Incomplete"))).toBe(true);
     expect(meta).toContain("# Left out: 2 sales in another currency");
@@ -95,7 +98,7 @@ describe("dashboard view", () => {
     document.body.innerHTML = "";
   });
 
-  function render(state: ReportState, extra: Partial<DashboardViewProps> = {}) {
+  function render(state: ReportState, extra: Partial<DashboardViewProps> = {}, role?: MarketingRole) {
     const props: DashboardViewProps = {
       request: DEFAULT_REQUEST(FIXTURE_TODAY),
       onRequestChange: (r) => calls.request.push(r),
@@ -109,13 +112,20 @@ describe("dashboard view", () => {
       onSaveSpend: async (draft) => void calls.spend.push(draft),
       ...extra,
     };
-    act(() => root.render(createElement(DashboardView, props)));
+    const view = createElement(DashboardView, props);
+    act(() => root.render(role ? createElement(MarketingAccessProvider, { value: { email: "person@example.com", role, capabilities: marketingCapabilities(role), pendingInvitation: null } }, view) : view));
   }
   const ready = (report = dashboardReport()): ReportState => ({ status: "ready", report });
   const text = () => document.body.textContent ?? "";
   const buttons = (name: string | RegExp) =>
     [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => (typeof name === "string" ? b.textContent?.trim() === name || b.getAttribute("aria-label") === name : name.test(b.getAttribute("aria-label") ?? b.textContent ?? "")));
   const click = (el: Element) => act(() => (el as HTMLElement).click());
+
+  it.each(["viewer", "finance"] as const)("does not offer setup actions to %s", role => {
+    render(ready(firstRunReport()), {}, role);
+    expect([...document.querySelectorAll("a")].some(a => /Create a campaign|Make a link/.test(a.textContent ?? ""))).toBe(false);
+    expect(text()).toContain("Ask a manager");
+  });
 
   it("renders the tiles, context line and breakdown from the fixture", () => {
     render(ready());
@@ -206,7 +216,7 @@ describe("dashboard view", () => {
 
   it("shows the Finance tiles on a cash read", () => {
     render(ready(dashboardReport({ basis: "cash" })), { request: { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" } });
-    for (const label of ["Collected", "Refunds", "Payments completed", "Money in and out", "Business total · all payments and refunds"]) expect(text()).toContain(label);
+    for (const label of ["Collected", "Refunds", "First-payment sales", "Money in and out", "Business total · payments, refunds and coupon settlements"]) expect(text()).toContain(label);
     expect(text()).not.toContain("left out of conversion");
     expect(text()).toContain("฿38,400");
     expect(text()).not.toContain("Tracked sessions");
@@ -247,6 +257,120 @@ describe("dashboard view", () => {
     render(ready(dashboardReport({ truncated: true, nonThb: 3 })));
     expect(text()).toContain("These figures are incomplete");
     expect(text()).toContain("3 sales in another currency are left out");
+  });
+
+  describe("before the first campaign or link", () => {
+    const sale = (overrides: Partial<ReportSale>): ReportSale => ({
+      kind: "stay",
+      id: "stay-x",
+      label: "Anna Weber",
+      propertyId: PROPERTIES[0].id,
+      channel: "web",
+      bucket: "unknown",
+      createdDay: "2026-10-20",
+      paidDay: "2026-10-20",
+      paid: true,
+      collected: 0,
+      refunded: 0,
+      discount: 0,
+      ...overrides,
+    });
+    const exportButton = () => buttons("Export CSV")[0];
+    const onboardingOnly = "Paid bookings and money from those links show up here";
+    const baht = (n: number) => `฿${n.toLocaleString("en-US")}`;
+
+    it("shows the business totals and export, with setup guidance alongside", () => {
+      const report = untrackedReport();
+      expect(report.sales.length).toBeGreaterThan(0);
+      render({ status: "ready", report, refreshError: "Server timed out." });
+      expect(text()).toContain("Couldn’t update the figures");
+      expect(text()).not.toContain(onboardingOnly);
+      expect(text()).toContain("Business total");
+      expect(text()).toContain("Not tracked");
+      expect(text()).toContain("No campaigns or links yet");
+      expect(document.querySelector('a[href="/admin/marketing/campaigns"]')).not.toBeNull();
+      expect(document.querySelector('a[href="/admin/marketing/links"]')).not.toBeNull();
+
+      // The CSV's business total is the figure on screen.
+      const net = businessTotals(prepareReport(report, { property: "all", touch: "last" })).all.net;
+      expect(net).toBeGreaterThan(0);
+      expect(text()).toContain(baht(net));
+      expect(exportButton().disabled).toBe(false);
+      click(exportButton());
+      const preview = document.querySelector('[data-testid="csv-preview"]')?.textContent ?? "";
+      expect(preview.split(/\r?\n/).find((line) => line.startsWith("total,Business total"))).toMatch(new RegExp(`,${net}(,|$)`));
+    });
+
+    it("counts a Finance range with only a refund as activity", () => {
+      const report: ReportData = {
+        ...untrackedReport({ basis: "cash" }),
+        sales: [sale({ id: "stay-r", createdDay: "2026-09-20", paidDay: "2026-09-20", collected: 4800, refunded: 4800 })],
+        events: [{ saleId: "stay-r", kind: "refund", day: "2026-10-20", amount: 4800 }],
+      };
+      render(ready(report), { request: { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" } });
+      expect(text()).not.toContain(onboardingOnly);
+      expect(text()).toContain("Business total");
+      expect(text()).toContain("฿4,800");
+      expect(exportButton().disabled).toBe(false);
+    });
+
+    it("counts a coupon-only, zero-net sale as activity", () => {
+      const report: ReportData = { ...untrackedReport(), sessions: [], sales: [sale({ kind: "order", id: "order-c", propertyId: undefined, channel: "pos", bucket: "staff", collected: 0, discount: 500 })] };
+      render(ready(report));
+      expect(text()).not.toContain(onboardingOnly);
+      expect(text()).toContain("Business total");
+      expect(exportButton().disabled).toBe(false);
+    });
+
+    it("keeps the setup-only welcome for a business with no activity at all", () => {
+      render(ready(firstRunReport()));
+      expect(text()).toContain(onboardingOnly);
+      expect(text()).not.toContain("Business total");
+      expect(exportButton().disabled).toBe(true);
+    });
+
+    it("says a property has no sales instead of showing the welcome when only the filter is empty", async () => {
+      const report = { ...untrackedReport(), properties: [...PROPERTIES, { id: "prop-empty" as ReportData["properties"][number]["id"], name: "Quiet Villa" }] };
+      render(ready(report));
+      const trigger = document.querySelector<HTMLElement>('[aria-label="Property"]')!;
+      await act(async () => void trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+      const option = [...document.querySelectorAll('[role="option"]')].find((el) => el.textContent?.includes("Quiet Villa"))!;
+      await act(async () => void option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+      expect(text()).toContain("No sales for Quiet Villa in these dates.");
+      expect(text()).not.toContain(onboardingOnly);
+      expect(text()).toContain("No campaigns or links yet");
+    });
+
+    it("shows a finance or viewer role the figures and who to ask, without setup actions", () => {
+      render(ready(untrackedReport()), {}, "finance");
+      expect(text()).toContain("Business total");
+      expect(text()).toContain("No campaigns or links yet");
+      expect(text()).toContain("Ask a manager to set up campaigns and links");
+      expect([...document.querySelectorAll("a")].some((a) => /Create a campaign|Make a link/.test(a.textContent ?? ""))).toBe(false);
+    });
+
+    it("treats a visit-only range as activity, without claiming sales", () => {
+      const report: ReportData = { ...untrackedReport(), sales: [], events: [] };
+      expect(report.sessions.length).toBeGreaterThan(0);
+      render(ready(report));
+      expect(text()).not.toContain(onboardingOnly);
+      expect(text()).toContain("No sales or tracked visits in these dates.");
+      expect(text()).toContain("No campaigns or links yet");
+    });
+  });
+
+  it("never calls an incomplete read with no rows empty", () => {
+    for (const report of [{ ...firstRunReport(), truncated: true }, { ...emptyRangeReport(), truncated: true }]) {
+      render(ready(report));
+      expect(text()).toContain("These figures are incomplete");
+      expect(text()).not.toContain("No sales or tracked visits in these dates.");
+      expect(text()).not.toContain("Paid bookings and money from those links show up here");
+      expect(text()).toContain("may still have sales");
+      // Its CSV says it is incomplete, so it can still be exported.
+      expect(buttons("Export CSV")[0].disabled).toBe(false);
+    }
+    render(ready({ ...emptyRangeReport(), basis: "cash", truncated: true }));
+    expect(text()).not.toContain("No payments or refunds in these dates.");
   });
 
   it("keeps the figures on screen when a refresh fails", () => {

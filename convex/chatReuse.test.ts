@@ -2,7 +2,7 @@
 
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 declare global {
@@ -21,9 +21,8 @@ describe("chat session reuse", () => {
       visitorId: "visitor-closed-reuse",
     });
 
-    await t.mutation(api.chat.addMessage, {
+    await t.mutation(internal.chat.acceptGuestMessage, {
       sessionId,
-      role: "user",
       content: "Please do not bring this back after restart.",
     });
     await t.mutation(api.chat.closeSession, { sessionId });
@@ -66,14 +65,12 @@ describe("chat session reuse", () => {
       visitorId,
     });
 
-    await t.mutation(api.chat.addMessage, {
+    await t.mutation(internal.chat.acceptGuestMessage, {
       sessionId,
-      role: "user",
       content: "Can I see the villa in 360?",
     });
-    await t.mutation(api.chat.addMessage, {
+    await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
       sessionId,
-      role: "assistant",
       content: "Yes, the virtual tour is available on every villa page.",
     });
 
@@ -92,15 +89,13 @@ describe("chat session reuse", () => {
       visitorId: "visitor-action-metadata",
     });
 
-    await t.mutation(api.chat.addMessage, {
+    await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
       sessionId,
-      role: "assistant",
       content: "Use the booking card below to choose dates.",
       action: "booking",
     });
-    await t.mutation(api.chat.addMessage, {
+    await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
       sessionId,
-      role: "assistant",
       content: "This answer should not show an action card.",
       action: "none",
     });

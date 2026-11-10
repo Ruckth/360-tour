@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SegmentedTabs } from "../SegmentedTabs";
 import { StatusBadge } from "../StatusBadge";
 import { EmptyState, SearchBox, SkeletonRows } from "../admin-bulk";
+import { useMarketingAccess } from "./MarketingAccess";
 import { FirstRunEmpty, UsageBar, countTabs } from "./MarketingBits";
 import { COUPON_STATE, benefitLabel, couponState, formatRange, scopeLabel, thb, usageLabel, type CouponState } from "./marketing-format";
 import type { CampaignRow, CouponRow, MarketingProperty } from "./types";
@@ -28,6 +29,7 @@ type CouponsViewProps = {
 };
 
 export function CouponsView({ coupons, campaigns, properties, today, couponHref, newCouponHref }: CouponsViewProps) {
+  const { capabilities } = useMarketingAccess();
   const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
   const [campaign, setCampaign] = useState<string>(ALL);
@@ -71,10 +73,10 @@ export function CouponsView({ coupons, campaigns, properties, today, couponHref,
                   <SelectItem value={NONE}>No campaign</SelectItem>
                 </SelectContent>
               </Select>
-              <ButtonLink href={newCouponHref} size="sm" className="w-full sm:w-auto">
+              {capabilities.draft ? <ButtonLink href={newCouponHref} size="sm" className="w-full sm:w-auto">
                 <Plus aria-hidden className="size-4" />
                 New coupon
-              </ButtonLink>
+              </ButtonLink> : null}
             </div>
           ) : null}
         </div>
@@ -92,10 +94,10 @@ export function CouponsView({ coupons, campaigns, properties, today, couponHref,
               </>
             }
           >
-            <ButtonLink href={newCouponHref} size="sm">
+            {capabilities.draft ? <ButtonLink href={newCouponHref} size="sm">
               <Plus aria-hidden className="size-4" />
               New coupon
-            </ButtonLink>
+            </ButtonLink> : null}
             <p className="mt-2 max-w-md text-xs text-muted-foreground">You don’t need one to track links: website guests already get the direct offer.</p>
           </FirstRunEmpty>
         ) : (

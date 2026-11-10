@@ -1,3 +1,4 @@
+import { chatCouponSummary } from './chatCouponCopy';
 import { allowedImageUrl } from './imageUrls';
 
 /** Presentation data comes only from successful tool results, never model prose. */
@@ -153,12 +154,17 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
     case 'prepare_booking':
     case 'confirm_booking': {
       kind = 'booking';
-      const preparing = trace.name === 'prepare_booking';
+      const preparing = trace.name === 'prepare_booking' || result.needsReview === true;
       const amount = money(result.total, result.currency);
       if (!amount || !str(result.checkIn) || !str(result.checkOut)) return;
       add(result.property, [preparing ? proposal : result.status === 'paid' ? paid : pending,
-        `${str(result.checkIn)} → ${str(result.checkOut)}`, `${result.guests} ${guests}`, `${total}: ${amount}`, str(result.confirmationCode)],
+        `${str(result.checkIn)} → ${str(result.checkOut)}`, `${result.guests} ${guests}`, `${total}: ${amount}`, chatCouponSummary(result.coupon, result.currency, options.locale), str(result.confirmationCode)],
         [preparing ? uri(confirm, str(result.confirmUrl)) : result.status === 'pending_payment' ? uri(pay, str(result.paymentUrl)) : undefined]);
+      break;
+    }
+    case 'preview_coupon': {
+      kind = 'quote';
+      add(result.property, [`${str(result.checkIn)} → ${str(result.checkOut)}`, chatCouponSummary(result.coupon, result.currency, options.locale), `${total}: ${money(result.total, result.currency)}`, proposal], [uri(details, str(result.bookingUrl))]);
       break;
     }
     case 'calculate_price': {
@@ -187,5 +193,5 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
 /** A later failed read/write must not leave an earlier success card visible. */
 export function isCardTool(name: string): boolean {
   return ['list_properties', 'get_property_details', 'list_services', 'calculate_price', 'check_availability', 'check_service_availability',
-    'prepare_booking', 'confirm_booking', 'prepare_service_booking', 'confirm_service_booking', 'cancel_booking', 'get_my_bookings'].includes(name);
+    'preview_coupon', 'prepare_booking', 'confirm_booking', 'prepare_service_booking', 'confirm_service_booking', 'cancel_booking', 'get_my_bookings'].includes(name);
 }

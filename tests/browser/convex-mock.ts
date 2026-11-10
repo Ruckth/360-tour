@@ -93,6 +93,7 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   };
   return [];
 }
+export function useConvexAuth() { return { isLoading: false, isAuthenticated: true }; }
 export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) { return fixtureQuery(query, args); }
 export function useQueries(requests: Record<string, { query: Parameters<typeof getFunctionName>[0]; args: unknown }>) {
   return Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => [key, fixtureQuery(query, args)]));

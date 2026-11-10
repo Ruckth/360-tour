@@ -16,6 +16,7 @@ import {
 import { assertValidEmail, normalizeEmail } from './lib/validation';
 import { PRESENCE_WRITE_THROTTLE_MS } from './lib/chatPresence';
 import { enforceRateLimit } from './lib/rateLimit';
+import { consumeChatAdmission } from './lib/chatAdmission';
 import { asksForStaff, queueStaffAlert } from './chatKnowledge';
 import { recordLead } from './leads';
 
@@ -361,20 +362,21 @@ export const identifyVisitor = mutation({
 	}
 });
 
-export const addMessage = mutation({
+export const acceptGuestMessage = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
-		role: v.union(v.literal('user'), v.literal('assistant')),
 		content: v.string(),
-		action: v.optional(chatActionValidator),
 		/** Release 3a: the guest's tab and consent as of this message; `{}` clears it. Web chat only. */
 		marketing: v.optional(marketingCaptureValidator)
 	},
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		if (!['web', 'line', 'facebook', 'whatsapp', 'instagram'].includes(session.channel)) throw new Error('Unsupported chat channel');
+		if (args.content.length > 2000) throw new Error('Message is too long');
+		await consumeChatAdmission(ctx, args.sessionId);
 		// A chat can outlive the tab and the consent it started with, so each guest message refreshes them.
-		if (args.role === 'user' && args.marketing !== undefined && session.channel === 'web') {
+		if (args.marketing !== undefined && session.channel === 'web') {
 			const marketingCapture = cleanCapture(args.marketing);
 			if (JSON.stringify(marketingCapture) !== JSON.stringify(session.marketingCapture)) await ctx.db.patch(args.sessionId, { marketingCapture });
 		}
@@ -382,9 +384,8 @@ export const addMessage = mutation({
 		const timestamp = Date.now();
 		const messageId = await ctx.db.insert('chatMessages', {
 			sessionId: args.sessionId,
-			role: args.role,
+			role: 'user',
 			content: args.content,
-			...(args.action ? { action: args.action } : {}),
 			timestamp
 		});
 		await patchSessionAfterMessages(ctx, args.sessionId, {
@@ -392,8 +393,8 @@ export const addMessage = mutation({
 			latestMessageAt: timestamp,
 			lastSeenAt: timestamp,
 		});
-		if (args.role === 'user') await guestReceived(ctx, args.sessionId, messageId);
-		if (args.role === 'user' && asksForStaff(args.content)) await queueStaffAlert(ctx, args.sessionId, args.content, messageId);
+		await guestReceived(ctx, args.sessionId, messageId);
+		if (asksForStaff(args.content)) await queueStaffAlert(ctx, args.sessionId, args.content, messageId);
 
 		return messageId;
 	}

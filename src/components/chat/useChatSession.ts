@@ -404,6 +404,7 @@ export function useChatSession({
             : null;
         return getChatActionCard({
           latestUserMessage: previousUserMessageFor(messages, index),
+          guestMessages: messages.slice(0, index).filter(item => item.role === "user").map(item => item.content),
           latestAssistantMessage: message.content,
           activePropertySlug: activePropertySlug || undefined,
           villas,
@@ -1459,6 +1460,7 @@ export function useChatSession({
       // the availability chip shows the booking card without asserting any policy.
       const bookingContext = extractChatBookingContext({
         latestUserMessage: clean,
+        guestMessages: messages.filter(item => item.role === "user").map(item => item.content),
         latestAssistantMessage: "",
         activePropertySlug: activePropertySlug || undefined,
       });

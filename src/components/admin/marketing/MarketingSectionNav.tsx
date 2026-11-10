@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { useMarketingAccess } from "./MarketingAccess";
 import { ADMIN_MARKETING_PAGES, adminMarketingPath } from "../admin-routes";
 
 /**
@@ -12,11 +13,12 @@ import { ADMIN_MARKETING_PAGES, adminMarketingPath } from "../admin-routes";
  */
 export function MarketingSectionNav({ children }: { children: ReactNode }) {
   const segment = useSelectedLayoutSegment();
+  const { capabilities } = useMarketingAccess();
   return (
     <>
       <nav aria-label="Marketing pages" className="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6">
         <ul className="flex max-w-full gap-6 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)]">
-          {ADMIN_MARKETING_PAGES.map(({ id, label }) => {
+          {ADMIN_MARKETING_PAGES.filter(({ id }) => id !== "access" || capabilities.manageAccess).map(({ id, label }) => {
             const current = segment === id;
             return (
               <li key={id} className="shrink-0">

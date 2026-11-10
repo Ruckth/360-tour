@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "../../admin-bulk";
+import { useMarketingAccess } from "../MarketingAccess";
 import { Callout, FirstRunEmpty } from "../MarketingBits";
 import { formatRange, formatStamp } from "../marketing-format";
 import { SpendDialog } from "../SpendDialog";
@@ -210,6 +211,7 @@ export function DashboardView({
   const [exporting, setExporting] = useState(false);
   const [spendFor, setSpendFor] = useState<string[] | null>(null);
 
+  const { capabilities } = useMarketingAccess();
   const report = state.status === "ready" ? state.report : null;
   // A property that isn't in this read (it was removed) falls back to All properties.
   const propertyFilter = report?.properties.some((x) => x.id === property) ? property : "all";
@@ -219,7 +221,12 @@ export function DashboardView({
   const propertyName = report?.properties.find((x) => x.id === propertyFilter)?.name ?? "All properties";
   const pathLabel = p ? path.map((step) => stepName(p, step)).join(" › ") : "";
 
-  const firstRun = !!report && report.campaigns.length === 0 && report.links.length === 0;
+  // Marketing set-up and business activity are separate questions. Activity is read from the whole
+  // answer, not the property filter: any sale (refund-only, coupon-only and zero-net ones too), money
+  // event, visit or spend. A cut-short read is unknown, never empty.
+  const notSetUp = !!report && report.campaigns.length === 0 && report.links.length === 0;
+  const activity = !!report && (report.sales.length > 0 || report.events.length > 0 || report.sessions.some((row) => row.count > 0) || report.spend.length > 0);
+  const firstRun = notSetUp && !activity && !report?.truncated;
   // Spend with no sales yet is a result too (ROAS 0×), not an empty range.
   const emptyRange = !!p && !firstRun && p.lines.length === 0 && p.sessions.tracked === 0 && p.spend.size === 0;
   const spendCampaigns = (spendFor ?? [])
@@ -364,9 +371,9 @@ export function DashboardView({
         <FirstRunEmpty
           icon={BarChart3}
           title="See which links bring paid bookings"
-          description="Create a campaign, then a short link or QR code for each place you share it. Paid bookings and money from those links show up here, next to bookings that came in without a link."
+          description={capabilities.draft ? "Create a campaign, then a short link or QR code for each place you share it. Paid bookings and money from those links show up here, next to bookings that came in without a link." : "There is no Marketing activity in these dates. Ask a manager to set up campaigns and links; results will appear here as activity arrives."}
         >
-          <div className="flex flex-wrap justify-center gap-2">
+          {capabilities.draft && <div className="flex flex-wrap justify-center gap-2">
             <ButtonLink href={campaignsHref} size="sm">
               <Megaphone aria-hidden className="size-4" />
               Create a campaign
@@ -375,8 +382,14 @@ export function DashboardView({
               <Link2 aria-hidden className="size-4" />
               Make a link
             </ButtonLink>
-          </div>
+          </div>}
         </FirstRunEmpty>
+      </section>
+    );
+  else if (emptyRange && report?.truncated)
+    body = (
+      <section className="border border-border bg-card">
+        <EmptyState>Nothing was counted before this read reached its limit, so these dates may still have sales. Choose fewer days to see the figures.</EmptyState>
       </section>
     );
   else if (emptyRange)
@@ -448,6 +461,30 @@ export function DashboardView({
       {report?.excluded.nonThb ? (
         <Callout role="status">
           {report.excluded.nonThb === 1 ? "1 sale" : `${report.excluded.nonThb} sales`} in another currency {report.excluded.nonThb === 1 ? "is" : "are"} left out. Figures are THB only.
+        </Callout>
+      ) : null}
+      {notSetUp && !firstRun ? (
+        <Callout
+          role="status"
+          title="No campaigns or links yet"
+          action={
+            capabilities.draft ? (
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                <ButtonLink href={campaignsHref} size="sm" className="flex-1 sm:flex-none">
+                  <Megaphone aria-hidden className="size-4" />
+                  Create a campaign
+                </ButtonLink>
+                <ButtonLink href={linksHref} size="sm" variant="outline" className="flex-1 sm:flex-none">
+                  <Link2 aria-hidden className="size-4" />
+                  Make a link
+                </ButtonLink>
+              </div>
+            ) : undefined
+          }
+        >
+          {capabilities.draft
+            ? "Until then, every sale counts as not tracked. Create a campaign, then a short link or QR code for each place you share it, to see which ones bring paid bookings."
+            : "Until then, every sale counts as not tracked. Ask a manager to set up campaigns and links to see which ones bring paid bookings."}
         </Callout>
       ) : null}
       <div aria-busy={busy} className={cn("grid min-w-0 gap-4 transition-opacity", state.status === "ready" && state.refreshing && "opacity-60")}>

@@ -146,7 +146,8 @@ export async function readMarketingReport(
 	const completed = new Map<string, ReportSale | null>();
 	function include(sale: ReportSale, events: ReportMoneyEvent[]) {
 		const selected = events.filter(e => inRange(e.day));
-		if (basis === 'cash' ? selected.length > 0 : inRange(sale.createdDay)) {
+		const settledDiscount = sale.kind === 'order' && sale.discount > 0 && sale.settlementDay !== undefined && inRange(sale.settlementDay);
+		if (basis === 'cash' ? selected.length > 0 || settledDiscount : inRange(sale.createdDay)) {
 			if (data.sales.length >= 8000 || (basis === 'cash' && data.events.length + selected.length > 8000)) throw new ReadBudgetExceeded();
 			data.sales.push(sale);
 			if (basis === 'cash') data.events.push(...selected);
@@ -232,7 +233,7 @@ export async function readMarketingReport(
 		const link = bill.promotion?.viaLinkId ? await get(bill.promotion.viaLinkId) : null;
 		const campaign = link ? await get(link.campaignId) : null;
 		const day = dayOf(at);
-		const sale: ReportSale = { kind: 'order', id, label: record.customer?.name ?? 'Walk-in', ref: orderTitle(bill.orderNumber), ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'pos', bucket: link && campaign ? 'tracked' : 'staff', ...(link && campaign ? { evidence: 'scanned', last: touch(touchFromLink(link, campaign)) } : {}), coupon: await coupon(bill.promotion), createdDay: day, paidDay: day, paid: true, collected, refunded, discount };
+		const sale: ReportSale = { kind: 'order', id, label: record.customer?.name ?? 'Walk-in', ref: orderTitle(bill.orderNumber), ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'pos', bucket: link && campaign ? 'tracked' : 'staff', ...(link && campaign ? { evidence: 'scanned', last: touch(touchFromLink(link, campaign)) } : {}), coupon: await coupon(bill.promotion), createdDay: day, ...(collected > 0 ? { paidDay: day } : {}), settlementDay: day, paid: true, collected, refunded, discount };
 		const events: ReportMoneyEvent[] = collected ? [{ saleId: id, kind: 'payment', day, amount: collected }] : [];
 		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
 		return include(sale, events);

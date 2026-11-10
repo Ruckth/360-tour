@@ -9,6 +9,7 @@ import { receiptPath } from "@/components/checkout/checkout-source";
 import type { AdminProperty } from "../../admin-bookings-shared";
 import { adminMarketingPath } from "../../admin-routes";
 import { BookingSheet } from "../../BookingSheet";
+import { useMarketingAccess } from "../MarketingAccess";
 import { bangkokToday, marketingErrorText } from "../marketing-format";
 import { DEFAULT_REQUEST, DashboardView, type ReportRequest, type ReportState } from "./DashboardView";
 import { presetRange } from "./report-model";
@@ -19,6 +20,7 @@ import { presetRange } from "./report-model";
  * Refresh, and the page shows its as-of time.
  */
 export function DashboardScreen() {
+  const access = useMarketingAccess();
   const convex = useConvex();
   const today = bangkokToday(useNow());
   const [request, setRequest] = useState<ReportRequest>(() => DEFAULT_REQUEST(today));
@@ -26,7 +28,7 @@ export function DashboardScreen() {
   const [state, setState] = useState<ReportState>({ status: "loading" });
   const [stay, setStay] = useState<Id<"bookings"> | null>(null);
   const saveSpend = useMutation(api.marketingReport.saveSpend);
-  const properties = useQuery(api.properties.adminList, stay ? {} : "skip");
+  const properties = useQuery(api.properties.adminList, access.role === "admin" && stay ? {} : "skip");
 
   // A preset follows the calendar: when the Bangkok day changes, its dates move on and the report is read again.
   const preset = request.range.preset;
@@ -81,14 +83,15 @@ export function DashboardScreen() {
         campaignsHref={adminMarketingPath("campaigns")}
         linksHref={adminMarketingPath("links")}
         orderHref={receiptPath}
-        onOpenStay={(id) => setStay(id as Id<"bookings">)}
+        onOpenStay={(id) => { if (access.role === "admin") setStay(id as Id<"bookings">); }}
         onSaveSpend={async ({ id, campaignId, amount, from: spendFrom, to: spendTo, note }) => {
+          if (!access.capabilities.spend) throw new Error("Your Marketing role cannot manage spend.");
           await saveSpend({ id, campaignId, amount, from: spendFrom, to: spendTo, note });
           setNonce((n) => n + 1);
         }}
       />
       {/* Hotel bookings has no deep link, so a stay opens the same booking sheet here. */}
-      <BookingSheet bookingId={stay} properties={sheetProperties} onClose={() => setStay(null)} />
+      {access.role === "admin" ? <BookingSheet bookingId={stay} properties={sheetProperties} onClose={() => setStay(null)} /> : null}
     </>
   );
 }

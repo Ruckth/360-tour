@@ -2,6 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from './lib/marketingReport';
+import { requireMarketingPermission } from './lib/marketingAccess';
 import { requireAdmin } from './lib/adminAuth';
 import { readMarketingReport, reportSpend } from './lib/marketingReportRead';
 import { appendRecordHistory } from './lib/recordHistory';
@@ -13,7 +14,7 @@ import { readRangeWithinBudget } from './lib/readBudget';
 export const getReport = query({
 	args: { from: v.string(), to: v.string(), basis: reportBasisValidator },
 	handler: async (ctx, args): Promise<ReportData> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		return readMarketingReport(ctx, args);
 	}
 });
@@ -21,7 +22,7 @@ export const getReport = query({
 export const listSpend = query({
 	args: { campaignId: v.id('marketingCampaigns') },
 	handler: async (ctx, args): Promise<ReportSpend[]> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		const rows = await readRangeWithinBudget(ctx, ctx.db.query('marketingSpend').withIndex('by_campaignId_and_from', q => q.eq('campaignId', args.campaignId)).order('desc'));
 		return rows.filter(r => r.deletedAt === undefined).sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime).map(reportSpend);
 	}
@@ -32,7 +33,7 @@ const snapshot = (row: Pick<Doc<'marketingSpend'>, 'amount' | 'from' | 'to' | 'n
 export const saveSpend = mutation({
 	args: { id: v.optional(v.id('marketingSpend')), campaignId: v.id('marketingCampaigns'), amount: v.number(), from: v.string(), to: v.string(), note: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<Id<'marketingSpend'>> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'spend');
 		const problem = validateSpend(args);
 		if (problem) throw new ConvexError(problem);
 		const campaign = await ctx.db.get(args.campaignId);
@@ -53,7 +54,7 @@ export const saveSpend = mutation({
 export const deleteSpend = mutation({
 	args: { id: v.id('marketingSpend') },
 	handler: async (ctx, args): Promise<null> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'spend');
 		const row = await ctx.db.get(args.id);
 		if (!row) throw new ConvexError('Spend entry not found.');
 		if (row.deletedAt !== undefined) return null;
@@ -66,7 +67,7 @@ export const deleteSpend = mutation({
 export const couponRefusals = query({
 	args: { couponId: v.id('coupons'), days: v.optional(v.number()) },
 	handler: async (ctx, args): Promise<CouponRefusalSummary> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		const days = args.days ?? 30;
 		if (!Number.isInteger(days) || days < 1 || days > 90) throw new ConvexError('Choose between 1 and 90 days.');
 		const today = resortLocalParts(Date.now()).date;

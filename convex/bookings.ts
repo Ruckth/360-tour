@@ -1,3 +1,5 @@
+import { activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity, type ChatCouponSnapshot } from './lib/chatCoupon';
+import { normalizeCouponCode } from './lib/offers';
 import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from './lib/marketingAttribution';
 import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
@@ -23,7 +25,6 @@ import { enforceRateLimit } from './lib/rateLimit';
 import {
 	createBookingRecord,
 	loadProperty,
-	quoteBookableStay,
 	type BookingSource
 } from './lib/bookingWrites';
 import { round2 } from './lib/billMath';
@@ -397,6 +398,84 @@ export const invalidateChatProposal = internalMutation({
 	}
 });
 
+/** A coupon price preview for web or messaging; never holds dates or coupon capacity. */
+export const previewChatCoupon = internalQuery({
+  args: { sessionId: v.id('chatSessions'), couponCode: v.string(), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const code = normalizeCouponCode(args.couponCode);
+    await assertGuestSuppliedCoupon(ctx, args.sessionId, code);
+    const { property, nights, quote, offer, coupon } = await quoteChatStay(ctx, { ...args, couponCode: code, guests: args.guests ?? 1 });
+    return { property: property.name, propertySlug: property.slug, checkIn: args.checkIn, checkOut: args.checkOut,
+      nights, guests: args.guests ?? 1, subtotal: offer.subtotal, discountAmount: offer.discount, total: offer.total, currency: quote.currency, coupon };
+  }
+});
+
+type PrepareChatBookingInput = {
+  sessionId: Id<'chatSessions'>; propertySlug: string; checkIn: string; checkOut: string; guests: number;
+  guestName: string; guestPhone?: string; couponCode?: string; deadlineAt?: number;
+};
+
+async function prepareChatBookingRecord(ctx: MutationCtx, args: PrepareChatBookingInput, byGuest = false) {
+	const session = await loadChatSession(ctx, args.sessionId);
+	if (!byGuest) assertChatWriteAllowed(session, args.deadlineAt);
+	// WhatsApp numbers are verified by WhatsApp, so never trust a model-supplied phone there.
+	const guestPhone = (
+		session.channel === 'whatsapp' ? session.visitorPhone : (args.guestPhone ?? session.visitorPhone)
+	)?.trim();
+	if (!guestPhone) throw new Error('Ask the guest for their phone number before preparing the booking.');
+	const guestName = args.guestName.trim() || session.visitorName?.trim();
+	if (!guestName) throw new Error('Ask the guest for their name before preparing the booking.');
+
+	const couponCode = normalizeCouponCode(args.couponCode ?? await activeGuestCoupon(ctx, args.sessionId) ?? '');
+	if (couponCode) await assertGuestSuppliedCoupon(ctx, args.sessionId, couponCode);
+	const { property, nights, quote, offer, coupon } = await quoteChatStay(ctx, { ...args, couponCode });
+	const now = Date.now();
+	const { bookingRules } = await getEffectiveSettings(ctx);
+	const proposalId = crypto.randomUUID();
+	const confirmSecret = randomSecret();
+	const expiresAt = now + bookingRules.chatQuoteValidityMinutes * 60_000;
+	const payload = `${args.sessionId}.${proposalId}.${expiresAt}`;
+	const confirmToken = `${payload}.${await signProposal(payload, confirmSecret)}`;
+	await ctx.db.patch(args.sessionId, {
+		bookingFlowAt: now,
+		pendingBookingQuote: {
+			propertySlug: property.slug,
+			checkIn: args.checkIn,
+			checkOut: args.checkOut,
+			guests: args.guests,
+			guestName,
+			guestPhone,
+			nights,
+			total: offer.total,
+			subtotal: offer.subtotal,
+			discountAmount: offer.discount,
+			...(coupon ? { coupon } : {}),
+			currency: quote.currency,
+			createdAt: now,
+			proposalId,
+			confirmSecret,
+			expiresAt
+		}
+	});
+
+	return {
+		confirmToken,
+		expiresAt,
+		property: property.name,
+		checkIn: args.checkIn,
+		checkOut: args.checkOut,
+		nights,
+		guests: args.guests,
+		guestName,
+		guestPhone,
+		total: offer.total,
+		subtotal: offer.subtotal,
+		discountAmount: offer.discount,
+		...(coupon ? { coupon } : {}),
+		currency: quote.currency
+	};
+}
+
 export const prepareChatBooking = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
@@ -406,61 +485,18 @@ export const prepareChatBooking = internalMutation({
 		guests: v.number(),
 		guestName: v.string(),
 		guestPhone: v.optional(v.string()),
+		couponCode: v.optional(v.string()),
 		deadlineAt: v.optional(v.number())
 	},
-	handler: async (ctx, args) => {
-		const session = await loadChatSession(ctx, args.sessionId);
-		assertChatWriteAllowed(session, args.deadlineAt);
-		// WhatsApp numbers are verified by WhatsApp, so never trust a model-supplied phone there.
-		const guestPhone = (
-			session.channel === 'whatsapp' ? session.visitorPhone : (args.guestPhone ?? session.visitorPhone)
-		)?.trim();
-		if (!guestPhone) throw new Error('Ask the guest for their phone number before preparing the booking.');
-		const guestName = args.guestName.trim() || session.visitorName?.trim();
-		if (!guestName) throw new Error('Ask the guest for their name before preparing the booking.');
-
-		const { property, nights, quote } = await quoteBookableStay(ctx, args);
-		const now = Date.now();
-		const { bookingRules } = await getEffectiveSettings(ctx);
-		const proposalId = crypto.randomUUID();
-		const confirmSecret = randomSecret();
-		const expiresAt = now + bookingRules.chatQuoteValidityMinutes * 60_000;
-		const payload = `${args.sessionId}.${proposalId}.${expiresAt}`;
-		const confirmToken = `${payload}.${await signProposal(payload, confirmSecret)}`;
-		await ctx.db.patch(args.sessionId, {
-			bookingFlowAt: now,
-			pendingBookingQuote: {
-				propertySlug: property.slug,
-				checkIn: args.checkIn,
-				checkOut: args.checkOut,
-				guests: args.guests,
-				guestName,
-				guestPhone,
-				nights,
-				total: quote.directTotal,
-				currency: quote.currency,
-				createdAt: now,
-				proposalId,
-				confirmSecret,
-				expiresAt
-			}
-		});
-
-		return {
-			confirmToken,
-			expiresAt,
-			property: property.name,
-			checkIn: args.checkIn,
-			checkOut: args.checkOut,
-			nights,
-			guests: args.guests,
-			guestName,
-			guestPhone,
-			total: quote.directTotal,
-			currency: quote.currency
-		};
-	}
+	handler: (ctx, args) => prepareChatBookingRecord(ctx, args)
 });
+
+/** A confirmed proposal shows the booking's actual frozen saving, including later staff edits. */
+function bookedChatCoupon(booking: Doc<'bookings'>): ChatCouponSnapshot | undefined {
+  const promotion = booking.priceOverride === undefined ? booking.promotion : undefined;
+  return promotion ? { code: promotion.code, couponId: promotion.couponId, version: promotion.couponVersion,
+    status: 'applied' as const, discount: promotion.discount, capped: false } : undefined;
+}
 
 async function confirmPreparedBooking(
 	ctx: MutationCtx,
@@ -490,6 +526,8 @@ async function confirmPreparedBooking(
 			total: existing.total,
 			currency: existing.currency,
 			paymentStatus: existing.paymentStatus,
+			...(bookedChatCoupon(existing) ? { coupon: bookedChatCoupon(existing) } : {}),
+			needsReview: false as const,
 			alreadyConfirmed: true
 		};
 	}
@@ -503,10 +541,19 @@ async function confirmPreparedBooking(
 		throw new Error('The prepared booking expired. Call prepare_booking again.');
 	}
 
-	const currentQuote = await quoteBookableStay(ctx, pending);
-	if (currentQuote.quote.directTotal !== pending.total || currentQuote.quote.currency !== pending.currency) {
-		throw new Error('The villa price changed. Prepare a new quote and ask the guest to confirm it.');
-	}
+	const activeCode = await activeGuestCoupon(ctx, args.sessionId);
+	const currentQuote = await quoteChatStay(ctx, { ...pending, couponCode: activeCode });
+	if (activeCode !== pending.coupon?.code || currentQuote.offer.total !== pending.total || currentQuote.quote.currency !== pending.currency
+      || (pending.subtotal !== undefined && currentQuote.offer.subtotal !== pending.subtotal)
+      || (pending.discountAmount !== undefined && currentQuote.offer.discount !== pending.discountAmount)
+      || couponSnapshotIdentity(currentQuote.coupon) !== couponSnapshotIdentity(pending.coupon)) {
+    const quote = await prepareChatBookingRecord(ctx, {
+      sessionId: args.sessionId, propertySlug: pending.propertySlug, checkIn: pending.checkIn, checkOut: pending.checkOut,
+      guests: pending.guests, guestName: pending.guestName, guestPhone: pending.guestPhone, couponCode: activeCode, deadlineAt: args.deadlineAt
+    }, args.byGuest);
+    return { needsReview: true as const, quote };
+  }
+  if (pending.coupon?.status === 'applied' && pending.total <= 0) throw new Error('This code covers the whole stay. Please contact the host to book.');
 	const { bookingId, accessToken } = await createBookingRecord(ctx, {
 		propertySlug: pending.propertySlug,
 		checkIn: pending.checkIn,
@@ -517,6 +564,7 @@ async function confirmPreparedBooking(
 		...(session.visitorEmail ? { guestEmail: session.visitorEmail } : {}),
 		source: chatSourceByChannel[session.channel],
 		chatSessionId: args.sessionId,
+		...(pending.coupon?.status === 'applied' ? { couponCode: pending.coupon.code } : {}),
 		// The confirming page's own capture beats the one the chat last saw.
 		marketing: session.channel === 'web' ? (args.marketing !== undefined ? cleanCapture(args.marketing) : session.marketingCapture) : undefined
 	});
@@ -536,6 +584,8 @@ async function confirmPreparedBooking(
 		total: pending.total,
 		currency: pending.currency,
 		paymentStatus: 'pending' as const,
+		...(pending.coupon ? { coupon: pending.coupon } : {}),
+		needsReview: false as const,
 		alreadyConfirmed: false
 	};
 }
@@ -577,12 +627,16 @@ export const getConfirmProposal = query({
 		const property = booking ? await ctx.db.get(booking.propertyId) : await loadProperty(ctx, pending.propertySlug);
 		if (!property) return null;
 		const stay = booking ?? pending;
+		const coupon = booking ? bookedChatCoupon(booking) : pending.coupon;
 		return {
 			property: property.name,
 			checkIn: stay.checkIn,
 			checkOut: stay.checkOut,
 			guests: stay.guests,
 			nights: stay.nights,
+			...(coupon ? { coupon } : {}),
+			subtotal: booking?.subtotal ?? pending.subtotal,
+			discountAmount: booking?.discountAmount ?? pending.discountAmount,
 			total: stay.total,
 			currency: stay.currency,
 			cancellationPolicy: settings.cancellationPolicy,
