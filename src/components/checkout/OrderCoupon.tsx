@@ -40,6 +40,8 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   const actions = useCheckoutBackend().useActions();
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
+  // Cancelling puts focus back on "Add coupon". After a coupon applies it stays off every button, so a stray scan can't press one.
+  const refocus = useRef(false);
   const [value, setValue] = useState("");
   const [message, setMessage] = useState("");
   const [applying, setApplying] = useState(false);
@@ -97,6 +99,10 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     return (
       <button
         type="button"
+        ref={(button) => {
+          if (button && refocus.current) button.focus();
+          refocus.current = false;
+        }}
         onClick={() => setOpen(true)}
         className={cn("mb-2 flex min-h-10 w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left text-sm font-medium text-muted-foreground transition hover:border-gold/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none", SHORT_SCREEN_HIDDEN)}
       >
@@ -140,6 +146,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   }
 
   const close = () => {
+    refocus.current = true;
     setOpen(false);
     setValue("");
     setMessage("");

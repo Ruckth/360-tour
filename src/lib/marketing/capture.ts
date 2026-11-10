@@ -76,6 +76,16 @@ export function setConsent(choice: ConsentChoice) {
   window.dispatchEvent(new Event(CONSENT_EVENT));
 }
 
+/** Calls back when the choice changes, in this tab or another. For useSyncExternalStore with readConsent. */
+export function onConsentChange(onChange: () => void) {
+  window.addEventListener(CONSENT_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(CONSENT_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
 const validSlug = (slug: unknown): slug is string => typeof slug === "string" && !validateMarketingSlug(slug).reason;
 
 function slugFrom(search: string): string | undefined {

@@ -322,7 +322,7 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
               )}
             </div>
             <p className="border-t border-border px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-              Opens count visits to the campaign’s short links, bots excluded. Bookings and spend reports come in a later release.
+              Opens count visits to the campaign’s short links, bots excluded. Paid bookings, spend and ROAS are on the Dashboard.
             </p>
           </>
         )}

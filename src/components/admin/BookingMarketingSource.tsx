@@ -3,7 +3,7 @@ import type { MarketingAttribution } from "convex/lib/marketingAttribution";
 
 const EVIDENCE: Record<MarketingAttribution["evidence"], string> = {
   tracked: "Tracked visit",
-  current_link: "Link in this visit only",
+  current_link: "Link from this visit only (measurement wasn’t on)",
 };
 
 /** Release 3a: which of our links brought a web or web-chat booking. Nothing when it has no snapshot. */
@@ -22,7 +22,7 @@ export function BookingMarketingSource({ attribution }: { attribution: Marketing
         <span className="block">No link in the last 30 days</span>
       )}
       {details ? <span className="block text-muted-foreground">{details}</span> : null}
-      <span className="block text-muted-foreground">{[when, EVIDENCE[evidence]].filter(Boolean).join(" · ")}</span>
+      {last ? <span className="block text-muted-foreground">{[when, EVIDENCE[evidence]].filter(Boolean).join(" · ")}</span> : null}
       {first && last && first.linkId !== last.linkId ? (
         <span className="block text-muted-foreground">
           First seen via <span className="font-mono">/{first.slug}</span>

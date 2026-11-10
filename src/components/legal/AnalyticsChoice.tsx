@@ -1,15 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import { clearMarketingStorage, setConsent } from '@/lib/marketing/capture';
+import { useSyncExternalStore } from 'react';
+import { clearMarketingStorage, onConsentChange, readConsent, setConsent } from '@/lib/marketing/capture';
 
-/** Opt-out: forgets the visitor key, stops PostHog in this browser, then reloads without either. */
+/**
+ * The measurement choice on the privacy page: says whether it is on in this browser and switches it.
+ * Turning it off forgets the visitor key, stops PostHog here, then reloads without either.
+ */
 export function AnalyticsChoice() {
-  const [saved, setSaved] = useState(false);
+  // undefined until the browser has been read.
+  const choice = useSyncExternalStore(onConsentChange, readConsent, () => undefined);
   async function optOut() {
     setConsent('no');
     clearMarketingStorage();
-    setSaved(true);
     try {
       const { default: posthog } = await import('posthog-js');
       if (posthog.__loaded) {
@@ -21,5 +24,14 @@ export function AnalyticsChoice() {
     }
     window.location.reload();
   }
-  return <button className="mt-2 underline" onClick={() => void optOut()}>{saved ? 'Measurement turned off' : 'Turn off measurement'}</button>;
+  if (choice === undefined) return null;
+  const on = choice === 'yes';
+  return (
+    <p className="mt-2">
+      Measurement is {on ? 'on' : 'off'} in this browser.{' '}
+      <button className="underline" onClick={() => (on ? void optOut() : setConsent('yes'))}>
+        {on ? 'Turn off measurement' : 'Turn on measurement'}
+      </button>
+    </p>
+  );
 }

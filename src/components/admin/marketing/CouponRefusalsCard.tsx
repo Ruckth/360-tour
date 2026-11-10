@@ -14,7 +14,7 @@ export const REFUSAL_LABELS: Record<CouponRefusalProblem, string> = {
   sold_out: "Sold out",
   budget_used: "Discount budget used up",
   wrong_property: "Not for this villa",
-  villa_only: "Not for this villa",
+  villa_only: "Villa stays only, not checkout",
   stay_outside_dates: "Stay outside the dates",
   min_nights: "Minimum nights not met",
   min_subtotal: "Below the minimum spend",
@@ -32,7 +32,7 @@ export const REFUSAL_SURFACES: Record<CouponRefusalSurface, string> = {
   pos: "Checkout",
 };
 
-/** Refusals grouped by label (two codes share "Not for this villa"), largest first, plus the not-used count. */
+/** Refusals by label, largest first, plus the not-used count. */
 export function refusalRows(summary: CouponRefusalSummary) {
   const counts = new Map<string, number>();
   let notUsed = 0;

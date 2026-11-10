@@ -43,8 +43,10 @@ for (const theme of ["light", "dark"] as const) {
         if (scenario === "refunds") await expect(page.getByRole("heading", { name: "Money in and out" })).toBeVisible();
         if (["normal", "no-spend", "refunds", "truncated"].includes(scenario)) {
           await expect(page.getByRole("heading", { name: "Breakdown" })).toBeVisible();
-          // The table from iPad landscape up, cards below.
-          await expect(page.locator("#breakdown table")).toBeVisible({ visible: width >= 1024 });
+          // The table where every column fits (iPad landscape up here), cards below; never cut off at the side.
+          const table = page.locator("#breakdown table");
+          await expect(table).toBeVisible({ visible: width >= 1024 });
+          if (width >= 1024) expect.soft(await table.evaluate((t) => t.parentElement!.scrollWidth - t.parentElement!.clientWidth), "table cut off").toBeLessThanOrEqual(0);
         }
         if (scenario === "no-spend") await expect(page.getByRole("button", { name: "Add spend" }).first()).toBeVisible();
         await expectNoSideScroll(page, width);

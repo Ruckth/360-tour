@@ -78,7 +78,11 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
 
   it("sums ROAS over the campaigns that have spend", () => {
     // November escape (/f1 + /a1) ฿364,600 on ฿45,000; Spa week ฿5,600 on ฿1,200.
-    expect(t.roas).toEqual({ kind: "value", value: (364_600 + 5_600) / 46_200, net: 370_200, spend: 46_200, campaigns: 2 });
+    expect(t.roas).toMatchObject({ kind: "value", value: (364_600 + 5_600) / 46_200, net: 370_200, spend: 46_200, campaigns: 2 });
+    // Campaigns that sold with no spend entered are named, so the tile can say the figure leaves them out.
+    const missing = t.roas.kind === "value" ? t.roas.missing : [];
+    expect(missing).toContain("c-ig");
+    expect(missing).not.toContain("c-fb-nov");
   });
 
   it("builds source rows with sessions, conversion, ROAS and pinned untracked rows", () => {
@@ -284,7 +288,7 @@ describe("ROAS", () => {
       spend: [spend(1000, "2026-10-01", "2026-10-31")],
     });
     const p = prepareReport(r, LAST);
-    expect(roasFor(p, ["ca", "cb"])).toEqual({ kind: "value", value: 2, net: 2000, spend: 1000, campaigns: 1 });
+    expect(roasFor(p, ["ca", "cb"])).toEqual({ kind: "value", value: 2, net: 2000, spend: 1000, campaigns: 1, missing: ["cb"] });
   });
 
   it("ignores spend that doesn't overlap", () => {

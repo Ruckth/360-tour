@@ -41,7 +41,11 @@ import {
 // the unit tests and the browser fixture render it with fixture data.
 
 export type ReportRequest = { range: RangeChoice; basis: ReportBasis };
-export type ReportState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; report: ReportData; refreshing?: boolean };
+export type ReportState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  /** `refreshError`: the last re-read of these dates failed, so the figures are the earlier ones. */
+  | { status: "ready"; report: ReportData; refreshing?: boolean; refreshError?: string };
 
 export type DashboardViewProps = {
   request: ReportRequest;
@@ -298,7 +302,7 @@ export function DashboardView({
   const context = report ? (
     <div className="grid gap-1 text-xs leading-5 text-muted-foreground">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+        <span role="status" className="inline-flex items-center gap-1.5 font-medium text-foreground">
           <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "animate-pulse bg-amber-500" : "bg-emerald-500")} />
           As of {formatStamp(report.asOf)}
         </span>
@@ -386,7 +390,11 @@ export function DashboardView({
             ) : undefined
           }
         >
-          {propertyFilter !== "all" ? `No sales for ${propertyName} in these dates.` : "No sales or tracked visits in these dates."}
+          {report?.basis === "cash"
+            ? `No payments or refunds${propertyFilter !== "all" ? ` for ${propertyName}` : ""} in these dates.`
+            : propertyFilter !== "all"
+              ? `No sales for ${propertyName} in these dates.`
+              : "No sales or tracked visits in these dates."}
         </EmptyState>
       </section>
     );
@@ -416,6 +424,21 @@ export function DashboardView({
       <h1 className="sr-only">Marketing dashboard</h1>
       {toolbar}
       {context}
+      {state.status === "ready" && state.refreshError ? (
+        <Callout
+          tone="warning"
+          role="alert"
+          title="Couldn’t update the figures"
+          action={
+            <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+              <RotateCw aria-hidden className="size-4" />
+              Try again
+            </Button>
+          }
+        >
+          {state.refreshError} These are the figures as of {formatStamp(state.report.asOf)}.
+        </Callout>
+      ) : null}
       {report?.truncated ? (
         <Callout tone="warning" role="status" title="These figures are incomplete">
           This range has more sales than one read can cover, so some are missing. Choose fewer days to see complete figures.

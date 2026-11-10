@@ -211,7 +211,7 @@ describe("CouponRefusalsCard", () => {
     expect(REFUSAL_LABELS.coupon_changed).toBe("Savings changed at payment");
   });
 
-  it("keeps coupon_worse out of the refusals and merges codes that share a label", () => {
+  it("keeps coupon_worse out of the refusals and gives each reason its own row", () => {
     const result = refusalRows(summary([
       { problem: "min_nights", count: 14 },
       { problem: "coupon_worse", count: 4 },
@@ -219,7 +219,7 @@ describe("CouponRefusalsCard", () => {
       { problem: "villa_only", count: 3 },
       { problem: "expired", count: 0 },
     ]));
-    expect(result).toEqual({ rows: [{ label: "Minimum nights not met", count: 14 }, { label: "Not for this villa", count: 5 }], refused: 19, notUsed: 4 });
+    expect(result).toEqual({ rows: [{ label: "Minimum nights not met", count: 14 }, { label: "Villa stays only, not checkout", count: 3 }, { label: "Not for this villa", count: 2 }], refused: 19, notUsed: 4 });
   });
 
   it("shows the counts, the not-used line and where it happened", async () => {

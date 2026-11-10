@@ -22,8 +22,9 @@ import {
   type TotalRow,
 } from "./report-model";
 
-// The breakdown table (cards on phones and iPads) with Source / Campaign / Link / Coupon tabs and
-// drill-down breadcrumbs.
+// The breakdown with Source / Campaign / Link / Coupon tabs and drill-down breadcrumbs: a table
+// where the section is wide enough to show every column (TABLE / CARDS, a container query, since the
+// admin sidebar takes 16rem of a laptop screen), cards everywhere else.
 
 export const VIEWS: { value: BreakdownView; label: string }[] = [
   { value: "source", label: "Source" },
@@ -47,6 +48,9 @@ const statusLabel = (status: string) => status.charAt(0).toUpperCase() + status.
 const TINT = "bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]";
 const HOVER_TINT = "hover:bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]";
 const GROUP_HOVER_TINT = "group-hover/row:bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]";
+
+const TABLE = "hidden max-w-full overflow-x-auto @[68rem]:block";
+const CARDS = "@[68rem]:hidden";
 
 const num = (value: number) => value.toLocaleString("en-US");
 const Dash = ({ title }: { title?: string }) => (
@@ -154,7 +158,7 @@ function NameButton({ row, onOpen, card = false }: { row: BreakdownRow; onOpen: 
   );
 }
 
-function Divider({ view, colSpan }: { view: BreakdownView; colSpan?: number }) {
+function Divider({ view, cash, colSpan }: { view: BreakdownView; cash: boolean; colSpan?: number }) {
   const text =
     view === "coupon" ? (
       <>
@@ -162,7 +166,7 @@ function Divider({ view, colSpan }: { view: BreakdownView; colSpan?: number }) {
       </>
     ) : (
       <>
-        <span className="admin-eyebrow mr-2">Not tracked</span>Counted in business totals, left out of conversion
+        <span className="admin-eyebrow mr-2">Not tracked</span>Counted in business totals{cash ? "" : ", left out of conversion"}
       </>
     );
   return colSpan ? (
@@ -208,9 +212,9 @@ export function DashboardBreakdown({
         key={col.key}
         scope="col"
         aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-        className={cn("py-3 font-semibold", col.key === "name" ? cn("sticky left-0 z-10 min-w-60 px-4 text-left", TINT) : "px-3 text-right")}
+        className={cn("py-3 font-semibold", col.key === "name" ? cn("sticky left-0 z-10 min-w-52 px-4 text-left", TINT) : "px-2.5 text-right")}
       >
-        <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex items-center gap-1 rounded uppercase tracking-[0.14em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
+        <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex items-center gap-1 rounded uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
           {col.label}
           <Icon aria-hidden className={cn("size-3.5", !active && "opacity-50")} />
         </button>
@@ -226,7 +230,7 @@ export function DashboardBreakdown({
             <NameButton row={row} onOpen={onOpen} />
           </td>
         ) : (
-          <td key={col.key} className="whitespace-nowrap px-3 py-3 text-right align-top tabular-nums">
+          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right align-top tabular-nums">
             <Cell row={row} col={col.key} onAddSpend={onAddSpend} />
           </td>
         ),
@@ -243,7 +247,7 @@ export function DashboardBreakdown({
             {row.note ? <span className="block text-xs font-normal text-muted-foreground">{row.note}</span> : null}
           </th>
         ) : (
-          <td key={col.key} className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums">
+          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right font-semibold tabular-nums">
             {col.key === "roas" && !row.roas ? null : <Cell row={row} col={col.key} />}
           </td>
         ),
@@ -308,20 +312,20 @@ export function DashboardBreakdown({
   } else {
     body = (
       <>
-        <div className="hidden max-w-full overflow-x-auto lg:block">
+        <div className={TABLE}>
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead className={cn("admin-eyebrow border-b border-border", TINT)}>
               <tr>{cols.map(th)}</tr>
             </thead>
             <tbody>
               {b.rows.map(tr)}
-              {b.pinned.length ? <Divider view={b.view} colSpan={cols.length} /> : null}
+              {b.pinned.length ? <Divider view={b.view} cash={p.cash} colSpan={cols.length} /> : null}
               {b.pinned.map(tr)}
             </tbody>
             <tfoot className="border-t-2 border-border">{b.totals.map(footRow)}</tfoot>
           </table>
         </div>
-        <div className="lg:hidden">
+        <div className={CARDS}>
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
             <label htmlFor="breakdown-sort" className="whitespace-nowrap text-xs font-medium text-muted-foreground">
               Sort by
@@ -353,7 +357,7 @@ export function DashboardBreakdown({
           <ul className="grid gap-px bg-border md:grid-cols-2">
             {b.rows.map(card)}
             {b.rows.length % 2 ? <li aria-hidden className="hidden bg-card md:block" /> : null}
-            {b.pinned.length ? <Divider view={b.view} /> : null}
+            {b.pinned.length ? <Divider view={b.view} cash={p.cash} /> : null}
             {b.pinned.map(card)}
             {b.pinned.length % 2 ? <li aria-hidden className="hidden bg-card md:block" /> : null}
           </ul>
@@ -378,7 +382,7 @@ export function DashboardBreakdown({
   }
 
   return (
-    <section id="breakdown" aria-labelledby="breakdown-title" className="min-w-0 border border-border bg-card">
+    <section id="breakdown" aria-labelledby="breakdown-title" className="@container min-w-0 border border-border bg-card">
       <div className="grid gap-3 border-b border-border px-4 pt-3">
         <div className="min-w-0">
           <h2 id="breakdown-title" className="text-base font-semibold text-foreground">

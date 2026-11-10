@@ -6,16 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { localizeHref } from '@/i18n/routing';
-import { CONSENT_EVENT, isUntrackedPath, readConsent, setConsent } from '@/lib/marketing/capture';
-
-function subscribe(onChange: () => void) {
-  window.addEventListener(CONSENT_EVENT, onChange);
-  window.addEventListener('storage', onChange);
-  return () => {
-    window.removeEventListener(CONSENT_EVENT, onChange);
-    window.removeEventListener('storage', onChange);
-  };
-}
+import { isUntrackedPath, onConsentChange, readConsent, setConsent } from '@/lib/marketing/capture';
 
 /** Never on staff screens or the counter display: those aren't visitors. */
 export function AnalyticsConsent() {
@@ -28,7 +19,7 @@ function AnalyticsConsentBanner({ pathname }: { pathname: string }) {
   const t = useTranslations('Consent');
   const locale = useLocale();
   // undefined until the browser has been read, so nobody who already answered sees the banner flash.
-  const choice = useSyncExternalStore(subscribe, readConsent, () => undefined);
+  const choice = useSyncExternalStore(onConsentChange, readConsent, () => undefined);
   const [ready, setReady] = useState(false);
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 

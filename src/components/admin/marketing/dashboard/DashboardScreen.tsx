@@ -11,6 +11,7 @@ import { adminMarketingPath } from "../../admin-routes";
 import { BookingSheet } from "../../BookingSheet";
 import { bangkokToday, marketingErrorText } from "../marketing-format";
 import { DEFAULT_REQUEST, DashboardView, type ReportRequest, type ReportState } from "./DashboardView";
+import { presetRange } from "./report-model";
 
 /**
  * The dashboard wired to Convex. The report is a one-off read (not a subscription): it's the
@@ -27,14 +28,26 @@ export function DashboardScreen() {
   const saveSpend = useMutation(api.marketingReport.saveSpend);
   const properties = useQuery(api.properties.adminList, stay ? {} : "skip");
 
-  const { from, to } = request.range;
+  // A preset follows the calendar: when the Bangkok day changes, its dates move on and the report is read again.
+  const preset = request.range.preset;
+  const range = preset === "custom" ? request.range : { preset, ...presetRange(preset, today) };
+  const { from, to } = range;
   const basis = request.basis;
   useEffect(() => {
     let live = true;
-    setState((current) => (current.status === "ready" ? { ...current, refreshing: true } : { status: "loading" }));
+    setState((current) => (current.status === "ready" ? { status: "ready", report: current.report, refreshing: true } : { status: "loading" }));
     convex.query(api.marketingReport.getReport, { from, to, basis }).then(
       (report) => live && setState({ status: "ready", report }),
-      (error: unknown) => live && setState({ status: "error", message: marketingErrorText(error, "The report didn’t load.") }),
+      (error: unknown) => {
+        if (!live) return;
+        const message = marketingErrorText(error, "The report didn’t load.");
+        // A failed re-read of the same dates keeps the figures already on screen.
+        setState((current) =>
+          current.status === "ready" && current.report.from === from && current.report.to === to && current.report.basis === basis
+            ? { status: "ready", report: current.report, refreshError: message }
+            : { status: "error", message },
+        );
+      },
     );
     return () => {
       live = false;
@@ -60,7 +73,7 @@ export function DashboardScreen() {
   return (
     <>
       <DashboardView
-        request={request}
+        request={{ ...request, range }}
         onRequestChange={setRequest}
         state={state}
         onRetry={() => setNonce((n) => n + 1)}

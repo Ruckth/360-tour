@@ -123,7 +123,9 @@ describe("dashboard view", () => {
     expect(text()).toContain("Asia/Bangkok · THB");
     expect(text()).toContain("Last touch (last_touch_30d@1)");
     expect(text()).toContain("8,860");
-    expect(text()).toContain("179 business total · 7 paid checkout orders also counted in money");
+    expect(text()).toContain("179 paid stays in all · 7 checkout orders count in money only");
+    // The ROAS tile says which campaigns its figure leaves out.
+    expect(text()).toMatch(/2 campaigns with spend · \d+ more campaigns? with sales ha(s|ve) no spend\./);
     expect(text()).toContain("1.49%");
     expect(text()).toContain("฿1,091,700");
     expect(text()).toContain("฿1,515,900");
@@ -138,7 +140,8 @@ describe("dashboard view", () => {
     render(ready());
     expect(spendDialog.last?.open).toBe(false);
     click(buttons(/^instagram.*Show campaigns$/)[0]); // drill into instagram
-    const add = buttons("Add spend")[0];
+    // The ROAS tile has its own Add spend link; this is the row's.
+    const add = buttons("Add spend").find((b) => b.closest("#breakdown"))!;
     click(add);
     expect(spendDialog.last).toMatchObject({
       open: true,
@@ -169,6 +172,8 @@ describe("dashboard view", () => {
     expect(document.querySelector('nav[aria-label="Drill-down"]')?.textContent).toContain("Facebook · November escape");
     click(buttons(/^\/a1.*Show sales$/)[0]);
     expect(text()).toContain("2 refunds reduced net by ฿9,600.");
+    // /a1 is one of the campaign's two links: the list shows the whole campaign's ROAS, not /a1's net over the campaign's spend.
+    expect(text()).toContain("Whole campaign ROAS 8.10× · ฿364,600 net ÷ ฿45,000 spend.");
     click(buttons("Open booking")[0]);
     expect(calls.stays).toHaveLength(1);
     expect(calls.stays[0]).toMatch(/^stay-/);
@@ -201,7 +206,8 @@ describe("dashboard view", () => {
 
   it("shows the Finance tiles on a cash read", () => {
     render(ready(dashboardReport({ basis: "cash" })), { request: { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" } });
-    for (const label of ["Collected", "Refunds", "Payments completed", "Money in and out"]) expect(text()).toContain(label);
+    for (const label of ["Collected", "Refunds", "Payments completed", "Money in and out", "Business total · all payments and refunds"]) expect(text()).toContain(label);
+    expect(text()).not.toContain("left out of conversion");
     expect(text()).toContain("฿38,400");
     expect(text()).not.toContain("Tracked sessions");
   });
@@ -229,9 +235,20 @@ describe("dashboard view", () => {
 
     render(ready(emptyRangeReport()));
     expect(text()).toContain("No sales or tracked visits in these dates.");
+    render(ready({ ...emptyRangeReport(), basis: "cash" }));
+    expect(text()).toContain("No payments or refunds in these dates.");
 
     render(ready(dashboardReport({ truncated: true, nonThb: 3 })));
     expect(text()).toContain("These figures are incomplete");
     expect(text()).toContain("3 sales in another currency are left out");
+  });
+
+  it("keeps the figures on screen when a refresh fails", () => {
+    render({ status: "ready", report: dashboardReport(), refreshError: "Server timed out." });
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t update the figures");
+    expect(text()).toContain("Server timed out. These are the figures as of 7 Nov 2026, 06:00.");
+    expect(text()).toContain("฿1,515,900");
+    click(buttons("Try again")[0]);
+    expect(calls.retry).toBe(1);
   });
 });

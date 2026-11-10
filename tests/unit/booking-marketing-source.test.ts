@@ -49,7 +49,7 @@ describe("booking sheet source row", () => {
 
   it("labels a link seen only in this visit, without a date", async () => {
     await render({ model: "last_touch_30d@1", evidence: "current_link", last: touch("q1", { medium: "qr", entry: "qr" }), capturedAt: touchedAt });
-    expect(lines()).toEqual(["/q1 · facebook / qr", "November escape", "Link in this visit only"]);
+    expect(lines()).toEqual(["/q1 · facebook / qr", "November escape", "Link from this visit only (measurement wasn’t on)"]);
   });
 
   it("names the first link when it differs from the last", async () => {
@@ -59,7 +59,7 @@ describe("booking sheet source row", () => {
 
   it("says so when a tracked visit had no link in the window", async () => {
     await render(tracked({ last: undefined, first: undefined }));
-    expect(lines()).toEqual(["No link in the last 30 days", "Tracked visit"]);
+    expect(lines()).toEqual(["No link in the last 30 days"]);
   });
 
   it("renders nothing without a snapshot", async () => {

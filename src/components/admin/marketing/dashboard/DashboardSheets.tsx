@@ -11,7 +11,7 @@ import { StatusBadge } from "../../StatusBadge";
 import { ChoiceGroup, CouponChip, EditorSheet, FactList } from "../MarketingBits";
 import { formatDay, formatStamp, thb } from "../marketing-format";
 import { csvFileName, salesCsv, summaryCsv, type ExportKind } from "./report-csv";
-import { formatRoas, sheetLines, slugPath, sumLines, type Breakdown, type Prepared, type SaleLine } from "./report-model";
+import { formatRoas, roasFor, sheetLines, slugPath, sumLines, type Breakdown, type Prepared, type SaleLine } from "./report-model";
 
 // The sales list a row drills into, the metric definitions, and the CSV export.
 
@@ -31,7 +31,6 @@ function SaleItem({ line, p, onOpenStay, orderHref }: { line: SaleLine; p: Prepa
     sale.kind === "stay" ? (
       <button type="button" onClick={() => onOpenStay(sale.id)} className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
         Open booking
-        <ExternalLink aria-hidden className="size-3.5" />
       </button>
     ) : sale.kind === "order" ? (
       <Link href={orderHref(sale.id)} className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
@@ -98,7 +97,8 @@ export function SalesSheet({
   const lines = useMemo(() => (target ? sheetLines(target.lines) : []), [target]);
   const money = sumLines(lines);
   const refunded = lines.filter((line) => line.refunded > 0);
-  const roas = target?.campaignId && p.allProperties && p.spend.has(target.campaignId) ? p.spend.get(target.campaignId)! : null;
+  // Spend is entered per campaign, so a link's list shows its whole campaign's ROAS, never the link's net over that spend.
+  const roas = target?.campaignId ? roasFor(p, [target.campaignId]) : null;
   const shown = showAll ? lines : lines.slice(0, SHEET_LIMIT);
   return (
     <EditorSheet
@@ -132,9 +132,9 @@ export function SalesSheet({
               </div>
             ))}
           </dl>
-          {roas ? (
+          {roas?.kind === "value" ? (
             <p className="text-xs text-muted-foreground">
-              Campaign ROAS {formatRoas(money.net / roas)} · {thb(Math.round(money.net))} net ÷ {thb(Math.round(roas))} spend
+              Whole campaign ROAS {formatRoas(roas.value)} · {thb(Math.round(roas.net))} net ÷ {thb(Math.round(roas.spend))} spend. Spend isn’t split by link.
             </p>
           ) : null}
           {refunded.length ? (

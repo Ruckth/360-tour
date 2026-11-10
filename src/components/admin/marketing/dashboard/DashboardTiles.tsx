@@ -43,6 +43,12 @@ function RoasTile({ roas, onAddSpend }: { roas: Roas; onAddSpend: (campaignIds: 
   return (
     <Tile label="Ad ROAS" value={formatRoas(roas.value)}>
       {thb(Math.round(roas.net))} net ÷ {thb(Math.round(roas.spend))} spend · {pluralize(roas.campaigns, "campaign")} with spend
+      {roas.missing.length ? (
+        <>
+          {" "}
+          · {pluralize(roas.missing.length, "more campaign")} with sales {roas.missing.length === 1 ? "has" : "have"} no spend. <AddSpendLink onClick={() => onAddSpend(roas.missing)} />
+        </>
+      ) : null}
     </Tile>
   );
 }
@@ -77,11 +83,11 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
         {totals.trackedSessions === null ? ALL_ONLY : "Visits from tracked links after consent. Visits, not people."}
       </Tile>
       <Tile label="Paid bookings" value={tracked.paid.toLocaleString("en-US")}>
-        Paid stays from tracked links · <Strong>{all.paid.toLocaleString("en-US")}</Strong> business total
+        Paid stays from tracked links · <Strong>{all.paid.toLocaleString("en-US")}</Strong> paid stays in all
         {otherPaid ? (
           <>
             {" "}
-            · {pluralize(otherPaid, "paid checkout order")} also counted in money
+            · {pluralize(otherPaid, "checkout order")} {otherPaid === 1 ? "counts" : "count"} in money only
           </>
         ) : null}
       </Tile>
@@ -135,7 +141,7 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
       <div className="grid grid-cols-2 gap-px bg-border md:grid-cols-3 xl:grid-cols-6">{tiles}</div>
       <div className="grid gap-3 border-t border-border px-4 py-3 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] lg:items-center lg:gap-6">
         <div>
-          <p className="text-xs font-medium text-muted-foreground">Business total · every paid sale</p>
+          <p className="text-xs font-medium text-muted-foreground">Business total · {p.cash ? "all payments and refunds" : "every paid sale"}</p>
           <p className="text-base font-semibold tabular-nums text-foreground">
             {thb(all.net)} net
           </p>

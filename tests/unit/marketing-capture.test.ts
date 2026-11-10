@@ -325,4 +325,15 @@ describe("turning measurement off", () => {
     expect(visitor()).toBeNull();
     await unmount();
   });
+
+  it("says it is off after a No and turns it back on", async () => {
+    capture.setConsent("no");
+    const { AnalyticsChoice } = await import("@/components/legal/AnalyticsChoice");
+    await mount(createElement(AnalyticsChoice));
+    expect(document.body.textContent).toContain("Measurement is off in this browser.");
+    await act(async () => button("Turn on measurement").click());
+    expect(window.localStorage.getItem("analytics-consent-v2")).toBe("yes");
+    expect(document.body.textContent).toContain("Measurement is on in this browser.");
+    await unmount();
+  });
 });

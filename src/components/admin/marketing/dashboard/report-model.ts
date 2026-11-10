@@ -58,7 +58,7 @@ export type Money = {
 };
 
 export type Roas =
-  | { kind: "value"; value: number; net: number; spend: number; campaigns: number }
+  | { kind: "value"; value: number; net: number; spend: number; campaigns: number; /** Campaigns with sales here and no spend. */ missing: string[] }
   /** No spend entered in range: `campaignIds` are the campaigns spend can be added to. */
   | { kind: "missing"; campaignIds: string[] }
   /** A property is selected: spend isn't split by property. */
@@ -266,7 +266,8 @@ export function roasFor(p: Prepared, campaignIds: readonly string[], lines: read
   const ids = new Set(withSpend);
   const net = sumLines(lines.filter((line) => line.touch && ids.has(line.touch.campaignId))).net;
   const spend = withSpend.reduce((total, id) => total + p.spend.get(id)!, 0);
-  return { kind: "value", value: net / spend, net, spend, campaigns: withSpend.length };
+  const missing = campaignIds.filter((id) => !ids.has(id) && lines.some((line) => line.touch?.campaignId === id));
+  return { kind: "value", value: net / spend, net, spend, campaigns: withSpend.length, missing };
 }
 
 export type BusinessTotals = Record<ReportBucket, Money> & { all: Money; trackedSessions: number | null; conv: number | null; roas: Roas };
