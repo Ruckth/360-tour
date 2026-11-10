@@ -1,7 +1,8 @@
 import { tz } from "@date-fns/tz";
 import { format } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
-import { RESORT_ZONE, resortIsoDate } from "@/lib/staff-bookings";
+import { RESORT_ZONE, formatResortDate, formatResortFullDate, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
+import type { ServiceSchedule } from "convex/lib/serviceSchedule";
 import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, round2, type TenderMethod } from "convex/lib/billMath";
 import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import type { OrderView } from "./backend";
@@ -46,6 +47,42 @@ export const formatResort = (at: number, pattern: string) => format(at, pattern,
 /** When an order was last changed: the time today (the resort's day), with the date on other days. */
 export function orderTime(at: number, now = Date.now()) {
   return formatResort(at, resortIsoDate(at) === resortIsoDate(now) ? "HH:mm" : "d MMM, HH:mm");
+}
+
+/** "Mon, Oct 26" for a resort date this year, with the year otherwise. */
+function scheduleDay(date: string, now: number) {
+  const at = resortMidnight(date);
+  return date.slice(0, 4) === resortIsoDate(now).slice(0, 4) ? formatResortDate(at) : formatResortFullDate(at);
+}
+
+/**
+ * A service row's planned date and time as staff read it (lib/serviceSchedule.ts): "Not scheduled",
+ * "Thu, Nov 12 · time not set", "14:30 · date not set" or "Thu, Nov 12, 14:30". Null for a row
+ * without a schedule (other kinds, and legacy rows, which keep their own start label).
+ */
+export function scheduleLabel(schedule: ServiceSchedule | undefined, now = Date.now()) {
+  if (!schedule) return null;
+  const { date, time } = schedule;
+  if (date && time) return `${date === resortIsoDate(now) ? "Today" : scheduleDay(date, now)}, ${time}`;
+  if (date) return `${date === resortIsoDate(now) ? "Today" : scheduleDay(date, now)} · time not set`;
+  if (time) return `${time} · date not set`;
+  return "Not scheduled";
+}
+
+/** The printed receipt's note under a service row; null for legacy rows, so their receipts read as issued. */
+export function receiptSchedule(schedule: ServiceSchedule | undefined) {
+  if (!schedule) return null;
+  const { date, time } = schedule;
+  const day = date ? formatResort(resortMidnight(date), "EEE d MMM yyyy") : null;
+  if (day && time) return `${day}, ${time}`;
+  if (day) return `${day} · time to be confirmed`;
+  if (time) return `${time} · date to be confirmed`;
+  return "To be scheduled";
+}
+
+/** How an order correction is titled in its history. */
+export function correctionTitle(kind: "amended" | "void_unreceived" | "linked" | "unlinked") {
+  return { amended: "Payment recording amended", void_unreceived: "Mistaken payment entry voided", linked: "Row linked after payment", unlinked: "Link undone" }[kind];
 }
 
 /** Who a receipt is issued to: the name frozen at payment (or a legacy order's copied name). */
@@ -103,7 +140,8 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     // subtotal less the coupon is the total, as on the printed receipt.
     ...lines.flatMap((line) => {
       const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
-      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(round2(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : [])];
+      const when = line.kind === "service" ? receiptSchedule(line.schedule) : null;
+      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(round2(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []), ...(when ? [`  ${when}`] : [])];
     }),
     "",
     ...(totals.coupon ? [row("Subtotal", formatMoney(round2(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),

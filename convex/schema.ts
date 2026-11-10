@@ -710,8 +710,14 @@ export default defineSchema({
 		 * payment. Absent on rows frozen at payment.
 		 */
 		staffNameBackfilledAt: v.optional(v.number()),
-		/** Absent = now. */
+		/** Legacy rows (no `schedule`): the service's start; absent = now. Never set together with `schedule`. */
 		startAt: v.optional(v.number()),
+		/**
+		 * A service row's planned resort date ("YYYY-MM-DD") and time ("HH:MM"), each optional and
+		 * independent (lib/serviceSchedule.ts). `{}` = not scheduled; a blank part is unset, never now.
+		 * Absent on rows saved before it existed, which keep `startAt`'s legacy meaning.
+		 */
+		schedule: v.optional(v.object({ date: v.optional(v.string()), time: v.optional(v.string()) })),
 		discount: v.optional(v.object({ type: v.union(v.literal('amount'), v.literal('percent')), value: v.number() })),
 		priceOverride: v.optional(v.object({ price: v.number(), note: v.string(), by: v.string(), at: v.number() })),
 		/** Paid before checkout (an attached booking's online payment); deducted from what is due. */
@@ -763,11 +769,18 @@ export default defineSchema({
 		billId: v.id('bills'),
 		/** The order's correctionRevision this row produced (1, 2, …). */
 		sequence: v.number(),
-		kind: v.union(v.literal('amended'), v.literal('void_unreceived')),
+		/** `linked` / `unlinked`: a paid row applied to (or taken off) an appointment or stay later (pos.linkPaidLine). */
+		kind: v.union(v.literal('amended'), v.literal('void_unreceived'), v.literal('linked'), v.literal('unlinked')),
 		reason: v.string(),
 		actor: v.string(),
 		recordedAt: v.number(),
 		idempotencyKey: v.string(),
+		/** Link corrections: the row, the link and its target, and the amount applied. */
+		lineId: v.optional(v.id('billLines')),
+		linkId: v.optional(v.id('billLineLinks')),
+		appointmentId: v.optional(v.id('serviceAppointments')),
+		bookingId: v.optional(v.id('bookings')),
+		amount: v.optional(v.number()),
 		tendersBefore: v.optional(v.array(correctedTender)),
 		tendersAfter: v.optional(v.array(correctedTender)),
 		customerBefore: v.optional(v.union(v.null(), receiptCustomer)),
@@ -779,6 +792,47 @@ export default defineSchema({
 	})
 		.index('by_billId_and_sequence', ['billId', 'sequence'])
 		.index('by_idempotencyKey', ['idempotencyKey']),
+
+	/**
+	 * A paid service or room row applied later to the appointment or stay it paid for
+	 * (pos.linkPaidLine). The row and its issued receipt never change: the link lives here, and the
+	 * target is recorded as paid by this order exactly as checkout would have done (an appointment's
+	 * payment fields; a stay's `bookingPayments` row with `billId`). One active link per row and per
+	 * target. Unlinking (or voiding the order as unreceived) reverses exactly what the link applied
+	 * and keeps the row as `unlinked`. Every link and unlink is also a billCorrections row.
+	 */
+	billLineLinks: defineTable({
+		billId: v.id('bills'),
+		lineId: v.id('billLines'),
+		kind: v.union(v.literal('appointment'), v.literal('booking')),
+		appointmentId: v.optional(v.id('serviceAppointments')),
+		bookingId: v.optional(v.id('bookings')),
+		/** What this order charged for the row (lineNet), applied to the target. */
+		amount: v.number(),
+		currency: v.string(),
+		status: v.union(v.literal('active'), v.literal('unlinked')),
+		/** The money's business date: the order's payment date. */
+		effectiveAt: v.number(),
+		/** Appointment: its price before the link set it to `amount`, restored on unlink. */
+		appointmentPriceBefore: v.optional(v.number()),
+		/** Stay: the payment row the link recorded, and the stay's payment status and date before it. */
+		bookingPaymentId: v.optional(v.id('bookingPayments')),
+		bookingPaymentStatusBefore: v.optional(v.union(v.literal('pending'), v.literal('paid'), v.literal('failed'), v.literal('refunded'))),
+		bookingPaidAtBefore: v.optional(v.number()),
+		reason: v.string(),
+		linkedAt: v.number(),
+		linkedBy: v.string(),
+		/** The billCorrections sequence that made it, and the one that ended it. */
+		sequence: v.number(),
+		unlinkedAt: v.optional(v.number()),
+		unlinkedBy: v.optional(v.string()),
+		unlinkReason: v.optional(v.string()),
+		unlinkSequence: v.optional(v.number())
+	})
+		.index('by_billId_and_status', ['billId', 'status'])
+		.index('by_lineId_and_status', ['lineId', 'status'])
+		.index('by_appointmentId_and_status', ['appointmentId', 'status'])
+		.index('by_bookingId_and_status', ['bookingId', 'status']),
 
 	/** Price overrides, customer links, source updates, payments and voids on an order: who, when, why, old and new price. */
 	billAudit: defineTable({

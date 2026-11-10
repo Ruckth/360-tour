@@ -5,6 +5,7 @@ import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './a
 import { assertMoney, attemptKey, cleanReason, effectiveTime } from './bookingMoney';
 import { lineNet, round2 } from './billMath';
 import { assertNotOnOpenOrder } from './orderLinks';
+import { sourceLineLinks } from './lineLinks';
 import { MANUAL_PAYMENT_METHODS } from './financeValidators';
 
 type Appointment = Doc<'serviceAppointments'>;
@@ -25,11 +26,14 @@ async function rows(ctx: ReadCtx, a: Appointment) {
     ctx.db.query('billLines').withIndex('by_appointmentId', q => q.eq('appointmentId', a._id)).take(LIMIT + 1)
   ]);
   if ([payments, refunds, lines].some(r => r.length > LIMIT)) throw new Error('Too many financial entries to safely correct this appointment. Ask support to review it.');
+  // Money an order took for it: a row charged at checkout, or a paid service row linked later (pos.linkPaidLine).
+  const charges: Array<{ billId: Id<'bills'>; charged: number }> = lines.map(line => ({ billId: line.billId, charged: lineNet(line) }));
+  for (const link of await sourceLineLinks(ctx, { appointmentId: a._id }, 'active')) charges.push({ billId: link.billId, charged: link.amount });
   const orders = [];
-  for (const line of lines) {
-    const order = await ctx.db.get(line.billId);
+  for (const charge of charges) {
+    const order = await ctx.db.get(charge.billId);
     if (!order || (order.status !== 'paid' && order.status !== 'void') || order.voidUnreceived) continue;
-    orders.push({ billId: order._id, receiptNumber: order.receiptNumber, charged: lineNet(line), refundable: Math.max(0, round2(lineNet(line) - refunds.filter(r => r.billId === order._id).reduce((sum, r) => sum + r.amount, 0))) });
+    orders.push({ billId: order._id, receiptNumber: order.receiptNumber, charged: charge.charged, refundable: Math.max(0, round2(charge.charged - refunds.filter(r => r.billId === order._id).reduce((sum, r) => sum + r.amount, 0))) });
   }
   return { payments, refunds, orders };
 }

@@ -37,6 +37,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
     return useQuery(api.pos.listAttachable, orderId || text.length >= 2 ? { orderId: orderId ?? undefined, query: text || undefined } : SKIP);
   },
   useAttachLookupStatus: ({ orderId, query }) => useQuery(api.pos.attachLookupStatus, { orderId: orderId ?? undefined, query: query.trim() || undefined }),
+  useLinkCandidates: ({ orderId, lineId, query }) => useQuery(api.pos.linkCandidates, { orderId, lineId, query: query.trim() || undefined }),
   useBusinessName: () => useQuery(api.settings.publicProfile, {})?.businessName,
   useActions: () => {
     const noteCouponRefusal = useMutation(api.marketingReport.noteCouponRefusal);
@@ -57,6 +58,8 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const settleOrder = useMutation(api.pos.settleOrder);
     const amendOrderPayment = useMutation(api.pos.amendOrderPayment);
     const voidUnreceivedOrder = useMutation(api.pos.voidUnreceivedOrder);
+    const linkPaidLine = useMutation(api.pos.linkPaidLine);
+    const unlinkPaidLine = useMutation(api.pos.unlinkPaidLine);
     const resumeCustomerMerge = useMutation(api.customers.resumeCustomerMerge);
     const voidOrder = useMutation(api.pos.voidOrder);
     const applyOrderCoupon = useMutation(api.pos.applyOrderCoupon);
@@ -70,9 +73,9 @@ export const convexCheckoutBackend: CheckoutBackend = {
       () => ({
         noteCouponRefusal, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine,
         linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
-        applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon,
+        applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, linkPaidLine, unlinkPaidLine,
       }),
-      [noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers],
+      [noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers, linkPaidLine, unlinkPaidLine],
     );
   },
 };

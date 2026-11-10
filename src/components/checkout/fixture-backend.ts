@@ -16,13 +16,14 @@ import {
   round2,
 } from "convex/lib/billMath";
 import { paymentDateInput } from "./payment-time";
+import { changeSchedule, scheduleFromStartAt } from "convex/lib/serviceSchedule";
 import { effectiveTime } from "convex/lib/bookingMoney";
 import { normalizeCouponCode, type CouponRules } from "convex/lib/offers";
 import { evaluateOrderCoupon, posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import { ConvexError } from "convex/values";
 import { formatMoney } from "@/components/admin/labels";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import type { Attachable, Catalog, CheckoutActions, CheckoutBackend, Customer, FinancialRows, FinancialStream, RestoreReview, OrderFilter, OrderRow, OrderView } from "./backend";
+import type { Attachable, Catalog, CheckoutActions, CheckoutBackend, Customer, FinancialRows, FinancialStream, LinkCandidate, RestoreReview, OrderFilter, OrderRow, OrderView } from "./backend";
 
 /**
  * In-memory checkout for the dev preview (/dev/checkout-preview): sample catalog, customers, a
@@ -163,6 +164,7 @@ function createState() {
     audit: [] as Doc<"billAudit">[],
     orderHistory: [] as Doc<"recordChanges">[],
     corrections: [] as Doc<"billCorrections">[],
+    links: [] as Doc<"billLineLinks">[],
     refunds: [] as (OrderView["refunds"][number] & { billId: Id<"bills"> })[],
     mergeJobs: [] as Doc<"customerMergeJobs">[],
     sourcePayments: new Map<Id<"bills">, { bookingId?: Id<"bookings">; appointmentId?: Id<"serviceAppointments">; amount: number; effectiveAt: number; originalPrice: number }[]>(),
@@ -253,9 +255,9 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     state.orderHistory.push({ _id: nextId("history"), _creationTime: now, entityType: "order", entityId: orderId, actor: ACTOR, recordedAt: now, effectiveAt: now, kind, before, after, ...(reason ? { reason } : {}) });
   };
   const lineSnapshot = (line: Line) => {
-    const { _id: lineId, _creationTime, billId, createdAt, ...fields } = line;
+    const { _id: lineId, _creationTime, billId, createdAt, schedule, ...fields } = line;
     void _creationTime; void billId; void createdAt;
-    return Object.fromEntries(Object.entries({ ...fields, lineId, priceOverride: fields.priceOverride ? { price: fields.priceOverride.price, note: fields.priceOverride.note } : undefined }).filter(([, value]) => value !== undefined));
+    return Object.fromEntries(Object.entries({ ...fields, serviceDate: schedule?.date, serviceTime: schedule?.time, lineId, priceOverride: fields.priceOverride ? { price: fields.priceOverride.price, note: fields.priceOverride.note } : undefined }).filter(([, value]) => value !== undefined));
   };
   const createOrder = (links: Partial<Order> = {}): Order => {
     const now = Date.now();
@@ -330,7 +332,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       setTimeout(() => {
         const saved = {
           ...state, sourcePayments: new Map([...state.sourcePayments].map(([key, rows]) => [key, rows.map(row => ({ ...row }))])), orders: new Map(state.orders), lines: [...state.lines], counters: new Map(state.counters),
-          orderHistory: [...state.orderHistory], corrections: [...state.corrections], refunds: [...state.refunds], mergeJobs: [...state.mergeJobs], customers: [...state.customers], customerHistory: [...state.customerHistory], payments: [...state.payments], audit: [...state.audit],
+          orderHistory: [...state.orderHistory], corrections: [...state.corrections], links: state.links.map((l) => ({ ...l })), refunds: [...state.refunds], mergeJobs: [...state.mergeJobs], customers: [...state.customers], customerHistory: [...state.customerHistory], payments: [...state.payments], audit: [...state.audit],
           bookings: state.bookings.map((b) => ({ ...b })), appointments: state.appointments.map((a) => ({ ...a })),
           coupons: state.coupons.map((c) => ({ ...c, rules: { ...c.rules } })),
         };
@@ -374,6 +376,63 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     if ("status" in item && (item.status === "no_show" || item.status === "cancelled")) return { kind: "gone", message: "The appointment is no longer chargeable. Remove it and review an explicit fee." };
     if (chargePrice(item) !== line.unitPrice || item.deposit !== (line.deposit ?? 0) || ("id" in item ? bookingDetail(item) !== line.detail : item.staffId !== line.staffId || item.serviceId !== line.serviceId || item.start !== line.startAt)) return { kind: "changed", message: "The booked price changed. Update this row before payment." };
     return null;
+  };
+  /** As appointmentLinkProblem / bookingLinkProblem in convex/pos.ts: why this source can't take this paid row, or null. */
+  const linkProblem = (order: Order, line: Line, item: FixtureBooking | FixtureAppointment): string | null => {
+    if (line.fee || (line.kind !== "service" && line.kind !== "room")) return "Only a paid service or room row can be linked to an appointment or stay";
+    if (lineNet(line) <= 0) return "Nothing was charged for this row, so there is no payment to apply";
+    const target = "appointmentId" in item ? { appointmentId: item.appointmentId } : { bookingId: item.id };
+    const open = charging(target);
+    const linkedElsewhere = state.links.some(l => l.status === "active" && ("appointmentId" in target ? l.appointmentId === target.appointmentId : l.bookingId === target.bookingId));
+    if ("appointmentId" in item) {
+      if (line.kind !== "service") return "A room row is linked to a stay, not an appointment.";
+      if (item.paid || item.status === "cancelled" || item.status === "no_show") return "This appointment is already paid, cancelled or a no-show.";
+      if (item.serviceId !== line.serviceId) return "This is a different service. Only an appointment for the same service can take this payment.";
+      if (linkedElsewhere) return "This appointment is already linked to another paid row.";
+      if (open) return `This appointment is on ${orderTitle(open.orderNumber)}, which is still open. Take the payment there, or remove it from that order first.`;
+      return null;
+    }
+    if (line.kind !== "room") return "A service row is linked to an appointment, not a stay.";
+    if (item.checkoutInProgress) return ONLINE_CHECKOUT;
+    if (item.propertyId !== line.propertyId) return "This stay is in a different villa. Only a stay in the same villa can take this payment.";
+    if (linkedElsewhere) return "This stay is already linked to another paid row.";
+    if (open) return `This stay is on ${orderTitle(open.orderNumber)}, which is still open. Take the payment there, or remove it from that order first.`;
+    if (linesOf(order._id).some(l => l.bookingId === item.id)) return "This order already paid for this stay at checkout.";
+    const owed = item.paid ? 0 : round2(chargePrice(item) - item.deposit);
+    if (owed <= 0) return "Nothing is left to pay on this stay.";
+    if (lineNet(line) > owed) return `This stay owes ${owed.toLocaleString("en-US")} THB, less than this row's ${lineNet(line).toLocaleString("en-US")}. Correct the stay's price first, or link a smaller charge.`;
+    return null;
+  };
+  /** As linkReversal in convex/pos.ts: undoes exactly what the link applied, or refuses. */
+  const reverseLink = (link: Doc<"billLineLinks">, reason: string, sequence: number) => {
+    const item = sourceOf(link);
+    if (!item) throw new Error("The linked booking no longer exists, so its payment can't be reversed.");
+    if ("appointmentId" in item) {
+      if ((item.amountRefunded ?? 0) > 0) throw new Error("Part of the appointment's payment was refunded, so it can't be unlinked.");
+      if (!item.paid || item.price !== link.amount) throw new Error("The appointment changed since it was linked (repaid or repriced), so it can't be unlinked automatically.");
+      Object.assign(item, { paid: false, price: link.appointmentPriceBefore ?? item.price, amountPaid: 0, amountRefunded: 0, revision: (item.revision ?? 0) + 1 });
+    } else {
+      Object.assign(item, { deposit: Math.max(round2(item.deposit - link.amount), 0), paid: false });
+    }
+    state.links = state.links.map(l => l._id === link._id ? { ...l, status: "unlinked" as const, unlinkedAt: Date.now(), unlinkedBy: ACTOR, unlinkReason: reason, unlinkSequence: sequence } : l);
+  };
+  const linkCandidates = (orderId: Id<"bills">, lineId: Id<"billLines">, query: string): LinkCandidate[] | null => {
+    const order = state.orders.get(orderId);
+    const line = state.lines.find(l => l._id === lineId);
+    if (order?.status !== "paid" || !line || line.billId !== orderId || line.fee || (line.kind !== "service" && line.kind !== "room")) return null;
+    const text = query.trim();
+    const customer = state.customers.find((c) => c._id === order.customerId);
+    const wanted = (guest: Guest, reference: string) => (customer && sameContact(guest, customer)) || (text.length >= 2 && (matches(text, guest) || reference.toLowerCase() === text.toLowerCase()));
+    const rows: LinkCandidate[] = line.kind === "service"
+      ? state.appointments.filter(a => wanted(a.guest, a.reference)).map(a => ({
+        kind: "appointment" as const, id: a.appointmentId, name: a.name, detail: a.detail, guestName: a.guest.name, price: a.price, owed: a.paid ? 0 : a.price,
+        currency: "THB", date: paymentDateInput(a.start).slice(0, 10), revision: a.revision ?? 0, problem: linkProblem(order, line, a),
+      }))
+      : state.bookings.filter(b => wanted(b.guest, b.reference)).map(b => ({
+        kind: "booking" as const, id: b.id, name: b.name, detail: bookingDetail(b), guestName: b.guest.name, price: chargePrice(b), owed: b.paid ? 0 : round2(chargePrice(b) - b.deposit),
+        currency: "THB", date: null, revision: 0, problem: linkProblem(order, line, b),
+      }));
+    return rows.sort((a, b) => Number(a.problem !== null) - Number(b.problem !== null));
   };
   const restoreCheck = (orderId: Id<"bills">): RestoreReview => {
     const o = state.orders.get(orderId); if (!o) return null;
@@ -463,7 +522,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       let line: LineFields;
       if (item.kind === "service") {
         const service = CATALOG.services.find((s) => s._id === item.serviceId)!;
-        line = { kind: "service", serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, currency: "THB", qty: 1 };
+        line = { kind: "service", serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, currency: "THB", qty: 1, schedule: {} };
       } else if (item.kind === "room") {
         const room = CATALOG.rooms.find((r) => r._id === item.propertyId)!;
         line = { kind: "room", propertyId: room._id, name: room.name, detail: "per night", unitPrice: room.price, currency: "THB", qty: 1 };
@@ -486,7 +545,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       attachTo(order, target);
       return { orderId: order._id };
     }),
-    updateLine: ({ lineId, staffId: staff, startAt, qtyChange, discount }) => later(() => {
+    updateLine: ({ lineId, staffId: staff, startAt, serviceDate, serviceTime, qtyChange, discount }) => later(() => {
       const { line, order } = editableLine(lineId);
       if (line.fee) throw new Error("Remove and add the fee again to change its amount.");
       const patch: Partial<Line> = {};
@@ -495,7 +554,17 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         if (staff && !service?.staffIds.includes(staff)) throw new Error(`${STAFF.find((s) => s._id === staff)?.name} doesn't offer this service`);
         patch.staffId = staff ?? undefined;
       }
-      if (startAt !== undefined) patch.startAt = startAt ?? undefined;
+      const scheduling = serviceDate !== undefined || serviceTime !== undefined;
+      if (scheduling && startAt !== undefined) throw new Error("Set the service date and time, or a start time, not both");
+      if (startAt !== undefined) { patch.startAt = startAt ?? undefined; patch.schedule = undefined; }
+      if (scheduling) {
+        // As pos.updateLine: independent optional parts; a legacy row keeps its other part.
+        if (line.kind !== "service") throw new Error("Only service rows take a date and time here");
+        const next = changeSchedule(line.schedule ?? (line.startAt !== undefined ? scheduleFromStartAt(line.startAt) : {}), { date: serviceDate, time: serviceTime });
+        if ("problem" in next) throw new Error(next.problem);
+        patch.schedule = next.schedule;
+        patch.startAt = undefined;
+      }
       if (qtyChange !== undefined) {
         if (!MERGES_QTY[line.kind]) throw new Error("Add another row instead: each service is its own row");
         if (!Number.isInteger(qtyChange)) throw new Error("Invalid quantity change");
@@ -770,6 +839,62 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       addCorrection(order._id, args.idempotencyKey, sequence, "amended", reason, change);
       patchOrder(order._id, { ...patch, correctionRevision: sequence });
       if (patch.paymentEffectiveAt !== undefined) for (const row of state.sourcePayments.get(order._id) ?? []) row.effectiveAt = patch.paymentEffectiveAt;
+      if (patch.paymentEffectiveAt !== undefined) state.links = state.links.map(l => l.billId === order._id && l.status === "active" ? { ...l, effectiveAt: patch.paymentEffectiveAt! } : l);
+      return { sequence, replayed: false };
+    }),
+    linkPaidLine: (args) => later(() => {
+      const target = args.appointmentId ? { appointmentId: args.appointmentId } : args.bookingId ? { bookingId: args.bookingId } : null;
+      if (!target || (args.appointmentId && args.bookingId)) throw new Error("Choose one booking or appointment");
+      const replay = correctionReplay(args.orderId, args.idempotencyKey, "linked");
+      if (replay) {
+        if (replay.lineId !== args.lineId || replay.appointmentId !== args.appointmentId || replay.bookingId !== args.bookingId) throw new Error("This link attempt was already used for something else. Start again.");
+        return { sequence: replay.sequence, linkId: replay.linkId!, replayed: true };
+      }
+      const order = state.orders.get(args.orderId);
+      if (order?.status !== "paid") throw new Error("Only a paid order’s rows can be linked.");
+      if ((order.correctionRevision ?? 0) !== args.expectedCorrectionRevision) throw new Error("This receipt was corrected since you opened it. Review it and try again.");
+      const reason = checkedReason(args.reason);
+      const line = state.lines.find(l => l._id === args.lineId && l.billId === order._id);
+      if (!line) throw new Error("Item not found on this order");
+      if (state.links.some(l => l.lineId === line._id && l.status === "active")) throw new Error("This row is already linked. Unlink it first.");
+      const item = sourceOf(target);
+      if (!item) throw new Error("Booking not found");
+      if ((("appointmentId" in item ? item.revision : undefined) ?? 0) !== args.expectedTargetRevision) throw new Error("This changed since you opened it. Review the latest details and try again.");
+      const problem = linkProblem(order, line, item);
+      if (problem) throw new Error(problem);
+      const amount = lineNet(line);
+      const now = Date.now();
+      const sequence = (order.correctionRevision ?? 0) + 1;
+      const link: Doc<"billLineLinks"> = {
+        _id: nextId("link"), _creationTime: now, billId: order._id, lineId: line._id, amount, currency: "THB", status: "active",
+        effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? now, reason, linkedAt: now, linkedBy: ACTOR, sequence,
+        ...("appointmentId" in item ? { kind: "appointment" as const, appointmentId: item.appointmentId, appointmentPriceBefore: item.price } : { kind: "booking" as const, bookingId: item.id }),
+      };
+      // As pos.linkPaidLine: the appointment is paid at what the row was charged; the stay gets this payment.
+      if ("appointmentId" in item) Object.assign(item, { paid: true, price: amount, amountPaid: amount, amountRefunded: 0, revision: (item.revision ?? 0) + 1 });
+      else Object.assign(item, { deposit: round2(item.deposit + amount), paid: round2(item.deposit + amount) >= chargePrice(item) });
+      state.links.push(link);
+      addCorrection(order._id, args.idempotencyKey, sequence, "linked", reason, { lineId: line._id, linkId: link._id, amount, ...target });
+      patchOrder(order._id, { correctionRevision: sequence });
+      return { sequence, linkId: link._id, replayed: false };
+    }),
+    unlinkPaidLine: (args) => later(() => {
+      const replay = correctionReplay(args.orderId, args.idempotencyKey, "unlinked");
+      if (replay) {
+        if (replay.linkId !== args.linkId) throw new Error("This unlink attempt was already used for something else. Start again.");
+        return { sequence: replay.sequence, replayed: true };
+      }
+      const order = state.orders.get(args.orderId);
+      if (order?.status !== "paid") throw new Error("Only a paid order’s links can be undone.");
+      if ((order.correctionRevision ?? 0) !== args.expectedCorrectionRevision) throw new Error("This receipt was corrected since you opened it. Review it and try again.");
+      const reason = checkedReason(args.reason);
+      const link = state.links.find(l => l._id === args.linkId && l.billId === order._id);
+      if (!link) throw new Error("Link not found on this order");
+      if (link.status !== "active") throw new Error("This link was already undone.");
+      const sequence = (order.correctionRevision ?? 0) + 1;
+      reverseLink(link, reason, sequence);
+      addCorrection(order._id, args.idempotencyKey, sequence, "unlinked", reason, { lineId: link.lineId, linkId: link._id, amount: link.amount, ...(link.appointmentId ? { appointmentId: link.appointmentId } : { bookingId: link.bookingId }) });
+      patchOrder(order._id, { correctionRevision: sequence });
       return { sequence, replayed: false };
     }),
     voidUnreceivedOrder: (args) => later(() => {
@@ -787,6 +912,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         const payment = (state.sourcePayments.get(order._id) ?? []).find(row => line.bookingId ? row.bookingId === line.bookingId : row.appointmentId === line.appointmentId);
         if (source && payment) { source.paid = false; if (line.appointmentId && "appointmentId" in source) { source.price = payment.originalPrice; source.amountPaid = 0; source.amountRefunded = 0; } }
       }
+      // Rows linked after payment are reversed too (a refusal throws and the fixture rolls back).
+      for (const link of state.links.filter(l => l.billId === order._id && l.status === "active")) reverseLink(link, `Order voided as recorded in error: ${reason}`, (order.correctionRevision ?? 0) + 1);
       // No money was received, so the coupon use is given back (a plain void keeps it).
       const used = order.promotion ? state.coupons.find((c) => c.id === order.promotion!.couponId) : undefined;
       if (used && order.promotion) used.rules = { ...used.rules, used: Math.max(0, used.rules.used - 1), discountGranted: Math.max(0, round2(used.rules.discountGranted - order.promotion.discount)) };
@@ -927,6 +1054,14 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       },
       discarded: discardedInfo(order),
       corrections: state.corrections.filter(c => c.billId === orderId).toReversed().slice(0, 20),
+      links: state.links.filter(l => l.billId === orderId).toReversed().map(l => {
+        const ref = l.appointmentId ? appointmentRef(l.appointmentId, false) : stayRef(l.bookingId!, false);
+        return {
+          _id: l._id, lineId: l.lineId, kind: l.kind, status: l.status, amount: l.amount, currency: l.currency, effectiveAt: l.effectiveAt, reason: l.reason,
+          linkedAt: l.linkedAt, linkedBy: l.linkedBy, sequence: l.sequence, unlinkedAt: l.unlinkedAt ?? null, unlinkedBy: l.unlinkedBy ?? null, unlinkReason: l.unlinkReason ?? null,
+          target: { id: ref?.id ?? (l.appointmentId ?? l.bookingId!), reference: ref?.reference ?? "Deleted booking", name: ref?.name ?? "Booking", guestName: ref?.guestName ?? null },
+        };
+      }),
       refunds: [...allRefunds().filter(r => r.billId === orderId && r.sourceType === "booking").slice(0, 100), ...allRefunds().filter(r => r.billId === orderId && r.sourceType === "appointment").toReversed().slice(0, 100)].sort((a,b) => b.recordedAt - a.recordedAt).map(({ billId, ...refund }) => { void billId; return refund; }),
     };
   };
@@ -1056,6 +1191,11 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       }, [orderId, text, v]);
     },
     useAttachLookupStatus: () => ({ complete: true }),
+    useLinkCandidates: ({ orderId, lineId, query }) => {
+      const v = useVersion();
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version
+      return useMemo(() => linkCandidates(orderId, lineId, query), [orderId, lineId, query, v]);
+    },
     useBusinessName: () => "Auralis Cove Retreat",
     useActions: () => actions,
   };

@@ -4,10 +4,10 @@ import { ConvexError, v } from 'convex/values';
 import { mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { isDocumentedLiveRefund, markBookingPaid } from './bookings';
+import { isDocumentedLiveRefund, markBookingPaid, recordStayPayment } from './bookings';
 import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomerReviewed, customerCard } from './customers';
 import { requireAdmin } from './lib/adminAuth';
-import { recordAppointmentChange } from './lib/appointmentChanges';
+import { STALE_APPOINTMENT, recordAppointmentChange } from './lib/appointmentChanges';
 import { appointmentMoney } from './lib/appointmentFinance';
 import {
 	MAX_QTY,
@@ -21,6 +21,7 @@ import {
 	billTotals,
 	bookingBalance,
 	bookingChargeTotal,
+	formatReceiptNumber,
 	lineNet,
 	orderTitle,
 	round2
@@ -42,11 +43,13 @@ import { evaluateOrderCoupon, posCouponMessage, type OrderPromotionView, type Po
 import { couponVersion, consumeOrderCoupon, syncOrderCouponRedemption } from './lib/couponRedemptions';
 import { normalizeCouponCode } from './lib/offers';
 import { resortTodayIso } from './lib/dates';
-import { appendBookingHistory, assertNoLiveCheckout, attemptKey, cleanReason, effectiveTime, stayMoney, writeBooking } from './lib/bookingMoney';
+import { STALE_BOOKING, appendBookingHistory, assertNoLiveCheckout, attemptKey, bookingRevision, cleanReason, effectiveTime, stayMoney, writeBooking } from './lib/bookingMoney';
 import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
 import { MAX_STAY_ROWS, orderStayPayment, stayPaymentReversalPatch } from './lib/stayCorrections';
 import { MAX_LINES, orderLines } from './lib/orderLines';
+import { activeLineLink, activeSourceLink, orderLineLinks } from './lib/lineLinks';
+import { changeSchedule, scheduleFromStartAt } from './lib/serviceSchedule';
 import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage, orderPaymentRecord, type FeeKind } from './lib/orderLifecycle';
 
 /**
@@ -231,7 +234,8 @@ function lineSnapshot(line: LineFields | Line) {
 	const fields = {
 		kind: line.kind, name: line.name, detail: line.detail, unitPrice: line.unitPrice, currency: line.currency, qty: line.qty,
 		discount: line.discount, priceOverride: line.priceOverride ? { price: line.priceOverride.price, note: line.priceOverride.note } : undefined,
-		staffId: line.staffId, startAt: line.startAt, serviceId: line.serviceId, propertyId: line.propertyId,
+		staffId: line.staffId, startAt: line.startAt, serviceDate: line.schedule?.date, serviceTime: line.schedule?.time,
+		serviceId: line.serviceId, propertyId: line.propertyId,
 		bookingId: line.bookingId, appointmentId: line.appointmentId, deposit: line.deposit,
 		feeAppointmentId: line.feeAppointmentId, feeKind: line.fee?.kind,
 		...('_id' in line ? { lineId: line._id } : {})
@@ -585,7 +589,7 @@ export const getOrder = query({
 		const order = await ctx.db.get(orderId);
 		if (!order) return null;
 		const open = isOpenOrder(order);
-		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds] = await Promise.all([
+		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds, links] = await Promise.all([
 			orderLines(ctx, order._id),
 			ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(10),
 			ctx.db.query('billAudit').withIndex('by_billId_and_at', (q) => q.eq('billId', order._id)).order('desc').take(50),
@@ -593,10 +597,21 @@ export const getOrder = query({
 			order.parentOrderId ? ctx.db.get(order.parentOrderId) : null,
 			ctx.db.query('bookingRefunds').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(MAX_STAY_ROWS),
 			ctx.db.query('billCorrections').withIndex('by_billId_and_sequence', (q) => q.eq('billId', order._id)).order('desc').take(20),
-			ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).order('desc').take(MAX_STAY_ROWS)
+			ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).order('desc').take(MAX_STAY_ROWS),
+			isOpenOrder(order) ? [] : orderLineLinks(ctx, order._id)
 		]);
 		const reads = orderReads(ctx);
 		const sources = await orderSourceRefs(ctx, order, lines, reads);
+		const linkRows = [];
+		for (const link of [...links].sort((a, b) => b.linkedAt - a.linkedAt)) {
+			const target = link.appointmentId ? await appointmentRef(ctx, link.appointmentId, false, undefined, reads) : await stayRef(ctx, link.bookingId!, false, reads);
+			linkRows.push({
+				_id: link._id, lineId: link.lineId, kind: link.kind, status: link.status, amount: link.amount, currency: link.currency,
+				effectiveAt: link.effectiveAt, reason: link.reason, linkedAt: link.linkedAt, linkedBy: link.linkedBy, sequence: link.sequence,
+				unlinkedAt: link.unlinkedAt ?? null, unlinkedBy: link.unlinkedBy ?? null, unlinkReason: link.unlinkReason ?? null,
+				target: { id: target.id, reference: target.reference, name: target.name, guestName: target.guestName ?? null }
+			});
+		}
 		const settled = order.status === 'paid' || order.status === 'void';
 		const staffNames = new Map<Id<'staff'>, string>();
 		for (const id of new Set(lines.flatMap((line) => (line.staffId && (!settled || line.staffName == null) ? [line.staffId] : [])))) {
@@ -659,6 +674,11 @@ export const getOrder = query({
 			},
 			/** Audited corrections, newest first. */
 			corrections,
+			/**
+			 * Paid rows applied to an appointment or stay after payment (pos.linkPaidLine), newest first,
+			 * with links since undone. The receipt and its rows never change; scheduling is tracked here.
+			 */
+			links: linkRows,
 			/** Set while the order is discarded (pos.discardOrder): who, when and why. Restore with pos.restoreOrder. */
 			discarded: order.status === 'discarded'
 				? { at: order.discardedAt ?? order.updatedAt, by: order.discardedBy ?? null, reason: order.discardReason ?? null }
@@ -899,68 +919,7 @@ export const listAttachable = query({
 	args: { orderId: v.optional(v.id('bills')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		const order = args.orderId ? await ctx.db.get(args.orderId) : null;
-		const bookings = new Map<Id<'bookings'>, Doc<'bookings'>>();
-		const appointments = new Map<Id<'serviceAppointments'>, Doc<'serviceAppointments'>>();
-		const addBookings = (rows: Doc<'bookings'>[]) => rows.forEach((row) => bookings.set(row._id, row));
-		const addAppointments = (rows: Doc<'serviceAppointments'>[]) => rows.forEach((row) => appointments.set(row._id, row));
-
-		if (order?.bookingId) {
-			const booking = await ctx.db.get(order.bookingId);
-			if (booking) addBookings([booking]);
-		}
-		if (order?.appointmentId) {
-			const appointment = await ctx.db.get(order.appointmentId);
-			if (appointment) addAppointments([appointment]);
-		}
-		const searches: Array<Promise<Doc<'bookings'>[] | Doc<'serviceAppointments'>[]>> = [];
-		const contacts = await attachContacts(ctx, args);
-		const { phones, emails, text } = contacts;
-		addBookings((await contactBookings(ctx, contacts)).rows);
-		if (text.length >= 2) {
-			const code = text.toUpperCase();
-			searches.push(
-				ctx.db.query('bookings').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
-				ctx.db.query('serviceAppointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
-				ctx.db.query('bookings').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN),
-				ctx.db.query('serviceAppointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN)
-			);
-		}
-		for (const digits of phones) {
-			searches.push(
-				// Only unpaid appointments can be added, so the read is limited to those, not to the latest few.
-				ctx.db.query('serviceAppointments').withIndex('by_guestPhoneDigits_and_paymentStatus', (q) => q.eq('guestPhoneDigits', digits).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
-			);
-		}
-		for (const email of emails) {
-			searches.push(
-				ctx.db.query('serviceAppointments').withIndex('by_guestEmailNormalized_and_paymentStatus', (q) => q.eq('guestEmailNormalized', email).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
-			);
-		}
-		if (phones.size || emails.size) {
-			// Appointments saved before the lookup fields existed (until
-			// migrations:backfillAppointmentGuestLookup) are matched here; attachLookupStatus says
-			// when there are more than this reads.
-			searches.push(
-				legacyUnpaidAppointments(ctx).take(LEGACY_LOOKUP_SCAN).then((rows) =>
-					rows.filter((row) => {
-						const lookup = appointmentLookupFields(row);
-						return phones.has(lookup.guestPhoneDigits) || (lookup.guestEmailNormalized !== undefined && emails.has(lookup.guestEmailNormalized));
-					})
-				)
-			);
-		}
-		for (const rows of await Promise.all(searches)) {
-			for (const row of rows) {
-				if ('propertyId' in row) bookings.set(row._id, row);
-				else appointments.set(row._id, row);
-			}
-		}
-		// A stay's appointments come with it (they usually go on the stay's order).
-		for (const booking of [...bookings.values()].slice(0, 10)) {
-			addAppointments(await ctx.db.query('serviceAppointments').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).take(ATTACH_SCAN));
-		}
-
+		const { bookings, appointments } = await findSources(ctx, args);
 		const onOrder = async (source: OrderSource) => {
 			const other = await openOrderCharging(ctx, source);
 			return other ? { _id: other._id, title: orderTitle(other.orderNumber) } : null;
@@ -1002,6 +961,76 @@ export const listAttachable = query({
 		return rows;
 	}
 });
+
+/**
+ * Stays and appointments matching an order and a search, as Add booking finds them (see
+ * listAttachable): the order's own booking, its customer's contacts and `query`. Unfiltered: callers
+ * decide which can be charged or linked.
+ */
+async function findSources(ctx: ReadCtx, args: { orderId?: Id<'bills'>; query?: string }) {
+	const order = args.orderId ? await ctx.db.get(args.orderId) : null;
+	const bookings = new Map<Id<'bookings'>, Doc<'bookings'>>();
+	const appointments = new Map<Id<'serviceAppointments'>, Doc<'serviceAppointments'>>();
+	const addBookings = (rows: Doc<'bookings'>[]) => rows.forEach((row) => bookings.set(row._id, row));
+	const addAppointments = (rows: Doc<'serviceAppointments'>[]) => rows.forEach((row) => appointments.set(row._id, row));
+
+	if (order?.bookingId) {
+		const booking = await ctx.db.get(order.bookingId);
+		if (booking) addBookings([booking]);
+	}
+	if (order?.appointmentId) {
+		const appointment = await ctx.db.get(order.appointmentId);
+		if (appointment) addAppointments([appointment]);
+	}
+	const searches: Array<Promise<Doc<'bookings'>[] | Doc<'serviceAppointments'>[]>> = [];
+	const contacts = await attachContacts(ctx, args);
+	const { phones, emails, text } = contacts;
+	addBookings((await contactBookings(ctx, contacts)).rows);
+	if (text.length >= 2) {
+		const code = text.toUpperCase();
+		searches.push(
+			ctx.db.query('bookings').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
+			ctx.db.query('serviceAppointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
+			ctx.db.query('bookings').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN),
+			ctx.db.query('serviceAppointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN)
+		);
+	}
+	for (const digits of phones) {
+		searches.push(
+			// Only unpaid appointments can be added, so the read is limited to those, not to the latest few.
+			ctx.db.query('serviceAppointments').withIndex('by_guestPhoneDigits_and_paymentStatus', (q) => q.eq('guestPhoneDigits', digits).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
+		);
+	}
+	for (const email of emails) {
+		searches.push(
+			ctx.db.query('serviceAppointments').withIndex('by_guestEmailNormalized_and_paymentStatus', (q) => q.eq('guestEmailNormalized', email).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
+		);
+	}
+	if (phones.size || emails.size) {
+		// Appointments saved before the lookup fields existed (until
+		// migrations:backfillAppointmentGuestLookup) are matched here; attachLookupStatus says
+		// when there are more than this reads.
+		searches.push(
+			legacyUnpaidAppointments(ctx).take(LEGACY_LOOKUP_SCAN).then((rows) =>
+				rows.filter((row) => {
+					const lookup = appointmentLookupFields(row);
+					return phones.has(lookup.guestPhoneDigits) || (lookup.guestEmailNormalized !== undefined && emails.has(lookup.guestEmailNormalized));
+				})
+			)
+		);
+	}
+	for (const rows of await Promise.all(searches)) {
+		for (const row of rows) {
+			if ('propertyId' in row) bookings.set(row._id, row);
+			else appointments.set(row._id, row);
+		}
+	}
+	// A stay's appointments come with it (they usually go on the stay's order).
+	for (const booking of [...bookings.values()].slice(0, 10)) {
+		addAppointments(await ctx.db.query('serviceAppointments').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).take(ATTACH_SCAN));
+	}
+	return { bookings, appointments };
+}
 
 /**
  * Opening a booking or appointment at checkout (`?booking=` / `?appointment=`). Reuses the open
@@ -1082,7 +1111,8 @@ export const addItem = mutation({
 			const service = await ctx.db.get(item.serviceId);
 			if (!service || service.status !== 'active') throw new ConvexError('This service is no longer offered');
 			assertBaht(service.currency, service.name);
-			line = { kind: 'service', serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, currency: CURRENCY, qty: 1 };
+			// Not scheduled until staff set a date or time (lib/serviceSchedule.ts); never "now".
+			line = { kind: 'service', serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, currency: CURRENCY, qty: 1, schedule: {} };
 		} else if (item.kind === 'room') {
 			const property = await ctx.db.get(item.propertyId);
 			if (!property || property.status !== 'active') throw new ConvexError('This villa is not available');
@@ -1129,7 +1159,11 @@ export const attach = mutation({
 });
 
 /**
- * Therapist (null = any), start time (null = now), quantity and discount (null = none) for one row.
+ * Therapist (null = any), service date and time, quantity and discount (null = none) for one row.
+ * `serviceDate` ("YYYY-MM-DD") and `serviceTime` ("HH:MM", resort time) are independent and
+ * optional: null or '' clears one, and a cleared part is unset, never "now". Changing either moves
+ * a legacy row off `startAt`, keeping its other part. `startAt` (null = now) is the legacy form,
+ * kept for older clients; it replaces the row's date and time.
  * The quantity moves by `qtyChange` (kept within 1–99), so quick taps on two devices add up.
  */
 export const updateLine = mutation({
@@ -1137,6 +1171,8 @@ export const updateLine = mutation({
 		lineId: v.id('billLines'),
 		staffId: v.optional(v.union(v.id('staff'), v.null())),
 		startAt: v.optional(v.union(v.number(), v.null())),
+		serviceDate: v.optional(v.union(v.string(), v.null())),
+		serviceTime: v.optional(v.union(v.string(), v.null())),
 		qtyChange: v.optional(v.number()),
 		discount: v.optional(v.union(discountValidator, v.null()))
 	},
@@ -1155,10 +1191,21 @@ export const updateLine = mutation({
 			}
 			patch.staffId = args.staffId ?? undefined;
 		}
+		const scheduling = args.serviceDate !== undefined || args.serviceTime !== undefined;
+		if (scheduling && args.startAt !== undefined) throw new ConvexError('Set the service date and time, or a start time, not both');
 		if (args.startAt !== undefined) {
 			if (line.kind !== 'service') throw new ConvexError('Only service rows take a start time here');
 			if (args.startAt !== null && !Number.isSafeInteger(args.startAt)) throw new ConvexError('Invalid start time');
 			patch.startAt = args.startAt ?? undefined;
+			patch.schedule = undefined;
+		}
+		if (scheduling) {
+			if (line.kind !== 'service') throw new ConvexError('Only service rows take a date and time here');
+			const current = line.schedule ?? (line.startAt !== undefined ? scheduleFromStartAt(line.startAt) : {});
+			const next = changeSchedule(current, { date: args.serviceDate, time: args.serviceTime });
+			if ('problem' in next) throw new ConvexError(next.problem);
+			patch.schedule = next.schedule;
+			patch.startAt = undefined;
 		}
 		if (args.qtyChange !== undefined) {
 			if (!MERGES_QTY[line.kind]) throw new ConvexError('Add another row instead: each service is its own row');
@@ -1527,9 +1574,11 @@ export const voidOrder = mutation({
 		await ctx.db.patch(order._id, { status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, updatedAt: now });
 		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
 		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'void', note: reason });
-		for (const row of await sourceRows(ctx, order._id)) {
-			if (row.bookingId && (await ctx.db.get(row.bookingId))) {
-				await appendBookingHistory(ctx, row.bookingId, {
+		// Stays charged at checkout or linked later; their payments are kept.
+		const stays = [...(await sourceRows(ctx, order._id)), ...(await orderLineLinks(ctx, order._id, 'active'))].flatMap((row) => (row.bookingId ? [row.bookingId] : []));
+		for (const bookingId of new Set(stays)) {
+			if (await ctx.db.get(bookingId)) {
+				await appendBookingHistory(ctx, bookingId, {
 					actor: admin.email, kind: 'order_voided', reason,
 					after: { billId: order._id, receiptNumber: order.receiptNumber ?? null, paymentKept: true }
 				});
@@ -1629,14 +1678,23 @@ export const amendOrderPayment = mutation({
 		await ctx.db.insert('billCorrections', { billId: order._id, sequence, kind: 'amended', reason, actor: admin.email, recordedAt: now, idempotencyKey: key, ...correction });
 		await ctx.db.patch(order._id, { ...patch, correctionRevision: sequence });
 
-		// Linked records follow: each stay's history, and the business date on stays and appointments.
-		for (const row of await sourceRows(ctx, order._id)) {
-			if (row.bookingId) {
-				const booking = await ctx.db.get(row.bookingId);
+		// Both checkout sources and later links follow the same correction rules.
+		const [chargedRows, linkedRows] = await Promise.all([sourceRows(ctx, order._id), orderLineLinks(ctx, order._id, 'active')]);
+		const sources = [
+			...chargedRows.map((row) => ({ bookingId: row.bookingId, appointmentId: row.appointmentId, link: null })),
+			...linkedRows.map((link) => ({ bookingId: link.bookingId, appointmentId: link.appointmentId, link }))
+		];
+		for (const { bookingId, appointmentId, link } of sources) {
+			if (link && newEffective !== undefined) await ctx.db.patch(link._id, { effectiveAt: newEffective });
+			if (bookingId) {
+				const booking = await ctx.db.get(bookingId);
 				if (!booking) continue;
-				const payment = await orderStayPayment(ctx, order._id, booking._id);
-				const details = { billId: order._id, sequence, tendersChanged: Boolean(patch.amendedTenders), customerChanged: 'amendedCustomer' in patch };
-				if (newEffective !== undefined && payment && payment.status === 'recorded') {
+				const payment = link?.bookingPaymentId ? await ctx.db.get(link.bookingPaymentId) : await orderStayPayment(ctx, order._id, booking._id);
+				const details = {
+					billId: order._id, sequence, tendersChanged: Boolean(patch.amendedTenders), customerChanged: 'amendedCustomer' in patch,
+					...(link ? { linkId: link._id } : {})
+				};
+				if (newEffective !== undefined && payment?.status === 'recorded') {
 					await ctx.db.patch(payment._id, { effectiveAt: newEffective, amendedAt: now, amendedBy: admin.email });
 					await writeBooking(ctx, booking, booking.paidAt === payment.effectiveAt ? { paidAt: newEffective } : {}, {
 						actor: admin.email, kind: 'payment_amended', reason, effectiveAt: newEffective,
@@ -1646,8 +1704,8 @@ export const amendOrderPayment = mutation({
 					await appendBookingHistory(ctx, booking._id, { actor: admin.email, kind: 'order_payment_amended', reason, after: details });
 				}
 			}
-			if (row.appointmentId && newEffective !== undefined) {
-				const appointment = await ctx.db.get(row.appointmentId);
+			if (appointmentId && newEffective !== undefined) {
+				const appointment = await ctx.db.get(appointmentId);
 				if (appointment?.paymentStatus === 'paid' && appointment.paidAt === previousEffective) {
 					await recordAppointmentChange(ctx, appointment, { paidAt: newEffective }, { actor: admin.email, kind: 'payment', reason, effectiveAt: newEffective });
 				}
@@ -1710,6 +1768,12 @@ export const voidUnreceivedOrder = mutation({
 				appointments.push({ appointment, line: row });
 			}
 		}
+		// Rows linked after payment applied this order's money too; each is reversed exactly, or nothing is.
+		const linked: Array<{ link: Doc<'billLineLinks'>; reverse: Awaited<ReturnType<typeof linkReversal>> }> = [];
+		for (const link of await orderLineLinks(ctx, order._id, 'active')) {
+			const line = await ctx.db.get(link.lineId);
+			linked.push({ link, reverse: await linkReversal(ctx, link, line?.name ?? 'A linked row') });
+		}
 
 		const now = Date.now();
 		await syncOrderCouponRedemption(ctx, order._id, 'released');
@@ -1731,6 +1795,10 @@ export const voidUnreceivedOrder = mutation({
 			await recordAppointmentChange(ctx, appointment, { paymentStatus: 'unpaid', price: line.unitPrice, amountPaid: 0, amountRefunded: 0, paidAt: undefined, paidBy: undefined }, {
 				actor: admin.email, kind: 'payment', reason: `${orderTitle(order.orderNumber)} voided as recorded in error: ${reason}`
 			});
+		}
+		for (const { link, reverse } of linked) {
+			await reverse(admin.email, `${orderTitle(order.orderNumber)} voided as recorded in error: ${reason}`);
+			await ctx.db.patch(link._id, { status: 'unlinked', unlinkedAt: now, unlinkedBy: admin.email, unlinkReason: `Order voided as recorded in error: ${reason}`, unlinkSequence: sequence });
 		}
 		return { replayed: false };
 	}
@@ -2043,5 +2111,263 @@ export const appointmentFees = query({
 			});
 		}
 		return fees;
+	}
+});
+
+// ---------------------------------------------------------------------------------------------
+// Linking a paid row to its appointment or stay later
+// ---------------------------------------------------------------------------------------------
+
+/** Which source a paid row can be applied to: a service row to an appointment of that service, a room row to a stay in that villa. */
+const LINK_TARGET: Partial<Record<Line['kind'], 'appointment' | 'booking'>> = { service: 'appointment', room: 'booking' };
+
+/** The paid row to link, or why it can't be. */
+function linkableRow(order: Order, line: Line | null) {
+	if (!line || line.billId !== order._id) throw new ConvexError('Item not found on this order');
+	const target = LINK_TARGET[line.kind];
+	if (!target || line.fee) throw new ConvexError('Only a paid service or room row can be linked to an appointment or stay');
+	const amount = lineNet(line);
+	if (amount <= 0) throw new ConvexError('Nothing was charged for this row, so there is no payment to apply');
+	return { line, target, amount };
+}
+
+/** Why this appointment can't take this paid service row, or null. Nothing is written. */
+async function appointmentLinkProblem(ctx: ReadCtx, line: Line, appointment: Doc<'serviceAppointments'>) {
+	if (!appointmentAttachable(appointment)) return 'This appointment is already paid, cancelled or a no-show.';
+	if (appointment.serviceId !== line.serviceId) return 'This is a different service. Only an appointment for the same service can take this payment.';
+	if (appointment.currency !== CURRENCY) return `This appointment is priced in ${appointment.currency}.`;
+	if (await activeSourceLink(ctx, { appointmentId: appointment._id })) return 'This appointment is already linked to another paid row.';
+	const open = await openOrderCharging(ctx, { appointmentId: appointment._id });
+	if (open) return `This appointment is on ${orderTitle(open.orderNumber)}, which is still open. Take the payment there, or remove it from that order first.`;
+	return null;
+}
+
+/** Why this stay can't take this paid room row, or null. Nothing is written. */
+async function bookingLinkProblem(ctx: ReadCtx, order: Order, line: Line, booking: Doc<'bookings'>, amount: number) {
+	const closed = bookingClosedReason(booking);
+	if (closed) return `${closed}.`;
+	const online = bookingCheckoutBlock(booking);
+	if (online) return online;
+	if (booking.propertyId !== line.propertyId) return 'This stay is in a different villa. Only a stay in the same villa can take this payment.';
+	if (booking.currency !== CURRENCY) return `This stay is priced in ${booking.currency}.`;
+	if (await activeSourceLink(ctx, { bookingId: booking._id })) return 'This stay is already linked to another paid row.';
+	const open = await openOrderCharging(ctx, { bookingId: booking._id });
+	if (open) return `This stay is on ${orderTitle(open.orderNumber)}, which is still open. Take the payment there, or remove it from that order first.`;
+	if ((await sourceRows(ctx, order._id)).some((row) => row.bookingId === booking._id)) return 'This order already paid for this stay at checkout.';
+	const { owed } = bookingBalance(booking);
+	if (owed <= 0) return 'Nothing is left to pay on this stay.';
+	if (amount > owed) return `This stay owes ${owed.toLocaleString('en-US')} ${booking.currency}, less than this row's ${amount.toLocaleString('en-US')}. Correct the stay's price first, or link a smaller charge.`;
+	if (amount < owed && booking.paymentStatus !== 'pending' && booking.paymentStatus !== 'paid') return 'This stay can only be paid in full here. Reopen it first.';
+	return null;
+}
+
+/**
+ * Appointments (for a service row) or stays (for a room row) a paid row can be linked to, found as
+ * Add booking finds them (the order's customer, its own booking, `query`), each with the reason it
+ * can't take this row, or null. Read-only; linkPaidLine checks everything again.
+ */
+export const linkCandidates = query({
+	args: { orderId: v.id('bills'), lineId: v.id('billLines'), query: v.optional(v.string()) },
+	handler: async (ctx, args) => {
+		await requireAdmin(ctx);
+		const order = await ctx.db.get(args.orderId);
+		const line = await ctx.db.get(args.lineId);
+		if (!order || order.status !== 'paid' || !line || line.billId !== order._id || !LINK_TARGET[line.kind] || line.fee) return null;
+		const amount = lineNet(line);
+		const { bookings, appointments } = await findSources(ctx, { orderId: order._id, query: args.query });
+		const rows: Array<{
+			kind: 'appointment' | 'booking'; id: string; name: string; detail: string; guestName: string; price: number; owed: number;
+			currency: string; date: string | null; revision: number; problem: string | null;
+		}> = [];
+		if (LINK_TARGET[line.kind] === 'appointment') {
+			for (const appointment of appointments.values()) {
+				if (appointment.paymentStatus === 'refunded') continue;
+				const service = await ctx.db.get(appointment.serviceId);
+				const { date, time } = resortLocalParts(appointment.start);
+				rows.push({
+					kind: 'appointment', id: appointment._id, name: service?.name ?? 'Appointment', detail: `${date} ${time} · ${appointment.confirmationCode}`,
+					guestName: appointment.guestName, price: appointment.price, owed: appointmentMoney(appointment).owed, currency: appointment.currency,
+					date, revision: appointment.revision ?? 0, problem: await appointmentLinkProblem(ctx, line, appointment)
+				});
+			}
+		} else {
+			for (const booking of bookings.values()) {
+				if (bookingClosed(booking)) continue;
+				const property = await ctx.db.get(booking.propertyId);
+				rows.push({
+					kind: 'booking', id: booking._id, name: `Stay · ${property?.name ?? 'Villa'}`,
+					detail: `${booking.checkIn} → ${booking.checkOut}${booking.confirmationCode ? ` · ${booking.confirmationCode}` : ''}`,
+					guestName: booking.guestName, price: bookingChargeTotal(booking), owed: Math.max(bookingBalance(booking).owed, 0), currency: booking.currency,
+					date: booking.checkIn, revision: bookingRevision(booking), problem: await bookingLinkProblem(ctx, order, line, booking, amount)
+				});
+			}
+		}
+		// Linkable ones first; the rest show why not.
+		return rows.sort((a, b) => Number(a.problem !== null) - Number(b.problem !== null)).slice(0, ATTACH_SCAN);
+	}
+});
+
+/**
+ * Applies a paid service row to its appointment, or a paid room row to its stay, after payment.
+ * No money moves and the issued receipt, its rows, tenders, total and issue date never change: the
+ * link is a billLineLinks row and a numbered `linked` correction. The target is recorded as paid by
+ * this order exactly as checkout would have done: the appointment becomes paid at what the row was
+ * charged (its price before is kept for an unlink); the stay gets a `pos` payment row for the
+ * row's amount with this order's `billId` (part of what it owes is allowed, more is refused). The
+ * money's date is the order's payment date.
+ *
+ * Refused, with nothing written, unless the order is paid, the row is a service (or room) row with
+ * no active link, and the appointment (stay) is for the same service (villa), still owes it, has no
+ * active link, is on no open order and is still at `expectedTargetRevision`. `expectedCorrectionRevision`
+ * is the order's correction revision staff reviewed. Retrying `idempotencyKey` returns the first result.
+ */
+export const linkPaidLine = mutation({
+	args: {
+		...correctionArgs,
+		lineId: v.id('billLines'),
+		appointmentId: v.optional(v.id('serviceAppointments')),
+		bookingId: v.optional(v.id('bookings')),
+		expectedTargetRevision: v.number(),
+		notifyGuest: v.optional(v.boolean())
+	},
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const source = oneSource(args);
+		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'linked');
+		if (existing) {
+			const same = existing.lineId === args.lineId && ('bookingId' in source ? existing.bookingId === source.bookingId : existing.appointmentId === source.appointmentId);
+			if (!same) throw new ConvexError('This link attempt was already used for something else. Start again.');
+			return { sequence: existing.sequence, linkId: existing.linkId!, replayed: true };
+		}
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new ConvexError('Order not found');
+		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s rows can be linked.');
+		assertCorrectionRevision(order, args.expectedCorrectionRevision);
+		const reason = cleanReason(args.reason, 'Reason for the link')!;
+		const { line, target, amount } = linkableRow(order, await ctx.db.get(args.lineId));
+		if (await activeLineLink(ctx, line._id)) throw new ConvexError('This row is already linked. Unlink it first.');
+		const now = Date.now();
+		const effectiveAt = order.paymentEffectiveAt ?? order.paidAt ?? now;
+		const sequence = (order.correctionRevision ?? 0) + 1;
+		const title = orderTitle(order.orderNumber);
+		const note = `Paid on ${title}${order.receiptNumber !== undefined ? ` (receipt ${formatReceiptNumber(order.receiptNumber)})` : ''}, linked later: ${reason}`;
+		let link: Omit<Doc<'billLineLinks'>, '_id' | '_creationTime'>;
+		const base = {
+			billId: order._id, lineId: line._id, amount, currency: line.currency, status: 'active' as const, effectiveAt,
+			reason, linkedAt: now, linkedBy: admin.email, sequence
+		};
+		if ('appointmentId' in source) {
+			if (target !== 'appointment') throw new ConvexError('A room row is linked to a stay, not an appointment.');
+			const appointment = await ctx.db.get(source.appointmentId);
+			if (!appointment) throw new ConvexError('Appointment not found');
+			if ((appointment.revision ?? 0) !== args.expectedTargetRevision) throw new ConvexError(STALE_APPOINTMENT);
+			const problem = await appointmentLinkProblem(ctx, line, appointment);
+			if (problem) throw new ConvexError(problem);
+			// The same fields settleOrder writes when the appointment is paid at checkout.
+			await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid', price: amount, amountPaid: amount, amountRefunded: 0, paidAt: effectiveAt, paidBy: admin.email },
+				{ actor: admin.email, kind: 'payment', reason: note, effectiveAt });
+			link = { ...base, kind: 'appointment', appointmentId: appointment._id, appointmentPriceBefore: appointment.price };
+		} else {
+			if (target !== 'booking') throw new ConvexError('A service row is linked to an appointment, not a stay.');
+			const booking = await ctx.db.get(source.bookingId);
+			if (!booking) throw new ConvexError('Booking not found');
+			if (bookingRevision(booking) !== args.expectedTargetRevision) throw new ConvexError(STALE_BOOKING);
+			const problem = await bookingLinkProblem(ctx, order, line, booking, amount);
+			if (problem) throw new ConvexError(problem);
+			const { paymentId } = await recordStayPayment(ctx, booking._id, {
+				origin: 'pos', method: 'order', actor: admin.email, legacyMethod: 'pos', effectiveAt, billId: order._id, amount, note, notifyGuest: args.notifyGuest
+			});
+			if (!paymentId) throw new ConvexError('Nothing is left to pay on this stay.');
+			link = {
+				...base, kind: 'booking', bookingId: booking._id, bookingPaymentId: paymentId, bookingPaymentStatusBefore: booking.paymentStatus,
+				...(booking.paidAt !== undefined ? { bookingPaidAtBefore: booking.paidAt } : {})
+			};
+		}
+		const linkId = await ctx.db.insert('billLineLinks', link);
+		await ctx.db.insert('billCorrections', {
+			billId: order._id, sequence, kind: 'linked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
+			lineId: line._id, linkId, amount, ...('appointmentId' in source ? { appointmentId: source.appointmentId } : { bookingId: source.bookingId })
+		});
+		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
+		return { sequence, linkId, replayed: false };
+	}
+});
+
+/**
+ * Proves an active link can be undone exactly, writing nothing, and returns the reversal to run:
+ * the appointment goes back to unpaid at its price before the link; the stay's payment from the
+ * link is cancelled and its payment status restored. Refused if any of that money was refunded or
+ * the target changed since (repaid, repriced, refunded, or under an online checkout).
+ */
+async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: string) {
+	if (link.appointmentId) {
+		const appointment = await ctx.db.get(link.appointmentId);
+		if (!appointment) throw new ConvexError(`${name}: the appointment was deleted, so its payment can't be reversed.`);
+		if (appointmentMoney(appointment).refunded > 0 || await ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', appointment._id)).first())
+			throw new ConvexError(`${name}: part of the appointment's payment was refunded, so it can't be unlinked.`);
+		if (appointment.paymentStatus !== 'paid' || appointment.price !== link.amount || (appointment.amountPaid ?? appointment.price) !== link.amount)
+			throw new ConvexError(`${name}: the appointment changed since it was linked (repaid or repriced), so it can't be unlinked automatically.`);
+		return async (actor: string, reason: string) => {
+			await recordAppointmentChange(ctx, appointment, { paymentStatus: 'unpaid', price: link.appointmentPriceBefore ?? appointment.price, amountPaid: 0, amountRefunded: 0, paidAt: undefined, paidBy: undefined },
+				{ actor, kind: 'payment', reason });
+		};
+	}
+	const booking = link.bookingId ? await ctx.db.get(link.bookingId) : null;
+	if (!booking) throw new ConvexError(`${name}: the stay was deleted, so its payment can't be reversed.`);
+	assertNoLiveCheckout(booking);
+	const payment = link.bookingPaymentId ? await ctx.db.get(link.bookingPaymentId) : null;
+	if (!payment || payment.status !== 'recorded') throw new ConvexError(`${name}: the stay's payment from this link was already reversed.`);
+	if (payment.refunded > 0) throw new ConvexError(`${name}: part of what this link paid on the stay was refunded, so it can't be unlinked.`);
+	const money = stayMoney(booking);
+	const gross = round2(money.gross - payment.amount);
+	if (gross < money.refunded) throw new ConvexError(`${name}: refunds on the stay would exceed what is left paid.`);
+	const reversal = await stayPaymentReversalPatch(ctx, booking, gross);
+	// A stay that was pending before the link (a deposit, say) goes back to pending, not "paid",
+	// unless it was paid again since (then it is a paid stay owing this amount again).
+	const paidSince = (await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', booking._id).gt('recordedAt', payment.recordedAt)).take(MAX_STAY_ROWS))
+		.some((row) => row.status === 'recorded');
+	const patch = link.bookingPaymentStatusBefore === 'pending' && reversal.paymentStatus === 'paid' && !paidSince
+		? { ...reversal, paymentStatus: 'pending' as const, paidAt: link.bookingPaidAtBefore }
+		: reversal;
+	return async (actor: string, reason: string) => {
+		await ctx.db.patch(payment._id, { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: actor, cancelReason: reason });
+		await writeBooking(ctx, booking, patch, { actor, kind: 'payment_cancelled', reason, details: { paymentId: payment._id, billId: link.billId, amount: payment.amount, linkId: link._id } });
+	};
+}
+
+/**
+ * Undoes a link (linkPaidLine) with a reason: reverses exactly what it applied (see linkReversal)
+ * and keeps the link as `unlinked`, with an `unlinked` correction. The receipt never changes; the
+ * row can be linked again. Refused, writing nothing, if the reversal can't be proved.
+ */
+export const unlinkPaidLine = mutation({
+	args: { ...correctionArgs, linkId: v.id('billLineLinks') },
+	handler: async (ctx, args) => {
+		const admin = await requireAdmin(ctx);
+		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'unlinked');
+		if (existing) {
+			if (existing.linkId !== args.linkId) throw new ConvexError('This unlink attempt was already used for something else. Start again.');
+			return { sequence: existing.sequence, replayed: true };
+		}
+		const order = await ctx.db.get(args.orderId);
+		if (!order) throw new ConvexError('Order not found');
+		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s links can be undone.');
+		assertCorrectionRevision(order, args.expectedCorrectionRevision);
+		const reason = cleanReason(args.reason, 'Reason for the unlink')!;
+		const link = await ctx.db.get(args.linkId);
+		if (!link || link.billId !== order._id) throw new ConvexError('Link not found on this order');
+		if (link.status !== 'active') throw new ConvexError('This link was already undone.');
+		const line = await ctx.db.get(link.lineId);
+		const reverse = await linkReversal(ctx, link, line?.name ?? 'This row');
+		const now = Date.now();
+		const sequence = (order.correctionRevision ?? 0) + 1;
+		await reverse(admin.email, `Unlinked from ${orderTitle(order.orderNumber)}: ${reason}`);
+		await ctx.db.patch(link._id, { status: 'unlinked', unlinkedAt: now, unlinkedBy: admin.email, unlinkReason: reason, unlinkSequence: sequence });
+		await ctx.db.insert('billCorrections', {
+			billId: order._id, sequence, kind: 'unlinked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
+			lineId: link.lineId, linkId: link._id, amount: link.amount, ...(link.appointmentId ? { appointmentId: link.appointmentId } : { bookingId: link.bookingId })
+		});
+		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
+		return { sequence, replayed: false };
 	}
 });

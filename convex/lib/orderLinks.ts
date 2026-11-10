@@ -2,6 +2,7 @@ import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { orderTitle } from './billMath';
+import { sourceLineLinks } from './lineLinks';
 
 /**
  * How orders relate to bookings and appointments (the "sources" they charge).
@@ -11,7 +12,8 @@ import { orderTitle } from './billMath';
  * - Each charged stay or appointment is also a line with its own `bookingId`/`appointmentId`,
  *   so an order can carry a stay plus its appointments and extras. A source is charged on at
  *   most one open order at a time.
- * - Paid and void orders are history and never change.
+ * - Paid and void orders are history and never change. A paid service or room row can still be
+ *   applied to its appointment or stay later through a billLineLinks row (lib/lineLinks.ts).
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -100,6 +102,12 @@ export async function ordersForSource(ctx: ReadCtx, source: OrderSource, limit =
 	for (const line of await sourceLines(ctx, source).take(SOURCE_SCAN)) {
 		if (found.has(line.billId)) continue;
 		const order = await ctx.db.get(line.billId);
+		if (order) found.set(order._id, order);
+	}
+	// A paid row linked to the source later (lib/lineLinks.ts), including links since undone.
+	for (const link of await sourceLineLinks(ctx, source, undefined, SOURCE_SCAN)) {
+		if (found.has(link.billId)) continue;
+		const order = await ctx.db.get(link.billId);
 		if (order) found.set(order._id, order);
 	}
 	return [...found.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);

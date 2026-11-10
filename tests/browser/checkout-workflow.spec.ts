@@ -63,3 +63,36 @@ test('receipt pages older financial amendments while preserving the original ten
   await expect(page.locator('.pos-receipt')).toContainText('Card');
   await expect(page.locator('.pos-receipt')).not.toContainText('Transfer');
 });
+test('a service row takes an optional date and time, each cleared on its own, and pays with both blank', async ({ page }) => {
+  await open(page, '?scenario=unscheduled');
+  const order = page.getByRole('complementary', { name: 'Order', exact: true });
+  await order.getByRole('button', { name: /^Thai massage 90/ }).click();
+  await expect(order.getByText('Date (optional)', { exact: true })).toBeVisible();
+  await expect(order.getByText('Time (optional)', { exact: true })).toBeVisible();
+  await expect(order.getByRole('button', { name: 'Now', exact: true })).toHaveCount(0);
+  await expect(order.getByText(/Not scheduled/)).toBeVisible();
+  await order.getByLabel('Service time').fill('15:45');
+  await expect(order.getByText(/15:45 · date not set/)).toBeVisible();
+  await order.getByRole('button', { name: 'Clear service time' }).click();
+  await expect(order.getByText(/Not scheduled/)).toBeVisible();
+  await expect(order.getByLabel('Service time')).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Cash', exact: true })).toBeEnabled();
+});
+test('a paid unscheduled service is linked to its appointment from the receipt, which stays as issued', async ({ page }) => {
+  await open(page, '?scenario=unscheduled-paid');
+  const receipt = page.locator('.pos-receipt');
+  await expect(receipt).toContainText('To be scheduled');
+  const issued = await receipt.textContent();
+  const after = page.getByRole('region', { name: 'After payment', exact: true });
+  await expect(after).toContainText('1 to link to an appointment');
+  await after.getByRole('button', { name: 'Link appointment' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByTestId('link-candidate').filter({ hasText: 'SVC-0002' }).getByRole('button', { name: 'Review' }).click();
+  await expect(dialog.getByTestId('link-review')).toContainText('No new payment is taken');
+  await expect(dialog.getByRole('button', { name: 'Confirm link' })).toBeDisabled();
+  await dialog.getByLabel('Reason (required)').fill('Guest booked the prepaid massage');
+  await dialog.getByRole('button', { name: 'Confirm link' }).click();
+  await expect(after).toContainText('Linked · SVC-0002');
+  await expect(page.getByText('Row linked after payment · #1')).toBeVisible();
+  expect(await receipt.textContent()).toBe(issued);
+});
