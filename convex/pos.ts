@@ -1672,38 +1672,22 @@ export const amendOrderPayment = mutation({
 		await ctx.db.insert('billCorrections', { billId: order._id, sequence, kind: 'amended', reason, actor: admin.email, recordedAt: now, idempotencyKey: key, ...correction });
 		await ctx.db.patch(order._id, { ...patch, correctionRevision: sequence });
 
-		// Linked records follow: each stay's history, and the business date on stays and appointments.
-		for (const row of await sourceRows(ctx, order._id)) {
-			if (row.bookingId) {
-				const booking = await ctx.db.get(row.bookingId);
+		// Both checkout sources and later links follow the same correction rules.
+		const [chargedRows, linkedRows] = await Promise.all([sourceRows(ctx, order._id), orderLineLinks(ctx, order._id, 'active')]);
+		const sources = [
+			...chargedRows.map((row) => ({ bookingId: row.bookingId, appointmentId: row.appointmentId, link: null })),
+			...linkedRows.map((link) => ({ bookingId: link.bookingId, appointmentId: link.appointmentId, link }))
+		];
+		for (const { bookingId, appointmentId, link } of sources) {
+			if (link && newEffective !== undefined) await ctx.db.patch(link._id, { effectiveAt: newEffective });
+			if (bookingId) {
+				const booking = await ctx.db.get(bookingId);
 				if (!booking) continue;
-				const payment = await orderStayPayment(ctx, order._id, booking._id);
-				const details = { billId: order._id, sequence, tendersChanged: Boolean(patch.amendedTenders), customerChanged: 'amendedCustomer' in patch };
-				if (newEffective !== undefined && payment && payment.status === 'recorded') {
-					await ctx.db.patch(payment._id, { effectiveAt: newEffective, amendedAt: now, amendedBy: admin.email });
-					await writeBooking(ctx, booking, booking.paidAt === payment.effectiveAt ? { paidAt: newEffective } : {}, {
-						actor: admin.email, kind: 'payment_amended', reason, effectiveAt: newEffective,
-						details: { ...details, paymentId: payment._id, before: { effectiveAt: payment.effectiveAt }, after: { effectiveAt: newEffective } }
-					});
-				} else {
-					await appendBookingHistory(ctx, booking._id, { actor: admin.email, kind: 'order_payment_amended', reason, after: details });
-				}
-			}
-			if (row.appointmentId && newEffective !== undefined) {
-				const appointment = await ctx.db.get(row.appointmentId);
-				if (appointment?.paymentStatus === 'paid' && appointment.paidAt === previousEffective) {
-					await recordAppointmentChange(ctx, appointment, { paidAt: newEffective }, { actor: admin.email, kind: 'payment', reason, effectiveAt: newEffective });
-				}
-			}
-		}
-		// Rows linked after payment follow the same way: their money has the order's date.
-		for (const link of await orderLineLinks(ctx, order._id, 'active')) {
-			if (newEffective !== undefined) await ctx.db.patch(link._id, { effectiveAt: newEffective });
-			if (link.bookingId) {
-				const booking = await ctx.db.get(link.bookingId);
-				if (!booking) continue;
-				const payment = link.bookingPaymentId ? await ctx.db.get(link.bookingPaymentId) : null;
-				const details = { billId: order._id, sequence, linkId: link._id, tendersChanged: Boolean(patch.amendedTenders), customerChanged: 'amendedCustomer' in patch };
+				const payment = link?.bookingPaymentId ? await ctx.db.get(link.bookingPaymentId) : await orderStayPayment(ctx, order._id, booking._id);
+				const details = {
+					billId: order._id, sequence, tendersChanged: Boolean(patch.amendedTenders), customerChanged: 'amendedCustomer' in patch,
+					...(link ? { linkId: link._id } : {})
+				};
 				if (newEffective !== undefined && payment?.status === 'recorded') {
 					await ctx.db.patch(payment._id, { effectiveAt: newEffective, amendedAt: now, amendedBy: admin.email });
 					await writeBooking(ctx, booking, booking.paidAt === payment.effectiveAt ? { paidAt: newEffective } : {}, {
@@ -1714,8 +1698,8 @@ export const amendOrderPayment = mutation({
 					await appendBookingHistory(ctx, booking._id, { actor: admin.email, kind: 'order_payment_amended', reason, after: details });
 				}
 			}
-			if (link.appointmentId && newEffective !== undefined) {
-				const appointment = await ctx.db.get(link.appointmentId);
+			if (appointmentId && newEffective !== undefined) {
+				const appointment = await ctx.db.get(appointmentId);
 				if (appointment?.paymentStatus === 'paid' && appointment.paidAt === previousEffective) {
 					await recordAppointmentChange(ctx, appointment, { paidAt: newEffective }, { actor: admin.email, kind: 'payment', reason, effectiveAt: newEffective });
 				}
@@ -2137,7 +2121,7 @@ function linkableRow(order: Order, line: Line | null) {
 	if (!target || line.fee) throw new ConvexError('Only a paid service or room row can be linked to an appointment or stay');
 	const amount = lineNet(line);
 	if (amount <= 0) throw new ConvexError('Nothing was charged for this row, so there is no payment to apply');
-	return { target, amount };
+	return { line, target, amount };
 }
 
 /** Why this appointment can't take this paid service row, or null. Nothing is written. */
@@ -2253,9 +2237,8 @@ export const linkPaidLine = mutation({
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s rows can be linked.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the link')!;
-		const line = await ctx.db.get(args.lineId);
-		const { target, amount } = linkableRow(order, line);
-		if (await activeLineLink(ctx, line!._id)) throw new ConvexError('This row is already linked. Unlink it first.');
+		const { line, target, amount } = linkableRow(order, await ctx.db.get(args.lineId));
+		if (await activeLineLink(ctx, line._id)) throw new ConvexError('This row is already linked. Unlink it first.');
 		const now = Date.now();
 		const effectiveAt = order.paymentEffectiveAt ?? order.paidAt ?? now;
 		const sequence = (order.correctionRevision ?? 0) + 1;
@@ -2263,7 +2246,7 @@ export const linkPaidLine = mutation({
 		const note = `Paid on ${title}${order.receiptNumber !== undefined ? ` (receipt ${formatReceiptNumber(order.receiptNumber)})` : ''}, linked later: ${reason}`;
 		let link: Omit<Doc<'billLineLinks'>, '_id' | '_creationTime'>;
 		const base = {
-			billId: order._id, lineId: line!._id, amount, currency: line!.currency, status: 'active' as const, effectiveAt,
+			billId: order._id, lineId: line._id, amount, currency: line.currency, status: 'active' as const, effectiveAt,
 			reason, linkedAt: now, linkedBy: admin.email, sequence
 		};
 		if ('appointmentId' in source) {
@@ -2271,7 +2254,7 @@ export const linkPaidLine = mutation({
 			const appointment = await ctx.db.get(source.appointmentId);
 			if (!appointment) throw new ConvexError('Appointment not found');
 			if ((appointment.revision ?? 0) !== args.expectedTargetRevision) throw new ConvexError(STALE_APPOINTMENT);
-			const problem = await appointmentLinkProblem(ctx, line!, appointment);
+			const problem = await appointmentLinkProblem(ctx, line, appointment);
 			if (problem) throw new ConvexError(problem);
 			// The same fields settleOrder writes when the appointment is paid at checkout.
 			await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid', price: amount, amountPaid: amount, amountRefunded: 0, paidAt: effectiveAt, paidBy: admin.email },
@@ -2282,7 +2265,7 @@ export const linkPaidLine = mutation({
 			const booking = await ctx.db.get(source.bookingId);
 			if (!booking) throw new ConvexError('Booking not found');
 			if (bookingRevision(booking) !== args.expectedTargetRevision) throw new ConvexError(STALE_BOOKING);
-			const problem = await bookingLinkProblem(ctx, order, line!, booking, amount);
+			const problem = await bookingLinkProblem(ctx, order, line, booking, amount);
 			if (problem) throw new ConvexError(problem);
 			const { paymentId } = await recordStayPayment(ctx, booking._id, {
 				origin: 'pos', method: 'order', actor: admin.email, legacyMethod: 'pos', effectiveAt, billId: order._id, amount, note, notifyGuest: args.notifyGuest
@@ -2296,7 +2279,7 @@ export const linkPaidLine = mutation({
 		const linkId = await ctx.db.insert('billLineLinks', link);
 		await ctx.db.insert('billCorrections', {
 			billId: order._id, sequence, kind: 'linked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
-			lineId: line!._id, linkId, amount, ...('appointmentId' in source ? { appointmentId: source.appointmentId } : { bookingId: source.bookingId })
+			lineId: line._id, linkId, amount, ...('appointmentId' in source ? { appointmentId: source.appointmentId } : { bookingId: source.bookingId })
 		});
 		await ctx.db.patch(order._id, { correctionRevision: sequence });
 		return { sequence, linkId, replayed: false };

@@ -26,17 +26,18 @@ import {
 } from "./backend";
 import { amountInput, correctionTitle, TENDER_LABELS } from "./checkout-ui";
 
+import { historyTime } from "./OrderHistory";
+import { paymentDateInput, paymentDateValue } from "./payment-time";
+import { FinancialHistory } from "./FinancialHistory";
+import { InlineErrorBoundary } from "./ErrorBoundary";
+
+
 /** "Thai massage → SVC-123 · ฿1,200": which row a link correction applied, to what, and how much. */
 function linkSummary(view: OrderView, change: OrderView["corrections"][number]) {
   const row = view.lines.find((line) => line._id === change.lineId)?.name ?? "A row";
   const link = view.links.find((item) => item._id === change.linkId);
   return `${row} → ${link?.target.reference ?? "its booking"}${change.amount !== undefined ? ` · ${formatMoney(change.amount)}` : ""}`;
 }
-import { historyTime } from "./OrderHistory";
-import { paymentDateInput, paymentDateValue } from "./payment-time";
-import { FinancialHistory } from "./FinancialHistory";
-import { InlineErrorBoundary } from "./ErrorBoundary";
-
 /** Operational recording is deliberately outside .pos-receipt: printing/sharing stays original. */
 export function PaymentRecord({ view }: { view: OrderView }) {
   const [editing, setEditing] = useState<"amend" | "unreceived" | null>(null);

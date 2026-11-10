@@ -305,6 +305,31 @@ describe('linking a paid room row to a stay', () => {
 		await expect(link(orderId, lineId, { bookingId })).rejects.toThrow(/still open/);
 	});
 
+	it('refunds the exact linked payment even when older cancelled payments fill the receipt history page', async () => {
+		const { t, admin, villa, stay, paidRow, getBooking, link } = await setup();
+		const bookingId = await stay();
+		const { orderId, lineId } = await paidRow({ kind: 'room', propertyId: villa }, 2);
+		await t.run(async (ctx) => {
+			for (let n = 0; n < 101; n++) {
+				await ctx.db.insert('bookingPayments', {
+					bookingId, billId: orderId, origin: 'pos', method: 'order', amount: 20000, currency: 'THB',
+					effectiveAt: n, recordedAt: n, recordedBy: 'desk@example.com', status: 'cancelled', refunded: 0
+				});
+			}
+		});
+		await link(orderId, lineId, { bookingId });
+		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, reason: 'Guest cancelled', notifyGuest: false });
+		await admin.mutation(api.adminBookings.recordRefund, {
+			bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, amount: 5000, currency: 'THB', method: 'cash',
+			reason: 'Return linked money', idempotencyKey: 'refund-relinked-stay', billId: orderId
+		});
+		const payment = await t.run(async (ctx) => {
+			const link = await ctx.db.query('billLineLinks').withIndex('by_lineId_and_status', (q) => q.eq('lineId', lineId).eq('status', 'active')).unique();
+			return ctx.db.get(link!.bookingPaymentId!);
+		});
+		expect(payment).toMatchObject({ status: 'recorded', refunded: 5000 });
+	});
+
 	it('unlinks by cancelling only the link’s payment and restoring the stay’s pending status', async () => {
 		const { villa, stay, paidRow, getBooking, link, unlink, admin } = await setup();
 		const bookingId = await stay();
@@ -319,6 +344,26 @@ describe('linking a paid room row to a stay', () => {
 });
 
 describe('order corrections understand links', () => {
+	it('keeps active links visible when the order has more than a page of undone links', async () => {
+		const { t, massage, appointment, paidRow, link, unlink, order } = await setup();
+		const appointmentId = await appointment();
+		const { orderId, lineId } = await paidRow({ kind: 'service', serviceId: massage });
+		// A history accumulated by repeated linking and unlinking must not hide today's active link.
+		await t.run(async (ctx) => {
+			for (let n = 0; n < 101; n++) {
+				await ctx.db.insert('billLineLinks', {
+					billId: orderId, lineId, kind: 'appointment', appointmentId, amount: 1200, currency: 'THB',
+					status: 'unlinked', effectiveAt: 1, reason: 'Previous link', linkedAt: n, linkedBy: 'desk@example.com', sequence: n + 1,
+					unlinkedAt: n + 1, unlinkedBy: 'desk@example.com', unlinkReason: 'Previous unlink'
+				});
+			}
+		});
+		const { linkId } = await link(orderId, lineId, { appointmentId });
+		expect((await order(orderId)).links.find((row) => row._id === linkId)?.status).toBe('active');
+		await unlink(orderId, linkId);
+		expect((await order(orderId)).links[0]).toMatchObject({ _id: linkId, status: 'unlinked' });
+	});
+
 	it('voiding as unreceived reverses links; a plain void keeps the linked money', async () => {
 		const { admin, massage, villa, stay, appointment, paidRow, getAppointment, getBooking, link, order } = await setup();
 		const appointmentId = await appointment();

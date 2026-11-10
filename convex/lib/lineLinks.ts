@@ -11,13 +11,19 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 type ReadCtx = QueryCtx | MutationCtx;
 type Source = { bookingId: Id<'bookings'> } | { appointmentId: Id<'serviceAppointments'> };
 
-/** Far above any real order or source; reads stay bounded. */
+/** At most 100 active links (one per order row), plus a bounded page of undone links. */
 export const MAX_LINKS = 100;
 
-export function orderLineLinks(ctx: ReadCtx, billId: Id<'bills'>, status?: Doc<'billLineLinks'>['status']) {
+export async function orderLineLinks(ctx: ReadCtx, billId: Id<'bills'>, status?: Doc<'billLineLinks'>['status']): Promise<Doc<'billLineLinks'>[]> {
+	if (!status) {
+		// Read active links separately so history cannot crowd them out, and show recent undos.
+		const [active, history] = await Promise.all([orderLineLinks(ctx, billId, 'active'), orderLineLinks(ctx, billId, 'unlinked')]);
+		return [...active, ...history];
+	}
 	return ctx.db
 		.query('billLineLinks')
-		.withIndex('by_billId_and_status', (q) => (status ? q.eq('billId', billId).eq('status', status) : q.eq('billId', billId)))
+		.withIndex('by_billId_and_status', (q) => q.eq('billId', billId).eq('status', status))
+		.order('desc')
 		.take(MAX_LINKS);
 }
 

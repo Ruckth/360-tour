@@ -16,7 +16,7 @@ import {
 	writeBooking
 } from './bookingMoney';
 import { isSettledOrder } from './orderLinks';
-import { orderLineLinks } from './lineLinks';
+import { activeSourceLink, orderLineLinks } from './lineLinks';
 
 /**
  * Refunds, cancellations and mistaken-entry corrections on a stay (see lib/bookingMoney.ts for the
@@ -84,6 +84,9 @@ async function refundsForOrder(ctx: ReadCtx, billId: Id<'bills'>, bookingId: Id<
 
 /** The itemised payment an order settled for this stay, if the order was paid after payments were itemised. */
 export async function orderStayPayment(ctx: ReadCtx, billId: Id<'bills'>, bookingId: Id<'bookings'>) {
+	// Use the link's exact payment, even after older link/unlink cycles fill the history page.
+	const link = await activeSourceLink(ctx, { bookingId });
+	if (link?.billId === billId && link.bookingPaymentId) return ctx.db.get(link.bookingPaymentId);
 	const rows = await ctx.db.query('bookingPayments').withIndex('by_billId', (q) => q.eq('billId', billId)).take(MAX_STAY_ROWS);
 	// A row linked, unlinked and linked again leaves a cancelled payment beside the live one.
 	return rows.find((row) => row.bookingId === bookingId && row.status === 'recorded') ?? rows.find((row) => row.bookingId === bookingId) ?? null;
