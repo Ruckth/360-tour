@@ -110,7 +110,7 @@ export async function readMarketingReport(
 		for await (const row of scan(ctx.db.query('marketingSpend').withIndex('by_to', q => q.gte('to', from)))) if (row.deletedAt === undefined && row.from <= to) append(data.spend, reportSpend(row));
 		for (let at = start; at < end; at += 86_400_000) {
 			const day = dayOf(at);
-			for await (const row of scan(ctx.db.query('marketingSessionDays').withIndex('by_day_and_linkId', q => q.eq('day', day)))) append(data.sessions, { day, linkId: row.linkId, campaignId: row.campaignId, count: row.count });
+			for await (const row of scan(ctx.db.query('marketingSessionDays').withIndex('by_day_and_linkId_and_campaignId', q => q.eq('day', day)))) append(data.sessions, { day, linkId: row.linkId, campaignId: row.campaignId, count: row.count });
 		}
 	}
 
@@ -121,8 +121,10 @@ export async function readMarketingReport(
 	let stayRowsInRange: Doc<'bookingPayments'>[] = [];
 	let stayPosByBill = new Map<Id<'bills'>, Doc<'bookingPayments'>[]>();
 	/**
-	 * Refunds from the range start on. A refund is dated on or after the payment it returns unless the
-	 * order's payment date was corrected later, so order() reads a corrected order's refunds one by one.
+	 * Refunds typed in from the range start on (a day earlier, for clock skew), whatever date they carry.
+	 * A date can't be in the future, so this holds every refund dated in the range, and every refund of
+	 * an order paid in it: an order is paid before it is refunded. Only an order whose payment date was
+	 * corrected later can have older refunds; order() reads those one by one.
 	 */
 	let apptRefundsFromStart: Doc<'appointmentRefunds'>[] = [];
 	let receiptRefundsByBill = new Map<Id<'bills'>, Doc<'appointmentRefunds'>[]>();
@@ -133,9 +135,10 @@ export async function readMarketingReport(
 		tendersByBill = group(await rows(ctx.db.query('billPayments').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end))), p => p.billId);
 		stayRowsInRange = await rows(ctx.db.query('bookingPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)));
 		stayPosByBill = group(stayRowsInRange.filter(p => p.origin === 'pos'), p => p.billId);
-		apptRefundsFromStart = await rows(ctx.db.query('appointmentRefunds').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start)));
+		const recordedFrom = start - 86_400_000;
+		apptRefundsFromStart = await rows(ctx.db.query('appointmentRefunds').withIndex('by_recordedAt', q => q.gte('recordedAt', recordedFrom)));
 		receiptRefundsByBill = group(apptRefundsFromStart, r => r.billId);
-		stayRefundsFromStart = await rows(ctx.db.query('bookingRefunds').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start)));
+		stayRefundsFromStart = await rows(ctx.db.query('bookingRefunds').withIndex('by_recordedAt', q => q.gte('recordedAt', recordedFrom)));
 		oldOrderRefundsByBill = group(stayRefundsFromStart.filter(r => !r.paymentId), r => r.billId);
 	}
 
@@ -223,7 +226,9 @@ export async function readMarketingReport(
 		const refunded = sum(refunds, r => r.amount);
 		const discount = bill.promotion?.discount ?? 0;
 		if (collected === 0 && refunded === 0 && discount === 0) return null;
-		const booking = bill.bookingId ? await get(bill.bookingId) : null;
+		// The order's own stay, or the stay it charged when that stay already had another open order.
+		const bookingId = bill.bookingId ?? stayRows[0]?.bookingId;
+		const booking = bookingId ? await get(bookingId) : null;
 		const link = bill.promotion?.viaLinkId ? await get(bill.promotion.viaLinkId) : null;
 		const campaign = link ? await get(link.campaignId) : null;
 		const day = dayOf(at);
@@ -256,7 +261,7 @@ export async function readMarketingReport(
 		} else {
 			for (const row of stayRowsInRange) if (row.status === 'recorded') await stay(row.bookingId);
 			for (const row of stayRefundsFromStart) {
-				if (row.effectiveAt >= end) continue;
+				if (!inWindow(row.effectiveAt)) continue;
 				await stay(row.bookingId);
 				if (row.billId && !row.paymentId) await order(row.billId);
 			}
@@ -270,7 +275,7 @@ export async function readMarketingReport(
 		for await (const row of scan(ctx.db.query('bills').withIndex('by_paymentEffectiveAt', q => q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end)))) { cache.set(row._id, row); await order(row._id); }
 		for await (const row of scan(ctx.db.query('appointmentPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)))) if (row.status === 'recorded') await appointment(row.appointmentId);
 		if (basis === 'cash') for (const row of apptRefundsFromStart) {
-			if (row.effectiveAt >= end) continue;
+			if (!inWindow(row.effectiveAt)) continue;
 			if (!row.billId || !await order(row.billId)) await appointment(row.appointmentId);
 		}
 	}

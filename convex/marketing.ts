@@ -9,7 +9,7 @@ import { requireAdmin } from './lib/adminAuth';
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
 import { appendRecordHistory } from './lib/recordHistory';
 import { cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey } from './lib/marketingAttribution';
-import { enforceRateLimit } from './lib/rateLimit';
+import { enforceRateLimit, rateLimitReached } from './lib/rateLimit';
 import { isMarketingLocale, localizeMarketingPath, validateMarketingSlug } from './lib/marketingSlugs';
 
 const publishStatus = v.union(v.literal('draft'), v.literal('active'), v.literal('paused'), v.literal('archived'));
@@ -496,6 +496,8 @@ export const startSession = mutation({
 	args: { visitorKey: v.optional(v.string()), slug: v.optional(v.string()), landingPath: v.string(), referrerHost: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
 		const visitorKey = isVisitorKey(args.visitorKey) ? args.visitorKey : newVisitorKey();
+		// A visitor over their own limit is turned away first, so their calls can't use up everyone's allowance.
+		if (await rateLimitReached(ctx, `marketing-session:${visitorKey}`, 30)) return { visitorKey, sessionId: null };
 		try {
 			await enforceRateLimit(ctx, 'marketing-session:global', 5000, 60 * 60 * 1000);
 			await enforceRateLimit(ctx, `marketing-session:${visitorKey}`, 30, 60 * 60 * 1000);
@@ -517,9 +519,11 @@ export const startSession = mutation({
 		});
 		const day = resortTodayIso();
 		const linkId = link && link.status !== 'draft' ? link._id : undefined;
-		const rollup = await ctx.db.query('marketingSessionDays').withIndex('by_day_and_linkId', q => q.eq('day', day).eq('linkId', linkId)).unique();
+		// One row per link and campaign: a link moved to another campaign keeps its earlier sessions under the first.
+		const campaignId = linkId ? link!.campaignId : undefined;
+		const rollup = await ctx.db.query('marketingSessionDays').withIndex('by_day_and_linkId_and_campaignId', q => q.eq('day', day).eq('linkId', linkId).eq('campaignId', campaignId)).unique();
 		if (rollup) await ctx.db.patch(rollup._id, { count: rollup.count + 1 });
-		else await ctx.db.insert('marketingSessionDays', { day, linkId, campaignId: linkId ? link!.campaignId : undefined, count: 1 });
+		else await ctx.db.insert('marketingSessionDays', { day, linkId, campaignId, count: 1 });
 		return { visitorKey, sessionId };
 	}
 });

@@ -226,7 +226,8 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
   if (allProperties) {
     for (const row of report.sessions) {
       if (!row.linkId || !inRange(row.day)) continue;
-      const campaignId = links.get(row.linkId)?.campaignId ?? row.campaignId;
+      // The campaign the link belonged to when the session was counted; the link's campaign now only for a row without one.
+      const campaignId = row.campaignId ?? links.get(row.linkId)?.campaignId;
       add(sessions.byLink, row.linkId, row.count);
       add(sessions.byCampaign, campaignId, row.count);
       add(sessions.bySource, campaignId ? campaigns.get(campaignId)?.source : undefined, row.count);

@@ -295,7 +295,7 @@ export default defineSchema({
 		.index('by_billId', ['billId'])
 		.index('by_idempotencyKey', ['idempotencyKey'])
 		.index('by_providerRefundId', ['providerRefundId'])
-		.index('by_effectiveAt', ['effectiveAt']),
+		.index('by_recordedAt', ['recordedAt']),
 
 	/** High-water mark of authoritative charge.refunded snapshots, in minor units. */
 	stripeRefundCharges: defineTable({
@@ -322,7 +322,7 @@ export default defineSchema({
 		netBefore: v.number(), netAfter: v.number()
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt'])
 		.index('by_billId', ['billId']).index('by_idempotencyKey', ['idempotencyKey'])
-		.index('by_effectiveAt', ['effectiveAt']),
+		.index('by_recordedAt', ['recordedAt']),
 	staff: defineTable({
 		name: v.string(),
 		/** Retained on archive; restoration validates each surviving service. */
@@ -1698,14 +1698,15 @@ export default defineSchema({
 		.index('by_linkId_and_startedAt', ['linkId', 'startedAt'])
 		.index('by_startedAt', ['startedAt']),
 
-	// Release 3b: consented sessions per Bangkok day and link, kept by startSession so the report never reads raw sessions.
+	// Release 3b: consented sessions per Bangkok day, link and the campaign the link belonged to then,
+	// kept by startSession so the report never reads raw sessions.
 	marketingSessionDays: defineTable({
 		day: v.string(),
 		/** Absent = sessions that arrived without a link. */
 		linkId: v.optional(v.id('marketingLinks')),
 		campaignId: v.optional(v.id('marketingCampaigns')),
 		count: v.number()
-	}).index('by_day_and_linkId', ['day', 'linkId']),
+	}).index('by_day_and_linkId_and_campaignId', ['day', 'linkId', 'campaignId']),
 
 	// Release 3b: what a campaign cost, entered by staff in whole baht and spread evenly over its days.
 	marketingSpend: defineTable({

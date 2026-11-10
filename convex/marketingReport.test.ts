@@ -306,6 +306,31 @@ describe('report attribution and limits', () => {
 		expect((await s.report('cohort', '2026-11-08')).sales).toMatchObject([{ id: orderId, collected: 500, refunded: 200 }]);
 	});
 
+	it('finds a refund back-dated to before the range on an order paid in it', async () => {
+		const s = await setup();
+		const appointmentId = await s.appointment();
+		const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId });
+		await s.payOrder(orderId);
+		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
+		await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 200, currency: 'THB', method: 'cash', reason: 'Courtesy', billId: orderId, idempotencyKey: 'backdated-refund-001', effectiveAt: now - 3 * day });
+		expect((await s.report()).sales).toMatchObject([{ id: orderId, collected: 500, refunded: 200 }]);
+		// The money view dates it where staff put it.
+		expect((await s.report('cash')).events).toEqual([{ saleId: orderId, kind: 'payment', day: '2026-11-09', amount: 500 }]);
+		expect((await s.report('cash', '2026-11-06')).events).toEqual([{ saleId: orderId, kind: 'refund', day: '2026-11-06', amount: 200 }]);
+	});
+
+	it('files an order under the villa of the stay it charged when that stay has its own open order', async () => {
+		const s = await setup();
+		const bookingId = await s.booking({ source: 'admin' });
+		// The empty order made with the booking stays the booking's own, so the order that charges it gets no bookingId.
+		await s.t.run(ctx => ctx.db.insert('bills', { status: 'draft', bookingId, currency: 'THB', itemCount: 0, total: 0, due: 0, hasItems: false, revision: 1, createdBy: email, createdAt: now, updatedAt: now }));
+		const { orderId } = await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
+		await s.admin.mutation(api.pos.attach, { orderId, bookingId });
+		await s.payOrder(orderId);
+		expect((await s.t.run(ctx => ctx.db.get(orderId)))!.bookingId).toBeUndefined();
+		expect((await s.report()).sales.find(sale => sale.id === orderId)).toMatchObject({ kind: 'order', collected: 500, propertyId: s.propertyId });
+	});
+
 	it('counts a desk payment for an appointment that belongs to a stay', async () => {
 		const s = await setup();
 		const bookingId = await s.booking({ source: 'admin' });
@@ -399,6 +424,8 @@ describe('spend and diagnostic rollups', () => {
 		vi.setSystemTime(Date.parse('2026-11-08T17:00:00Z'));
 		for (let i = 0; i < 29; i++) await s.t.mutation(api.marketing.startSession, { visitorKey, slug: 'spa', landingPath: '/' });
 		expect((await s.t.mutation(api.marketing.startSession, { visitorKey, landingPath: '/' })).sessionId).toBeNull();
+		// A visitor over their own limit doesn't use up the allowance everyone shares.
+		expect((await s.t.run(ctx => ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', 'marketing-session:global')).unique()))!.count).toBe(30);
 		const rollups = await s.t.run(ctx => ctx.db.query('marketingSessionDays').take(10));
 		expect(rollups).toMatchObject([{ day: '2026-11-08', linkId: s.linkId, campaignId: s.campaignId, count: 1 }, { day: '2026-11-09', linkId: s.linkId, count: 29 }]);
 		expect(await s.t.run(ctx => ctx.db.query('marketingSessions').take(100))).toHaveLength(30);
@@ -409,5 +436,14 @@ describe('spend and diagnostic rollups', () => {
 		expect((await s.t.mutation(api.marketing.startSession, { slug: 'spa', landingPath: '/' })).sessionId).toBeNull();
 		expect(await s.t.run(ctx => ctx.db.query('marketingSessionDays').take(10))).toEqual(before);
 		expect(await s.t.run(ctx => ctx.db.query('marketingSessions').take(100))).toHaveLength(31);
+	});
+
+	it('keeps a moved link\'s earlier sessions under the campaign it had then', async () => {
+		const s = await setup();
+		await s.t.mutation(api.marketing.startSession, { slug: 'spa', landingPath: '/' });
+		const other = await s.admin.mutation(api.marketing.saveCampaign, { name: 'December', source: 'facebook', medium: 'social' });
+		await s.t.run(ctx => ctx.db.patch(s.linkId, { campaignId: other }));
+		for (let i = 0; i < 2; i++) await s.t.mutation(api.marketing.startSession, { slug: 'spa', landingPath: '/' });
+		expect((await s.report()).sessions.map(row => [row.campaignId, row.count]).sort()).toEqual([[s.campaignId, 1], [other, 2]].sort());
 	});
 });
