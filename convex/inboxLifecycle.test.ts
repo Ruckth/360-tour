@@ -543,3 +543,24 @@ describe("automatic responder lifecycle", () => {
     });
   });
 });
+
+it("preserves a pending staff send against a second tab's reply claim", async () => {
+  const s = await setup();
+  await s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'first-tab', content: 'First reply' });
+  await expect(s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'second-tab', content: 'Second reply' })).rejects.toThrow('A staff reply is pending');
+  await s.admin.mutation(api.adminReply.fail, { requestId: 'first-tab', error: 'Channel failed' });
+  expect(await s.detail()).toMatchObject({ inboxReason: 'send_failed', inboxSendError: 'Channel failed', needsReply: true });
+  // Failure releases the send lock so staff can deliberately retry.
+  expect(await s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'retry-tab', content: 'Retry reply' })).toMatchObject({ state: 'new' });
+});
+
+it("preserves pending extra reply failures against stale Reopen", async () => {
+  const s = await setup();
+  await s.admin.mutation(api.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'resolved' });
+  await s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'extra-pending', content: 'Extra detail' });
+  await expect(s.admin.mutation(api.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'open' })).rejects.toThrow('A staff reply is pending');
+  await s.admin.mutation(api.adminReply.fail, { requestId: 'extra-pending', error: 'Channel failed' });
+  expect(await s.detail()).toMatchObject({ inboxReason: 'send_failed', inboxSendError: 'Channel failed', needsReply: true });
+  await s.admin.mutation(api.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'open' });
+  expect(await s.detail()).toMatchObject({ inboxState: 'processing', staffTask: 'Review conversation' });
+});

@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { patchSessionAfterMessages } from './lib/adminChatMetadata';
 import { requireAdmin } from './lib/adminAuth';
 import { getChannelReplyWindow } from './lib/channelReplyWindow';
-import { answerAccepted, latestGuestId, sendFailed } from './lib/inboxLifecycle';
+import { assertNoPendingStaffSend, answerAccepted, latestGuestId, sendFailed } from './lib/inboxLifecycle';
 
 const MAX_REPLY_LENGTH = 1000;
 
@@ -50,6 +50,7 @@ export const claim = mutation({
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new Error('Chat session not found');
+    await assertNoPendingStaffSend(ctx, session);
     const replyToMessageId = await latestGuestId(ctx, session);
     if (args.replyToMessageId && args.replyToMessageId !== replyToMessageId) {
       throw new Error('A new guest message arrived. Read it before sending this reply.');

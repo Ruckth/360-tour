@@ -227,3 +227,15 @@ export async function changeStaffOwnership(
       : {}),
   });
 }
+
+/** A second tab must not replace the request that owns an unfinished channel send. */
+export async function assertNoPendingStaffSend(
+  ctx: MutationCtx,
+  session: Doc<"chatSessions">,
+) {
+  const requestId = session.inboxSendRequestId;
+  if (!requestId) return;
+  const attempt = await ctx.db.query("adminReplyAttempts")
+    .withIndex("by_requestId", q => q.eq("requestId", requestId)).unique();
+  if (attempt?.status === "pending") throw new Error("A staff reply is pending. Wait for confirmation before changing it.");
+}

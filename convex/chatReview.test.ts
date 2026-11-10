@@ -42,3 +42,25 @@ it('does not store an automatic assistant reply when staff pauses during generat
 	expect(await t.query(api.chat.getMessages, { sessionId })).toEqual([]);
 	expect((await t.query(api.chat.getSession, { sessionId }))?.aiPaused).toBe(true);
 });
+
+it('keeps staff-only fields private when the guest resumes their own session', async () => {
+	const t = convexTest(schema, modules);
+	const visitorId = 'resume-private-fields';
+	const sessionId = await t.mutation(api.chat.createSession, { channel: 'web', visitorId });
+	await t.run((ctx) => ctx.db.patch(sessionId, {
+		assignedAdminEmail: 'staff@example.com', staffTask: 'Private internal follow-up',
+		adminSearchText: 'private search', inboxSendError: 'private provider diagnostic',
+		visitorEmail: 'guest@example.com', aiPaused: true,
+	}));
+	const resumed = await t.query(api.chat.getReusableSession, { visitorId });
+	expect(resumed).toEqual(await t.query(api.chat.getSession, { sessionId }));
+	expect(resumed).toMatchObject({ _id: sessionId, channel: 'web', aiPaused: true });
+	for (const field of ['assignedAdminEmail', 'staffTask', 'adminSearchText', 'inboxSendError', 'visitorEmail']) {
+		expect(resumed).not.toHaveProperty(field);
+	}
+	// Projection must leave the staff's stored work intact.
+	expect(await t.run((ctx) => ctx.db.get(sessionId))).toMatchObject({
+		assignedAdminEmail: 'staff@example.com', staffTask: 'Private internal follow-up',
+		inboxSendError: 'private provider diagnostic', visitorEmail: 'guest@example.com',
+	});
+});

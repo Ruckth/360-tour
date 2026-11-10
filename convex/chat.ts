@@ -1,5 +1,6 @@
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
+import type { Doc } from './_generated/dataModel';
 import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
 import {
 	DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
@@ -36,6 +37,20 @@ async function resolvePropertyId(
 		.withIndex('by_slug', (q) => q.eq('slug', propertySlug))
 		.unique();
 	return property?._id;
+}
+
+/** Guest-facing session metadata; internal staff state stays on the server. */
+function publicSession(session: Doc<'chatSessions'>) {
+	return {
+		_id: session._id,
+		_creationTime: session._creationTime,
+		propertySlug: session.propertySlug,
+		channel: session.channel,
+		messageCount: session.messageCount,
+		latestMessageAt: session.latestMessageAt,
+		createdAt: session.createdAt,
+		aiPaused: Boolean(session.aiPaused)
+	};
 }
 
 export const createSession = mutation({
@@ -218,7 +233,7 @@ export const getReusableSession = query({
 				.take(messageLimit - legacyMessageCount);
 
 			if (isReusableChatMessageCount(legacyMessageCount + messages.length, messageLimit)) {
-				return session;
+				return publicSession(session);
 			}
 		}
 
@@ -415,16 +430,7 @@ export const getSession = query({
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) return null;
-		return {
-			_id: session._id,
-			_creationTime: session._creationTime,
-			propertySlug: session.propertySlug,
-			channel: session.channel,
-			messageCount: session.messageCount,
-			latestMessageAt: session.latestMessageAt,
-			createdAt: session.createdAt,
-			aiPaused: Boolean(session.aiPaused)
-		};
+		return publicSession(session);
 	}
 });
 
