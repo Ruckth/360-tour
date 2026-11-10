@@ -39,6 +39,13 @@ describe('buildAttribution', () => {
 		expect(buildAttribution({ sessions: [session('s1', 2)], currentLink: f1, now })).toMatchObject({ evidence: 'tracked', sessionId: 's1', last: f1, first: f1 });
 	});
 
+	it('takes a tab link that no session carries as the newest touch, since its visit was not recorded', () => {
+		const result = buildAttribution({ sessions: [session('s1', 5, q1), session('s2', 1)], currentLink: f1, now });
+		expect(result).toMatchObject({ evidence: 'tracked', sessionId: 's2', last: f1, first: { slug: 'q1', sessionId: 's1' } });
+		// A link the sessions already carry stays where its session puts it.
+		expect(buildAttribution({ sessions: [session('s1', 5, f1), session('s2', 1, q1)], currentLink: f1, now })?.last).toMatchObject({ slug: 'q1', sessionId: 's2' });
+	});
+
 	it('falls back to the tab link before consent, with no session or time', () => {
 		const result = buildAttribution({ sessions: [], currentLink: f1, now });
 		expect(result).toEqual({ model: 'last_touch_30d@1', evidence: 'current_link', last: f1, capturedAt: now });

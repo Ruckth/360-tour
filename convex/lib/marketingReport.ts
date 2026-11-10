@@ -15,7 +15,8 @@ import type { ATTRIBUTION_MODEL } from './marketingAttribution';
  * - One sale is counted once. A stay balance paid at the POS is on the stay (its bookingPayments row,
  *   origin `pos`), so the order that took it counts only its other money: tenders minus that stay part.
  *   Exception: an old order that charged a stay before stay payments were itemised has no such row, so
- *   that money stays on the order and is taken off the stay's unitemised amount.
+ *   that money and its refunds stay on the order and are taken off the stay.
+ * - Older stay money with no payment row has no date of its own: it is dated by the stay's `paidAt`.
  * - A desk payment for an appointment is its own sale, also when the appointment belongs to a stay.
  * - Collected is money received (recorded payments, never `bills.total`). Cancelled payment rows and
  *   orders voided with "no money received" count nothing. An order voided with the money kept counts.

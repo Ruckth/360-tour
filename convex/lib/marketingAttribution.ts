@@ -104,7 +104,8 @@ export type SessionTouch = { sessionId: Id<'marketingSessions'>; startedAt: numb
 /**
  * The attribution rule, kept pure for tests.
  * - Consented sessions in the last 30 days win: last = latest linked one, first = earliest linked one,
- *   so a later direct visit never erases a link. With no linked session, the tab's link is the last touch.
+ *   so a later direct visit never erases a link. A tab link that none of those sessions carries is a
+ *   visit that wasn't recorded (startSession was refused or failed), so it is the newest touch.
  * - Otherwise the link this tab arrived through, labelled current_link.
  * - Otherwise nothing: R3b reports the booking under unknown, staff-entered or messaging.
  */
@@ -115,8 +116,9 @@ export function buildAttribution(input: { sessions: SessionTouch[]; currentLink?
 		.sort((a, b) => a.startedAt - b.startedAt);
 	if (recent.length) {
 		const linked = recent.filter(s => s.touch);
-		const last = linked[linked.length - 1]?.touch ?? currentLink;
-		const first = linked[0]?.touch ?? currentLink;
+		const unrecorded = currentLink && !linked.some(s => s.touch!.linkId === currentLink.linkId) ? currentLink : undefined;
+		const last = unrecorded ?? linked[linked.length - 1]?.touch;
+		const first = linked[0]?.touch ?? unrecorded;
 		return {
 			model: ATTRIBUTION_MODEL, evidence: 'tracked', sessionId: recent[recent.length - 1].sessionId,
 			...(last ? { last } : {}), ...(first ? { first } : {}), capturedAt: now

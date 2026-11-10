@@ -27,7 +27,7 @@ export const listSpend = query({
 	}
 });
 
-const snapshot = (row: Pick<Doc<'marketingSpend'>, 'amount' | 'from' | 'to' | 'note'>) => ({ amount: row.amount, from: row.from, to: row.to, note: row.note ?? null });
+const snapshot = (row: Pick<Doc<'marketingSpend'>, 'amount' | 'from' | 'to' | 'note'>, campaign: Doc<'marketingCampaigns'> | null) => ({ campaign: campaign?.name ?? 'Removed campaign', amount: row.amount, from: row.from, to: row.to, note: row.note ?? null });
 
 export const saveSpend = mutation({
 	args: { id: v.optional(v.id('marketingSpend')), campaignId: v.id('marketingCampaigns'), amount: v.number(), from: v.string(), to: v.string(), note: v.optional(v.string()) },
@@ -35,14 +35,17 @@ export const saveSpend = mutation({
 		const admin = await requireAdmin(ctx);
 		const problem = validateSpend(args);
 		if (problem) throw new ConvexError(problem);
-		if (!await ctx.db.get(args.campaignId)) throw new ConvexError('Campaign not found.');
+		const campaign = await ctx.db.get(args.campaignId);
+		if (!campaign) throw new ConvexError('Campaign not found.');
 		const before = args.id ? await ctx.db.get(args.id) : null;
 		if (args.id && (!before || before.deletedAt !== undefined)) throw new ConvexError('Spend entry not found.');
+		// The history names the campaign, so moving an entry to another campaign leaves a trace.
+		const campaignBefore = before && before.campaignId !== args.campaignId ? await ctx.db.get(before.campaignId) : campaign;
 		const now = Date.now();
 		const fields = { campaignId: args.campaignId, amount: args.amount, from: args.from, to: args.to, note: args.note?.trim() || undefined, updatedAt: now, updatedByEmail: admin.email };
 		const id = args.id ?? await ctx.db.insert('marketingSpend', { ...fields, createdAt: now, createdByEmail: admin.email });
 		if (args.id) await ctx.db.patch(id, fields);
-		await appendRecordHistory(ctx, { entityType: 'marketingSpend', entityId: id, actor: admin.email, kind: before ? 'updated' : 'created', before: before ? snapshot(before) : null, after: snapshot(fields) });
+		await appendRecordHistory(ctx, { entityType: 'marketingSpend', entityId: id, actor: admin.email, kind: before ? 'updated' : 'created', before: before ? snapshot(before, campaignBefore) : null, after: snapshot(fields, campaign) });
 		return id;
 	}
 });
@@ -55,7 +58,7 @@ export const deleteSpend = mutation({
 		if (!row) throw new ConvexError('Spend entry not found.');
 		if (row.deletedAt !== undefined) return null;
 		await ctx.db.patch(row._id, { deletedAt: Date.now(), deletedByEmail: admin.email, updatedAt: Date.now(), updatedByEmail: admin.email });
-		await appendRecordHistory(ctx, { entityType: 'marketingSpend', entityId: row._id, actor: admin.email, kind: 'deleted', before: snapshot(row), after: null });
+		await appendRecordHistory(ctx, { entityType: 'marketingSpend', entityId: row._id, actor: admin.email, kind: 'deleted', before: snapshot(row, await ctx.db.get(row.campaignId)), after: null });
 		return null;
 	}
 });

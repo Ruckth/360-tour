@@ -37,7 +37,15 @@ async function setup() {
 	const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
 	const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 500, currency: 'THB', staffIds: [staffId] });
 	const appointment = () => admin.mutation(api.adminServices.createAppointment, { serviceId, staffId, start: now - day, guestName: 'Desk guest', guestPhone: '' }).then(r => r.appointmentId);
-	return { t, admin, propertyId, campaignId, couponId, linkId, booking, order, report, payOrder, payment, serviceId, staffId, appointment };
+	/** An order paid before stay payments were itemised: ฿1,000 for the stay and ฿50 of water, with no bookingPayments row. */
+	const oldOrder = (bookingId: Id<'bookings'>) => t.run(async ctx => {
+		const id = await ctx.db.insert('bills', { status: 'paid', bookingId, currency: 'THB', itemCount: 2, total: 1050, due: 0, hasItems: true, revision: 1, paidAt: now, paymentEffectiveAt: now, createdBy: email, createdAt: now, updatedAt: now });
+		await ctx.db.insert('billLines', { billId: id, kind: 'booking', bookingId, name: 'Stay', unitPrice: 1000, currency: 'THB', qty: 1, createdAt: now });
+		await ctx.db.insert('billLines', { billId: id, kind: 'extra', name: 'Water', unitPrice: 50, currency: 'THB', qty: 1, createdAt: now });
+		await ctx.db.insert('billPayments', { billId: id, method: 'cash', amount: 1050, idempotencyKey: `old-order-${bookingId}`, createdBy: email, createdAt: now, effectiveAt: now });
+		return id;
+	});
+	return { t, admin, propertyId, campaignId, couponId, linkId, booking, order, report, payOrder, payment, serviceId, staffId, appointment, oldOrder };
 }
 
 describe('report money', () => {
@@ -203,6 +211,8 @@ describe('report attribution and limits', () => {
 	it('rejects invalid/over-92-day ranges and unauthorised reads', async () => {
 		const s = await setup();
 		for (const [from, to] of [['2026-01-01', '2026-04-03'], ['bad', '2026-11-09'], ['2026-11-10', '2026-11-09']]) await expect(s.report('cash', from, to)).rejects.toThrow(/92 Bangkok days/);
+		// Exactly 92 days is allowed.
+		expect((await s.report('cash', '2026-08-10', '2026-11-09')).truncated).toBe(false);
 		await expect(s.t.query(api.marketingReport.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cash' })).rejects.toThrow('authenticated');
 	});
 
@@ -259,18 +269,41 @@ describe('report attribution and limits', () => {
 		const s = await setup();
 		// Paid before stay payments were itemised: no bookingPayments row, the money is on the order.
 		const bookingId = await s.booking({ source: 'admin', paymentStatus: 'paid', amountPaid: 1000, paidAt: now });
-		const billId = await s.t.run(async ctx => {
-			const id = await ctx.db.insert('bills', { status: 'paid', bookingId, currency: 'THB', itemCount: 2, total: 1050, due: 0, hasItems: true, revision: 1, paidAt: now, paymentEffectiveAt: now, createdBy: email, createdAt: now, updatedAt: now });
-			await ctx.db.insert('billLines', { billId: id, kind: 'booking', bookingId, name: 'Stay', unitPrice: 1000, currency: 'THB', qty: 1, createdAt: now });
-			await ctx.db.insert('billLines', { billId: id, kind: 'extra', name: 'Water', unitPrice: 50, currency: 'THB', qty: 1, createdAt: now });
-			await ctx.db.insert('billPayments', { billId: id, method: 'cash', amount: 1050, idempotencyKey: 'legacy-order', createdBy: email, createdAt: now, effectiveAt: now });
-			return id;
-		});
+		const billId = await s.oldOrder(bookingId);
 		for (const basis of ['cohort', 'cash'] as const) {
 			const report = await s.report(basis);
 			expect(report.sales.reduce((sum, sale) => sum + sale.collected, 0)).toBe(1050);
 			expect(report.sales.map(sale => sale.id)).toEqual([billId]);
 		}
+	});
+
+	it('counts a refund of an old order\'s stay money on that order, with or without other money on the stay', async () => {
+		const s = await setup();
+		const only = await s.booking({ source: 'admin', status: 'cancelled', paymentStatus: 'paid', amountPaid: 1000, paidAt: now });
+		const mixed = await s.booking({ source: 'admin', status: 'cancelled', paymentStatus: 'paid', amountPaid: 1500, paidAt: now });
+		await s.payment(mixed, 500);
+		const bills = [await s.oldOrder(only), await s.oldOrder(mixed)];
+		for (const [i, bookingId] of [only, mixed].entries()) {
+			const booking = (await s.t.run(ctx => ctx.db.get(bookingId)))!;
+			await s.admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: booking.revision ?? 0, amount: 1000, currency: 'THB', method: 'cash', billId: bills[i], reason: 'Cancelled', idempotencyKey: `old-order-refund-${i}`, effectiveAt: now });
+		}
+		for (const basis of ['cohort', 'cash'] as const) {
+			const report = await s.report(basis);
+			expect(report.sales.map(sale => [sale.id, sale.collected, sale.refunded]).sort()).toEqual([[bills[0], 1050, 1000], [bills[1], 1050, 1000], [mixed, 500, 0]].sort());
+		}
+		expect((await s.report('cash')).events.filter(e => e.kind === 'refund').map(e => [e.saleId, e.amount]).sort()).toEqual(bills.map(id => [id, 1000]).sort());
+	});
+
+	it('finds an order\'s refund dated before its corrected payment day', async () => {
+		const s = await setup();
+		const appointmentId = await s.appointment();
+		const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId });
+		await s.payOrder(orderId, now - 5 * day);
+		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
+		await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 200, currency: 'THB', method: 'cash', reason: 'Courtesy', billId: orderId, idempotencyKey: 'early-refund-001', effectiveAt: now - 3 * day });
+		await s.admin.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'later-date-001', reason: 'Wrong day', effectiveAt: now - day, tenders: [{ method: 'cash', amount: 500 }] });
+		// The range starts after the refund's day; the sale still shows what was given back.
+		expect((await s.report('cohort', '2026-11-08')).sales).toMatchObject([{ id: orderId, collected: 500, refunded: 200 }]);
 	});
 
 	it('counts a desk payment for an appointment that belongs to a stay', async () => {
@@ -317,6 +350,11 @@ describe('spend and diagnostic rollups', () => {
 		const deletion = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'marketingSpend').eq('entityId', deleted)).take(10));
 		expect(deletion.map(r => r.kind)).toEqual(['created', 'deleted']);
 		await expect(s.admin.mutation(api.marketingReport.saveSpend, { ...draft, id: deleted })).rejects.toThrow('not found');
+		// Moving an entry to another campaign shows in its history.
+		const other = await s.admin.mutation(api.marketing.saveCampaign, { name: 'December', source: 'facebook', medium: 'social' });
+		await s.admin.mutation(api.marketingReport.saveSpend, { ...draft, id, amount: 2000, campaignId: other });
+		const moved = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'marketingSpend').eq('entityId', id)).take(10));
+		expect(moved[2]).toMatchObject({ kind: 'updated', before: { campaign: 'November' }, after: { campaign: 'December' } });
 		await s.t.run(ctx => ctx.db.delete(s.campaignId));
 		await expect(s.admin.mutation(api.marketingReport.saveSpend, draft)).rejects.toThrow('Campaign not found');
 	});

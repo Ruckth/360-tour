@@ -120,15 +120,23 @@ export async function readMarketingReport(
 	/** POS stay payments carry the order's business date (amendOrderPayment moves both together). */
 	let stayRowsInRange: Doc<'bookingPayments'>[] = [];
 	let stayPosByBill = new Map<Id<'bills'>, Doc<'bookingPayments'>[]>();
-	/** Refunds of receipt money from the range start on (a refund is never dated before the payment it returns). */
+	/**
+	 * Refunds from the range start on. A refund is dated on or after the payment it returns unless the
+	 * order's payment date was corrected later, so order() reads a corrected order's refunds one by one.
+	 */
 	let apptRefundsFromStart: Doc<'appointmentRefunds'>[] = [];
 	let receiptRefundsByBill = new Map<Id<'bills'>, Doc<'appointmentRefunds'>[]>();
+	let stayRefundsFromStart: Doc<'bookingRefunds'>[] = [];
+	/** A stay refund against a receipt with no stay payment row returns an old order's stay money. */
+	let oldOrderRefundsByBill = new Map<Id<'bills'>, Doc<'bookingRefunds'>[]>();
 	async function readMoneyByDate() {
 		tendersByBill = group(await rows(ctx.db.query('billPayments').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end))), p => p.billId);
 		stayRowsInRange = await rows(ctx.db.query('bookingPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)));
 		stayPosByBill = group(stayRowsInRange.filter(p => p.origin === 'pos'), p => p.billId);
 		apptRefundsFromStart = await rows(ctx.db.query('appointmentRefunds').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start)));
 		receiptRefundsByBill = group(apptRefundsFromStart, r => r.billId);
+		stayRefundsFromStart = await rows(ctx.db.query('bookingRefunds').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start)));
+		oldOrderRefundsByBill = group(stayRefundsFromStart.filter(r => !r.paymentId), r => r.billId);
 	}
 
 	// ------------------------------------------------------------ sales
@@ -157,18 +165,22 @@ export async function readMarketingReport(
 		// Nothing was ever received (an unpaid hold, or every payment cancelled): skip the ledger reads.
 		if (money.gross <= 0) return null;
 		const payments = await rows(ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', id)));
-		const refunds = await rows(ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', id)));
+		const allRefunds = await rows(ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', id)));
 		const recorded = payments.filter(p => p.status === 'recorded');
+		// An order that charged the stay before stay payments were itemised has no payment row; its money
+		// is inside the unitemised amount. That money and its refunds stay on the order, so both come off the stay.
+		const oldOrder = async (billId: Id<'bills'>) => {
+			const bill = await get(billId);
+			return !!bill && isSettledOrder(bill) && !bill.voidUnreceived && !payments.some(p => p.billId === billId);
+		};
 		let legacy = unitemisedStayMoney(money.gross, payments);
 		if (legacy > 0) {
-			// An order that charged the stay before stay payments were itemised has no payment row; its
-			// money is inside the unitemised amount. It stays on that order, so take it off the stay.
 			for (const line of await rows(ctx.db.query('billLines').withIndex('by_bookingId', q => q.eq('bookingId', id)))) {
-				const bill = await get(line.billId);
-				if (!bill || !isSettledOrder(bill) || bill.voidUnreceived || payments.some(p => p.billId === bill._id)) continue;
-				legacy = Math.max(round2(legacy - (lineNet(line) - (line.deposit ?? 0))), 0);
+				if (await oldOrder(line.billId)) legacy = Math.max(round2(legacy - (lineNet(line) - (line.deposit ?? 0))), 0);
 			}
 		}
+		const refunds: Doc<'bookingRefunds'>[] = [];
+		for (const refund of allRefunds) if (refund.paymentId || !refund.billId || !await oldOrder(refund.billId)) refunds.push(refund);
 		if (!recorded.length && legacy <= 0) return null;
 		const dates = recorded.map(p => p.effectiveAt);
 		if (legacy > 0 && booking.paidAt !== undefined) dates.push(booking.paidAt);
@@ -200,7 +212,11 @@ export async function readMarketingReport(
 		// Outside the batched windows (a corrected or historical date) fall back to one read each.
 		const tenders = bill.amendedTenders ? [] : inWindow(bill.paidAt) ? (tendersByBill.get(id) ?? []) : await rows(ctx.db.query('billPayments').withIndex('by_billId', q => q.eq('billId', id)));
 		const stayRows = inWindow(at) ? (stayPosByBill.get(id) ?? []) : await rows(ctx.db.query('bookingPayments').withIndex('by_billId', q => q.eq('billId', id)));
-		const refunds = at >= start ? (receiptRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', id)));
+		const batched = at >= start && !bill.correctionRevision;
+		const receiptRefunds = batched ? (receiptRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', id)));
+		// An old order that kept its stay money (no stay payment row) also takes the refunds of that money.
+		const stayRefunds = stayRows.length ? [] : batched ? (oldOrderRefundsByBill.get(id) ?? []) : (await rows(ctx.db.query('bookingRefunds').withIndex('by_billId', q => q.eq('billId', id)))).filter(r => !r.paymentId);
+		const refunds = [...receiptRefunds, ...stayRefunds];
 		const record = orderPaymentRecord(bill, tenders);
 		// The stay part of the order is on the stay (its POS payment row), so the order keeps only its own money.
 		const collected = round2(sum(record.tenders, p => p.amount) - sum(stayRows.filter(p => p.status === 'recorded' && p.origin === 'pos'), p => p.amount));
@@ -239,7 +255,11 @@ export async function readMarketingReport(
 			for await (const row of scan(ctx.db.query('bookings').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end)))) { cache.set(row._id, row); await stay(row._id); }
 		} else {
 			for (const row of stayRowsInRange) if (row.status === 'recorded') await stay(row.bookingId);
-			for await (const row of scan(ctx.db.query('bookingRefunds').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)))) await stay(row.bookingId);
+			for (const row of stayRefundsFromStart) {
+				if (row.effectiveAt >= end) continue;
+				await stay(row.bookingId);
+				if (row.billId && !row.paymentId) await order(row.billId);
+			}
 			// Older money has no payment/refund row. Its business dates are on the stay.
 			for await (const row of scan(ctx.db.query('bookings').withIndex('by_paidAt', q => q.gte('paidAt', start).lt('paidAt', end)))) { cache.set(row._id, row); await stay(row._id); }
 			for await (const row of scan(ctx.db.query('bookings').withIndex('by_refundedAt', q => q.gte('refundedAt', start).lt('refundedAt', end)))) { cache.set(row._id, row); await stay(row._id); }
