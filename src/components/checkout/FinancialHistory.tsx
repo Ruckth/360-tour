@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useCheckoutBackend, type CustomerPage, type FinancialRows, type OrderId, type OrderView } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
 import { historyTime } from "./OrderHistory";
-import { TENDER_LABELS } from "./checkout-ui";
+import { TENDER_LABELS, correctionTitle } from "./checkout-ui";
 import { HistoryDetails } from "./HistoryDetails";
 
 /** These are separate ledgers with independent native cursors, never a merged/capped array. */
@@ -37,7 +37,7 @@ function Page<T extends { _id: string }>({ page, label, render }: { page: Custom
 function Corrections({ orderId }: { orderId: OrderId }) {
   const page = useCheckoutBackend().useCorrectionHistory(orderId);
   return <Page page={page} label="payment amendments" render={r => <>
-    <p className="font-medium">{r.kind === "void_unreceived" ? "Mistaken payment entry voided" : "Payment recording amended"} · #{r.sequence}</p><p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
+    <p className="font-medium">{correctionTitle(r.kind)} · #{r.sequence}</p>{r.amount !== undefined ? <p>Applied {formatMoney(r.amount)}</p> : null}<p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
     {r.tendersBefore ? <p>Before: {r.tendersBefore.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.tendersAfter ? <p>After: {r.tendersAfter.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.effectiveAtBefore !== undefined ? <p>Received date: {historyTime(r.effectiveAtBefore)} → {r.effectiveAtAfter !== undefined ? historyTime(r.effectiveAtAfter) : "Unknown"}</p> : null}

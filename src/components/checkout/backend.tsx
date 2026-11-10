@@ -26,6 +26,8 @@ export type OrderPromotion = NonNullable<OrderView["promotion"]>;
 export type OrderRow = FunctionReturnType<Pos["listOrders"]>["page"][number];
 export type OrderFilter = FunctionArgs<Pos["listOrders"]>["filter"];
 export type Attachable = FunctionReturnType<Pos["listAttachable"]>[number];
+export type LinkCandidate = NonNullable<FunctionReturnType<Pos["linkCandidates"]>>[number];
+export type OrderLink = OrderView["links"][number];
 export type AttachLookupStatus = FunctionReturnType<Pos["attachLookupStatus"]>;
 export type CatalogItem = FunctionArgs<Pos["addItem"]>["item"];
 export type Customer = FunctionReturnType<Customers["searchCustomers"]>[number];
@@ -48,6 +50,7 @@ type PosAction =
   | "openOrderFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine" | "updateSourceLine"
   | "discardOrder" | "restoreOrder" | "addAppointmentFee"
   | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
+  | "linkPaidLine" | "unlinkPaidLine"
   | "applyOrderCoupon" | "removeOrderCoupon" | "recheckOrderCoupon";
 export type CheckoutActions = { [K in PosAction]: (args: FunctionArgs<Pos[K]>) => Promise<FunctionReturnType<Pos[K]>> } & {
   noteCouponRefusal: (args: RefusalNote) => Promise<unknown>;
@@ -75,6 +78,8 @@ export type CheckoutBackend = {
   useAttachable(args: { orderId: OrderId | null; query: string }): Attachable[] | undefined;
   /** Whether this exact lookup reached its results without a capped contact/legacy scan. */
   useAttachLookupStatus(args: { orderId: OrderId | null; query: string }): AttachLookupStatus | undefined;
+  /** Appointments or stays a paid row can be linked to, each with why it can't (pos.linkCandidates). undefined while loading. */
+  useLinkCandidates(args: { orderId: OrderId; lineId: Id<"billLines">; query: string }): LinkCandidate[] | null | undefined;
   useBusinessName(): string | undefined;
   useActions(): CheckoutActions;
 };

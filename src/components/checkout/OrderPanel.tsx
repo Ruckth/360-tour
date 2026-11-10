@@ -10,20 +10,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { isTimeValue, isoToDate } from "@/lib/dates/values";
+import { isTimeValue } from "@/lib/dates/values";
 import {
   formatResortDate,
   formatResortFullDate,
-  resortDateTime,
   resortIsoDate,
-  resortMidnight,
   resortTime24,
   useNow,
 } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel } from "./checkout-ui";
+import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
 import { FinancialHistory } from "./FinancialHistory";
@@ -35,24 +33,16 @@ import type { Run } from "./useOrderWrites";
 const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
 /**
- * A service row's new start after its date or its time changes, in resort time (Bangkok, like
- * staff schedules), whatever the device's zone. The other part is kept: a new date keeps the
- * row's time, a new time keeps the row's date, so correcting last week's row never moves it to
- * today. A row still on "Now" takes today's date or the current time for the missing part.
- * Any past or future date is allowed. Null for an incomplete or invalid value.
+ * The date and time a service row's editor shows, in resort time (Bangkok). A legacy row with a
+ * start shows its date and time, so editing one part keeps the other; a legacy "now" row and an
+ * unscheduled row show both blank. Nothing is filled in from the clock.
  */
-export function serviceStartAt(current: number | undefined, change: { date: string } | { time: string }, now: number): number | null {
-  if ("date" in change) {
-    if (!isoToDate(change.date)) return null;
-    // Thailand has no DST, so moving by whole resort days keeps the exact time of day.
-    if (current !== undefined) return current + resortMidnight(change.date) - resortMidnight(resortIsoDate(current));
-    return resortDateTime(change.date, resortTime24(now));
-  }
-  if (!isTimeValue(change.time)) return null;
-  return resortDateTime(resortIsoDate(current ?? now), change.time);
+export function serviceScheduleValue(line: Pick<OrderLine, "schedule" | "startAt">): { date: string; time: string } {
+  if (line.schedule) return { date: line.schedule.date ?? "", time: line.schedule.time ?? "" };
+  return line.startAt !== undefined ? { date: resortIsoDate(line.startAt), time: resortTime24(line.startAt) } : { date: "", time: "" };
 }
 
-/** "14:00" today, "Mon, Oct 26, 14:00" on another day this year, with the year otherwise. */
+/** A legacy row's start: "14:00" today, "Mon, Oct 26, 14:00" on another day this year, with the year otherwise. */
 export function serviceStartLabel(startAt: number, now: number) {
   const time = resortTime24(startAt);
   const day = resortIsoDate(startAt);
@@ -292,7 +282,8 @@ function lineSubtitle(line: OrderLine, now: number) {
   const parts = [line.detail];
   if (line.kind === "service" || line.kind === "appointment") {
     parts.push(line.staffName ?? "Any therapist");
-    if (line.kind === "service") parts.push(line.startAt ? serviceStartLabel(line.startAt, now) : "Now");
+    // Legacy rows (no schedule) keep their own meaning: a start, or "Now".
+    if (line.kind === "service") parts.push(scheduleLabel(line.schedule, now) ?? (line.startAt ? serviceStartLabel(line.startAt, now) : "Now"));
   }
   if (MERGES_QTY[line.kind] && line.qty > 1) parts.push(`${formatMoney(line.priceOverride?.price ?? line.unitPrice)} each`);
   return parts.filter(Boolean).join(" · ");
@@ -386,6 +377,40 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/**
+ * A service row's optional time. A complete time is saved as it is entered; emptying the field (or
+ * Clear) saves no time once the field is left, so a half-typed time never clears a saved one.
+ */
+function ServiceTimeInput({ value, onCommit }: { value: string; onCommit: (time: string) => unknown }) {
+  const [text, setText] = useState(value);
+  const [saved, setSaved] = useState(value);
+  // Follow a change saved elsewhere (another device, or this one) without remounting while typing.
+  if (saved !== value) {
+    setSaved(value);
+    setText(value);
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        type="time"
+        aria-label="Service time"
+        className="h-9 w-32"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (isTimeValue(e.target.value) && e.target.value !== value) onCommit(e.target.value);
+        }}
+        onBlur={(e) => { if (!e.target.value && value && !e.target.validity.badInput) onCommit(""); }}
+      />
+      {value ? (
+        <Button size="icon" variant="ghost" className="size-9" aria-label="Clear service time" onClick={() => { setText(""); onCommit(""); }}>
+          <X aria-hidden className="size-4" />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -410,11 +435,7 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
   const service = catalog?.services.find((s) => s._id === line.serviceId);
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
 
-  function setStart(change: { date: string } | { time: string }) {
-    const startAt = serviceStartAt(line.startAt, change, Date.now());
-    if (startAt === null || startAt === line.startAt) return;
-    void run(() => actions.updateLine({ lineId, startAt }));
-  }
+  const when = serviceScheduleValue(line);
 
   async function applyPrice() {
     if (await run(() => actions.overrideLinePrice({ lineId, price: Number(price), note }))) {
@@ -447,22 +468,23 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
             </div>
             {catalog && !eligible.length ? <p className="text-xs text-muted-foreground">No one is set up for this service yet.</p> : null}
           </Field>
-          <Field label="Date and time">
-            <div className="flex flex-wrap items-center gap-2">
-              <Chip on={!line.startAt} onClick={() => run(() => actions.updateLine({ lineId, startAt: null }))}>Now</Chip>
-              {/* Work done on another day is recorded on that day; the time stays when the date changes. */}
+          {/* Each part is optional and saved on its own; a blank part stays unset, never "now". */}
+          <div className="flex flex-wrap gap-3">
+            <Field label="Date (optional)">
               <DatePicker
                 aria-label="Service date"
                 size="sm"
                 className="h-9 w-40 text-sm"
-                placeholder="Today"
-                value={line.startAt ? resortIsoDate(line.startAt) : ""}
-                onValueChange={(date) => setStart({ date })}
+                placeholder="No date"
+                clearable
+                value={when.date}
+                onValueChange={(date) => { if (date !== when.date) void run(() => actions.updateLine({ lineId, serviceDate: date || null })); }}
               />
-              <Input type="time" aria-label="Start time" className="h-9 w-32" value={line.startAt ? resortTime24(line.startAt) : ""} onChange={(e) => setStart({ time: e.target.value })} />
-            </div>
-            <p className="text-xs text-muted-foreground">Resort time (Bangkok).</p>
-          </Field>
+            </Field>
+            <Field label="Time (optional)">
+              <ServiceTimeInput value={when.time} onCommit={(time) => run(() => actions.updateLine({ lineId, serviceTime: time || null }))} />
+            </Field>
+          </div>
         </>
       ) : null}
 

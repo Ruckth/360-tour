@@ -35,6 +35,8 @@ const fields: Record<string, string> = {
   deposit: "Paid before checkout",
   staffId: "Staff reference",
   startAt: "Service date",
+  serviceDate: "Service date",
+  serviceTime: "Service time",
   serviceId: "Service reference",
   propertyId: "Villa reference",
   bookingId: "Stay reference",

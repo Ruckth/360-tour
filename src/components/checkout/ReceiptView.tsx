@@ -16,7 +16,8 @@ import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { PaymentRecord } from "./PaymentRecord";
 import { OrderHistory } from "./OrderHistory";
-import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptText } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
+import { AfterPayment } from "./AfterPayment";
 
 type Paper = "58" | "80";
 
@@ -204,6 +205,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                 {line.staffName || line.qty > 1 ? (
                   <p className="text-xs opacity-70">{[line.staffName, line.qty > 1 ? `${formatMoney(linePrice(line))} each` : ""].filter(Boolean).join(" · ")}</p>
                 ) : null}
+                {/* As paid: the row's planned date and time, frozen with it. Later links don't rewrite the receipt. */}
+                {line.kind === "service" && receiptSchedule(line.schedule) ? <p className="text-xs opacity-70">{receiptSchedule(line.schedule)}</p> : null}
                 {lineStaffDiscount(line) ? (
                   <div className="flex justify-between gap-2 text-xs opacity-70">
                     <span>Discount</span>
@@ -247,6 +250,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       </div>
 
       <div className="grid min-w-0 content-start gap-5 print:hidden">
+        <AfterPayment view={view} />
         <PaymentRecord view={view} />
         <OrderHistory orderId={orderId} />
         {isVoid ? (

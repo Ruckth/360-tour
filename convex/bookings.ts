@@ -160,10 +160,15 @@ export type StayPaymentInput = {
 	notifyGuest?: boolean;
 	/** The amount staff reviewed; refused if the stay now owes something else. */
 	expectedAmount?: number;
+	/**
+	 * Records only this part of what the stay owes (a paid order row linked later, pos.linkPaidLine).
+	 * Refused above the balance. A part payment keeps the stay's payment status (pending stays pending).
+	 */
+	amount?: number;
 };
 
 /**
- * Records money received for everything the stay still owes, confirms it and holds its nights, in
+ * Records money received for everything the stay still owes (or `input.amount` of it), confirms it and holds its nights, in
  * the caller's transaction. Writes a bookingPayments row, adds it to the gross `amountPaid` (so
  * earlier deposits and recorded refunds stay counted) and appends the booking history. A stay that
  * owes nothing is left alone and returns `paymentId: null`.
@@ -185,6 +190,16 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 		throw new Error(`This stay now owes ${money.owed}, not ${round2(input.expectedAmount)}. Review the balance and try again.`);
 	}
 	if (money.owed <= 0) return { booking, paymentId: null };
+	const amount = input.amount ?? money.owed;
+	if (input.amount !== undefined) {
+		if (!Number.isFinite(amount) || amount <= 0 || round2(amount) !== amount) throw new Error('The amount must be more than zero, in whole satang.');
+		if (amount > money.owed) throw new Error(`This stay owes ${money.owed}, less than ${amount}.`);
+		// `refunded` counts all money as returned and `failed` needs a reopen, so a part payment needs a live status.
+		if (amount < money.owed && booking.paymentStatus !== 'pending' && booking.paymentStatus !== 'paid') {
+			throw new Error('Record what the stay owes in full, or reopen it first.');
+		}
+	}
+	const full = amount === money.owed;
 	// Validates (no overlapping confirmed booking, no other hold or block) and holds the nights in
 	// this transaction; a conflict throws before anything is marked paid.
 	await blockBookingDates(ctx, booking, bookingId);
@@ -201,7 +216,7 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 	const now = Date.now();
 	const effectiveAt = effectiveTime(input.effectiveAt, now);
 	const paymentId = await ctx.db.insert('bookingPayments', {
-		bookingId, origin: input.origin, amount: money.owed, currency: booking.currency, method: input.method,
+		bookingId, origin: input.origin, amount, currency: booking.currency, method: input.method,
 		...(input.billId ? { billId: input.billId } : {}),
 		effectiveAt, recordedAt: now, recordedBy: input.actor,
 		...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
@@ -210,12 +225,12 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 	});
 	const bookingIdText = bookingId as string;
 	const updated = await writeBooking(ctx, booking, {
-		paymentStatus: 'paid',
+		paymentStatus: full ? 'paid' : booking.paymentStatus,
 		status: 'confirmed',
-		// The first payment's business date; a later balance payment keeps it.
-		paidAt: booking.paymentStatus === 'paid' ? (booking.paidAt ?? effectiveAt) : effectiveAt,
+		// The first payment's business date; a later balance payment keeps it. A part payment leaves it.
+		paidAt: !full ? booking.paidAt : booking.paymentStatus === 'paid' ? (booking.paidAt ?? effectiveAt) : effectiveAt,
 		// Paid in full: a deposit taken earlier is part of the total, not on top of it.
-		amountPaid: round2(money.gross + money.owed),
+		amountPaid: round2(money.gross + amount),
 		paymentMethod: booking.paymentMethod ?? input.legacyMethod,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
@@ -225,7 +240,7 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 		actor: input.actor, kind: 'payment_recorded', effectiveAt,
 		...(input.note ? { reason: input.note } : {}),
 		details: {
-			paymentId, origin: input.origin, method: input.method, amount: money.owed, ...(input.billId ? { billId: input.billId } : {}),
+			paymentId, origin: input.origin, method: input.method, amount, ...(input.billId ? { billId: input.billId } : {}),
 			...('legacyStripeGross' in legacyEvidence ? { legacyStripeGross: legacyEvidence.legacyStripeGross } : {})
 		}
 	});

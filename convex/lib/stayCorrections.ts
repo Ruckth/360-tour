@@ -16,6 +16,7 @@ import {
 	writeBooking
 } from './bookingMoney';
 import { isSettledOrder } from './orderLinks';
+import { orderLineLinks } from './lineLinks';
 
 /**
  * Refunds, cancellations and mistaken-entry corrections on a stay (see lib/bookingMoney.ts for the
@@ -69,7 +70,11 @@ export async function refundReplay(ctx: ReadCtx, bookingId: Id<'bookings'>, inpu
 export async function orderStayCharge(ctx: ReadCtx, billId: Id<'bills'>, bookingId: Id<'bookings'>) {
 	const rows = await ctx.db.query('billLines').withIndex('by_billId_and_kind', (q) => q.eq('billId', billId).eq('kind', 'booking')).take(MAX_ORDER_LINES);
 	const line = rows.find((row) => row.bookingId === bookingId);
-	return line ? { line, charged: round2(lineNet(line) - (line.deposit ?? 0)) } : null;
+	if (line) return { line, charged: round2(lineNet(line) - (line.deposit ?? 0)) };
+	// A room row paid on the order and applied to the stay later (pos.linkPaidLine).
+	const link = (await orderLineLinks(ctx, billId, 'active')).find((row) => row.bookingId === bookingId);
+	const linked = link ? await ctx.db.get(link.lineId) : null;
+	return link && linked ? { line: linked, charged: link.amount } : null;
 }
 
 async function refundsForOrder(ctx: ReadCtx, billId: Id<'bills'>, bookingId: Id<'bookings'>) {
@@ -80,7 +85,8 @@ async function refundsForOrder(ctx: ReadCtx, billId: Id<'bills'>, bookingId: Id<
 /** The itemised payment an order settled for this stay, if the order was paid after payments were itemised. */
 export async function orderStayPayment(ctx: ReadCtx, billId: Id<'bills'>, bookingId: Id<'bookings'>) {
 	const rows = await ctx.db.query('bookingPayments').withIndex('by_billId', (q) => q.eq('billId', billId)).take(MAX_STAY_ROWS);
-	return rows.find((row) => row.bookingId === bookingId) ?? null;
+	// A row linked, unlinked and linked again leaves a cancelled payment beside the live one.
+	return rows.find((row) => row.bookingId === bookingId && row.status === 'recorded') ?? rows.find((row) => row.bookingId === bookingId) ?? null;
 }
 
 /**

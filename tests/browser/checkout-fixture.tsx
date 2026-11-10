@@ -20,6 +20,8 @@ import "@/app.css";
  *                coupon-soldout  DCNT-L2-300 sold out by another till; paying is refused
  *                coupon-changed  DCNT-L-10 capped since it was applied; paying is refused
  *                coupon-paid     DCNT-SPA-500 paid by card, on the receipt
+ *                unscheduled     Somchai's Thai massage 90 with no date or time, unpaid
+ *                unscheduled-paid  the same, paid by cash, on the receipt (his appointment still unlinked)
  */
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
@@ -80,6 +82,15 @@ async function seed() {
     await actions.openOrderFor({ appointmentId });
     return orderId;
   }
+  if (scenario === "unscheduled" || scenario === "unscheduled-paid") {
+    // Somchai prepays a Thai massage 90 with no date or time; his unpaid appointment for it exists.
+    ({ orderId } = await actions.addItem({ item: service(2) }));
+    await actions.linkCustomer({ orderId, customerId: "fxcust000002" as Id<"customers"> });
+    if (scenario === "unscheduled-paid") {
+      await actions.settleOrder({ orderId, expectedRevision: 2, expectedDue: 1600, expectedCustomerRevision: 0, idempotencyKey: "browser-pay-unscheduled", tenders: [{ method: "cash", amount: 1600 }] });
+    }
+    return orderId;
+  }
   if (params.get("scenario") === "history") {
     ({ orderId } = await actions.addItem({ item: { kind: "extra", name: "Original tea", price: 100 } }));
     await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 100, idempotencyKey: "browser-pay-history", tenders: [{ method: "card", amount: 100 }] });
@@ -95,7 +106,7 @@ async function seed() {
 
 function Harness({ initialOrder }: { initialOrder: OrderId | null }) {
   const [orderId, setOrderId] = useState(initialOrder);
-  const [receiptId, setReceiptId] = useState<OrderId | null>(scenario === "coupon-paid" ? initialOrder : null);
+  const [receiptId, setReceiptId] = useState<OrderId | null>(scenario === "coupon-paid" || scenario === "unscheduled-paid" ? initialOrder : null);
   return (
     <CheckoutBackendProvider backend={backend}>
       <div className="flex h-dvh flex-col bg-background text-foreground" data-fixture-ready="">
