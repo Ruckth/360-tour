@@ -2,6 +2,9 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CopyPlus, Facebook, Instagram, Link2, MapPin, MessageCircle, Pause, Pencil, Play, Plus, QrCode, Send, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { adminMarketingPath } from "../admin-routes";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedTabs } from "../SegmentedTabs";
 import { StatusBadge } from "../StatusBadge";
 import { EmptyState, SearchBox } from "../admin-bulk";
+import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { LinkEditor, type LinkPreset } from "./LinkEditor";
 import { Callout, CopyButton, CouponChip, EditorSheet, NoticeBar, RowMenu, SlugChip, countTabs, useConfirmedChange, useEditorSheet, useNotice, type RowAction } from "./MarketingBits";
 import { QrCardDialog } from "./QrCardDialog";
@@ -52,6 +56,10 @@ type LinksViewProps = {
 };
 
 export function LinksView({ links, campaigns, coupons, properties, origin, brand, today, campaignsHref, actions, history }: LinksViewProps) {
+  const access = useMarketingAccess();
+  const router = useRouter();
+  const canonicalPartnerLink = (link: LinkRow) => !!link.affiliateId && link.slug.startsWith("r/");
+  const editable = (link: LinkRow) => canEditMarketing(access, link) && !canonicalPartnerLink(link) && (!link.affiliateId || access.capabilities.partners);
   const { notice, show, clear } = useNotice();
   const { pending, run } = useConfirmedChange<Id<"marketingLinks">>(show);
   const sheet = useEditorSheet<{ link?: LinkRow; preset?: LinkPreset }>();
@@ -88,12 +96,13 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
     setOfferIssuesOnly(false);
   }
 
-  const openNew = (preset?: LinkPreset) => sheet.open({ preset });
-  const openEdit = (link: LinkRow) => sheet.open({ link });
+  const openNew = (preset?: LinkPreset) => { if (access.capabilities.draft) sheet.open({ preset }); };
+  const openEdit = (link: LinkRow) => { if (canonicalPartnerLink(link)) router.push(adminMarketingPath("affiliates")); else sheet.open({ link }); };
   // The open QR card follows the live row, so publishing from it unlocks the downloads.
   const qrCurrent = qrLink ? (all.find((link) => link._id === qrLink._id) ?? qrLink) : null;
 
   function changeStatus(link: LinkRow, status: LinkStatus) {
+    if (!access.capabilities.publish || canonicalPartnerLink(link)) return Promise.resolve();
     const url = shortUrl(origin, link.shortUrlPath).display;
     const destination = destinationLabel(link.destination, villaName).toLowerCase();
     const copy: Record<LinkStatus, { title: string; description: string; confirmLabel: string; done: string; destructive?: boolean }> = {
@@ -134,12 +143,16 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   function rowActions(link: LinkRow): RowAction[] {
     const busy = pending === link._id;
     const list: RowAction[] = [];
-    if (link.status !== "archived") list.push({ label: "Edit", icon: Pencil, onSelect: () => openEdit(link) });
-    list.push({ label: "Duplicate", icon: CopyPlus, onSelect: () => openNew({ from: link }) });
-    if (link.status === "draft") list.push({ label: "Publish", icon: Send, onSelect: () => void changeStatus(link, "active"), disabled: busy });
-    if (link.status === "active") list.push({ label: "Pause", icon: Pause, onSelect: () => void changeStatus(link, "paused"), disabled: busy });
-    if (link.status === "paused") list.push({ label: "Resume", icon: Play, onSelect: () => void changeStatus(link, "active"), disabled: busy });
-    if (link.status !== "archived") list.push({ label: "Archive", icon: Archive, onSelect: () => void changeStatus(link, "archived"), destructive: true, disabled: busy });
+    if (canonicalPartnerLink(link)) {
+      list.push({ label: access.capabilities.partners ? "Manage partner" : "View partner", icon: Pencil, onSelect: () => router.push(adminMarketingPath("affiliates")) });
+      return list;
+    }
+    if (link.status !== "archived") list.push({ label: editable(link) ? "Edit" : "View details", icon: Pencil, onSelect: () => openEdit(link) });
+    if (access.capabilities.draft) list.push({ label: link.affiliateId && !access.capabilities.partners ? "Duplicate without partner" : "Duplicate", icon: CopyPlus, onSelect: () => openNew({ from: link }) });
+    if (access.capabilities.publish && link.status === "draft") list.push({ label: "Publish", icon: Send, onSelect: () => void changeStatus(link, "active"), disabled: busy });
+    if (access.capabilities.publish && link.status === "active") list.push({ label: "Pause", icon: Pause, onSelect: () => void changeStatus(link, "paused"), disabled: busy });
+    if (access.capabilities.publish && link.status === "paused") list.push({ label: "Resume", icon: Play, onSelect: () => void changeStatus(link, "active"), disabled: busy });
+    if (access.capabilities.publish && link.status !== "archived") list.push({ label: "Archive", icon: Archive, onSelect: () => void changeStatus(link, "archived"), destructive: true, disabled: busy });
     return list;
   }
 
@@ -153,7 +166,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
       wide
       header={
         <>
-          <SheetTitle>{editing?.link ? `Edit ${editing.link.shortUrlPath}` : "New link"}</SheetTitle>
+          <SheetTitle>{editing?.link ? `${editable(editing.link) ? "Edit" : "View"} ${editing.link.shortUrlPath}` : "New link"}</SheetTitle>
           <SheetDescription>
             {editing?.link ? "Changes apply to everyone who opens the link from now on." : "It starts counting opens as soon as it’s live."}
           </SheetDescription>
@@ -190,7 +203,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
     return (
       <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-4 px-4 py-4 sm:px-6">
         <NoticeBar notice={notice} onClose={clear} />
-        <FirstRun origin={origin} onNew={openNew} />
+        <FirstRun origin={origin} onNew={openNew} canDraft={access.capabilities.draft} />
         {editorSheet}
       </div>
     );
@@ -203,10 +216,10 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
           One short link for each place you share. It records where guests came from and can suggest a coupon. Published links never change
           address, so printed QR codes keep working.
         </p>
-        <Button size="sm" onClick={() => openNew()} className="w-full sm:w-auto">
+        {access.capabilities.draft ? <Button size="sm" onClick={() => openNew()} className="w-full sm:w-auto">
           <Plus aria-hidden className="size-4" />
           New link
-        </Button>
+        </Button> : null}
       </div>
 
       {issues.length > 0 && !offerIssuesOnly ? (
@@ -321,6 +334,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                               >
                                 {link.name}
                               </button>
+                              {canonicalPartnerLink(link) ? <Link href={adminMarketingPath("affiliates")} className="block text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
                               <div className="flex min-w-0 items-center gap-0.5">
                                 <span className="min-w-0 break-all font-mono text-xs text-muted-foreground">{url.display}</span>
                                 <CopyButton text={url.full} label={`Copy ${url.display}`} className="size-7 [&_svg]:size-3.5" />
@@ -382,6 +396,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                       <SlugChip path={link.shortUrlPath} large />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-foreground">{link.name}</p>
+                        {canonicalPartnerLink(link) ? <Link href={adminMarketingPath("affiliates")} className="text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
                         <p className="break-all font-mono text-xs text-muted-foreground">{url.display}</p>
                       </div>
                       <StatusBadge {...LINK_STATUS[link.status]} />
@@ -512,7 +527,7 @@ function LinksSkeleton() {
   );
 }
 
-function FirstRun({ origin, onNew }: { origin: string; onNew: (preset?: LinkPreset) => void }) {
+function FirstRun({ origin, onNew, canDraft }: { origin: string; onNew: (preset?: LinkPreset) => void; canDraft: boolean }) {
   const host = shortUrl(origin, "/").display;
   return (
     <section aria-labelledby="links-first-run" className="rounded-xl border border-border bg-card shadow-sm">
@@ -522,14 +537,14 @@ function FirstRun({ origin, onNew }: { origin: string; onNew: (preset?: LinkPres
         </span>
         <div className="grid gap-2">
           <h2 id="links-first-run" className="text-lg font-semibold leading-tight text-foreground">
-            Make your first short link
+            {canDraft ? "Make your first short link" : "No short links yet"}
           </h2>
           <p className="text-sm text-muted-foreground">
             Give each place you share its own link, like <span className="font-mono text-foreground">{host}f</span> for your Facebook page. You’ll
             see which places bring guests, and you can turn any link into a QR offer card.
           </p>
         </div>
-        <div className="grid w-full gap-2 text-left sm:grid-cols-2" aria-label="Quick start">
+        {canDraft ? <><div className="grid w-full gap-2 text-left sm:grid-cols-2" aria-label="Quick start">
           {QUICK_STARTS.map(({ name, slug, hint, icon: Icon }) => (
             <button
               key={slug}
@@ -551,7 +566,7 @@ function FirstRun({ origin, onNew }: { origin: string; onNew: (preset?: LinkPres
         <Button type="button" onClick={() => onNew()}>
           <Plus aria-hidden className="size-4" />
           New link
-        </Button>
+        </Button></> : <p className="text-sm text-muted-foreground">A manager or marketer can create short links.</p>}
       </div>
     </section>
   );

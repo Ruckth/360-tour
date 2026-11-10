@@ -1,6 +1,6 @@
 import { internalAction, internalMutation } from './_generated/server';
 import { v } from 'convex/values';
-import { api, internal } from './_generated/api';
+import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import { generateConciergeReply, type GenerateConciergeReplyArgs } from './chatAi';
 
@@ -24,6 +24,21 @@ export const createSession = internalMutation({
 		})
 });
 
+/** Evaluation transcripts intentionally skip production quotas, alerts and inbox tasks. */
+export const writeMessage = internalMutation({
+  args: { sessionId: v.id('chatSessions'), role: v.union(v.literal('user'), v.literal('assistant')), content: v.string() },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session?.visitorId?.startsWith('eval:')) throw new Error('Requires an eval session');
+    if (args.content.length > 2000 && args.role === 'user') throw new Error('Message is too long');
+    if (args.role === 'assistant' && session.aiPaused) return null;
+    const timestamp = Date.now();
+    const id = await ctx.db.insert('chatMessages', { ...args, timestamp });
+    await ctx.db.patch(args.sessionId, { messageCount: (session.messageCount ?? 0) + 1, latestMessageAt: timestamp });
+    return id;
+  }
+});
+
 /** Explicit-model comparison using the same concierge pipeline, with no channel delivery. */
 export const comparisonTurn = internalAction({
 	args: {
@@ -33,13 +48,13 @@ export const comparisonTurn = internalAction({
 	handler: async (ctx, args) => {
 		const session: Doc<'chatSessions'> | null = await ctx.runQuery(internal.chat.getSessionInternal, { sessionId: args.sessionId });
 		if (!session || !session.visitorId?.startsWith('eval:')) throw new Error('Comparison requires an eval session');
-		await ctx.runMutation(api.chat.addMessage, { sessionId: args.sessionId, role: 'user', content: args.userMessage });
+		await ctx.runMutation(internal.chatEval.writeMessage, { sessionId: args.sessionId, role: 'user', content: args.userMessage });
 		const toolTrace: NonNullable<GenerateConciergeReplyArgs['toolTrace']> = [];
 		const llmTrace: NonNullable<GenerateConciergeReplyArgs['llmTrace']> = [];
 		const result = await generateConciergeReply(ctx, {
 			...args, channel: session.channel, bookingFlow: session.channel !== 'web', evalModel: args.model, toolTrace, llmTrace
 		}, session);
-		await ctx.runMutation(api.chat.addMessage, { sessionId: args.sessionId, role: 'assistant', content: result.response });
+		await ctx.runMutation(internal.chatEval.writeMessage, { sessionId: args.sessionId, role: 'assistant', content: result.response });
 		return { ...result, requestedModel: args.model, toolTrace, llmTrace };
 	}
 });
@@ -51,12 +66,12 @@ export const messagingTurn = internalAction({
 		const session: Doc<'chatSessions'> | null = await ctx.runQuery(internal.chat.getSessionInternal, {
 			sessionId: args.sessionId
 		});
-		if (!session) throw new Error('Session not found');
-		await ctx.runMutation(api.chat.addMessage, { sessionId: args.sessionId, role: 'user', content: args.userMessage });
+		if (!session?.visitorId?.startsWith('eval:')) throw new Error('Requires an eval session');
+		await ctx.runMutation(internal.chatEval.writeMessage, { sessionId: args.sessionId, role: 'user', content: args.userMessage });
 		const toolTrace: NonNullable<GenerateConciergeReplyArgs['toolTrace']> = [];
 		const channel = session.channel === 'web' ? 'whatsapp' : session.channel;
 		const result = await generateConciergeReply(ctx, { ...args, channel, bookingFlow: true, toolTrace }, session);
-		await ctx.runMutation(api.chat.addMessage, { sessionId: args.sessionId, role: 'assistant', content: result.response });
+		await ctx.runMutation(internal.chatEval.writeMessage, { sessionId: args.sessionId, role: 'assistant', content: result.response });
 		return { ...result, toolTrace };
 	}
 });

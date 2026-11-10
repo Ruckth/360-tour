@@ -103,7 +103,7 @@ export function MarketingLinksScreen() {
   const links = useQuery(api.marketing.listLinks, {});
   const campaigns = useQuery(api.marketing.listCampaigns, {});
   const coupons = useQuery(api.marketing.listCoupons, {});
-  const properties = useQuery(api.properties.adminList, {});
+  const properties = useQuery(api.marketing.catalog, {});
   const profile = useQuery(api.settings.publicProfile, {});
   return (
     <LinksView
@@ -143,7 +143,7 @@ export function MarketingCampaignsScreen() {
 export function MarketingCouponsScreen() {
   const coupons = useQuery(api.marketing.listCoupons, {});
   const campaigns = useQuery(api.marketing.listCampaigns, {});
-  const properties = useQuery(api.properties.adminList, {});
+  const properties = useQuery(api.marketing.catalog, {});
   return (
     <CouponsView
       coupons={coupons}
@@ -164,7 +164,7 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const detail = useQuery(api.marketing.getCoupon, isNew ? "skip" : { couponId });
   const coupons = useQuery(api.marketing.listCoupons, {});
   const campaigns = useQuery(api.marketing.listCampaigns, {});
-  const properties = useQuery(api.properties.adminList, {});
+  const properties = useQuery(api.marketing.catalog, {});
   return (
     <CouponEditor
       detail={detail}

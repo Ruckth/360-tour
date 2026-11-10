@@ -162,6 +162,7 @@ describe('tool inputs and honest outcomes', () => {
 	it('does not treat a refusal to cancel as consent when cancellation is already pending', async () => {
 		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		const booked = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+		if (booked.needsReview) throw new Error("Expected a confirmed booking");
 		await t.mutation(internal.bookings.cancelChatBooking, { sessionId, reference: booked.confirmationCode, turnStartedAt: Date.now() });
 		modelSequence([modelReply(null, 'cancel_booking', JSON.stringify({ reference: booked.confirmationCode }), 'tool_calls'), modelReply('Booking cancelled.')]);
 		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "Don't cancel my booking." });
@@ -200,7 +201,7 @@ describe('tool inputs and honest outcomes', () => {
 		const { t, sessionId, propertyId, stay } = await setup();
 		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 9000 }));
-		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('price changed');
+		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).resolves.toMatchObject({ needsReview: true });
 		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
 
@@ -213,6 +214,7 @@ describe('tool inputs and honest outcomes', () => {
 	it('does not present a cancelled booking as a fresh confirmation', async () => {
 		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		const booked = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+		if (booked.needsReview) throw new Error("Expected a confirmed booking");
 		await t.run(ctx => ctx.db.patch(booked.bookingId, { status: 'cancelled' }));
 		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('cancelled');
 	});
@@ -257,6 +259,8 @@ it('recovers the same committed booking for a second yes using the original prop
 	const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 	const expectedProposal = proposalIdentity((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote);
 	const first = await t.mutation(internal.bookings.confirmChatBooking, { sessionId, expectedProposal });
+	if (first.needsReview) throw new Error("Expected a confirmed booking");
 	const repeated = await t.mutation(internal.bookings.confirmChatBooking, { sessionId, expectedProposal });
+	if (repeated.needsReview) throw new Error("Expected a confirmed booking");
 	expect(repeated.confirmationCode).toBe(first.confirmationCode); expect(repeated.alreadyConfirmed).toBe(true); expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(1);
 });

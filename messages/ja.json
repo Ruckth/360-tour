@@ -131,7 +131,7 @@
   "Booking": {
     "confirmAndPay": "確定して支払う",
     "summaryExpired": "この見積もりの有効期限が切れました。チャットで新しい見積もりを依頼してください。",
-    "summaryPriceChanged": "ヴィラの料金が変更されました。チャットで新しい見積もりを依頼してください。",
+    "summaryPriceChanged": "料金またはクーポンが変更されました。上記の更新内容を確認し、再度確認してお進みください。",
     "cancellationPolicy": "キャンセルポリシー",
     "holdAfterConfirm": "確定後、日程は{minutes}分間仮押さえされます。支払いを開始すると、決済セッションの有効期限まで延長されます。",
     "holdUntil": "日程は{time}まで仮押さえされています。",

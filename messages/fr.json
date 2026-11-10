@@ -131,7 +131,7 @@
   "Booking": {
     "confirmAndPay": "Confirmer et payer",
     "summaryExpired": "Ce récapitulatif a expiré. Demandez-en un nouveau dans le chat.",
-    "summaryPriceChanged": "Le prix de la villa a changé. Demandez un nouveau récapitulatif dans le chat.",
+    "summaryPriceChanged": "Le prix ou le coupon a changé. Vérifiez le récapitulatif mis à jour ci-dessus et confirmez à nouveau pour continuer.",
     "cancellationPolicy": "Conditions d’annulation",
     "holdAfterConfirm": "Les dates sont réservées pendant {minutes} minutes après votre confirmation. Le lancement du paiement prolonge cette réservation jusqu’à l’expiration de la session de paiement.",
     "holdUntil": "Vos dates sont réservées jusqu’au {time}.",

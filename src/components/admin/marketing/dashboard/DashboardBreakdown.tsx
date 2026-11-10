@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { SegmentedTabs, tabPanelProps } from "../../SegmentedTabs";
 import { StatusBadge } from "../../StatusBadge";
 import type { Tone } from "../../status-tones";
+import { useMarketingAccess } from "../MarketingAccess";
 import { thb } from "../marketing-format";
 import {
   formatPercent,
@@ -61,12 +62,12 @@ const Dash = ({ title }: { title?: string }) => (
 
 type Column = { key: SortKey; label: string };
 
-function columns(b: Breakdown): Column[] {
+function columns(b: Breakdown, cash: boolean): Column[] {
   const label = VIEWS.find((v) => v.value === b.view)!.label;
   return [
     { key: "name", label: b.path.length ? (b.path[b.path.length - 1].level === "source" ? "Campaign" : "Link") : label },
     ...(b.showSessions ? [{ key: "sessions" as const, label: "Sessions" }] : []),
-    { key: "paid", label: b.view === "coupon" ? "Paid uses" : "Paid" },
+    { key: "paid", label: cash ? "First paid" : b.view === "coupon" ? "Paid uses" : "Paid" },
     ...(b.showSessions ? [{ key: "conv" as const, label: "Conversion" }] : []),
     { key: "discount", label: "Discounts" },
     { key: "collected", label: "Collected" },
@@ -77,10 +78,11 @@ function columns(b: Breakdown): Column[] {
 }
 
 function RoasCell({ roas, onAddSpend, tracked }: { roas?: Roas; onAddSpend?: (ids: string[]) => void; tracked: boolean }) {
+  const { capabilities } = useMarketingAccess();
   if (!roas || !tracked) return <Dash />;
   if (roas.kind === "all_properties_only") return <span className="text-xs text-muted-foreground">All properties only</span>;
   if (roas.kind === "missing") {
-    if (!onAddSpend || !roas.campaignIds.length) return <Dash title="No spend entered for these dates" />;
+    if (!capabilities.spend || !onAddSpend || !roas.campaignIds.length) return <Dash title="No spend entered for these dates" />;
     return (
       <button
         type="button"
@@ -113,6 +115,7 @@ function Cell({ row, col, onAddSpend }: { row: BreakdownRow | TotalRow; col: Sor
       return (
         <>
           {num(row.paid)}
+          {row.couponOnlySettlements ? <span className="block text-xs font-normal text-muted-foreground">+{num(row.couponOnlySettlements)} coupon-only</span> : null}
           {row.paidOther ? <span className="block whitespace-nowrap text-xs font-normal text-muted-foreground">+{num(row.paidOther)} {row.paidOther === 1 ? "order" : "orders"}</span> : null}
         </>
       );
@@ -199,9 +202,9 @@ export function DashboardBreakdown({
   onOpen: (row: BreakdownRow) => void;
   onAddSpend: (campaignIds: string[]) => void;
 }) {
-  const cols = columns(b);
+  const cols = columns(b, p.cash);
   const empty = !b.rows.length && !b.pinned.length;
-  const scope = p.cash ? "Finance view · by payment date" : `${p.filters.touch === "first" ? "First touch" : "Last touch"} · sales made in these dates`;
+  const scope = p.cash ? "Finance view · by payment and coupon settlement date" : `${p.filters.touch === "first" ? "First touch" : "Last touch"} · sales made in these dates`;
   const toggleSort = (key: SortKey) => onSort(sort.key === key ? { key, dir: sort.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" });
 
   const th = (col: Column) => {
@@ -368,7 +371,8 @@ export function DashboardBreakdown({
                 <dd className="text-right tabular-nums">
                   <span className="font-semibold text-foreground">{thb(row.net)}</span>
                   <span className="block text-xs text-muted-foreground">
-                    {num(row.paid)} paid
+                    {num(row.paid)} {p.cash ? "first paid" : "paid"}
+                    {row.couponOnlySettlements ? ` + ${num(row.couponOnlySettlements)} coupon-only` : ""}
                     {row.paidOther ? ` + ${num(row.paidOther)} orders` : ""}
                     {row.sessions !== null && b.showSessions ? ` · ${num(row.sessions)} sessions · ${formatPercent(row.conv)}` : ""}
                   </span>
@@ -396,7 +400,7 @@ export function DashboardBreakdown({
       <div {...tabPanelProps("breakdown", b.view)}>{body}</div>
       <p className="border-t border-border px-4 py-2.5 text-xs leading-5 text-muted-foreground">
         {NOTES[b.view]}
-        {p.cash && b.view !== "coupon" ? " The Finance view hides sessions and conversion: they belong to visits, not payments." : ""}
+        {p.cash && b.view !== "coupon" ? " First paid counts sales receiving their first payment; coupon-only counts checkout settlements with no own cash received. The Finance view hides sessions and conversion: they belong to visits." : ""}
         {!p.allProperties && b.showSessions ? " Sessions, conversion and ROAS are for All properties only." : ""}
       </p>
     </section>

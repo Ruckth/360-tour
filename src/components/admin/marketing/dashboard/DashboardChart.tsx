@@ -33,7 +33,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
   const labelEvery = Math.max(1, Math.ceil(data.buckets.length / 7));
   const fmt = (value: number) => (money ? thb(Math.round(value)) : num(value));
-  const title = p.cash ? (money ? "Collected by source" : "Payments completed by source") : money ? "Net collected by source" : "Paid bookings by source";
+  const title = p.cash ? (money ? "Collected by source" : "First-payment sales by source") : money ? "Net collected by source" : "Paid bookings by source";
   const peak = totals.indexOf(Math.max(...totals));
 
   const table = (
@@ -92,7 +92,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
               {p.cash ? "Collected" : "Net collected"}
             </ToggleGroupItem>
             <ToggleGroupItem value="paid" className="py-1.5">
-              {p.cash ? "Payments" : "Paid bookings"}
+              {p.cash ? "First paid" : "Paid bookings"}
             </ToggleGroupItem>
           </ToggleGroup>
           <Button type="button" variant="ghost" size="sm" aria-pressed={asTable} onClick={() => setAsTable((v) => !v)} className="aria-pressed:bg-muted">

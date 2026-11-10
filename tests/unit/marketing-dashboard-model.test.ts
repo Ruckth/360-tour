@@ -16,7 +16,7 @@ import {
   type ReportFilters,
   type Sort,
 } from "@/components/admin/marketing/dashboard/report-model";
-import { salesCsv } from "@/components/admin/marketing/dashboard/report-csv";
+import { salesCsv, summaryCsv } from "@/components/admin/marketing/dashboard/report-csv";
 import { dashboardReport, FIXTURE_FROM, FIXTURE_TO, FIXTURE_TODAY } from "../browser/marketing-dashboard-data";
 
 const LAST: ReportFilters = { property: "all", touch: "last" };
@@ -412,4 +412,26 @@ describe("sales CSV numbers", () => {
     expect(lines.find((line) => line.includes(`,${small.id},`))).toMatch(/,99\.5,0,0,99\.5$/);
     expect(lines.some((line) => line.includes("'-"))).toBe(false);
   });
+});
+
+
+it("counts coupon-only Finance settlements separately throughout totals, breakdowns and CSV", () => {
+  const covered = sale({ kind: "order", channel: "pos", id: "covered", bucket: "staff", paidDay: undefined, settlementDay: "2026-10-10", collected: 0, discount: 500 });
+  const p = prepareReport(report({ basis: "cash", sales: [covered] }), LAST);
+  expect(businessTotals(p).all).toMatchObject({ collected: 0, discount: 500, paid: 0, couponOnlySettlements: 1 });
+  expect(chartData(p, "paid").buckets.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(0);
+  const b = buildBreakdown(p, "source", [], BY_NET);
+  expect(b.pinned[0]).toMatchObject({ paid: 0, couponOnlySettlements: 1, discount: 500 });
+  const csv = salesCsv(p, "All properties").split("\r\n");
+  const header = csv.find(line => line.startsWith("Kind,"))!.split(",");
+  const values = csv.find(line => line.includes(",covered,"))!.split(",");
+  const cells = Object.fromEntries(header.map((key, i) => [key, values[i]]));
+  expect(cells).toMatchObject({ "Paid day": "", "First payment in range": "no", "Settlement day": "2026-10-10", "Coupon-only settlement": "yes", Collected: "0", Discount: "500" });
+  const summary = summaryCsv(p, "All properties", b, "").split("\r\n");
+  const summaryHeader = summary.find(line => line.startsWith("Row,"))!.split(",");
+  const total = summary.find(line => line.startsWith("total,Business total,"))!.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+  expect(Object.fromEntries(summaryHeader.map((key, i) => [key, total[i]]))).toMatchObject({ "First-payment sales": "0", "Coupon-only settlements": "1", Discounts: "500", Collected: "0" });
+  const cohort = prepareReport(report({ sales: [covered] }), LAST);
+  expect(businessTotals(cohort).all).toMatchObject({ paid: 0, paidOther: 1, discount: 500 });
+  expect(salesCsv(cohort, "All properties")).not.toContain("Settlement day");
 });

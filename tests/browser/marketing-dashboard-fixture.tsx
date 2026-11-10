@@ -2,13 +2,13 @@ import type { ReportData } from "convex/lib/marketingReport";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DashboardView, DEFAULT_REQUEST, type ReportRequest, type ReportState } from "@/components/admin/marketing/dashboard/DashboardView";
-import { dashboardReport, FIXTURE_AS_OF, FIXTURE_TODAY, firstRunReport } from "./marketing-dashboard-data";
+import { dashboardReport, FIXTURE_AS_OF, FIXTURE_TODAY, firstRunReport, untrackedReport } from "./marketing-dashboard-data";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import "@/app.css";
 
 /*
  * Release 3b marketing dashboard on fixture data (marketing-dashboard-data.ts, from kit/data.md).
- *   case=normal | first-run | loading | error | no-spend | refunds (Finance view) | truncated
+ *   case=normal | first-run | untracked (sales, no campaigns yet) | loading | error | no-spend | refunds (Finance view) | truncated
  *   theme=dark   dark app theme (light otherwise)
  * Calls the dashboard makes are recorded on document.body.dataset for the spec.
  */
@@ -18,6 +18,7 @@ const scenario = params.get("case") ?? "normal";
 
 function reportFor(request: ReportRequest): ReportData {
   if (scenario === "first-run") return firstRunReport();
+  if (scenario === "untracked") return { ...untrackedReport({ basis: request.basis }), from: request.range.from, to: request.range.to };
   const base = dashboardReport({ basis: request.basis, spend: scenario !== "no-spend", truncated: scenario === "truncated", nonThb: scenario === "truncated" ? 2 : 0 });
   return { ...base, from: request.range.from, to: request.range.to };
 }

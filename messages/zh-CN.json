@@ -131,7 +131,7 @@
   "Booking": {
     "confirmAndPay": "确认并付款",
     "summaryExpired": "此摘要已过期。请在聊天中索取新的摘要。",
-    "summaryPriceChanged": "别墅价格已变更。请在聊天中索取新的摘要。",
+    "summaryPriceChanged": "价格或优惠码已变更。请核对上方更新的摘要，再次确认后继续。",
     "cancellationPolicy": "取消政策",
     "holdAfterConfirm": "确认后，日期将为您保留{minutes}分钟。开始付款后，保留时间将延长至付款会话过期。",
     "holdUntil": "您的日期将保留至{time}。",

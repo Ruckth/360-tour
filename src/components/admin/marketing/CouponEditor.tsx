@@ -3,6 +3,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { normalizeCouponCode } from "convex/lib/offers";
 import { Archive, ArrowLeft, Lock, Pause, Play, Send, Wand2 } from "lucide-react";
+import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -58,6 +59,8 @@ type CouponEditorProps = {
 };
 
 export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, actions, onCreated, history, refusals }: CouponEditorProps) {
+  const { capabilities } = useMarketingAccess();
+  if (isNew && !capabilities.draft) return <div className="mx-auto max-w-3xl p-6"><h2 className="text-xl font-semibold">Creating coupons requires draft access</h2><ButtonLink href={listHref} variant="outline" className="mt-3">Back to coupons</ButtonLink></div>;
   if (!isNew && detail === undefined) return <EditorSkeleton />;
   if (!isNew && detail === null) {
     return (
@@ -162,6 +165,8 @@ function CouponBuilder({
   history?: CouponEditorProps["history"];
   refusals?: CouponEditorProps["refusals"];
 }) {
+  const access = useMarketingAccess();
+  const canEdit = canEditMarketing(access, detail);
   const id = useId();
   const router = useRouter();
   const confirm = useConfirm();
@@ -190,7 +195,7 @@ function CouponBuilder({
   const state = detail ? couponState(detail, today) : null;
   const liveCampaigns = campaigns.filter((campaign) => campaign.status !== "archived" || campaign._id === form.campaignId);
 
-  const saveHint = !detail
+  const saveHint = !canEdit ? "Read-only for your Marketing role" : !detail
     ? "Saved as version 1"
     : !dirty
       ? "No changes"
@@ -200,6 +205,7 @@ function CouponBuilder({
 
   async function save(event?: FormEvent) {
     event?.preventDefault();
+    if (!canEdit) return;
     setSubmitted(true);
     if (firstError) {
       document.getElementById(`${id}-${firstError}`)?.focus();
@@ -226,7 +232,7 @@ function CouponBuilder({
   }
 
   async function changeStatus(status: CouponStatus) {
-    if (!detail) return;
+    if (!detail || !access.capabilities.publish) return;
     const copy: Record<CouponStatus, { title: string; description: string; label: string; done: string }> = {
       active: {
         title: detail.status === "draft" ? `Publish ${detail.code}?` : `Resume ${detail.code}?`,
@@ -284,9 +290,9 @@ function CouponBuilder({
     "aria-describedby": `${id}-${key}-error ${id}-${key}-hint`,
   });
   const err = (key: keyof CouponFormErrors) => <FieldError id={`${id}-${key}-error`}>{shown(key)}</FieldError>;
-  const disabled = archived;
+  const disabled = archived || !canEdit;
 
-  const saveButton = (className?: string) => (
+  const saveButton = (className?: string) => !canEdit ? null : (
     <Button type="submit" form={`${id}-form`} size="sm" disabled={saving || archived || (detail !== undefined && !dirty)} className={className}>
       {saving ? <Spinner label="Saving" className="text-current" /> : null}
       {detail ? "Save" : "Create coupon"}
@@ -637,7 +643,7 @@ function CouponBuilder({
             </div>
           </section>
 
-          {detail && STATUS_ACTIONS[detail.status].length ? (
+          {access.capabilities.publish && detail && STATUS_ACTIONS[detail.status].length ? (
             <SideCard
               id={`${id}-status`}
               title="Status"

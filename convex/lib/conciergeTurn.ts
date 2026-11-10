@@ -1,3 +1,5 @@
+import { hasUnverifiedOfferClaim, rememberDirectOffer, mentionsCoupon, unverifiedCouponReply } from './chatCouponCopy';
+import { replyLocale } from './conciergePolicy';
 import { InvalidAiResponseError, type ChatMessage, type LlmResponse, type ToolDef } from './chatLlm';
 import { bookingStatusReply, committedReply, hasTransactionCompletionClaim, isCancellationRequest, isGuestConfirmation, proposalReply, toolFailureReply } from './conciergePolicy';
 import { toolError } from './chatTools';
@@ -30,6 +32,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 	let proposal: string | null = null;
 	let status: string | null = null;
 	const reads = new Map<string, string>();
+	const directOfferEvidence = { percents: new Set<number>(), savings: new Set<number>() };
 	const request = async (offeredTools: ToolDef[]) => {
 		const remaining = options.deadlineAt - Date.now();
 		if (remaining <= 0) throw new Error('AI turn deadline exceeded');
@@ -81,6 +84,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 				}
 				const payload = JSON.parse(result) as Record<string, unknown>;
 				const toolOk = !(payload.error || payload.ok === false);
+				if (toolOk) rememberDirectOffer(name, payload, directOfferEvidence);
 				options.metrics?.recordTool?.(name, Date.now() - toolStartedAt, toolOk);
 				failedTool ||= !toolOk;
 				if (name.startsWith('prepare_')) proposal = null;
@@ -107,6 +111,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 		if (response.finishReason === 'length' || response.tool_calls?.length || hasTransactionCompletionClaim(response.content ?? '')) {
 			return { content: toolFailureReply(message), failed: true };
 		}
+		if (mentionsCoupon(message) || mentionsCoupon(response.content ?? '') || hasUnverifiedOfferClaim(message, response.content ?? '', directOfferEvidence)) return { content: unverifiedCouponReply(replyLocale(message)), failed: false, outcome: 'awaiting_guest' };
 		return { content: response.content, failed: false };
 	} catch (error) {
 		// A rejected replacement must not leave an old draft available for a later yes.

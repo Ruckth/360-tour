@@ -131,7 +131,7 @@
   "Booking": {
     "confirmAndPay": "Bestätigen und bezahlen",
     "summaryExpired": "Diese Zusammenfassung ist abgelaufen. Bitte frage im Chat nach einer neuen.",
-    "summaryPriceChanged": "Der Villenpreis hat sich geändert. Bitte frage im Chat nach einer neuen Zusammenfassung.",
+    "summaryPriceChanged": "Der Preis oder Gutschein hat sich geändert. Prüfen Sie die aktualisierte Übersicht oben und bestätigen Sie erneut.",
     "cancellationPolicy": "Stornierungsbedingungen",
     "holdAfterConfirm": "Die Termine werden nach deiner Bestätigung {minutes} Minuten reserviert. Sobald du die Zahlung startest, gilt die Reservierung bis zum Ablauf des Bezahlvorgangs.",
     "holdUntil": "Deine Termine werden bis {time} reserviert.",

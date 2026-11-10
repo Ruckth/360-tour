@@ -35,6 +35,8 @@ import type * as inboxLifecycle from "../inboxLifecycle.js";
 import type * as instagram from "../instagram.js";
 import type * as leads from "../leads.js";
 import type * as marketing from "../marketing.js";
+import type * as marketingAffiliates from "../marketingAffiliates.js";
+import type * as marketingAccess from "../marketingAccess.js";
 import type * as marketingReport from "../marketingReport.js";
 import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminChatMetadata from "../lib/adminChatMetadata.js";
@@ -159,6 +161,8 @@ declare const fullApi: ApiFromModules<{
   inboxLifecycle: typeof inboxLifecycle;
   instagram: typeof instagram;
   leads: typeof leads;
+  marketingAccess: typeof marketingAccess;
+  marketingAffiliates: typeof marketingAffiliates;
   marketing: typeof marketing;
   marketingReport: typeof marketingReport;
   "lib/adminAuth": typeof lib_adminAuth;

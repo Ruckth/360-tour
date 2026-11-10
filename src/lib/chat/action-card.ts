@@ -16,6 +16,7 @@ type ChatBookingActionCard = Extract<ChatActionCard, { type: "booking" }>;
 
 type ChatActionInput = {
   latestUserMessage?: string;
+  guestMessages?: readonly string[];
   latestAssistantMessage?: string;
   activePropertySlug?: string;
   villas?: ChatVillaRef[];
@@ -109,12 +110,14 @@ export function resolveChatActionHint({
 
 function bookingActionFromText({
   latestUserMessage,
+  guestMessages,
   latestAssistantMessage,
   activePropertySlug,
   villas,
   forceIntent = false,
 }: {
   latestUserMessage: string;
+  guestMessages?: readonly string[];
   latestAssistantMessage: string;
   activePropertySlug?: string;
   villas?: ChatVillaRef[];
@@ -122,6 +125,7 @@ function bookingActionFromText({
 }): ChatBookingActionCard {
   const context = extractChatBookingContext({
     latestUserMessage,
+    guestMessages,
     latestAssistantMessage,
     activePropertySlug,
     villas,
@@ -135,6 +139,7 @@ function bookingActionFromText({
 
 export function getChatActionCard({
   latestUserMessage = "",
+  guestMessages,
   latestAssistantMessage = "",
   activePropertySlug,
   villas,
@@ -166,6 +171,7 @@ export function getChatActionCard({
   if (resolvedActionHint === "booking") {
     return bookingActionFromText({
       latestUserMessage,
+      guestMessages,
       latestAssistantMessage,
       activePropertySlug,
       villas,
@@ -182,6 +188,7 @@ export function getChatActionCard({
 
   const bookingAction = bookingActionFromText({
     latestUserMessage,
+    guestMessages,
     latestAssistantMessage,
     activePropertySlug,
     villas,

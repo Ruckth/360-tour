@@ -1,3 +1,4 @@
+import { syncAffiliateCredit } from './affiliateCredits';
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -172,6 +173,7 @@ export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: Bo
 	// A verified late capture reopens and records its payment in this same transaction.
 	// Sync against that final paid state, rather than acquiring an unpaid hold in between.
 	if (updated.promotion && !options.deferCouponSync) await syncCouponRedemption(ctx, updated);
+	await syncAffiliateCredit(ctx, {bookingId: updated._id}, entry.actor);
 	return updated;
 }
 

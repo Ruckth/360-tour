@@ -65,3 +65,27 @@ test('a canonical proposal includes its signed payment link and awaits the guest
   expect(result.content).toContain(`Confirm & pay: ${confirmUrl}`);
   expect(result.content).toContain('not booked yet');
 });
+
+test.each([
+  'Use SAVE90 at checkout for 90% off.',
+  'Enter SUMMER at checkout.',
+  'Book today and save 90%.',
+  'Book today and save ฿9,000.',
+])('rejects unverified promotional prose without coupon terminology: %s', async content => {
+  const result = await runConciergeTurn({ message: 'Any deals for November?', messages: [], tools: TOOLS,
+    deadlineAt: Date.now() + 20000, request: async () => ({ content }), execute: vi.fn() });
+  expect(result.content).not.toBe(content);
+  expect(result.content).toContain('check the current eligibility');
+});
+
+test('keeps verified direct discounts and unrelated property facts', async () => {
+  const content = 'The villa has two bedrooms. Direct booking saves 15%, or THB 3,000; total THB 17,000.';
+  const replies: LlmResponse[] = [call('calculate_price'), { content }];
+  const result = await runConciergeTurn({ message: 'Any deals for November?', messages: [], tools: TOOLS,
+    deadlineAt: Date.now() + 20000, request: async () => replies.shift()!, execute: async () => JSON.stringify({ discountPercent: 15, discountAmount: 3000, directTotal: 17000 }) });
+  expect(result.content).toBe(content);
+  const facts = 'The villa has two bedrooms and a private pool.';
+  const normal = await runConciergeTurn({ message: 'Tell me about the villa', messages: [], tools: TOOLS,
+    deadlineAt: Date.now() + 20000, request: async () => ({ content: facts }), execute: vi.fn() });
+  expect(normal.content).toBe(facts);
+});

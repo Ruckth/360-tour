@@ -413,16 +413,14 @@ describe("static suggestion chips remain live", () => {
         channel: "web",
         visitorId: "visitor-public-assistant",
       });
-      const userMessageId = await t.mutation(api.chat.addMessage, {
+      const userMessageId = await t.mutation(internal.chat.acceptGuestMessage, {
         sessionId,
-        role: "user",
         content: "What's included when booking direct?",
       });
       expect(userMessageId).toBeTruthy();
 
-      await t.mutation(api.chat.addMessage, {
+      await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
         sessionId,
-        role: "assistant",
         content: "Direct booking includes host support and better pricing.",
       });
       await finishScheduledWork(t);
@@ -450,9 +448,8 @@ describe("static suggestion chips remain live", () => {
         channel: "web",
         visitorId: "visitor-internal-assistant",
       });
-      const userMessageId = await t.mutation(api.chat.addMessage, {
+      const userMessageId = await t.mutation(internal.chat.acceptGuestMessage, {
         sessionId,
-        role: "user",
         content: "What's included when booking direct?",
       });
 

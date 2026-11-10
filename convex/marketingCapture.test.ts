@@ -189,6 +189,7 @@ describe('web chat capture', () => {
     expect((await s.t.run(ctx => ctx.db.get(sessionId)))?.marketingCapture).toEqual({ visitorKey, slug: 'f1' });
     await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
     const result = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    if (result.needsReview) throw new Error("Expected a confirmed booking");
     expect((await s.t.run(ctx => ctx.db.get(result.bookingId)))?.marketingAttribution).toMatchObject({ evidence: 'tracked', last: { slug: 'f1' } });
   });
 
@@ -209,7 +210,9 @@ describe('web chat capture', () => {
     await s.session(now - day);
     const capture = async (sessionId: Id<'chatSessions'>) => (await s.t.run(ctx => ctx.db.get(sessionId)))?.marketingCapture;
     const say = (sessionId: Id<'chatSessions'>, role: 'user' | 'assistant', marketing?: { visitorKey?: string; slug?: string }) =>
-      s.t.mutation(api.chat.addMessage, { sessionId, role, content: 'Hi', ...(marketing ? { marketing } : {}) });
+      role === 'user'
+        ? s.t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Hi', ...(marketing ? { marketing } : {}) })
+        : s.t.mutation(internal.chat.addAssistantMessageWithSuggestions, { sessionId, content: 'Hi' });
     // Started before consent in a tab that arrived through /f1, then continued in a new tab with nothing.
     const stale = await s.t.mutation(api.chat.createSession, { channel: 'web', marketing: { slug: 'f1' } });
     await say(stale, 'user');
@@ -218,6 +221,7 @@ describe('web chat capture', () => {
     expect(await capture(stale)).toBeUndefined();
     await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId: stale });
     const unattributed = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId: stale });
+    if (unattributed.needsReview) throw new Error("Expected a confirmed booking");
     expect(await s.t.run(ctx => ctx.db.get(unattributed.bookingId))).not.toHaveProperty('marketingAttribution');
     // Consent given after the chat started; assistant messages never change it.
     const later = await s.t.mutation(api.chat.createSession, { channel: 'web' });
@@ -232,6 +236,7 @@ describe('web chat capture', () => {
     const sessionId = await s.t.mutation(api.chat.createSession, { channel: 'web', marketing: { visitorKey } });
     const { confirmToken } = await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
     const result = await s.t.mutation(api.bookings.confirmProposal, { token: confirmToken, marketing: {} });
+    if (result.needsReview) throw new Error("Expected a confirmed booking");
     expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).not.toHaveProperty('marketingAttribution');
   });
 
@@ -240,6 +245,7 @@ describe('web chat capture', () => {
     const sessionId = await s.t.run(ctx => ctx.db.insert('chatSessions', { channel: 'whatsapp', visitorPhone: '66811112222', marketingCapture: { slug: 'f1' }, createdAt: now }));
     await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
     const result = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    if (result.needsReview) throw new Error("Expected a confirmed booking");
     expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).not.toHaveProperty('marketingAttribution');
   });
 });

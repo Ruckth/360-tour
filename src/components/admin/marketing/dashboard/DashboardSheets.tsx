@@ -9,6 +9,7 @@ import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { pluralize } from "../../admin-bulk";
 import { StatusBadge } from "../../StatusBadge";
 import { ChoiceGroup, CouponChip, EditorSheet, FactList } from "../MarketingBits";
+import { useMarketingAccess } from "../MarketingAccess";
 import { formatDay, formatStamp, thb } from "../marketing-format";
 import { csvFileName, salesCsv, summaryCsv, type ExportKind } from "./report-csv";
 import { formatRoas, roasFor, sheetLines, slugPath, sumLines, type Breakdown, type Prepared, type SaleLine } from "./report-model";
@@ -23,11 +24,12 @@ const SHEET_LIMIT = 25;
 
 function SaleItem({ line, p, onOpenStay, orderHref }: { line: SaleLine; p: Prepared; onOpenStay: (id: string) => void; orderHref: (id: string) => string }) {
   const { sale, touch } = line;
+  const { role } = useMarketingAccess();
   const property = sale.propertyId ? p.report.properties.find((x) => x.id === sale.propertyId)?.name : undefined;
   const refundedAll = sale.refunded > 0 && sale.refunded >= sale.collected;
   const otherFirst = p.filters.touch === "last" && sale.first && sale.last && sale.first.linkId !== sale.last.linkId ? sale.first : null;
   const net = line.collected - line.refunded;
-  const action =
+  const action = role !== "admin" ? <span className="text-xs text-muted-foreground">Read-only sale details. Booking and receipt screens require system administrator access.</span> :
     sale.kind === "stay" ? (
       <button type="button" onClick={() => onOpenStay(sale.id)} className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
         Open booking
@@ -64,7 +66,7 @@ function SaleItem({ line, p, onOpenStay, orderHref }: { line: SaleLine; p: Prepa
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {!sale.refunded ? (
-          <StatusBadge tone="success" label="Paid" />
+          <StatusBadge tone="success" label={sale.kind === "order" && sale.collected === 0 && sale.discount > 0 ? "Coupon-only settlement" : sale.kind === "stay" ? "Payment received" : "Paid"} />
         ) : (
           <StatusBadge tone="neutral" label={refundedAll ? "Refunded" : "Partly refunded"} />
         )}
@@ -72,7 +74,8 @@ function SaleItem({ line, p, onOpenStay, orderHref }: { line: SaleLine; p: Prepa
         {line.discount ? <span className="text-muted-foreground">{thb(line.discount)} off</span> : null}
         <span className="text-muted-foreground">
           {sale.kind === "stay" ? "Booked" : "Sold"} {formatDay(sale.createdDay)}
-          {sale.paidDay ? ` · paid ${formatDay(sale.paidDay)}` : ""}
+          {sale.paidDay ? ` · first payment ${formatDay(sale.paidDay)}` : ""}
+          {sale.settlementDay && !sale.paidDay ? ` · coupon settlement ${formatDay(sale.settlementDay)}` : ""}
         </span>
       </div>
       {action}
@@ -112,7 +115,7 @@ export function SalesSheet({
           <SheetTitle>{target?.title}</SheetTitle>
           <SheetDescription>
             {target?.sub ? `${target.sub} · ` : ""}
-            {p.cash ? "Paid or refunded" : "Sales made"} {formatDay(p.report.from)}–{formatDay(p.report.to)} · {p.filters.touch === "first" ? "first touch" : "last touch"}
+            {p.cash ? "Payments, refunds or coupon settlements" : "Sales made"} {formatDay(p.report.from)}–{formatDay(p.report.to)} · {p.filters.touch === "first" ? "first touch" : "last touch"}
           </SheetDescription>
         </>
       }
@@ -121,7 +124,7 @@ export function SalesSheet({
         <div className="grid gap-5">
           <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border text-sm sm:grid-cols-4">
             {[
-              ["Paid", `${money.paid}${money.paidOther ? ` + ${money.paidOther} orders` : ""}`],
+              [p.cash ? "First-payment sales" : "Paid", `${money.paid}${money.paidOther ? ` + ${money.paidOther} orders` : ""}${money.couponOnlySettlements ? ` + ${money.couponOnlySettlements} coupon-only settlements` : ""}`],
               ["Collected", thb(money.collected)],
               ["Refunds", money.refunded ? thb(money.refunded) : "—"],
               ["Net", thb(money.net)],
@@ -144,7 +147,7 @@ export function SalesSheet({
                 <span className="font-medium text-foreground">
                   {pluralize(refunded.length, "refund")} reduced net by {thb(money.refunded)}.
                 </span>{" "}
-                The sales still count as paid; refunds don’t give coupon uses back.
+                Sales with money received still count as first paid; refunds don’t give coupon uses back.
               </p>
             </div>
           ) : null}
@@ -180,10 +183,12 @@ const DEFINITIONS: [string, string][] = [
   ["Paid booking", "A stay with at least one recorded payment. A later refund keeps it paid but lowers net. Checkout orders and desk payments are in the money figures but not in this count."],
   ["Paid-session conversion", "Paid stays from tracked links ÷ tracked sessions of the same links. Unknown, staff-entered and messaging sales have no session, so they’re left out."],
   ["Collected and net", "Collected is money actually received, after discounts. Net is collected minus refunds. Net is not profit: costs, commissions and taxes aren’t taken off."],
-  ["Discounts granted", "The coupon discount on paid sales. The direct-booking offer isn’t included. A refund doesn’t give the coupon use back."],
+  ["First-payment sales", "Finance counts sales receiving their first actual payment in range. A partial stay payment counts; this does not mean the stay is fully settled. Coupon-only checkout settlements are counted separately."],
+  ["Coupon-only checkout settlements", "Checkout orders with a positive coupon discount and no own cash received, dated by settlement. A mixed stay and service checkout counts stay cash once on the stay and fully covered services once here."],
+  ["Discounts granted", "Coupon discounts dated by first payment for stays and desk sales, or checkout settlement for orders. Includes fully coupon-covered orders. The direct-booking offer isn’t included. A real void or refund keeps the use; voiding money never received releases it."],
   ["Ad ROAS", "Net of a campaign’s sales ÷ the spend entered for the same dates (spread evenly over each entry’s days). A source’s ROAS covers its campaigns that have spend. No spend means no ROAS, never ฿0. ROAS shows what came back, not that the ad caused the sale."],
   ["Last touch and first touch", "Rule last_touch_30d@1: last touch credits the last tracked link the guest opened within 30 days before booking; first touch credits the first. Both split the same sales, so never add them together. Scanned and current-link sales have one touch, used for both."],
-  ["Marketing view and Finance view", "Marketing (visit cohort) shows sales made in the dates with all their money to date. Finance (cash date) counts each payment and refund on the day it was dated, so it includes money for older sales."],
+  ["Marketing view and Finance view", "Marketing (visit cohort) shows sales made in the dates with all their money to date. Finance (cash date) counts each payment and refund on its business date, including money for older sales. It also includes coupon discounts on checkout settlements in range, without adding a cash payment."],
   ["Unknown, staff-entered and messaging", "Unknown: website bookings with no tracked link (typed address, declined measurement, another device). Staff-entered: admin bookings, checkout orders and desk payments. Messaging: stays booked through LINE, WhatsApp, Messenger or Instagram. All count in business totals, never in conversion."],
   ["Coupon table", "Regroups the same sales by the coupon used, tracked or not. It overlaps the other tables, so never add it to the Source table."],
   ["Property filter", "Keeps sales for that property. Sales without one, such as checkout orders, show only under All properties. Sessions, conversion and ROAS are for All properties only."],
