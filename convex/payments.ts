@@ -130,6 +130,8 @@ export const expireCheckout = internalMutation({
     if (!booking || booking.stripeCheckoutSessionId !== args.sessionId || !isPayable(booking)) return;
     if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) return;
     if (booking.status === 'confirmed' || booking.source === 'admin') {
+      // Unconfirmed admin stays only hold nights while checkout is active.
+      if (booking.status === 'pending') await releaseBookingDates(ctx, booking);
       await writeBooking(ctx, booking, {
         stripeCheckoutSessionId: undefined, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined, stripeCheckoutAmount: undefined,
         checkoutRequest: undefined,
