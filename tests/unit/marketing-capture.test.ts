@@ -245,7 +245,10 @@ describe("an answer that can't be saved", () => {
     const full = new Proxy(store, { get: (target, key) => (key === "setItem" ? () => { throw new DOMException("full", "QuotaExceededError"); } : typeof Reflect.get(target, key) === "function" ? Reflect.get(target, key).bind(target) : Reflect.get(target, key)) });
     const saved = Object.getOwnPropertyDescriptor(window, "localStorage");
     Object.defineProperty(window, "localStorage", { get: () => full, configurable: true });
-    onTestFinished(() => (saved ? Object.defineProperty(window, "localStorage", saved) : Reflect.deleteProperty(window, "localStorage")));
+    onTestFinished(() => {
+      if (saved) Object.defineProperty(window, "localStorage", saved);
+      else Reflect.deleteProperty(window, "localStorage");
+    });
     capture.setConsent("no");
     expect(capture.readConsent()).toBe("no");
     // The next page asks again instead of measuring on the old answer.
