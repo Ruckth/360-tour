@@ -111,7 +111,7 @@ async function logService(ctx: MutationCtx, before: Doc<'services'> | null, afte
 	if (JSON.stringify(previous) !== JSON.stringify(next) || before?.imageUrl !== after.imageUrl) await appendRecordHistory(ctx, { entityType: 'service', entityId: after._id, actor, kind, before: previous, after: { ...next, photoChanged: before?.imageUrl !== after.imageUrl } });
 }
 
-/** Booked, arrived or in service appointments that aren't over yet. */
+/** Appointments that still occupy staff, including completed service turnaround. */
 async function countUpcoming(ctx: QueryCtx | MutationCtx, owner: { staffId: Id<'staff'> } | { serviceId: Id<'services'> }) {
 	const now = Date.now();
 	const rows = 'staffId' in owner
@@ -119,7 +119,7 @@ async function countUpcoming(ctx: QueryCtx | MutationCtx, owner: { staffId: Id<'
 		: ctx.db.query('serviceAppointments').withIndex('by_service_start', (q) => q.eq('serviceId', owner.serviceId).gte('start', now - APPOINTMENT_LOOKBACK));
 	let count = 0;
 	for await (const appointment of boundedIntegrityRows(rows)) {
-		if (appointment.blockedUntil > now && blocksTime(appointment) && appointment.status !== 'completed') count++;
+		if (appointment.blockedUntil > now && blocksTime(appointment)) count++;
 	}
 	return count;
 }
@@ -154,7 +154,7 @@ async function timeOffConflicts(ctx: MutationCtx, staffId: Id<'staff'>, start: n
 	for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staffId).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', end)
 	))) {
-		if (appointment.blockedUntil > Math.max(start, Date.now()) && blocksTime(appointment) && appointment.status !== 'completed') conflicts.push({ appointmentId: appointment._id, start: appointment.start });
+		if (appointment.blockedUntil > Math.max(start, Date.now()) && blocksTime(appointment)) conflicts.push({ appointmentId: appointment._id, start: appointment.start });
 	}
 	return conflicts;
 }
@@ -265,7 +265,7 @@ export const updateStaff = mutation({
 			for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK)
 			))) {
-				if (appointment.blockedUntil <= now || !blocksTime(appointment) || appointment.status === 'completed') continue;
+				if (appointment.blockedUntil <= now || !blocksTime(appointment)) continue;
 				if ((await staffBusyRanges(ctx, next, appointment.start, appointment.blockedUntil, appointment._id)).length) {
 					throw new Error('Reassign or cancel the appointments outside the new hours first');
 				}
