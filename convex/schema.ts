@@ -1,3 +1,5 @@
+import { affiliateState, creditState, affiliateSnapshot, marketingRole } from './lib/affiliateTypes';
+import { chatCouponValidator } from './lib/chatCoupon';
 import { defineSchema, defineTable } from 'convex/server';
 import { inboxReasonValidator } from './lib/inboxTypes';
 import { v } from 'convex/values';
@@ -150,6 +152,7 @@ export default defineSchema({
 		})),
 		/** Release 3a: which marketing link brought a web or web-chat booking. Set once at creation; never on admin bookings. */
 		marketingAttribution: v.optional(marketingAttributionValidator),
+		affiliateSnapshot: v.optional(affiliateSnapshot),
 		/** Bumped on every staff/system write that goes through lib/bookingMoney; absent = 0. */
 		revision: v.optional(v.number()),
 		/** Who entered it (admin email or `system:<channel>`); absent on legacy rows. */
@@ -628,6 +631,7 @@ export default defineSchema({
 			/** Release 3a: set when staff applied the coupon by scanning or pasting a marketing link. Coupon origin only. */
 			viaLinkId: v.optional(v.id('marketingLinks'))
 		})),
+		affiliateSnapshot: v.optional(affiliateSnapshot),
 		createdBy: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number()
@@ -1098,6 +1102,9 @@ export default defineSchema({
 				guestPhone: v.string(),
 				nights: v.number(),
 				total: v.number(),
+				subtotal: v.optional(v.number()),
+				discountAmount: v.optional(v.number()),
+				coupon: v.optional(chatCouponValidator),
 				currency: v.string(),
 				createdAt: v.number(),
 				confirmSecret: v.optional(v.string()),
@@ -1656,6 +1663,63 @@ export default defineSchema({
 	}).index('by_key', ['key']),
 
 	// Marketing release 1: campaigns, short links and coupon catalog (see convex/marketing.ts).
+
+	// Marketing R4: grants bind an explicit email invitation to the authenticated canonical identity.
+	marketingGrants: defineTable({
+		email: v.string(),
+		role: marketingRole,
+		tokenIdentifier: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		updatedByEmail: v.string()
+	}).index('by_email', ['email']).index('by_tokenIdentifier', ['tokenIdentifier']),
+	marketingAffiliates: defineTable({
+		name: v.string(),
+		slug: v.string(),
+		campaignId: v.id('marketingCampaigns'),
+		canonicalLinkId: v.optional(v.id('marketingLinks')),
+		status: affiliateState,
+		contactEmail: v.optional(v.string()),
+		propertySlugs: v.optional(v.array(v.string())),
+		startsOn: v.optional(v.string()),
+		endsOn: v.optional(v.string()),
+		notes: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		updatedByEmail: v.string()
+	}).index('by_slug', ['slug']).index('by_status', ['status']),
+	// Net collections and manual referral approval only. These records never calculate a commission or payout.
+	affiliateCredits: defineTable({
+		sourceKey: v.string(),
+		bookingId: v.optional(v.id('bookings')),
+		billId: v.optional(v.id('bills')),
+		snapshot: affiliateSnapshot,
+		affiliateId: v.optional(v.id('marketingAffiliates')),
+		state: creditState,
+		eligibleNet: v.number(),
+		approvedNet: v.number(),
+		eligible: v.boolean(),
+		revision: v.number(),
+		reason: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number()
+	}).index('by_sourceKey', ['sourceKey'])
+		.index('by_affiliateId_and_state', ['affiliateId', 'state'])
+		.index('by_state', ['state']),
+	// Append-only: one row for each credit revision; decision reasons and amount/reversal changes are retained.
+	affiliateCreditChanges: defineTable({
+		creditId: v.id('affiliateCredits'),
+		revision: v.number(),
+		actor: v.string(),
+		kind: v.string(),
+		reason: v.optional(v.string()),
+		state: creditState,
+		eligibleNet: v.number(),
+		approvedNet: v.number(),
+		affiliateId: v.optional(v.id('marketingAffiliates')),
+		recordedAt: v.number()
+	}).index('by_creditId_and_revision', ['creditId', 'revision']),
+
 	marketingCampaigns: defineTable({
 		name: v.string(),
 		source: v.string(),
@@ -1671,6 +1735,7 @@ export default defineSchema({
 	}).index('by_status', ['status']),
 
 	marketingLinks: defineTable({
+		affiliateId: v.optional(v.id('marketingAffiliates')),
 		slug: v.string(),
 		name: v.string(),
 		campaignId: v.id('marketingCampaigns'),
@@ -1694,7 +1759,8 @@ export default defineSchema({
 		.index('by_slug', ['slug'])
 		.index('by_campaign', ['campaignId', 'status'])
 		.index('by_status', ['status'])
-		.index('by_couponId', ['couponId']),
+		.index('by_couponId', ['couponId'])
+		.index('by_affiliateId', ['affiliateId']),
 
 	marketingEvents: defineTable({
 		linkId: v.id('marketingLinks'),
@@ -1757,6 +1823,7 @@ export default defineSchema({
 		.index('by_couponId_and_day', ['couponId', 'day']),
 
 	coupons: defineTable({
+		affiliateId: v.optional(v.id('marketingAffiliates')),
 		code: v.string(),
 		campaignId: v.optional(v.id('marketingCampaigns')),
 		status: v.union(v.literal('draft'), v.literal('active'), v.literal('paused'), v.literal('archived')),
@@ -1772,7 +1839,8 @@ export default defineSchema({
 	})
 		.index('by_code', ['code'])
 		.index('by_status', ['status'])
-		.index('by_campaignId', ['campaignId']),
+		.index('by_campaignId', ['campaignId'])
+		.index('by_affiliateId', ['affiliateId']),
 
 	// One row per coupon use. held -> consumed (first payment) | released (unpaid stay cancelled/expired);
 	// consumed -> reversed (stay cancelled after payment; the slot is NOT given back).

@@ -5,7 +5,7 @@ import { mutation, query, type QueryCtx, type MutationCtx } from './_generated/s
 import type { Doc, Id } from './_generated/dataModel';
 import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from './lib/offers';
 import { orderTitle, formatReceiptNumber } from './lib/billMath';
-import { requireAdmin } from './lib/adminAuth';
+import { requireMarketingPermission, requireEditableDraft } from './lib/marketingAccess';
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
 import { appendRecordHistory } from './lib/recordHistory';
 import { cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey } from './lib/marketingAttribution';
@@ -199,7 +199,7 @@ async function quote(ctx: QueryCtx, args: QuoteArgs, adminTest: boolean): Promis
 export const listCampaigns = query({
 	args: { status: v.optional(campaignStatus) },
 	handler: async (ctx, args): Promise<CampaignRow[]> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		const campaigns = await ctx.db.query('marketingCampaigns').withIndex('by_status', q => args.status ? q.eq('status', args.status) : q).take(500);
 		return Promise.all(campaigns.map(async campaign => {
 			const links = await ctx.db.query('marketingLinks').withIndex('by_campaign', q => q.eq('campaignId', campaign._id)).take(500);
@@ -212,7 +212,7 @@ export const listCampaigns = query({
 export const listLinks = query({
 	args: { campaignId: v.optional(v.id('marketingCampaigns')), status: v.optional(publishStatus) },
 	handler: async (ctx, args): Promise<LinkRow[]> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		const links = args.campaignId
 			? await ctx.db.query('marketingLinks').withIndex('by_campaign', q => {
 				const index = q.eq('campaignId', args.campaignId!);
@@ -226,7 +226,7 @@ export const listLinks = query({
 export const listCoupons = query({
 	args: { status: v.optional(publishStatus) },
 	handler: async (ctx, args): Promise<CouponRow[]> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		const coupons = await ctx.db.query('coupons').withIndex('by_status', q => args.status ? q.eq('status', args.status) : q).take(500);
 		return Promise.all(coupons.map(coupon => enrichCoupon(ctx, coupon)));
 	}
@@ -235,7 +235,7 @@ export const listCoupons = query({
 export const getCoupon = query({
 	args: { couponId: v.string() },
 	handler: async (ctx, args): Promise<CouponDetail | null> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		const couponId = ctx.db.normalizeId('coupons', args.couponId);
 		if (!couponId) return null;
 		const coupon = await ctx.db.get(couponId);
@@ -263,7 +263,7 @@ export const getCoupon = query({
 export const checkSlug = query({
 	args: { slug: v.string(), linkId: v.optional(v.id('marketingLinks')) },
 	handler: async (ctx, args): Promise<SlugCheck> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		return slugCheck(ctx, args.slug, args.linkId);
 	}
 });
@@ -272,7 +272,7 @@ export const checkSlug = query({
 export const testQuote = query({
 	args: quoteArgs,
 	handler: async (ctx, args): Promise<OfferResult> => {
-		await requireAdmin(ctx);
+		await requireMarketingPermission(ctx, 'view');
 		return quote(ctx, args, true);
 	}
 });
@@ -291,14 +291,17 @@ export const saveCampaign = mutation({
 		notes: v.optional(v.string())
 	},
 	handler: async (ctx, args): Promise<Id<'marketingCampaigns'>> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'draft');
 		const { campaignId, ...fields } = args;
+		if (admin.role === 'marketer' && fields.budget !== undefined) throw new Error('Marketers cannot set budgets');
 		if (!fields.name.trim() || !fields.source.trim() || !fields.medium.trim()) throw new ConvexError({ code: 'missing_campaign_fields', message: 'Name, source and medium are required. Fill in all three fields.' });
 		validateRange(fields.startsOn, fields.endsOn);
 		if (fields.budget !== undefined && (!Number.isFinite(fields.budget) || fields.budget < 0)) throw new ConvexError({ code: 'invalid_budget', message: 'Invalid budget. Enter a finite, non-negative amount.' });
 		const audit = auditFields(admin);
 		if (campaignId) {
 			const existing = await getOrThrow(ctx, 'marketingCampaigns', campaignId);
+			requireEditableDraft(admin, existing);
+			if (admin.role === 'marketer') fields.budget = existing.budget;
 			await recordChanges(ctx, 'marketingCampaign', campaignId, admin.email, existing, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes });
 			await ctx.db.patch(campaignId, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes, ...audit });
 			return campaignId;
@@ -316,7 +319,7 @@ const campaignTransitions: Record<Doc<'marketingCampaigns'>['status'], Doc<'mark
 export const setCampaignStatus = mutation({
 	args: { campaignId: v.id('marketingCampaigns'), status: campaignStatus },
 	handler: async (ctx, args): Promise<null> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'publish');
 		const campaign = await getOrThrow(ctx, 'marketingCampaigns', args.campaignId);
 		if (args.status !== campaign.status && !campaignTransitions[campaign.status].includes(args.status)) {
 			throw new ConvexError({ code: 'invalid_transition', message: 'This campaign status change is unavailable. Use the next action in the campaign lifecycle.' });
@@ -337,19 +340,24 @@ export const saveLink = mutation({
 		destination,
 		locale: v.optional(v.string()),
 		couponId: v.optional(v.id('coupons')),
+		affiliateId: v.optional(v.id('marketingAffiliates')),
 		entry: v.union(v.literal('link'), v.literal('qr'))
 	},
 	handler: async (ctx, args): Promise<Id<'marketingLinks'>> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'draft');
 		const { linkId, ...fields } = args;
+		if (fields.affiliateId) { await requireMarketingPermission(ctx, 'partners'); const affiliate = await ctx.db.get(fields.affiliateId); if (!affiliate || affiliate.status === 'archived') throw new Error('Partner unavailable'); }
 		const checked = await slugCheck(ctx, args.slug, linkId);
 		if (!checked.ok) throw new ConvexError({ code: `slug_${checked.reason}`, message: `Slug ${checked.reason}. Choose a different short URL.` });
 		await getOrThrow(ctx, 'marketingCampaigns', fields.campaignId);
 		if (fields.couponId) await getOrThrow(ctx, 'coupons', fields.couponId);
 		if (fields.locale !== undefined && !isMarketingLocale(fields.locale)) throw new ConvexError({ code: 'invalid_locale', message: 'Invalid locale. Choose a supported language.' });
 		const existing = linkId ? await getOrThrow(ctx, 'marketingLinks', linkId) : null;
+		requireEditableDraft(admin, existing);
+		if (existing?.affiliateId && existing.slug.startsWith('r/')) throw new Error('Edit canonical partner aliases from Partners');
+		if (existing?.affiliateId && existing.affiliateId !== fields.affiliateId) await requireMarketingPermission(ctx, 'partners');
 		await validateLinkDestination(ctx, fields.destination, existing?.status === 'active');
-		const values = { ...fields, placement: fields.placement, locale: fields.locale, couponId: fields.couponId, slug: checked.slug, ...auditFields(admin) };
+		const values = { ...fields, placement: fields.placement, locale: fields.locale, couponId: fields.couponId, affiliateId: fields.affiliateId, slug: checked.slug, ...auditFields(admin) };
 		if (linkId && existing) {
 			// Printed QR codes and shared posts point at the slug, so it is fixed once the link has been live.
 			if (existing.status !== 'draft' && existing.slug !== checked.slug) throw new ConvexError({ code: 'slug_locked', message: 'Slug is locked after publishing. Create a new link to use a different slug.' });
@@ -366,8 +374,9 @@ export const saveLink = mutation({
 export const setLinkStatus = mutation({
 	args: { linkId: v.id('marketingLinks'), status: publishStatus },
 	handler: async (ctx, args): Promise<null> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'publish');
 		const link = await getOrThrow(ctx, 'marketingLinks', args.linkId);
+		if (link.affiliateId) { const partner = await ctx.db.get(link.affiliateId); if (link.slug.startsWith('r/')) throw new Error('Change canonical link status from Partners'); if (args.status === 'active' && partner?.status !== 'active') throw new Error('Activate the partner first'); }
 		if (args.status === 'draft' && link.status !== 'draft') {
 			throw new ConvexError({ code: 'invalid_transition', message: 'A link cannot return to draft. Pause or archive it to remove its offer.' });
 		}
@@ -382,7 +391,7 @@ export const setLinkStatus = mutation({
 export const saveCoupon = mutation({
 	args: { couponId: v.optional(v.id('coupons')), code: v.string(), campaignId: v.optional(v.id('marketingCampaigns')), ...couponRules },
 	handler: async (ctx, args): Promise<{ couponId: Id<'coupons'>; version: number }> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'draft');
 		const { couponId, code: rawCode, campaignId, ...rules } = args;
 		const code = normalizeCouponCode(rawCode);
 		if (!/^[A-Z0-9-]{3,32}$/.test(code)) throw new ConvexError({ code: 'invalid_coupon_code', message: 'Invalid coupon code. Use 3 to 32 letters, numbers or hyphens.' });
@@ -397,6 +406,7 @@ export const saveCoupon = mutation({
 		const now = audit.updatedAt;
 		if (couponId) {
 			const coupon = await getOrThrow(ctx, 'coupons', couponId);
+			requireEditableDraft(admin, coupon);
 			if (coupon.used > 0 && code !== coupon.code) throw new ConvexError({ code: 'coupon_code_locked', message: 'Cannot change a used coupon code. Create a new coupon to use a different code.' });
 			const current = await currentRules(ctx, coupon);
 			// Compare the known rule fields individually, independent of object key ordering.
@@ -421,7 +431,7 @@ export const saveCoupon = mutation({
 export const setCouponStatus = mutation({
 	args: { couponId: v.id('coupons'), status: publishStatus },
 	handler: async (ctx, args): Promise<null> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireMarketingPermission(ctx, 'publish');
 		const coupon = await getOrThrow(ctx, 'coupons', args.couponId);
 		if (coupon.status === 'archived' && args.status !== 'archived') {
 			throw new ConvexError({ code: 'invalid_transition', message: 'Archived coupons cannot change status. Create a new coupon instead.' });
@@ -445,7 +455,8 @@ export const resolveLink = query({
 		const property = propertySlug !== undefined
 			? await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', propertySlug)).unique() : null;
 		const villaUnavailable = propertySlug !== undefined && property?.status !== 'active';
-		const offerRemoved = link.status !== 'active' || villaUnavailable;
+		const affiliate = link.affiliateId ? await ctx.db.get(link.affiliateId) : null;
+		const offerRemoved = link.status !== 'active' || villaUnavailable || (!!link.affiliateId && affiliate?.status !== 'active');
 		const couponCode = !offerRemoved && coupon?.status === 'active' ? coupon.code : undefined;
 		let path: string;
 		switch (link.destination.kind) {
@@ -535,3 +546,6 @@ export const previewCoupon = query({
 		return quote(ctx, args, false);
 	}
 });
+
+/** Minimal marketing catalog for scoped roles. */
+export const catalog = query({args:{},handler:async ctx=>{await requireMarketingPermission(ctx,'view');return (await ctx.db.query('properties').take(500)).map(({_id,name,slug,status,pricePerNight,currency,maxGuests,directDiscountPercent})=>({_id,name,slug,status,pricePerNight,currency,maxGuests,directDiscountPercent}));}});

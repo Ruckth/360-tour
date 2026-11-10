@@ -7,6 +7,7 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "../ConfirmDialog";
+import { useMarketingAccess } from "./MarketingAccess";
 import { RowMenu, UsageBar } from "./MarketingBits";
 import { SpendDialog, type SpendDialogProps } from "./SpendDialog";
 import { formatRange, marketingErrorText, thb } from "./marketing-format";
@@ -26,6 +27,7 @@ const byDates = (a: ReportSpend, b: ReportSpend) => b.to.localeCompare(a.to) || 
 
 /** The Spend section of a saved campaign's editor sheet: entries, total against the budget, add, edit and delete. */
 export function CampaignSpendSection({ campaign, spend, onSave, onDelete, now }: CampaignSpendSectionProps) {
+  const { capabilities } = useMarketingAccess();
   const id = useId();
   const confirm = useConfirm();
   const [dialog, setDialog] = useState<{ entry?: ReportSpend } | null>(null);
@@ -35,6 +37,7 @@ export function CampaignSpendSection({ campaign, spend, onSave, onDelete, now }:
   const budget = campaign.budget || undefined;
 
   async function remove(entry: ReportSpend) {
+    if (!capabilities.spend) return;
     const confirmed = await confirm({
       title: `Delete ${thb(entry.amount)} of spend?`,
       description: `${formatRange(entry.from, entry.to)}. It leaves every report; the change history keeps it.`,
@@ -56,10 +59,10 @@ export function CampaignSpendSection({ campaign, spend, onSave, onDelete, now }:
         <h3 id={`${id}-title`} className="flex-1 text-base font-semibold text-foreground">
           Spend {spend ? <span className="text-sm font-normal tabular-nums text-muted-foreground">{entries.length}</span> : null}
         </h3>
-        <Button type="button" size="sm" variant="outline" disabled={!spend} onClick={() => setDialog({})}>
+        {capabilities.spend ? <Button type="button" size="sm" variant="outline" disabled={!spend} onClick={() => setDialog({})}>
           <Plus aria-hidden className="size-4" />
           Add spend
-        </Button>
+        </Button> : null}
       </div>
       <p className="text-xs text-muted-foreground">ROAS uses spend for the same dates. Without spend, ROAS is unavailable, never 0×.</p>
 
@@ -69,7 +72,7 @@ export function CampaignSpendSection({ campaign, spend, onSave, onDelete, now }:
           <Skeleton className="h-14 w-full" />
         </div>
       ) : entries.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">No spend yet. Add it when the invoice arrives.</p>
+        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">No spend yet.{capabilities.spend ? " Add it when the invoice arrives." : ""}</p>
       ) : (
         <div className="rounded-lg border border-border">
           <ul className="divide-y divide-border" aria-label={`Spend for ${campaign.name}`}>
@@ -77,6 +80,7 @@ export function CampaignSpendSection({ campaign, spend, onSave, onDelete, now }:
               <li key={entry.id} className="flex items-start gap-1 pe-1">
                 <button
                   type="button"
+                  disabled={!capabilities.spend}
                   onClick={() => setDialog({ entry })}
                   className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[9.5rem_minmax(0,1fr)_auto]"
                 >
@@ -86,14 +90,14 @@ export function CampaignSpendSection({ campaign, spend, onSave, onDelete, now }:
                   </span>
                   <span className="col-start-2 row-start-1 text-right font-semibold tabular-nums text-foreground sm:col-start-3">{thb(entry.amount)}</span>
                 </button>
-                <RowMenu
+                {capabilities.spend ? <RowMenu
                   label={`Actions for spend ${formatRange(entry.from, entry.to)}`}
                   className="mt-1"
                   actions={[
                     { label: "Edit", icon: Pencil, onSelect: () => setDialog({ entry }) },
                     { label: "Delete", icon: Trash2, destructive: true, onSelect: () => void remove(entry) },
                   ]}
-                />
+                /> : null}
               </li>
             ))}
           </ul>
@@ -120,7 +124,7 @@ export function CampaignSpendSection({ campaign, spend, onSave, onDelete, now }:
       </div>
 
       <SpendDialog
-        open={dialog !== null}
+        open={capabilities.spend && dialog !== null}
         onOpenChange={(open) => !open && setDialog(null)}
         campaigns={[{ id: campaign._id, name: campaign.name }]}
         entry={dialog?.entry}

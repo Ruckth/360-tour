@@ -7,6 +7,7 @@ import { receiptPath } from "@/components/checkout/checkout-source";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
+import { useMarketingAccess } from "./MarketingAccess";
 import { SideCard } from "./MarketingBits";
 import { REDEMPTION_STATE, REDEMPTION_STATES, formatRange, formatStamp, nightsBetween, redemptionCounts, thb } from "./marketing-format";
 import type { RedemptionRow, RedemptionState } from "./types";
@@ -91,6 +92,7 @@ export function CouponLedger({ code, redemptions }: { code: string; redemptions:
 }
 
 function LedgerRow({ row }: { row: RedemptionRow }) {
+  const { role } = useMarketingAccess();
   const meta = REDEMPTION_STATE[row.state];
   const nights = row.booking ? nightsBetween(row.booking.checkIn, row.booking.checkOut) : 0;
   const gone = row.state === "released";
@@ -107,13 +109,13 @@ function LedgerRow({ row }: { row: RedemptionRow }) {
       {row.order ? (
         <>
           <p className="min-w-0 break-words text-sm text-foreground">
-            <Link
+            {role === "admin" ? <Link
               href={receiptPath(row.order.orderId)}
               className="inline-flex items-center gap-1.5 rounded underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ReceiptText aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
               {row.order.title}
-            </Link>
+            </Link> : <span>{row.order.title}</span>}
             {row.order.receiptNumber ? <span className="ms-2 font-mono text-xs font-semibold text-muted-foreground">{row.order.receiptNumber}</span> : null}
           </p>
           <p className="text-xs text-muted-foreground">

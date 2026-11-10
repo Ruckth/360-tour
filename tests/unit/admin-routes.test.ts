@@ -83,8 +83,11 @@ describe("admin routes", () => {
       ["Campaigns", "/admin/marketing/campaigns"],
       ["Links & QR", "/admin/marketing/links"],
       ["Coupons", "/admin/marketing/coupons"],
+      ["Affiliates", "/admin/marketing/affiliates"],
     ]);
     expect(isAdminMarketingPage("coupons")).toBe(true);
+    expect(isAdminMarketingPage("affiliates")).toBe(true);
+    expect(isAdminMarketingPage("access")).toBe(true);
     expect(isAdminMarketingPage("dashboard")).toBe(true);
     expect(isAdminMarketingPage("reports")).toBe(false);
     expect(adminMarketingPath("campaigns")).toBe("/admin/marketing/campaigns");

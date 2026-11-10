@@ -43,6 +43,8 @@ export const ADMIN_MARKETING_PAGES = [
   { id: "campaigns", label: "Campaigns", keywords: ["utm", "source", "medium", "budget"] },
   { id: "links", label: "Links & QR", keywords: ["short links", "QR code", "tracking"] },
   { id: "coupons", label: "Coupons", keywords: ["discount", "promo code", "offers"] },
+  { id: "affiliates", label: "Affiliates", keywords: ["partners", "referrals", "credits"] },
+  { id: "access", label: "Access", keywords: ["permissions", "roles", "invitations"] },
 ] as const;
 export type AdminMarketingPage = (typeof ADMIN_MARKETING_PAGES)[number]["id"];
 const ADMIN_MARKETING_DEFAULT: AdminMarketingPage = "dashboard";
@@ -78,7 +80,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     href: adminMarketingPath(ADMIN_MARKETING_DEFAULT),
     label: "Marketing",
     icon: Megaphone,
-    children: ADMIN_MARKETING_PAGES.map(({ id, label, keywords }) => ({ href: adminMarketingPath(id), label, keywords })),
+    children: ADMIN_MARKETING_PAGES.filter(({ id }) => id !== "access").map(({ id, label, keywords }) => ({ href: adminMarketingPath(id), label, keywords })),
   },
   {
     href: "/admin/settings",

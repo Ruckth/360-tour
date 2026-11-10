@@ -157,3 +157,22 @@ describe("chat booking intent helpers", () => {
     ).toBe("bookingPromptReady");
   });
 });
+
+it.each(['Do you have a coupon code?', 'Does this villa have a discount code?'])('does not mistake a question label for a supplied code: %s', latestUserMessage => {
+  expect(extractChatBookingContext({ latestUserMessage }).couponCode).toBeUndefined();
+});
+it('keeps a guest code across a later date follow-up, and never sources it from the assistant', () => {
+  expect(extractChatBookingContext({ guestMessages: ['Please use coupon GUEST20'], latestUserMessage: '2027-01-10 to 2027-01-12', latestAssistantMessage: 'Try coupon INVENTED90' }).couponCode).toBe('GUEST20');
+  expect(extractChatBookingContext({ guestMessages: ['Please use coupon GUEST20'], latestUserMessage: 'Remove the coupon' }).couponCode).toBeUndefined();
+});
+it.each(['HELLO', 'THANKS', 'YES', 'THANK-YOU', 'Jane-Doe', '2026-12-01', '66811112222', '9000'])('does not replace a prior code with an ambiguous follow-up: %s', latestUserMessage => {
+  expect(extractChatBookingContext({ guestMessages: ['coupon GUEST20'], latestUserMessage }).couponCode).toBe('GUEST20');
+  expect(extractChatBookingContext({ latestUserMessage }).couponCode).toBeUndefined();
+});
+it.each(['coupon WELCOME', 'coupon: welcome', 'coupon 1234'])('accepts an explicitly labelled code: %s', latestUserMessage => {
+  expect(extractChatBookingContext({ latestUserMessage }).couponCode).toBe(latestUserMessage.includes('1234') ? '1234' : 'WELCOME');
+});
+
+it.each(['coupon code please', 'coupon code for November', 'coupon code any', 'Do you have a coupon', 'coupon code available'])('does not treat label grammar as an all-letter code: %s', latestUserMessage => {
+  expect(extractChatBookingContext({ latestUserMessage }).couponCode).toBeUndefined();
+});

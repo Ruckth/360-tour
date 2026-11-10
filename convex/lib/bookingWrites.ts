@@ -1,3 +1,4 @@
+import { captureAffiliateSnapshot, syncAffiliateCredit } from './affiliateCredits';
 import { resolveMarketingAttribution, type MarketingCapture } from './marketingAttribution';
 import { ConvexError } from 'convex/values';
 import { evaluateOffer, normalizeCouponCode } from './offers';
@@ -216,6 +217,9 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		const redemptionId = await holdCouponRedemption(ctx, { coupon, couponVersion: coupon.currentVersion, discount: offer.discount, bookingId });
 		await ctx.db.patch(bookingId, { promotion: { couponId: coupon._id, couponVersion: coupon.currentVersion, code: coupon.code, discount: offer.discount, redemptionId } });
 	}
+	const affiliateSnapshot = await captureAffiliateSnapshot(ctx, {linkId: marketingAttribution?.last?.linkId, marketing: input.source !== 'admin' ? input.marketing : undefined, couponId: coupon && offer?.couponStatus === 'applied' ? coupon._id : undefined, propertySlug: property.slug, guestEmail, staff: input.source === 'admin'});
+	await ctx.db.patch(bookingId, {affiliateSnapshot});
+	await syncAffiliateCredit(ctx, {bookingId}, actor);
 	const created = (await ctx.db.get(bookingId))!;
 	if (input.source !== 'admin') {
 		await blockBookingDates(ctx, created, bookingId);

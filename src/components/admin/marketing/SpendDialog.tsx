@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "../ConfirmDialog";
+import { useMarketingAccess } from "./MarketingAccess";
 import { FieldError, FieldHint, NumberField } from "./MarketingBits";
 import { parseWhole, wholeText } from "./coupon-form";
 import { bangkokToday, formatRange, marketingErrorText, thb } from "./marketing-format";
@@ -40,6 +41,8 @@ export type SpendDialogProps = {
 };
 
 export function SpendDialog(props: SpendDialogProps) {
+  const { capabilities } = useMarketingAccess();
+  if (!capabilities.spend) return null;
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       {/* Mounted only while open, so every open starts from the entry or the defaults. */}

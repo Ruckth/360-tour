@@ -131,7 +131,7 @@
   "Booking": {
     "confirmAndPay": "Conferma e paga",
     "summaryExpired": "Questo riepilogo è scaduto. Chiedine uno nuovo in chat.",
-    "summaryPriceChanged": "Il prezzo della villa è cambiato. Chiedi un nuovo riepilogo in chat.",
+    "summaryPriceChanged": "Il prezzo o il codice è cambiato. Controlla il riepilogo aggiornato qui sopra e conferma di nuovo per continuare.",
     "cancellationPolicy": "Condizioni di cancellazione",
     "holdAfterConfirm": "Le date vengono riservate per {minutes} minuti dopo la conferma. Avviando il pagamento, la riserva viene estesa fino alla scadenza della sessione di pagamento.",
     "holdUntil": "Le date sono riservate fino a {time}.",

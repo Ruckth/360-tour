@@ -1,5 +1,6 @@
 "use client";
 
+import { useCouponCopy } from "./coupon-copy";
 import { captureForBooking } from "@/lib/marketing/capture";
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
@@ -21,8 +22,11 @@ export function ProposalPayClient({ token }: { token: string }) {
   const convex = useOptionalConvex();
   const locale = useLocale();
   const t = useTranslations("Booking");
+  const couponT = useTranslations("Coupon");
+  const [activeToken, setActiveToken] = useState(token);
   const submitting = useRef(false);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const couponCopy = useCouponCopy(summary?.currency ?? "THB");
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
   const [expired, setExpired] = useState(false);
@@ -30,6 +34,7 @@ export function ProposalPayClient({ token }: { token: string }) {
 
   useEffect(() => {
     let active = true;
+    setActiveToken(token);
     setChecking(true);
     setSummary(null);
     setExpired(false);
@@ -63,9 +68,20 @@ export function ProposalPayClient({ token }: { token: string }) {
     setError("");
     try {
       const booking = await convex.mutation(api.bookings.confirmProposal, {
-        token,
+        token: activeToken,
         marketing: captureForBooking() ?? {},
       });
+      if (booking.needsReview) {
+        const { confirmToken, ...quote } = booking.quote;
+        setActiveToken(confirmToken);
+        setSummary(previous => previous ? { ...previous, ...quote, holdExpiresAt: null } : null);
+        setError(t("summaryPriceChanged"));
+        const url = new URL(window.location.href);
+        url.searchParams.set("proposal", confirmToken);
+        if (quote.coupon) url.searchParams.set("coupon", quote.coupon.code);
+        window.history.replaceState(null, "", url);
+        return;
+      }
       const checkout = await convex.action(api.payments.createCheckout, {
         bookingId: booking.bookingId,
         accessToken: booking.accessToken,
@@ -118,6 +134,16 @@ export function ProposalPayClient({ token }: { token: string }) {
                 {summary.currency} {summary.total.toLocaleString(locale)}
               </dd>
             </dl>
+            {summary.coupon ? (
+              <p className="rounded-lg border border-gold/30 bg-gold/5 p-3 text-sm" role="status">
+                {summary.coupon.status === "applied"
+                  ? couponT("appliedTitle", { code: summary.coupon.code, amount: couponCopy.format.money(summary.coupon.discount) })
+                  : summary.coupon.status === "coupon_worse"
+                    ? couponT("summaryWorse", { code: summary.coupon.code })
+                    : `${summary.coupon.code}: ${summary.coupon.problem ? couponCopy.problemText(summary.coupon.problem) : couponT("notUsed")}`}
+              </p>
+            ) : null}
+            {summary.coupon?.status === "applied" && summary.total <= 0 ? <p role="alert" className="text-sm text-destructive">{couponT("coversWholeStay")}</p> : null}
             {summary.cancellationPolicy ? (
               <div className="text-sm">
                 <h3 className="font-semibold">{t("cancellationPolicy")}</h3>
@@ -133,7 +159,7 @@ export function ProposalPayClient({ token }: { token: string }) {
             </p>
             <Button
               className="w-full"
-              disabled={loading}
+              disabled={loading || (summary.coupon?.status === "applied" && summary.total <= 0)}
               onClick={confirmAndPay}
             >
               {t(loading ? "confirming" : "confirmAndPay")}

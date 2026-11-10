@@ -131,7 +131,7 @@
   "Booking": {
     "confirmAndPay": "확인 및 결제",
     "summaryExpired": "이 요약의 유효기간이 만료되었습니다. 채팅에서 새 요약을 요청해 주세요.",
-    "summaryPriceChanged": "빌라 가격이 변경되었습니다. 채팅에서 새 요약을 요청해 주세요.",
+    "summaryPriceChanged": "요금 또는 쿠폰이 변경되었습니다. 위의 새 내용을 확인하고 다시 동의해 주세요.",
     "cancellationPolicy": "취소 정책",
     "holdAfterConfirm": "확인 후 {minutes}분 동안 날짜가 확보됩니다. 결제를 시작하면 결제 세션이 만료될 때까지 연장됩니다.",
     "holdUntil": "날짜는 {time}까지 확보됩니다.",

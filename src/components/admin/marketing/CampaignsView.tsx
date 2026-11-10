@@ -31,6 +31,7 @@ import {
   useNotice,
   type RowAction,
 } from "./MarketingBits";
+import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { parseWhole, wholeText } from "./coupon-form";
 import { CAMPAIGN_STATUS, COUPON_STATE, LINK_STATUS, benefitLabel, countLabel, couponState, formatRange, thb } from "./marketing-format";
 import type { CampaignRow, CampaignStatus, CouponRow, LinkRow, MarketingActions } from "./types";
@@ -96,6 +97,7 @@ const STATUS_COPY: Record<CampaignStatus, (name: string) => { title: string; des
 };
 
 export function CampaignsView({ campaigns, links, coupons, today, linksHref, couponHref, actions, history, spend }: CampaignsViewProps) {
+  const access = useMarketingAccess();
   const { notice, show, clear } = useNotice();
   const { pending, run } = useConfirmedChange<Id<"marketingCampaigns">>(show);
   const sheet = useEditorSheet<{ campaign?: CampaignRow; preset?: (typeof PRESETS)[number] }>();
@@ -120,10 +122,11 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
     ...(archivedCount || tab === "archived" ? [{ value: "archived" as const, label: "Archived", n: archivedCount }] : []),
   ];
 
-  const openNew = (preset?: (typeof PRESETS)[number]) => sheet.open({ preset });
+  const openNew = (preset?: (typeof PRESETS)[number]) => { if (access.capabilities.draft) sheet.open({ preset }); };
   const openEdit = (campaign: CampaignRow) => sheet.open({ campaign });
 
   function changeStatus(campaign: CampaignRow, status: CampaignStatus, destructive = false) {
+    if (!access.capabilities.publish) return Promise.resolve();
     const copy = STATUS_COPY[status](campaign.name);
     return run(
       campaign._id,
@@ -135,8 +138,8 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
   }
 
   const menu = (campaign: CampaignRow): RowAction[] => [
-    { label: "Edit", icon: Pencil, onSelect: () => openEdit(campaign) },
-    ...nextStatuses(campaign.status).map(({ status, label, icon, destructive }) => ({
+    { label: canEditMarketing(access, campaign) ? "Edit" : "View details", icon: Pencil, onSelect: () => openEdit(campaign) },
+    ...(access.capabilities.publish ? nextStatuses(campaign.status) : []).map(({ status, label, icon, destructive }) => ({
       label,
       icon,
       destructive,
@@ -158,10 +161,10 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
           {all.length ? (
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <SearchBox value={query} onChange={setQuery} label="Search campaigns" />
-              <Button size="sm" onClick={() => openNew()} className="w-full sm:w-auto">
+              {access.capabilities.draft ? <Button size="sm" onClick={() => openNew()} className="w-full sm:w-auto">
                 <Plus aria-hidden className="size-4" />
                 New campaign
-              </Button>
+              </Button> : null}
             </div>
           ) : null}
         </div>
@@ -175,11 +178,11 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
             title="No campaigns yet"
             description="A campaign groups the links and coupons for one push, like “Facebook · November escape”, so you can see what it brought in."
           >
-            <Button size="sm" onClick={() => openNew()}>
+            {access.capabilities.draft ? <Button size="sm" onClick={() => openNew()}>
               <Plus aria-hidden className="size-4" />
               New campaign
-            </Button>
-            <div className="mt-4 grid justify-items-center gap-2">
+            </Button> : null}
+            {access.capabilities.draft ? <div className="mt-4 grid justify-items-center gap-2">
               <p className="admin-eyebrow">Or start with an always-on one</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {PRESETS.map((preset) => (
@@ -188,7 +191,7 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
                   </Button>
                 ))}
               </div>
-            </div>
+            </div> : <p className="text-sm text-muted-foreground">A manager or marketer can create a campaign.</p>}
           </FirstRunEmpty>
         ) : (
           <>
@@ -408,6 +411,8 @@ function CampaignEditor({
   /** Reports unsaved edits, so the sheet can ask before closing. */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const access = useMarketingAccess();
+  const canEdit = canEditMarketing(access, campaign);
   const id = useId();
   const { form, set, submitted, saving, saveError, submit } = useEditorForm<Form>(
     () => ({
@@ -436,6 +441,7 @@ function CampaignEditor({
 
   const save = (event: FormEvent) =>
     submit(event, firstError && `${id}-${firstError}`, async () => {
+      if (!canEdit) return;
       await actions.saveCampaign({
         campaignId: campaign?._id,
         name: form.name.trim(),
@@ -443,7 +449,7 @@ function CampaignEditor({
         medium: form.medium.trim().toLowerCase(),
         startsOn: form.startsOn || undefined,
         endsOn: form.endsOn || undefined,
-        budget: budget === undefined || Number.isNaN(budget) ? undefined : budget,
+        ...(access.capabilities.spend ? { budget: budget === undefined || Number.isNaN(budget) ? undefined : budget } : {}),
         notes: form.notes.trim() || undefined,
       });
       onDone(campaign ? `Saved ${form.name.trim()}` : `Created ${form.name.trim()} as a draft`);
@@ -458,8 +464,10 @@ function CampaignEditor({
   });
 
   return (
-    <SheetForm onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={campaign ? "Save changes" : "Create campaign"}>
-      {campaign ? (
+    <SheetForm readOnly={!canEdit} onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={campaign ? "Save changes" : "Create campaign"}>
+      {!canEdit ? <p className="text-sm text-muted-foreground">Read-only. {access.capabilities.draft ? "Your role can edit drafts only." : "Your role can inspect campaign details."}</p> : null}
+      <fieldset disabled={!canEdit} className="grid min-w-0 gap-6">
+      {campaign && access.capabilities.publish ? (
         <div className="flex flex-wrap gap-2">
           {nextStatuses(campaign.status).map(({ status, label, icon: Icon, destructive }) => (
             <Button
@@ -545,7 +553,7 @@ function CampaignEditor({
         <Label htmlFor={`${id}-budget`}>
           Budget <span className="font-normal text-muted-foreground">(optional)</span>
         </Label>
-        <NumberField {...field("budget")} prefix="฿" placeholder="Not set" value={form.budget} onChange={(event) => set("budget", event.target.value)} />
+        <NumberField disabled={!access.capabilities.spend} {...field("budget")} prefix="฿" placeholder="Not set" value={form.budget} onChange={(event) => set("budget", event.target.value)} />
         <FieldError id={`${id}-budget-error`}>{shown("budget")}</FieldError>
         <FieldHint id={`${id}-budget-hint`}>For ads and printing. Coupons have their own discount budget.</FieldHint>
       </div>
@@ -557,6 +565,7 @@ function CampaignEditor({
         <Textarea id={`${id}-notes`} rows={3} value={form.notes} onChange={(event) => set("notes", event.target.value)} placeholder="e.g. Boost runs until 15 Nov" />
       </div>
 
+      </fieldset>
       {campaign ? (
         <>
           {spend?.(campaign)}

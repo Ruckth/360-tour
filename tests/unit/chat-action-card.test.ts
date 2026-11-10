@@ -203,3 +203,9 @@ describe("chat action card mapping", () => {
     ).toBe("tour");
   });
 });
+it('carries the prior guest code into a booking card after the date follow-up', () => {
+  const card = getChatActionCard({ latestUserMessage: '2027-01-10 to 2027-01-12', guestMessages: ['coupon GUEST20'], activePropertySlug: 'pool-villa', actionHint: 'booking' });
+  expect(card.type).toBe('booking');
+  if (card.type !== 'booking') throw new Error('Expected booking card');
+  expect(card.context.couponCode).toBe('GUEST20');
+});

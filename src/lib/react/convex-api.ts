@@ -305,21 +305,6 @@ export async function claimChatBrowserHandoff(
   )) as string | null;
 }
 
-export async function addChatMessage(
-  client: ConvexReactClient,
-  args: { sessionId: string; role: "user" | "assistant"; content: string; action?: ChatActionHint },
-) {
-  const persistedArgs = {
-    sessionId: args.sessionId,
-    role: args.role,
-    content: args.content,
-  };
-  return (await withConvexTimeout(
-    client.mutation(api.chat.addMessage, persistedArgs as never),
-    "Saving chat message",
-  )) as string;
-}
-
 export async function getChatMessages(
   client: ConvexReactClient,
   args: { sessionId: string; limit?: number },

@@ -1,3 +1,4 @@
+import { captureAffiliateSnapshot, syncAffiliateCredit } from './lib/affiliateCredits';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { mutation, query } from './_generated/server';
@@ -1480,14 +1481,18 @@ export const settleOrder = mutation({
 			await ctx.db.insert('billPayments', { billId: order._id, ...tender, idempotencyKey: key, createdBy: admin.email, createdAt: now, effectiveAt });
 		}
 		const receiptNumber = await nextCounter(ctx, RECEIPT_COUNTER);
+		const linkedBooking = order.bookingId ? await ctx.db.get(order.bookingId) : null;
+		const affiliateProperty = linkedBooking ? await ctx.db.get(linkedBooking.propertyId) : null;
+		const affiliateSnapshot = await captureAffiliateSnapshot(ctx, {linkId: order.promotion?.viaLinkId, couponId: order.promotion?.couponId, propertySlug: affiliateProperty?.slug, guestEmail: customer?.email ?? order.guestEmail, staff: true});
 		// The receipt names who it was issued to as they were then; later profile edits don't change it.
 		const customerSnapshot = customer
 			? { name: customer.name, phone: customer.phone, email: customer.email }
 			: order.guestName ? { name: order.guestName, phone: order.guestPhone, email: order.guestEmail } : undefined;
 		await ctx.db.patch(order._id, {
-			status: 'paid', receiptNumber, settleKey: key, total: totals.total, due: 0, customerSnapshot, paidAt: now, paidBy: admin.email, updatedAt: now,
+			status: 'paid', affiliateSnapshot, receiptNumber, settleKey: key, total: totals.total, due: 0, customerSnapshot, paidAt: now, paidBy: admin.email, updatedAt: now,
 			paymentEffectiveAt: effectiveAt, ...(customer ? { customerRevisionAtPayment: customer.revision ?? 0 } : {})
 		});
+		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
 		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'paid', toPrice: totals.due });
 		// A fee is noted on its appointment's history; the appointment itself (status, payment) is unchanged.
 		for (const line of lines) {
@@ -1520,6 +1525,7 @@ export const voidOrder = mutation({
 		const now = Date.now();
 		await syncOrderCouponRedemption(ctx, order._id, 'reversed');
 		await ctx.db.patch(order._id, { status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, updatedAt: now });
+		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
 		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'void', note: reason });
 		for (const row of await sourceRows(ctx, order._id)) {
 			if (row.bookingId && (await ctx.db.get(row.bookingId))) {
@@ -1711,6 +1717,7 @@ export const voidUnreceivedOrder = mutation({
 		await ctx.db.patch(order._id, {
 			status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, voidUnreceived: true, correctionRevision: sequence, updatedAt: now
 		});
+		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
 		await ctx.db.insert('billCorrections', { billId: order._id, sequence, kind: 'void_unreceived', reason, actor: admin.email, recordedAt: now, idempotencyKey: key });
 		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'void', note: `Recorded in error, no money received: ${reason}` });
 		for (const { booking, payment } of stays) {

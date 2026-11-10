@@ -139,7 +139,7 @@ export function Callout({
       <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", tones ? tones.text : "text-muted-foreground")} />
       <div className="min-w-0 flex-1 basis-48">
         {title ? <p className="font-medium text-foreground">{title}</p> : null}
-        {children ? <div className={cn(title ? "text-muted-foreground" : "text-foreground")}>{children}</div> : null}
+        {children ? <div className={cn(tones ? tones.text : title ? "text-muted-foreground" : "text-foreground")}>{children}</div> : null}
       </div>
       {action}
     </div>
@@ -287,6 +287,7 @@ export function SheetForm({
   saving,
   error,
   submitLabel,
+  readOnly = false,
   children,
 }: {
   onSubmit: (event: FormEvent) => void;
@@ -294,10 +295,11 @@ export function SheetForm({
   saving: boolean;
   error: string;
   submitLabel: string;
+  readOnly?: boolean;
   children: ReactNode;
 }) {
   return (
-    <form noValidate onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+    <form noValidate onSubmit={event => { if (readOnly) event.preventDefault(); else onSubmit(event); }} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
         <div className="grid gap-6">{children}</div>
       </div>
@@ -309,12 +311,12 @@ export function SheetForm({
         ) : null}
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
-            Cancel
+            {readOnly ? "Close" : "Cancel"}
           </Button>
-          <Button type="submit" disabled={saving} className="flex-1 sm:flex-none">
+          {!readOnly ? <Button type="submit" disabled={saving} className="flex-1 sm:flex-none">
             {saving ? <Spinner label="Saving" className="text-current" /> : null}
             {submitLabel}
-          </Button>
+          </Button> : null}
         </div>
       </div>
     </form>

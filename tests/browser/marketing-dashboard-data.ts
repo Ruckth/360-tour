@@ -228,9 +228,31 @@ export function dashboardReport(options: { basis?: ReportBasis; spend?: boolean;
   };
 }
 
-/** Nothing set up yet: no campaigns, links or coupons, only untracked sales. */
+/** Nothing set up and nothing in the dates: no campaigns, links, coupons, sales or visits. */
 export function firstRunReport(): ReportData {
   return { ...dashboardReport(), sales: [], sessions: [], campaigns: [], links: [], coupons: [], spend: [] };
+}
+
+/**
+ * No campaigns or links yet, but the business already sells: unknown and staff-entered sales, visits
+ * without a link, and coupons that belong to no campaign.
+ */
+export function untrackedReport(options: { basis?: ReportBasis } = {}): ReportData {
+  const report = dashboardReport(options);
+  const sales = report.sales
+    .filter((sale) => sale.bucket !== "tracked")
+    .map((sale) => (sale.coupon ? { ...sale, coupon: { couponId: sale.coupon.couponId, code: sale.coupon.code } } : sale));
+  const ids = new Set(sales.map((sale) => sale.id));
+  return {
+    ...report,
+    sales,
+    events: report.events.filter((event) => ids.has(event.saleId)),
+    sessions: report.sessions.filter((row) => !row.linkId),
+    campaigns: [],
+    links: [],
+    coupons: report.coupons.map(({ id, code, status }) => ({ id, code, status })),
+    spend: [],
+  };
 }
 
 /** Set up, but nothing happened in the dates. */

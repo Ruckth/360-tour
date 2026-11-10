@@ -1,3 +1,5 @@
+import { guestCouponFromHistory } from "convex/lib/guestCouponCode";
+export { extractGuestCouponCode } from "convex/lib/guestCouponCode";
 import { properties } from "@/lib/data/properties";
 import { nightsBetweenIso } from "@/lib/booking/dates";
 
@@ -7,6 +9,7 @@ export type ChatBookingContext = {
   checkOut: string;
   propertySlug?: string;
   guests?: number;
+  couponCode?: string;
 };
 
 export type ChatBookingMissingField = "villa" | "checkIn" | "checkOut";
@@ -16,6 +19,7 @@ export type ChatVillaRef = { slug: string; name: string };
 
 export type ChatBookingContextInput = {
   latestUserMessage?: string;
+  guestMessages?: readonly string[];
   latestAssistantMessage?: string;
   activePropertySlug?: string;
   villas?: ChatVillaRef[];
@@ -334,6 +338,7 @@ export function hasChatBookingIntent(text: string) {
 
 export function extractChatBookingContext({
   latestUserMessage = "",
+  guestMessages = [],
   latestAssistantMessage = "",
   activePropertySlug,
   villas,
@@ -350,6 +355,7 @@ export function extractChatBookingContext({
     checkOut: range.checkOut,
     propertySlug: inferChatPropertySlug(combined, activePropertySlug, villas),
     guests: inferChatGuestCount(combined),
+    couponCode: guestCouponFromHistory([...guestMessages, latestUserMessage]),
   };
 }
 
