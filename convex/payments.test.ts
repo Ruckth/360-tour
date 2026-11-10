@@ -82,6 +82,9 @@ it.each([false, true])('renews an expired checkout for a %s admin booking withou
   await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1, unpaidHoldExpiresAt: Date.now() - 1, createdAt: Date.now() - 31 * 60_000 }));
   await t.mutation(internal.payments.expireCheckout, { bookingId, sessionId: 'cs_1' });
   expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({ status: confirmed ? 'confirmed' : 'pending', paymentStatus: 'pending' });
+  expect(await t.run(ctx => ctx.db.query('availability').collect())).toHaveLength(confirmed ? 2 : 0);
+  const expiredBooking = (await t.run(ctx => ctx.db.get(bookingId)))!;
+  expect(await t.query(api.availability.isAvailable, { propertyId: expiredBooking.propertyId, checkIn: expiredBooking.checkIn, checkOut: expiredBooking.checkOut })).toBe(!confirmed);
   expect((await t.action(api.payments.createCheckout, { bookingId, accessToken })).url).toContain('/2');
   expect(requests.map(r => r.key)).toEqual([`booking-${bookingId}-1`, `booking-${bookingId}-2`]);
   expect(new URLSearchParams(requests[0].body).get('line_items[0][price_data][unit_amount]')).toBe('20000');
