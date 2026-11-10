@@ -1,6 +1,5 @@
 "use client";
 
-import { format } from "date-fns";
 import { Ban, ChevronLeft, Copy, Plus, Printer, Share2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -17,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { PaymentRecord } from "./PaymentRecord";
 import { OrderHistory } from "./OrderHistory";
-import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, receiptBookings, receiptName, receiptText } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptText } from "./checkout-ui";
 
 type Paper = "58" | "80";
 
@@ -190,7 +189,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             <p className="text-base font-bold">{business}</p>
             <p>Receipt {formatReceiptNumber(order.receiptNumber ?? 0)}</p>
             <p className="text-xs">{order.title}</p>
-            <p className="text-xs">Issued {order.paidAt ? format(order.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
+            <p className="text-xs">Issued {order.paidAt ? formatResort(order.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
             {customerName ? <p className="text-xs">Customer: {customerName}</p> : null}
             {bookings ? <p className="text-xs [overflow-wrap:anywhere]">{bookings}</p> : null}
           </header>
@@ -251,7 +250,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <PaymentRecord view={view} />
         <OrderHistory orderId={orderId} />
         {isVoid ? (
-          <p className="text-xs text-muted-foreground">Voided by {order.voidedBy}{order.voidedAt ? ` on ${format(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>
+          <p className="text-xs text-muted-foreground">Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>
         ) : (
           <div className="border-t border-border pt-4">
             <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} />

@@ -56,6 +56,16 @@ export function firstName(name: string | undefined): string | null {
 	return name?.trim().split(/\s+/)[0] || null;
 }
 
+/**
+ * Whether the till's lease is still running. A query's `Date.now()` doesn't re-run it as time
+ * passes, so a live subscription relies on expireLease's write; this covers every fresh read.
+ */
+async function holdsLiveLease(ctx: QueryCtx, till: Doc<'tills'>) {
+	if (!till.leaseId) return false;
+	const lease = await ctx.db.query('displayDriverLeases').withIndex('by_tillId', (q) => q.eq('tillId', till._id)).unique();
+	return lease?.leaseId === till.leaseId && lease.expiresAt > Date.now();
+}
+
 /** A paid order thanks whoever its receipt was issued to; an open one greets its linked customer. */
 async function customerFirstName(ctx: QueryCtx, order: Doc<'bills'>) {
 	if (order.status === 'paid') return firstName(order.customerSnapshot?.name);
@@ -67,6 +77,9 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 	const { businessName } = await getEffectiveSettings(ctx);
 	const order = till?.orderId ? await ctx.db.get(till.orderId) : null;
 	if (!order || !(isOpenOrder(order) || order.status === 'paid')) return { state: 'idle', businessName };
+	// An open order is shown only under its checkout's live lease (convex/displays.ts), checked here
+	// too, not only by the scheduled expiry. Orders published before leases have none.
+	if (order.status !== 'paid' && !(till && (await holdsLiveLease(ctx, till)))) return { state: 'idle', businessName };
 	const lines = await orderLines(ctx, order._id);
 	if (!lines.length) return { state: 'idle', businessName };
 

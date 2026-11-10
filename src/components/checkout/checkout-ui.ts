@@ -1,5 +1,7 @@
-import { format, isSameDay } from "date-fns";
+import { tz } from "@date-fns/tz";
+import { format } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
+import { RESORT_ZONE, resortIsoDate } from "@/lib/staff-bookings";
 import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, round2, type TenderMethod } from "convex/lib/billMath";
 import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import type { OrderView } from "./backend";
@@ -33,9 +35,17 @@ export function amountInput(value: string, max = MAX_BILL) {
   return Number(text) > max ? String(max) : text;
 }
 
-/** When an order was last changed: the time today, with the date on other days. */
+const IN_RESORT = { in: tz(RESORT_ZONE) };
+
+/**
+ * A date-fns `format` in resort (Bangkok) time, whatever the device's zone, as the order history and
+ * payment dates show it: receipts and the Orders list read the same on every till.
+ */
+export const formatResort = (at: number, pattern: string) => format(at, pattern, IN_RESORT);
+
+/** When an order was last changed: the time today (the resort's day), with the date on other days. */
 export function orderTime(at: number, now = Date.now()) {
-  return format(at, isSameDay(at, now) ? "HH:mm" : "d MMM, HH:mm");
+  return formatResort(at, resortIsoDate(at) === resortIsoDate(now) ? "HH:mm" : "d MMM, HH:mm");
 }
 
 /** Who a receipt is issued to: the name frozen at payment (or a legacy order's copied name). */
@@ -85,7 +95,7 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     business,
     `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}${order.status === "void" ? " (VOID)" : ""}`,
     order.title,
-    order.paidAt ? format(order.paidAt, "d MMM yyyy, HH:mm") : "",
+    order.paidAt ? formatResort(order.paidAt, "d MMM yyyy, HH:mm") : "",
     ...(name ? [`Customer: ${name}`] : []),
     ...(bookings ? [bookings] : []),
     "",

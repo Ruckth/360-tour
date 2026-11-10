@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { MAX_BILL, bookingBalance, round2 } from './billMath';
@@ -29,53 +30,53 @@ export const bookingRevision = (booking: Pick<Booking, 'revision'>) => booking.r
 /** New correction paths always send the revision staff reviewed; older API callers may omit it. */
 export function assertBookingRevision(booking: Booking, expected: number | undefined, required = true) {
 	if (expected === undefined) {
-		if (required) throw new Error('Reopen the booking and try again (missing revision).');
+		if (required) throw new ConvexError('Reopen the booking and try again (missing revision).');
 		return;
 	}
-	if (!Number.isInteger(expected) || expected !== bookingRevision(booking)) throw new Error(STALE_BOOKING);
+	if (!Number.isInteger(expected) || expected !== bookingRevision(booking)) throw new ConvexError(STALE_BOOKING);
 }
 
 export function assertNoLiveCheckout(booking: Booking, now = Date.now()) {
-	if ((booking.stripeCheckoutExpiresAt ?? 0) > now) throw new Error(LIVE_CHECKOUT);
+	if ((booking.stripeCheckoutExpiresAt ?? 0) > now) throw new ConvexError(LIVE_CHECKOUT);
 }
 
 /** Trimmed text, at most REASON_MAX characters; `required` refuses an empty one. */
 export function cleanReason(value: string | undefined, label = 'Reason', required = true): string | undefined {
 	const trimmed = value?.trim() ?? '';
 	if (!trimmed) {
-		if (required) throw new Error(`${label} is required`);
+		if (required) throw new ConvexError(`${label} is required`);
 		return undefined;
 	}
-	if (trimmed.length > REASON_MAX) throw new Error(`${label} must be at most ${REASON_MAX} characters`);
+	if (trimmed.length > REASON_MAX) throw new ConvexError(`${label} must be at most ${REASON_MAX} characters`);
 	return trimmed;
 }
 
 /** A money amount: finite, more than zero, whole satang and within the till limit. */
 export function assertMoney(amount: number, label = 'Amount') {
-	if (!Number.isFinite(amount) || amount <= 0) throw new Error(`${label} must be more than zero`);
-	if (round2(amount) !== amount) throw new Error(`${label} is in whole satang (at most 2 decimals)`);
-	if (amount > MAX_BILL) throw new Error(`${label} is at most ${MAX_BILL.toLocaleString('en-US')}`);
+	if (!Number.isFinite(amount) || amount <= 0) throw new ConvexError(`${label} must be more than zero`);
+	if (round2(amount) !== amount) throw new ConvexError(`${label} is in whole satang (at most 2 decimals)`);
+	if (amount > MAX_BILL) throw new ConvexError(`${label} is at most ${MAX_BILL.toLocaleString('en-US')}`);
 }
 
 /** A stay price: zero or more, whole satang, within the till limit. */
 export function assertStayPrice(total: number) {
-	if (!Number.isFinite(total) || total < 0) throw new Error('Price must be zero or more');
-	if (round2(total) !== total) throw new Error('Price is in whole satang (at most 2 decimals)');
-	if (total > MAX_BILL) throw new Error(`Price is at most ${MAX_BILL.toLocaleString('en-US')}`);
+	if (!Number.isFinite(total) || total < 0) throw new ConvexError('Price must be zero or more');
+	if (round2(total) !== total) throw new ConvexError('Price is in whole satang (at most 2 decimals)');
+	if (total > MAX_BILL) throw new ConvexError(`Price is at most ${MAX_BILL.toLocaleString('en-US')}`);
 }
 
 /** The business time something happened. Defaults to now; any past date is allowed, the future is not. */
 export function effectiveTime(value: number | undefined, now = Date.now()): number {
 	if (value === undefined) return now;
-	if (!Number.isSafeInteger(value) || value < EARLIEST_EFFECTIVE) throw new Error('Invalid effective date');
-	if (value > now + FUTURE_SKEW_MS) throw new Error('The effective date cannot be in the future');
+	if (!Number.isSafeInteger(value) || value < EARLIEST_EFFECTIVE) throw new ConvexError('Invalid effective date');
+	if (value > now + FUTURE_SKEW_MS) throw new ConvexError('The effective date cannot be in the future');
 	return value;
 }
 
 /** One attempt's key: retrying with it returns the first result instead of recording twice. */
 export function attemptKey(key: string): string {
 	const trimmed = key.trim();
-	if (trimmed.length < 8 || trimmed.length > 100) throw new Error('Invalid attempt key');
+	if (trimmed.length < 8 || trimmed.length > 100) throw new ConvexError('Invalid attempt key');
 	return trimmed;
 }
 

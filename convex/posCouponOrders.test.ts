@@ -315,7 +315,7 @@ describe('POS order coupons', () => {
 		await s.apply(orderId);
 		const before = await s.order(orderId);
 		for (const args of [{}, { code: 'SPA-500', slug: 'spa' }]) {
-			await expect(s.admin.mutation(api.pos.applyOrderCoupon, { orderId, ...args })).rejects.toThrow('Choose one');
+			await expect(s.admin.mutation(api.pos.applyOrderCoupon, { orderId, ...args })).rejects.toMatchObject({ data: 'Choose one coupon code or link' });
 		}
 		await expect(s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'missing' })).rejects.toMatchObject(unavailable('not_found'));
 		await expect(s.admin.mutation(api.pos.applyOrderCoupon, { orderId, slug: 'missing' })).rejects.toMatchObject(unavailable('link_without_offer'));
@@ -369,6 +369,44 @@ describe('POS order coupons', () => {
 });
 
 describe('POS order coupons: review fixes', () => {
+	it('rolls back coupon consumption when a fee exceeds the appointment’s corrected price', async () => {
+		const s = await setup();
+		const orderId = await s.sale();
+		const appointmentId = await s.appointment({ status: 'no_show' });
+		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 100 });
+		await s.apply(orderId);
+		// Another staff member corrects the appointment after this fee was added.
+		await s.t.run(ctx => ctx.db.patch(appointmentId, { price: 50 }));
+		await expect(s.pay(orderId)).rejects.toThrow('price');
+		expect((await s.order(orderId)).payments).toEqual([]);
+		expect(await s.ledger()).toEqual([]);
+		expect(await s.coupon()).toMatchObject({ used: 0, discountGranted: 0 });
+		const fee = (await s.order(orderId)).lines.find(line => line.fee)!;
+		await s.admin.mutation(api.pos.removeLine, { lineId: fee._id });
+		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 50 });
+		await s.pay(orderId);
+		expect((await s.order(orderId)).totals).toMatchObject({ coupon: 500, total: 1350 });
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+	});
+
+	it('releases an attachment-derived stay link while keeping the remaining service coupon', async () => {
+		const s = await setup();
+		const orderId = await s.sale();
+		await s.apply(orderId);
+		await s.admin.mutation(api.pos.attach, { orderId, bookingId: s.bookingId });
+		const attached = await s.order(orderId);
+		expect(attached.order.bookingId).toBe(s.bookingId);
+		await s.admin.mutation(api.pos.removeLine, { lineId: attached.lines.find(line => line.bookingId === s.bookingId)!._id });
+		const detached = await s.order(orderId);
+		expect(detached.order.bookingId).toBeUndefined();
+		expect(detached.source).toBeNull();
+		expect(detached.totals).toMatchObject({ coupon: 500, total: 1300 });
+		expect(detached.lines.map(line => line.couponDiscount)).toEqual([333, 167]);
+		await s.pay(orderId);
+		expect(await s.ledger()).toMatchObject([{ billId: orderId, state: 'consumed', discount: 500 }]);
+		expect((await s.t.run(ctx => ctx.db.get(s.bookingId)))!.amountPaid).toBe(10000);
+	});
+
 	it('lowering the usage limit stops an order frozen on the earlier version', async () => {
 		const s = await setup({ usageLimit: 10 });
 		const orderId = await s.sale();
@@ -411,6 +449,10 @@ describe('POS order coupons: review fixes', () => {
 		const s = await setup();
 		const orderId = await s.sale();
 		await expect(s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).rejects.toThrow('This order has no coupon');
+		await s.apply(orderId);
+		// A different staff tab removes the coupon before this tab's recheck arrives.
+		await s.admin.mutation(api.pos.removeOrderCoupon, { orderId });
+		await expect(s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).rejects.toMatchObject({ data: 'This order has no coupon' });
 		await s.apply(orderId);
 		await s.pay(orderId);
 		await expect(s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).rejects.toThrow('This order is already paid');

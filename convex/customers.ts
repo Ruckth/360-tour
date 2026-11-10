@@ -1,6 +1,6 @@
 import { appendRecordHistory } from './lib/recordHistory';
 import { paginationOptsValidator } from 'convex/server';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
@@ -27,17 +27,17 @@ export const CUSTOMER_POS_INTEGRATION_ENABLED = true;
 
 /** POS integration seam: never silently redirect an explicit customer selection. */
 export function assertCustomerCanLink(customer: Doc<'customers'> | null) {
-	if (!customer) throw new Error('Customer not found');
-	if (customer.mergedInto) throw new Error('This profile was merged. Open and review the kept customer before linking.');
-	if (customer.archivedAt) throw new Error('Restore this customer before linking to a new order.');
+	if (!customer) throw new ConvexError('Customer not found');
+	if (customer.mergedInto) throw new ConvexError('This profile was merged. Open and review the kept customer before linking.');
+	if (customer.archivedAt) throw new ConvexError('Restore this customer before linking to a new order.');
 	return customer;
 }
 
 /** Call in settleOrder after payment replay handling and before any writes; see delivery contract. */
 export function assertCustomerReviewed(customer: Doc<'customers'> | null, expectedRevision: number | undefined) {
-	if (!customer) throw new Error('The linked customer no longer exists. Link another customer or remove the link.');
-	if (customer.mergedInto) throw new Error('The linked customer was merged. Reopen this order and review its customer.');
-	if (expectedRevision !== (customer.revision ?? 0)) throw new Error('The customer changed. Review the customer and pay again.');
+	if (!customer) throw new ConvexError('The linked customer no longer exists. Link another customer or remove the link.');
+	if (customer.mergedInto) throw new ConvexError('The linked customer was merged. Reopen this order and review its customer.');
+	if (expectedRevision !== (customer.revision ?? 0)) throw new ConvexError('The customer changed. Review the customer and pay again.');
 }
 
 const customerInput = {
@@ -49,18 +49,18 @@ const customerInput = {
 
 function text(value: string | undefined, label: string, max: number) {
 	const trimmed = value?.trim();
-	if (trimmed && trimmed.length > max) throw new Error(`${label} must be at most ${max} characters`);
+	if (trimmed && trimmed.length > max) throw new ConvexError(`${label} must be at most ${max} characters`);
 	return trimmed || undefined;
 }
 
 /** Trims and validates a profile, with its exact-lookup fields. */
 export function cleanCustomer(input: { name: string; phone?: string; email?: string; notes?: string }, previousPhone?: string) {
 	const name = text(input.name, 'Name', NAME_MAX);
-	if (!name) throw new Error('Enter the customer name');
+	if (!name) throw new ConvexError('Enter the customer name');
 	const phone = text(input.phone, 'Phone', PHONE_MAX);
 	// Unrelated edits must still work for profiles saved before phone validation existed.
 	const phoneError = phone !== previousPhone?.trim() ? customerPhoneError(phone) : undefined;
-	if (phoneError) throw new Error(phoneError);
+	if (phoneError) throw new ConvexError(phoneError);
 	const email = text(input.email, 'Email', EMAIL_MAX);
 	if (email) assertValidEmail(email);
 	return {
@@ -79,7 +79,7 @@ export function customerCard(customer: Doc<'customers'>) {
 }
 
 function pageSize(numItems: number) {
-	if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new Error('Page size must be 1–50');
+	if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new ConvexError('Page size must be 1–50');
 }
 
 function customerValues(customer: { name: string; phone?: string; email?: string; notes?: string }) {
@@ -93,7 +93,7 @@ export const browseCustomers = query({
 		await requireAdmin(ctx);
 		pageSize(args.paginationOpts.numItems);
 		const raw = args.query.trim();
-		if (raw.length > 200) throw new Error('Search must be at most 200 characters');
+		if (raw.length > 200) throw new ConvexError('Search must be at most 200 characters');
 		const digits = raw.replace(/\D/g, '');
 		const rows = raw.length < 2
 			? args.archived
@@ -194,7 +194,7 @@ export const createCustomer = mutation({
 
 function expectRevision(customer: Doc<'customers'>, expectedRevision: number | undefined) {
 	// Optional only for existing API callers. The production editor always sends its loaded revision.
-	if (expectedRevision !== undefined && expectedRevision !== (customer.revision ?? 0)) throw new Error('This customer changed. Go back and reopen the profile before saving.');
+	if (expectedRevision !== undefined && expectedRevision !== (customer.revision ?? 0)) throw new ConvexError('This customer changed. Go back and reopen the profile before saving.');
 }
 
 /**
@@ -207,8 +207,8 @@ export const updateCustomer = mutation({
 	handler: async (ctx, { customerId, expectedRevision, ...input }) => {
 		const admin = await requireAdmin(ctx);
 		const customer = await ctx.db.get(customerId);
-		if (!customer) throw new Error('Customer not found');
-		if (customer.mergedInto) throw new Error('This profile was merged. Open the kept customer to edit it.');
+		if (!customer) throw new ConvexError('Customer not found');
+		if (customer.mergedInto) throw new ConvexError('This profile was merged. Open the kept customer to edit it.');
 		expectRevision(customer, expectedRevision);
 		const next = cleanCustomer(input, customer.phone);
 		if (JSON.stringify(customerValues(next)) === JSON.stringify(customerValues(customer))) return;
@@ -223,8 +223,8 @@ export const setCustomerArchived = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const customer = await ctx.db.get(args.customerId);
-		if (!customer) throw new Error('Customer not found');
-		if (customer.mergedInto) throw new Error('Merged profiles cannot be restored. Open the kept customer.');
+		if (!customer) throw new ConvexError('Customer not found');
+		if (customer.mergedInto) throw new ConvexError('Merged profiles cannot be restored. Open the kept customer.');
 		expectRevision(customer, args.expectedRevision);
 		if (Boolean(customer.archivedAt) === args.archived) return;
 		const archivedAt = args.archived ? Date.now() : undefined;
@@ -270,7 +270,7 @@ export const resumeCustomerMerge = mutation({
     handler: async (ctx, { sourceId }) => {
         await requireAdmin(ctx);
         const job = await ctx.db.query('customerMergeJobs').withIndex('by_sourceId', q => q.eq('sourceId', sourceId)).unique();
-        if (!job) throw new Error('No merge to resume');
+        if (!job) throw new ConvexError('No merge to resume');
         await moveMergeBatch(ctx, job._id);
         return null;
     }
@@ -280,25 +280,25 @@ export async function mergeCustomerRecords(ctx: MutationCtx, args: {
     sourceId: Id<'customers'>; destinationId: Id<'customers'>; sourceRevision: number; destinationRevision: number; reason: string; idempotencyKey: string;
 }) {
     const admin = await requireAdmin(ctx);
-    if (args.sourceId === args.destinationId) throw new Error('Choose two different customers');
+    if (args.sourceId === args.destinationId) throw new ConvexError('Choose two different customers');
     const reason = args.reason.trim();
-    if (!reason || reason.length > 1000) throw new Error('Enter a merge reason (at most 1000 characters)');
-    if (args.idempotencyKey.length < 8 || args.idempotencyKey.length > 100) throw new Error('Invalid merge attempt');
+    if (!reason || reason.length > 1000) throw new ConvexError('Enter a merge reason (at most 1000 characters)');
+    if (args.idempotencyKey.length < 8 || args.idempotencyKey.length > 100) throw new ConvexError('Invalid merge attempt');
     const source = await ctx.db.get(args.sourceId);
     const destination = await ctx.db.get(args.destinationId);
-    if (!source || !destination) throw new Error('Customer not found');
+    if (!source || !destination) throw new ConvexError('Customer not found');
     if (source.mergedInto === destination._id && source.mergeKey === args.idempotencyKey) {
-        if (source.mergeReason !== reason) throw new Error('This merge attempt was already used with a different reason');
+        if (source.mergeReason !== reason) throw new ConvexError('This merge attempt was already used with a different reason');
         // Replay never writes another start/completion event. Explicit resume can recover a failed scheduled run.
         return { replayed: true, destinationId: destination._id };
     }
-    if (source.mergedInto || destination.mergedInto) throw new Error('A selected customer has already been merged. Reopen both profiles.');
-    if (destination.archivedAt) throw new Error('Restore the kept customer before merging');
+    if (source.mergedInto || destination.mergedInto) throw new ConvexError('A selected customer has already been merged. Reopen both profiles.');
+    if (destination.archivedAt) throw new ConvexError('Restore the kept customer before merging');
     expectRevision(source, args.sourceRevision);
     expectRevision(destination, args.destinationRevision);
     // A destination may accept concurrent merges, but cannot itself move until all inbound work ends.
     const incoming = await ctx.db.query('customerMergeJobs').withIndex('by_destinationId_and_status', q => q.eq('destinationId', source._id).eq('status', 'running')).first();
-    if (incoming) throw new Error('Finish the in-progress merge into this customer before moving it into another profile.');
+    if (incoming) throw new ConvexError('Finish the in-progress merge into this customer before moving it into another profile.');
     const now = Date.now();
     const before = { sourceId: source._id, destinationId: destination._id, source: customerValues(source), destination: customerValues(destination) };
     // Freeze before moving any references. Concurrent links/payment must observe this revision or conflict.

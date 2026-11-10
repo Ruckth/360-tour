@@ -46,7 +46,7 @@ import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
 import { MAX_STAY_ROWS, orderStayPayment, stayPaymentReversalPatch } from './lib/stayCorrections';
 import { MAX_LINES, orderLines } from './lib/orderLines';
-import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, orderPaymentRecord, type FeeKind } from './lib/orderLifecycle';
+import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage, orderPaymentRecord, type FeeKind } from './lib/orderLifecycle';
 
 /**
  * Staff POS orders. An order is the persistent commercial record: a permanent order number,
@@ -113,11 +113,11 @@ const ONLINE_CHECKOUT = 'Online checkout is in progress. Wait for it to finish o
 
 /** Orders are in baht; a price in another currency is refused rather than read as baht. */
 function assertBaht(currency: string, what: string) {
-	if (currency !== CURRENCY) throw new Error(`${what} is priced in ${currency}. Checkout takes ${CURRENCY} only.`);
+	if (currency !== CURRENCY) throw new ConvexError(`${what} is priced in ${currency}. Checkout takes ${CURRENCY} only.`);
 }
 
 function oneSource(args: { bookingId?: Id<'bookings'>; appointmentId?: Id<'serviceAppointments'> }): OrderSource {
-	if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new Error('Choose one booking or appointment');
+	if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new ConvexError('Choose one booking or appointment');
 	return args.bookingId ? { bookingId: args.bookingId } : { appointmentId: args.appointmentId! };
 }
 
@@ -125,10 +125,10 @@ function oneSource(args: { bookingId?: Id<'bookings'>; appointmentId?: Id<'servi
 async function editableOrder(ctx: MutationCtx, orderId: Id<'bills'> | undefined, actor: string): Promise<Order> {
 	if (!orderId) return await insertOrder(ctx, actor);
 	const order = await ctx.db.get(orderId);
-	if (!order) throw new Error('Order not found');
-	if (order.status === 'paid') throw new Error('This order is already paid');
-	if (order.status === 'void') throw new Error('This order was voided');
-	if (order.status === 'discarded') throw new Error(DISCARDED_ORDER);
+	if (!order) throw new ConvexError('Order not found');
+	if (order.status === 'paid') throw new ConvexError('This order is already paid');
+	if (order.status === 'void') throw new ConvexError('This order was voided');
+	if (order.status === 'discarded') throw new ConvexError(DISCARDED_ORDER);
 	// Legacy held orders become ordinary unpaid drafts when touched.
 	if (order.status === 'held') {
 		await ctx.db.patch(order._id, { status: 'draft' });
@@ -139,7 +139,7 @@ async function editableOrder(ctx: MutationCtx, orderId: Id<'bills'> | undefined,
 
 async function editableLine(ctx: MutationCtx, lineId: Id<'billLines'>, actor: string) {
 	const line = await ctx.db.get(lineId);
-	if (!line) throw new Error('Item not found');
+	if (!line) throw new ConvexError('Item not found');
 	const order = await editableOrder(ctx, line.billId, actor);
 	return { line, order };
 }
@@ -192,7 +192,20 @@ async function refreshOrder(ctx: MutationCtx, orderId: Id<'bills'>) {
 	}
 	const totals = billTotals(lines);
 	assertBillSize(totals);
+	// An explicit booking-owned order keeps its identity when emptied. A link acquired only
+	// by attaching a row lasts as long as at least one row still belongs to that source.
+	let releaseSource = order?.implicitSourceLink === true;
+	if (releaseSource) {
+		for (const line of lines) {
+			if (order!.bookingId && line.bookingId === order!.bookingId) { releaseSource = false; break; }
+			const appointmentId = line.appointmentId ?? line.feeAppointmentId;
+			if (!appointmentId) continue;
+			if (order!.appointmentId === appointmentId) { releaseSource = false; break; }
+			if (order!.bookingId && (await ctx.db.get(appointmentId))?.bookingId === order!.bookingId) { releaseSource = false; break; }
+		}
+	}
 	await ctx.db.patch(orderId, {
+		...(releaseSource ? { bookingId: undefined, appointmentId: undefined, implicitSourceLink: undefined } : {}),
 		itemCount: lines.reduce((n, line) => n + line.qty, 0),
 		total: totals.total,
 		due: totals.due,
@@ -203,12 +216,12 @@ async function refreshOrder(ctx: MutationCtx, orderId: Id<'bills'>) {
 }
 
 async function assertRoom(ctx: MutationCtx, orderId: Id<'bills'>) {
-	if ((await orderLines(ctx, orderId)).length >= MAX_LINES) throw new Error(`An order holds at most ${MAX_LINES} items`);
+	if ((await orderLines(ctx, orderId)).length >= MAX_LINES) throw new ConvexError(`An order holds at most ${MAX_LINES} items`);
 }
 
 function cleanText(value: string | undefined, label: string, max = 200) {
 	const trimmed = value?.trim();
-	if (trimmed && trimmed.length > max) throw new Error(`${label} must be at most ${max} characters`);
+	if (trimmed && trimmed.length > max) throw new ConvexError(`${label} must be at most ${max} characters`);
 	return trimmed || undefined;
 }
 
@@ -334,7 +347,7 @@ async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = directR
 	if (line.feeAppointmentId && line.fee) {
 		const appointment = await reads.appointment(line.feeAppointmentId);
 		if (!appointment) return { kind: 'gone', message: 'The appointment this fee is for no longer exists. Remove the fee from the order.' };
-		const blocked = feeBlocker(appointment, line.fee.kind) ?? otherFeeMessage((await liveFees(ctx, appointment._id, line.billId))[0]);
+		const blocked = feeBlocker(appointment, line.fee.kind) ?? feePriceBlocker(line.unitPrice, appointment) ?? otherFeeMessage((await liveFees(ctx, appointment._id, line.billId))[0]);
 		if (blocked) return { kind: 'settled', message: `${blocked} Remove the fee from the order.` };
 	}
 	return null;
@@ -355,7 +368,7 @@ async function linkFirstSource(ctx: MutationCtx, order: Order, source: OrderSour
 	const link: OrderSource = bookingId ? { bookingId } : source;
 	const other = await linkedOpenOrder(ctx, link);
 	if (other && other._id !== order._id) return;
-	await ctx.db.patch(order._id, 'bookingId' in link ? { bookingId: link.bookingId } : { appointmentId: link.appointmentId });
+	await ctx.db.patch(order._id, { ...('bookingId' in link ? { bookingId: link.bookingId } : { appointmentId: link.appointmentId }), implicitSourceLink: true });
 }
 
 /** Charges a booking or appointment on the order. Customer and guest details are left alone. */
@@ -365,19 +378,19 @@ async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, act
 	let appointment: Doc<'serviceAppointments'> | undefined;
 	const other = await openOrderCharging(ctx, source);
 	const what = 'bookingId' in source ? 'This booking' : 'This appointment';
-	if (other) throw new Error(other._id === order._id ? `${what} is already on this order` : `${what} is already on ${orderTitle(other.orderNumber)}`);
+	if (other) throw new ConvexError(other._id === order._id ? `${what} is already on this order` : `${what} is already on ${orderTitle(other.orderNumber)}`);
 	if ('bookingId' in source) {
 		const booking = await ctx.db.get(source.bookingId);
-		if (!booking) throw new Error('Booking not found');
-		if (!bookingPayable(booking)) throw new Error('This booking has nothing left to pay');
+		if (!booking) throw new ConvexError('Booking not found');
+		if (!bookingPayable(booking)) throw new ConvexError('This booking has nothing left to pay');
 		const blocked = bookingCheckoutBlock(booking);
-		if (blocked) throw new Error(blocked);
+		if (blocked) throw new ConvexError(blocked);
 		assertBaht(booking.currency, 'This booking');
 		line = await bookingLine(ctx, booking);
 	} else {
 		appointment = (await ctx.db.get(source.appointmentId)) ?? undefined;
-		if (!appointment) throw new Error('Appointment not found');
-		if (!appointmentAttachable(appointment)) throw new Error('This appointment has nothing left to pay');
+		if (!appointment) throw new ConvexError('Appointment not found');
+		if (!appointmentAttachable(appointment)) throw new ConvexError('This appointment has nothing left to pay');
 		assertBaht(appointment.currency, 'This appointment');
 		line = await appointmentLine(ctx, appointment);
 	}
@@ -474,6 +487,7 @@ async function sourceRows(ctx: ReadCtx, orderId: Id<'bills'>) {
 
 /** Who the order is for, as listed: the linked customer, else the name on its receipt or legacy record. */
 async function customerName(ctx: ReadCtx, order: Order) {
+	if (order.amendedCustomer !== undefined) return order.amendedCustomer?.name;
 	if (order.customerSnapshot) return order.customerSnapshot.name;
 	if (order.customerId) return (await ctx.db.get(order.customerId))?.name ?? 'Deleted customer';
 	return order.guestName;
@@ -765,7 +779,7 @@ export const ordersForBooking = query({
 			// An appointment that is part of a stay continues on the stay's open order.
 			if (!active && appointment.bookingId) active = await activeOrderFor(ctx, { bookingId: appointment.bookingId });
 		}
-		if (refunds.length > MAX_STAY_ROWS) throw new Error('Full refund history needs review before showing per-order balances.');
+		if (refunds.length > MAX_STAY_ROWS) throw new ConvexError('Full refund history needs review before showing per-order balances.');
 		// Empty unpaid orders (such as the one made with the booking, when its stay was charged on
 		// another order) are left out, as in the orders list; the active one is returned above.
 		const recent = await ordersForSource(ctx, source, 6);
@@ -811,17 +825,66 @@ function legacyUnpaidAppointments(ctx: ReadCtx) {
 		.withIndex('by_guestPhoneDigits_and_paymentStatus', (q) => q.eq('guestPhoneDigits', undefined).eq('paymentStatus', 'unpaid'));
 }
 
+/** Contacts searched by both the results and their completeness indicator. */
+async function attachContacts(ctx: ReadCtx, args: { orderId?: Id<'bills'>; query?: string }) {
+	const order = args.orderId ? await ctx.db.get(args.orderId) : null;
+	const customer = order?.customerId ? await ctx.db.get(order.customerId) : null;
+	const phones = new Set<string>();
+	const emails = new Set<string>();
+	if (customer?.phoneDigits && customer.phoneDigits.length >= 4) phones.add(customer.phoneDigits);
+	if (customer?.emailNormalized) emails.add(customer.emailNormalized);
+	const text = args.query?.trim() ?? '';
+	if (text.length >= 2) {
+		const digits = text.replace(/\D/g, '');
+		if (digits.length >= 4) phones.add(digits);
+		if (text.includes('@')) emails.add(text.toLowerCase());
+	}
+	return { phones, emails, text };
+}
+
 /**
- * Whether Add booking's phone and email search covers every unpaid appointment. False only
- * during the rollout, while more than LEGACY_LOOKUP_SCAN unpaid appointments still wait for
- * migrations:backfillAppointmentGuestLookup; checkout then says to search by reference or name.
+ * A contact's newest 20 records need not be its newest 20 payable stays. Read at most 500
+ * records, keeping payable matches; a capped scan is reported beside the results. Status alone
+ * is insufficient: a paid stay can owe more after an extension, and a documented provider
+ * refund can leave other nights collectible.
  */
+async function payableBookingMatches(query: AsyncIterable<Doc<'bookings'>>) {
+	const rows: Doc<'bookings'>[] = [];
+	let scanned = 0;
+	for await (const booking of query) {
+		if (++scanned > LEGACY_LOOKUP_SCAN) return { rows, complete: false };
+		if (bookingPayable(booking)) rows.push(booking);
+		if (rows.length >= ATTACH_SCAN) return { rows, complete: true };
+	}
+	return { rows, complete: true };
+}
+
+async function contactBookings(ctx: ReadCtx, contacts: Awaited<ReturnType<typeof attachContacts>>) {
+	const searches: Array<ReturnType<typeof payableBookingMatches>> = [];
+	if (contacts.text.length >= 2) {
+		// Raw phone preserves lookups for stays saved before normalized contacts existed.
+		searches.push(payableBookingMatches(ctx.db.query('bookings').withIndex('by_guestPhone', (q) => q.eq('guestPhone', contacts.text)).order('desc')));
+	}
+	for (const digits of contacts.phones) {
+		searches.push(payableBookingMatches(ctx.db.query('bookings').withIndex('by_guestPhoneDigits', (q) => q.eq('guestPhoneDigits', digits)).order('desc')));
+	}
+	for (const email of contacts.emails) {
+		searches.push(payableBookingMatches(ctx.db.query('bookings').withIndex('by_guestEmailNormalized', (q) => q.eq('guestEmailNormalized', email)).order('desc')));
+	}
+	const results = await Promise.all(searches);
+	return { rows: results.flatMap((result) => result.rows), complete: results.every((result) => result.complete) };
+}
+
+/** Whether this contact lookup reached its result limit/exhausted its bounded scans. */
 export const attachLookupStatus = query({
-	args: {},
-	handler: async (ctx) => {
+	args: { orderId: v.optional(v.id('bills')), query: v.optional(v.string()) },
+	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		const waiting = await legacyUnpaidAppointments(ctx).take(LEGACY_LOOKUP_SCAN + 1);
-		return { complete: waiting.length <= LEGACY_LOOKUP_SCAN };
+		const [waiting, bookings] = await Promise.all([
+			legacyUnpaidAppointments(ctx).take(LEGACY_LOOKUP_SCAN + 1),
+			contactBookings(ctx, await attachContacts(ctx, args))
+		]);
+		return { complete: waiting.length <= LEGACY_LOOKUP_SCAN && bookings.complete, ...(!bookings.complete ? { bookingsIncomplete: true } : {}) };
 	}
 });
 
@@ -849,39 +912,27 @@ export const listAttachable = query({
 			const appointment = await ctx.db.get(order.appointmentId);
 			if (appointment) addAppointments([appointment]);
 		}
-		const customer = order?.customerId ? await ctx.db.get(order.customerId) : null;
 		const searches: Array<Promise<Doc<'bookings'>[] | Doc<'serviceAppointments'>[]>> = [];
-		// Exact contacts to look up: the linked customer's, and a typed phone or email.
-		const phones = new Set<string>();
-		const emails = new Set<string>();
-		if (customer?.phoneDigits && customer.phoneDigits.length >= 4) phones.add(customer.phoneDigits);
-		if (customer?.emailNormalized) emails.add(customer.emailNormalized);
-		const text = args.query?.trim() ?? '';
+		const contacts = await attachContacts(ctx, args);
+		const { phones, emails, text } = contacts;
+		addBookings((await contactBookings(ctx, contacts)).rows);
 		if (text.length >= 2) {
-			const digits = text.replace(/\D/g, '');
-			const email = text.toLowerCase();
 			const code = text.toUpperCase();
 			searches.push(
 				ctx.db.query('bookings').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
 				ctx.db.query('serviceAppointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
 				ctx.db.query('bookings').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN),
-				ctx.db.query('serviceAppointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN),
-				// Raw phone as typed: also finds stays saved before guestPhoneDigits existed.
-				ctx.db.query('bookings').withIndex('by_guestPhone', (q) => q.eq('guestPhone', text)).order('desc').take(ATTACH_SCAN)
+				ctx.db.query('serviceAppointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN)
 			);
-			if (digits.length >= 4) phones.add(digits);
-			if (email.includes('@')) emails.add(email);
 		}
 		for (const digits of phones) {
 			searches.push(
-				ctx.db.query('bookings').withIndex('by_guestPhoneDigits', (q) => q.eq('guestPhoneDigits', digits)).order('desc').take(ATTACH_SCAN),
 				// Only unpaid appointments can be added, so the read is limited to those, not to the latest few.
 				ctx.db.query('serviceAppointments').withIndex('by_guestPhoneDigits_and_paymentStatus', (q) => q.eq('guestPhoneDigits', digits).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
 			);
 		}
 		for (const email of emails) {
 			searches.push(
-				ctx.db.query('bookings').withIndex('by_guestEmailNormalized', (q) => q.eq('guestEmailNormalized', email)).order('desc').take(ATTACH_SCAN),
 				ctx.db.query('serviceAppointments').withIndex('by_guestEmailNormalized_and_paymentStatus', (q) => q.eq('guestEmailNormalized', email).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
 			);
 		}
@@ -963,9 +1014,9 @@ async function openSourceOrder(ctx: MutationCtx, source: OrderSource, actor: str
 
 	if ('bookingId' in source) {
 		const booking = await ctx.db.get(source.bookingId);
-		if (!booking) throw new Error('Booking not found');
+		if (!booking) throw new ConvexError('Booking not found');
 		const closed = bookingClosedReason(booking);
-		if (closed) throw new Error(`${closed}, so there is nothing to charge`);
+		if (closed) throw new ConvexError(`${closed}, so there is nothing to charge`);
 		// The booking's order (usually created with the booking). Opening it charges what the stay
 		// still owes, unless another open order already does (checked above).
 		const linked = await linkedOpenOrder(ctx, source);
@@ -980,9 +1031,9 @@ async function openSourceOrder(ctx: MutationCtx, source: OrderSource, actor: str
 	}
 
 	const appointment = await ctx.db.get(source.appointmentId);
-	if (!appointment) throw new Error('Appointment not found');
+	if (!appointment) throw new ConvexError('Appointment not found');
 	if (appointment.status === 'cancelled' || appointment.status === 'no_show' || appointment.paymentStatus === 'refunded') {
-		throw new Error('This appointment has nothing left to pay');
+		throw new ConvexError('This appointment has nothing left to pay');
 	}
 	const stay: OrderSource | null = appointment.bookingId ? { bookingId: appointment.bookingId } : null;
 	let order = stay ? await activeOrderFor(ctx, stay) : await linkedOpenOrder(ctx, source);
@@ -1009,11 +1060,11 @@ export const openOrderForLink = mutation({
 	args: { bookingId: v.optional(v.string()), appointmentId: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new Error('Choose one booking or appointment');
+		if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new ConvexError('Choose one booking or appointment');
 		const bookingId = args.bookingId ? ctx.db.normalizeId('bookings', args.bookingId) : null;
 		const appointmentId = args.appointmentId ? ctx.db.normalizeId('serviceAppointments', args.appointmentId) : null;
-		if (args.bookingId && !bookingId) throw new Error('Booking not found. Start a new order or choose one from Orders.');
-		if (args.appointmentId && !appointmentId) throw new Error('Appointment not found. Start a new order or choose one from Orders.');
+		if (args.bookingId && !bookingId) throw new ConvexError('Booking not found. Start a new order or choose one from Orders.');
+		if (args.appointmentId && !appointmentId) throw new ConvexError('Appointment not found. Start a new order or choose one from Orders.');
 		const source = oneSource({ bookingId: bookingId ?? undefined, appointmentId: appointmentId ?? undefined });
 		return await openSourceOrder(ctx, source, admin.email);
 	}
@@ -1028,17 +1079,17 @@ export const addItem = mutation({
 		let line: LineFields;
 		if (item.kind === 'service') {
 			const service = await ctx.db.get(item.serviceId);
-			if (!service || service.status !== 'active') throw new Error('This service is no longer offered');
+			if (!service || service.status !== 'active') throw new ConvexError('This service is no longer offered');
 			assertBaht(service.currency, service.name);
 			line = { kind: 'service', serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, currency: CURRENCY, qty: 1 };
 		} else if (item.kind === 'room') {
 			const property = await ctx.db.get(item.propertyId);
-			if (!property || property.status !== 'active') throw new Error('This villa is not available');
+			if (!property || property.status !== 'active') throw new ConvexError('This villa is not available');
 			assertBaht(property.currency, property.name);
 			line = { kind: 'room', propertyId: property._id, name: property.name, detail: 'per night', unitPrice: property.pricePerNight, currency: CURRENCY, qty: 1 };
 		} else {
 			const name = cleanText(item.name, 'Item name', 80);
-			if (!name) throw new Error('Name the item');
+			if (!name) throw new ConvexError('Name the item');
 			assertPrice(item.price);
 			line = { kind: 'extra', name, unitPrice: round2(item.price), currency: CURRENCY, qty: 1 };
 		}
@@ -1091,30 +1142,30 @@ export const updateLine = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
-		if (line.fee && (args.qtyChange !== undefined || args.discount)) throw new Error(FEE_FIXED);
+		if (line.fee && (args.qtyChange !== undefined || args.discount)) throw new ConvexError(FEE_FIXED);
 		const patch: Partial<Line> = {};
 		if (args.staffId !== undefined) {
-			if (line.kind !== 'service') throw new Error('Only service rows take a therapist here');
+			if (line.kind !== 'service') throw new ConvexError('Only service rows take a therapist here');
 			if (args.staffId) {
 				const service = line.serviceId ? await ctx.db.get(line.serviceId) : null;
 				const person = await ctx.db.get(args.staffId);
-				if (!person || person.status !== 'active') throw new Error('Staff member not found');
-				if (!service?.staffIds.includes(args.staffId)) throw new Error(`${person.name} doesn't offer this service`);
+				if (!person || person.status !== 'active') throw new ConvexError('Staff member not found');
+				if (!service?.staffIds.includes(args.staffId)) throw new ConvexError(`${person.name} doesn't offer this service`);
 			}
 			patch.staffId = args.staffId ?? undefined;
 		}
 		if (args.startAt !== undefined) {
-			if (line.kind !== 'service') throw new Error('Only service rows take a start time here');
-			if (args.startAt !== null && !Number.isSafeInteger(args.startAt)) throw new Error('Invalid start time');
+			if (line.kind !== 'service') throw new ConvexError('Only service rows take a start time here');
+			if (args.startAt !== null && !Number.isSafeInteger(args.startAt)) throw new ConvexError('Invalid start time');
 			patch.startAt = args.startAt ?? undefined;
 		}
 		if (args.qtyChange !== undefined) {
-			if (!MERGES_QTY[line.kind]) throw new Error('Add another row instead: each service is its own row');
-			if (!Number.isInteger(args.qtyChange) || Math.abs(args.qtyChange) > MAX_QTY) throw new Error('Invalid quantity change');
+			if (!MERGES_QTY[line.kind]) throw new ConvexError('Add another row instead: each service is its own row');
+			if (!Number.isInteger(args.qtyChange) || Math.abs(args.qtyChange) > MAX_QTY) throw new ConvexError('Invalid quantity change');
 			patch.qty = Math.min(Math.max(line.qty + args.qtyChange, 1), MAX_QTY);
 		}
 		if (args.discount !== undefined) {
-			if (line.kind === 'booking' && args.discount) throw new Error(ATTACHED_PRICE);
+			if (line.kind === 'booking' && args.discount) throw new ConvexError(ATTACHED_PRICE);
 			if (args.discount) assertDiscount(args.discount);
 			patch.discount = args.discount && args.discount.value > 0 ? args.discount : undefined;
 		}
@@ -1132,8 +1183,8 @@ export const overrideLinePrice = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
-		if (line.kind === 'booking' && args.price !== null) throw new Error(ATTACHED_PRICE);
-		if (line.fee && args.price !== null) throw new Error(FEE_FIXED);
+		if (line.kind === 'booking' && args.price !== null) throw new ConvexError(ATTACHED_PRICE);
+		if (line.fee && args.price !== null) throw new ConvexError(FEE_FIXED);
 		const fromPrice = line.priceOverride?.price ?? line.unitPrice;
 		let note: string | undefined;
 		if (args.price === null) {
@@ -1183,7 +1234,7 @@ export const applyOrderCoupon = mutation({
 	handler: async (ctx, args): Promise<{ code: string; discount: number; revision: number }> => {
 		const admin = await requireAdmin(ctx);
 		const order = await editableOrder(ctx, args.orderId, admin.email);
-		if ((args.code !== undefined) === (args.slug !== undefined)) throw new Error('Choose one coupon code or link');
+		if ((args.code !== undefined) === (args.slug !== undefined)) throw new ConvexError('Choose one coupon code or link');
 		let coupon: Doc<'coupons'> | null;
 		let viaLinkId: Id<'marketingLinks'> | undefined;
 		if (args.slug !== undefined) {
@@ -1234,7 +1285,7 @@ export const recheckOrderCoupon = mutation({
 	handler: async (ctx, args): Promise<{ revision: number; discount: number; problem: PosCouponProblem | null }> => {
 		const admin = await requireAdmin(ctx);
 		const order = await editableOrder(ctx, args.orderId, admin.email);
-		if (!order.promotion) throw new Error('This order has no coupon');
+		if (!order.promotion) throw new ConvexError('This order has no coupon');
 		await refreshOrder(ctx, order._id);
 		const updated = (await ctx.db.get(order._id))!;
 		return { revision: updated.revision, discount: updated.promotion?.discount ?? 0, problem: updated.promotion?.problem ?? null };
@@ -1252,10 +1303,10 @@ export const updateSourceLine = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
-		if (!isSourceRow(line)) throw new Error('Only booking, appointment and fee rows follow their source');
+		if (!isSourceRow(line)) throw new ConvexError('Only booking, appointment and fee rows follow their source');
 		const issue = await sourceIssue(ctx, line);
 		if (!issue) return { result: 'current' as const };
-		if (issue.kind === 'online') throw new Error(issue.message);
+		if (issue.kind === 'online') throw new ConvexError(issue.message);
 		// A fee row is never "updated": its appointment either still takes the fee or the row goes.
 		if (line.fee && issue.kind === 'changed') return { result: 'current' as const };
 		const at = Date.now();
@@ -1326,12 +1377,12 @@ export const saveOrder = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const order = await editableOrder(ctx, args.orderId, admin.email);
-		if (!order.hasItems) throw new Error('Add an item before saving the order');
+		if (!order.hasItems) throw new ConvexError('Add an item before saving the order');
 		await ctx.db.patch(order._id, { updatedAt: Date.now() });
 	}
 });
 
-/** Removes every row. The order, its number, links and audit trail stay. */
+/** Removes every row. The number, explicit source ownership, customer and audit trail stay. */
 export const clearOrder = mutation({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args) => {
@@ -1371,15 +1422,15 @@ export const settleOrder = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const key = args.idempotencyKey.trim();
-		if (key.length < 8 || key.length > 100) throw new Error('Invalid payment attempt');
+		if (key.length < 8 || key.length > 100) throw new ConvexError('Invalid payment attempt');
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error('Order not found');
+		if (!order) throw new ConvexError('Order not found');
 		if (!isOpenOrder(order)) {
 			if (order.settleKey === key && order.receiptNumber !== undefined) return { receiptNumber: order.receiptNumber, replayed: true };
-			throw new Error(order.status === 'void' ? 'This order was voided' : order.status === 'discarded' ? DISCARDED_ORDER : 'This order is already paid');
+			throw new ConvexError(order.status === 'void' ? 'This order was voided' : order.status === 'discarded' ? DISCARDED_ORDER : 'This order is already paid');
 		}
 		const lines = await orderLines(ctx, order._id);
-		if (!lines.length) throw new Error('Add an item first');
+		if (!lines.length) throw new ConvexError('Add an item first');
 		if (order.promotion) {
 			// Always a fresh check: a stored problem may be gone (a paused coupon resumed), and the
 			// stored shares then differ, so staff review the new saving before paying.
@@ -1391,7 +1442,7 @@ export const settleOrder = mutation({
 			}
 		}
 		const totals = billTotals(lines);
-		if (totals.due !== round2(args.expectedDue) || order.revision !== args.expectedRevision) throw new Error('The order changed. Check the total and pay again.');
+		if (totals.due !== round2(args.expectedDue) || order.revision !== args.expectedRevision) throw new ConvexError('The order changed. Check the total and pay again.');
 		assertTenders(args.tenders, totals.due);
 		const customer = order.customerId ? await ctx.db.get(order.customerId) : null;
 		if (order.customerId) {
@@ -1407,10 +1458,10 @@ export const settleOrder = mutation({
 		for (const line of lines) {
 			if (!isSourceRow(line)) continue;
 			const issue = await sourceIssue(ctx, line);
-			if (issue) throw new Error(issue.kind === 'changed' ? `${line.name} changed since it was added. Update the row and review the total.` : `${line.name}: ${issue.message}`);
+			if (issue) throw new ConvexError(issue.kind === 'changed' ? `${line.name} changed since it was added. Update the row and review the total.` : `${line.name}: ${issue.message}`);
 			if (line.bookingId) {
 				// Charged at the booked price, so what the stay still owed is what this order collected for it.
-				if (line.discount || line.priceOverride) throw new Error(ATTACHED_PRICE);
+				if (line.discount || line.priceOverride) throw new ConvexError(ATTACHED_PRICE);
 				await markBookingPaid(ctx, line.bookingId, 'pos', { actor: admin.email, effectiveAt, billId: order._id, notifyGuest: args.notifyGuest });
 			}
 			if (line.appointmentId) {
@@ -1462,10 +1513,10 @@ export const voidOrder = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const reason = cleanText(args.reason, 'Reason', NOTE_MAX);
-		if (!reason) throw new Error('Give a reason for the void');
+		if (!reason) throw new ConvexError('Give a reason for the void');
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error('Order not found');
-		if (order.status !== 'paid') throw new Error('Only a paid order can be voided');
+		if (!order) throw new ConvexError('Order not found');
+		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		const now = Date.now();
 		await syncOrderCouponRedemption(ctx, order._id, 'reversed');
 		await ctx.db.patch(order._id, { status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, updatedAt: now });
@@ -1486,12 +1537,12 @@ const correctionArgs = { orderId: v.id('bills'), expectedCorrectionRevision: v.n
 async function correctionReplay(ctx: MutationCtx, orderId: Id<'bills'>, idempotencyKey: string, kind: Doc<'billCorrections'>['kind']) {
 	const key = attemptKey(idempotencyKey);
 	const existing = await ctx.db.query('billCorrections').withIndex('by_idempotencyKey', (q) => q.eq('idempotencyKey', key)).first();
-	if (existing && (existing.billId !== orderId || existing.kind !== kind)) throw new Error('This correction attempt was already used for something else. Start again.');
+	if (existing && (existing.billId !== orderId || existing.kind !== kind)) throw new ConvexError('This correction attempt was already used for something else. Start again.');
 	return { key, existing };
 }
 
 function assertCorrectionRevision(order: Order, expected: number) {
-	if (expected !== (order.correctionRevision ?? 0)) throw new Error('This receipt was corrected since you opened it. Review it and try again.');
+	if (expected !== (order.correctionRevision ?? 0)) throw new ConvexError('This receipt was corrected since you opened it. Review it and try again.');
 }
 
 const cleanTender = (tender: { method: Doc<'billPayments'>['method']; amount: number; received?: number }) => ({
@@ -1518,8 +1569,8 @@ export const amendOrderPayment = mutation({
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'amended');
 		if (existing) return { sequence: existing.sequence, replayed: true };
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error('Order not found');
-		if (order.status !== 'paid') throw new Error('Only a paid order’s payment can be corrected.');
+		if (!order) throw new ConvexError('Order not found');
+		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s payment can be corrected.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the correction')!;
 		const payments = await ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(10);
@@ -1529,7 +1580,7 @@ export const amendOrderPayment = mutation({
 		const correction: Partial<Doc<'billCorrections'>> = {};
 
 		if (args.tenders) {
-			if (paidTotal === 0) throw new Error('Nothing was paid on this order, so there are no tenders to correct.');
+			if (paidTotal === 0) throw new ConvexError('Nothing was paid on this order, so there are no tenders to correct.');
 			assertTenders(args.tenders, paidTotal);
 			const before = order.amendedTenders ?? payments.map(cleanTender);
 			const after = args.tenders.map(cleanTender);
@@ -1566,7 +1617,7 @@ export const amendOrderPayment = mutation({
 				Object.assign(correction, { customerBefore: before, customerAfter: after, customerIdBefore: idBefore, customerIdAfter: idAfter });
 			}
 		}
-		if (!Object.keys(patch).length) throw new Error('Nothing changed.');
+		if (!Object.keys(patch).length) throw new ConvexError('Nothing changed.');
 
 		const sequence = (order.correctionRevision ?? 0) + 1;
 		await ctx.db.insert('billCorrections', { billId: order._id, sequence, kind: 'amended', reason, actor: admin.email, recordedAt: now, idempotencyKey: key, ...correction });
@@ -1618,37 +1669,37 @@ export const voidUnreceivedOrder = mutation({
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'void_unreceived');
 		if (existing) return { replayed: true };
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error('Order not found');
-		if (order.status !== 'paid') throw new Error('Only a paid order can be voided');
+		if (!order) throw new ConvexError('Order not found');
+		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason')!;
 
 		// Prove every reversal before writing anything.
 		if (await ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).first())
-			throw new Error('Part of this order was refunded, so money was received.');
+			throw new ConvexError('Part of this order was refunded, so money was received.');
 		const stays: Array<{ booking: Doc<'bookings'>; payment: Doc<'bookingPayments'> }> = [];
 		const appointments: Array<{ appointment: Doc<'serviceAppointments'>; line: Line }> = [];
 		for (const row of await sourceRows(ctx, order._id)) {
 			if (row.bookingId) {
 				const booking = await ctx.db.get(row.bookingId);
-				if (!booking) throw new Error(`${row.name} was deleted, so its payment can't be reversed.`);
+				if (!booking) throw new ConvexError(`${row.name} was deleted, so its payment can't be reversed.`);
 				// Reopening a balance under a live online checkout would make its completion unrecordable.
 				assertNoLiveCheckout(booking);
 				const payment = await orderStayPayment(ctx, order._id, booking._id);
-				if (!payment) throw new Error(LEGACY_UNPROVEN(row.name));
-				if (payment.status !== 'recorded') throw new Error(`${row.name}: this payment was already reversed.`);
-				if (payment.refunded > 0) throw new Error(`Part of what this order took for ${row.name} was refunded, so money was received.`);
+				if (!payment) throw new ConvexError(LEGACY_UNPROVEN(row.name));
+				if (payment.status !== 'recorded') throw new ConvexError(`${row.name}: this payment was already reversed.`);
+				if (payment.refunded > 0) throw new ConvexError(`Part of what this order took for ${row.name} was refunded, so money was received.`);
 				const money = stayMoney(booking);
-				if (round2(money.gross - payment.amount) < money.refunded) throw new Error(`Refunds on ${row.name} would exceed what is left paid.`);
+				if (round2(money.gross - payment.amount) < money.refunded) throw new ConvexError(`Refunds on ${row.name} would exceed what is left paid.`);
 				stays.push({ booking, payment });
 			}
 			if (row.appointmentId) {
 				const appointment = await ctx.db.get(row.appointmentId);
-				if (!appointment) throw new Error(`${row.name} was deleted, so its payment can't be reversed.`);
+				if (!appointment) throw new ConvexError(`${row.name} was deleted, so its payment can't be reversed.`);
 				if (appointmentMoney(appointment).refunded > 0 || await ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', appointment._id)).first())
-					throw new Error(`Part of ${row.name} was refunded, so money was received.`);
+					throw new ConvexError(`Part of ${row.name} was refunded, so money was received.`);
 				if (appointment.paymentStatus !== 'paid' || appointment.price !== lineNet(row)) {
-					throw new Error(`${row.name} changed since it was paid here (refunded, repriced or paid again), so its payment can't be reversed automatically.`);
+					throw new ConvexError(`${row.name} changed since it was paid here (refunded, repriced or paid again), so its payment can't be reversed automatically.`);
 				}
 				appointments.push({ appointment, line: row });
 			}
@@ -1684,7 +1735,7 @@ export const orderHistory = query({
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const { numItems } = args.paginationOpts;
-		if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new Error('Page size must be 1–50');
+		if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new ConvexError('Page size must be 1–50');
 		return await ctx.db
 			.query('recordChanges')
 			.withIndex('by_entityType_and_entityId_and_recordedAt', (q) => q.eq('entityType', 'order').eq('entityId', args.orderId))
@@ -1783,19 +1834,19 @@ export const discardOrder = mutation({
 		const admin = await requireAdmin(ctx);
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error('Order not found');
+		if (!order) throw new ConvexError('Order not found');
 		if (order.status === 'discarded') {
 			if (order.lifecycleKey === key) return { replayed: true };
-			throw new Error('This order is already discarded.');
+			throw new ConvexError('This order is already discarded.');
 		}
-		if (order.status === 'paid') throw new Error('A paid order can’t be discarded. Void it instead.');
-		if (order.status === 'void') throw new Error('This order was voided');
-		if (order.revision !== args.expectedRevision) throw new Error('The order changed since you opened it. Review it and try again.');
+		if (order.status === 'paid') throw new ConvexError('A paid order can’t be discarded. Void it instead.');
+		if (order.status === 'void') throw new ConvexError('This order was voided');
+		if (order.revision !== args.expectedRevision) throw new ConvexError('The order changed since you opened it. Review it and try again.');
 		const reason = cleanReason(args.reason, 'Reason', false);
 		const lines = await orderLines(ctx, order._id);
-		if (!lines.length) throw new Error('This order has no items, so it isn’t listed and there is nothing to discard.');
+		if (!lines.length) throw new ConvexError('This order has no items, so it isn’t listed and there is nothing to discard.');
 		if (await ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).first()) {
-			throw new Error('This order has payments recorded, so it can’t be discarded.');
+			throw new ConvexError('This order has payments recorded, so it can’t be discarded.');
 		}
 		const now = Date.now();
 		await ctx.db.patch(order._id, {
@@ -1850,19 +1901,19 @@ export const restoreOrder = mutation({
 		const admin = await requireAdmin(ctx);
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new Error('Order not found');
+		if (!order) throw new ConvexError('Order not found');
 		if (order.status !== 'discarded') {
 			if (isOpenOrder(order) && order.lifecycleKey === key) return { replayed: true, removed: [], warnings: [] };
-			throw new Error(isOpenOrder(order) ? 'This order is not discarded.' : order.status === 'paid' ? 'This order is already paid' : 'This order was voided');
+			throw new ConvexError(isOpenOrder(order) ? 'This order is not discarded.' : order.status === 'paid' ? 'This order is already paid' : 'This order was voided');
 		}
-		if (order.revision !== args.expectedRevision) throw new Error('The order changed since you opened it. Review it and try again.');
+		if (order.revision !== args.expectedRevision) throw new ConvexError('The order changed since you opened it. Review it and try again.');
 		const lines = await orderLines(ctx, order._id);
 		const conflicts = await restoreConflicts(ctx, order, lines);
 		const blocking = conflicts.filter((conflict) => conflict.blocking);
 		if (blocking.length && !args.removeConflictingRows) {
-			throw new Error(`Not restored: ${blocking.map((conflict) => conflict.message).join(' ')} Restore without ${blocking.length === 1 ? 'that row' : 'those rows'}, or leave the order discarded.`);
+			throw new ConvexError(`Not restored: ${blocking.map((conflict) => conflict.message).join(' ')} Restore without ${blocking.length === 1 ? 'that row' : 'those rows'}, or leave the order discarded.`);
 		}
-		if (blocking.length >= lines.length) throw new Error('Not restored: every item on this order is now on another order.');
+		if (blocking.length >= lines.length) throw new ConvexError('Not restored: every item on this order is now on another order.');
 
 		const removed = [];
 		for (const conflict of blocking) {
@@ -1914,21 +1965,21 @@ export const addAppointmentFee = mutation({
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
-		if ((args.expectedRevision === undefined) !== (args.idempotencyKey === undefined)) throw new Error('Review the appointment and retry with its revision and attempt key.');
+		if ((args.expectedRevision === undefined) !== (args.idempotencyKey === undefined)) throw new ConvexError('Review the appointment and retry with its revision and attempt key.');
 		const key = args.idempotencyKey === undefined ? undefined : attemptKey(args.idempotencyKey);
 		const fingerprint = JSON.stringify([args.orderId, args.appointmentId, args.kind, args.amount, args.reason]);
 		if (key) {
 			const prior = await ctx.db.query('appointmentFeeAttempts').withIndex('by_key', q => q.eq('key', key)).unique();
 			if (prior) {
-				if (prior.actor !== admin.email || prior.fingerprint !== fingerprint) throw new Error('Fee attempt was already used with different details.');
+				if (prior.actor !== admin.email || prior.fingerprint !== fingerprint) throw new ConvexError('Fee attempt was already used with different details.');
 				return { orderId: prior.orderId, lineId: prior.lineId, replayed: true };
 			}
 		}
 		const kind: FeeKind = args.kind;
 		const appointment = await ctx.db.get(args.appointmentId);
-		if (args.expectedRevision !== undefined && (!Number.isInteger(args.expectedRevision) || args.expectedRevision !== (appointment?.revision ?? 0))) throw new Error('This appointment changed. Review it before adding a fee.');
+		if (args.expectedRevision !== undefined && (!Number.isInteger(args.expectedRevision) || args.expectedRevision !== (appointment?.revision ?? 0))) throw new ConvexError('This appointment changed. Review it before adding a fee.');
 		const blocked = feeBlocker(appointment, kind);
-		if (blocked || !appointment) throw new Error(blocked ?? 'Appointment not found');
+		if (blocked || !appointment) throw new ConvexError(blocked ?? 'Appointment not found');
 		assertPrice(args.amount);
 		assertFeeAmount(args.amount, appointment);
 		const reason = cleanReason(args.reason, 'Note', false);
@@ -1939,7 +1990,7 @@ export const addAppointmentFee = mutation({
 			return { orderId: same.order._id, lineId: same.line._id, replayed: true };
 		}
 		const taken = otherFeeMessage(others[0]);
-		if (taken) throw new Error(taken);
+		if (taken) throw new ConvexError(taken);
 
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		await assertRoom(ctx, order._id);

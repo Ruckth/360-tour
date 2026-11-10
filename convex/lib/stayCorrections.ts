@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { queueCancellationEmail } from '../bookings';
@@ -334,14 +335,14 @@ export async function stayFinancials(ctx: ReadCtx, booking: Booking) {
  */
 export async function stayPaymentReversalPatch(ctx: ReadCtx, booking: Booking, remainingGross: number) {
   const money = stayMoney(booking);
-  if (!Number.isFinite(remainingGross) || remainingGross < money.refunded) throw new Error('Refunds exceed remaining paid money');
+  if (!Number.isFinite(remainingGross) || remainingGross < money.refunded) throw new ConvexError('Refunds exceed remaining paid money');
   const net = round2(remainingGross - money.refunded);
   const fullyRefunded = net === 0 && booking.status === 'cancelled' && remainingGross > 0;
   let refundedAt = booking.refundedAt;
   if (fullyRefunded && refundedAt === undefined) {
     const refunds = await ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', booking._id)).take(MAX_STAY_ROWS + 1);
-    if (refunds.length > MAX_STAY_ROWS) throw new Error('Full refund history needs review before reversing this payment');
-    if (!refunds.length) throw new Error('Actual refund date is unknown; review this legacy payment before reversing it');
+    if (refunds.length > MAX_STAY_ROWS) throw new ConvexError('Full refund history needs review before reversing this payment');
+    if (!refunds.length) throw new ConvexError('Actual refund date is unknown; review this legacy payment before reversing it');
     refundedAt = Math.max(...refunds.map(r => r.effectiveAt));
   }
   return {
