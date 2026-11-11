@@ -29,7 +29,7 @@ function stopStream(stream: MediaStream | null) {
 }
 
 // Own the stream so closing the dialog also stops cameras still awaiting permission.
-export default function CouponScanDialog({ onDecode, onClose }: { onDecode: (text: string) => void; onClose: () => void }) {
+export default function CouponScanDialog({ onDecode, onClose, onRestoreFocus }: { onDecode: (text: string) => void; onClose: () => void; onRestoreFocus?: () => void }) {
   const t = useTranslations("PosCouponScan");
   // State, not a ref: the dialog portal mounts its content after this component's first render.
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
@@ -118,8 +118,11 @@ export default function CouponScanDialog({ onDecode, onClose }: { onDecode: (tex
       <CheckoutDialogContent
         className="max-w-md"
         data-testid="coupon-scan-dialog"
-        // Without a DialogTrigger, Radix would drop focus on the page; the opener puts it back instead.
-        onCloseAutoFocus={(event) => event.preventDefault()}
+        // Restore after the scanner unmounts, not on an earlier animation frame.
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onRestoreFocus?.();
+        }}
       >
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>

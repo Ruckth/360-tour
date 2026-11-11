@@ -20,6 +20,11 @@ import type { Run } from "./useOrderWrites";
 /** Links look like links while typed; codes read as codes. */
 const looksLikeLink = (text: string) => /[/.:]/.test(text);
 
+function focusAndSelect(field: HTMLInputElement | null) {
+  field?.focus();
+  field?.select();
+}
+
 /**
  * On short screens (phone landscape, small phones) the closed "Add coupon" row would push the
  * tenders off screen, so OrderPanel puts a compact trigger in its header instead.
@@ -44,12 +49,18 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   const [value, setValue] = useState("");
   const [message, setMessage] = useState("");
   const [applying, setApplying] = useState(false);
+  const [focusPending, setFocusPending] = useState(false);
   const orderId = view.order._id;
   const promotion = view.promotion;
   const reportRefusal = useOrderCouponRefusal(orderId);
   const problem = promotion?.problem?.code;
   const couponCode = promotion?.code ?? "";
   useEffect(() => { reportRefusal(couponCode, problem); }, [reportRefusal, couponCode, problem]);
+  useEffect(() => {
+    if (!focusPending || applying || busy || !open || !input.current) return;
+    focusAndSelect(input.current);
+    setFocusPending(false);
+  }, [focusPending, applying, busy, open]);
 
   if (view.order.state !== "unpaid" || !view.lines.length) return null;
 
@@ -110,19 +121,12 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     );
   }
 
-  function focusInput() {
-    requestAnimationFrame(() => {
-      input.current?.focus();
-      input.current?.select();
-    });
-  }
-
   async function apply(text: string) {
     if (applying || busy) return;
     const parsed = parseCouponInput(text, window.location.origin);
     if (parsed.kind === "invalid") {
       setMessage(couponInputMessage(parsed.reason));
-      focusInput();
+      setFocusPending(true);
       return;
     }
     setApplying(true);
@@ -145,7 +149,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     }
     setMessage(failure);
     // The field was disabled while checking; put the cursor back for the next scan or a correction.
-    focusInput();
+    setFocusPending(true);
   }
 
   function submit(event: FormEvent) {
@@ -202,7 +206,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
             !looksLikeLink(value) && "uppercase placeholder:normal-case",
           )}
         />
-        <ScanCouponButton disabled={locked} onScan={applyScanned} onLoadFailed={setMessage} />
+        <ScanCouponButton disabled={locked} onScan={applyScanned} onLoadFailed={setMessage} onRestoreFieldFocus={() => focusAndSelect(input.current)} />
         <Button type="submit" className="h-10 shrink-0" disabled={locked}>
           {applying ? <Spinner label="Checking the coupon" className="text-current" /> : null}
           Apply
@@ -218,7 +222,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   );
 }
 
-type ScanDialog = ComponentType<{ onDecode: (text: string) => void; onClose: () => void }>;
+type ScanDialog = ComponentType<{ onDecode: (text: string) => void; onClose: () => void; onRestoreFocus: () => void }>;
 
 const neverChanges = () => () => {};
 /**
@@ -228,19 +232,28 @@ const neverChanges = () => () => {};
 const cameraScanOffered = () => Boolean(navigator.mediaDevices?.getUserMedia) || window.isSecureContext === false;
 const notOnServer = () => false;
 
-function ScanCouponButton(props: { disabled: boolean; onScan: (text: string) => void; onLoadFailed: (message: string) => void }) {
+type ScanButtonProps = {
+  disabled: boolean;
+  onScan: (text: string) => void;
+  onLoadFailed: (message: string) => void;
+  onRestoreFieldFocus: () => void;
+};
+
+function ScanCouponButton(props: ScanButtonProps) {
   const offered = useSyncExternalStore(neverChanges, cameraScanOffered, notOnServer);
   return offered ? <ScanCoupon {...props} /> : null;
 }
 
-function ScanCoupon({ disabled, onScan, onLoadFailed }: { disabled: boolean; onScan: (text: string) => void; onLoadFailed: (message: string) => void }) {
+function ScanCoupon({ disabled, onScan, onLoadFailed, onRestoreFieldFocus }: ScanButtonProps) {
   const t = useTranslations("PosCouponScan");
   const trigger = useRef<HTMLButtonElement>(null);
+  const decoded = useRef(false);
   const [Scanner, setScanner] = useState<ScanDialog | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
   const openScanner = () => {
+    decoded.current = false;
     if (Scanner) return setOpen(true);
     if (loading) return;
     setLoading(true);
@@ -261,12 +274,13 @@ function ScanCoupon({ disabled, onScan, onLoadFailed }: { disabled: boolean; onS
       </Button>
       {open && Scanner ? (
         <Scanner
-          onClose={() => {
-            setOpen(false);
-            requestAnimationFrame(() => trigger.current?.focus());
+          onClose={() => setOpen(false)}
+          onRestoreFocus={() => {
+            if (decoded.current) onRestoreFieldFocus();
+            else trigger.current?.focus();
           }}
-          // Focus stays off Scan here, so a stray scanner Enter can't press it; applying puts it in the field if needed.
           onDecode={(text) => {
+            decoded.current = true;
             setOpen(false);
             onScan(text);
           }}

@@ -266,3 +266,22 @@ for (const width of [1180, 820]) {
     });
   }
 }
+
+test("a refused scan restores tablet focus after the scanner closes even when a frame runs before React commits", async ({ page }) => {
+  await fakeCamera(page, "granted");
+  await open(page, 820, "coupon-entry", "light");
+  const panel = await orderPanel(page, 820);
+  await panel.getByRole("button", { name: /^Add coupon/ }).click();
+  await panel.getByRole("button", { name: "Scan a coupon QR code" }).click();
+  const dialog = page.getByRole("dialog", { name: "Scan a coupon QR code" });
+  await expect(dialog.getByText("Looking for a QR code…")).toBeVisible();
+  await page.evaluate(() => {
+    const schedule = window.requestAnimationFrame;
+    window.requestAnimationFrame = callback => { callback(performance.now()); return 0; };
+    try { window.__decodeQr!("https://elsewhere.example/q1"); }
+    finally { window.requestAnimationFrame = schedule; }
+  });
+  await expect(dialog).toBeHidden();
+  await expect(panel.getByText("Only offer links from this site can be used.")).toBeVisible();
+  await expect(panel.getByRole("textbox", { name: "Coupon code or offer link" })).toBeFocused();
+});
