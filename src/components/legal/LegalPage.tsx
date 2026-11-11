@@ -5,7 +5,6 @@ import { localizeHref } from '@/i18n/routing';
 import { resort } from '@/lib/data/resort-config';
 import { AnalyticsChoice } from './AnalyticsChoice';
 
-/** The privacy policy or the terms. All copy comes from the `Legal` messages of the active locale. */
 export function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
   const t = useTranslations('Legal');
   const locale = useLocale();

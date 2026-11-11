@@ -9,11 +9,6 @@ import { resort } from "@/lib/data/resort-config";
 import en from "../../messages/en.json";
 import th from "../../messages/th.json";
 
-/*
- * The privacy page, the terms page and the measurement choice on the privacy page read every word from
- * the `Legal` messages, so a Thai visitor gets Thai and an English one gets English.
- */
-
 vi.mock("next/navigation", () => ({ usePathname: () => "/privacy" }));
 vi.mock("next/link", async () => {
   const { createElement } = await import("react");
