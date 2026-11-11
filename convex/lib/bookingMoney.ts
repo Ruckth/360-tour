@@ -161,7 +161,7 @@ export async function appendBookingHistory(ctx: MutationCtx, bookingId: Id<'book
  * Patches the booking, bumps its revision and appends one history row with the old and new value of
  * every changed history field (plus `details`), all in the caller's transaction. Returns the new row.
  */
-export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: BookingPatch, entry: HistoryEntry, options: { deferCouponSync?: boolean } = {}): Promise<Booking> {
+export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: BookingPatch, entry: HistoryEntry, options: { deferCouponSync?: boolean; paymentUnlinked?: boolean } = {}): Promise<Booking> {
 	await ctx.db.patch(booking._id, { ...patch, revision: bookingRevision(booking) + 1 });
 	const changed = HISTORY_FIELDS.filter((field: HistoryField) => field in patch && !same(patch[field], booking[field]));
 	await appendBookingHistory(ctx, booking._id, {
@@ -173,7 +173,7 @@ export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: Bo
 	// A verified late capture reopens and records its payment in this same transaction.
 	// Sync against that final paid state, rather than acquiring an unpaid hold in between.
 	if (updated.promotion && !options.deferCouponSync) await syncCouponRedemption(ctx, updated);
-	await syncAffiliateCredit(ctx, {bookingId: updated._id}, entry.actor);
+	await syncAffiliateCredit(ctx, {bookingId: updated._id}, entry.actor, options.paymentUnlinked ? 'payment_unlinked' : undefined);
 	return updated;
 }
 
