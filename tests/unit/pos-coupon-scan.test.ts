@@ -10,12 +10,6 @@ import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { scanProblem } from "@/components/checkout/CouponScanDialog";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 
-/*
- * The camera coupon scanner at checkout, with qr-scanner and the camera mocked: what it decodes goes
- * through the coupon field like a pasted link, each camera problem is explained in a closable
- * dialog, and the camera stops whenever the dialog goes away.
- */
-
 type Decode = (result: { data: string }) => void;
 const scanners = vi.hoisted(() => {
   const list: { video: HTMLVideoElement; decode: Decode; options: Record<string, unknown>; start: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[] = [];

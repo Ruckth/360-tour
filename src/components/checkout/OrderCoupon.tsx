@@ -110,12 +110,19 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     );
   }
 
-  /** Applies what was typed, pasted, or read by a scanner or the camera. */
+  function focusInput() {
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.select();
+    });
+  }
+
   async function apply(text: string) {
     if (applying || busy) return;
     const parsed = parseCouponInput(text, window.location.origin);
     if (parsed.kind === "invalid") {
       setMessage(couponInputMessage(parsed.reason));
+      focusInput();
       return;
     }
     setApplying(true);
@@ -138,7 +145,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     }
     setMessage(failure);
     // The field was disabled while checking; put the cursor back for the next scan or a correction.
-    requestAnimationFrame(() => input.current?.select());
+    focusInput();
   }
 
   function submit(event: FormEvent) {
@@ -146,7 +153,6 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     void apply(value);
   }
 
-  // The camera's text goes in the field, then applies exactly as if it had been typed or pasted.
   const applyScanned = (text: string) => {
     setValue(text);
     setMessage("");
@@ -222,9 +228,6 @@ const neverChanges = () => () => {};
 const cameraScanOffered = () => Boolean(navigator.mediaDevices?.getUserMedia) || window.isSecureContext === false;
 const notOnServer = () => false;
 
-/**
- * "Scan": opens the camera scanner, whose code (and qr-scanner) loads only on the first press.
- */
 function ScanCouponButton(props: { disabled: boolean; onScan: (text: string) => void; onLoadFailed: (message: string) => void }) {
   const offered = useSyncExternalStore(neverChanges, cameraScanOffered, notOnServer);
   return offered ? <ScanCoupon {...props} /> : null;

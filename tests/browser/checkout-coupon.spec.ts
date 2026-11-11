@@ -248,3 +248,21 @@ test("in Thai on a phone, a missing camera is explained and Cancel closes the sc
   await dialog.getByRole("button", { name: "ยกเลิก" }).click();
   await expect(dialog).toBeHidden();
 });
+
+for (const width of [1180, 820]) {
+  for (const scanned of ["https://elsewhere.example/q1", "DCNT-NOPE"]) {
+    test(`a refused camera scan returns focus to the coupon field at ${width}px: ${scanned}`, async ({ page }) => {
+      await fakeCamera(page, "granted");
+      await open(page, width, "coupon-entry", "light");
+      const panel = await orderPanel(page, width);
+      await panel.getByRole("button", { name: /^Add coupon/ }).click();
+      await panel.getByRole("button", { name: "Scan a coupon QR code" }).click();
+      const dialog = page.getByRole("dialog", { name: "Scan a coupon QR code" });
+      await expect(dialog.getByText("Looking for a QR code…")).toBeVisible();
+      await page.evaluate(text => window.__decodeQr!(text), scanned);
+      await expect(dialog).toBeHidden();
+      await expect(panel.getByText(scanned.startsWith("https") ? "Only offer links from this site can be used." : "No coupon has this code. Check the spelling.")).toBeVisible();
+      await expect(panel.getByRole("textbox", { name: "Coupon code or offer link" })).toBeFocused();
+    });
+  }
+}

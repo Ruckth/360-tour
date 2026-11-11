@@ -8,7 +8,6 @@ import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } fr
 import { Spinner } from "@/components/ui/spinner";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 
-/** Why the camera isn't showing a picture, each with its own message. */
 export type ScanProblem = "denied" | "noCamera" | "insecure" | "inUse" | "failed";
 type ScanState = "starting" | "scanning" | ScanProblem;
 
@@ -29,13 +28,7 @@ function stopStream(stream: MediaStream | null) {
   for (const track of stream?.getTracks() ?? []) track.stop();
 }
 
-/**
- * The camera view for scanning a coupon's QR code (loaded only when staff open it). It asks for
- * the rear camera itself, so a refusal, a missing camera and a camera in use each get their own
- * message; qr-scanner then reads that stream (BarcodeDetector where the browser has it, its worker
- * otherwise, as on iPad Safari). The first decoded text goes to `onDecode`; the camera stops when
- * the dialog closes or unmounts. Focus after closing is the opener's to place.
- */
+// Own the stream so closing the dialog also stops cameras still awaiting permission.
 export default function CouponScanDialog({ onDecode, onClose }: { onDecode: (text: string) => void; onClose: () => void }) {
   const t = useTranslations("PosCouponScan");
   // State, not a ref: the dialog portal mounts its content after this component's first render.
@@ -43,9 +36,14 @@ export default function CouponScanDialog({ onDecode, onClose }: { onDecode: (tex
   const [state, setState] = useState<ScanState>("starting");
   const [attempt, setAttempt] = useState(0);
   const decode = useEffectEvent(onDecode);
+  const close = useEffectEvent(onClose);
 
   useEffect(() => {
     if (!element) return;
+    if (document.hidden) {
+      close();
+      return;
+    }
     if (!window.isSecureContext) {
       setState("insecure");
       return;
@@ -63,21 +61,28 @@ export default function CouponScanDialog({ onDecode, onClose }: { onDecode: (tex
       scanner?.destroy();
       scanner = null;
       stopStream(stream);
+      if (element.srcObject instanceof MediaStream && element.srcObject !== stream) stopStream(element.srcObject);
       stream = null;
       element.srcObject = null;
     };
+    // Reopening explicitly keeps background camera restarts inside our permission/error handling.
+    const onVisibilityChange = () => {
+      if (!document.hidden) return;
+      stop();
+      close();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     (async () => {
-      // Ask for the camera and load the decoder together; whichever settles first waits for the other.
-      const [media, library] = await Promise.allSettled([
-        navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" } } }),
+      const [, library] = await Promise.all([
+        navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" } } }).then((media) => {
+          if (stopped) stopStream(media);
+          else stream = media;
+        }),
         import("qr-scanner"),
       ]);
-      if (media.status === "fulfilled") stream = media.value;
-      if (stopped) return stopStream(stream);
-      if (media.status === "rejected") throw media.reason;
-      if (library.status === "rejected") throw library.reason;
-      const QrScanner = library.value.default;
+      if (stopped) return;
+      const QrScanner = library.default;
       element.srcObject = stream;
       const instance = new QrScanner(
         element,
@@ -99,7 +104,10 @@ export default function CouponScanDialog({ onDecode, onClose }: { onDecode: (tex
       setState(scanProblem(error));
     });
 
-    return stop;
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stop();
+    };
   }, [element, attempt]);
 
   const problem = state !== "starting" && state !== "scanning" ? state : null;
