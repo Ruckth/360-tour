@@ -707,6 +707,45 @@
     "decline": "Non merci",
     "accept": "Autoriser"
   },
+  "Legal": {
+    "lastUpdated": "Dernière mise à jour : 12 novembre 2026",
+    "returnHome": "Retour à l’accueil",
+    "contactTitle": "Nous contacter",
+    "privacy": {
+      "title": "Politique de confidentialité",
+      "collectTitle": "Informations que nous recueillons",
+      "collectBody": "Lorsque vous utilisez ce site, nous pouvons recevoir votre nom, votre adresse e-mail, votre numéro de téléphone, vos dates de séjour, le nombre de voyageurs, les détails de votre réservation et les messages que vous envoyez via le chat ou des services de messagerie connectés. Des informations techniques, comme des détails sur le navigateur et le contexte de la page, peuvent accompagner les messages du chat.",
+      "useTitle": "Comment nous les utilisons",
+      "useBody": "Nous utilisons ces informations pour répondre aux demandes, gérer les réservations et les disponibilités, envoyer des messages liés aux réservations, prévenir les abus et assurer le support du service. Des services d’IA peuvent traiter les messages du chat pour produire des réponses. Les données de carte de paiement sont saisies sur Stripe Checkout et ne sont pas conservées par ce site.",
+      "measurementTitle": "Mesure des visites",
+      "measurementTab": "Si vous arrivez par l’un de nos liens ou QR codes, cet onglet du navigateur retient lequel, ainsi que son coupon s’il en a un, jusqu’à ce que vous fermiez l’onglet. Une réservation effectuée, ou un message de chat envoyé, depuis cet onglet enregistre ce lien. Aucun identifiant n’est stocké pour cela.",
+      "measurementConsent": "La mesure reste désactivée tant que vous ne l’avez pas autorisée. Si vous l’autorisez, nous comptons les pages vues et conservons une clé de visiteur aléatoire dans ce navigateur. Chaque visite enregistre le lien ou le QR code qui vous a amené, la page sur laquelle vous êtes arrivé et le nom du site qui vous a envoyé. Elle n’enregistre ni votre nom, ni votre e-mail, ni ce que vous saisissez. Une réservation effectuée sur ce site ou via le chat web enregistre lequel de nos liens vous a amené dans les 30 jours précédents, avec la campagne à laquelle il appartient. Les enregistrements bruts des visites et des ouvertures de liens sont conservés 90 jours puis supprimés ; les totaux quotidiens sans identifiants personnels sont conservés. PostHog, s’il est activé, reçoit les pages vues sans enregistrement de session. Rien n’est partagé avec des annonceurs.",
+      "sharingTitle": "Qui les reçoit",
+      "sharingBody": "Les données de réservation et de chat sont stockées chez Convex. Clerk gère la connexion des administrateurs, Stripe gère les paiements, Resend envoie les e-mails transactionnels et les plateformes de messagerie connectées traitent les messages envoyés via leurs canaux. Sentry peut recevoir des détails techniques sur les erreurs. Les hébergeurs et prestataires opérationnels peuvent aussi traiter les informations nécessaires au fonctionnement du site.",
+      "choicesTitle": "Vos choix",
+      "choicesRequests": "Contactez-nous pour demander l’accès à vos informations personnelles, leur rectification ou leur suppression. Nous examinerons les demandes au regard de la loi applicable et des documents nécessaires aux réservations ou aux paiements. Évitez d’envoyer des données de carte de paiement dans le chat.",
+      "choicesMeasurement": "Vous pouvez désactiver la mesure à tout moment. Cela supprime la clé de visiteur de ce navigateur et arrête le comptage des pages vues. Les réservations déjà effectuées conservent le lien qu’elles ont enregistré.",
+      "contact": "Écrivez à <link>{email}</link> pour toute question sur la confidentialité."
+    },
+    "terms": {
+      "title": "Conditions d’utilisation et de réservation",
+      "statusTitle": "État actuel du site",
+      "statusBody": "Ce site comprend un complexe de démonstration et des contenus d’hébergement d’exemple. Avant de payer, confirmez auprès de l’hôte l’identité, la disponibilité, le prix et les conditions de réservation de tout hébergement réel. Une réservation réelle n’est confirmée qu’après un paiement vérifié ou une confirmation explicite de l’hôte.",
+      "bookingTitle": "Réservations et paiement",
+      "bookingBody": "Une demande de réservation commence en attente et ne bloque pas de dates. Les demandes en attente non payées expirent au bout de 24 heures. Si le paiement en ligne est disponible, il s’effectue via Stripe. La page de réservation doit afficher le statut confirmé avant que vous ne comptiez sur une réservation.",
+      "changesTitle": "Modifications et annulation",
+      "changesBody": "Contactez l’hôte pour les modifications, annulations, remboursements et détails d’arrivée. Les conditions d’annulation ou de remboursement propres à un hébergement doivent être communiquées avant tout paiement réel.",
+      "contact": "Écrivez à <link>{email}</link> pour toute question sur les réservations."
+    },
+    "choice": {
+      "on": "La mesure est activée dans ce navigateur.",
+      "off": "La mesure est désactivée dans ce navigateur.",
+      "pageOnlyOn": "La mesure est activée pour cette page uniquement : ce navigateur ne permet pas au site d’enregistrer ce choix, donc les autres onglets et les visites suivantes ne le connaîtront pas.",
+      "pageOnlyOff": "La mesure est désactivée pour cette page uniquement : ce navigateur ne permet pas au site d’enregistrer ce choix, donc les autres onglets et les visites suivantes ne le connaîtront pas.",
+      "turnOn": "Activer la mesure",
+      "turnOff": "Désactiver la mesure"
+    }
+  },
   "PosCouponScan": {
     "scan": "Scanner",
     "scanLabel": "Scanner le QR code du coupon",

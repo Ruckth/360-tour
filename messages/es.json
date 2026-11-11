@@ -707,6 +707,45 @@
     "decline": "No, gracias",
     "accept": "Permitir"
   },
+  "Legal": {
+    "lastUpdated": "Última actualización: 12 de noviembre de 2026",
+    "returnHome": "Volver al inicio",
+    "contactTitle": "Contacto",
+    "privacy": {
+      "title": "Política de privacidad",
+      "collectTitle": "Información que recopilamos",
+      "collectBody": "Cuando usas este sitio, podemos recibir tu nombre, dirección de correo electrónico, número de teléfono, fechas de estancia, número de huéspedes, datos de la reserva y los mensajes que envías por el chat o por servicios de mensajería conectados. Los mensajes de chat pueden ir acompañados de información técnica, como datos del navegador y el contexto de la página.",
+      "useTitle": "Cómo la usamos",
+      "useBody": "Usamos esta información para responder consultas, gestionar reservas y disponibilidad, enviar mensajes sobre reservas, prevenir abusos y dar soporte al servicio. Los servicios de IA pueden procesar los mensajes de chat para generar respuestas. Los datos de la tarjeta de pago se introducen en Stripe Checkout y este sitio no los almacena.",
+      "measurementTitle": "Medición de visitas",
+      "measurementTab": "Si llegas a través de uno de nuestros enlaces o códigos QR, esta pestaña del navegador recuerda cuál fue, y su cupón si lo tiene, hasta que cierres la pestaña. Una reserva hecha, o un mensaje de chat enviado, desde esa pestaña registra ese enlace. Para esto no se guarda ningún identificador.",
+      "measurementConsent": "La medición permanece desactivada hasta que la permitas. Si la permites, contamos las visitas a las páginas y guardamos una clave de visitante aleatoria en este navegador. Cada visita registra el enlace o código QR que te trajo, la página a la que llegaste y el nombre del sitio que te envió. No registra tu nombre, tu correo electrónico ni lo que escribes. Una reserva hecha en este sitio o por el chat web registra cuál de nuestros enlaces te trajo en los 30 días anteriores, junto con la campaña a la que pertenece. Los registros sin procesar de visitas y de aperturas de enlaces se conservan durante 90 días y después se eliminan; se conservan los totales diarios sin identificadores personales. PostHog, si está activado, recibe las visitas a las páginas sin grabación de sesiones. No se comparte nada con anunciantes.",
+      "sharingTitle": "Quién la recibe",
+      "sharingBody": "Los registros de reservas y de chat se almacenan en Convex. Clerk gestiona el inicio de sesión de los administradores, Stripe gestiona los pagos, Resend envía los correos transaccionales y las plataformas de mensajería conectadas procesan los mensajes enviados por sus canales. Sentry puede recibir detalles técnicos de errores. Los proveedores de alojamiento web y de operaciones también pueden procesar la información necesaria para ofrecer el sitio.",
+      "choicesTitle": "Tus opciones",
+      "choicesRequests": "Contáctanos para solicitar el acceso, la corrección o la eliminación de tu información personal. Revisaremos las solicitudes conforme a la legislación aplicable y a los registros necesarios para reservas o pagos. Evita enviar datos de tarjetas de pago por el chat.",
+      "choicesMeasurement": "Puedes desactivar la medición en cualquier momento. Esto elimina la clave de visitante de este navegador y detiene el recuento de visitas a las páginas. Las reservas ya realizadas conservan el enlace que registraron.",
+      "contact": "Escribe a <link>{email}</link> si tienes preguntas sobre privacidad."
+    },
+    "terms": {
+      "title": "Condiciones de uso y de reserva",
+      "statusTitle": "Estado actual del sitio",
+      "statusBody": "Este sitio incluye un resort de demostración y contenido de alojamientos de ejemplo. Antes de pagar, confirma con el anfitrión la identidad, la disponibilidad, el precio y las condiciones de reserva de cualquier alojamiento real. Una reserva real solo se confirma tras un pago verificado o una confirmación explícita del anfitrión.",
+      "bookingTitle": "Reservas y pago",
+      "bookingBody": "Una solicitud de reserva empieza como pendiente y no reserva fechas. Las solicitudes pendientes sin pagar caducan a las 24 horas. Si el pago en línea está disponible, el pago se realiza a través de Stripe. La página de la reserva debe mostrar el estado confirmado antes de que cuentes con una reserva.",
+      "changesTitle": "Cambios y cancelación",
+      "changesBody": "Contacta con el anfitrión para cambios, cancelaciones, reembolsos y detalles de llegada. Cualquier condición de cancelación o reembolso específica del alojamiento debe facilitarse antes de que se cobre un pago real.",
+      "contact": "Escribe a <link>{email}</link> si tienes preguntas sobre reservas."
+    },
+    "choice": {
+      "on": "La medición está activada en este navegador.",
+      "off": "La medición está desactivada en este navegador.",
+      "pageOnlyOn": "La medición está activada solo para esta página: este navegador no permite que el sitio guarde la elección, así que otras pestañas y las próximas visitas no la conocerán.",
+      "pageOnlyOff": "La medición está desactivada solo para esta página: este navegador no permite que el sitio guarde la elección, así que otras pestañas y las próximas visitas no la conocerán.",
+      "turnOn": "Activar la medición",
+      "turnOff": "Desactivar la medición"
+    }
+  },
   "PosCouponScan": {
     "scan": "Escanear",
     "scanLabel": "Escanear el código QR del cupón",

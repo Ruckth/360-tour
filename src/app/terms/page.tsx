@@ -1,3 +1,9 @@
+import type { Metadata } from 'next';
+import { getLocale } from 'next-intl/server';
 import { LegalPage } from '@/components/legal/LegalPage';
-export const metadata = { title: 'Terms of use and booking' };
+import { getPublicMessages } from '@/lib/i18n/server-content';
+
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: getPublicMessages(await getLocale()).Legal.terms.title };
+}
 export default function Page() { return <LegalPage kind="terms" />; }
