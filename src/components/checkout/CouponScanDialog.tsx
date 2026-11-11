@@ -65,7 +65,7 @@ export default function CouponScanDialog({ onDecode, onClose }: { onDecode: (tex
       stream = null;
       element.srcObject = null;
     };
-    // Reopening explicitly keeps background camera restarts inside our permission/error handling.
+    // Close when hidden so camera restarts use our error handling.
     const onVisibilityChange = () => {
       if (!document.hidden) return;
       stop();
