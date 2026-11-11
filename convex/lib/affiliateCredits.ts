@@ -125,7 +125,8 @@ export async function captureAffiliateSnapshot(
   if (input.staff || (email && adminEmails().has(email)))
     flags.push("staff_order");
   const linkCandidate = candidates.find(c => c.origin === "link");
-  if (linkCandidate) flags.push(linkCandidate.evidence === "recorded_session" ? "referral_recorded_visit" : "referral_claimed_slug");
+  // Flags are review warnings; a recorded visit is the normal case and stays on the candidate only.
+  if (linkCandidate?.evidence === "claimed_slug") flags.push("referral_claimed_slug");
   return {
     capturedAt: Date.now(),
     candidates,

@@ -210,7 +210,6 @@ it("flags conflicts and incomplete queue results while showing actual collection
 
 
 it.each([
-  ["referral_recorded_visit", "Partner link has a recorded visit"],
   ["referral_claimed_slug", "Partner slug claimed without a recorded visit"],
 ])("shows %s beside self-referral evidence in credit review", async (flag, label) => {
   await act(async () => root.render(createElement(CreditReview, {

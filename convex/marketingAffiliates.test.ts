@@ -660,7 +660,7 @@ it("uses the last eligible affiliate touch independently of the last acquisition
   expect(booking?.affiliateSnapshot).toMatchObject({
     affiliateId: anna,
     candidates: [{ linkId: alias, evidence: "recorded_session" }],
-    flags: ["referral_recorded_visit"],
+    flags: [],
   });
 });
 it("rejects out-of-scope and expired candidates, archived approvals and unseen money changes", async () => {
@@ -846,13 +846,13 @@ it.each(["create", "confirmProposal"] as const)("freezes recorded vs claimed evi
       })();
     const before = await s.t.run(ctx => ctx.db.get(result.bookingId));
     const evidence = recorded ? "recorded_session" : "claimed_slug";
-    const flag = recorded ? "referral_recorded_visit" : "referral_claimed_slug";
+    const flags = recorded ? [] : ["referral_claimed_slug"];
     expect(before?.affiliateSnapshot).toMatchObject({
-      affiliateId: anna, candidates: [{ linkId: link, evidence }], flags: [flag],
+      affiliateId: anna, candidates: [{ linkId: link, evidence }], flags,
     });
     const credit = await s.credit();
     expect(credit.snapshot).toEqual(before?.affiliateSnapshot);
-    expect(credit.flags).toContain(flag);
+    expect(credit.flags).toEqual(flags);
     // Raw retention must not rewrite sale attribution, frozen evidence, counters or credits.
     await s.t.run(async ctx => {
       for (const session of await ctx.db.query("marketingSessions").collect())

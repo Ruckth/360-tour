@@ -33,7 +33,7 @@ export const claimInvite = mutation({
       .unique();
     if (!invite || invite.tokenIdentifier)
       throw new Error("No unclaimed invitation");
-    if (marketingInvitationExpired(invite)) throw new Error("Invitation expired. Ask an administrator to renew the invitation.");
+    if (marketingInvitationExpired(invite)) throw new ConvexError("Invitation expired. Ask an administrator to renew the invitation.");
     await ctx.db.patch(invite._id, {
       tokenIdentifier: identity.tokenIdentifier,
       updatedAt: Date.now(),
