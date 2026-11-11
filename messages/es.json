@@ -745,5 +745,22 @@
       "turnOn": "Activar la medición",
       "turnOff": "Desactivar la medición"
     }
+  },
+  "PosCouponScan": {
+    "scan": "Escanear",
+    "scanLabel": "Escanear el código QR del cupón",
+    "title": "Escanear el código QR del cupón",
+    "description": "Coloca el código QR del cupón delante de la cámara. Se aplica en cuanto se lee.",
+    "starting": "Iniciando la cámara…",
+    "scanning": "Buscando un código QR…",
+    "cameraView": "Imagen de la cámara",
+    "denied": "El acceso a la cámara está bloqueado. Permite la cámara para este sitio en los ajustes del navegador y vuelve a intentarlo. También puedes escribir el código.",
+    "noCamera": "No se encontró ninguna cámara en este dispositivo. Escribe el código o usa un lector de códigos de barras.",
+    "insecure": "La cámara solo funciona si la caja se abre con una conexión segura (https). Escribe el código.",
+    "inUse": "Otra app está usando la cámara. Ciérrala y vuelve a intentarlo.",
+    "failed": "No se pudo iniciar la cámara. Vuelve a intentarlo o escribe el código.",
+    "loadFailed": "No se pudo cargar el escáner de la cámara. Revisa la conexión y vuelve a intentarlo.",
+    "tryAgain": "Reintentar",
+    "cancel": "Cancelar"
   }
 }

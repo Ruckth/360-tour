@@ -745,5 +745,22 @@
       "turnOn": "Messung einschalten",
       "turnOff": "Messung ausschalten"
     }
+  },
+  "PosCouponScan": {
+    "scan": "Scannen",
+    "scanLabel": "Gutschein-QR-Code scannen",
+    "title": "Gutschein-QR-Code scannen",
+    "description": "Halten Sie den QR-Code des Gutscheins vor die Kamera. Er wird eingelöst, sobald er gelesen ist.",
+    "starting": "Kamera wird gestartet…",
+    "scanning": "Suche nach einem QR-Code…",
+    "cameraView": "Kamerabild",
+    "denied": "Der Kamerazugriff ist blockiert. Erlauben Sie die Kamera für diese Website in den Browsereinstellungen und versuchen Sie es erneut. Sie können den Code auch eingeben.",
+    "noCamera": "Auf diesem Gerät wurde keine Kamera gefunden. Geben Sie den Code ein oder verwenden Sie einen Barcodescanner.",
+    "insecure": "Die Kamera funktioniert nur, wenn die Kasse über eine sichere (https-)Verbindung geöffnet ist. Geben Sie den Code stattdessen ein.",
+    "inUse": "Eine andere App verwendet die Kamera. Schließen Sie sie und versuchen Sie es erneut.",
+    "failed": "Die Kamera konnte nicht gestartet werden. Versuchen Sie es erneut oder geben Sie den Code ein.",
+    "loadFailed": "Der Kamerascanner wurde nicht geladen. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+    "tryAgain": "Erneut versuchen",
+    "cancel": "Abbrechen"
   }
 }

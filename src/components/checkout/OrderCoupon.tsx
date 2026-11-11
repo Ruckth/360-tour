@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronRight, TicketPercent, TriangleAlert, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { ChevronRight, ScanQrCode, TicketPercent, TriangleAlert, X } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ComponentType, type FormEvent } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { CouponChip } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,11 @@ import type { Run } from "./useOrderWrites";
 
 /** Links look like links while typed; codes read as codes. */
 const looksLikeLink = (text: string) => /[/.:]/.test(text);
+
+function focusAndSelect(field: HTMLInputElement | null) {
+  field?.focus();
+  field?.select();
+}
 
 /**
  * On short screens (phone landscape, small phones) the closed "Add coupon" row would push the
@@ -43,12 +49,18 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   const [value, setValue] = useState("");
   const [message, setMessage] = useState("");
   const [applying, setApplying] = useState(false);
+  const [focusPending, setFocusPending] = useState(false);
   const orderId = view.order._id;
   const promotion = view.promotion;
   const reportRefusal = useOrderCouponRefusal(orderId);
   const problem = promotion?.problem?.code;
   const couponCode = promotion?.code ?? "";
   useEffect(() => { reportRefusal(couponCode, problem); }, [reportRefusal, couponCode, problem]);
+  useEffect(() => {
+    if (!focusPending || applying || busy || !open || !input.current) return;
+    focusAndSelect(input.current);
+    setFocusPending(false);
+  }, [focusPending, applying, busy, open]);
 
   if (view.order.state !== "unpaid" || !view.lines.length) return null;
 
@@ -109,12 +121,12 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     );
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function apply(text: string) {
     if (applying || busy) return;
-    const parsed = parseCouponInput(value, window.location.origin);
+    const parsed = parseCouponInput(text, window.location.origin);
     if (parsed.kind === "invalid") {
       setMessage(couponInputMessage(parsed.reason));
+      setFocusPending(true);
       return;
     }
     setApplying(true);
@@ -137,8 +149,19 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     }
     setMessage(failure);
     // The field was disabled while checking; put the cursor back for the next scan or a correction.
-    requestAnimationFrame(() => input.current?.select());
+    setFocusPending(true);
   }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void apply(value);
+  }
+
+  const applyScanned = (text: string) => {
+    setValue(text);
+    setMessage("");
+    void apply(text);
+  };
 
   const close = () => {
     setOpen(false);
@@ -183,6 +206,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
             !looksLikeLink(value) && "uppercase placeholder:normal-case",
           )}
         />
+        <ScanCouponButton disabled={locked} onScan={applyScanned} onLoadFailed={setMessage} onRestoreFieldFocus={() => focusAndSelect(input.current)} />
         <Button type="submit" className="h-10 shrink-0" disabled={locked}>
           {applying ? <Spinner label="Checking the coupon" className="text-current" /> : null}
           Apply
@@ -195,5 +219,73 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
         {message || (busy && !applying ? "Saving the order first…" : "")}
       </p>
     </form>
+  );
+}
+
+type ScanDialog = ComponentType<{ onDecode: (text: string) => void; onClose: () => void; onRestoreFocus: () => void }>;
+
+const neverChanges = () => () => {};
+/**
+ * Offered where the browser has a camera API. Browsers leave that API out of plain-http pages, so
+ * there it is offered too, and the dialog explains that the camera needs https.
+ */
+const cameraScanOffered = () => Boolean(navigator.mediaDevices?.getUserMedia) || window.isSecureContext === false;
+const notOnServer = () => false;
+
+type ScanButtonProps = {
+  disabled: boolean;
+  onScan: (text: string) => void;
+  onLoadFailed: (message: string) => void;
+  onRestoreFieldFocus: () => void;
+};
+
+function ScanCouponButton(props: ScanButtonProps) {
+  const offered = useSyncExternalStore(neverChanges, cameraScanOffered, notOnServer);
+  return offered ? <ScanCoupon {...props} /> : null;
+}
+
+function ScanCoupon({ disabled, onScan, onLoadFailed, onRestoreFieldFocus }: ScanButtonProps) {
+  const t = useTranslations("PosCouponScan");
+  const trigger = useRef<HTMLButtonElement>(null);
+  const decoded = useRef(false);
+  const [Scanner, setScanner] = useState<ScanDialog | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const openScanner = () => {
+    decoded.current = false;
+    if (Scanner) return setOpen(true);
+    if (loading) return;
+    setLoading(true);
+    import("./CouponScanDialog").then(
+      (module) => {
+        setScanner(() => module.default);
+        setOpen(true);
+      },
+      () => onLoadFailed(t("loadFailed")),
+    ).finally(() => setLoading(false));
+  };
+
+  return (
+    <>
+      <Button ref={trigger} type="button" variant="outline" className="h-10 shrink-0 px-3" disabled={disabled} aria-busy={loading || undefined} onClick={openScanner} aria-label={t("scanLabel")} aria-haspopup="dialog">
+        {loading ? <Spinner label={t("starting")} className="text-current" /> : <ScanQrCode aria-hidden className="size-4" />}
+        <span className="hidden @sm:inline">{t("scan")}</span>
+      </Button>
+      {open && Scanner ? (
+        <Scanner
+          onClose={() => setOpen(false)}
+          onRestoreFocus={() => {
+            if (decoded.current) onRestoreFieldFocus();
+            else trigger.current?.focus();
+          }}
+          onDecode={(text) => {
+            decoded.current = true;
+            setOpen(false);
+            onScan(text);
+          }}
+        />
+      ) : null}
+    </>
   );
 }

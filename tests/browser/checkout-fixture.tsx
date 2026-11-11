@@ -1,10 +1,13 @@
 import type { Id } from "convex/_generated/dataModel";
+import { NextIntlClientProvider } from "next-intl";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
+import en from "../../messages/en.json";
+import th from "../../messages/th.json";
 import "@/app.css";
 
 /*
@@ -12,6 +15,7 @@ import "@/app.css";
  * Query parameters:
  *   lines=N      start on a new order holding N custom items (a long order with a large total)
  *   theme=dark   dark app theme (light otherwise)
+ *   locale=th    Thai messages for the parts of checkout that are translated (the camera scanner)
  *   scenario=    fee, source-conflict, history, or a coupon state:
  *                coupon-entry    the spa order, no coupon yet
  *                coupon-applied  DCNT-SPA-500 split ฿333 + ฿167 (breakfast not covered)
@@ -24,6 +28,7 @@ import "@/app.css";
  *                unscheduled-paid  the same, paid by cash, on the receipt (his appointment still unlinked)
  */
 const params = new URLSearchParams(location.search);
+const locale = params.get("locale") === "th" ? "th" : "en";
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 
 const scenario = params.get("scenario") ?? "";
@@ -122,4 +127,10 @@ function Harness({ initialOrder }: { initialOrder: OrderId | null }) {
   );
 }
 
-void seed().then((initialOrder) => createRoot(document.getElementById("root")!).render(<Harness initialOrder={initialOrder} />));
+void seed().then((initialOrder) =>
+  createRoot(document.getElementById("root")!).render(
+    <NextIntlClientProvider locale={locale} timeZone="Asia/Bangkok" messages={locale === "th" ? th : en}>
+      <Harness initialOrder={initialOrder} />
+    </NextIntlClientProvider>,
+  ),
+);

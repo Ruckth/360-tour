@@ -745,5 +745,22 @@
       "turnOn": "Turn on measurement",
       "turnOff": "Turn off measurement"
     }
+  },
+  "PosCouponScan": {
+    "scan": "Scan",
+    "scanLabel": "Scan a coupon QR code",
+    "title": "Scan a coupon QR code",
+    "description": "Hold the coupon's QR code in front of the camera. It applies as soon as it's read.",
+    "starting": "Starting the camera…",
+    "scanning": "Looking for a QR code…",
+    "cameraView": "Camera view",
+    "denied": "Camera access is blocked. Allow the camera for this site in the browser's settings, then try again. You can still type the code.",
+    "noCamera": "No camera was found on this device. Type the code, or use a barcode scanner.",
+    "insecure": "The camera only works when checkout is opened over a secure (https) connection. Type the code instead.",
+    "inUse": "Another app is using the camera. Close it, then try again.",
+    "failed": "The camera couldn't start. Try again, or type the code.",
+    "loadFailed": "The camera scanner didn't load. Check the connection and try again.",
+    "tryAgain": "Try again",
+    "cancel": "Cancel"
   }
 }

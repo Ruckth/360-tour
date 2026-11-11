@@ -19,6 +19,8 @@ export default defineConfig({
         find: "convex/react",
         replacement: path.resolve("tests/browser/convex-mock.ts"),
       },
+      // Checkout's camera coupon scanner reads codes from a spec, not a camera.
+      { find: /^qr-scanner$/, replacement: path.resolve("tests/browser/qr-scanner-mock.ts") },
       { find: "@", replacement: path.resolve("src") },
       {
         find: /^convex\/(?!server$|values$|browser$|react$)(.*)$/,
