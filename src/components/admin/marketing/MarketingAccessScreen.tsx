@@ -41,7 +41,7 @@ function GrantRow({ grant, busy, change }: { grant: Grant; busy: boolean; change
     <div className="min-w-0"><p className="break-all text-sm font-medium">{grant.email}</p><p className="text-xs text-muted-foreground">{grant.tokenIdentifier ? "Access activated" : grant.expired ? "Expired" : "Invitation awaiting activation"}</p></div>
     <div className="flex flex-wrap items-center gap-2">
       <RoleSelect label={`Role for ${grant.email}`} value={role} onChange={setRole} disabled={busy} />
-      {!grant.tokenIdentifier ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void change(grant.email, grant.role)}>Re-send invitation</Button> : null}
+      {!grant.tokenIdentifier ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void change(grant.email, grant.role)}>Renew invitation</Button> : null}
       <Button size="sm" variant="outline" disabled={busy || role === grant.role} onClick={() => void change(grant.email, role)}>Save role</Button>
       <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
         if (await confirm({ title: `Revoke access for ${grant.email}?`, description: "Marketing access ends immediately. A new invitation can be created later.", confirmLabel: "Revoke access", destructive: true })) await change(grant.email, null);

@@ -40,7 +40,7 @@ The review queue records pending, approved, rejected and reversed credit. Approv
 
 ## Marketing access
 
-System administrators from `ADMIN_EMAILS` can invite an account under **Access**, change its role or revoke it. The user signs in with the invited email and explicitly activates the invitation; the grant then binds to that authenticated account identity. Invitations do not send email.
+System administrators from `ADMIN_EMAILS` can invite an account under **Access**, change its role or revoke it. The user signs in with the invited email and explicitly activates the invitation; the grant then binds to that authenticated account identity. Invitations do not send email. An unclaimed invitation expires after 14 days; **Renew invitation** (or saving its role) restarts the 14 days. Activated access does not expire.
 
 | Role | View | Edit drafts | Publish / budgets | Spend | Partners | Review credit | Manage access |
 | --- | --- | --- | --- | --- | --- | --- | --- |

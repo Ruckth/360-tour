@@ -151,10 +151,10 @@ it("shows expired invitations and lets administrators refresh them", async () =>
   mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", expiresAt: 0, expired: true }];
   await render(createElement(MarketingAccessScreen), "admin");
   expect(document.body.textContent).toContain("Expired");
-  await click(button("Re-send invitation"));
+  await click(button("Renew invitation"));
   expect(mocked.mutate).toHaveBeenLastCalledWith({ email: "friend@example.com", role: "viewer" });
   mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", tokenIdentifier: "friend", expiresAt: null, expired: false }];
   await render(createElement(MarketingAccessScreen), "admin");
   expect(document.body.textContent).toContain("Access activated");
-  expect(button("Re-send invitation")).toBeUndefined();
+  expect(button("Renew invitation")).toBeUndefined();
 });
