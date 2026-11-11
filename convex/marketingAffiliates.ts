@@ -10,7 +10,7 @@ import {
 } from "./lib/affiliateCredits";
 import { appendRecordHistory } from "./lib/recordHistory";
 import { isIsoDate } from "./lib/dates";
-import { canReadMarketingPersonalData, withoutContactEmail, withMarketingReasonPrivacy } from "./lib/marketingPrivacy";
+import { canReadMarketingPersonalData, withoutPartnerPersonalData, withMarketingReasonPrivacy } from "./lib/marketingPrivacy";
 const LIMIT = 200;
 const AFFILIATE_LIMIT = 50;
 const SUMMARY_LIMIT = 50;
@@ -45,7 +45,7 @@ async function creditRow(
   const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
   const order = row.billId ? await ctx.db.get(row.billId) : null;
   const partner = row.affiliateId ? await ctx.db.get(row.affiliateId) : null;
-  const candidates = fullDetail ? row.snapshot.candidates : row.snapshot.candidates.map(withoutContactEmail);
+  const candidates = fullDetail ? row.snapshot.candidates : row.snapshot.candidates.map(withoutPartnerPersonalData);
   return {
     ...withMarketingReasonPrivacy(row, fullDetail),
     snapshot: { ...row.snapshot, candidates },
@@ -99,7 +99,7 @@ export const listAffiliates = query({
           summary.approvedNet += credit.approvedNet;
         }
         return {
-          ...(canReadMarketingPersonalData(access) ? row : withoutContactEmail(row)),
+          ...(canReadMarketingPersonalData(access) ? row : withoutPartnerPersonalData(row)),
           canonicalPath: `/r/${row.slug}`,
           linkStatus: link?.status ?? null,
           campaignName: campaign?.name ?? "",

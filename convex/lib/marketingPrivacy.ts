@@ -5,15 +5,17 @@ export function canReadMarketingPersonalData(access: { role: MarketingRole | 'ad
   return access.role === 'admin' || access.role === 'manager' || access.role === 'finance';
 }
 
-export function withoutContactEmail<T extends { contactEmail?: string }>(row: T): T {
+export function withoutPartnerPersonalData<T extends { contactEmail?: string; notes?: string; updatedByEmail?: string }>(row: T): T {
   const result = { ...row };
   delete result.contactEmail;
+  delete result.notes;
+  if (result.updatedByEmail !== undefined) result.updatedByEmail = 'Staff';
   return result;
 }
 
 /** Decision reasons are unrestricted finance text, so they may contain personal details. */
 export function withMarketingReasonPrivacy<T extends { reason?: string }>(row: T, fullDetail: boolean): Omit<T, 'reason'> & { reason?: string | null; reasonHidden?: boolean } {
-  return fullDetail ? row : { ...row, reason: null, reasonHidden: row.reason !== undefined };
+  return fullDetail ? row : { ...row, reason: null, reasonHidden: row.reason !== undefined, ...('actor' in row ? { actor: 'Staff' } : {}) };
 }
 
 // Campaign/affiliate notes and spend notes are free text too. Coupon and link snapshots

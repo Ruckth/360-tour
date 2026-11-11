@@ -220,6 +220,7 @@ export default defineSchema({
 		.index('by_status', ['status'])
 		.index('by_status_createdAt', ['status', 'createdAt'])
 		.index('by_createdAt', ['createdAt'])
+		.index('by_marketingAttribution_session_startedAt_and_sessionId', ['marketingAttribution.session.startedAt', 'marketingAttribution.sessionId'])
 		.index('by_paidAt', ['paidAt'])
 		.index('by_refundedAt', ['refundedAt'])
 		.index('by_status_checkIn', ['status', 'checkIn'])

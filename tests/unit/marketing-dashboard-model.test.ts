@@ -530,3 +530,21 @@ describe("session conversion truth", () => {
     expect(header).toContain("Current-link only");
   });
 });
+
+it('uses separate session conversion evidence without adding cross-day sales to money totals', () => {
+  const sessionId = 'cohort-session' as Id<'marketingSessions'>;
+  for (const basis of ['cohort', 'cash'] as const) {
+    const data = report({ basis, sales: [], sessions: [{ day: '2026-10-10', linkId: lid('la'), campaignId: cid('ca'), count: 1 }], convertedSessions: [
+      { id: sessionId, day: '2026-10-10', linkId: lid('la'), campaignId: cid('ca') },
+      { id: sessionId, day: '2026-10-10', linkId: lid('la'), campaignId: cid('ca') },
+      { id: 'outside' as Id<'marketingSessions'>, day: '2026-11-01', linkId: lid('la'), campaignId: cid('ca') }
+    ] });
+    const prepared = prepareReport(data, LAST);
+    expect(businessTotals(prepared)).toMatchObject({ convertedSessions: 1, conv: 1, all: { collected: 0, refunded: 0, net: 0 } });
+    expect(convertedSessions(prepared)).toBe(1);
+    expect(prepareReport(data, { ...LAST, property: 'villa' }).conversionSessions).toEqual([]);
+    const linkRow = buildBreakdown(prepared, 'link', [], BY_NET).rows.find(row => row.key === 'link:la');
+    expect(linkRow).toMatchObject({ convertedSessions: 1, conv: 1, collected: 0 });
+    expect(businessTotals(prepareReport({ ...data, convertedSessions: [] }, LAST)).convertedSessions).toBe(0);
+  }
+});

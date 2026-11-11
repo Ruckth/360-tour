@@ -235,8 +235,8 @@ describe('report attribution and limits', () => {
 		const args = { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' as const };
 		const probe = new ReadBudget();
 		expect((await s.t.run(ctx => readMarketingReport(ctx, args, probe))).truncated).toBe(false);
-		// After the stays come three order scans, an appointment-history scan and a payment scan; stop on the second stay's refunds.
-		const result = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16_000, probe.ranges - 6)));
+		// Stop on the second stay's refunds, before the order, appointment and conversion scans.
+		const result = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16_000, probe.ranges - 8)));
 		expect(result.truncated).toBe(true);
 		expect(result.sales.map(sale => sale.id)).toEqual([first]);
 		expect(result).toMatchObject({ campaigns: [{ id: s.campaignId }], links: [{ id: s.linkId }], spend: [{ amount: 900 }], properties: [{ id: s.propertyId }] });
@@ -773,4 +773,70 @@ it('backfills legacy session cohorts in batches, preserving attribution and surv
 	expect(await snapshot()).toEqual(after);
 	await s.t.run(ctx => ctx.db.delete(sessionId));
 	expect((await s.report()).sales.find(row => row.id === linked)!.session).toEqual({ id: sessionId, day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId });
+});
+
+it.each(['cohort', 'cash'] as const)('reports prior-day converted sessions independently of %s money dates', async basis => {
+	const s = await setup();
+	for (const frozen of [false, true]) for (const direct of [false, true]) {
+		const campaign = direct ? {} : { linkId: s.linkId, campaignId: s.campaignId };
+		const sessionId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: `private-${frozen}-${direct}`, startedAt: now - day, landingPath: '/', ...campaign }));
+		const attribution = { model: 'last_touch_30d@1' as const, evidence: 'tracked' as const, sessionId, ...(frozen ? { session: { startedAt: now - day, ...campaign } } : {}), capturedAt: now };
+		for (let i = 0; i < 2; i++) {
+			const bookingId = await s.booking({ source: 'web', paymentStatus: 'paid', amountPaid: 1000, paidAt: now, marketingAttribution: attribution });
+			await s.payment(bookingId, 1000);
+		}
+		if (frozen) await s.t.run(ctx => ctx.db.delete(sessionId));
+		const report = await s.report(basis, '2026-11-08');
+		expect(report.convertedSessions).toContainEqual({ id: sessionId, day: '2026-11-08', ...campaign });
+		expect(report.sales).toEqual([]);
+		expect(report.events).toEqual([]);
+		expect(JSON.stringify(report)).not.toContain('private-');
+	}
+	const report = await s.report(basis, '2026-11-08');
+	expect(report.convertedSessions).toHaveLength(4);
+	expect((await s.report(basis)).convertedSessions).toEqual([]);
+});
+
+it('clips conversion cohorts to the Bangkok range and requires real payment evidence', async () => {
+	const s = await setup();
+	const cohorts = [];
+	for (const offset of [-day, 0, day]) {
+		const startedAt = Date.parse('2026-11-08T17:00:00Z') + offset;
+		const sessionId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: `range-${offset}`, startedAt, landingPath: '/' }));
+		const marketingAttribution = { model: 'last_touch_30d@1' as const, evidence: 'tracked' as const, sessionId, session: { startedAt }, capturedAt: now };
+		cohorts.push({ sessionId, marketingAttribution });
+		const bookingId = await s.booking({ amountPaid: 1000, paymentStatus: 'paid', paidAt: now, marketingAttribution });
+		await s.payment(bookingId, 1000);
+	}
+	const unpaidSession = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: 'unpaid-visit', startedAt: now, landingPath: '/' }));
+	const unpaid = await s.booking({ amountPaid: 0, marketingAttribution: { ...cohorts[1].marketingAttribution, sessionId: unpaidSession } });
+	await s.payment(unpaid, 1000, now, 'cancelled');
+	const zeroSession = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: 'zero-cash', startedAt: now, landingPath: '/' }));
+	await s.booking({ total: 0, paymentStatus: 'paid', marketingAttribution: { ...cohorts[1].marketingAttribution, sessionId: zeroSession } });
+	for (const basis of ['cohort', 'cash'] as const) expect((await s.report(basis)).convertedSessions).toEqual([{ id: cohorts[1].sessionId, day: '2026-11-09' }]);
+});
+
+it('counts old-order stay collections and refunded stays as converted without duplicating selected money', async () => {
+	const s = await setup();
+	for (const refunded of [false, true]) {
+		const sessionId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: `legacy-${refunded}`, startedAt: now - day, landingPath: '/' }));
+		const bookingId = await s.booking({ source: 'web', amountPaid: 1000, paymentStatus: refunded ? 'refunded' : 'paid', paidAt: now, ...(refunded ? { refundedAt: now, amountRefunded: 1000 } : {}), marketingAttribution: { model: 'last_touch_30d@1', evidence: 'tracked', sessionId, session: { startedAt: now - day }, capturedAt: now } });
+		if (!refunded) await s.oldOrder(bookingId);
+		for (const basis of ['cohort', 'cash'] as const) {
+			const report = await s.report(basis, '2026-11-08');
+			expect(report.convertedSessions).toContainEqual({ id: sessionId, day: '2026-11-08' });
+			expect(report.sales).toEqual([]);
+			expect(report.events).toEqual([]);
+		}
+	}
+});
+
+it('does not spend a booking lookup on every non-converting raw visit', async () => {
+	const s = await setup();
+	await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', count: 2500 });
+		for (let i = 0; i < 2500; i++) await ctx.db.insert('marketingSessions', { visitorKey: `no-booking-${i}`, startedAt: now, landingPath: '/' });
+	});
+	const report = await s.t.run(ctx => readMarketingReport(ctx, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' }, new ReadBudget(16_000, 100)));
+	expect(report).toMatchObject({ convertedSessions: [], sales: [], truncated: false });
 });

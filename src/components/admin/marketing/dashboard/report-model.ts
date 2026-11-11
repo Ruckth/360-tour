@@ -255,10 +255,11 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
     JSON.stringify([session.day, session.linkId, session.campaignId ?? (session.linkId ? links.get(session.linkId)?.campaignId : undefined)]);
   const cohorts = new Set(report.sessions.filter(s => s.count > 0 && inRange(s.day)).map(cohortKey));
   const converted = new Map<string, NonNullable<ReportSale["session"]>>();
-  for (const line of lines) {
-    const { sale } = line;
-    if (line.paid && sale.kind === "stay" && sale.session && cohorts.has(cohortKey(sale.session)))
-      converted.set(sale.session.id, sale.session);
+  const conversionEvidence = report.convertedSessions ?? lines.flatMap(({ sale, paid }) =>
+    paid && sale.kind === "stay" && sale.session ? [sale.session] : []);
+  for (const session of conversionEvidence) {
+    if (allProperties && inRange(session.day) && cohorts.has(cohortKey(session)))
+      converted.set(session.id, session);
   }
 
   const spend = new Map<string, number>();
