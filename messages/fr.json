@@ -706,5 +706,22 @@
     "details": "Politique de confidentialité",
     "decline": "Non merci",
     "accept": "Autoriser"
+  },
+  "PosCouponScan": {
+    "scan": "Scanner",
+    "scanLabel": "Scanner le QR code du coupon",
+    "title": "Scanner le QR code du coupon",
+    "description": "Placez le QR code du coupon devant la caméra. Il s'applique dès qu'il est lu.",
+    "starting": "Démarrage de la caméra…",
+    "scanning": "Recherche d'un QR code…",
+    "cameraView": "Image de la caméra",
+    "denied": "L'accès à la caméra est bloqué. Autorisez la caméra pour ce site dans les réglages du navigateur, puis réessayez. Vous pouvez aussi saisir le code.",
+    "noCamera": "Aucune caméra n'a été trouvée sur cet appareil. Saisissez le code ou utilisez un lecteur de codes-barres.",
+    "insecure": "La caméra ne fonctionne que si la caisse est ouverte via une connexion sécurisée (https). Saisissez plutôt le code.",
+    "inUse": "Une autre app utilise la caméra. Fermez-la, puis réessayez.",
+    "failed": "La caméra n'a pas pu démarrer. Réessayez ou saisissez le code.",
+    "loadFailed": "Le scanner de la caméra ne s'est pas chargé. Vérifiez la connexion, puis réessayez.",
+    "tryAgain": "Réessayer",
+    "cancel": "Annuler"
   }
 }

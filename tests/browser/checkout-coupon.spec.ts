@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 /*
@@ -146,4 +147,104 @@ test("cancelling the coupon field returns focus to the Add coupon that is showin
   await panel.getByRole("button", { name: "Add coupon", exact: true }).click();
   await panel.getByRole("button", { name: "Cancel coupon" }).click();
   await expect(panel.getByRole("button", { name: "Add coupon", exact: true })).toBeFocused();
+});
+
+/*
+ * The camera scanner, with qr-scanner swapped for tests/browser/qr-scanner-mock.ts (it decodes
+ * what a spec hands it) and getUserMedia faked: a blank canvas stream, a refusal, or no camera.
+ */
+type CameraWindow = Window & { __cameraTracks?: MediaStreamTrack[]; __cameraConstraints?: MediaStreamConstraints };
+
+async function fakeCamera(page: Page, camera: "granted" | "denied" | "missing") {
+  await page.addInitScript((camera) => {
+    const win = window as CameraWindow;
+    win.__cameraTracks = [];
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      win.__cameraConstraints = constraints;
+      if (camera === "denied") throw new DOMException("Permission denied", "NotAllowedError");
+      if (camera === "missing") throw new DOMException("Requested device not found", "NotFoundError");
+      const canvas = Object.assign(document.createElement("canvas"), { width: 640, height: 480 });
+      const context = canvas.getContext("2d")!;
+      context.fillStyle = "#334";
+      context.fillRect(0, 0, 640, 480);
+      const stream = canvas.captureStream(5);
+      win.__cameraTracks!.push(...stream.getTracks());
+      return stream;
+    };
+  }, camera);
+}
+
+/** Whether the scanner's code (the dialog or qr-scanner) has been fetched yet. */
+const scannerLoaded = (page: Page) =>
+  page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /CouponScanDialog|qr-scanner/.test(entry.name)));
+
+async function expectInViewport(page: Page, locator: Locator, label: string) {
+  const box = (await locator.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect.soft(box.x, `${label} left`).toBeGreaterThanOrEqual(-1);
+  expect.soft(box.y, `${label} top`).toBeGreaterThanOrEqual(-1);
+  expect.soft(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width + 1);
+  expect.soft(box.y + box.height, `${label} bottom`).toBeLessThanOrEqual(viewport.height + 1);
+}
+
+test("the camera reads a poster QR's link, applies it like a pasted link, and turns off", async ({ page }) => {
+  await fakeCamera(page, "granted");
+  await open(page, 820, "coupon-entry", "light");
+  const panel = await orderPanel(page, 820);
+  await panel.getByRole("button", { name: /^Add coupon/ }).click();
+  const scan = panel.getByRole("button", { name: "Scan a coupon QR code" });
+  await expect(scan).toHaveText("Scan");
+  await expectInside(panel.getByRole("form", { name: "Add coupon" }), panel, "coupon field with Scan");
+  expect(await scannerLoaded(page), "scanner loaded before Scan").toBe(false);
+
+  await scan.click();
+  const dialog = page.getByRole("dialog", { name: "Scan a coupon QR code" });
+  await expect(dialog.getByText("Looking for a QR code…")).toBeVisible();
+  expect(await scannerLoaded(page), "scanner loaded after Scan").toBe(true);
+  expect(await page.evaluate(() => (window as CameraWindow).__cameraConstraints)).toEqual({ audio: false, video: { facingMode: { ideal: "environment" } } });
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await expectInViewport(page, dialog, "scanner dialog");
+  expect((await new AxeBuilder({ page }).include('[data-testid="coupon-scan-dialog"]').analyze()).violations).toEqual([]);
+  await shot(page, "coupon-scan-820");
+
+  await page.evaluate((link) => window.__decodeQr!(link), `${new URL(page.url()).origin}/q1`);
+  await expect(dialog).toBeHidden();
+  await expect(panel.getByTestId("order-coupon")).toContainText("Saves ฿500");
+  expect(await page.evaluate(() => (window as CameraWindow).__cameraTracks!.map((track) => track.readyState))).toEqual(["ended"]);
+});
+
+test("a blocked camera is explained, and Escape closes the scanner back to Scan", async ({ page }) => {
+  await fakeCamera(page, "denied");
+  await open(page, 1180, "coupon-entry", "light");
+  const panel = await orderPanel(page, 1180);
+  await panel.getByRole("button", { name: /^Add coupon/ }).click();
+  const scan = panel.getByRole("button", { name: "Scan a coupon QR code" });
+  await scan.click();
+  const dialog = page.getByRole("dialog", { name: "Scan a coupon QR code" });
+  await expect(dialog.getByRole("alert")).toHaveText(/^Camera access is blocked\./);
+  await expect(dialog.getByRole("button", { name: "Try again" })).toBeVisible();
+  expect((await new AxeBuilder({ page }).include('[data-testid="coupon-scan-dialog"]').analyze()).violations).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(scan).toBeFocused();
+  await expect(panel.getByRole("textbox", { name: "Coupon code or offer link" })).toBeVisible();
+});
+
+test("in Thai on a phone, a missing camera is explained and Cancel closes the scanner", async ({ page }) => {
+  await fakeCamera(page, "missing");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/checkout.html?scenario=coupon-entry&locale=th&theme=dark");
+  await page.locator("[data-fixture-ready]").waitFor();
+  const panel = await orderPanel(page, 390);
+  await panel.getByRole("button", { name: /^Add coupon/ }).click();
+  await expectInside(panel.getByRole("form", { name: "Add coupon" }), panel, "coupon field with Scan");
+  await panel.getByRole("button", { name: "สแกน QR โค้ดคูปอง" }).click();
+  const dialog = page.getByRole("dialog", { name: "สแกน QR โค้ดคูปอง" });
+  await expect(dialog.getByRole("alert")).toHaveText("ไม่พบกล้องในอุปกรณ์นี้ โปรดพิมพ์โค้ด หรือใช้เครื่องสแกนบาร์โค้ด");
+  await expect(dialog.getByRole("button", { name: "ลองอีกครั้ง" })).toHaveCount(0);
+  await expectInViewport(page, dialog, "scanner dialog");
+  await expectNoSideScroll(page, 390);
+  await shot(page, "coupon-scan-missing-390-th");
+  await dialog.getByRole("button", { name: "ยกเลิก" }).click();
+  await expect(dialog).toBeHidden();
 });

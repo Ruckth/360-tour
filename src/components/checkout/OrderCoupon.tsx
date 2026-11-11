@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronRight, TicketPercent, TriangleAlert, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { ChevronRight, ScanQrCode, TicketPercent, TriangleAlert, X } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ComponentType, type FormEvent } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { CouponChip } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
@@ -109,10 +110,10 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     );
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  /** Applies what was typed, pasted, or read by a scanner or the camera. */
+  async function apply(text: string) {
     if (applying || busy) return;
-    const parsed = parseCouponInput(value, window.location.origin);
+    const parsed = parseCouponInput(text, window.location.origin);
     if (parsed.kind === "invalid") {
       setMessage(couponInputMessage(parsed.reason));
       return;
@@ -139,6 +140,18 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
     // The field was disabled while checking; put the cursor back for the next scan or a correction.
     requestAnimationFrame(() => input.current?.select());
   }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void apply(value);
+  }
+
+  // The camera's text goes in the field, then applies exactly as if it had been typed or pasted.
+  const applyScanned = (text: string) => {
+    setValue(text);
+    setMessage("");
+    void apply(text);
+  };
 
   const close = () => {
     setOpen(false);
@@ -183,6 +196,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
             !looksLikeLink(value) && "uppercase placeholder:normal-case",
           )}
         />
+        <ScanCouponButton disabled={locked} onScan={applyScanned} onLoadFailed={setMessage} />
         <Button type="submit" className="h-10 shrink-0" disabled={locked}>
           {applying ? <Spinner label="Checking the coupon" className="text-current" /> : null}
           Apply
@@ -195,5 +209,66 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
         {message || (busy && !applying ? "Saving the order first…" : "")}
       </p>
     </form>
+  );
+}
+
+type ScanDialog = ComponentType<{ onDecode: (text: string) => void; onClose: () => void }>;
+
+const neverChanges = () => () => {};
+/**
+ * Offered where the browser has a camera API. Browsers leave that API out of plain-http pages, so
+ * there it is offered too, and the dialog explains that the camera needs https.
+ */
+const cameraScanOffered = () => Boolean(navigator.mediaDevices?.getUserMedia) || window.isSecureContext === false;
+const notOnServer = () => false;
+
+/**
+ * "Scan": opens the camera scanner, whose code (and qr-scanner) loads only on the first press.
+ */
+function ScanCouponButton(props: { disabled: boolean; onScan: (text: string) => void; onLoadFailed: (message: string) => void }) {
+  const offered = useSyncExternalStore(neverChanges, cameraScanOffered, notOnServer);
+  return offered ? <ScanCoupon {...props} /> : null;
+}
+
+function ScanCoupon({ disabled, onScan, onLoadFailed }: { disabled: boolean; onScan: (text: string) => void; onLoadFailed: (message: string) => void }) {
+  const t = useTranslations("PosCouponScan");
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [Scanner, setScanner] = useState<ScanDialog | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const openScanner = () => {
+    if (Scanner) return setOpen(true);
+    if (loading) return;
+    setLoading(true);
+    import("./CouponScanDialog").then(
+      (module) => {
+        setScanner(() => module.default);
+        setOpen(true);
+      },
+      () => onLoadFailed(t("loadFailed")),
+    ).finally(() => setLoading(false));
+  };
+
+  return (
+    <>
+      <Button ref={trigger} type="button" variant="outline" className="h-10 shrink-0 px-3" disabled={disabled} aria-busy={loading || undefined} onClick={openScanner} aria-label={t("scanLabel")} aria-haspopup="dialog">
+        {loading ? <Spinner label={t("starting")} className="text-current" /> : <ScanQrCode aria-hidden className="size-4" />}
+        <span className="hidden @sm:inline">{t("scan")}</span>
+      </Button>
+      {open && Scanner ? (
+        <Scanner
+          onClose={() => {
+            setOpen(false);
+            requestAnimationFrame(() => trigger.current?.focus());
+          }}
+          // Focus stays off Scan here, so a stray scanner Enter can't press it; applying puts it in the field if needed.
+          onDecode={(text) => {
+            setOpen(false);
+            onScan(text);
+          }}
+        />
+      ) : null}
+    </>
   );
 }

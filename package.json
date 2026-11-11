@@ -93,6 +93,7 @@
     "next-intl": "^4.12.0",
     "pdf-lib": "^1.17.1",
     "posthog-js": "^1.434.12",
+    "qr-scanner": "^1.4.2",
     "qrcode-generator": "^2.0.4",
     "react": "^19.2.0",
     "react-day-picker": "^9.14.0",

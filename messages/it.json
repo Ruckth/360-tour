@@ -706,5 +706,22 @@
     "details": "Informativa sulla privacy",
     "decline": "No, grazie",
     "accept": "Consenti"
+  },
+  "PosCouponScan": {
+    "scan": "Scansiona",
+    "scanLabel": "Scansiona il QR code del coupon",
+    "title": "Scansiona il QR code del coupon",
+    "description": "Tieni il QR code del coupon davanti alla fotocamera. Viene applicato appena letto.",
+    "starting": "Avvio della fotocamera…",
+    "scanning": "Ricerca di un QR code…",
+    "cameraView": "Immagine della fotocamera",
+    "denied": "L'accesso alla fotocamera è bloccato. Consenti la fotocamera per questo sito nelle impostazioni del browser, poi riprova. Puoi anche digitare il codice.",
+    "noCamera": "Nessuna fotocamera trovata su questo dispositivo. Digita il codice o usa un lettore di codici a barre.",
+    "insecure": "La fotocamera funziona solo se la cassa è aperta con una connessione sicura (https). Digita invece il codice.",
+    "inUse": "Un'altra app sta usando la fotocamera. Chiudila, poi riprova.",
+    "failed": "Impossibile avviare la fotocamera. Riprova o digita il codice.",
+    "loadFailed": "Lo scanner della fotocamera non si è caricato. Controlla la connessione e riprova.",
+    "tryAgain": "Riprova",
+    "cancel": "Annulla"
   }
 }
