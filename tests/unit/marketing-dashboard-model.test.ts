@@ -7,6 +7,7 @@ import {
   businessTotals,
   chartData,
   customRangeProblem,
+  convertedSessions,
   prepareReport,
   presetRange,
   roasFor,
@@ -63,7 +64,7 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
     expect(t.tracked.net).toBe(1_091_700);
     expect(t.all.net).toBe(1_515_900);
     expect(t.all.refunded).toBe(38_400);
-    expect(t.trackedSessions).toBe(8_860);
+    expect(t.trackedSessions).toBe(11_980);
     // 136 tracked paid sales: 132 stays + 4 Spa week checkout orders counted in money only.
     expect(t.tracked.paid).toBe(132);
     expect(t.tracked.paidOther).toBe(4);
@@ -73,8 +74,8 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
     expect(t.messaging.sales).toBe(0);
   });
 
-  it("converts tracked paid stays over tracked sessions only", () => {
-    expect(t.conv).toBeCloseTo(132 / 8_860, 10);
+  it("converts distinct consented sessions, excluding current-link stays", () => {
+    expect(t.conv).toBeCloseTo(130 / 11_980, 10);
   });
 
   it("sums ROAS over the campaigns that have spend", () => {
@@ -101,7 +102,7 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
       ["staff", 9, 71_400, null, null],
     ]);
     expect(b.totals.map((r) => [r.name, r.net, r.sessions])).toEqual([
-      ["Tracked total", 1_091_700, 8_860],
+      ["Tracked total", 1_091_700, 11_980],
       ["Business total", 1_515_900, null],
     ]);
   });
@@ -236,24 +237,24 @@ describe("cash basis", () => {
 });
 
 describe("conversion and pinned rows", () => {
-  it("leaves unknown, staff-entered and messaging out of conversion but in the business total", () => {
+  it("leaves stays without a verified session out of conversion but in the business total", () => {
     const r = report({
       sales: [
-        sale({ last: A }),
+        sale({ last: A, evidence: "tracked", session: { id: "session-a" as Id<"marketingSessions">, day: "2026-10-10", linkId: A.linkId, campaignId: A.campaignId } }),
         sale({ bucket: "unknown", channel: "web" }),
         sale({ bucket: "staff", channel: "admin" }),
         sale({ bucket: "messaging", channel: "messaging" }),
       ],
       sessions: [
         { day: "2026-10-10", linkId: lid("la"), count: 4 },
-        { day: "2026-10-10", count: 100 }, // no link: not a tracked session
+        { day: "2026-10-10", count: 100 }, // consented direct arrival: included in the overall denominator
         { day: "2026-11-05", linkId: lid("la"), count: 50 }, // outside the range
       ],
     });
     const p = prepareReport(r, LAST);
     const t = businessTotals(p);
-    expect(t.trackedSessions).toBe(4);
-    expect(t.conv).toBe(1 / 4);
+    expect(t.trackedSessions).toBe(104);
+    expect(t.conv).toBe(1 / 104);
     expect(t.all.paid).toBe(4);
     const b = buildBreakdown(p, "campaign", [], BY_NET);
     expect(b.pinned.map((r) => r.kind)).toEqual(["unknown", "staff", "messaging"]);
@@ -434,4 +435,116 @@ it("counts coupon-only Finance settlements separately throughout totals, breakdo
   const cohort = prepareReport(report({ sales: [covered] }), LAST);
   expect(businessTotals(cohort).all).toMatchObject({ paid: 0, paidOther: 1, discount: 500 });
   expect(salesCsv(cohort, "All properties")).not.toContain("Settlement day");
+});
+
+
+describe("session conversion truth", () => {
+  const session = { id: "consented-a" as Id<"marketingSessions">, day: "2026-10-10", linkId: A.linkId, campaignId: A.campaignId };
+  it("deduplicates stays and excludes current-link, old and missing sessions without needing the clamp", () => {
+    const sales = [
+      sale({ last: A, evidence: "tracked", session }),
+      sale({ last: A, evidence: "tracked", session }),
+      sale({ last: A, evidence: "current_link" }),
+      sale({ last: A, evidence: "current_link" }),
+      sale({ last: A, evidence: "tracked", session: { ...session, id: "old" as Id<"marketingSessions">, day: "2026-09-30" } }),
+      sale({ last: A, evidence: "tracked" }),
+      sale({ kind: "order", channel: "pos", last: A, evidence: "scanned" }),
+    ];
+    const r = report({ sales, sessions: [{ day: session.day, linkId: A.linkId, campaignId: A.campaignId, count: 2 }] });
+    const p = prepareReport(r, LAST);
+    const totals = businessTotals(p);
+    expect(totals.tracked.paid).toBe(6);
+    expect(totals.tracked.currentLinkPaidStays).toBe(2);
+    expect(convertedSessions(p)).toBe(1);
+    // Raw numerator / denominator already <= 1; the defensive clamp does no work.
+    expect(totals.conv).toBe(convertedSessions(p) / totals.trackedSessions!);
+    expect(totals.conv).toBe(0.5);
+    for (const view of ["source", "campaign", "link"] as const) {
+      const b = buildBreakdown(p, view, [], BY_NET);
+      for (const row of [...b.rows, ...b.totals]) if (row.conv !== null) {
+        expect(row.conv).toBeLessThanOrEqual(1);
+        expect(row.conv).toBe(row.convertedSessions / row.sessions!);
+      }
+    }
+    const summary = summaryCsv(p, "All", buildBreakdown(p, "source", [], BY_NET), "");
+    expect(summary).toContain("Current-link paid stays,Converted sessions,Session conversion %");
+    expect(summary).toContain(",2,1,50.00,");
+  });
+
+  it("keeps conversion in the session cohort when first touch differs or a link moved campaigns", () => {
+    const p = prepareReport(report({
+      sales: [sale({ last: A, first: B, evidence: "tracked", session })],
+      sessions: [{ day: session.day, linkId: A.linkId, campaignId: A.campaignId, count: 1 }],
+      links: [{ id: A.linkId, slug: "la", name: "Moved", campaignId: B.campaignId, entry: "link", status: "active" }],
+    }), FIRST);
+    expect(businessTotals(p).conv).toBe(1);
+    const b = buildBreakdown(p, "campaign", [], BY_NET);
+    expect(row(b.rows, "campaign:ca")).toMatchObject({ paid: 0, conv: 1, convertedSessions: 1 });
+    expect(row(b.rows, "campaign:cb")).toMatchObject({ paid: 1, conv: null, convertedSessions: 0 });
+  });
+
+  it("counts a latest direct session in the overall cohort while keeping link rates bounded", () => {
+    const p = prepareReport(report({
+      sales: [sale({ last: A, evidence: "tracked", session: { id: session.id, day: session.day } })],
+      sessions: [{ day: session.day, count: 1 }],
+    }), LAST);
+    expect(businessTotals(p).conv).toBe(1);
+    expect(row(buildBreakdown(p, "link", [], BY_NET).rows, "link:la").conv).toBeNull();
+  });
+
+  it("converts direct-only paid stays once overall without crediting a link, campaign or source", () => {
+    const directSession = { id: session.id, day: session.day };
+    const p = prepareReport(report({
+      sales: [sale({ bucket: "unknown", last: undefined, first: undefined, evidence: undefined, session: directSession }), sale({ bucket: "unknown", last: undefined, first: undefined, evidence: undefined, session: directSession })],
+      sessions: [{ day: session.day, count: 2 }],
+    }), LAST);
+    expect(convertedSessions(p)).toBe(1);
+    expect(businessTotals(p)).toMatchObject({ convertedSessions: 1, conv: 0.5 });
+    for (const view of ["link", "campaign", "source"] as const) {
+      expect(buildBreakdown(p, view, [], BY_NET).rows.every(row => row.convertedSessions === 0)).toBe(true);
+    }
+    const outside = prepareReport(report({ sales: [sale({ bucket: "unknown", last: undefined, session: { ...directSession, day: "2026-09-30" } })], sessions: [{ day: session.day, count: 1 }] }), LAST);
+    expect(convertedSessions(outside)).toBe(0);
+  });
+
+  it("defensively clamps inconsistent rollups", () => {
+    const p = prepareReport(report({
+      sales: [sale({ last: A, evidence: "tracked", session }), sale({ last: A, evidence: "tracked", session: { ...session, id: "another" as Id<"marketingSessions"> } })],
+      sessions: [{ day: session.day, linkId: A.linkId, campaignId: A.campaignId, count: 1 }],
+    }), LAST);
+    expect(convertedSessions(p)).toBe(2);
+    expect(businessTotals(p).conv).toBe(1);
+  });
+
+  it("exports the custom-price flag and zero discount while retaining coupon attribution", () => {
+    const custom = sale({ last: A, customPrice: true, discount: 0, coupon: { couponId: "coupon" as Id<"coupons">, code: "KEPT" } });
+    const p = prepareReport(report({ sales: [custom] }), LAST);
+    expect(businessTotals(p).all.discount).toBe(0);
+    expect(buildBreakdown(p, "coupon", [], BY_NET).rows[0]).toMatchObject({ name: "KEPT", sales: 1, discount: 0 });
+    const lines = salesCsv(p, "All").split("\r\n");
+    const header = lines.find(l => l.startsWith("Kind,"))!.split(",");
+    const values = lines.find(l => l.startsWith(`stay,${custom.id},`))!.split(",");
+    expect(values[header.indexOf("Custom price")]).toBe("yes");
+    expect(values[header.indexOf("Discount")]).toBe("0");
+    expect(values[header.indexOf("Coupon")]).toBe("KEPT");
+    expect(header).toContain("Current-link only");
+  });
+});
+
+it('uses separate session conversion evidence without adding cross-day sales to money totals', () => {
+  const sessionId = 'cohort-session' as Id<'marketingSessions'>;
+  for (const basis of ['cohort', 'cash'] as const) {
+    const data = report({ basis, sales: [], sessions: [{ day: '2026-10-10', linkId: lid('la'), campaignId: cid('ca'), count: 1 }], convertedSessions: [
+      { id: sessionId, day: '2026-10-10', linkId: lid('la'), campaignId: cid('ca') },
+      { id: sessionId, day: '2026-10-10', linkId: lid('la'), campaignId: cid('ca') },
+      { id: 'outside' as Id<'marketingSessions'>, day: '2026-11-01', linkId: lid('la'), campaignId: cid('ca') }
+    ] });
+    const prepared = prepareReport(data, LAST);
+    expect(businessTotals(prepared)).toMatchObject({ convertedSessions: 1, conv: 1, all: { collected: 0, refunded: 0, net: 0 } });
+    expect(convertedSessions(prepared)).toBe(1);
+    expect(prepareReport(data, { ...LAST, property: 'villa' }).conversionSessions).toEqual([]);
+    const linkRow = buildBreakdown(prepared, 'link', [], BY_NET).rows.find(row => row.key === 'link:la');
+    expect(linkRow).toMatchObject({ convertedSessions: 1, conv: 1, collected: 0 });
+    expect(businessTotals(prepareReport({ ...data, convertedSessions: [] }, LAST)).convertedSessions).toBe(0);
+  }
 });

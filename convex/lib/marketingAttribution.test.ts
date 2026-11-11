@@ -27,7 +27,7 @@ describe('buildAttribution', () => {
 	it('ignores sessions older than 30 days and from the future', () => {
 		const old = { ...session('old', 0, q1), startedAt: now - ATTRIBUTION_WINDOW_MS - 1 };
 		const result = buildAttribution({ sessions: [old, session('late', -1, f1), session('today', 0)], now });
-		expect(result).toEqual({ model: 'last_touch_30d@1', evidence: 'tracked', sessionId: 'today', capturedAt: now });
+		expect(result).toEqual({ model: 'last_touch_30d@1', evidence: 'tracked', sessionId: 'today', session: { startedAt: now }, capturedAt: now });
 	});
 
 	it('counts a session exactly 30 days old', () => {
@@ -54,6 +54,12 @@ describe('buildAttribution', () => {
 
 	it('returns nothing without sessions or a link', () => {
 		expect(buildAttribution({ sessions: [], now })).toBeUndefined();
+	});
+
+	it('freezes the latest session cohort so reports survive raw-session retention', () => {
+		const latest: SessionTouch = { ...session('s2', 1), linkId: id('l_q1'), campaignId: id('c_2') };
+		expect(buildAttribution({ sessions: [session('s1', 5, f1), latest], now })?.session).toEqual({ startedAt: latest.startedAt, linkId: 'l_q1', campaignId: 'c_2' });
+		expect(buildAttribution({ sessions: [session('s3', 2)], now })?.session).toEqual({ startedAt: now - 2 * day });
 	});
 });
 

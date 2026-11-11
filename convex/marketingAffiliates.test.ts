@@ -1,8 +1,9 @@
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { RAW_MARKETING_RETENTION_MS } from "./lib/marketingPolicy";
 import type { Id } from "./_generated/dataModel";
 import { creditMoney, syncAffiliateCredit } from "./lib/affiliateCredits";
 const modules = import.meta.glob("./**/*.ts");
@@ -604,7 +605,7 @@ it("freezes link/coupon conflict and self-referral candidates, requires explicit
     affiliateId: anna,
     state: "pending",
     eligible: false,
-    flags: ["affiliate_conflict", "self_referral"],
+    flags: ["affiliate_conflict", "self_referral", "referral_claimed_slug"],
   });
   await expect(s.approve(anna)).rejects.toThrow("settled");
   await s.pay(bookingId);
@@ -973,7 +974,8 @@ it("uses the last eligible affiliate touch independently of the last acquisition
   expect(booking?.marketingAttribution?.last?.linkId).toBe(ordinary);
   expect(booking?.affiliateSnapshot).toMatchObject({
     affiliateId: anna,
-    candidates: [{ linkId: alias }],
+    candidates: [{ linkId: alias, evidence: "recorded_session" }],
+    flags: [],
   });
 });
 it("rejects out-of-scope and expired candidates, archived approvals and unseen money changes", async () => {
@@ -1130,4 +1132,55 @@ it("does not pretend invitations can revoke or downgrade configured system admin
   }
   expect((await s.admin.query(api.marketingAccess.current, {})).role).toBe("admin");
   expect(await s.admin.query(api.marketingAccess.listGrants, {})).toEqual([]);
+});
+
+
+it.each(["create", "confirmProposal"] as const)("freezes recorded vs claimed evidence through bookings.%s", async path => {
+  for (const recorded of [false, true]) {
+    const s = await setup();
+    const anna = await s.partner();
+    const link = (await s.t.run(ctx => ctx.db.get(anna)))!.canonicalLinkId!;
+    const visitorKey = "mv_" + "b".repeat(32);
+    // An anonymous open and another visitor's session do not establish this guest's visit.
+    await s.t.mutation(api.marketing.recordOpen, { slug: "r/anna", bot: false });
+    await s.t.mutation(api.marketing.startSession, { slug: "r/anna", landingPath: "/", visitorKey: "mv_" + "c".repeat(32) });
+    if (recorded) await s.t.mutation(api.marketing.startSession, { slug: "r/anna", landingPath: "/", visitorKey });
+    const stay = {
+      propertySlug: "villa", guestName: "Guest", guestEmail: "guest@example.com",
+      guestPhone: "+66811112222", checkIn: "2026-11-10", checkOut: "2026-11-12", guests: 2,
+    };
+    const marketing = { slug: "r/anna", visitorKey };
+    const result = path === "create"
+      ? await s.t.mutation(api.bookings.create, { ...stay, marketing })
+      : await (async () => {
+        const sessionId = await s.t.mutation(api.chat.createSession, { channel: "web" });
+        const { confirmToken } = await s.t.mutation(internal.bookings.prepareChatBooking, { sessionId, propertySlug: stay.propertySlug, guestName: stay.guestName, guestPhone: stay.guestPhone, checkIn: stay.checkIn, checkOut: stay.checkOut, guests: stay.guests });
+        const result = await s.t.mutation(api.bookings.confirmProposal, { token: confirmToken, marketing });
+        if (result.needsReview) throw new Error("Expected a confirmed booking");
+        return result;
+      })();
+    const before = await s.t.run(ctx => ctx.db.get(result.bookingId));
+    const evidence = recorded ? "recorded_session" : "claimed_slug";
+    const flags = recorded ? [] : ["referral_claimed_slug"];
+    expect(before?.affiliateSnapshot).toMatchObject({
+      affiliateId: anna, candidates: [{ linkId: link, evidence }], flags,
+    });
+    const credit = await s.credit();
+    expect(credit.snapshot).toEqual(before?.affiliateSnapshot);
+    expect(credit.flags).toEqual(flags);
+    // Raw retention must not rewrite sale attribution, frozen evidence, counters or credits.
+    await s.t.run(async ctx => {
+      for (const session of await ctx.db.query("marketingSessions").collect())
+        await ctx.db.patch(session._id, { startedAt: Date.now() - RAW_MARKETING_RETENTION_MS - 1 });
+      for (const event of await ctx.db.query("marketingEvents").collect())
+        await ctx.db.patch(event._id, { occurredAt: Date.now() - RAW_MARKETING_RETENTION_MS - 1 });
+    });
+    const linkBefore = await s.t.run(ctx => ctx.db.get(link));
+    const aggregatesBefore = await s.t.run(ctx => ctx.db.query("marketingSessionDays").collect());
+    await s.t.mutation(internal.crons.cleanRawMarketing, {});
+    expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).toEqual(before);
+    expect(await s.credit()).toEqual(credit);
+    expect(await s.t.run(ctx => ctx.db.get(link))).toEqual(linkBefore);
+    expect(await s.t.run(ctx => ctx.db.query("marketingSessionDays").collect())).toEqual(aggregatesBefore);
+  }
 });

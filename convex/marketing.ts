@@ -1,3 +1,4 @@
+import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 // Marketing release 1: campaigns, short links, QR entry and the coupon catalog.
 // CONTRACT — names, args and return types are fixed so the admin UI and backend can be built in parallel.
 import { ConvexError, v, type ObjectType } from 'convex/values';
@@ -235,7 +236,8 @@ export const listCoupons = query({
 export const getCoupon = query({
 	args: { couponId: v.string() },
 	handler: async (ctx, args): Promise<CouponDetail | null> => {
-		await requireMarketingPermission(ctx, 'view');
+		const access = await requireMarketingPermission(ctx, 'view');
+		const fullDetail = canReadMarketingPersonalData(access);
 		const couponId = ctx.db.normalizeId('coupons', args.couponId);
 		if (!couponId) return null;
 		const coupon = await ctx.db.get(couponId);
@@ -251,9 +253,9 @@ export const getCoupon = query({
 				...(order && { order: {
 					orderId: order._id, title: orderTitle(order.orderNumber),
 					receiptNumber: order.receiptNumber !== undefined ? formatReceiptNumber(order.receiptNumber) : null,
-					customerName: order.customerSnapshot?.name ?? null
+					customerName: fullDetail ? order.customerSnapshot?.name ?? null : 'Guest'
 				} }),
-				...(booking && { booking: { guestName: booking.guestName, checkIn: booking.checkIn, checkOut: booking.checkOut, confirmationCode: booking.confirmationCode } })
+				...(booking && { booking: { guestName: fullDetail ? booking.guestName : 'Guest', checkIn: booking.checkIn, checkOut: booking.checkOut, ...(fullDetail && booking.confirmationCode ? { confirmationCode: booking.confirmationCode } : {}) } })
 			};
 		}));
 		return { ...await enrichCoupon(ctx, coupon), versions, links: await Promise.all(links.map(link => enrichLink(ctx, link))), redemptions };

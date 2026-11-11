@@ -1,7 +1,8 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
+import migrationsTest from '@convex-dev/migrations/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, internal } from './_generated/api';
+import { api, components, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import schema from './schema';
 import { stayMoney } from './lib/bookingMoney';
@@ -36,7 +37,7 @@ async function setup(couponAmount = 100) {
 	const payment = (bookingId: Id<'bookings'>, amount: number, effectiveAt = now, status: 'recorded' | 'cancelled' = 'recorded') => t.run(ctx => ctx.db.insert('bookingPayments', { bookingId, origin: 'manual', method: 'cash', currency: 'THB', amount, effectiveAt, recordedAt: now, recordedBy: email, status, refunded: 0 }));
 	const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
 	const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 500, currency: 'THB', staffIds: [staffId] });
-	const appointment = () => admin.mutation(api.adminServices.createAppointment, { serviceId, staffId, start: now - day, guestName: 'Desk guest', guestPhone: '' }).then(r => r.appointmentId);
+	const appointment = (start = now - day) => admin.mutation(api.adminServices.createAppointment, { serviceId, staffId, start, guestName: 'Desk guest', guestPhone: '' }).then(r => r.appointmentId);
 	/** An order paid before stay payments were itemised: ฿1,000 for the stay and ฿50 of water, with no bookingPayments row. */
 	const oldOrder = (bookingId: Id<'bookings'>) => t.run(async ctx => {
 		const id = await ctx.db.insert('bills', { status: 'paid', bookingId, currency: 'THB', itemCount: 2, total: 1050, due: 0, hasItems: true, revision: 1, paidAt: now, paymentEffectiveAt: now, createdBy: email, createdAt: now, updatedAt: now });
@@ -234,8 +235,8 @@ describe('report attribution and limits', () => {
 		const args = { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' as const };
 		const probe = new ReadBudget();
 		expect((await s.t.run(ctx => readMarketingReport(ctx, args, probe))).truncated).toBe(false);
-		// After the stays come three order scans and one appointment scan; stop on the second stay's refunds.
-		const result = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16_000, probe.ranges - 5)));
+		// Stop on the second stay's refunds, before the order, appointment and conversion scans.
+		const result = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16_000, probe.ranges - 8)));
 		expect(result.truncated).toBe(true);
 		expect(result.sales.map(sale => sale.id)).toEqual([first]);
 		expect(result).toMatchObject({ campaigns: [{ id: s.campaignId }], links: [{ id: s.linkId }], spend: [{ amount: 900 }], properties: [{ id: s.propertyId }] });
@@ -524,4 +525,318 @@ it('retains consumed coupon discount after a real service refund', async () => {
 	const cash = await s.report('cash');
 	expect(cash.sales).toMatchObject([{ id: orderId, collected: 400, refunded: 200, discount: 100, paidDay: '2026-11-09' }]);
 	expect(await s.t.run(ctx => ctx.db.get(s.couponId))).toMatchObject({ used: 1, discountGranted: 100 });
+});
+
+it.each(['cohort', 'cash'] as const)('includes proven legacy desk payments once on %s basis', async basis => {
+	const s = await setup();
+	const appointmentId = await s.appointment();
+	const at = now - day;
+	await s.t.run(async ctx => {
+		await ctx.db.patch(appointmentId, { paymentStatus: 'paid' });
+		await ctx.db.insert('appointmentChanges', { appointmentId, at, actor: email, kind: 'payment', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'paymentStatus', from: 'unpaid', to: 'paid' }] });
+	});
+	const legacy = await s.report(basis, '2026-11-08');
+	expect(legacy.sales).toMatchObject([{ id: appointmentId, kind: 'appointment', createdDay: '2026-11-08', paidDay: '2026-11-08', collected: 500 }]);
+	expect((await s.report(basis)).sales).toEqual([]);
+	if (basis === 'cash') expect(legacy.events).toEqual([{ saleId: appointmentId, kind: 'payment', day: '2026-11-08', amount: 500 }]);
+	// If an itemised row exists it owns both the amount and date; never add the old flag again.
+	await s.t.run(ctx => ctx.db.insert('appointmentPayments', { appointmentId, amount: 500, currency: 'THB', method: 'cash', effectiveAt: now, recordedAt: now, recordedBy: email, idempotencyKey: 'legacy-itemised', status: 'recorded', refunded: 0 }));
+	expect((await s.report(basis, '2026-11-08')).sales).toEqual([]);
+	expect((await s.report(basis)).sales).toMatchObject([{ id: appointmentId, collected: 500, paidDay: '2026-11-09' }]);
+});
+
+it.each(['missing history', 'POS reason', 'cancelled payment', 'receipt-owned', 'linked receipt', 'excess history'] as const)('does not invent legacy desk money with %s', async scenario => {
+	const s = await setup();
+	const appointmentId = await s.appointment();
+	const changeId = await s.t.run(async ctx => {
+		await ctx.db.patch(appointmentId, { paymentStatus: 'paid' });
+		return ctx.db.insert('appointmentChanges', { appointmentId, at: now, actor: email, kind: 'payment', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'paymentStatus', from: 'unpaid', to: 'paid' }] });
+	});
+	if (scenario === 'missing history') await s.t.run(ctx => ctx.db.delete(changeId));
+	if (scenario === 'POS reason') await s.t.run(ctx => ctx.db.patch(changeId, { reason: 'Paid at checkout' }));
+	if (scenario === 'cancelled payment') await s.t.run(ctx => ctx.db.insert('appointmentPayments', { appointmentId, amount: 500, currency: 'THB', method: 'cash', effectiveAt: now, recordedAt: now, recordedBy: email, idempotencyKey: 'cancelled-legacy', status: 'cancelled', refunded: 0 }));
+	if (scenario === 'receipt-owned' || scenario === 'linked receipt') {
+		const { orderId } = await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
+		await s.payOrder(orderId);
+		await s.t.run(async ctx => {
+			const line = (await ctx.db.query('billLines').withIndex('by_billId', q => q.eq('billId', orderId)).first())!;
+			if (scenario === 'receipt-owned') await ctx.db.patch(line._id, { appointmentId });
+			else await ctx.db.insert('billLineLinks', { billId: orderId, lineId: line._id, appointmentId, kind: 'appointment', currency: 'THB', effectiveAt: now, sequence: 1, amount: 500, status: 'active', linkedAt: now, linkedBy: email, reason: 'Paid service linked' });
+		});
+	}
+	if (scenario === 'excess history') await s.t.run(async ctx => {
+		for (let i = 0; i < 201; i++) await ctx.db.insert('appointmentChanges', { appointmentId, at: now - i, actor: email, kind: 'details', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'notes', from: null, to: 'note' }] });
+	});
+	for (const basis of ['cohort', 'cash'] as const) expect((await s.report(basis)).sales.find(sale => sale.id === appointmentId)).toBeUndefined();
+});
+
+it('keeps legacy evidence reads within the report budget and flags partial data', async () => {
+	const s = await setup();
+	const appointmentId = await s.appointment();
+	await s.t.run(async ctx => {
+		await ctx.db.patch(appointmentId, { paymentStatus: 'paid' });
+		await ctx.db.insert('appointmentChanges', { appointmentId, at: now, actor: email, kind: 'payment', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'paymentStatus', from: 'unpaid', to: 'paid' }] });
+	});
+	const budget = new ReadBudget(10_000, 10, 10_000_000);
+	const data = await s.t.run(ctx => readMarketingReport(ctx, { from: '2026-11-09', to: '2026-11-09', basis: 'cash' }, budget));
+	expect(data.truncated).toBe(true);
+});
+
+it('reports zero coupon discount for a custom-price stay without changing coupon history or counters', async () => {
+	const s = await setup();
+	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 100 }, scope: 'accommodation' });
+	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+	const { bookingId } = await s.t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Custom guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
+	await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+	const before = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', couponId)).unique() }));
+	await s.admin.mutation(api.adminBookings.editBooking, { bookingId, propertyId: s.propertyId, expectedRevision: before.booking!.revision ?? 0, checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, guestName: 'Custom guest', guestPhone: '+66811112222', guestEmail: 'guest@example.com', priceOverride: { total: 750, reason: 'Agreed price' }, notifyGuest: false });
+	for (const basis of ['cash', 'cohort'] as const) expect((await s.report(basis)).sales).toMatchObject([{ id: bookingId, customPrice: true, discount: 0, coupon: { couponId, code: 'VILLA100' } }]);
+	const after = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.get(before.redemption!._id) }));
+	expect(after.booking!.promotion).toEqual(before.booking!.promotion);
+	expect(after.coupon).toEqual(before.coupon);
+	expect(after.redemption).toEqual(before.redemption);
+});
+
+it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts personal fields server-side for %s across report, affiliate credits and coupon detail', async role => {
+	const s = await setup();
+	const fullDetail = role === 'finance' || role === 'manager' || role === 'admin';
+	const affiliateId = await s.admin.mutation(api.marketingAffiliates.saveAffiliate, { name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'private-partner@example.com', notes: 'Private partner note' });
+	await s.admin.mutation(api.marketingAffiliates.setAffiliateStatus, { affiliateId, status: 'active' });
+	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'BOTH100', benefit: { kind: 'fixed', amount: 100 }, scope: 'accommodation_and_services' });
+	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+	await s.admin.mutation(api.marketingAffiliates.assignCoupon, { affiliateId, couponId });
+	const { bookingId } = await s.t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Private Guest', guestEmail: 'private@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'BOTH100' });
+	await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+	await s.t.run(ctx => ctx.db.patch(bookingId, { confirmationCode: 'PRIVATE-CONF' }));
+	const { orderId } = await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
+	await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'BOTH100' });
+	await s.payOrder(orderId);
+	await s.t.run(ctx => ctx.db.patch(orderId, { customerSnapshot: { name: 'Private Customer' } }));
+	const appointmentId = await s.appointment();
+	await s.admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'privacy-desk' });
+	const reader = role === 'admin' ? s.admin : s.t.withIdentity({ email: 'reader@example.com', tokenIdentifier: 'reader' });
+	if (role !== 'admin') await s.t.run(ctx => ctx.db.insert('marketingGrants', { email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: now, updatedAt: now, updatedByEmail: email }));
+	const data = await reader.query(api.marketingReport.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' });
+	expect(data.sales.find(row => row.id === bookingId)).toMatchObject({ label: fullDetail ? 'Private Guest' : 'Guest' });
+	expect(data.sales.find(row => row.id === bookingId)?.ref).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
+	expect(data.sales.find(row => row.id === orderId)?.label).toBe(fullDetail ? 'Private Customer' : 'Guest');
+	expect(data.sales.find(row => row.id === appointmentId)?.label).toBe(fullDetail ? 'Desk guest' : 'Guest');
+	const credits = await reader.query(api.marketingAffiliates.listCredits, {});
+	expect(credits.rows).toHaveLength(2);
+	for (const credit of credits.rows) {
+		const isStay = credit.bookingId === bookingId;
+		expect(credit.label).toBe(fullDetail ? isStay ? 'Private Guest' : 'Private Customer' : 'Guest');
+		if (isStay) expect(credit.ref).toBe(fullDetail ? 'PRIVATE-CONF' : 'Booking');
+		expect(credit.candidates[0].contactEmail).toBe(fullDetail ? 'private-partner@example.com' : undefined);
+		expect(credit.snapshot.candidates[0].contactEmail).toBe(fullDetail ? 'private-partner@example.com' : undefined);
+		await s.admin.mutation(api.marketingAffiliates.reviewCredit, { creditId: credit._id, expectedRevision: credit.revision, decision: 'rejected', reason: 'Private finance reason' });
+		const detail = await reader.query(api.marketingAffiliates.getCredit, { creditId: credit._id });
+		expect(detail!.credit.reason).toBe(fullDetail ? 'Private finance reason' : null);
+		expect(detail!.credit.reasonHidden ?? false).toBe(!fullDetail);
+		expect(detail!.history[0].reason).toBe(fullDetail ? 'Private finance reason' : null);
+		expect(detail!.history[0].reasonHidden ?? false).toBe(!fullDetail);
+		expect((await reader.query(api.marketingAffiliates.listCredits, {})).rows.find(row => row._id === credit._id)!.reason).toBe(fullDetail ? 'Private finance reason' : null);
+	}
+	await s.admin.mutation(api.marketingAffiliates.saveAffiliate, { id: affiliateId, name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'new-private@example.com', notes: 'New private note' });
+	for (const entityId of [undefined, affiliateId]) {
+		const history = await reader.query(api.recordHistory.list, { entityType: 'marketingAffiliate', ...(entityId ? { entityId } : {}), paginationOpts: { numItems: 100, cursor: null } });
+		const serialized = JSON.stringify(history);
+		for (const value of ['private-partner@example.com', 'new-private@example.com', 'Private partner note', 'New private note']) {
+			if (fullDetail) expect(serialized).toContain(value);
+			else expect(serialized).not.toContain(value);
+		}
+	}
+	const partners = await reader.query(api.marketingAffiliates.listAffiliates, {});
+	expect(partners.rows[0].contactEmail).toBe(fullDetail ? 'new-private@example.com' : undefined);
+	const coupon = await reader.query(api.marketing.getCoupon, { couponId });
+	const booking = coupon!.redemptions.find(row => row.bookingId === bookingId)!.booking!;
+	expect(booking.guestName).toBe(fullDetail ? 'Private Guest' : 'Guest');
+	expect(booking.confirmationCode).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
+	expect(coupon!.redemptions.find(row => row.billId === orderId)!.order!.customerName).toBe(fullDetail ? 'Private Customer' : 'Guest');
+	if (!fullDetail) {
+		const responses = JSON.stringify([data, credits, coupon, partners]);
+		for (const secret of ['Private Guest', 'PRIVATE-CONF', 'Private Customer', 'private-partner@example.com', 'Desk guest']) expect(responses).not.toContain(secret);
+	}
+	// Redaction is a read boundary: admin still sees persisted history unchanged after these reads.
+	expect((await s.admin.query(api.marketingAffiliates.listCredits, {})).rows[0].snapshot.candidates[0].contactEmail).toBe('private-partner@example.com');
+});
+
+
+it('exposes only the verified session cohort needed for conversion, without visitor identity', async () => {
+	const s = await setup();
+	const sessionId = await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId, count: 1 });
+		return ctx.db.insert('marketingSessions', { visitorKey: 'private-visitor-key', linkId: s.linkId, campaignId: s.campaignId, startedAt: now, landingPath: '/' });
+	});
+	const last = { linkId: s.linkId, campaignId: s.campaignId, slug: 'spa', campaignName: 'November', source: 'print', medium: 'qr', entry: 'qr' as const };
+	for (let i = 0; i < 2; i++) await s.booking({ paymentStatus: 'paid', paidAt: now, marketingAttribution: { model: 'last_touch_30d@1', evidence: 'tracked', sessionId, last, first: last, capturedAt: now } });
+	const report = await s.report();
+	expect(report.sales).toHaveLength(2);
+	for (const sale of report.sales) expect(sale.session).toEqual({ id: sessionId, day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId });
+	expect(JSON.stringify(report)).not.toContain('private-visitor-key');
+});
+
+it('keeps session-cohort conversion after the raw session is deleted, using the cohort frozen on the booking', async () => {
+	const s = await setup();
+	const sessionId = await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId, count: 1 });
+		return ctx.db.insert('marketingSessions', { visitorKey: 'private-visitor-key', linkId: s.linkId, campaignId: s.campaignId, startedAt: now, landingPath: '/' });
+	});
+	const last = { linkId: s.linkId, campaignId: s.campaignId, slug: 'spa', campaignName: 'November', source: 'print', medium: 'qr', entry: 'qr' as const };
+	await s.booking({ paymentStatus: 'paid', paidAt: now, marketingAttribution: { model: 'last_touch_30d@1', evidence: 'tracked', sessionId, session: { startedAt: now, linkId: s.linkId, campaignId: s.campaignId }, last, first: last, capturedAt: now } });
+	await s.t.run(ctx => ctx.db.delete(sessionId));
+	const report = await s.report();
+	expect(report.sales[0].session).toEqual({ id: sessionId, day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId });
+});
+
+
+it.each(['cohort', 'cash'] as const)('skips financial reads for checkout payment changes (%s)', async basis => {
+	const s = await setup();
+	const count = 8;
+	const changeIds: Id<'appointmentChanges'>[] = [];
+	for (let i = 0; i < count; i++) {
+		const appointmentId = await s.appointment(now - (i + 1) * day);
+		const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId });
+		await s.payOrder(orderId, now - day);
+		const changes = await s.t.run(ctx => ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', appointmentId)).collect());
+		const change = changes.find(c => c.kind === 'payment')!;
+		changeIds.push(change._id);
+		await s.t.run(ctx => ctx.db.patch(change._id, { at: now - day }));
+	}
+	const args = { from: '2026-11-09', to: '2026-11-09', basis };
+	const before = new ReadBudget();
+	await s.t.run(ctx => readMarketingReport(ctx, args, before));
+	for (const id of changeIds) await s.t.run(ctx => ctx.db.patch(id, { at: now }));
+	const after = new ReadBudget();
+	const report = await s.t.run(ctx => readMarketingReport(ctx, args, after));
+	expect(report.truncated).toBe(false);
+	expect(report.sales).toEqual([]);
+	// One get per appointment; no payment/refund/line/link/history index ranges.
+	expect(after.ranges - before.ranges).toBe(count);
+	expect(after.documents - before.documents).toBe(2 * count);
+});
+
+it.each([false, true])('exposes a direct-only web session, frozen=%s', async frozen => {
+	const s = await setup();
+	const sessionId = await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', count: 1 });
+		return ctx.db.insert('marketingSessions', { visitorKey: 'private-direct-visitor', startedAt: now, landingPath: '/' });
+	});
+	const chatSessionId = await s.t.run(ctx => ctx.db.insert('chatSessions', { channel: 'web', createdAt: now }));
+	for (const chat of [false, true]) await s.booking({ paymentStatus: 'paid', paidAt: now, ...(chat ? { chatSessionId } : {}), marketingAttribution: { model: 'last_touch_30d@1', evidence: 'tracked', sessionId, ...(frozen ? { session: { startedAt: now } } : {}), capturedAt: now } });
+	if (frozen) await s.t.run(ctx => ctx.db.delete(sessionId));
+	const report = await s.report();
+	expect(report.sales).toHaveLength(2);
+	for (const sale of report.sales) expect(sale).toMatchObject({ bucket: 'unknown', session: { id: sessionId, day: '2026-11-09' } });
+	expect(JSON.stringify(report)).not.toContain('private-direct-visitor');
+});
+
+it('backfills legacy session cohorts in batches, preserving attribution and surviving retention idempotently', async () => {
+	const s = await setup();
+	migrationsTest.register(s.t);
+	const sessionId = await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId, count: 1 });
+		return ctx.db.insert('marketingSessions', { visitorKey: 'private-key', startedAt: now, linkId: s.linkId, campaignId: s.campaignId, landingPath: '/' });
+	});
+	const directId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: 'direct-key', startedAt: now - day, landingPath: '/' }));
+	const missingId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: 'gone-key', startedAt: now, landingPath: '/' }));
+	await s.t.run(ctx => ctx.db.delete(missingId));
+	const last = { linkId: s.linkId, campaignId: s.campaignId, slug: 'spa', campaignName: 'November', source: 'print', medium: 'qr', entry: 'qr' as const };
+	const base = { model: 'last_touch_30d@1' as const, evidence: 'tracked' as const, sessionId, last, first: last, capturedAt: now };
+	const linked = await s.booking({ paymentStatus: 'paid', paidAt: now, marketingAttribution: base });
+	const frozen = await s.booking({ marketingAttribution: { ...base, session: { startedAt: now - 2 * day } } });
+	await s.booking({ marketingAttribution: { ...base, sessionId: missingId } });
+	await s.booking({ marketingAttribution: { ...base, evidence: 'current_link' } });
+	await s.booking({ marketingAttribution: { ...base, sessionId: undefined } });
+	const direct = await s.booking({ marketingAttribution: { ...base, sessionId: directId, last: undefined, first: undefined } });
+	await s.booking();
+	const snapshot = () => s.t.run(ctx => ctx.db.query('bookings').collect());
+	const before = await snapshot();
+	const fn = 'migrations:backfillMarketingAttributionSession';
+	await s.t.mutation(internal.migrations.run, { fn, dryRun: true, batchSize: 2 });
+	await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+	expect(await snapshot()).toEqual(before);
+	await s.t.mutation(internal.migrations.run, { fn, batchSize: 2 });
+	await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+	expect((await s.t.query(components.migrations.lib.getStatus, { names: [fn] }))[0]).toMatchObject({ state: 'success', processed: 7 });
+	const after = await snapshot();
+	for (const booking of after) {
+		const original = before.find(row => row._id === booking._id)!;
+		if (booking._id === linked || booking._id === direct) {
+			const session = booking._id === linked ? { startedAt: now, linkId: s.linkId, campaignId: s.campaignId } : { startedAt: now - day };
+			expect(booking).toEqual({ ...original, marketingAttribution: { ...original.marketingAttribution!, session } });
+		} else expect(booking).toEqual(original);
+	}
+	expect(after.find(row => row._id === frozen)!.marketingAttribution!.session).toEqual({ startedAt: now - 2 * day });
+	await s.t.mutation(internal.migrations.run, { fn, reset: true, batchSize: 1 });
+	await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+	expect(await snapshot()).toEqual(after);
+	await s.t.run(ctx => ctx.db.delete(sessionId));
+	expect((await s.report()).sales.find(row => row.id === linked)!.session).toEqual({ id: sessionId, day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId });
+});
+
+it.each(['cohort', 'cash'] as const)('reports prior-day converted sessions independently of %s money dates', async basis => {
+	const s = await setup();
+	for (const frozen of [false, true]) for (const direct of [false, true]) {
+		const campaign = direct ? {} : { linkId: s.linkId, campaignId: s.campaignId };
+		const sessionId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: `private-${frozen}-${direct}`, startedAt: now - day, landingPath: '/', ...campaign }));
+		const attribution = { model: 'last_touch_30d@1' as const, evidence: 'tracked' as const, sessionId, ...(frozen ? { session: { startedAt: now - day, ...campaign } } : {}), capturedAt: now };
+		for (let i = 0; i < 2; i++) {
+			const bookingId = await s.booking({ source: 'web', paymentStatus: 'paid', amountPaid: 1000, paidAt: now, marketingAttribution: attribution });
+			await s.payment(bookingId, 1000);
+		}
+		if (frozen) await s.t.run(ctx => ctx.db.delete(sessionId));
+		const report = await s.report(basis, '2026-11-08');
+		expect(report.convertedSessions).toContainEqual({ id: sessionId, day: '2026-11-08', ...campaign });
+		expect(report.sales).toEqual([]);
+		expect(report.events).toEqual([]);
+		expect(JSON.stringify(report)).not.toContain('private-');
+	}
+	const report = await s.report(basis, '2026-11-08');
+	expect(report.convertedSessions).toHaveLength(4);
+	expect((await s.report(basis)).convertedSessions).toEqual([]);
+});
+
+it('clips conversion cohorts to the Bangkok range and requires real payment evidence', async () => {
+	const s = await setup();
+	const cohorts = [];
+	for (const offset of [-day, 0, day]) {
+		const startedAt = Date.parse('2026-11-08T17:00:00Z') + offset;
+		const sessionId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: `range-${offset}`, startedAt, landingPath: '/' }));
+		const marketingAttribution = { model: 'last_touch_30d@1' as const, evidence: 'tracked' as const, sessionId, session: { startedAt }, capturedAt: now };
+		cohorts.push({ sessionId, marketingAttribution });
+		const bookingId = await s.booking({ amountPaid: 1000, paymentStatus: 'paid', paidAt: now, marketingAttribution });
+		await s.payment(bookingId, 1000);
+	}
+	const unpaidSession = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: 'unpaid-visit', startedAt: now, landingPath: '/' }));
+	const unpaid = await s.booking({ amountPaid: 0, marketingAttribution: { ...cohorts[1].marketingAttribution, sessionId: unpaidSession } });
+	await s.payment(unpaid, 1000, now, 'cancelled');
+	const zeroSession = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: 'zero-cash', startedAt: now, landingPath: '/' }));
+	await s.booking({ total: 0, paymentStatus: 'paid', marketingAttribution: { ...cohorts[1].marketingAttribution, sessionId: zeroSession } });
+	for (const basis of ['cohort', 'cash'] as const) expect((await s.report(basis)).convertedSessions).toEqual([{ id: cohorts[1].sessionId, day: '2026-11-09' }]);
+});
+
+it('counts old-order stay collections and refunded stays as converted without duplicating selected money', async () => {
+	const s = await setup();
+	for (const refunded of [false, true]) {
+		const sessionId = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey: `legacy-${refunded}`, startedAt: now - day, landingPath: '/' }));
+		const bookingId = await s.booking({ source: 'web', amountPaid: 1000, paymentStatus: refunded ? 'refunded' : 'paid', paidAt: now, ...(refunded ? { refundedAt: now, amountRefunded: 1000 } : {}), marketingAttribution: { model: 'last_touch_30d@1', evidence: 'tracked', sessionId, session: { startedAt: now - day }, capturedAt: now } });
+		if (!refunded) await s.oldOrder(bookingId);
+		for (const basis of ['cohort', 'cash'] as const) {
+			const report = await s.report(basis, '2026-11-08');
+			expect(report.convertedSessions).toContainEqual({ id: sessionId, day: '2026-11-08' });
+			expect(report.sales).toEqual([]);
+			expect(report.events).toEqual([]);
+		}
+	}
+});
+
+it('does not spend a booking lookup on every non-converting raw visit', async () => {
+	const s = await setup();
+	await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', count: 2500 });
+		for (let i = 0; i < 2500; i++) await ctx.db.insert('marketingSessions', { visitorKey: `no-booking-${i}`, startedAt: now, landingPath: '/' });
+	});
+	const report = await s.t.run(ctx => readMarketingReport(ctx, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' }, new ReadBudget(16_000, 100)));
+	expect(report).toMatchObject({ convertedSessions: [], sales: [], truncated: false });
 });

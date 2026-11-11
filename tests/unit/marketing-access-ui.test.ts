@@ -145,3 +145,16 @@ it("copies a partner alias as an explicit ordinary draft for marketers", async (
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
   await click(button("Create link")); expect(saveLink).toHaveBeenCalledOnce(); expect(saveLink.mock.calls[0][0]).not.toHaveProperty("affiliateId");
 });
+
+
+it("shows expired invitations and lets administrators refresh them", async () => {
+  mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", expiresAt: 0, expired: true }];
+  await render(createElement(MarketingAccessScreen), "admin");
+  expect(document.body.textContent).toContain("Expired");
+  await click(button("Renew invitation"));
+  expect(mocked.mutate).toHaveBeenLastCalledWith({ email: "friend@example.com", role: "viewer" });
+  mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", tokenIdentifier: "friend", expiresAt: null, expired: false }];
+  await render(createElement(MarketingAccessScreen), "admin");
+  expect(document.body.textContent).toContain("Access activated");
+  expect(button("Renew invitation")).toBeUndefined();
+});

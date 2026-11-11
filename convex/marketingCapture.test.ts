@@ -143,7 +143,7 @@ describe('booking attribution', () => {
   it('records direct tracked visits, and falls back to the tab link if every session is unlinked', async () => {
     const s = await setup();
     const sessionId = await s.session(now - day, false);
-    expect(await s.resolve({ visitorKey })).toEqual({ model: 'last_touch_30d@1', evidence: 'tracked', sessionId, capturedAt: now });
+    expect(await s.resolve({ visitorKey })).toEqual({ model: 'last_touch_30d@1', evidence: 'tracked', sessionId, session: { startedAt: now - day }, capturedAt: now });
     expect(await s.resolve({ visitorKey, slug: 'f1' })).toMatchObject({ evidence: 'tracked', first: { slug: 'f1' }, last: { slug: 'f1' } });
   });
 
@@ -151,7 +151,8 @@ describe('booking attribution', () => {
     const s = await setup();
     const sessionId = await s.session(now - day);
     await s.t.run(ctx => ctx.db.delete(missing === 'link' ? s.linkId : s.campaignId));
-    expect(await s.resolve({ visitorKey, slug: 'f1' })).toEqual({ model: 'last_touch_30d@1', evidence: 'tracked', sessionId, capturedAt: now });
+    // The frozen cohort keeps the recorded ids; reports simply find no live link or campaign for them.
+    expect(await s.resolve({ visitorKey, slug: 'f1' })).toEqual({ model: 'last_touch_30d@1', evidence: 'tracked', sessionId, session: { startedAt: now - day, linkId: s.linkId, campaignId: s.campaignId }, capturedAt: now });
   });
 
   it('uses the session campaign even after its link moves to another campaign', async () => {

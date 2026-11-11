@@ -220,6 +220,7 @@ export default defineSchema({
 		.index('by_status', ['status'])
 		.index('by_status_createdAt', ['status', 'createdAt'])
 		.index('by_createdAt', ['createdAt'])
+		.index('by_marketingAttribution_session_startedAt_and_sessionId', ['marketingAttribution.session.startedAt', 'marketingAttribution.sessionId'])
 		.index('by_paidAt', ['paidAt'])
 		.index('by_refundedAt', ['refundedAt'])
 		.index('by_status_checkIn', ['status', 'checkIn'])
@@ -539,7 +540,8 @@ export default defineSchema({
 			from: v.union(v.string(), v.number(), v.null()),
 			to: v.union(v.string(), v.number(), v.null())
 		}))
-	}).index('by_appointmentId_and_at', ['appointmentId', 'at']),
+	}).index('by_appointmentId_and_at', ['appointmentId', 'at'])
+		.index('by_kind_and_at', ['kind', 'at']),
 
 	/**
 	 * An order (convex/pos.ts): the persistent commercial record with a permanent order number,
@@ -1722,6 +1724,7 @@ export default defineSchema({
 	marketingGrants: defineTable({
 		email: v.string(),
 		role: marketingRole,
+		inviteExpiresAt: v.optional(v.number()),
 		tokenIdentifier: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -1821,7 +1824,7 @@ export default defineSchema({
 		kind: v.literal('open'),
 		bot: v.boolean(),
 		occurredAt: v.number()
-	}).index('by_link_and_time', ['linkId', 'occurredAt']),
+	}).index('by_link_and_time', ['linkId', 'occurredAt']).index('by_occurredAt', ['occurredAt']),
 
 	// Release 3a: one consented browser session (see convex/lib/marketingAttribution.ts). No personal data.
 	marketingSessions: defineTable({

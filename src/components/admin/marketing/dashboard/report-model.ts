@@ -20,8 +20,8 @@ import {
 //   paid orders and desk payments are counted apart (they're in the money). Cash basis: collected and
 //   refunds are dated events; discount uses checkout settlementDay or first paidDay for other sales.
 //   Paid counts first actual payments; coupon-only checkout settlements are counted separately.
-// - Conversion = tracked paid stays ÷ tracked sessions of the same links. Unknown, staff-entered and
-//   messaging sales count in business totals, never in conversion.
+// - Conversion = distinct verified sessions behind paid web stays ÷ consented sessions in range.
+//   Breakdown rates follow the session cohort, independently of the sales attribution toggle.
 // - ROAS = net of a campaign's sales ÷ its spend in range. A source's ROAS sums its campaigns that have
 //   spend. No spend → unavailable, never ฿0.
 
@@ -50,6 +50,7 @@ export type SaleLine = {
 };
 
 export type Money = {
+  currentLinkPaidStays: number;
   sales: number;
   paid: number;
   paidOther: number;
@@ -80,6 +81,7 @@ export type BreakdownRow = Money & {
   status?: string;
   /** null: not applicable (not tracked, coupon tab, or a property is selected). */
   sessions: number | null;
+  convertedSessions: number;
   conv: number | null;
   roas?: Roas;
   /** Where selecting the row goes: one level down, or the sales list. */
@@ -87,7 +89,7 @@ export type BreakdownRow = Money & {
   lines: SaleLine[];
 };
 
-export type TotalRow = Money & { key: string; name: string; note?: string; sessions: number | null; conv: number | null; roas?: Roas };
+export type TotalRow = Money & { key: string; name: string; note?: string; sessions: number | null; convertedSessions: number; conv: number | null; roas?: Roas };
 
 export type Breakdown = {
   view: BreakdownView;
@@ -161,10 +163,11 @@ export type Prepared = {
   cash: boolean;
   allProperties: boolean;
   lines: SaleLine[];
+  conversionSessions: NonNullable<ReportSale["session"]>[];
   campaigns: Map<string, ReportData["campaigns"][number]>;
   links: Map<string, ReportData["links"][number]>;
   coupons: Map<string, ReportData["coupons"][number]>;
-  /** Tracked sessions (with a link), by link, campaign and source. Empty unless All properties. */
+  /** Sessions grouped by their recorded link/campaign; total also includes direct arrivals. Empty unless All properties. */
   sessions: { byLink: Map<string, number>; byCampaign: Map<string, number>; bySource: Map<string, number>; /** campaign → link → sessions */ byCampaignLink: Map<string, Map<string, number>>; tracked: number };
   /** Spend in range per campaign (prorated by days), only campaigns with spend > 0. */
   spend: Map<string, number>;
@@ -232,7 +235,9 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
   const sessions = { byLink: new Map<string, number>(), byCampaign: new Map<string, number>(), bySource: new Map<string, number>(), byCampaignLink: new Map<string, Map<string, number>>(), tracked: 0 };
   if (allProperties) {
     for (const row of report.sessions) {
-      if (!row.linkId || !inRange(row.day)) continue;
+      if (!inRange(row.day)) continue;
+      sessions.tracked += row.count;
+      if (!row.linkId) continue;
       // The campaign the link belonged to when the session was counted; the link's campaign now only for a row without one.
       const campaignId = row.campaignId ?? links.get(row.linkId)?.campaignId;
       add(sessions.byLink, row.linkId, row.count);
@@ -243,22 +248,33 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
         add(ofCampaign, row.linkId, row.count);
         sessions.byCampaignLink.set(campaignId, ofCampaign);
       }
-      sessions.tracked += row.count;
     }
+  }
+
+  const cohortKey = (session: { day: string; linkId?: string; campaignId?: string }) =>
+    JSON.stringify([session.day, session.linkId, session.campaignId ?? (session.linkId ? links.get(session.linkId)?.campaignId : undefined)]);
+  const cohorts = new Set(report.sessions.filter(s => s.count > 0 && inRange(s.day)).map(cohortKey));
+  const converted = new Map<string, NonNullable<ReportSale["session"]>>();
+  const conversionEvidence = report.convertedSessions ?? lines.flatMap(({ sale, paid }) =>
+    paid && sale.kind === "stay" && sale.session ? [sale.session] : []);
+  for (const session of conversionEvidence) {
+    if (allProperties && inRange(session.day) && cohorts.has(cohortKey(session)))
+      converted.set(session.id, session);
   }
 
   const spend = new Map<string, number>();
   for (const entry of report.spend) add(spend, entry.campaignId, spendInRange(entry, report.from, report.to));
   for (const [id, amount] of spend) if (!(amount > 0)) spend.delete(id);
 
-  return { report, filters, cash, allProperties, lines, campaigns, links, coupons, sessions, spend };
+  return { report, filters, cash, allProperties, lines, conversionSessions: [...converted.values()], campaigns, links, coupons, sessions, spend };
 }
 
 // ---------------------------------------------------------------- sums
 
 export function sumLines(lines: readonly SaleLine[]): Money {
-  const money: Money = { sales: lines.length, paid: 0, paidOther: 0, couponOnlySettlements: 0, collected: 0, refunded: 0, discount: 0, net: 0 };
+  const money: Money = { currentLinkPaidStays: 0, sales: lines.length, paid: 0, paidOther: 0, couponOnlySettlements: 0, collected: 0, refunded: 0, discount: 0, net: 0 };
   for (const line of lines) {
+    money.currentLinkPaidStays += Number(line.sale.kind === "stay" && line.sale.evidence === "current_link" && !line.sale.session && line.paid > 0);
     money.paid += line.paid;
     money.paidOther += line.paidOther;
     money.couponOnlySettlements += line.couponOnlySettlements;
@@ -270,7 +286,14 @@ export function sumLines(lines: readonly SaleLine[]): Money {
   return money;
 }
 
-const ratio = (paid: number, sessions: number | null) => (sessions ? paid / sessions : null);
+// Defensive guard for partial/corrupt rollups. Normal reads use a subset of these session cohorts.
+const ratio = (converted: number, sessions: number | null) => (sessions ? Math.min(1, converted / sessions) : null);
+
+type Session = NonNullable<ReportSale["session"]>;
+/** Count a session once, even if it produced several stays. Old or missing sessions cannot convert. */
+export function convertedSessions(p: Prepared, matches: (session: Session) => boolean = () => true): number {
+  return p.conversionSessions.filter(matches).length;
+}
 
 /** ROAS for a set of campaigns: the net of those that have spend ÷ their spend. */
 export function roasFor(p: Prepared, campaignIds: readonly string[], lines: readonly SaleLine[] = p.lines): Roas {
@@ -284,12 +307,13 @@ export function roasFor(p: Prepared, campaignIds: readonly string[], lines: read
   return { kind: "value", value: net / spend, net, spend, campaigns: withSpend.length, missing };
 }
 
-export type BusinessTotals = Record<ReportBucket, Money> & { all: Money; trackedSessions: number | null; conv: number | null; roas: Roas };
+export type BusinessTotals = Record<ReportBucket, Money> & { all: Money; trackedSessions: number | null; convertedSessions: number; conv: number | null; roas: Roas };
 
 export function businessTotals(p: Prepared): BusinessTotals {
   const by = (group: ReportBucket) => sumLines(p.lines.filter((line) => line.group === group));
   const tracked = by("tracked");
   const trackedSessions = p.allProperties ? p.sessions.tracked : null;
+  const converted = convertedSessions(p);
   return {
     tracked,
     unknown: by("unknown"),
@@ -297,7 +321,8 @@ export function businessTotals(p: Prepared): BusinessTotals {
     messaging: by("messaging"),
     all: sumLines(p.lines),
     trackedSessions,
-    conv: ratio(tracked.paid, trackedSessions),
+    convertedSessions: converted,
+    conv: ratio(converted, trackedSessions),
     roas: roasFor(p, [...new Set([...p.campaigns.keys(), ...p.lines.flatMap((l) => (l.touch ? [l.touch.campaignId as string] : []))])]),
   };
 }
@@ -317,9 +342,17 @@ function campaignName(p: Prepared, id: string) {
   return p.campaigns.get(id)?.name ?? p.lines.find((l) => l.touch?.campaignId === id)?.touch?.campaignName ?? "Removed campaign";
 }
 
-function trackedRow(p: Prepared, base: Omit<BreakdownRow, keyof Money | "kind" | "conv">): BreakdownRow {
+function trackedRow(p: Prepared, base: Omit<BreakdownRow, keyof Money | "kind" | "conv" | "convertedSessions">, campaignId?: string): BreakdownRow {
   const money = sumLines(base.lines);
-  return { ...money, ...base, kind: "tracked", conv: ratio(money.paid, base.sessions) };
+  const [level, ...parts] = base.key.split(":");
+  const id = parts.join(":");
+  const converted = convertedSessions(p, session => {
+    const campaign = session.campaignId ?? (session.linkId ? p.links.get(session.linkId)?.campaignId : undefined);
+    return level === "source" ? !!campaign && p.campaigns.get(campaign)?.source === id
+      : level === "campaign" ? campaign === id
+      : session.linkId === id && (!campaignId || campaign === campaignId);
+  });
+  return { ...money, ...base, kind: "tracked", convertedSessions: converted, conv: ratio(converted, base.sessions) };
 }
 
 /** Only rows with something to show, plus active setup that hasn't had results yet. */
@@ -391,7 +424,7 @@ function linkRows(p: Prepared, tracked: SaleLine[], campaignId?: string): Breakd
       sessions: p.allProperties ? (sessionsHere?.get(id) ?? 0) : null,
       drill: { level: "sales" },
       lines,
-    });
+    }, campaignId);
   });
 }
 
@@ -414,6 +447,7 @@ function couponRows(p: Prepared): BreakdownRow[] {
       sub: campaignId ? campaignName(p, campaignId) : "No campaign",
       status: coupon && coupon.status !== "active" ? coupon.status : undefined,
       sessions: null,
+      convertedSessions: 0,
       conv: null,
       drill: { level: "sales" },
       lines,
@@ -422,7 +456,7 @@ function couponRows(p: Prepared): BreakdownRow[] {
 }
 
 function pinnedRow(kind: Exclude<RowKind, "tracked">, lines: SaleLine[]): BreakdownRow {
-  return { ...sumLines(lines), key: kind, kind, ...BUCKET_LABEL[kind], sessions: null, conv: null, drill: { level: "sales" }, lines };
+  return { ...sumLines(lines), key: kind, kind, ...BUCKET_LABEL[kind], sessions: null, convertedSessions: 0, conv: null, drill: { level: "sales" }, lines };
 }
 
 function sortValue(row: BreakdownRow, key: SortKey): number | string {
@@ -443,8 +477,8 @@ export function sortRows(rows: BreakdownRow[], sort: Sort): BreakdownRow[] {
   });
 }
 
-function totalRow(key: string, name: string, money: Money, sessions: number | null, roas?: Roas, note?: string): TotalRow {
-  return { ...money, key, name, note, sessions, conv: ratio(money.paid, sessions), roas };
+function totalRow(key: string, name: string, money: Money, sessions: number | null, converted = 0, roas?: Roas, note?: string): TotalRow {
+  return { ...money, key, name, note, sessions, convertedSessions: converted, conv: ratio(converted, sessions), roas };
 }
 
 /** The breakdown table for a tab and drill path. */
@@ -477,14 +511,17 @@ export function buildBreakdown(p: Prepared, view: BreakdownView, path: DrillStep
   const totals: TotalRow[] = [];
   const business = businessTotals(p);
   if (view !== "coupon" && top) {
-    totals.push(totalRow("tracked", "Tracked total", business.tracked, business.trackedSessions, business.roas));
+    totals.push(totalRow("tracked", "Tracked total", business.tracked, business.trackedSessions, business.convertedSessions, business.roas));
   } else if (!top) {
     const name = last.level === "source" ? last.id : campaignName(p, last.id);
     const sessions = p.allProperties ? rows.reduce((total, row) => total + (row.sessions ?? 0), 0) : null;
     const roas = last.level === "source" ? roasFor(p, rows.map((row) => row.key.replace(/^campaign:/, "")).filter(spendsUnder(p, last.id)), scoped) : roasFor(p, [last.id], scoped);
-    totals.push(totalRow("scope", `Total for ${name}`, sumLines(scoped), sessions, roas));
+    totals.push(totalRow("scope", `Total for ${name}`, sumLines(scoped), sessions, convertedSessions(p, session => {
+      const campaign = session.campaignId ?? (session.linkId ? p.links.get(session.linkId)?.campaignId : undefined);
+      return last.level === "source" ? !!campaign && p.campaigns.get(campaign)?.source === last.id : campaign === last.id;
+    }), roas));
   }
-  if (top) totals.push(totalRow("business", "Business total", business.all, null, undefined, p.cash ? "Payments, refunds and coupon settlements, tracked or not" : "All paid sales, tracked or not"));
+  if (top) totals.push(totalRow("business", "Business total", business.all, null, 0, undefined, p.cash ? "Payments, refunds and coupon settlements, tracked or not" : "All paid sales, tracked or not"));
 
   return { view, path, rows, pinned, totals, showSessions, showRoas };
 }

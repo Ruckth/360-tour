@@ -70,6 +70,7 @@ function SaleItem({ line, p, onOpenStay, orderHref }: { line: SaleLine; p: Prepa
         ) : (
           <StatusBadge tone="neutral" label={refundedAll ? "Refunded" : "Partly refunded"} />
         )}
+        {sale.customPrice ? <StatusBadge tone="neutral" label="Custom price" /> : null}
         {sale.coupon ? <CouponChip code={sale.coupon.code} /> : null}
         {line.discount ? <span className="text-muted-foreground">{thb(line.discount)} off</span> : null}
         <span className="text-muted-foreground">
@@ -179,17 +180,17 @@ export function SalesSheet({
 }
 
 const DEFINITIONS: [string, string][] = [
-  ["Tracked session", "A visit that arrived from a tracked link after the guest allowed measurement. Sessions are visits, not people: one guest can make several, and guests who decline aren’t counted, so sessions undercount."],
+  ["Consented session", "A visit recorded after the guest allowed measurement, including direct arrivals. Sessions are visits, not people: one guest can make several, and guests who decline aren’t counted, so sessions undercount."],
   ["Paid booking", "A stay with at least one recorded payment. A later refund keeps it paid but lowers net. Checkout orders and desk payments are in the money figures but not in this count."],
-  ["Paid-session conversion", "Paid stays from tracked links ÷ tracked sessions of the same links. Unknown, staff-entered and messaging sales have no session, so they’re left out."],
+  ["Session conversion", "Distinct consented sessions behind paid web stays ÷ sessions started in the range. Several stays from one session count once; sessions outside the range are excluded. Breakdown rates follow the session’s recorded link and campaign, independently of first/last sales attribution. Current-link paid stays without a session are counted separately."],
   ["Collected and net", "Collected is money actually received, after discounts. Net is collected minus refunds. Net is not profit: costs, commissions and taxes aren’t taken off."],
   ["First-payment sales", "Finance counts sales receiving their first actual payment in range. A partial stay payment counts; this does not mean the stay is fully settled. Coupon-only checkout settlements are counted separately."],
   ["Coupon-only checkout settlements", "Checkout orders with a positive coupon discount and no own cash received, dated by settlement. A mixed stay and service checkout counts stay cash once on the stay and fully covered services once here."],
-  ["Discounts granted", "Coupon discounts dated by first payment for stays and desk sales, or checkout settlement for orders. Includes fully coupon-covered orders. The direct-booking offer isn’t included. A real void or refund keeps the use; voiding money never received releases it."],
+  ["Discounts granted", "Coupon discounts dated by first payment for stays and desk sales, or checkout settlement for orders. Includes fully coupon-covered orders. Custom-price stays retain coupon usage and attribution but report zero coupon discount and show a Custom price flag. The direct-booking offer isn’t included. A real void or refund keeps the use; voiding money never received releases it."],
   ["Ad ROAS", "Net of a campaign’s sales ÷ the spend entered for the same dates (spread evenly over each entry’s days). A source’s ROAS covers its campaigns that have spend. No spend means no ROAS, never ฿0. ROAS shows what came back, not that the ad caused the sale."],
   ["Last touch and first touch", "Rule last_touch_30d@1: last touch credits the last tracked link the guest opened within 30 days before booking; first touch credits the first. Both split the same sales, so never add them together. Scanned and current-link sales have one touch, used for both."],
   ["Marketing view and Finance view", "Marketing (visit cohort) shows sales made in the dates with all their money to date. Finance (cash date) counts each payment and refund on its business date, including money for older sales. It also includes coupon discounts on checkout settlements in range, without adding a cash payment."],
-  ["Unknown, staff-entered and messaging", "Unknown: website bookings with no tracked link (typed address, declined measurement, another device). Staff-entered: admin bookings, checkout orders and desk payments. Messaging: stays booked through LINE, WhatsApp, Messenger or Instagram. All count in business totals, never in conversion."],
+  ["Unknown, staff-entered and messaging", "Unknown: website bookings with no tracked link (typed address, declined measurement, another device). Staff-entered: admin bookings, checkout orders and desk payments. Messaging: stays booked through LINE, WhatsApp, Messenger or Instagram. All count in business totals. Paid web stays with a consented session started in range also count in conversion."],
   ["Coupon table", "Regroups the same sales by the coupon used, tracked or not. It overlaps the other tables, so never add it to the Source table."],
   ["Property filter", "Keeps sales for that property. Sales without one, such as checkout orders, show only under All properties. Sessions, conversion and ROAS are for All properties only."],
   ["Time zone and currency", "Days are Bangkok days (Asia/Bangkok). Money is THB; sales in another currency are left out and counted in a note."],
@@ -253,7 +254,7 @@ export function ExportDialog({
     () => (open ? (kind === "summary" ? summaryCsv(p, propertyName, breakdown, pathLabel) : salesCsv(p, propertyName)) : ""),
     [open, kind, p, propertyName, breakdown, pathLabel],
   );
-  const preview = csv.replace(/^﻿/, "").split("\r\n").slice(0, 14).join("\n");
+  const preview = csv.replace(/^﻿/, "").split("\r\n").slice(0, 15).join("\n");
   const tab = { source: "Source", campaign: "Campaign", link: "Link", coupon: "Coupon" }[breakdown.view];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
