@@ -236,10 +236,8 @@ export async function syncAffiliateCredit(
     await appendCreditChange(ctx, (await ctx.db.get(id))!, actor, "created");
     return id;
   }
-  // An unlink moves cash between an order and a booking; it is neither a refund nor new revenue.
-  // A credit it makes ineligible needs a fresh review rather than a permanent reversal, and a credit
-  // reversed while that cash sat elsewhere is reviewed again once the cash returns. Refunds, voids and
-  // cancellations still reverse; retries, reassignment and partner status changes never reopen decisions.
+  // Unlinks move existing cash; affected credits return to review.
+  // Refunds and cancellations still reverse; retries and reassignment never reopen decisions.
   const unlinked =
     ineligibilityReason === "payment_unlinked" &&
     !!sale &&
