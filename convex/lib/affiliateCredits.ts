@@ -47,6 +47,7 @@ export async function captureAffiliateSnapshot(
   // Acquisition reporting and affiliate credit are separate: a later ordinary link does not erase
   // the latest eligible partner touch. Reads use the same 30-day window and 200-session bound.
   const linkIds = input.linkId ? [input.linkId] : [];
+  const recordedLinkIds = new Set<Id<"marketingLinks">>();
   if (isVisitorKey(input.marketing?.visitorKey)) {
     const now = Date.now();
     const sessions = await ctx.db
@@ -59,9 +60,11 @@ export async function captureAffiliateSnapshot(
       )
       .order("desc")
       .take(MAX_SESSIONS_READ);
-    for (const session of sessions)
-      if (session.linkId && !linkIds.includes(session.linkId))
-        linkIds.push(session.linkId);
+    for (const session of sessions) {
+      if (!session.linkId) continue;
+      recordedLinkIds.add(session.linkId);
+      if (!linkIds.includes(session.linkId)) linkIds.push(session.linkId);
+    }
   }
   let latestIneligible: AffiliateSnapshot["candidates"][number] | undefined;
   for (const linkId of linkIds) {
@@ -82,6 +85,8 @@ export async function captureAffiliateSnapshot(
       ...(reason ? { reason } : {}),
       ...(partner.contactEmail ? { contactEmail: partner.contactEmail } : {}),
       linkId: link._id,
+      // Anonymous raw opens cannot be tied to this guest. A matching server session can.
+      evidence: recordedLinkIds.has(link._id) ? "recorded_session" as const : "claimed_slug" as const,
     };
     if (!reason) {
       candidates.push(candidate);
@@ -119,6 +124,8 @@ export async function captureAffiliateSnapshot(
     flags.push("self_referral");
   if (input.staff || (email && adminEmails().has(email)))
     flags.push("staff_order");
+  const linkCandidate = candidates.find(c => c.origin === "link");
+  if (linkCandidate) flags.push(linkCandidate.evidence === "recorded_session" ? "referral_recorded_visit" : "referral_claimed_slug");
   return {
     capturedAt: Date.now(),
     candidates,

@@ -3,9 +3,12 @@ import { query, mutation } from "./_generated/server";
 import { marketingRole } from "./lib/affiliateTypes";
 import {
   marketingAccess,
+  marketingInvitationExpiry,
+  marketingInvitationExpired,
   requireMarketingPermission,
 } from "./lib/marketingAccess";
 import { appendRecordHistory } from "./lib/recordHistory";
+import { MARKETING_INVITATION_TTL_MS } from "./lib/marketingPolicy";
 import { adminEmails } from "./lib/adminAuth";
 export const current = query({
   args: {},
@@ -30,6 +33,7 @@ export const claimInvite = mutation({
       .unique();
     if (!invite || invite.tokenIdentifier)
       throw new Error("No unclaimed invitation");
+    if (marketingInvitationExpired(invite)) throw new Error("Invitation expired. Ask an administrator to re-invite this email.");
     await ctx.db.patch(invite._id, {
       tokenIdentifier: identity.tokenIdentifier,
       updatedAt: Date.now(),
@@ -48,7 +52,13 @@ export const listGrants = query({
   args: {},
   handler: async (ctx) => {
     await requireMarketingPermission(ctx, "manageAccess");
-    return await ctx.db.query("marketingGrants").take(500);
+    const grants = await ctx.db.query("marketingGrants").take(500);
+    const now = Date.now();
+    return grants.map(grant => ({
+      ...grant,
+      expiresAt: marketingInvitationExpiry(grant),
+      expired: marketingInvitationExpired(grant, now),
+    }));
   },
 });
 export const setGrant = mutation({
@@ -80,6 +90,7 @@ export const setGrant = mutation({
     const fields = {
       email,
       role: args.role,
+      ...(!old?.tokenIdentifier ? { inviteExpiresAt: Date.now() + MARKETING_INVITATION_TTL_MS } : {}),
       updatedAt: Date.now(),
       updatedByEmail: actor.email,
     };

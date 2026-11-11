@@ -45,6 +45,8 @@ const fieldClass =
   "min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 const flagLabels: Record<string, string> = {
   affiliate_conflict: "Link and coupon name different partners",
+  referral_recorded_visit: "Partner link has a recorded visit",
+  referral_claimed_slug: "Partner slug claimed without a recorded visit",
   self_referral: "Guest matches partner contact",
   staff_referral: "Staff-created referral",
   staff_order: "Staff-created referral",

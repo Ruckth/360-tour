@@ -12,7 +12,7 @@ import { useMarketingAccess, type MarketingRole } from "./MarketingAccess";
 import { marketingErrorText } from "./marketing-format";
 
 type GrantRole = Exclude<MarketingRole, "admin">;
-type Grant = { _id: string; email: string; role: GrantRole; tokenIdentifier?: string };
+type Grant = { _id: string; email: string; role: GrantRole; tokenIdentifier?: string; expiresAt: number | null; expired: boolean };
 const listGrants = makeFunctionReference<"query", Record<string, never>, Grant[]>("marketingAccess:listGrants");
 const setGrant = makeFunctionReference<"mutation", { email: string; role: GrantRole | null }, null>("marketingAccess:setGrant");
 const ROLES: { role: GrantRole; label: string; description: string }[] = [
@@ -38,9 +38,10 @@ function GrantRow({ grant, busy, change }: { grant: Grant; busy: boolean; change
   const [role, setRole] = useState(grant.role);
   const confirm = useConfirm();
   return <li className="grid min-w-0 gap-3 border-t border-border p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-    <div className="min-w-0"><p className="break-all text-sm font-medium">{grant.email}</p><p className="text-xs text-muted-foreground">{grant.tokenIdentifier ? "Access activated" : "Invitation awaiting activation"}</p></div>
+    <div className="min-w-0"><p className="break-all text-sm font-medium">{grant.email}</p><p className="text-xs text-muted-foreground">{grant.tokenIdentifier ? "Access activated" : grant.expired ? "Expired" : "Invitation awaiting activation"}</p></div>
     <div className="flex flex-wrap items-center gap-2">
       <RoleSelect label={`Role for ${grant.email}`} value={role} onChange={setRole} disabled={busy} />
+      {!grant.tokenIdentifier ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void change(grant.email, grant.role)}>Re-send invitation</Button> : null}
       <Button size="sm" variant="outline" disabled={busy || role === grant.role} onClick={() => void change(grant.email, role)}>Save role</Button>
       <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
         if (await confirm({ title: `Revoke access for ${grant.email}?`, description: "Marketing access ends immediately. A new invitation can be created later.", confirmLabel: "Revoke access", destructive: true })) await change(grant.email, null);

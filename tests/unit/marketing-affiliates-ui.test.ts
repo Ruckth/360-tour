@@ -207,3 +207,16 @@ it("flags conflicts and incomplete queue results while showing actual collection
   await act(async () => button("Review Order #1").click());
   expect(open).toHaveBeenCalledWith(row);
 });
+
+
+it.each([
+  ["referral_recorded_visit", "Partner link has a recorded visit"],
+  ["referral_claimed_slug", "Partner slug claimed without a recorded visit"],
+])("shows %s beside self-referral evidence in credit review", async (flag, label) => {
+  await act(async () => root.render(createElement(CreditReview, {
+    detail: { ...detail!, credit: { ...row, flags: ["self_referral", flag] } },
+    canReview: true, onReview: vi.fn(), onRefresh: vi.fn(), onClose: vi.fn(),
+  })));
+  expect(document.body.textContent).toContain("Guest matches partner contact");
+  expect(document.body.textContent).toContain(label);
+});
