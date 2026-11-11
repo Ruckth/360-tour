@@ -93,3 +93,19 @@ test("viewer can inspect referral evidence without partner or review mutations",
     page.getByRole("button", { name: "Refresh eligibility" }),
   ).toHaveCount(0);
 });
+
+test("newly eligible referral buttons are immediately readable", async ({ page }) => {
+  await page.goto("/tests/browser/marketing-affiliates.html?theme=dark");
+  await page.addStyleTag({ content: "button { transition-duration: 2s !important; }" });
+  await page.getByRole("button", { name: "Review Order #1" }).click();
+  const review = page.getByRole("dialog", { name: "Referral Order #1", exact: true });
+  await review.getByLabel("Decision reason").fill("Guest confirmed partner Ben");
+  await review.getByLabel("Partner to credit").selectOption("ben");
+  const approve = review.getByRole("button", { name: "Approve referral credit" });
+  const reject = review.getByRole("button", { name: "Reject referral credit" });
+  await expect(approve).toBeEnabled();
+  await expect(reject).toBeEnabled();
+  expect(await approve.evaluate(button => getComputedStyle(button).opacity)).toBe("1");
+  expect(await reject.evaluate(button => getComputedStyle(button).opacity)).toBe("1");
+  expect((await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations).toEqual([]);
+});
