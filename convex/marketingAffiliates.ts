@@ -10,7 +10,7 @@ import {
 } from "./lib/affiliateCredits";
 import { appendRecordHistory } from "./lib/recordHistory";
 import { isIsoDate } from "./lib/dates";
-import { canReadMarketingPersonalData, withoutContactEmail } from "./lib/marketingPrivacy";
+import { canReadMarketingPersonalData, withoutContactEmail, withMarketingReasonPrivacy } from "./lib/marketingPrivacy";
 const LIMIT = 200;
 const AFFILIATE_LIMIT = 50;
 const SUMMARY_LIMIT = 50;
@@ -28,7 +28,9 @@ export type AffiliateRow = Doc<"marketingAffiliates"> & {
     partial: boolean;
   };
 };
-export type CreditRow = Doc<"affiliateCredits"> & {
+export type CreditRow = Omit<Doc<"affiliateCredits">, "reason"> & {
+  reason?: string | null;
+  reasonHidden?: boolean;
   label: string;
   ref: string;
   candidates: Doc<"affiliateCredits">["snapshot"]["candidates"];
@@ -45,7 +47,7 @@ async function creditRow(
   const partner = row.affiliateId ? await ctx.db.get(row.affiliateId) : null;
   const candidates = fullDetail ? row.snapshot.candidates : row.snapshot.candidates.map(withoutContactEmail);
   return {
-    ...row,
+    ...withMarketingReasonPrivacy(row, fullDetail),
     snapshot: { ...row.snapshot, candidates },
     label: !fullDetail ? "Guest" :
       booking?.guestName ??
@@ -390,7 +392,7 @@ export const getCredit = query({
       .take(LIMIT + 1);
     return {
       credit: await creditRow(ctx, row, canReadMarketingPersonalData(access)),
-      history: history.slice(0, LIMIT),
+      history: history.slice(0, LIMIT).map(change => withMarketingReasonPrivacy(change, canReadMarketingPersonalData(access))),
       partial: history.length > LIMIT,
     };
   },

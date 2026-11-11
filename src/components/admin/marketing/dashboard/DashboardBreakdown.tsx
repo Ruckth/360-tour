@@ -169,7 +169,7 @@ function Divider({ view, cash, colSpan }: { view: BreakdownView; cash: boolean; 
       </>
     ) : (
       <>
-        <span className="admin-eyebrow mr-2">Not tracked</span>Counted in business totals{cash ? "" : ", left out of conversion"}
+        <span className="admin-eyebrow mr-2">Not tracked</span>Counted in business totals{cash ? "" : ". Consented web sessions can also count in overall conversion"}
       </>
     );
   return colSpan ? (

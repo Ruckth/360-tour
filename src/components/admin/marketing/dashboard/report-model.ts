@@ -20,7 +20,7 @@ import {
 //   paid orders and desk payments are counted apart (they're in the money). Cash basis: collected and
 //   refunds are dated events; discount uses checkout settlementDay or first paidDay for other sales.
 //   Paid counts first actual payments; coupon-only checkout settlements are counted separately.
-// - Conversion = distinct verified sessions behind tracked paid stays ÷ consented sessions in range.
+// - Conversion = distinct verified sessions behind paid web stays ÷ consented sessions in range.
 //   Breakdown rates follow the session cohort, independently of the sales attribution toggle.
 // - ROAS = net of a campaign's sales ÷ its spend in range. A source's ROAS sums its campaigns that have
 //   spend. No spend → unavailable, never ฿0.
@@ -257,7 +257,7 @@ export function prepareReport(report: ReportData, filters: ReportFilters): Prepa
   const converted = new Map<string, NonNullable<ReportSale["session"]>>();
   for (const line of lines) {
     const { sale } = line;
-    if (line.paid && sale.kind === "stay" && line.group === "tracked" && sale.evidence === "tracked" && sale.session && cohorts.has(cohortKey(sale.session)))
+    if (line.paid && sale.kind === "stay" && sale.session && cohorts.has(cohortKey(sale.session)))
       converted.set(sale.session.id, sale.session);
   }
 

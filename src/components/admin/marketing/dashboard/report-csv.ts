@@ -18,7 +18,7 @@ export function csvMeta(p: Prepared, propertyName: string): string[][] {
     [`# Currency: ${report.currency}`],
     [`# Attribution: ${report.model} (${filters.touch === "first" ? "first touch" : "last touch"})`],
     [`# Basis: ${report.basis === "cash" ? "Finance (cash date: money and coupon settlements dated in range)" : "Marketing (visit cohort: sales made in range, all their money to date)"}`],
-    [`# Conversion: distinct consented sessions behind tracked paid stays / sessions started in range; breakdowns follow the session link and campaign`],
+    [`# Conversion: distinct consented sessions behind paid web stays / sessions started in range; breakdowns follow the session link and campaign`],
     [`# Dates: ${report.from} to ${report.to}`],
     [`# Property: ${propertyName}`],
     [`# As of: ${formatStamp(report.asOf)} ${report.timeZone}`],

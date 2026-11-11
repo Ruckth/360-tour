@@ -26,9 +26,21 @@ Guests choose whether to allow saved measurement. A current-link coupon can stil
 
 A first-payment sale requires actual collections. A service order covered entirely by a coupon has no invented payment: Finance shows it separately as a coupon-only checkout settlement and retains its discount cost. Mixed stay/service orders allocate stay cash to the booking once. Refunds reduce net collections. Partial or capped reports display warnings; their totals must not be treated as complete.
 
-Conversion counts distinct consented sessions behind tracked paid stays, divided by consented sessions started in the range (including direct arrivals). Several stays sharing a session count once; earlier sessions are excluded. Breakdown rates follow the session's recorded link and campaign, independently of the first/last-touch sales attribution toggle. Current-link paid stays without a session are shown separately and never enter the rate.
+Conversion counts distinct consented sessions behind paid web stays, divided by consented sessions started in the range (including direct arrivals). Several stays sharing a session count once; earlier sessions are excluded. Breakdown rates follow the session's recorded link and campaign, independently of the first/last-touch sales attribution toggle. Current-link paid stays without a session are shown separately and never enter the rate.
 
 Custom-price stays keep their coupon usage and attribution, but their reported coupon discount is zero. Detail rows and sales CSV mark them **Custom price**. Historical desk appointment payments are included only when the original manual payment change proves the collection; POS-owned money remains on its order.
+
+## Preserve legacy conversion cohorts after deploy
+
+Run `migrations:backfillMarketingAttributionSession` once after deploying this release, **before enabling raw marketing-session retention cleanup**. Only bookings store the report's `marketingAttribution`. The internal migration pages through them in batches of 100 and freezes the session's start time and optional link/campaign, including direct sessions. It preserves all other attribution and booking fields. Missing raw sessions are skipped because their cohort cannot be reconstructed safely.
+
+```sh
+npx convex run migrations:run '{"fn":"migrations:backfillMarketingAttributionSession","dryRun":true}'
+npx convex run migrations:run '{"fn":"migrations:backfillMarketingAttributionSession"}'
+npx convex run --component migrations lib:getStatus '{"names":["migrations:backfillMarketingAttributionSession"]}'
+```
+
+Wait for status `success` before retention cleanup. It is safe to rerun; completed runs are skipped, and `reset: true` rescans without overwriting frozen cohorts. New bookings already freeze their cohort. If cleanup already deleted a legacy session, this migration cannot recover it.
 
 ## Referral partners
 
@@ -56,4 +68,4 @@ System administrators from `ADMIN_EMAILS` can invite an account under **Access**
 
 Marketing grants do not grant booking, customer, POS, receipt or other operational administrator access. Server permissions enforce these rules in addition to the visible controls.
 
-Personal details means guest names, booking confirmation codes, POS customer names and partner contact emails. Viewer and marketer responses redact these on the server, including coupon redemptions and referral candidate snapshots. Finance, manager and system administrators retain full detail. CSV exports use the same role-appropriate report data.
+Personal details means guest names, booking confirmation codes, POS customer names and partner contact emails. Viewer and marketer responses redact these on the server, including coupon redemptions, referral candidate snapshots and marketing record history. History contact fields and free-text notes are hidden; referral decision reasons show **Reason hidden**. Stored audit records remain unchanged. Finance, manager and system administrators retain full detail. CSV exports use the same role-appropriate report data.

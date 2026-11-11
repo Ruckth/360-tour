@@ -34,7 +34,7 @@ describe("CSV export", () => {
       "# Currency: THB",
       "# Attribution: last_touch_30d@1 (last touch)",
       "# Basis: Marketing (visit cohort: sales made in range, all their money to date)",
-      "# Conversion: distinct consented sessions behind tracked paid stays / sessions started in range; breakdowns follow the session link and campaign",
+      "# Conversion: distinct consented sessions behind paid web stays / sessions started in range; breakdowns follow the session link and campaign",
       "# Dates: 2026-10-08 to 2026-11-06",
       "# Property: All properties",
       "# As of: 7 Nov 2026, 06:00 Asia/Bangkok",
@@ -208,6 +208,16 @@ describe("dashboard view", () => {
     expect(calls.stays[0]).toMatch(/^stay-/);
     click(buttons("All sources")[0]);
     expect(document.querySelector('nav[aria-label="Drill-down"]')).toBeNull();
+  });
+
+  it("explains that consented direct visits can convert despite an Unknown sales bucket", () => {
+    render(ready());
+    expect(text()).toContain("Consented web sessions can also count in overall conversion");
+    expect(text()).not.toContain("left out of conversion");
+    click(buttons("Definitions")[0]);
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Paid web stays with a consented session started in range also count in conversion");
+    expect(dialog.textContent).not.toContain("never in conversion");
   });
 
   it("links checkout orders to the order", () => {

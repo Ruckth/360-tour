@@ -237,7 +237,7 @@ describe("cash basis", () => {
 });
 
 describe("conversion and pinned rows", () => {
-  it("leaves unknown, staff-entered and messaging out of conversion but in the business total", () => {
+  it("leaves stays without a verified session out of conversion but in the business total", () => {
     const r = report({
       sales: [
         sale({ last: A, evidence: "tracked", session: { id: "session-a" as Id<"marketingSessions">, day: "2026-10-10", linkId: A.linkId, campaignId: A.campaignId } }),
@@ -490,6 +490,21 @@ describe("session conversion truth", () => {
     }), LAST);
     expect(businessTotals(p).conv).toBe(1);
     expect(row(buildBreakdown(p, "link", [], BY_NET).rows, "link:la").conv).toBeNull();
+  });
+
+  it("converts direct-only paid stays once overall without crediting a link, campaign or source", () => {
+    const directSession = { id: session.id, day: session.day };
+    const p = prepareReport(report({
+      sales: [sale({ bucket: "unknown", last: undefined, first: undefined, evidence: undefined, session: directSession }), sale({ bucket: "unknown", last: undefined, first: undefined, evidence: undefined, session: directSession })],
+      sessions: [{ day: session.day, count: 2 }],
+    }), LAST);
+    expect(convertedSessions(p)).toBe(1);
+    expect(businessTotals(p)).toMatchObject({ convertedSessions: 1, conv: 0.5 });
+    for (const view of ["link", "campaign", "source"] as const) {
+      expect(buildBreakdown(p, view, [], BY_NET).rows.every(row => row.convertedSessions === 0)).toBe(true);
+    }
+    const outside = prepareReport(report({ sales: [sale({ bucket: "unknown", last: undefined, session: { ...directSession, day: "2026-09-30" } })], sessions: [{ day: session.day, count: 1 }] }), LAST);
+    expect(convertedSessions(outside)).toBe(0);
   });
 
   it("defensively clamps inconsistent rollups", () => {

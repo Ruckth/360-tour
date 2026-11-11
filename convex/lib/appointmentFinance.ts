@@ -38,6 +38,13 @@ async function rows(ctx: ReadCtx, a: Appointment) {
   return { payments, refunds, orders };
 }
 
+/** Cheap eligibility gate; financial rows and historical evidence still need checking. */
+export function isLegacyManualPaymentCandidate(a: Appointment): boolean {
+  return a.paymentStatus === 'paid' && a.amountPaid === undefined && a.amountRefunded === undefined &&
+    a.financialRevision === undefined && a.paidAt === undefined && a.paidBy === undefined && a.refundedAt === undefined &&
+    Number.isFinite(a.price) && a.price > 0;
+}
+
 /** The old admin Mark paid wrote exactly this change, without tender or received-at data.
  * POS wrote a reason (and sometimes price); flags alone or other financial changes prove nothing.
  */
@@ -45,9 +52,7 @@ export async function legacyManualPayment(
   ctx: ReadCtx, a: Appointment, data: { payments: readonly unknown[]; refunds: readonly unknown[]; orders: readonly unknown[] },
   readHistory = () => ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', a._id)).take(LIMIT + 1)
 ) {
-  if (a.paymentStatus !== 'paid' || a.amountPaid !== undefined || a.amountRefunded !== undefined ||
-      a.financialRevision !== undefined || a.paidAt !== undefined || a.paidBy !== undefined || a.refundedAt !== undefined ||
-      data.payments.length || data.refunds.length || data.orders.length || !Number.isFinite(a.price) || a.price <= 0) return null;
+  if (!isLegacyManualPaymentCandidate(a) || data.payments.length || data.refunds.length || data.orders.length) return null;
   const history = await readHistory();
   // Missing or truncated evidence cannot authorize a money correction.
   if (history.length > LIMIT) return null;

@@ -1,7 +1,7 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { legacyManualPayment } from './appointmentFinance';
+import { isLegacyManualPaymentCandidate, legacyManualPayment } from './appointmentFinance';
 import { lineNet, round2, orderTitle } from './billMath';
 import { stayMoney, unitemisedStayMoney } from './bookingMoney';
 import { ATTRIBUTION_MODEL, touchFromLink } from './marketingAttribution';
@@ -194,9 +194,10 @@ export async function readMarketingReport(
 		const attribution = booking.marketingAttribution;
 		const tracked = (channel === 'web' || channel === 'web_chat') && attribution?.last;
 		// Prefer the cohort frozen on the booking; raw sessions are deleted after the retention period.
-		const frozen = tracked && attribution.evidence === 'tracked' && attribution.sessionId && attribution.session
-			? { _id: attribution.sessionId, ...attribution.session } : null;
-		const session = frozen ?? (tracked && attribution.evidence === 'tracked' && attribution.sessionId ? await get(attribution.sessionId) : null);
+		const sessionId = (channel === 'web' || channel === 'web_chat') && attribution?.evidence === 'tracked' ? attribution.sessionId : undefined;
+		const frozen = sessionId && attribution?.session
+			? { _id: sessionId, ...attribution.session } : null;
+		const session = frozen ?? (sessionId ? await get(sessionId) : null);
 		const sale: ReportSale = {
 			kind: 'stay', id, label: booking.guestName, ...(booking.confirmationCode ? { ref: booking.confirmationCode } : {}), propertyId: booking.propertyId,
 			channel, bucket: channel === 'admin' ? 'staff' : channel === 'messaging' ? 'messaging' : tracked ? 'tracked' : 'unknown',
@@ -253,6 +254,7 @@ export async function readMarketingReport(
 		// Keep all rows: a cancelled payment must also prevent a legacy fallback.
 		const allPayments = await rows(ctx.db.query('appointmentPayments').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
 		const payments: { amount: number; effectiveAt: number }[] = allPayments.filter(p => p.status === 'recorded');
+		if (!allPayments.length && !isLegacyManualPaymentCandidate(appt)) return null;
 		const refunds = await rows(ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
 		if (!allPayments.length) {
 			// Mirror the finance correction evidence, with every read charged to this report's budget.
@@ -303,7 +305,10 @@ export async function readMarketingReport(
 		}
 		for await (const row of scan(ctx.db.query('bills').withIndex('by_paymentEffectiveAt', q => q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end)))) { cache.set(row._id, row); await order(row._id); }
 		// Historical Mark paid has no payment row or paidAt; the proven change supplies its date.
-		for await (const row of scan(ctx.db.query('appointmentChanges').withIndex('by_kind_and_at', q => q.eq('kind', 'payment').gte('at', start).lt('at', end)))) await appointment(row.appointmentId);
+		for await (const row of scan(ctx.db.query('appointmentChanges').withIndex('by_kind_and_at', q => q.eq('kind', 'payment').gte('at', start).lt('at', end)))) {
+			const appt = await get(row.appointmentId);
+			if (appt && isLegacyManualPaymentCandidate(appt)) await appointment(appt._id);
+		}
 		for await (const row of scan(ctx.db.query('appointmentPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)))) if (row.status === 'recorded') await appointment(row.appointmentId);
 		if (basis === 'cash') for (const row of apptRefundsFromStart) {
 			if (!inWindow(row.effectiveAt)) continue;
