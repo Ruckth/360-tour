@@ -68,7 +68,7 @@ function columns(b: Breakdown, cash: boolean): Column[] {
     { key: "name", label: b.path.length ? (b.path[b.path.length - 1].level === "source" ? "Campaign" : "Link") : label },
     ...(b.showSessions ? [{ key: "sessions" as const, label: "Sessions" }] : []),
     { key: "paid", label: cash ? "First paid" : b.view === "coupon" ? "Paid uses" : "Paid" },
-    ...(b.showSessions ? [{ key: "conv" as const, label: "Conversion" }] : []),
+    ...(b.showSessions ? [{ key: "conv" as const, label: "Session conversion" }] : []),
     { key: "discount", label: "Discounts" },
     { key: "collected", label: "Collected" },
     { key: "refunded", label: "Refunds" },

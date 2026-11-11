@@ -41,11 +41,14 @@ async function rows(ctx: ReadCtx, a: Appointment) {
 /** The old admin Mark paid wrote exactly this change, without tender or received-at data.
  * POS wrote a reason (and sometimes price); flags alone or other financial changes prove nothing.
  */
-async function legacyManualPayment(ctx: ReadCtx, a: Appointment, data: Awaited<ReturnType<typeof rows>>) {
+export async function legacyManualPayment(
+  ctx: ReadCtx, a: Appointment, data: { payments: readonly unknown[]; refunds: readonly unknown[]; orders: readonly unknown[] },
+  readHistory = () => ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', a._id)).take(LIMIT + 1)
+) {
   if (a.paymentStatus !== 'paid' || a.amountPaid !== undefined || a.amountRefunded !== undefined ||
       a.financialRevision !== undefined || a.paidAt !== undefined || a.paidBy !== undefined || a.refundedAt !== undefined ||
       data.payments.length || data.refunds.length || data.orders.length || !Number.isFinite(a.price) || a.price <= 0) return null;
-  const history = await ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', a._id)).take(LIMIT + 1);
+  const history = await readHistory();
   // Missing or truncated evidence cannot authorize a money correction.
   if (history.length > LIMIT) return null;
   const financial = history.filter(h => h.kind === 'payment' || h.changes.some(c =>
@@ -56,7 +59,7 @@ async function legacyManualPayment(ctx: ReadCtx, a: Appointment, data: Awaited<R
   if (evidence.kind !== 'payment' || evidence.reason !== undefined || !/^[^@\s]+@[^@\s]+$/.test(evidence.actor) ||
       evidence.currencyBefore !== a.currency || evidence.currencyAfter !== a.currency || evidence.changes.length !== 1) return null;
   const change = evidence.changes[0];
-  return change.field === 'paymentStatus' && change.from === 'unpaid' && change.to === 'paid' ? { changeId: evidence._id } : null;
+  return change.field === 'paymentStatus' && change.from === 'unpaid' && change.to === 'paid' ? { changeId: evidence._id, at: evidence.at } : null;
 }
 
 export async function appointmentFinancials(ctx: ReadCtx, a: Appointment) {

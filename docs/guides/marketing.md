@@ -26,6 +26,10 @@ Guests choose whether to allow saved measurement. A current-link coupon can stil
 
 A first-payment sale requires actual collections. A service order covered entirely by a coupon has no invented payment: Finance shows it separately as a coupon-only checkout settlement and retains its discount cost. Mixed stay/service orders allocate stay cash to the booking once. Refunds reduce net collections. Partial or capped reports display warnings; their totals must not be treated as complete.
 
+Conversion counts distinct consented sessions behind tracked paid stays, divided by consented sessions started in the range (including direct arrivals). Several stays sharing a session count once; earlier sessions are excluded. Breakdown rates follow the session's recorded link and campaign, independently of the first/last-touch sales attribution toggle. Current-link paid stays without a session are shown separately and never enter the rate.
+
+Custom-price stays keep their coupon usage and attribution, but their reported coupon discount is zero. Detail rows and sales CSV mark them **Custom price**. Historical desk appointment payments are included only when the original manual payment change proves the collection; POS-owned money remains on its order.
+
 ## Referral partners
 
 Under **Affiliates**, create a partner with a stable link name (for example `/r/anna`), campaign, optional contact email, property scope and date range. A new partner starts paused with a draft alias. Activate it to publish the canonical link. Pausing disables future partner eligibility; archiving is permanent. Saved sales retain their original referral snapshot.
@@ -42,12 +46,14 @@ The review queue records pending, approved, rejected and reversed credit. Approv
 
 System administrators from `ADMIN_EMAILS` can invite an account under **Access**, change its role or revoke it. The user signs in with the invited email and explicitly activates the invitation; the grant then binds to that authenticated account identity. Invitations do not send email.
 
-| Role | View | Edit drafts | Publish / budgets | Spend | Partners | Review credit | Manage access |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| System administrator | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Manager | Yes | Yes | Yes | Yes | Yes | No | No |
-| Marketer | Yes | Yes | No | No | No | No | No |
-| Finance | Yes | No | No | Yes | No | Yes | No |
-| Viewer | Yes | No | No | No | No | No | No |
+| Role | View | Personal details | Edit drafts | Publish / budgets | Spend | Partners | Review credit | Manage access |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| System administrator | Yes | Full | Yes | Yes | Yes | Yes | Yes | Yes |
+| Manager | Yes | Full | Yes | Yes | Yes | Yes | No | No |
+| Marketer | Yes | Redacted | Yes | No | No | No | No | No |
+| Finance | Yes | Full | No | No | Yes | No | Yes | No |
+| Viewer | Yes | Redacted | No | No | No | No | No | No |
 
 Marketing grants do not grant booking, customer, POS, receipt or other operational administrator access. Server permissions enforce these rules in addition to the visible controls.
+
+Personal details means guest names, booking confirmation codes, POS customer names and partner contact emails. Viewer and marketer responses redact these on the server, including coupon redemptions and referral candidate snapshots. Finance, manager and system administrators retain full detail. CSV exports use the same role-appropriate report data.

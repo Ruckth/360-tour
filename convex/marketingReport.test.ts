@@ -234,8 +234,8 @@ describe('report attribution and limits', () => {
 		const args = { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' as const };
 		const probe = new ReadBudget();
 		expect((await s.t.run(ctx => readMarketingReport(ctx, args, probe))).truncated).toBe(false);
-		// After the stays come three order scans and one appointment scan; stop on the second stay's refunds.
-		const result = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16_000, probe.ranges - 5)));
+		// After the stays come three order scans, an appointment-history scan and a payment scan; stop on the second stay's refunds.
+		const result = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16_000, probe.ranges - 6)));
 		expect(result.truncated).toBe(true);
 		expect(result.sales.map(sale => sale.id)).toEqual([first]);
 		expect(result).toMatchObject({ campaigns: [{ id: s.campaignId }], links: [{ id: s.linkId }], spend: [{ amount: 900 }], properties: [{ id: s.propertyId }] });
@@ -524,4 +524,139 @@ it('retains consumed coupon discount after a real service refund', async () => {
 	const cash = await s.report('cash');
 	expect(cash.sales).toMatchObject([{ id: orderId, collected: 400, refunded: 200, discount: 100, paidDay: '2026-11-09' }]);
 	expect(await s.t.run(ctx => ctx.db.get(s.couponId))).toMatchObject({ used: 1, discountGranted: 100 });
+});
+
+it.each(['cohort', 'cash'] as const)('includes proven legacy desk payments once on %s basis', async basis => {
+	const s = await setup();
+	const appointmentId = await s.appointment();
+	const at = now - day;
+	await s.t.run(async ctx => {
+		await ctx.db.patch(appointmentId, { paymentStatus: 'paid' });
+		await ctx.db.insert('appointmentChanges', { appointmentId, at, actor: email, kind: 'payment', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'paymentStatus', from: 'unpaid', to: 'paid' }] });
+	});
+	const legacy = await s.report(basis, '2026-11-08');
+	expect(legacy.sales).toMatchObject([{ id: appointmentId, kind: 'appointment', createdDay: '2026-11-08', paidDay: '2026-11-08', collected: 500 }]);
+	expect((await s.report(basis)).sales).toEqual([]);
+	if (basis === 'cash') expect(legacy.events).toEqual([{ saleId: appointmentId, kind: 'payment', day: '2026-11-08', amount: 500 }]);
+	// If an itemised row exists it owns both the amount and date; never add the old flag again.
+	await s.t.run(ctx => ctx.db.insert('appointmentPayments', { appointmentId, amount: 500, currency: 'THB', method: 'cash', effectiveAt: now, recordedAt: now, recordedBy: email, idempotencyKey: 'legacy-itemised', status: 'recorded', refunded: 0 }));
+	expect((await s.report(basis, '2026-11-08')).sales).toEqual([]);
+	expect((await s.report(basis)).sales).toMatchObject([{ id: appointmentId, collected: 500, paidDay: '2026-11-09' }]);
+});
+
+it.each(['missing history', 'POS reason', 'cancelled payment', 'receipt-owned', 'linked receipt', 'excess history'] as const)('does not invent legacy desk money with %s', async scenario => {
+	const s = await setup();
+	const appointmentId = await s.appointment();
+	const changeId = await s.t.run(async ctx => {
+		await ctx.db.patch(appointmentId, { paymentStatus: 'paid' });
+		return ctx.db.insert('appointmentChanges', { appointmentId, at: now, actor: email, kind: 'payment', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'paymentStatus', from: 'unpaid', to: 'paid' }] });
+	});
+	if (scenario === 'missing history') await s.t.run(ctx => ctx.db.delete(changeId));
+	if (scenario === 'POS reason') await s.t.run(ctx => ctx.db.patch(changeId, { reason: 'Paid at checkout' }));
+	if (scenario === 'cancelled payment') await s.t.run(ctx => ctx.db.insert('appointmentPayments', { appointmentId, amount: 500, currency: 'THB', method: 'cash', effectiveAt: now, recordedAt: now, recordedBy: email, idempotencyKey: 'cancelled-legacy', status: 'cancelled', refunded: 0 }));
+	if (scenario === 'receipt-owned' || scenario === 'linked receipt') {
+		const { orderId } = await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
+		await s.payOrder(orderId);
+		await s.t.run(async ctx => {
+			const line = (await ctx.db.query('billLines').withIndex('by_billId', q => q.eq('billId', orderId)).first())!;
+			if (scenario === 'receipt-owned') await ctx.db.patch(line._id, { appointmentId });
+			else await ctx.db.insert('billLineLinks', { billId: orderId, lineId: line._id, appointmentId, kind: 'appointment', currency: 'THB', effectiveAt: now, sequence: 1, amount: 500, status: 'active', linkedAt: now, linkedBy: email, reason: 'Paid service linked' });
+		});
+	}
+	if (scenario === 'excess history') await s.t.run(async ctx => {
+		for (let i = 0; i < 201; i++) await ctx.db.insert('appointmentChanges', { appointmentId, at: now - i, actor: email, kind: 'details', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'notes', from: null, to: 'note' }] });
+	});
+	for (const basis of ['cohort', 'cash'] as const) expect((await s.report(basis)).sales.find(sale => sale.id === appointmentId)).toBeUndefined();
+});
+
+it('keeps legacy evidence reads within the report budget and flags partial data', async () => {
+	const s = await setup();
+	const appointmentId = await s.appointment();
+	await s.t.run(async ctx => {
+		await ctx.db.patch(appointmentId, { paymentStatus: 'paid' });
+		await ctx.db.insert('appointmentChanges', { appointmentId, at: now, actor: email, kind: 'payment', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'paymentStatus', from: 'unpaid', to: 'paid' }] });
+	});
+	const budget = new ReadBudget(10_000, 10, 10_000_000);
+	const data = await s.t.run(ctx => readMarketingReport(ctx, { from: '2026-11-09', to: '2026-11-09', basis: 'cash' }, budget));
+	expect(data.truncated).toBe(true);
+});
+
+it('reports zero coupon discount for a custom-price stay without changing coupon history or counters', async () => {
+	const s = await setup();
+	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 100 }, scope: 'accommodation' });
+	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+	const { bookingId } = await s.t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Custom guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
+	await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+	const before = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', couponId)).unique() }));
+	await s.admin.mutation(api.adminBookings.editBooking, { bookingId, propertyId: s.propertyId, expectedRevision: before.booking!.revision ?? 0, checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, guestName: 'Custom guest', guestPhone: '+66811112222', guestEmail: 'guest@example.com', priceOverride: { total: 750, reason: 'Agreed price' }, notifyGuest: false });
+	for (const basis of ['cash', 'cohort'] as const) expect((await s.report(basis)).sales).toMatchObject([{ id: bookingId, customPrice: true, discount: 0, coupon: { couponId, code: 'VILLA100' } }]);
+	const after = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.get(before.redemption!._id) }));
+	expect(after.booking!.promotion).toEqual(before.booking!.promotion);
+	expect(after.coupon).toEqual(before.coupon);
+	expect(after.redemption).toEqual(before.redemption);
+});
+
+it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts personal fields server-side for %s across report, affiliate credits and coupon detail', async role => {
+	const s = await setup();
+	const fullDetail = role === 'finance' || role === 'manager' || role === 'admin';
+	const affiliateId = await s.admin.mutation(api.marketingAffiliates.saveAffiliate, { name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'private-partner@example.com' });
+	await s.admin.mutation(api.marketingAffiliates.setAffiliateStatus, { affiliateId, status: 'active' });
+	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'BOTH100', benefit: { kind: 'fixed', amount: 100 }, scope: 'accommodation_and_services' });
+	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+	await s.admin.mutation(api.marketingAffiliates.assignCoupon, { affiliateId, couponId });
+	const { bookingId } = await s.t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Private Guest', guestEmail: 'private@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'BOTH100' });
+	await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+	await s.t.run(ctx => ctx.db.patch(bookingId, { confirmationCode: 'PRIVATE-CONF' }));
+	const { orderId } = await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
+	await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'BOTH100' });
+	await s.payOrder(orderId);
+	await s.t.run(ctx => ctx.db.patch(orderId, { customerSnapshot: { name: 'Private Customer' } }));
+	const appointmentId = await s.appointment();
+	await s.admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'privacy-desk' });
+	const reader = role === 'admin' ? s.admin : s.t.withIdentity({ email: 'reader@example.com', tokenIdentifier: 'reader' });
+	if (role !== 'admin') await s.t.run(ctx => ctx.db.insert('marketingGrants', { email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: now, updatedAt: now, updatedByEmail: email }));
+	const data = await reader.query(api.marketingReport.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' });
+	expect(data.sales.find(row => row.id === bookingId)).toMatchObject({ label: fullDetail ? 'Private Guest' : 'Guest' });
+	expect(data.sales.find(row => row.id === bookingId)?.ref).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
+	expect(data.sales.find(row => row.id === orderId)?.label).toBe(fullDetail ? 'Private Customer' : 'Guest');
+	expect(data.sales.find(row => row.id === appointmentId)?.label).toBe(fullDetail ? 'Desk guest' : 'Guest');
+	const credits = await reader.query(api.marketingAffiliates.listCredits, {});
+	expect(credits.rows).toHaveLength(2);
+	for (const credit of credits.rows) {
+		const isStay = credit.bookingId === bookingId;
+		expect(credit.label).toBe(fullDetail ? isStay ? 'Private Guest' : 'Private Customer' : 'Guest');
+		if (isStay) expect(credit.ref).toBe(fullDetail ? 'PRIVATE-CONF' : 'Booking');
+		expect(credit.candidates[0].contactEmail).toBe(fullDetail ? 'private-partner@example.com' : undefined);
+		expect(credit.snapshot.candidates[0].contactEmail).toBe(fullDetail ? 'private-partner@example.com' : undefined);
+		const detail = await reader.query(api.marketingAffiliates.getCredit, { creditId: credit._id });
+		expect(detail!.credit).toEqual(credit);
+	}
+	const partners = await reader.query(api.marketingAffiliates.listAffiliates, {});
+	expect(partners.rows[0].contactEmail).toBe(fullDetail ? 'private-partner@example.com' : undefined);
+	const coupon = await reader.query(api.marketing.getCoupon, { couponId });
+	const booking = coupon!.redemptions.find(row => row.bookingId === bookingId)!.booking!;
+	expect(booking.guestName).toBe(fullDetail ? 'Private Guest' : 'Guest');
+	expect(booking.confirmationCode).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
+	expect(coupon!.redemptions.find(row => row.billId === orderId)!.order!.customerName).toBe(fullDetail ? 'Private Customer' : 'Guest');
+	if (!fullDetail) {
+		const responses = JSON.stringify([data, credits, coupon, partners]);
+		for (const secret of ['Private Guest', 'PRIVATE-CONF', 'Private Customer', 'private-partner@example.com', 'Desk guest']) expect(responses).not.toContain(secret);
+	}
+	// Redaction is a read boundary: admin still sees persisted history unchanged after these reads.
+	expect((await s.admin.query(api.marketingAffiliates.listCredits, {})).rows[0].snapshot.candidates[0].contactEmail).toBe('private-partner@example.com');
+});
+
+
+it('exposes only the verified session cohort needed for conversion, without visitor identity', async () => {
+	const s = await setup();
+	const sessionId = await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId, count: 1 });
+		return ctx.db.insert('marketingSessions', { visitorKey: 'private-visitor-key', linkId: s.linkId, campaignId: s.campaignId, startedAt: now, landingPath: '/' });
+	});
+	const last = { linkId: s.linkId, campaignId: s.campaignId, slug: 'spa', campaignName: 'November', source: 'print', medium: 'qr', entry: 'qr' as const };
+	for (let i = 0; i < 2; i++) await s.booking({ paymentStatus: 'paid', paidAt: now, marketingAttribution: { model: 'last_touch_30d@1', evidence: 'tracked', sessionId, last, first: last, capturedAt: now } });
+	const report = await s.report();
+	expect(report.sales).toHaveLength(2);
+	for (const sale of report.sales) expect(sale.session).toEqual({ id: sessionId, day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId });
+	expect(JSON.stringify(report)).not.toContain('private-visitor-key');
 });

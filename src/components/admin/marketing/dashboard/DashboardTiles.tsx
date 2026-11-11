@@ -83,8 +83,8 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
     </>
   ) : (
     <>
-      <Tile label="Tracked sessions" value={totals.trackedSessions === null ? "—" : totals.trackedSessions.toLocaleString("en-US")}>
-        {totals.trackedSessions === null ? ALL_ONLY : "Visits from tracked links after consent. Visits, not people."}
+      <Tile label="Consented sessions" value={totals.trackedSessions === null ? "—" : totals.trackedSessions.toLocaleString("en-US")}>
+        {totals.trackedSessions === null ? ALL_ONLY : "Visits after consent, including direct arrivals. Visits, not people."}
       </Tile>
       <Tile label="Paid bookings" value={tracked.paid.toLocaleString("en-US")}>
         Paid stays from tracked links · <Strong>{all.paid.toLocaleString("en-US")}</Strong> paid stays in all
@@ -95,12 +95,13 @@ export function DashboardTiles({ p, totals, onAddSpend, onDefinitions }: { p: Pr
           </>
         ) : null}
       </Tile>
-      <Tile label="Paid-session conversion" value={totals.conv === null ? "—" : formatPercent(totals.conv)}>
+      <Tile label="Session conversion" value={totals.conv === null ? "—" : formatPercent(totals.conv)}>
         {totals.trackedSessions === null
           ? ALL_ONLY
           : totals.trackedSessions
-            ? `${tracked.paid.toLocaleString("en-US")} paid stays ÷ ${totals.trackedSessions.toLocaleString("en-US")} sessions · untracked left out`
-            : "No tracked sessions in these dates"}
+            ? `${totals.convertedSessions.toLocaleString("en-US")} converted sessions ÷ ${totals.trackedSessions.toLocaleString("en-US")} sessions started in range`
+            : "No consented sessions in these dates"}
+        <span className="block">{pluralize(tracked.currentLinkPaidStays, "current-link paid stay")} without a session · counted separately</span>
       </Tile>
       <Tile label="Net collected" value={thb(tracked.net)}>
         Tracked · <Strong>{thb(all.net)}</Strong> business total, after {thb(all.refunded)} refunds

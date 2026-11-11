@@ -539,7 +539,8 @@ export default defineSchema({
 			from: v.union(v.string(), v.number(), v.null()),
 			to: v.union(v.string(), v.number(), v.null())
 		}))
-	}).index('by_appointmentId_and_at', ['appointmentId', 'at']),
+	}).index('by_appointmentId_and_at', ['appointmentId', 'at'])
+		.index('by_kind_and_at', ['kind', 'at']),
 
 	/**
 	 * An order (convex/pos.ts): the persistent commercial record with a permanent order number,

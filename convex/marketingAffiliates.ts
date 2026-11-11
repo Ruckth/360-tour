@@ -10,6 +10,7 @@ import {
 } from "./lib/affiliateCredits";
 import { appendRecordHistory } from "./lib/recordHistory";
 import { isIsoDate } from "./lib/dates";
+import { canReadMarketingPersonalData, withoutContactEmail } from "./lib/marketingPrivacy";
 const LIMIT = 200;
 const AFFILIATE_LIMIT = 50;
 const SUMMARY_LIMIT = 50;
@@ -37,21 +38,24 @@ export type CreditRow = Doc<"affiliateCredits"> & {
 async function creditRow(
   ctx: QueryCtx,
   row: Doc<"affiliateCredits">,
+  fullDetail: boolean,
 ): Promise<CreditRow> {
   const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
   const order = row.billId ? await ctx.db.get(row.billId) : null;
   const partner = row.affiliateId ? await ctx.db.get(row.affiliateId) : null;
+  const candidates = fullDetail ? row.snapshot.candidates : row.snapshot.candidates.map(withoutContactEmail);
   return {
     ...row,
-    label:
+    snapshot: { ...row.snapshot, candidates },
+    label: !fullDetail ? "Guest" :
       booking?.guestName ??
       order?.customerSnapshot?.name ??
       order?.guestName ??
       "Walk-in",
     ref:
-      booking?.confirmationCode ??
+      (!fullDetail && booking ? "Booking" : booking?.confirmationCode) ??
       (order ? `Order #${order.orderNumber}` : "Booking"),
-    candidates: row.snapshot.candidates,
+    candidates,
     flags: row.snapshot.flags,
     affiliateName: partner?.name ?? null,
   };
@@ -59,7 +63,7 @@ async function creditRow(
 export const listAffiliates = query({
   args: {},
   handler: async (ctx) => {
-    await requireMarketingPermission(ctx, "view");
+    const access = await requireMarketingPermission(ctx, "view");
     const all = await ctx.db
       .query("marketingAffiliates")
       .take(AFFILIATE_LIMIT + 1);
@@ -93,7 +97,7 @@ export const listAffiliates = query({
           summary.approvedNet += credit.approvedNet;
         }
         return {
-          ...row,
+          ...(canReadMarketingPersonalData(access) ? row : withoutContactEmail(row)),
           canonicalPath: `/r/${row.slug}`,
           linkStatus: link?.status ?? null,
           campaignName: campaign?.name ?? "",
@@ -347,7 +351,7 @@ export const listCredits = query({
     state: v.optional(creditState),
   },
   handler: async (ctx, args) => {
-    await requireMarketingPermission(ctx, "view");
+    const access = await requireMarketingPermission(ctx, "view");
     const all = args.affiliateId
       ? await ctx.db
           .query("affiliateCredits")
@@ -367,7 +371,7 @@ export const listCredits = query({
           .take(LIMIT + 1);
     return {
       rows: await Promise.all(
-        all.slice(0, LIMIT).map((row) => creditRow(ctx, row)),
+        all.slice(0, LIMIT).map((row) => creditRow(ctx, row, canReadMarketingPersonalData(access))),
       ),
       partial: all.length > LIMIT,
     };
@@ -376,7 +380,7 @@ export const listCredits = query({
 export const getCredit = query({
   args: { creditId: v.id("affiliateCredits") },
   handler: async (ctx, args) => {
-    await requireMarketingPermission(ctx, "view");
+    const access = await requireMarketingPermission(ctx, "view");
     const row = await ctx.db.get(args.creditId);
     if (!row) return null;
     const history = await ctx.db
@@ -385,7 +389,7 @@ export const getCredit = query({
       .order("desc")
       .take(LIMIT + 1);
     return {
-      credit: await creditRow(ctx, row),
+      credit: await creditRow(ctx, row, canReadMarketingPersonalData(access)),
       history: history.slice(0, LIMIT),
       partial: history.length > LIMIT,
     };

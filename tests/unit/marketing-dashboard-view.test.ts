@@ -34,6 +34,7 @@ describe("CSV export", () => {
       "# Currency: THB",
       "# Attribution: last_touch_30d@1 (last touch)",
       "# Basis: Marketing (visit cohort: sales made in range, all their money to date)",
+      "# Conversion: distinct consented sessions behind tracked paid stays / sessions started in range; breakdowns follow the session link and campaign",
       "# Dates: 2026-10-08 to 2026-11-06",
       "# Property: All properties",
       "# As of: 7 Nov 2026, 06:00 Asia/Bangkok",
@@ -50,13 +51,13 @@ describe("CSV export", () => {
   it("exports the current table with positive refunds and its totals", () => {
     const lines = csvLines(summaryCsv(p, "All properties", buildBreakdown(p, "link", [], { key: "net", dir: "desc" }), ""));
     const header = lines.find((line) => line.startsWith("Row,"))!;
-    expect(header).toBe("Row,Link,Detail,Sessions,Paid,Other paid sales,Conversion %,Discounts,Collected,Refunds,Net");
+    expect(header).toBe("Row,Link,Detail,Sessions,Paid,Other paid sales,Current-link paid stays,Converted sessions,Session conversion %,Discounts,Collected,Refunds,Net");
     const a1 = lines.find((line) => line.startsWith("tracked,/a1,"))!.split(",");
-    expect(a1.slice(3)).toEqual(["2310", "24", "0", "1.04", a1[7], "197800", "9600", "188200"]);
+    expect(a1.slice(3)).toEqual(["2310", "24", "0", "0", "24", "1.04", a1[9], "197800", "9600", "188200"]);
     expect(lines.some((line) => /,'-|,-\d/.test(line))).toBe(false);
     expect(lines.find((line) => line.startsWith("not tracked,Unknown"))).toContain(",352800");
-    expect(lines.at(-2)).toMatch(/^total,Tracked total,,8860,132,4,1\.49,/);
-    expect(lines.at(-1)).toBe('total,Business total,"All paid sales, tracked or not",,179,7,,93700,1554300,38400,1515900');
+    expect(lines.at(-2)).toMatch(/^total,Tracked total,,11980,132,4,2,130,1\.09,/);
+    expect(lines.at(-1)).toBe('total,Business total,"All paid sales, tracked or not",,179,7,2,0,,93700,1554300,38400,1515900');
   });
 
   it("adds ROAS and spend columns for campaigns and warns that coupons overlap", () => {
@@ -127,16 +128,34 @@ describe("dashboard view", () => {
     expect(text()).toContain("Ask a manager");
   });
 
+  it.each(["viewer", "marketer"] as const)("renders a redacted custom-price stay gracefully for %s", role => {
+    const report = dashboardReport();
+    const custom = report.sales.find(sale => sale.kind === "stay" && sale.last?.slug === "a1")!;
+    custom.customPrice = true;
+    custom.discount = 0;
+    custom.label = "Guest";
+    delete custom.ref;
+    report.sales = [custom];
+    render(ready(report), {}, role);
+    click(buttons("Link")[0]);
+    click(buttons(/^\/a1.*Show sales/)[0]);
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Guest");
+    expect(dialog.textContent).toContain("Custom price");
+    expect(dialog.textContent).not.toContain("undefined");
+    expect(dialog.textContent).not.toContain("Open booking");
+  });
+
   it("renders the tiles, context line and breakdown from the fixture", () => {
     render(ready());
     expect(text()).toContain("As of 7 Nov 2026, 06:00");
     expect(text()).toContain("Asia/Bangkok · THB");
     expect(text()).toContain("Last touch (last_touch_30d@1)");
-    expect(text()).toContain("8,860");
+    expect(text()).toContain("11,980");
     expect(text()).toContain("179 paid stays in all · 7 checkout orders count in money only");
     // The ROAS tile says which campaigns its figure leaves out.
     expect(text()).toMatch(/2 campaigns with spend · \d+ more campaigns? with sales ha(s|ve) no spend\./);
-    expect(text()).toContain("1.49%");
+    expect(text()).toContain("1.09%");
     expect(text()).toContain("฿1,091,700");
     expect(text()).toContain("฿1,515,900");
     expect(text()).toContain("8.01×");
@@ -219,7 +238,7 @@ describe("dashboard view", () => {
     for (const label of ["Collected", "Refunds", "First-payment sales", "Money in and out", "Business total · payments, refunds and coupon settlements"]) expect(text()).toContain(label);
     expect(text()).not.toContain("left out of conversion");
     expect(text()).toContain("฿38,400");
-    expect(text()).not.toContain("Tracked sessions");
+    expect(text()).not.toContain("Consented sessions");
   });
 
   it("previews the CSV in the export dialog", () => {
@@ -354,7 +373,8 @@ describe("dashboard view", () => {
       expect(report.sessions.length).toBeGreaterThan(0);
       render(ready(report));
       expect(text()).not.toContain(onboardingOnly);
-      expect(text()).toContain("No sales or tracked visits in these dates.");
+      expect(text()).toContain("Consented sessions3,120");
+      expect(text()).not.toContain("No sales or tracked visits in these dates.");
       expect(text()).toContain("No campaigns or links yet");
     });
   });
