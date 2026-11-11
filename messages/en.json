@@ -706,5 +706,44 @@
     "details": "Privacy policy",
     "decline": "No thanks",
     "accept": "Allow"
+  },
+  "Legal": {
+    "lastUpdated": "Last updated 8 November 2026",
+    "returnHome": "Return home",
+    "contactTitle": "Contact",
+    "privacy": {
+      "title": "Privacy policy",
+      "collectTitle": "Information we collect",
+      "collectBody": "When you use this site, we may receive your name, email address, phone number, stay dates, guest count, booking details, and messages you send through chat or connected messaging services. Technical information such as browser details and page context may accompany chat messages.",
+      "useTitle": "How we use it",
+      "useBody": "We use this information to answer inquiries, manage bookings and availability, send booking messages, prevent abuse, and support the service. AI services may process chat messages to produce replies. Payment card details are entered on Stripe Checkout and are not stored by this site.",
+      "measurementTitle": "Visit measurement",
+      "measurementTab": "If you arrive through one of our links or QR codes, this browser tab remembers which one, and its coupon if it has one, until you close the tab. A booking made, or a chat message sent, from that tab records that link. No identifier is stored for this.",
+      "measurementConsent": "Measurement stays off until you allow it. If you allow it, we count page views and keep a random visitor key in this browser. Each visit records the link or QR code that brought you, the page you landed on and the name of the site that sent you. It does not record your name, email or what you type. A booking made on this site or through web chat records which of our links brought you in the 30 days before it, with the campaign it belongs to. Raw visit records and link-open records are kept for 90 days and then deleted; daily totals without personal identifiers are kept. PostHog, if enabled, receives page views without session recording. Nothing is shared with advertisers.",
+      "sharingTitle": "Who receives it",
+      "sharingBody": "Booking and chat records are stored with Convex. Clerk handles administrator sign-in, Stripe handles payments, Resend sends transactional email, and connected messaging platforms process messages sent through their channels. Sentry may receive technical error details. Hosting and operational providers may also process information needed to deliver the site.",
+      "choicesTitle": "Your choices",
+      "choicesRequests": "Contact us to request access, correction, or deletion of your personal information. We will review requests in light of applicable law and records needed for bookings or payments. Please avoid sending payment card details in chat.",
+      "choicesMeasurement": "You can turn measurement off at any time. This removes the visitor key from this browser and stops page views. Bookings already made keep the link they recorded.",
+      "contact": "Email <link>{email}</link> with privacy questions."
+    },
+    "terms": {
+      "title": "Terms of use and booking",
+      "statusTitle": "Current site status",
+      "statusBody": "This site includes a demonstration resort and example property content. Confirm the identity, availability, price, and booking terms of any real accommodation with the host before paying. A live booking is confirmed only after verified payment or explicit host confirmation.",
+      "bookingTitle": "Bookings and payment",
+      "bookingBody": "A booking request starts as pending and does not reserve dates. Unpaid pending requests expire after 24 hours. If live checkout is available, payment takes place through Stripe. The booking page must show confirmed status before you rely on a reservation.",
+      "changesTitle": "Changes and cancellation",
+      "changesBody": "Contact the host about changes, cancellations, refunds, and arrival details. Any property-specific cancellation or refund terms should be provided before a real payment is taken.",
+      "contact": "Email <link>{email}</link> with booking questions."
+    },
+    "choice": {
+      "on": "Measurement is on in this browser.",
+      "off": "Measurement is off in this browser.",
+      "pageOnlyOn": "Measurement is on for this page only: this browser isn’t letting the site save the choice, so other tabs and later visits won’t know it.",
+      "pageOnlyOff": "Measurement is off for this page only: this browser isn’t letting the site save the choice, so other tabs and later visits won’t know it.",
+      "turnOn": "Turn on measurement",
+      "turnOff": "Turn off measurement"
+    }
   }
 }

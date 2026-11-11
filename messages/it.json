@@ -706,5 +706,44 @@
     "details": "Informativa sulla privacy",
     "decline": "No, grazie",
     "accept": "Consenti"
+  },
+  "Legal": {
+    "lastUpdated": "Ultimo aggiornamento: 8 novembre 2026",
+    "returnHome": "Torna alla home",
+    "contactTitle": "Contatti",
+    "privacy": {
+      "title": "Informativa sulla privacy",
+      "collectTitle": "Informazioni che raccogliamo",
+      "collectBody": "Quando usi questo sito, potremmo ricevere il tuo nome, indirizzo email, numero di telefono, date del soggiorno, numero di ospiti, dettagli della prenotazione e i messaggi che invii tramite la chat o servizi di messaggistica collegati. I messaggi della chat possono essere accompagnati da informazioni tecniche, come dettagli del browser e contesto della pagina.",
+      "useTitle": "Come le usiamo",
+      "useBody": "Usiamo queste informazioni per rispondere alle richieste, gestire prenotazioni e disponibilità, inviare messaggi sulle prenotazioni, prevenire abusi e supportare il servizio. Servizi di IA possono elaborare i messaggi della chat per produrre risposte. I dati della carta di pagamento vengono inseriti su Stripe Checkout e non sono conservati da questo sito.",
+      "measurementTitle": "Misurazione delle visite",
+      "measurementTab": "Se arrivi tramite uno dei nostri link o codici QR, questa scheda del browser ricorda quale, e il relativo coupon se presente, finché non chiudi la scheda. Una prenotazione effettuata, o un messaggio di chat inviato, da quella scheda registra quel link. Per questo non viene memorizzato alcun identificativo.",
+      "measurementConsent": "La misurazione resta disattivata finché non la consenti. Se la consenti, contiamo le visualizzazioni di pagina e conserviamo una chiave visitatore casuale in questo browser. Ogni visita registra il link o codice QR che ti ha portato qui, la pagina su cui sei arrivato e il nome del sito che ti ha indirizzato. Non registra il tuo nome, la tua email né ciò che digiti. Una prenotazione effettuata su questo sito o tramite la chat web registra quale dei nostri link ti ha portato qui nei 30 giorni precedenti, con la campagna a cui appartiene. I dati grezzi delle visite e delle aperture dei link vengono conservati per 90 giorni e poi eliminati; i totali giornalieri privi di identificativi personali vengono conservati. PostHog, se attivato, riceve le visualizzazioni di pagina senza registrazione delle sessioni. Nulla viene condiviso con gli inserzionisti.",
+      "sharingTitle": "Chi le riceve",
+      "sharingBody": "I dati di prenotazioni e chat sono archiviati presso Convex. Clerk gestisce l’accesso degli amministratori, Stripe gestisce i pagamenti, Resend invia le email transazionali e le piattaforme di messaggistica collegate elaborano i messaggi inviati tramite i loro canali. Sentry può ricevere dettagli tecnici sugli errori. Anche i fornitori di hosting e di servizi operativi possono elaborare le informazioni necessarie per erogare il sito.",
+      "choicesTitle": "Le tue scelte",
+      "choicesRequests": "Contattaci per richiedere l’accesso, la rettifica o la cancellazione dei tuoi dati personali. Valuteremo le richieste alla luce della legge applicabile e dei dati necessari per prenotazioni o pagamenti. Evita di inviare dati della carta di pagamento in chat.",
+      "choicesMeasurement": "Puoi disattivare la misurazione in qualsiasi momento. Questo rimuove la chiave visitatore da questo browser e interrompe il conteggio delle visualizzazioni di pagina. Le prenotazioni già effettuate mantengono il link registrato.",
+      "contact": "Scrivi a <link>{email}</link> per domande sulla privacy."
+    },
+    "terms": {
+      "title": "Condizioni d’uso e di prenotazione",
+      "statusTitle": "Stato attuale del sito",
+      "statusBody": "Questo sito include un resort dimostrativo e contenuti di esempio sugli alloggi. Prima di pagare, conferma con l’host l’identità, la disponibilità, il prezzo e le condizioni di prenotazione di qualsiasi alloggio reale. Una prenotazione reale è confermata solo dopo un pagamento verificato o una conferma esplicita dell’host.",
+      "bookingTitle": "Prenotazioni e pagamento",
+      "bookingBody": "Una richiesta di prenotazione parte come in attesa e non blocca le date. Le richieste in attesa non pagate scadono dopo 24 ore. Se il pagamento online è disponibile, avviene tramite Stripe. La pagina della prenotazione deve mostrare lo stato confermato prima che tu faccia affidamento su una prenotazione.",
+      "changesTitle": "Modifiche e cancellazione",
+      "changesBody": "Contatta l’host per modifiche, cancellazioni, rimborsi e dettagli sull’arrivo. Eventuali condizioni di cancellazione o rimborso specifiche dell’alloggio dovrebbero essere fornite prima che venga effettuato un pagamento reale.",
+      "contact": "Scrivi a <link>{email}</link> per domande sulle prenotazioni."
+    },
+    "choice": {
+      "on": "La misurazione è attiva in questo browser.",
+      "off": "La misurazione è disattivata in questo browser.",
+      "pageOnlyOn": "La misurazione è attiva solo per questa pagina: questo browser non consente al sito di salvare la scelta, quindi le altre schede e le visite successive non la conosceranno.",
+      "pageOnlyOff": "La misurazione è disattivata solo per questa pagina: questo browser non consente al sito di salvare la scelta, quindi le altre schede e le visite successive non la conosceranno.",
+      "turnOn": "Attiva la misurazione",
+      "turnOff": "Disattiva la misurazione"
+    }
   }
 }

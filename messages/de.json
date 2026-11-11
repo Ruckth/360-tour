@@ -706,5 +706,44 @@
     "details": "Datenschutzerklärung",
     "decline": "Nein, danke",
     "accept": "Erlauben"
+  },
+  "Legal": {
+    "lastUpdated": "Zuletzt aktualisiert am 8. November 2026",
+    "returnHome": "Zur Startseite",
+    "contactTitle": "Kontakt",
+    "privacy": {
+      "title": "Datenschutzerklärung",
+      "collectTitle": "Welche Daten wir erheben",
+      "collectBody": "Wenn Sie diese Website nutzen, erhalten wir möglicherweise Ihren Namen, Ihre E-Mail-Adresse, Telefonnummer, Aufenthaltsdaten, Gästezahl, Buchungsdetails und Nachrichten, die Sie über den Chat oder verbundene Messaging-Dienste senden. Chatnachrichten können technische Informationen wie Browserdetails und Seitenkontext enthalten.",
+      "useTitle": "Wie wir sie verwenden",
+      "useBody": "Wir verwenden diese Informationen, um Anfragen zu beantworten, Buchungen und Verfügbarkeit zu verwalten, Buchungsnachrichten zu senden, Missbrauch zu verhindern und den Dienst zu unterstützen. KI-Dienste können Chatnachrichten verarbeiten, um Antworten zu erstellen. Zahlungskartendaten werden bei Stripe Checkout eingegeben und nicht von dieser Website gespeichert.",
+      "measurementTitle": "Besuchsmessung",
+      "measurementTab": "Wenn Sie über einen unserer Links oder QR-Codes kommen, merkt sich dieser Browser-Tab, über welchen, und gegebenenfalls den zugehörigen Gutschein, bis Sie den Tab schließen. Eine Buchung oder eine Chatnachricht aus diesem Tab speichert diesen Link. Dafür wird keine Kennung gespeichert.",
+      "measurementConsent": "Die Messung bleibt aus, bis Sie sie erlauben. Wenn Sie sie erlauben, zählen wir Seitenaufrufe und speichern einen zufälligen Besucherschlüssel in diesem Browser. Jeder Besuch speichert den Link oder QR-Code, über den Sie gekommen sind, die Seite, auf der Sie gelandet sind, und den Namen der Website, die Sie weitergeleitet hat. Ihr Name, Ihre E-Mail-Adresse und Ihre Eingaben werden nicht gespeichert. Eine Buchung auf dieser Website oder über den Webchat speichert, welcher unserer Links Sie in den 30 Tagen davor hergeführt hat, zusammen mit der zugehörigen Kampagne. Rohdaten zu Besuchen und Link-Aufrufen werden 90 Tage lang aufbewahrt und dann gelöscht; tägliche Summen ohne personenbezogene Kennungen bleiben erhalten. PostHog erhält, falls aktiviert, Seitenaufrufe ohne Sitzungsaufzeichnung. Nichts wird an Werbetreibende weitergegeben.",
+      "sharingTitle": "Wer sie erhält",
+      "sharingBody": "Buchungs- und Chatdaten werden bei Convex gespeichert. Clerk übernimmt die Anmeldung von Administratoren, Stripe die Zahlungen, Resend versendet Transaktions-E-Mails, und verbundene Messaging-Plattformen verarbeiten Nachrichten, die über ihre Kanäle gesendet werden. Sentry kann technische Fehlerdetails erhalten. Hosting- und Betriebsdienstleister können außerdem Informationen verarbeiten, die für die Bereitstellung der Website erforderlich sind.",
+      "choicesTitle": "Ihre Wahlmöglichkeiten",
+      "choicesRequests": "Kontaktieren Sie uns, um Auskunft über Ihre personenbezogenen Daten, deren Berichtigung oder Löschung zu beantragen. Wir prüfen Anfragen unter Berücksichtigung des geltenden Rechts und der für Buchungen oder Zahlungen benötigten Unterlagen. Bitte vermeiden Sie es, Zahlungskartendaten im Chat zu senden.",
+      "choicesMeasurement": "Sie können die Messung jederzeit ausschalten. Dadurch wird der Besucherschlüssel aus diesem Browser entfernt, und Seitenaufrufe werden nicht mehr erfasst. Bereits getätigte Buchungen behalten den gespeicherten Link.",
+      "contact": "Bei Fragen zum Datenschutz schreiben Sie an <link>{email}</link>."
+    },
+    "terms": {
+      "title": "Nutzungs- und Buchungsbedingungen",
+      "statusTitle": "Aktueller Stand der Website",
+      "statusBody": "Diese Website enthält ein Demonstrations-Resort und Beispielinhalte zu Unterkünften. Bestätigen Sie Identität, Verfügbarkeit, Preis und Buchungsbedingungen jeder echten Unterkunft mit dem Gastgeber, bevor Sie bezahlen. Eine echte Buchung ist erst nach verifizierter Zahlung oder ausdrücklicher Bestätigung durch den Gastgeber bestätigt.",
+      "bookingTitle": "Buchungen und Zahlung",
+      "bookingBody": "Eine Buchungsanfrage beginnt als ausstehend und reserviert keine Daten. Unbezahlte ausstehende Anfragen verfallen nach 24 Stunden. Wenn die Live-Zahlung verfügbar ist, erfolgt die Zahlung über Stripe. Die Buchungsseite muss den Status „bestätigt“ anzeigen, bevor Sie sich auf eine Reservierung verlassen.",
+      "changesTitle": "Änderungen und Stornierung",
+      "changesBody": "Wenden Sie sich bei Änderungen, Stornierungen, Erstattungen und Anreisedetails an den Gastgeber. Unterkunftsspezifische Stornierungs- oder Erstattungsbedingungen sollten mitgeteilt werden, bevor eine echte Zahlung entgegengenommen wird.",
+      "contact": "Bei Fragen zur Buchung schreiben Sie an <link>{email}</link>."
+    },
+    "choice": {
+      "on": "Die Messung ist in diesem Browser eingeschaltet.",
+      "off": "Die Messung ist in diesem Browser ausgeschaltet.",
+      "pageOnlyOn": "Die Messung ist nur für diese Seite eingeschaltet: Dieser Browser lässt die Website die Auswahl nicht speichern, daher kennen andere Tabs und spätere Besuche sie nicht.",
+      "pageOnlyOff": "Die Messung ist nur für diese Seite ausgeschaltet: Dieser Browser lässt die Website die Auswahl nicht speichern, daher kennen andere Tabs und spätere Besuche sie nicht.",
+      "turnOn": "Messung einschalten",
+      "turnOff": "Messung ausschalten"
+    }
   }
 }
