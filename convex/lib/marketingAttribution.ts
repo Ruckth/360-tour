@@ -41,6 +41,12 @@ export const marketingAttributionValidator = v.object({
 	evidence: v.union(v.literal('tracked'), v.literal('current_link')),
 	/** Tracked only: the visitor's latest session, for visit-cohort conversion. */
 	sessionId: v.optional(v.id('marketingSessions')),
+	/** That session's cohort, frozen because raw sessions are deleted after the retention period. */
+	session: v.optional(v.object({
+		startedAt: v.number(),
+		linkId: v.optional(v.id('marketingLinks')),
+		campaignId: v.optional(v.id('marketingCampaigns'))
+	})),
 	/** Absent on a tracked visit with no link in the window (a direct visit). */
 	last: v.optional(marketingTouchValidator),
 	/** Earliest link touch in the window. Set whenever `last` is tracked; may equal it. */
@@ -99,7 +105,7 @@ export function touchFromLink(
 }
 
 /** A visitor's session with its link touch already resolved (absent when it arrived without a usable link). */
-export type SessionTouch = { sessionId: Id<'marketingSessions'>; startedAt: number; touch?: MarketingTouch };
+export type SessionTouch = { sessionId: Id<'marketingSessions'>; startedAt: number; linkId?: Id<'marketingLinks'>; campaignId?: Id<'marketingCampaigns'>; touch?: MarketingTouch };
 
 /**
  * The attribution rule, kept pure for tests.
@@ -119,8 +125,10 @@ export function buildAttribution(input: { sessions: SessionTouch[]; currentLink?
 		const unrecorded = currentLink && !linked.some(s => s.touch!.linkId === currentLink.linkId) ? currentLink : undefined;
 		const last = unrecorded ?? linked[linked.length - 1]?.touch;
 		const first = linked[0]?.touch ?? unrecorded;
+		const latest = recent[recent.length - 1];
+		const session = { startedAt: latest.startedAt, ...(latest.linkId ? { linkId: latest.linkId } : {}), ...(latest.campaignId ? { campaignId: latest.campaignId } : {}) };
 		return {
-			model: ATTRIBUTION_MODEL, evidence: 'tracked', sessionId: recent[recent.length - 1].sessionId,
+			model: ATTRIBUTION_MODEL, evidence: 'tracked', sessionId: latest.sessionId, session,
 			...(last ? { last } : {}), ...(first ? { first } : {}), capturedAt: now
 		};
 	}
@@ -155,7 +163,7 @@ export async function resolveMarketingAttribution(
 	const sessions: SessionTouch[] = [];
 	for (const row of rows) {
 		const session = { sessionId: row._id, startedAt: row.startedAt };
-		sessions.push({ ...session, ...(row.linkId && row.campaignId ? { touch: await resolveTouch(row.linkId, session, row.campaignId) } : {}) });
+		sessions.push({ ...session, ...(row.linkId ? { linkId: row.linkId } : {}), ...(row.campaignId ? { campaignId: row.campaignId } : {}), ...(row.linkId && row.campaignId ? { touch: await resolveTouch(row.linkId, session, row.campaignId) } : {}) });
 	}
 	let currentLink: MarketingTouch | undefined;
 	if (capture.slug) {

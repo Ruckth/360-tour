@@ -47,6 +47,7 @@ export async function captureAffiliateSnapshot(
   // Acquisition reporting and affiliate credit are separate: a later ordinary link does not erase
   // the latest eligible partner touch. Reads use the same 30-day window and 200-session bound.
   const linkIds = input.linkId ? [input.linkId] : [];
+  const recordedLinkIds = new Set<Id<"marketingLinks">>();
   if (isVisitorKey(input.marketing?.visitorKey)) {
     const now = Date.now();
     const sessions = await ctx.db
@@ -59,9 +60,11 @@ export async function captureAffiliateSnapshot(
       )
       .order("desc")
       .take(MAX_SESSIONS_READ);
-    for (const session of sessions)
-      if (session.linkId && !linkIds.includes(session.linkId))
-        linkIds.push(session.linkId);
+    for (const session of sessions) {
+      if (!session.linkId) continue;
+      recordedLinkIds.add(session.linkId);
+      if (!linkIds.includes(session.linkId)) linkIds.push(session.linkId);
+    }
   }
   let latestIneligible: AffiliateSnapshot["candidates"][number] | undefined;
   for (const linkId of linkIds) {
@@ -82,6 +85,8 @@ export async function captureAffiliateSnapshot(
       ...(reason ? { reason } : {}),
       ...(partner.contactEmail ? { contactEmail: partner.contactEmail } : {}),
       linkId: link._id,
+      // Anonymous raw opens cannot be tied to this guest. A matching server session can.
+      evidence: recordedLinkIds.has(link._id) ? "recorded_session" as const : "claimed_slug" as const,
     };
     if (!reason) {
       candidates.push(candidate);
@@ -119,6 +124,9 @@ export async function captureAffiliateSnapshot(
     flags.push("self_referral");
   if (input.staff || (email && adminEmails().has(email)))
     flags.push("staff_order");
+  const linkCandidate = candidates.find(c => c.origin === "link");
+  // Flags are review warnings; a recorded visit is the normal case and stays on the candidate only.
+  if (linkCandidate?.evidence === "claimed_slug") flags.push("referral_claimed_slug");
   return {
     capturedAt: Date.now(),
     candidates,
@@ -206,6 +214,7 @@ export async function syncAffiliateCredit(
   ctx: MutationCtx,
   source: { bookingId: Id<"bookings"> } | { billId: Id<"bills"> },
   actor = "system:affiliate",
+  ineligibilityReason?: "payment_unlinked",
 ) {
   const bookingId = "bookingId" in source ? source.bookingId : undefined;
   const billId = "billId" in source ? source.billId : undefined;
@@ -235,9 +244,20 @@ export async function syncAffiliateCredit(
     await appendCreditChange(ctx, (await ctx.db.get(id))!, actor, "created");
     return id;
   }
-  // Decisions never reopen on payment retries, reassignment or partner status changes.
-  const state =
-    old.state === "approved" && !money.eligible ? "reversed" : old.state;
+  // Unlinks move existing cash; affected credits return to review.
+  // Refunds and cancellations still reverse; retries and reassignment never reopen decisions.
+  const unlinked =
+    ineligibilityReason === "payment_unlinked" &&
+    !!sale &&
+    (bookingId === undefined ||
+      ("paymentStatus" in sale &&
+        sale.status !== "cancelled" &&
+        sale.paymentStatus !== "refunded"));
+  let state = old.state;
+  if (old.state === "approved" && !money.eligible)
+    state = unlinked ? "pending" : "reversed";
+  else if (old.state === "reversed" && unlinked && money.eligible && money.net > 0)
+    state = "pending";
   const approvedNet = state === "approved" ? money.net : 0;
   if (
     old.eligibleNet === money.net &&
@@ -246,8 +266,11 @@ export async function syncAffiliateCredit(
     old.approvedNet === approvedNet
   )
     return old._id;
+  const reopened = state === "pending" && old.state !== "pending";
   await ctx.db.patch(old._id, {
     state,
+    // A reopened credit carries no decision; its history keeps the earlier one.
+    ...(reopened ? { reason: undefined } : {}),
     eligible: money.eligible,
     eligibleNet: money.net,
     approvedNet,
@@ -258,7 +281,10 @@ export async function syncAffiliateCredit(
     ctx,
     (await ctx.db.get(old._id))!,
     actor,
-    state !== old.state ? "reversed" : "amount_changed",
+    reopened ? "review_required" : state !== old.state ? "reversed" : "amount_changed",
+    reopened
+      ? "A paid order row was unlinked, moving money between this sale and another; review again before approving."
+      : undefined,
   );
   return old._id;
 }

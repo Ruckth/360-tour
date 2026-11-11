@@ -1,9 +1,11 @@
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
+import { RAW_MARKETING_RETENTION_MS } from "./lib/marketingPolicy";
 import type { Id } from "./_generated/dataModel";
+import { creditMoney, syncAffiliateCredit } from "./lib/affiliateCredits";
 const modules = import.meta.glob("./**/*.ts");
 beforeEach(() => {
   vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
@@ -128,6 +130,320 @@ async function setup() {
     approve,
   };
 }
+
+async function lateLinkSale() {
+  const s = await setup();
+  const anna = await s.partner();
+  const bob = await s.partner("bob");
+  await s.coupon(anna, "services");
+  const staffId = await s.admin.mutation(api.adminServices.createStaff, {
+    name: "Therapist",
+    role: "Therapist",
+    color: "#abc",
+    workingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+      weekday,
+      start: "09:00",
+      end: "18:00",
+    })),
+    breaks: [],
+  });
+  const serviceId = await s.admin.mutation(api.adminServices.createService, {
+    slug: "spa",
+    name: "Spa",
+    description: "",
+    category: "Spa",
+    durationMin: 60,
+    bufferMin: 0,
+    price: 1000,
+    currency: "THB",
+    staffIds: [staffId],
+  });
+  const { orderId, lineId } = await s.admin.mutation(api.pos.addItem, {
+    item: { kind: "room", propertyId: s.propertyId },
+  });
+  await s.admin.mutation(api.pos.addItem, {
+    orderId,
+    item: { kind: "room", propertyId: s.propertyId },
+  });
+  await s.admin.mutation(api.pos.addItem, {
+    orderId,
+    item: { kind: "service", serviceId },
+  });
+  await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: "SPA100" });
+  const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
+  expect(view.totals.due).toBe(2900);
+  await s.admin.mutation(api.pos.settleOrder, {
+    orderId,
+    idempotencyKey: "late-link-payment",
+    expectedDue: view.totals.due,
+    expectedRevision: view.order.revision,
+    tenders: [{ method: "cash", amount: view.totals.due }],
+  });
+  const { bookingId } = await s.book({ slug: "r/bob" });
+  const credit = (sourceKey: string) =>
+    s.t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("affiliateCredits")
+          .withIndex("by_sourceKey", (q) => q.eq("sourceKey", sourceKey))
+          .unique())!,
+    );
+  const orderCredit = () => credit(`order:${orderId}`);
+  const bookingCredit = () => credit(`booking:${bookingId}`);
+  const approve = async (creditId: Id<"affiliateCredits">) => {
+    const row = (await s.t.run((ctx) => ctx.db.get(creditId)))!;
+    await s.admin.mutation(api.marketingAffiliates.reviewCredit, {
+      creditId,
+      expectedRevision: row.revision,
+      decision: "approved",
+      reason: "Verified referral",
+    });
+  };
+  let attempt = 0;
+  const correctionRevision = async () =>
+    (await s.admin.query(api.pos.getOrder, { orderId }))!.paymentRecord
+      .correctionRevision;
+  const link = async () => {
+    const booking = (await s.t.run((ctx) => ctx.db.get(bookingId)))!;
+    return s.admin.mutation(api.pos.linkPaidLine, {
+      orderId,
+      lineId,
+      bookingId,
+      expectedTargetRevision: booking.revision ?? 0,
+      expectedCorrectionRevision: await correctionRevision(),
+      idempotencyKey: `late-link-${++attempt}`,
+      reason: "Apply prepaid room nights",
+      notifyGuest: false,
+    });
+  };
+  const unlink = async (linkId: Id<"billLineLinks">) =>
+    s.admin.mutation(api.pos.unlinkPaidLine, {
+      orderId,
+      linkId,
+      expectedCorrectionRevision: await correctionRevision(),
+      idempotencyKey: `late-unlink-${++attempt}`,
+      reason: "Correct the linked stay",
+    });
+  return {
+    ...s,
+    anna,
+    bob,
+    orderId,
+    bookingId,
+    orderCredit,
+    bookingCredit,
+    approve,
+    link,
+    unlink,
+    correctionRevision,
+  };
+}
+
+it.each(["pending", "approved"] as const)(
+  "conserves %s order referral money when room nights are linked and unlinked after payment",
+  async (state) => {
+    const s = await lateLinkSale();
+    if (state === "approved") await s.approve((await s.orderCredit())._id);
+    expect(await s.orderCredit()).toMatchObject({
+      state,
+      eligibleNet: 2900,
+      affiliateId: s.anna,
+    });
+
+    const { linkId } = await s.link();
+    const order = await s.orderCredit();
+    const booking = await s.bookingCredit();
+    const money = await s.t.run((ctx) =>
+      creditMoney(ctx, { billId: s.orderId }),
+    );
+    expect(order).toMatchObject({
+      state,
+      eligibleNet: money.net,
+      approvedNet: state === "approved" ? money.net : 0,
+    });
+    expect(money.net).toBe(900);
+    expect(booking).toMatchObject({
+      state: "pending",
+      eligible: true,
+      eligibleNet: 2000,
+      affiliateId: s.bob,
+    });
+    expect(order.eligibleNet + booking.eligibleNet).toBe(2900);
+    if (state === "approved") {
+      await s.approve(booking._id);
+      expect(
+        (await s.orderCredit()).approvedNet +
+          (await s.bookingCredit()).approvedNet,
+      ).toBe(2900);
+    }
+
+    await s.unlink(linkId);
+    const restored = await s.orderCredit();
+    const restoredMoney = await s.t.run((ctx) =>
+      creditMoney(ctx, { billId: s.orderId }),
+    );
+    expect(restoredMoney.net).toBe(2900);
+    expect(restored).toMatchObject({
+      state,
+      eligibleNet: restoredMoney.net,
+      approvedNet: state === "approved" ? restoredMoney.net : 0,
+    });
+    expect(restored.eligibleNet + (await s.bookingCredit()).eligibleNet).toBe(
+      2900,
+    );
+  },
+);
+
+it("requires a fresh review after unlinking an approved booking credit and allows approval after relinking", async () => {
+  const s = await lateLinkSale();
+  const { linkId } = await s.link();
+  await s.approve((await s.bookingCredit())._id);
+  const approved = await s.bookingCredit();
+  await s.unlink(linkId);
+  const pending = await s.bookingCredit();
+  expect(pending).toMatchObject({
+    state: "pending",
+    eligible: false,
+    eligibleNet: 0,
+    approvedNet: 0,
+    revision: approved.revision + 1,
+  });
+  const detail = (await s.admin.query(api.marketingAffiliates.getCredit, {
+    creditId: pending._id,
+  }))!;
+  expect(detail.history[0]).toMatchObject({
+    kind: "review_required",
+    state: "pending",
+    approvedNet: 0,
+    revision: pending.revision,
+    actor: "admin@example.com",
+    reason: expect.stringMatching(/unlinked.*review/i),
+  });
+  await expect(s.approve(pending._id)).rejects.toThrow("settled");
+  await s.admin.mutation(api.marketingAffiliates.refreshCredit, {
+    creditId: pending._id,
+  });
+  expect(await s.bookingCredit()).toEqual(pending);
+
+  await s.link();
+  expect(await s.bookingCredit()).toMatchObject({
+    state: "pending",
+    eligible: true,
+    eligibleNet: 2000,
+    approvedNet: 0,
+  });
+  await expect(
+    s.admin.mutation(api.marketingAffiliates.reviewCredit, {
+      creditId: pending._id,
+      expectedRevision: pending.revision,
+      decision: "approved",
+      reason: "Stale review",
+    }),
+  ).rejects.toThrow("changed");
+  await s.approve(pending._id);
+  expect(await s.bookingCredit()).toMatchObject({
+    state: "approved",
+    approvedNet: 2000,
+  });
+  const history = (await s.admin.query(api.marketingAffiliates.getCredit, {
+    creditId: pending._id,
+  }))!.history;
+  expect(history.map((row) => row.kind)).toEqual([
+    "reviewed",
+    "amount_changed",
+    "review_required",
+    "reviewed",
+    "amount_changed",
+    "created",
+  ]);
+});
+
+it("still reverses an approved late-linked booking credit when its order is voided as unreceived", async () => {
+  const s = await lateLinkSale();
+  await s.approve((await s.orderCredit())._id);
+  await s.link();
+  await s.approve((await s.bookingCredit())._id);
+  await s.admin.mutation(api.pos.voidUnreceivedOrder, {
+    orderId: s.orderId,
+    expectedCorrectionRevision: await s.correctionRevision(),
+    idempotencyKey: "late-linked-void",
+    reason: "Card payment never received",
+  });
+  expect(await s.orderCredit()).toMatchObject({
+    state: "reversed",
+    eligibleNet: 0,
+    approvedNet: 0,
+  });
+  const booking = await s.bookingCredit();
+  expect(booking).toMatchObject({
+    state: "reversed",
+    eligible: false,
+    eligibleNet: 0,
+    approvedNet: 0,
+  });
+  const detail = (await s.admin.query(api.marketingAffiliates.getCredit, {
+    creditId: booking._id,
+  }))!;
+  expect(detail.history[0]).toMatchObject({
+    kind: "reversed",
+    state: "reversed",
+    approvedNet: 0,
+  });
+});
+
+it("does not reopen a genuinely cancelled booking credit when its paid room row is unlinked", async () => {
+  const s = await lateLinkSale();
+  const { linkId } = await s.link();
+  await s.approve((await s.bookingCredit())._id);
+  const booking = (await s.t.run((ctx) => ctx.db.get(s.bookingId)))!;
+  await s.admin.mutation(api.adminBookings.cancelStay, {
+    bookingId: s.bookingId,
+    expectedRevision: booking.revision ?? 0,
+    reason: "Guest cancelled the stay",
+    notifyGuest: false,
+  });
+  expect(await s.bookingCredit()).toMatchObject({
+    state: "reversed",
+    approvedNet: 0,
+  });
+  await s.unlink(linkId);
+  expect(await s.bookingCredit()).toMatchObject({
+    state: "reversed",
+    eligibleNet: 0,
+    approvedNet: 0,
+  });
+});
+
+it("reopens an approved order credit for review when an unlink returns money after the rest was refunded", async () => {
+  const s = await lateLinkSale();
+  await s.approve((await s.orderCredit())._id);
+  const { linkId } = await s.link();
+  // Refund the order's remaining service money while the room nights sit on the booking.
+  await s.t.run(async (ctx) => {
+    const now = Date.now();
+    const service = (await ctx.db.query("services").first())!;
+    const appointmentId = await ctx.db.insert("serviceAppointments", {
+      serviceId: service._id, staffId: service.staffIds[0], start: now, end: now + 3_600_000,
+      blockedUntil: now + 3_600_000, guestName: "Walk-in", guestPhone: "", source: "admin",
+      status: "completed", paymentStatus: "paid", price: 1000, currency: "THB", confirmationCode: "APPT-1", accessToken: "appt-token", createdAt: now,
+    } as never);
+    await ctx.db.insert("appointmentRefunds", {
+      appointmentId, amount: 900, currency: "THB", method: "cash",
+      reason: "Service refunded", effectiveAt: now, recordedAt: now, recordedBy: "admin@example.com",
+      idempotencyKey: "service-refund", billId: s.orderId, netBefore: 900, netAfter: 0,
+    });
+    await syncAffiliateCredit(ctx, { billId: s.orderId }, "admin@example.com");
+  });
+  expect(await s.orderCredit()).toMatchObject({ state: "reversed", approvedNet: 0 });
+
+  await s.unlink(linkId);
+  const reopened = await s.orderCredit();
+  expect(reopened).toMatchObject({ state: "pending", eligible: true, eligibleNet: 2000, approvedNet: 0 });
+  expect(reopened.reason).toBeUndefined();
+  await s.approve(reopened._id);
+  expect(await s.orderCredit()).toMatchObject({ state: "approved", approvedNet: 2000 });
+});
+
 it("claims email invitations explicitly, binds canonical identity and prevents escalation or forged identity args", async () => {
   const s = await setup();
   const user = s.t.withIdentity({
@@ -289,7 +605,7 @@ it("freezes link/coupon conflict and self-referral candidates, requires explicit
     affiliateId: anna,
     state: "pending",
     eligible: false,
-    flags: ["affiliate_conflict", "self_referral"],
+    flags: ["affiliate_conflict", "self_referral", "referral_claimed_slug"],
   });
   await expect(s.approve(anna)).rejects.toThrow("settled");
   await s.pay(bookingId);
@@ -658,7 +974,8 @@ it("uses the last eligible affiliate touch independently of the last acquisition
   expect(booking?.marketingAttribution?.last?.linkId).toBe(ordinary);
   expect(booking?.affiliateSnapshot).toMatchObject({
     affiliateId: anna,
-    candidates: [{ linkId: alias }],
+    candidates: [{ linkId: alias, evidence: "recorded_session" }],
+    flags: [],
   });
 });
 it("rejects out-of-scope and expired candidates, archived approvals and unseen money changes", async () => {
@@ -815,4 +1132,55 @@ it("does not pretend invitations can revoke or downgrade configured system admin
   }
   expect((await s.admin.query(api.marketingAccess.current, {})).role).toBe("admin");
   expect(await s.admin.query(api.marketingAccess.listGrants, {})).toEqual([]);
+});
+
+
+it.each(["create", "confirmProposal"] as const)("freezes recorded vs claimed evidence through bookings.%s", async path => {
+  for (const recorded of [false, true]) {
+    const s = await setup();
+    const anna = await s.partner();
+    const link = (await s.t.run(ctx => ctx.db.get(anna)))!.canonicalLinkId!;
+    const visitorKey = "mv_" + "b".repeat(32);
+    // An anonymous open and another visitor's session do not establish this guest's visit.
+    await s.t.mutation(api.marketing.recordOpen, { slug: "r/anna", bot: false });
+    await s.t.mutation(api.marketing.startSession, { slug: "r/anna", landingPath: "/", visitorKey: "mv_" + "c".repeat(32) });
+    if (recorded) await s.t.mutation(api.marketing.startSession, { slug: "r/anna", landingPath: "/", visitorKey });
+    const stay = {
+      propertySlug: "villa", guestName: "Guest", guestEmail: "guest@example.com",
+      guestPhone: "+66811112222", checkIn: "2026-11-10", checkOut: "2026-11-12", guests: 2,
+    };
+    const marketing = { slug: "r/anna", visitorKey };
+    const result = path === "create"
+      ? await s.t.mutation(api.bookings.create, { ...stay, marketing })
+      : await (async () => {
+        const sessionId = await s.t.mutation(api.chat.createSession, { channel: "web" });
+        const { confirmToken } = await s.t.mutation(internal.bookings.prepareChatBooking, { sessionId, propertySlug: stay.propertySlug, guestName: stay.guestName, guestPhone: stay.guestPhone, checkIn: stay.checkIn, checkOut: stay.checkOut, guests: stay.guests });
+        const result = await s.t.mutation(api.bookings.confirmProposal, { token: confirmToken, marketing });
+        if (result.needsReview) throw new Error("Expected a confirmed booking");
+        return result;
+      })();
+    const before = await s.t.run(ctx => ctx.db.get(result.bookingId));
+    const evidence = recorded ? "recorded_session" : "claimed_slug";
+    const flags = recorded ? [] : ["referral_claimed_slug"];
+    expect(before?.affiliateSnapshot).toMatchObject({
+      affiliateId: anna, candidates: [{ linkId: link, evidence }], flags,
+    });
+    const credit = await s.credit();
+    expect(credit.snapshot).toEqual(before?.affiliateSnapshot);
+    expect(credit.flags).toEqual(flags);
+    // Raw retention must not rewrite sale attribution, frozen evidence, counters or credits.
+    await s.t.run(async ctx => {
+      for (const session of await ctx.db.query("marketingSessions").collect())
+        await ctx.db.patch(session._id, { startedAt: Date.now() - RAW_MARKETING_RETENTION_MS - 1 });
+      for (const event of await ctx.db.query("marketingEvents").collect())
+        await ctx.db.patch(event._id, { occurredAt: Date.now() - RAW_MARKETING_RETENTION_MS - 1 });
+    });
+    const linkBefore = await s.t.run(ctx => ctx.db.get(link));
+    const aggregatesBefore = await s.t.run(ctx => ctx.db.query("marketingSessionDays").collect());
+    await s.t.mutation(internal.crons.cleanRawMarketing, {});
+    expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).toEqual(before);
+    expect(await s.credit()).toEqual(credit);
+    expect(await s.t.run(ctx => ctx.db.get(link))).toEqual(linkBefore);
+    expect(await s.t.run(ctx => ctx.db.query("marketingSessionDays").collect())).toEqual(aggregatesBefore);
+  }
 });

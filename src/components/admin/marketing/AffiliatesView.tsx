@@ -45,6 +45,7 @@ const fieldClass =
   "min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";
 const flagLabels: Record<string, string> = {
   affiliate_conflict: "Link and coupon name different partners",
+  referral_claimed_slug: "Partner slug claimed without a recorded visit",
   self_referral: "Guest matches partner contact",
   staff_referral: "Staff-created referral",
   staff_order: "Staff-created referral",
@@ -735,8 +736,8 @@ export function CreditReview({
                 </p>
               ))}
             </div>
-            {credit.reason && (
-              <p className="text-sm">Last decision: {credit.reason}</p>
+            {(credit.reasonHidden || credit.reason) && (
+              <p className="text-sm">Last decision: {credit.reasonHidden ? "Reason hidden" : credit.reason}</p>
             )}
             {canReview && (
               <Button
@@ -846,7 +847,7 @@ export function CreditReview({
                   <p>
                     Net {money(h.eligibleNet)} · Approved {money(h.approvedNet)}
                   </p>
-                  {h.reason && <p>{h.reason}</p>}
+                  {(h.reasonHidden || h.reason) && <p>{h.reasonHidden ? "Reason hidden" : h.reason}</p>}
                 </li>
               ))}
             </ol>

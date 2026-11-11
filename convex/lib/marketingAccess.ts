@@ -1,6 +1,16 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { adminEmails } from "./adminAuth";
+import { MARKETING_INVITATION_TTL_MS } from "./marketingPolicy";
+
+export function marketingInvitationExpiry(grant: Doc<"marketingGrants">) {
+  return grant.tokenIdentifier ? null : grant.inviteExpiresAt ?? grant.createdAt + MARKETING_INVITATION_TTL_MS;
+}
+export function marketingInvitationExpired(grant: Doc<"marketingGrants">, now = Date.now()) {
+  const expiresAt = marketingInvitationExpiry(grant);
+  return expiresAt !== null && expiresAt <= now;
+}
+
 export type MarketingRole = Doc<"marketingGrants">["role"];
 export type MarketingPermission =
   | "view"
@@ -52,7 +62,8 @@ export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
     role,
     capabilities: marketingCapabilities(role),
     pendingInvitation:
-      invite && !invite.tokenIdentifier ? { role: invite.role } : null,
+      invite && !invite.tokenIdentifier && !marketingInvitationExpired(invite)
+        ? { role: invite.role } : null,
   };
 }
 export async function requireMarketingPermission(

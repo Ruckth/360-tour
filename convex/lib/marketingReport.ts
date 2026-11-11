@@ -68,6 +68,10 @@ export type ReportSale = {
 	bucket: ReportBucket;
 	/** How the touch is known. Only on tracked sales. */
 	evidence?: 'tracked' | 'current_link' | 'scanned';
+	/** Verified attribution.sessionId and its recorded cohort; never includes visitor identity. */
+	session?: { id: Id<'marketingSessions'>; day: string; linkId?: Id<'marketingLinks'>; campaignId?: Id<'marketingCampaigns'> };
+	/** Coupon attribution is retained, but a custom price grants no reportable coupon discount. */
+	customPrice?: boolean;
 	last?: ReportTouch;
 	/** Stays with tracked evidence only. Scanned and current-link sales have no separate first touch. */
 	first?: ReportTouch;
@@ -118,6 +122,8 @@ export type ReportData = {
 	events: ReportMoneyEvent[];
 	/** Consented visit sessions per day and link (linkId absent = arrived without a link). Diagnostic, not people. */
 	sessions: { day: string; linkId?: Id<'marketingLinks'>; campaignId?: Id<'marketingCampaigns'>; count: number }[];
+	/** Paid-stay sessions started in range, independently of the selected money dates. */
+	convertedSessions?: NonNullable<ReportSale['session']>[];
 	campaigns: { id: Id<'marketingCampaigns'>; name: string; source: string; medium: string; status: string; budget?: number }[];
 	links: { id: Id<'marketingLinks'>; slug: string; name: string; campaignId: Id<'marketingCampaigns'>; entry: 'link' | 'qr'; status: string }[];
 	coupons: { id: Id<'coupons'>; code: string; campaignId?: Id<'marketingCampaigns'>; status: string }[];

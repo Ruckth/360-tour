@@ -3,6 +3,8 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
+import type { Doc } from './_generated/dataModel';
+import { isLegacyManualPaymentCandidate, legacyManualPayment } from './lib/appointmentFinance';
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.UTC(2026, 10, 1, 5);
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); });
@@ -214,4 +216,20 @@ it('rejects a legacy reversal while checkout is charging it and after an issued 
   await t.run(ctx => ctx.db.patch(orderId, { status: 'void' }));
   expect((await read()).legacyManualPayment).toBeNull();
   await expect(admin.mutation(api.adminServices.correctAppointmentPaymentEntry, { ...input, expectedRevision: (await read()).revision })).rejects.toThrow('receipt');
+});
+
+it.each([
+  { paymentStatus: 'unpaid' as const }, { amountPaid: 0 }, { amountRefunded: 0 },
+  { financialRevision: 0 }, { paidAt: 0 }, { paidBy: '' }, { refundedAt: 0 },
+  { price: 0 }, { price: -1 }, { price: NaN }, { price: Infinity },
+] satisfies Partial<Doc<'serviceAppointments'>>[])('rejects non-legacy fields before reading payment history: %o', async patch => {
+  const { t, appointmentId } = await setup();
+  const original = (await t.run(ctx => ctx.db.get(appointmentId)))!;
+  const legacy = { ...original, paymentStatus: 'paid' as const };
+  expect(isLegacyManualPaymentCandidate(legacy)).toBe(true);
+  const appointment = { ...legacy, ...patch };
+  expect(isLegacyManualPaymentCandidate(appointment)).toBe(false);
+  const readHistory = vi.fn().mockRejectedValue(new Error('Must not read history'));
+  expect(await t.run(ctx => legacyManualPayment(ctx, appointment, { payments: [], refunds: [], orders: [] }, readHistory))).toBeNull();
+  expect(readHistory).not.toHaveBeenCalled();
 });

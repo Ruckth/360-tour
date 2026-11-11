@@ -2289,6 +2289,7 @@ export const linkPaidLine = mutation({
 			lineId: line._id, linkId, amount, ...('appointmentId' in source ? { appointmentId: source.appointmentId } : { bookingId: source.bookingId })
 		});
 		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
+		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
 		return { sequence, linkId, replayed: false };
 	}
 });
@@ -2299,7 +2300,7 @@ export const linkPaidLine = mutation({
  * link is cancelled and its payment status restored. Refused if any of that money was refunded or
  * the target changed since (repaid, repriced, refunded, or under an online checkout).
  */
-async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: string) {
+async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: string, options: { paymentUnlinked?: boolean } = {}) {
 	if (link.appointmentId) {
 		const appointment = await ctx.db.get(link.appointmentId);
 		if (!appointment) throw new ConvexError(`${name}: the appointment was deleted, so its payment can't be reversed.`);
@@ -2331,7 +2332,7 @@ async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: 
 		: reversal;
 	return async (actor: string, reason: string) => {
 		await ctx.db.patch(payment._id, { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: actor, cancelReason: reason });
-		await writeBooking(ctx, booking, patch, { actor, kind: 'payment_cancelled', reason, details: { paymentId: payment._id, billId: link.billId, amount: payment.amount, linkId: link._id } });
+		await writeBooking(ctx, booking, patch, { actor, kind: 'payment_cancelled', reason, details: { paymentId: payment._id, billId: link.billId, amount: payment.amount, linkId: link._id } }, options);
 	};
 }
 
@@ -2358,7 +2359,7 @@ export const unlinkPaidLine = mutation({
 		if (!link || link.billId !== order._id) throw new ConvexError('Link not found on this order');
 		if (link.status !== 'active') throw new ConvexError('This link was already undone.');
 		const line = await ctx.db.get(link.lineId);
-		const reverse = await linkReversal(ctx, link, line?.name ?? 'This row');
+		const reverse = await linkReversal(ctx, link, line?.name ?? 'This row', { paymentUnlinked: true });
 		const now = Date.now();
 		const sequence = (order.correctionRevision ?? 0) + 1;
 		await reverse(admin.email, `Unlinked from ${orderTitle(order.orderNumber)}: ${reason}`);
@@ -2368,6 +2369,7 @@ export const unlinkPaidLine = mutation({
 			lineId: link.lineId, linkId: link._id, amount: link.amount, ...(link.appointmentId ? { appointmentId: link.appointmentId } : { bookingId: link.bookingId })
 		});
 		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
+		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email, 'payment_unlinked');
 		return { sequence, replayed: false };
 	}
 });

@@ -1,6 +1,7 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
+import { isLegacyManualPaymentCandidate, legacyManualPayment } from './appointmentFinance';
 import { lineNet, round2, orderTitle } from './billMath';
 import { stayMoney, unitemisedStayMoney } from './bookingMoney';
 import { ATTRIBUTION_MODEL, touchFromLink } from './marketingAttribution';
@@ -32,7 +33,8 @@ export async function readMarketingReport(
 	if (days === null || days > MAX_REPORT_DAYS) throw new ConvexError('Choose a valid range of at most 92 Bangkok days.');
 	const { from, to, basis } = args;
 	const { start, end } = reportRangeBounds(from, to);
-	const data: ReportData = { asOf: Date.now(), ...args, timeZone: 'Asia/Bangkok', currency: 'THB', model: ATTRIBUTION_MODEL, sales: [], events: [], sessions: [], campaigns: [], links: [], coupons: [], properties: [], spend: [], excluded: { nonThb: 0 }, truncated: false };
+	const convertedSessions: NonNullable<ReportData['convertedSessions']> = [];
+	const data: ReportData = { asOf: Date.now(), ...args, timeZone: 'Asia/Bangkok', currency: 'THB', model: ATTRIBUTION_MODEL, sales: [], events: [], sessions: [], convertedSessions, campaigns: [], links: [], coupons: [], properties: [], spend: [], excluded: { nonThb: 0 }, truncated: false };
 	const inRange = (day: string) => day >= from && day <= to;
 	const inWindow = (at: number | undefined) => at !== undefined && at >= start && at < end;
 	let active = budget;
@@ -160,6 +162,23 @@ export async function readMarketingReport(
 		const row = await get(promotion.couponId);
 		return { couponId: promotion.couponId, code: promotion.code, ...(row?.campaignId ? { campaignId: row.campaignId } : {}) };
 	}
+	async function staySession(booking: Doc<'bookings'>): Promise<ReportSale['session'] | undefined> {
+		const attribution = booking.marketingAttribution;
+		if ((booking.source && booking.source !== 'web') || attribution?.evidence !== 'tracked' || !attribution.sessionId) return undefined;
+		const session = attribution.session ?? await get(attribution.sessionId);
+		return session ? {
+			id: attribution.sessionId, day: dayOf(session.startedAt),
+			...(session.linkId ? { linkId: session.linkId } : {}),
+			...(session.campaignId ? { campaignId: session.campaignId } : {})
+		} : undefined;
+	}
+	const convertedIds = new Set<Id<'marketingSessions'>>();
+	async function rememberConversion(booking: Doc<'bookings'>) {
+		const session = await staySession(booking);
+		if (!session || !inRange(session.day) || convertedIds.has(session.id)) return;
+		append(convertedSessions, session);
+		convertedIds.add(session.id);
+	}
 	async function stay(id: Id<'bookings'>) {
 		if (completed.has(id)) return completed.get(id);
 		const booking = await get(id);
@@ -178,6 +197,8 @@ export async function readMarketingReport(
 			return !!bill && isSettledOrder(bill) && !bill.voidUnreceived && !payments.some(p => p.billId === billId);
 		};
 		let legacy = unitemisedStayMoney(money.gross, payments);
+		// Legacy order-owned stay money still proves a paid stay, without becoming stay revenue twice.
+		if (recorded.some(payment => payment.amount > 0) || legacy > 0) await rememberConversion(booking);
 		if (legacy > 0) {
 			for (const line of await rows(ctx.db.query('billLines').withIndex('by_bookingId', q => q.eq('bookingId', id)))) {
 				if (await oldOrder(line.billId)) legacy = Math.max(round2(legacy - (lineNet(line) - (line.deposit ?? 0))), 0);
@@ -192,13 +213,16 @@ export async function readMarketingReport(
 		const channel: ReportSale['channel'] = booking.source === 'admin' ? 'admin' : booking.source && booking.source !== 'web' ? 'messaging' : booking.chatSessionId ? 'web_chat' : 'web';
 		const attribution = booking.marketingAttribution;
 		const tracked = (channel === 'web' || channel === 'web_chat') && attribution?.last;
+		const session = await staySession(booking);
 		const sale: ReportSale = {
 			kind: 'stay', id, label: booking.guestName, ...(booking.confirmationCode ? { ref: booking.confirmationCode } : {}), propertyId: booking.propertyId,
 			channel, bucket: channel === 'admin' ? 'staff' : channel === 'messaging' ? 'messaging' : tracked ? 'tracked' : 'unknown',
 			...(tracked ? { evidence: attribution.evidence, last: touch(tracked), ...(attribution.evidence === 'tracked' && attribution.first ? { first: touch(attribution.first) } : {}) } : {}),
+			...(session ? { session } : {}),
+			customPrice: !!booking.priceOverride,
 			coupon: await coupon(booking.promotion), createdDay: dayOf(booking.createdAt), paidDay, paid: true,
 			collected: round2(sum(recorded, p => p.amount) + legacy),
-			refunded: money.legacyRefund ? money.refunded : sum(refunds, r => r.amount), discount: booking.promotion?.discount ?? 0
+			refunded: money.legacyRefund ? money.refunded : sum(refunds, r => r.amount), discount: booking.priceOverride ? 0 : booking.promotion?.discount ?? 0
 		};
 		const events: ReportMoneyEvent[] = recorded.map(p => ({ saleId: id, kind: 'payment', day: dayOf(p.effectiveAt), amount: p.amount }));
 		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
@@ -243,10 +267,32 @@ export async function readMarketingReport(
 		const appt = await get(id);
 		completed.set(id, null);
 		if (!appt || nonThb(appt)) return null;
-		// Desk payments only: money taken at checkout has no appointmentPayments row and is on its order.
-		const payments = (await rows(ctx.db.query('appointmentPayments').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)))).filter(p => p.status === 'recorded');
-		if (!payments.length) return null;
+		// Keep all rows: a cancelled payment must also prevent a legacy fallback.
+		const allPayments = await rows(ctx.db.query('appointmentPayments').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
+		const payments: { amount: number; effectiveAt: number }[] = allPayments.filter(p => p.status === 'recorded');
+		if (!allPayments.length && !isLegacyManualPaymentCandidate(appt)) return null;
 		const refunds = await rows(ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
+		if (!allPayments.length) {
+			// Mirror the finance correction evidence, with every read charged to this report's budget.
+			const charges = await rows(ctx.db.query('billLines').withIndex('by_appointmentId', q => q.eq('appointmentId', id)));
+			const links = await rows(ctx.db.query('billLineLinks').withIndex('by_appointmentId_and_status', q => q.eq('appointmentId', id).eq('status', 'active')));
+			const orders = [];
+			for (const charge of [...charges, ...links]) {
+				const bill = await get(charge.billId);
+				if (bill && isSettledOrder(bill) && !bill.voidUnreceived) orders.push(bill);
+			}
+			const legacy = await legacyManualPayment(ctx, appt, { payments: allPayments, refunds, orders },
+				async () => {
+					const history: Doc<'appointmentChanges'>[] = [];
+					for await (const change of scan(ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', id)))) {
+						history.push(change);
+						if (history.length > 200) break;
+					}
+					return history;
+				});
+			if (legacy) payments.push({ amount: appt.price, effectiveAt: legacy.at });
+		}
+		if (!payments.length) return null;
 		const ownRefunds = [];
 		for (const refund of refunds) if (!refund.billId || !await order(refund.billId)) ownRefunds.push(refund);
 		const service = appt.serviceNameSnapshot ? null : await get(appt.serviceId);
@@ -274,6 +320,11 @@ export async function readMarketingReport(
 			for await (const row of scan(ctx.db.query('bills').withIndex('by_status_and_paidAt', q => q.eq('status', status).gte('paidAt', start).lt('paidAt', end)))) { cache.set(row._id, row); await order(row._id); }
 		}
 		for await (const row of scan(ctx.db.query('bills').withIndex('by_paymentEffectiveAt', q => q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end)))) { cache.set(row._id, row); await order(row._id); }
+		// Historical Mark paid has no payment row or paidAt; the proven change supplies its date.
+		for await (const row of scan(ctx.db.query('appointmentChanges').withIndex('by_kind_and_at', q => q.eq('kind', 'payment').gte('at', start).lt('at', end)))) {
+			const appt = await get(row.appointmentId);
+			if (appt && isLegacyManualPaymentCandidate(appt)) await appointment(appt._id);
+		}
 		for await (const row of scan(ctx.db.query('appointmentPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)))) if (row.status === 'recorded') await appointment(row.appointmentId);
 		if (basis === 'cash') for (const row of apptRefundsFromStart) {
 			if (!inWindow(row.effectiveAt)) continue;
@@ -281,10 +332,27 @@ export async function readMarketingReport(
 		}
 	}
 
+	async function readConversions() {
+		for await (const booking of scan(ctx.db.query('bookings').withIndex('by_marketingAttribution_session_startedAt_and_sessionId', q => q.gte('marketingAttribution.session.startedAt', start).lt('marketingAttribution.session.startedAt', end)))) {
+			cache.set(booking._id, booking);
+			await stay(booking._id);
+		}
+		// Read only legacy bookings, rather than one booking range per non-converting raw visit.
+		for await (const booking of scan(ctx.db.query('bookings').withIndex('by_marketingAttribution_session_startedAt_and_sessionId', q => q.eq('marketingAttribution.session.startedAt', undefined).gt('marketingAttribution.sessionId', undefined)))) {
+			const sessionId = booking.marketingAttribution?.sessionId;
+			if (!sessionId || convertedIds.has(sessionId)) continue;
+			const session = await get(sessionId);
+			if (!session || !inWindow(session.startedAt)) continue;
+			cache.set(booking._id, booking);
+			await stay(booking._id);
+		}
+	}
+
 	try {
 		await readNames();
 		await readMoneyByDate();
 		await readSales();
+		await readConversions();
 	} catch (error) {
 		if (!(error instanceof ReadBudgetExceeded)) throw error;
 		data.truncated = true;
@@ -292,11 +360,11 @@ export async function readMarketingReport(
 	// Archived links, coupons and campaigns that a sale, a session or spend still points at.
 	active = reserve;
 	try {
-		const linkIds = new Set([...data.sessions.flatMap(s => s.linkId ? [s.linkId] : []), ...data.sales.flatMap(s => [s.last?.linkId, s.first?.linkId].filter((id): id is Id<'marketingLinks'> => !!id))]);
+		const linkIds = new Set([...data.sessions.flatMap(s => s.linkId ? [s.linkId] : []), ...convertedSessions.flatMap(s => s.linkId ? [s.linkId] : []), ...data.sales.flatMap(s => [s.last?.linkId, s.first?.linkId].filter((id): id is Id<'marketingLinks'> => !!id))]);
 		for (const id of linkIds) if (!seenLinks.has(id)) { const row = await get(id); if (row) addLink(row); }
 		const couponIds = new Set([...data.sales.flatMap(s => s.coupon ? [s.coupon.couponId] : []), ...linkCoupons]);
 		for (const id of couponIds) if (!seenCoupons.has(id)) { const row = await get(id); if (row) addCoupon(row); }
-		const campaignIds = new Set([...data.spend.map(s => s.campaignId), ...data.sessions.flatMap(s => s.campaignId ? [s.campaignId] : []), ...data.links.map(l => l.campaignId), ...data.coupons.flatMap(c => c.campaignId ? [c.campaignId] : []), ...data.sales.flatMap(s => [s.last?.campaignId, s.first?.campaignId, s.coupon?.campaignId].filter((id): id is Id<'marketingCampaigns'> => !!id))]);
+		const campaignIds = new Set([...data.spend.map(s => s.campaignId), ...data.sessions.flatMap(s => s.campaignId ? [s.campaignId] : []), ...convertedSessions.flatMap(s => s.campaignId ? [s.campaignId] : []), ...data.links.map(l => l.campaignId), ...data.coupons.flatMap(c => c.campaignId ? [c.campaignId] : []), ...data.sales.flatMap(s => [s.last?.campaignId, s.first?.campaignId, s.coupon?.campaignId].filter((id): id is Id<'marketingCampaigns'> => !!id))]);
 		for (const id of campaignIds) if (!seenCampaigns.has(id)) { const row = await get(id); if (row) addCampaign(row); }
 	} catch (error) {
 		if (!(error instanceof ReadBudgetExceeded)) throw error;

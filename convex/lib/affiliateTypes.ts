@@ -18,6 +18,8 @@ export const affiliateCandidate = v.object({
   eligible: v.boolean(),
   reason: v.optional(v.string()),
   contactEmail: v.optional(v.string()),
+  /** Absent on legacy snapshots and coupon candidates. */
+  evidence: v.optional(v.union(v.literal("recorded_session"), v.literal("claimed_slug"))),
   linkId: v.optional(v.id("marketingLinks")),
   couponId: v.optional(v.id("coupons")),
 });
