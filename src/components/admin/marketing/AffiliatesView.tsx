@@ -736,8 +736,8 @@ export function CreditReview({
                 </p>
               ))}
             </div>
-            {credit.reason && (
-              <p className="text-sm">Last decision: {credit.reason}</p>
+            {(credit.reasonHidden || credit.reason) && (
+              <p className="text-sm">Last decision: {credit.reasonHidden ? "Reason hidden" : credit.reason}</p>
             )}
             {canReview && (
               <Button
@@ -847,7 +847,7 @@ export function CreditReview({
                   <p>
                     Net {money(h.eligibleNet)} · Approved {money(h.approvedNet)}
                   </p>
-                  {h.reason && <p>{h.reason}</p>}
+                  {(h.reasonHidden || h.reason) && <p>{h.reasonHidden ? "Reason hidden" : h.reason}</p>}
                 </li>
               ))}
             </ol>

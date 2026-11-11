@@ -4,6 +4,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from './lib/marketingReport';
 import { requireMarketingPermission } from './lib/marketingAccess';
 import { requireAdmin } from './lib/adminAuth';
+import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 import { readMarketingReport, reportSpend } from './lib/marketingReportRead';
 import { appendRecordHistory } from './lib/recordHistory';
 import { normalizeCouponCode } from './lib/offers';
@@ -14,8 +15,13 @@ import { readRangeWithinBudget } from './lib/readBudget';
 export const getReport = query({
 	args: { from: v.string(), to: v.string(), basis: reportBasisValidator },
 	handler: async (ctx, args): Promise<ReportData> => {
-		await requireMarketingPermission(ctx, 'view');
-		return readMarketingReport(ctx, args);
+		const access = await requireMarketingPermission(ctx, 'view');
+		const report = await readMarketingReport(ctx, args);
+		if (!canReadMarketingPersonalData(access)) for (const sale of report.sales) {
+			sale.label = 'Guest';
+			if (sale.kind === 'stay') delete sale.ref;
+		}
+		return report;
 	}
 });
 

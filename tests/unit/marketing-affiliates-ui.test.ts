@@ -219,3 +219,19 @@ it.each([
   expect(document.body.textContent).toContain("Guest matches partner contact");
   expect(document.body.textContent).toContain(label);
 });
+
+it("renders hidden decision and history reasons for a read-only credit", async () => {
+  await act(async () => root.render(createElement(CreditReview, {
+    detail: {
+      ...detail!,
+      credit: { ...row, reason: null, reasonHidden: true },
+      history: detail!.history.map(h => ({ ...h, reason: null, reasonHidden: true })),
+    },
+    canReview: false,
+    onReview: vi.fn(), onRefresh: vi.fn(), onClose: vi.fn(),
+  })));
+  expect(document.body.textContent).toContain("Last decision: Reason hidden");
+  expect(document.body.textContent!.match(/Reason hidden/g)).toHaveLength(2);
+  expect(document.body.textContent).not.toMatch(/undefined|null/);
+  expect(button("Approve referral credit")).toBeUndefined();
+});

@@ -68,6 +68,10 @@ export type ReportSale = {
 	bucket: ReportBucket;
 	/** How the touch is known. Only on tracked sales. */
 	evidence?: 'tracked' | 'current_link' | 'scanned';
+	/** Verified attribution.sessionId and its recorded cohort; never includes visitor identity. */
+	session?: { id: Id<'marketingSessions'>; day: string; linkId?: Id<'marketingLinks'>; campaignId?: Id<'marketingCampaigns'> };
+	/** Coupon attribution is retained, but a custom price grants no reportable coupon discount. */
+	customPrice?: boolean;
 	last?: ReportTouch;
 	/** Stays with tracked evidence only. Scanned and current-link sales have no separate first touch. */
 	first?: ReportTouch;

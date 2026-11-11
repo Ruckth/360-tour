@@ -119,6 +119,7 @@ function makeSales(): ReportSale[] {
     const isStay = base.kind === "stay";
     sales.push({
       ...base,
+      ...(base.kind === "stay" && base.evidence === "tracked" ? { session: { id: `session-${n}` as Id<"marketingSessions">, day, linkId: base.last!.linkId, campaignId: base.last!.campaignId } } : {}),
       id: `${base.kind}-${String(n).padStart(3, "0")}`,
       label: NAMES[n % NAMES.length],
       ref: isStay ? `AUR-${String(4100 + n)}` : base.kind === "order" ? `Order #${100 + n}` : "Thai massage 60",
@@ -185,7 +186,7 @@ function makeSessions(): ReportData["sessions"] {
       if (count > 0) rows.push({ day: addDays(window[0], i), linkId: lid(link.id), campaignId: cid(link.campaign), count });
     });
   }
-  // Visits that arrived without a link: diagnostic only, never tracked sessions.
+  // Consented direct arrivals also belong to the overall conversion denominator.
   for (let i = 0; i < 30; i++) rows.push({ day: addDays(FIXTURE_FROM, i), count: 90 + (i % 5) * 7 });
   return rows;
 }

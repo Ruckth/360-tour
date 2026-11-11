@@ -31,6 +31,29 @@ export const migrations = new Migrations<DataModel>(components.migrations);
 /** Runs any migration by name: `{"fn": "migrations:<name>"}`. */
 export const run = migrations.runner();
 
+/** Freeze legacy booking cohorts before raw marketing sessions expire. Safe to rerun. */
+export const backfillMarketingAttributionSession = migrations.define({
+	table: 'bookings',
+	batchSize: 100,
+	migrateOne: async (ctx, booking) => {
+		const attribution = booking.marketingAttribution;
+		if (attribution?.evidence !== 'tracked' || !attribution.sessionId || attribution.session) return;
+		const budget = readBudget(ctx);
+		budget.range();
+		budget.assert();
+		const session = await ctx.db.get(attribution.sessionId);
+		if (!session) return;
+		budget.document(session);
+		budget.assert();
+		reserveWrites(ctx, 1);
+		return { marketingAttribution: { ...attribution, session: {
+			startedAt: session.startedAt,
+			...(session.linkId ? { linkId: session.linkId } : {}),
+			...(session.campaignId ? { campaignId: session.campaignId } : {})
+		} } };
+	}
+});
+
 export const previewInboxLifecycle = internalQuery({
 	args: { paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {

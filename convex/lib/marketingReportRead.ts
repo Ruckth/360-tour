@@ -1,6 +1,7 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
+import { isLegacyManualPaymentCandidate, legacyManualPayment } from './appointmentFinance';
 import { lineNet, round2, orderTitle } from './billMath';
 import { stayMoney, unitemisedStayMoney } from './bookingMoney';
 import { ATTRIBUTION_MODEL, touchFromLink } from './marketingAttribution';
@@ -192,13 +193,20 @@ export async function readMarketingReport(
 		const channel: ReportSale['channel'] = booking.source === 'admin' ? 'admin' : booking.source && booking.source !== 'web' ? 'messaging' : booking.chatSessionId ? 'web_chat' : 'web';
 		const attribution = booking.marketingAttribution;
 		const tracked = (channel === 'web' || channel === 'web_chat') && attribution?.last;
+		// Prefer the cohort frozen on the booking; raw sessions are deleted after the retention period.
+		const sessionId = (channel === 'web' || channel === 'web_chat') && attribution?.evidence === 'tracked' ? attribution.sessionId : undefined;
+		const frozen = sessionId && attribution?.session
+			? { _id: sessionId, ...attribution.session } : null;
+		const session = frozen ?? (sessionId ? await get(sessionId) : null);
 		const sale: ReportSale = {
 			kind: 'stay', id, label: booking.guestName, ...(booking.confirmationCode ? { ref: booking.confirmationCode } : {}), propertyId: booking.propertyId,
 			channel, bucket: channel === 'admin' ? 'staff' : channel === 'messaging' ? 'messaging' : tracked ? 'tracked' : 'unknown',
 			...(tracked ? { evidence: attribution.evidence, last: touch(tracked), ...(attribution.evidence === 'tracked' && attribution.first ? { first: touch(attribution.first) } : {}) } : {}),
+			...(session ? { session: { id: session._id, day: dayOf(session.startedAt), ...(session.linkId ? { linkId: session.linkId } : {}), ...(session.campaignId ? { campaignId: session.campaignId } : {}) } } : {}),
+			customPrice: !!booking.priceOverride,
 			coupon: await coupon(booking.promotion), createdDay: dayOf(booking.createdAt), paidDay, paid: true,
 			collected: round2(sum(recorded, p => p.amount) + legacy),
-			refunded: money.legacyRefund ? money.refunded : sum(refunds, r => r.amount), discount: booking.promotion?.discount ?? 0
+			refunded: money.legacyRefund ? money.refunded : sum(refunds, r => r.amount), discount: booking.priceOverride ? 0 : booking.promotion?.discount ?? 0
 		};
 		const events: ReportMoneyEvent[] = recorded.map(p => ({ saleId: id, kind: 'payment', day: dayOf(p.effectiveAt), amount: p.amount }));
 		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
@@ -243,10 +251,32 @@ export async function readMarketingReport(
 		const appt = await get(id);
 		completed.set(id, null);
 		if (!appt || nonThb(appt)) return null;
-		// Desk payments only: money taken at checkout has no appointmentPayments row and is on its order.
-		const payments = (await rows(ctx.db.query('appointmentPayments').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)))).filter(p => p.status === 'recorded');
-		if (!payments.length) return null;
+		// Keep all rows: a cancelled payment must also prevent a legacy fallback.
+		const allPayments = await rows(ctx.db.query('appointmentPayments').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
+		const payments: { amount: number; effectiveAt: number }[] = allPayments.filter(p => p.status === 'recorded');
+		if (!allPayments.length && !isLegacyManualPaymentCandidate(appt)) return null;
 		const refunds = await rows(ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
+		if (!allPayments.length) {
+			// Mirror the finance correction evidence, with every read charged to this report's budget.
+			const charges = await rows(ctx.db.query('billLines').withIndex('by_appointmentId', q => q.eq('appointmentId', id)));
+			const links = await rows(ctx.db.query('billLineLinks').withIndex('by_appointmentId_and_status', q => q.eq('appointmentId', id).eq('status', 'active')));
+			const orders = [];
+			for (const charge of [...charges, ...links]) {
+				const bill = await get(charge.billId);
+				if (bill && isSettledOrder(bill) && !bill.voidUnreceived) orders.push(bill);
+			}
+			const legacy = await legacyManualPayment(ctx, appt, { payments: allPayments, refunds, orders },
+				async () => {
+					const history: Doc<'appointmentChanges'>[] = [];
+					for await (const change of scan(ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', id)))) {
+						history.push(change);
+						if (history.length > 200) break;
+					}
+					return history;
+				});
+			if (legacy) payments.push({ amount: appt.price, effectiveAt: legacy.at });
+		}
+		if (!payments.length) return null;
 		const ownRefunds = [];
 		for (const refund of refunds) if (!refund.billId || !await order(refund.billId)) ownRefunds.push(refund);
 		const service = appt.serviceNameSnapshot ? null : await get(appt.serviceId);
@@ -274,6 +304,11 @@ export async function readMarketingReport(
 			for await (const row of scan(ctx.db.query('bills').withIndex('by_status_and_paidAt', q => q.eq('status', status).gte('paidAt', start).lt('paidAt', end)))) { cache.set(row._id, row); await order(row._id); }
 		}
 		for await (const row of scan(ctx.db.query('bills').withIndex('by_paymentEffectiveAt', q => q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end)))) { cache.set(row._id, row); await order(row._id); }
+		// Historical Mark paid has no payment row or paidAt; the proven change supplies its date.
+		for await (const row of scan(ctx.db.query('appointmentChanges').withIndex('by_kind_and_at', q => q.eq('kind', 'payment').gte('at', start).lt('at', end)))) {
+			const appt = await get(row.appointmentId);
+			if (appt && isLegacyManualPaymentCandidate(appt)) await appointment(appt._id);
+		}
 		for await (const row of scan(ctx.db.query('appointmentPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)))) if (row.status === 'recorded') await appointment(row.appointmentId);
 		if (basis === 'cash') for (const row of apptRefundsFromStart) {
 			if (!inWindow(row.effectiveAt)) continue;
