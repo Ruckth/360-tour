@@ -2369,7 +2369,7 @@ export const unlinkPaidLine = mutation({
 			lineId: link.lineId, linkId: link._id, amount: link.amount, ...(link.appointmentId ? { appointmentId: link.appointmentId } : { bookingId: link.bookingId })
 		});
 		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
-		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
+		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email, 'payment_unlinked');
 		return { sequence, replayed: false };
 	}
 });

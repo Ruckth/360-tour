@@ -236,20 +236,22 @@ export async function syncAffiliateCredit(
     await appendCreditChange(ctx, (await ctx.db.get(id))!, actor, "created");
     return id;
   }
-  // An explicit unlink moves cash back to the order, rather than refunding the sale.
-  // Require a fresh review if the booking is paid again. Refunds, voids and cancellations
-  // still reverse; retries, reassignment and partner status changes never reopen decisions.
-  const requiresReview =
+  // An unlink moves cash between an order and a booking; it is neither a refund nor new revenue.
+  // A credit it makes ineligible needs a fresh review rather than a permanent reversal, and a credit
+  // reversed while that cash sat elsewhere is reviewed again once the cash returns. Refunds, voids and
+  // cancellations still reverse; retries, reassignment and partner status changes never reopen decisions.
+  const unlinked =
     ineligibilityReason === "payment_unlinked" &&
-    bookingId !== undefined &&
-    sale && "paymentStatus" in sale &&
-    sale.status !== "cancelled" &&
-    sale.paymentStatus !== "refunded" &&
-    sale.paymentStatus !== "failed" &&
-    (sale.amountRefunded ?? 0) === 0;
+    !!sale &&
+    (bookingId === undefined ||
+      ("paymentStatus" in sale &&
+        sale.status !== "cancelled" &&
+        sale.paymentStatus !== "refunded"));
   let state = old.state;
   if (old.state === "approved" && !money.eligible)
-    state = requiresReview ? "pending" : "reversed";
+    state = unlinked ? "pending" : "reversed";
+  else if (old.state === "reversed" && unlinked && money.eligible && money.net > 0)
+    state = "pending";
   const approvedNet = state === "approved" ? money.net : 0;
   if (
     old.eligibleNet === money.net &&
@@ -258,8 +260,11 @@ export async function syncAffiliateCredit(
     old.approvedNet === approvedNet
   )
     return old._id;
+  const reopened = state === "pending" && old.state !== "pending";
   await ctx.db.patch(old._id, {
     state,
+    // A reopened credit carries no decision; its history keeps the earlier one.
+    ...(reopened ? { reason: undefined } : {}),
     eligible: money.eligible,
     eligibleNet: money.net,
     approvedNet,
@@ -270,11 +275,9 @@ export async function syncAffiliateCredit(
     ctx,
     (await ctx.db.get(old._id))!,
     actor,
-    state !== old.state
-      ? state === "pending" ? "review_required" : "reversed"
-      : "amount_changed",
-    state !== old.state && state === "pending"
-      ? "Paid order row unlinked; a new review is required before approving this booking credit."
+    reopened ? "review_required" : state !== old.state ? "reversed" : "amount_changed",
+    reopened
+      ? "A paid order row was unlinked, moving money between this sale and another; review again before approving."
       : undefined,
   );
   return old._id;

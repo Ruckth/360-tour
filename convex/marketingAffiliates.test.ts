@@ -4,7 +4,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 import type { Id } from "./_generated/dataModel";
-import { creditMoney } from "./lib/affiliateCredits";
+import { creditMoney, syncAffiliateCredit } from "./lib/affiliateCredits";
 const modules = import.meta.glob("./**/*.ts");
 beforeEach(() => {
   vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
@@ -411,6 +411,36 @@ it("does not reopen a genuinely cancelled booking credit when its paid room row 
     eligibleNet: 0,
     approvedNet: 0,
   });
+});
+
+it("reopens an approved order credit for review when an unlink returns money after the rest was refunded", async () => {
+  const s = await lateLinkSale();
+  await s.approve((await s.orderCredit())._id);
+  const { linkId } = await s.link();
+  // Refund the order's remaining service money while the room nights sit on the booking.
+  await s.t.run(async (ctx) => {
+    const now = Date.now();
+    const service = (await ctx.db.query("services").first())!;
+    const appointmentId = await ctx.db.insert("serviceAppointments", {
+      serviceId: service._id, staffId: service.staffIds[0], start: now, end: now + 3_600_000,
+      blockedUntil: now + 3_600_000, guestName: "Walk-in", guestPhone: "", source: "admin",
+      status: "completed", paymentStatus: "paid", price: 1000, currency: "THB", confirmationCode: "APPT-1", accessToken: "appt-token", createdAt: now,
+    } as never);
+    await ctx.db.insert("appointmentRefunds", {
+      appointmentId, amount: 900, currency: "THB", method: "cash",
+      reason: "Service refunded", effectiveAt: now, recordedAt: now, recordedBy: "admin@example.com",
+      idempotencyKey: "service-refund", billId: s.orderId, netBefore: 900, netAfter: 0,
+    });
+    await syncAffiliateCredit(ctx, { billId: s.orderId }, "admin@example.com");
+  });
+  expect(await s.orderCredit()).toMatchObject({ state: "reversed", approvedNet: 0 });
+
+  await s.unlink(linkId);
+  const reopened = await s.orderCredit();
+  expect(reopened).toMatchObject({ state: "pending", eligible: true, eligibleNet: 2000, approvedNet: 0 });
+  expect(reopened.reason).toBeUndefined();
+  await s.approve(reopened._id);
+  expect(await s.orderCredit()).toMatchObject({ state: "approved", approvedNet: 2000 });
 });
 
 it("claims email invitations explicitly, binds canonical identity and prevents escalation or forged identity args", async () => {
