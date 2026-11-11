@@ -193,7 +193,10 @@ export async function readMarketingReport(
 		const channel: ReportSale['channel'] = booking.source === 'admin' ? 'admin' : booking.source && booking.source !== 'web' ? 'messaging' : booking.chatSessionId ? 'web_chat' : 'web';
 		const attribution = booking.marketingAttribution;
 		const tracked = (channel === 'web' || channel === 'web_chat') && attribution?.last;
-		const session = tracked && attribution.evidence === 'tracked' && attribution.sessionId ? await get(attribution.sessionId) : null;
+		// Prefer the cohort frozen on the booking; raw sessions are deleted after the retention period.
+		const frozen = tracked && attribution.evidence === 'tracked' && attribution.sessionId && attribution.session
+			? { _id: attribution.sessionId, ...attribution.session } : null;
+		const session = frozen ?? (tracked && attribution.evidence === 'tracked' && attribution.sessionId ? await get(attribution.sessionId) : null);
 		const sale: ReportSale = {
 			kind: 'stay', id, label: booking.guestName, ...(booking.confirmationCode ? { ref: booking.confirmationCode } : {}), propertyId: booking.propertyId,
 			channel, bucket: channel === 'admin' ? 'staff' : channel === 'messaging' ? 'messaging' : tracked ? 'tracked' : 'unknown',

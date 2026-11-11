@@ -660,3 +660,16 @@ it('exposes only the verified session cohort needed for conversion, without visi
 	for (const sale of report.sales) expect(sale.session).toEqual({ id: sessionId, day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId });
 	expect(JSON.stringify(report)).not.toContain('private-visitor-key');
 });
+
+it('keeps session-cohort conversion after the raw session is deleted, using the cohort frozen on the booking', async () => {
+	const s = await setup();
+	const sessionId = await s.t.run(async ctx => {
+		await ctx.db.insert('marketingSessionDays', { day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId, count: 1 });
+		return ctx.db.insert('marketingSessions', { visitorKey: 'private-visitor-key', linkId: s.linkId, campaignId: s.campaignId, startedAt: now, landingPath: '/' });
+	});
+	const last = { linkId: s.linkId, campaignId: s.campaignId, slug: 'spa', campaignName: 'November', source: 'print', medium: 'qr', entry: 'qr' as const };
+	await s.booking({ paymentStatus: 'paid', paidAt: now, marketingAttribution: { model: 'last_touch_30d@1', evidence: 'tracked', sessionId, session: { startedAt: now, linkId: s.linkId, campaignId: s.campaignId }, last, first: last, capturedAt: now } });
+	await s.t.run(ctx => ctx.db.delete(sessionId));
+	const report = await s.report();
+	expect(report.sales[0].session).toEqual({ id: sessionId, day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId });
+});
