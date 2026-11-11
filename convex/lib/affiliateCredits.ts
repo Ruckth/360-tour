@@ -206,6 +206,7 @@ export async function syncAffiliateCredit(
   ctx: MutationCtx,
   source: { bookingId: Id<"bookings"> } | { billId: Id<"bills"> },
   actor = "system:affiliate",
+  ineligibilityReason?: "payment_unlinked",
 ) {
   const bookingId = "bookingId" in source ? source.bookingId : undefined;
   const billId = "billId" in source ? source.billId : undefined;
@@ -235,9 +236,20 @@ export async function syncAffiliateCredit(
     await appendCreditChange(ctx, (await ctx.db.get(id))!, actor, "created");
     return id;
   }
-  // Decisions never reopen on payment retries, reassignment or partner status changes.
-  const state =
-    old.state === "approved" && !money.eligible ? "reversed" : old.state;
+  // An explicit unlink moves cash back to the order, rather than refunding the sale.
+  // Require a fresh review if the booking is paid again. Refunds, voids and cancellations
+  // still reverse; retries, reassignment and partner status changes never reopen decisions.
+  const requiresReview =
+    ineligibilityReason === "payment_unlinked" &&
+    bookingId !== undefined &&
+    sale && "paymentStatus" in sale &&
+    sale.status !== "cancelled" &&
+    sale.paymentStatus !== "refunded" &&
+    sale.paymentStatus !== "failed" &&
+    (sale.amountRefunded ?? 0) === 0;
+  let state = old.state;
+  if (old.state === "approved" && !money.eligible)
+    state = requiresReview ? "pending" : "reversed";
   const approvedNet = state === "approved" ? money.net : 0;
   if (
     old.eligibleNet === money.net &&
@@ -258,7 +270,12 @@ export async function syncAffiliateCredit(
     ctx,
     (await ctx.db.get(old._id))!,
     actor,
-    state !== old.state ? "reversed" : "amount_changed",
+    state !== old.state
+      ? state === "pending" ? "review_required" : "reversed"
+      : "amount_changed",
+    state !== old.state && state === "pending"
+      ? "Paid order row unlinked; a new review is required before approving this booking credit."
+      : undefined,
   );
   return old._id;
 }
