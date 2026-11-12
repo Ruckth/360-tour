@@ -15,8 +15,10 @@ import { createContext, useContext, useMemo, useCallback, type ReactNode } from 
 type Pos = typeof api.pos;
 export type RestoreReview = FunctionReturnType<Pos["restoreCheck"]>;
 export type AppointmentFee = FunctionReturnType<Pos["appointmentFees"]>[number];
-export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appointmentRefunds";
-export type FinancialRows = { corrections: import("convex/_generated/dataModel").Doc<"billCorrections">; audit: import("convex/_generated/dataModel").Doc<"billAudit">; bookingRefunds: Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "_id" | "billId" | "bookingId" | "amount" | "currency" | "method" | "reason" | "effectiveAt" | "recordedAt" | "recordedBy"> & Partial<Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "netBefore" | "netAfter" | "providerRefundId">>; appointmentRefunds: import("convex/_generated/dataModel").Doc<"appointmentRefunds"> };
+export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appointmentRefunds" | "billRefunds";
+/** A POS line refund (orderHistoryPages.billRefunds, pos.refundLine). Its amount is integer satang. */
+export type LineRefund = FunctionReturnType<typeof api.orderHistoryPages.billRefunds>["page"][number];
+export type FinancialRows = { corrections: import("convex/_generated/dataModel").Doc<"billCorrections">; audit: import("convex/_generated/dataModel").Doc<"billAudit">; bookingRefunds: Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "_id" | "billId" | "bookingId" | "amount" | "currency" | "method" | "reason" | "effectiveAt" | "recordedAt" | "recordedBy"> & Partial<Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "netBefore" | "netAfter" | "providerRefundId">>; appointmentRefunds: import("convex/_generated/dataModel").Doc<"appointmentRefunds">; billRefunds: LineRefund };
 type Customers = typeof api.customers;
 export type Catalog = FunctionReturnType<Pos["catalog"]>;
 export type OrderView = NonNullable<FunctionReturnType<Pos["getOrder"]>>;
@@ -55,7 +57,7 @@ type PosAction =
   | "openOrderFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine" | "updateSourceLine"
   | "discardOrder" | "restoreOrder" | "addAppointmentFee"
   | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
-  | "linkPaidLine" | "unlinkPaidLine"
+  | "linkPaidLine" | "unlinkPaidLine" | "refundLine"
   | "applyOrderCoupon" | "removeOrderCoupon" | "recheckOrderCoupon";
 type ApprovalAction = "create" | "approve" | "reject" | "cancel";
 export type CheckoutActions = { [K in PosAction]: (args: FunctionArgs<Pos[K]>) => Promise<FunctionReturnType<Pos[K]>> } & {
@@ -75,6 +77,8 @@ export type CheckoutBackend = {
   useAuditHistory(orderId: OrderId): CustomerPage<FinancialRows["audit"]>;
   useBookingRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["bookingRefunds"]>;
   useAppointmentRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["appointmentRefunds"]>;
+  /** POS line refunds on this receipt, newest first (orderHistoryPages.billRefunds). */
+  useBillRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["billRefunds"]>;
   useCatalog(): Catalog | undefined;
   /** undefined while loading, null when the order doesn't exist. */
   useOrder(orderId: OrderId | null): OrderView | null | undefined;
