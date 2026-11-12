@@ -24,9 +24,10 @@ import { TONES } from "./status-tones";
 type Person = FunctionReturnType<typeof api.staffAccess.listPeople>[number];
 type StaffRole = "manager" | "cashier";
 type Permission = CashierRules["voidPaidSale"];
-type RuleKey = "voidPaidSale" | "customPrice" | "paymentFix";
+type RuleKey = "refund" | "voidPaidSale" | "customPrice" | "paymentFix";
 
 const RULES: { key: RuleKey; label: string }[] = [
+  { key: "refund", label: "Refunds" },
   { key: "voidPaidSale", label: "Void a paid sale" },
   { key: "customPrice", label: "Custom price" },
   { key: "paymentFix", label: "Fix a payment" },
@@ -253,7 +254,7 @@ const isStaleRules = (err: unknown) => {
 };
 
 type Draft = { limit: string } & Record<RuleKey, Permission>;
-const draftOf = (rules: CashierRules): Draft => ({ limit: String(rules.discountLimitPercent), voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
+const draftOf = (rules: CashierRules): Draft => ({ limit: String(rules.discountLimitPercent), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
 
 function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }) {
   const rules = useQuery(api.staffAccess.getCashierRules, {});
@@ -300,6 +301,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
         voidPaidSale: draft.voidPaidSale,
         customPrice: draft.customPrice,
         paymentFix: draft.paymentFix,
+        refund: draft.refund,
       });
       setRevision(saved.revision);
       setDraft(draftOf(saved));
