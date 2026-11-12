@@ -17,19 +17,19 @@ async function setup() {
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   // Two nights at 100: total 200.
-  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
+  const { bookingId, accessToken } = await t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   const read = async () => (await t.run(ctx => ctx.db.get(bookingId)))!;
   const setTotal = (total: number) => t.run(ctx => ctx.db.patch(bookingId, { total }));
   const start = async (sessionId: string) => {
-    const { request } = await t.mutation(internal.payments.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
+    const { request } = await t.mutation(internal.bookings.payments.stripe.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
     if (!request) throw new Error('No checkout request');
-    await t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken, sessionId, url: 'https://checkout.stripe.com/test', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
+    await t.mutation(internal.bookings.payments.stripe.saveCheckoutSession, { bookingId, accessToken, sessionId, url: 'https://checkout.stripe.com/test', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
     return request;
   };
   const complete = (sessionId: string, paymentIntentId: string, amountTotal: number) =>
-    t.mutation(internal.payments.completeCheckout, { bookingId, sessionId, paymentIntentId, amountTotal, currency: 'thb' });
+    t.mutation(internal.bookings.payments.stripe.completeCheckout, { bookingId, sessionId, paymentIntentId, amountTotal, currency: 'thb' });
   const refund = (paymentIntentId: string, chargeId: string, amount: number, amountRefunded: number, eventId = `evt_${chargeId.slice(3)}_${amountRefunded}`) =>
-    t.mutation(internal.payments.recordRefund, { paymentIntentId, chargeId, eventId, eventCreated: now / 1000 - 60, currency: 'thb', amount, amountRefunded, refunds: [] });
+    t.mutation(internal.bookings.payments.stripe.recordRefund, { paymentIntentId, chargeId, eventId, eventCreated: now / 1000 - 60, currency: 'thb', amount, amountRefunded, refunds: [] });
   /** Use actual provider writes so refund/replay tests exercise complete ledger evidence. */
   const seedStripePayment = async (total: number, amountPaid: number) => {
     await start('cs_legacy');

@@ -159,7 +159,7 @@ export async function generateConciergeReply(
 	const isMessaging = channel !== 'web';
  const tools = isMessaging ? [...TOOLS, ...BOOKING_TOOLS] : TOOLS;
 	if (isMessaging && args.bookingFlow) {
-		await ctx.runMutation(internal.bookings.touchChatBookingFlow, { sessionId: args.sessionId, ...(args.durableTurn ? { durableTurn: args.durableTurn } : {}) });
+		await ctx.runMutation(internal.bookings.bookings.touchChatBookingFlow, { sessionId: args.sessionId, ...(args.durableTurn ? { durableTurn: args.durableTurn } : {}) });
 	}
 	const realityDisclosure = getResortRealityDisclosure(args.userMessage, args.siteUrl);
 	if (realityDisclosure) {
@@ -201,7 +201,7 @@ export async function generateConciergeReply(
 		tools,
 		deadlineAt,
 		request: (messages, requestTools, timeoutMs) => callAI(apiBase, apiKey, selectedModel, messages, requestTools, trace => { calls.push(trace); args.llmTrace?.push(trace); }, { timeoutMs }),
-		invalidateProposal: async (name, key) => { await ctx.runMutation(internal.bookings.invalidateChatProposal, { sessionId: args.sessionId, kind: name === 'prepare_booking' ? 'villa' : 'service', deadlineAt, ...(args.durableTurn ? { durableTool: { ...args.durableTurn, key, name } } : {}) }); },
+		invalidateProposal: async (name, key) => { await ctx.runMutation(internal.bookings.bookings.invalidateChatProposal, { sessionId: args.sessionId, kind: name === 'prepare_booking' ? 'villa' : 'service', deadlineAt, ...(args.durableTurn ? { durableTool: { ...args.durableTurn, key, name } } : {}) }); },
 		execute: (name, toolArgs, key) => executeTool(ctx, name, toolArgs, properties, { sessionId: args.sessionId, siteUrl: args.siteUrl, turnStartedAt, deadlineAt, ...(args.durableTurn ? { durableTool: { ...args.durableTurn, key, name } } : {}), bookingProposal: proposalIdentity(session.pendingBookingQuote), serviceProposal: proposalIdentity(session.pendingServiceQuote) }),
 		metrics: {
 			recordModelRequest: ms => recordModelRequest(metrics, ms),

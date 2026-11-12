@@ -5,11 +5,11 @@ import { satangToBaht } from '../shared/money';
 import { resortLocalParts } from './serviceSlots';
 
 type MutationResults = {
-  prepare_booking: FunctionReturnType<typeof internal.bookings.prepareChatBooking>;
-  confirm_booking: FunctionReturnType<typeof internal.bookings.confirmChatBooking>;
+  prepare_booking: FunctionReturnType<typeof internal.bookings.bookings.prepareChatBooking>;
+  confirm_booking: FunctionReturnType<typeof internal.bookings.bookings.confirmChatBooking>;
   prepare_service_booking: FunctionReturnType<typeof internal.serviceBookings.prepareChatServiceBooking>;
   confirm_service_booking: FunctionReturnType<typeof internal.serviceBookings.confirmChatServiceBooking>;
-  cancel_booking: FunctionReturnType<typeof internal.bookings.cancelChatBooking> | FunctionReturnType<typeof internal.serviceBookings.cancelChatServiceBooking>;
+  cancel_booking: FunctionReturnType<typeof internal.bookings.bookings.cancelChatBooking> | FunctionReturnType<typeof internal.serviceBookings.cancelChatServiceBooking>;
 };
 export type MutationToolResult = { [Name in keyof MutationResults]: { name: Name; result: MutationResults[Name] } }[keyof MutationResults];
 

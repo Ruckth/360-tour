@@ -112,7 +112,7 @@ export async function getBlockedDatesByProperty(
   args: { startDate: string; endDate: string; propertyIds: string[] },
 ) {
   return (await withConvexTimeout(
-    client.query(api.availability.getBlockedDatesByProperty, args as never),
+    client.query(api.bookings.calendar.availability.getBlockedDatesByProperty, args as never),
     "Loading blocked dates",
   )) as Record<string, string[]>;
 }
@@ -123,7 +123,7 @@ export async function getBlockedDates(
   args: { propertyId: string; startDate: string; endDate: string },
 ) {
   return (await withConvexTimeout(
-    client.query(api.availability.getBlockedDates, args as never),
+    client.query(api.bookings.calendar.availability.getBlockedDates, args as never),
     "Loading blocked dates",
   )) as string[];
 }
@@ -133,7 +133,7 @@ export async function isPropertyAvailable(
   args: { propertyId: string; checkIn: string; checkOut: string },
 ) {
   return (await withConvexTimeout(
-    client.query(api.availability.isAvailable, args as never),
+    client.query(api.bookings.calendar.availability.isAvailable, args as never),
     "Checking availability",
   )) as boolean;
 }
@@ -156,7 +156,7 @@ export async function createBooking(
 ) {
   const { couponCode, marketing, ...stay } = args;
   return (await withConvexTimeout(
-    client.mutation(api.bookings.create, { ...stay, ...(couponCode ? { couponCode } : {}), ...(marketing ? { marketing } : {}) } as never),
+    client.mutation(api.bookings.bookings.create, { ...stay, ...(couponCode ? { couponCode } : {}), ...(marketing ? { marketing } : {}) } as never),
     "Creating booking",
   )) as CreateBookingResult;
 }
@@ -177,7 +177,7 @@ export async function quoteStay(
   args: { propertySlug: string; checkIn: string; checkOut: string; guests?: number },
 ) {
   return (await withConvexTimeout(
-    client.query(api.bookings.quoteStay, args as never),
+    client.query(api.bookings.bookings.quoteStay, args as never),
     "Quoting stay",
   )) as LiveBookingQuote;
 }
@@ -187,7 +187,7 @@ export async function getPublicBooking(
   args: { id: string; accessToken: string },
 ) {
   return (await withConvexTimeout(
-    client.query(api.bookings.getById, args as never),
+    client.query(api.bookings.bookings.getById, args as never),
     "Loading booking",
   )) as PublicBooking | null;
 }
@@ -197,7 +197,7 @@ export async function createStripeCheckout(
   args: { bookingId: string; accessToken: string },
 ) {
   return (await withConvexTimeout(
-    client.action(api.payments.createCheckout, args as never),
+    client.action(api.bookings.payments.stripe.createCheckout, args as never),
     "Starting secure checkout",
     20_000,
   )) as { url: string };

@@ -108,7 +108,7 @@ export function BookingHistory({
   currency: string;
   villaName: (id: string) => string;
 }) {
-  const { results, status, loadMore } = usePaginatedQuery(api.adminBookings.bookingHistory, { bookingId }, { initialNumItems: PAGE });
+  const { results, status, loadMore } = usePaginatedQuery(api.bookings.admin.bookingHistory, { bookingId }, { initialNumItems: PAGE });
 
   return (
     <section aria-labelledby="booking-history" className="grid gap-2">

@@ -104,7 +104,7 @@ function useAdminBlockedMonths(
       }));
     };
     const cleanups = monthsKey.split(",").filter(Boolean).map((month) => {
-      const watch = client.watchQuery(api.availability.getAdminBlockedDates, {
+      const watch = client.watchQuery(api.bookings.calendar.availability.getAdminBlockedDates, {
         propertyId,
         ...monthBounds(month),
         excludeBookingId,

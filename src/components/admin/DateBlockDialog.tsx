@@ -87,9 +87,9 @@ function HostBlockForm({
   properties: AdminProperty[];
   onClose: () => void;
 }) {
-  const addDateBlocks = useMutation(api.adminBookings.addDateBlocks);
-  const updateDateBlock = useMutation(api.adminBookings.updateDateBlock);
-  const removeDateBlock = useMutation(api.adminBookings.removeDateBlock);
+  const addDateBlocks = useMutation(api.bookings.calendar.addDateBlocks.addDateBlocks);
+  const updateDateBlock = useMutation(api.bookings.calendar.updateDateBlock.updateDateBlock);
+  const removeDateBlock = useMutation(api.bookings.calendar.removeDateBlock.removeDateBlock);
   const confirm = useConfirm();
   // A new block can cover several villas at once (one block per villa); an existing one stays on its villa.
   const [propertyIds, setPropertyIds] = useState<string[]>(() => [
@@ -112,7 +112,7 @@ function HostBlockForm({
   // Date hints only make sense for a single villa; with several, conflicts are reported per villa on save.
   const blockedDates =
     useQuery(
-      api.availability.getBlockedDates,
+      api.bookings.calendar.availability.getBlockedDates,
       propertyId ? { propertyId: propertyId as Id<"properties">, startDate: today, endDate: addDaysIso(today, 365) } : "skip",
     ) ?? [];
   const ownNights = new Set(block && block.propertyId === propertyId ? isoNights(block.start, block.end) : []);

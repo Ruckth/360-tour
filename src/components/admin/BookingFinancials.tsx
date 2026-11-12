@@ -33,8 +33,8 @@ import {
   type RefundMethod,
 } from "./admin-bookings-shared";
 
-type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
-type Financials = NonNullable<FunctionReturnType<typeof api.adminBookings.bookingFinancials>>;
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
+type Financials = NonNullable<FunctionReturnType<typeof api.bookings.admin.bookingFinancials>>;
 type Payment = Financials["payments"][number];
 
 type Dialog =
@@ -51,7 +51,7 @@ type Dialog =
  * corrected from their receipt.
  */
 export function BookingFinancials({ booking }: { booking: BookingDetail }) {
-  const data = useQuery(api.adminBookings.bookingFinancials, { bookingId: booking._id });
+  const data = useQuery(api.bookings.admin.bookingFinancials, { bookingId: booking._id });
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [notice, setNotice] = useState("");
 
@@ -200,7 +200,7 @@ function PaymentRow({ payment, refundable, onAction }: { payment: Payment; refun
 }
 
 function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: BookingDetail; refund: Financials["refunds"][number]; onClose: (done?: string) => void }) {
-  const link = useMutation(api.payments.linkRecordedStripeRefund);
+  const link = useMutation(api.bookings.payments.stripe.linkRecordedStripeRefund);
   const [revision] = useState(booking.revision);
   const [chargeId, setChargeId] = useState("");
   const [refundId, setRefundId] = useState("");
@@ -229,7 +229,7 @@ function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: Booking
 }
 
 function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetail; owed: number; onClose: (done?: string) => void }) {
-  const recordPayment = useMutation(api.adminBookings.recordPayment);
+  const recordPayment = useMutation(api.bookings.commands.recordPayment.recordPayment);
   const [reviewed] = useState(() => ({ revision: booking.revision, owed, key: newAttemptKey("pay") }));
   const [method, setMethod] = useState<DeskPaymentMethod>("cash");
   const [note, setNote] = useState("");
@@ -273,7 +273,7 @@ function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetai
 }
 
 function RefundDialog({ booking, data, initialTarget, onClose }: { booking: BookingDetail; data: Financials; initialTarget?: string; onClose: (done?: string) => void }) {
-  const recordRefund = useMutation(api.adminBookings.recordRefund);
+  const recordRefund = useMutation(api.bookings.commands.recordRefund.recordRefund);
   const { money } = data;
   const [reviewed] = useState(() => ({ revision: data.revision, key: newAttemptKey("refund") }));
   const [attempt, setAttempt] = useState<Parameters<typeof recordRefund>[0] | null>(null);
@@ -342,7 +342,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
 }
 
 function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDetail; payment: Payment; onClose: (done?: string) => void }) {
-  const amendPayment = useMutation(api.adminBookings.amendPayment);
+  const amendPayment = useMutation(api.bookings.commands.amendPayment.amendPayment);
   const [revision] = useState(booking.revision);
   const initialMethod = (DESK_PAYMENT_METHODS as readonly string[]).includes(payment.method) ? (payment.method as DeskPaymentMethod) : "cash";
   const [method, setMethod] = useState<DeskPaymentMethod>(initialMethod);
@@ -398,7 +398,7 @@ function CancelEntryDialog({
   paymentId: Id<"bookingPayments">;
   onClose: (done?: string) => void;
 }) {
-  const cancelPayment = useMutation(api.adminBookings.cancelPayment);
+  const cancelPayment = useMutation(api.bookings.commands.cancelPayment.cancelPayment);
   const [revision] = useState(booking.revision);
   const [reason, setReason] = useState("");
   const done = useDone(onClose, "Payment entry cancelled.");

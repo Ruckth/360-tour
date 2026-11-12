@@ -160,11 +160,11 @@ it('preserves public booking record capabilities without granting nonstaff fallb
   const propertyId = await signed('owner').mutation(api.catalog.adminProperties.create, { name: 'Access villa', slug: 'access-villa' });
   await t.run(ctx => ctx.db.patch(propertyId, { status: 'active', pricePerNight: 100000 }));
   const stay = { propertySlug: 'access-villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '0812345678', checkIn: '2099-01-10', checkOut: '2099-01-12', guests: 2 };
-  const first = await t.mutation(api.bookings.create, stay);
-  const second = await t.mutation(api.bookings.create, { ...stay, checkIn: '2099-02-10', checkOut: '2099-02-12' });
-  expect(await t.query(api.bookings.getById, { id: first.bookingId, accessToken: first.accessToken })).toMatchObject({ total: 200000 });
-  await expect(t.query(api.bookings.getById, { id: first.bookingId, accessToken: second.accessToken })).rejects.toThrow('Booking access denied');
-  await expect(signed('visitor').query(api.bookings.getById, { id: first.bookingId })).rejects.toThrow('Not authorized');
-  expect(await signed('visitor').query(api.bookings.getById, { id: first.bookingId, accessToken: first.accessToken })).toMatchObject({ total: 200000 });
-  expect(await signed('owner').query(api.bookings.getById, { id: first.bookingId })).toMatchObject({ total: 200000 });
+  const first = await t.mutation(api.bookings.bookings.create, stay);
+  const second = await t.mutation(api.bookings.bookings.create, { ...stay, checkIn: '2099-02-10', checkOut: '2099-02-12' });
+  expect(await t.query(api.bookings.bookings.getById, { id: first.bookingId, accessToken: first.accessToken })).toMatchObject({ total: 200000 });
+  await expect(t.query(api.bookings.bookings.getById, { id: first.bookingId, accessToken: second.accessToken })).rejects.toThrow('Booking access denied');
+  await expect(signed('visitor').query(api.bookings.bookings.getById, { id: first.bookingId })).rejects.toThrow('Not authorized');
+  expect(await signed('visitor').query(api.bookings.bookings.getById, { id: first.bookingId, accessToken: first.accessToken })).toMatchObject({ total: 200000 });
+  expect(await signed('owner').query(api.bookings.bookings.getById, { id: first.bookingId })).toMatchObject({ total: 200000 });
 });

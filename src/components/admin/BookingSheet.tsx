@@ -58,7 +58,7 @@ import {
   type AdminProperty,
 } from "./admin-bookings-shared";
 
-type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -78,7 +78,7 @@ export function BookingSheet({
   properties: AdminProperty[];
   onClose: () => void;
 }) {
-  const booking = useQuery(api.adminBookings.getForAdmin, bookingId ? { bookingId } : "skip");
+  const booking = useQuery(api.bookings.admin.getForAdmin, bookingId ? { bookingId } : "skip");
 
   return (
     <Sheet open={Boolean(bookingId)} onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -120,10 +120,10 @@ function BookingDetails({
   properties: AdminProperty[];
   onDeleted: () => void;
 }) {
-  const updateBooking = useMutation(api.adminBookings.updateBooking);
-  const resendBookingEmails = useMutation(api.adminBookings.resendBookingEmails);
-  const deleteBooking = useMutation(api.adminBookings.deleteBooking);
-  const updateNotes = useMutation(api.adminBookings.updateNotes);
+  const updateBooking = useMutation(api.bookings.commands.updateBooking.updateBooking);
+  const resendBookingEmails = useMutation(api.bookings.commands.resendBookingEmails.resendBookingEmails);
+  const deleteBooking = useMutation(api.bookings.commands.deleteBooking.deleteBooking);
+  const updateNotes = useMutation(api.bookings.commands.updateNotes.updateNotes);
   const confirm = useConfirm();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -405,7 +405,7 @@ export function EditBookingDialog({
   properties: AdminProperty[];
   onClose: () => void;
 }) {
-  const editBooking = useMutation(api.adminBookings.editBooking);
+  const editBooking = useMutation(api.bookings.commands.editBooking.editBooking);
   /** The revision this edit was reviewed against; a change made meanwhile is refused, not overwritten. */
   const [revision] = useState(booking.revision);
   const [propertyId, setPropertyId] = useState<string>(booking.propertyId);
@@ -652,7 +652,7 @@ type EditQuoteArgs = {
 export function useBookingEditQuote(args: EditQuoteArgs | null): BookingEditQuoteState {
   const key = args ? JSON.stringify(args) : "";
   const queries = useMemo(
-    (): RequestForQueries => (key ? { quote: { query: api.adminBookings.quoteBookingEdit, args: JSON.parse(key) as EditQuoteArgs } } : {}),
+    (): RequestForQueries => (key ? { quote: { query: api.bookings.admin.quoteBookingEdit, args: JSON.parse(key) as EditQuoteArgs } } : {}),
     [key],
   );
   const result: unknown = useQueries(queries).quote;

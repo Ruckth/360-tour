@@ -11,9 +11,9 @@ afterEach(() => vi.unstubAllEnvs());
 
 /** Starts a sync (takes its ticket) and applies `dates`, as the sync action does after fetching. */
 async function applyFeed(t: ReturnType<typeof convexTest>, sourceId: Id<'icalSources'>, dates: string[]) {
-  const started = await t.mutation(internal.ical.beginSync, { sourceId });
+  const started = await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId });
   if (!started) throw new Error('Calendar not found');
-  return await t.mutation(internal.ical.applySource, { sourceId, ticket: started.ticket, dates });
+  return await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: started.ticket, dates });
 }
 
 it('keeps OTA sources separate and preserves other blocked dates when one is removed', async () => {
@@ -21,12 +21,12 @@ it('keeps OTA sources separate and preserves other blocked dates when one is rem
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
-  const airbnb = await admin.mutation(api.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
-  const booking = await admin.mutation(api.ical.addSource, { propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
+  const airbnb = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
+  const booking = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
   await applyFeed(t, airbnb, ['2030-01-01', '2030-01-02']);
   await applyFeed(t, booking, ['2030-01-02', '2030-01-03']);
-  expect(await t.query(api.availability.getBlockedDates, { propertyId, startDate: '2030-01-01', endDate: '2030-01-03' })).toContain('2030-01-02');
-  await admin.mutation(api.ical.removeSource, { sourceId: airbnb });
+  expect(await t.query(api.bookings.calendar.availability.getBlockedDates, { propertyId, startDate: '2030-01-01', endDate: '2030-01-03' })).toContain('2030-01-02');
+  await admin.mutation(api.bookings.calendar.ical.removeSource, { sourceId: airbnb });
   const remaining = await t.run(async ctx => await ctx.db.query('availability').collect());
   expect(remaining.map(row => row.date).sort()).toEqual(['2030-01-02', '2030-01-03']);
   expect(remaining.every(row => row.icalSourceId === booking)).toBe(true);
@@ -43,7 +43,7 @@ it('exports future bookings even when more than 500 past bookings exist', async 
     const futureId = await insertFixture(ctx, 'bookings', { ...base, checkIn: futureCheckIn, checkOut: futureCheckOut });
     return { futureId };
   });
-  const exported = await t.query(internal.ical.getExport, { token: 'export-token' });
+  const exported = await t.query(internal.bookings.calendar.ical.getExport, { token: 'export-token' });
   expect(exported?.bookings).toEqual([{ id: futureId, start: futureCheckIn, end: futureCheckOut }]);
 });
 
@@ -52,28 +52,28 @@ async function sourceSetup() {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
-  const sourceId = await admin.mutation(api.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
+  const sourceId = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   return { t, admin, sourceId };
 }
 
 it('edits a source and relabels its imported nights', async () => {
   const { t, admin, sourceId } = await sourceSetup();
   await applyFeed(t, sourceId, ['2030-01-01']);
-  await admin.mutation(api.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'https://example.com/agoda.ics' });
+  await admin.mutation(api.bookings.calendar.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'https://example.com/agoda.ics' });
   const source = await t.run(async ctx => await ctx.db.get(sourceId));
   expect(source).toMatchObject({ platform: 'agoda', icalUrl: 'https://example.com/agoda.ics' });
   expect(source?.lastSyncedAt).toBeUndefined();
   expect((await t.run(async ctx => await ctx.db.query('availability').collect())).map(row => row.source)).toEqual(['agoda']);
-  await expect(admin.mutation(api.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'http://127.0.0.1/x.ics' })).rejects.toThrow();
-  await expect(t.mutation(api.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics' })).rejects.toThrow();
+  await expect(admin.mutation(api.bookings.calendar.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: 'http://127.0.0.1/x.ics' })).rejects.toThrow();
+  await expect(t.mutation(api.bookings.calendar.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics' })).rejects.toThrow();
 });
 
 it('ignores a fetched feed after its source URL changes', async () => {
   const { t, admin, sourceId } = await sourceSetup();
   await applyFeed(t, sourceId, ['2030-01-01']);
-  const inFlight = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
-  await admin.mutation(api.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: 'https://example.com/new.ics' });
-  expect(await t.mutation(internal.ical.applySource, { sourceId, ticket: inFlight.ticket, dates: ['2030-01-02'] })).toBeNull();
+  const inFlight = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
+  await admin.mutation(api.bookings.calendar.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: 'https://example.com/new.ics' });
+  expect(await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: inFlight.ticket, dates: ['2030-01-02'] })).toBeNull();
   expect((await t.run(ctx => ctx.db.get(sourceId)))?.lastSyncedAt).toBeUndefined();
   expect((await t.run(ctx => ctx.db.query('availability').collect())).map(row => row.date)).toEqual(['2030-01-01']);
 });
@@ -84,12 +84,12 @@ it('syncs one source on demand and reports the result', async () => {
   const end = new Date(Date.now() + 12 * 86_400_000).toISOString().slice(0, 10).replaceAll('-', '');
   const feed = `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:${start}\r\nDTEND;VALUE=DATE:${end}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
   vi.stubGlobal('fetch', vi.fn(async () => new Response(feed, { status: 200 })));
-  expect(await admin.action(api.ical.syncSource, { sourceId })).toEqual({ ok: true, blockedNights: 2, conflicts: 0 });
+  expect(await admin.action(api.bookings.calendar.ical.syncSource, { sourceId })).toEqual({ ok: true, blockedNights: 2, conflicts: 0 });
   expect(await t.run(async ctx => (await ctx.db.query('availability').collect()).length)).toBe(2);
   vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })));
-  expect(await admin.action(api.ical.syncSource, { sourceId })).toEqual({ ok: false, error: 'Feed returned 500' });
+  expect(await admin.action(api.bookings.calendar.ical.syncSource, { sourceId })).toEqual({ ok: false, error: 'Feed returned 500' });
   expect((await t.run(async ctx => await ctx.db.get(sourceId)))?.lastSyncError).toBe('Feed returned 500');
-  await expect(t.action(api.ical.syncSource, { sourceId })).rejects.toThrow();
+  await expect(t.action(api.bookings.calendar.ical.syncSource, { sourceId })).rejects.toThrow();
   vi.unstubAllGlobals();
 });
 
@@ -100,44 +100,44 @@ describe('sync tickets', () => {
 
   it('drops a feed fetched from URL A after the URL went A -> B -> A', async () => {
     const { t, admin, sourceId } = await sourceSetup();
-    const fetchedA = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
+    const fetchedA = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
     expect(fetchedA.icalUrl).toBe(urlA);
-    await admin.mutation(api.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: urlB });
-    await admin.mutation(api.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: urlA });
-    expect(await t.mutation(internal.ical.applySource, { sourceId, ticket: fetchedA.ticket, dates: ['2030-01-01'] })).toBeNull();
-    await t.mutation(internal.ical.recordSyncError, { sourceId, ticket: fetchedA.ticket, message: 'old failure' });
+    await admin.mutation(api.bookings.calendar.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: urlB });
+    await admin.mutation(api.bookings.calendar.ical.updateSource, { sourceId, platform: 'airbnb', icalUrl: urlA });
+    expect(await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: fetchedA.ticket, dates: ['2030-01-01'] })).toBeNull();
+    await t.mutation(internal.bookings.calendar.ical.recordSyncError, { sourceId, ticket: fetchedA.ticket, message: 'old failure' });
     expect(await rows(t)).toEqual([]);
     expect((await t.run(ctx => ctx.db.get(sourceId)))?.lastSyncError).toBeUndefined();
   });
 
   it('lets only the newest of two overlapping syncs write, whatever order they finish in', async () => {
     const { t, sourceId } = await sourceSetup();
-    const first = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
-    const second = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
+    const first = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
+    const second = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
     // The newer sync lands first; the older result and the older error are both stale.
-    expect(await t.mutation(internal.ical.applySource, { sourceId, ticket: second.ticket, dates: ['2030-02-01'] })).toMatchObject({ blockedNights: 1 });
-    expect(await t.mutation(internal.ical.applySource, { sourceId, ticket: first.ticket, dates: ['2030-01-01'] })).toBeNull();
-    await t.mutation(internal.ical.recordSyncError, { sourceId, ticket: first.ticket, message: 'timeout' });
+    expect(await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: second.ticket, dates: ['2030-02-01'] })).toMatchObject({ blockedNights: 1 });
+    expect(await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: first.ticket, dates: ['2030-01-01'] })).toBeNull();
+    await t.mutation(internal.bookings.calendar.ical.recordSyncError, { sourceId, ticket: first.ticket, message: 'timeout' });
     const source = await t.run(ctx => ctx.db.get(sourceId));
     expect(source?.lastSyncError).toBeUndefined();
     expect(source?.lastSyncedAt).toBeTypeOf('number');
     expect(await rows(t)).toEqual(['2030-02-01']);
 
     // The other order: the older sync finishes first but a newer one had already started.
-    const third = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
-    const fourth = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
-    expect(await t.mutation(internal.ical.applySource, { sourceId, ticket: third.ticket, dates: ['2030-03-01'] })).toBeNull();
-    await t.mutation(internal.ical.recordSyncError, { sourceId, ticket: fourth.ticket, message: 'Feed returned 500' });
+    const third = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
+    const fourth = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
+    expect(await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: third.ticket, dates: ['2030-03-01'] })).toBeNull();
+    await t.mutation(internal.bookings.calendar.ical.recordSyncError, { sourceId, ticket: fourth.ticket, message: 'Feed returned 500' });
     expect((await t.run(ctx => ctx.db.get(sourceId)))?.lastSyncError).toBe('Feed returned 500');
     expect(await rows(t)).toEqual(['2030-02-01']);
   });
 
   it('keeps a platform change safe for a sync in flight', async () => {
     const { t, admin, sourceId } = await sourceSetup();
-    const inFlight = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
-    await admin.mutation(api.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: urlA });
+    const inFlight = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
+    await admin.mutation(api.bookings.calendar.ical.updateSource, { sourceId, platform: 'agoda', icalUrl: urlA });
     // Same URL, so the fetched feed still applies, labelled with the current platform.
-    await t.mutation(internal.ical.applySource, { sourceId, ticket: inFlight.ticket, dates: ['2030-04-01'] });
+    await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: inFlight.ticket, dates: ['2030-04-01'] });
     expect((await t.run(ctx => ctx.db.query('availability').collect())).map(row => row.source)).toEqual(['agoda']);
   });
 
@@ -145,11 +145,11 @@ describe('sync tickets', () => {
     vi.useFakeTimers();
     try {
       const { t, admin, sourceId } = await sourceSetup();
-      const inFlight = (await t.mutation(internal.ical.beginSync, { sourceId }))!;
-      await admin.mutation(api.ical.removeSource, { sourceId });
-      expect(await t.mutation(internal.ical.beginSync, { sourceId })).toBeNull();
-      expect(await t.mutation(internal.ical.applySource, { sourceId, ticket: inFlight.ticket, dates: ['2030-05-01'] })).toBeNull();
-      await t.mutation(internal.ical.recordSyncError, { sourceId, ticket: inFlight.ticket, message: 'late' });
+      const inFlight = (await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId }))!;
+      await admin.mutation(api.bookings.calendar.ical.removeSource, { sourceId });
+      expect(await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId })).toBeNull();
+      expect(await t.mutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: inFlight.ticket, dates: ['2030-05-01'] })).toBeNull();
+      await t.mutation(internal.bookings.calendar.ical.recordSyncError, { sourceId, ticket: inFlight.ticket, message: 'late' });
       await t.finishAllScheduledFunctions(vi.runAllTimers);
       expect(await t.run(ctx => ctx.db.get(sourceId))).toBeNull();
       expect(await rows(t)).toEqual([]);
@@ -165,7 +165,7 @@ it('keeps existing OTA nights when a 200 response holds a truncated calendar', a
   try {
     const { t, admin, sourceId } = await sourceSetup();
     const source = await t.run(async ctx => await ctx.db.get(sourceId));
-    const otherSource = await admin.mutation(api.ical.addSource, { propertyId: source!.propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
+    const otherSource = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId: source!.propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
     await applyFeed(t, sourceId, ['2030-01-10', '2030-01-11']);
     await applyFeed(t, otherSource, ['2030-01-20']);
     const rows = async () => (await t.run(async ctx => await ctx.db.query('availability').collect())).map(r => `${r.date}:${r.icalSourceId === sourceId ? 'a' : 'b'}`).sort();
@@ -173,13 +173,13 @@ it('keeps existing OTA nights when a 200 response holds a truncated calendar', a
     const respond = (body: string) => vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status: 200 })));
 
     respond('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20300110\r\nDTEND;VALUE=DATE:20300112\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20300115\r\n');
-    const truncated = await admin.action(api.ical.syncSource, { sourceId });
+    const truncated = await admin.action(api.bookings.calendar.ical.syncSource, { sourceId });
     expect(truncated).toMatchObject({ ok: false, error: expect.stringContaining('Malformed calendar') });
     expect(await rows()).toEqual(before);
     expect((await t.run(async ctx => await ctx.db.get(sourceId)))?.lastSyncError).toContain('Malformed calendar');
 
     respond('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n');
-    expect(await admin.action(api.ical.syncSource, { sourceId })).toEqual({ ok: true, blockedNights: 0, conflicts: 0 });
+    expect(await admin.action(api.bookings.calendar.ical.syncSource, { sourceId })).toEqual({ ok: true, blockedNights: 0, conflicts: 0 });
     expect(await rows()).toEqual(['2030-01-20:b']);
   } finally {
     vi.unstubAllGlobals();
@@ -192,35 +192,35 @@ describe('OTA nights that overlap a host block or direct booking', () => {
   async function conflictSetup() {
     const { t, admin, sourceId } = await sourceSetup();
     const propertyId = (await t.run(async ctx => await ctx.db.get(sourceId)))!.propertyId;
-    const free = (range: { checkIn: string; checkOut: string }) => t.query(api.availability.isAvailable, { propertyId, ...range });
+    const free = (range: { checkIn: string; checkOut: string }) => t.query(api.bookings.calendar.availability.isAvailable, { propertyId, ...range });
     return { t, admin, sourceId, propertyId, free };
   }
 
   it('stay blocked after the host block is removed, and free only once the feed is removed', async () => {
     const { t, admin, sourceId, propertyId, free } = await conflictSetup();
-    const blockId = await admin.mutation(api.adminBookings.addDateBlock, { propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay' });
+    const blockId = await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay' });
     expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
     // Every later sync keeps reporting the overlap.
     expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
     expect((await t.run(async ctx => await ctx.db.get(sourceId)))?.lastSyncError).toContain('1 date(s) overlap');
 
-    await admin.mutation(api.adminBookings.removeDateBlock, { blockId });
+    await admin.mutation(api.bookings.calendar.removeDateBlock.removeDateBlock, { blockId });
     expect(await free(night)).toBe(false);
     expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 0 });
 
-    await admin.mutation(api.ical.removeSource, { sourceId });
+    await admin.mutation(api.bookings.calendar.ical.removeSource, { sourceId });
     expect(await free(night)).toBe(true);
   });
 
   it('lets a host block that held the night be edited, but not extended onto other OTA nights', async () => {
     const { t, admin, sourceId, propertyId, free } = await conflictSetup();
-    const blockId = await admin.mutation(api.adminBookings.addDateBlock, { propertyId, start: '2030-01-09', end: '2030-01-11', reason: 'Owner stay' });
+    const blockId = await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-09', end: '2030-01-11', reason: 'Owner stay' });
     await applyFeed(t, sourceId, ['2030-01-10', '2030-01-12']);
-    await admin.mutation(api.adminBookings.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay, shortened' });
-    await expect(admin.mutation(api.adminBookings.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-13', reason: 'Longer' }))
+    await admin.mutation(api.bookings.calendar.updateDateBlock.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay, shortened' });
+    await expect(admin.mutation(api.bookings.calendar.updateDateBlock.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-13', reason: 'Longer' }))
       .rejects.toThrow('2030-01-12 is already booked or blocked.');
-    await expect(admin.mutation(api.adminBookings.addDateBlock, { propertyId, start: '2030-01-12', end: '2030-01-13', reason: 'New' })).rejects.toThrow();
-    await admin.mutation(api.adminBookings.removeDateBlock, { blockId });
+    await expect(admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-12', end: '2030-01-13', reason: 'New' })).rejects.toThrow();
+    await admin.mutation(api.bookings.calendar.removeDateBlock.removeDateBlock, { blockId });
     expect(await free(night)).toBe(false);
     expect(await free({ checkIn: '2030-01-09', checkOut: '2030-01-10' })).toBe(true);
   });
@@ -228,21 +228,21 @@ describe('OTA nights that overlap a host block or direct booking', () => {
   it.each(['confirmed', 'pending'] as const)('stay blocked after a %s direct booking is cancelled, while the booking stays editable', async status => {
     const { t, admin, sourceId, free } = await conflictSetup();
     const stay = { propertySlug: 'villa', guestName: 'Guest', guestPhone: '66911111111', guests: 2, ...night };
-    const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
+    const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
     if (status === 'pending') await t.run(ctx => ctx.db.patch(bookingId, { status, source: 'web' }));
     expect(await applyFeed(t, sourceId, ['2030-01-10', '2030-01-11'])).toEqual({ blockedNights: 2, conflicts: 1 });
 
     const propertyId = (await t.run(async ctx => await ctx.db.get(bookingId)))!.propertyId;
     const edit = { bookingId, propertyId, guestName: 'Guest Renamed', guestPhone: stay.guestPhone, guests: 1, ...night };
-    await admin.mutation(api.adminBookings.editBooking, edit);
-    await expect(admin.mutation(api.adminBookings.editBooking, { ...edit, checkOut: '2030-01-12' }))
+    await admin.mutation(api.bookings.commands.editBooking.editBooking, edit);
+    await expect(admin.mutation(api.bookings.commands.editBooking.editBooking, { ...edit, checkOut: '2030-01-12' }))
       .rejects.toThrow('Some of these dates are blocked');
-    await expect(admin.mutation(api.adminBookings.createBooking, { ...stay, guestName: 'Other', checkIn: '2030-01-11', checkOut: '2030-01-12', confirmed: true }))
+    await expect(admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, guestName: 'Other', checkIn: '2030-01-11', checkOut: '2030-01-12', confirmed: true }))
       .rejects.toThrow();
 
-    await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'cancel' });
+    await admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'cancel' });
     expect(await free(night)).toBe(false);
-    await admin.mutation(api.ical.removeSource, { sourceId });
+    await admin.mutation(api.bookings.calendar.ical.removeSource, { sourceId });
     expect(await free(night)).toBe(true);
   });
 });

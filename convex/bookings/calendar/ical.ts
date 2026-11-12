@@ -1,18 +1,19 @@
-import { maintenancePaused, adminMutation, adminQuery, adminAction } from './auth/model';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { internalAction, internalMutation, internalQuery } from './auth/model';
-import type { ActionCtx, MutationCtx } from './_generated/server';
-import { internal } from './_generated/api';
-import { assertSafeIcalUrl, blockedDatesFromIcal } from './lib/ical';
-import { resortTodayIso } from './lib/dates';
-import type { Doc, Id } from './_generated/dataModel';
-import { assertValidIsoDate } from './lib/validation';
-import { readBudget } from './lib/readBudget';
-import { nightRows } from './lib/stayOverlap';
+import { internal } from '../../_generated/api';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { ActionCtx, MutationCtx } from '../../_generated/server';
+import { adminAction, adminMutation, adminQuery, internalAction, internalMutation, internalQuery, maintenancePaused } from '../../auth/model';
+import { resortTodayIso } from '../../lib/dates';
+import { assertSafeIcalUrl, blockedDatesFromIcal } from '../../lib/ical';
+import { readBudget } from '../../lib/readBudget';
+import { nightRows } from '../../lib/stayOverlap';
+import { assertValidIsoDate } from '../../lib/validation';
 
 const DAY_MS = 86_400_000;
+
 const MAX_FEED_BYTES = 1_000_000;
+
 const platformValidator = v.union(v.literal('airbnb'), v.literal('booking_com'), v.literal('agoda'));
 
 export const addSource = adminMutation({
@@ -33,8 +34,10 @@ export const listSources = adminQuery({
 
 /** Rows handled per transaction when relabelling, pruning or deleting one feed's nights. */
 const SOURCE_ROW_BATCH = 200;
+
 /** A sync covers today plus 366 days; anything much larger is not a real feed. */
 const MAX_FEED_NIGHTS = 400;
+
 type OtaPlatform = 'airbnb' | 'booking_com' | 'agoda';
 
 async function liveSource(ctx: MutationCtx, sourceId: Id<'icalSources'>) {
@@ -46,7 +49,7 @@ async function liveSource(ctx: MutationCtx, sourceId: Id<'icalSources'>) {
 async function relabelSourceRows(ctx: MutationCtx, sourceId: Id<'icalSources'>, platform: OtaPlatform, cursor: string | null) {
   const page = await ctx.db.query('availability').withIndex('by_icalSourceId', q => q.eq('icalSourceId', sourceId)).paginate({ numItems: SOURCE_ROW_BATCH, cursor });
   for (const row of page.page) if (row.source !== platform) await ctx.db.patch(row._id, { source: platform });
-  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.ical.continueRelabelSource, { sourceId, platform, cursor: page.continueCursor });
+  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.bookings.calendar.ical.continueRelabelSource, { sourceId, platform, cursor: page.continueCursor });
 }
 
 export const continueRelabelSource = internalMutation({
@@ -86,7 +89,7 @@ export const updateSource = adminMutation({
 async function purgeSourceBatch(ctx: MutationCtx, sourceId: Id<'icalSources'>) {
   const rows = await ctx.db.query('availability').withIndex('by_icalSourceId', q => q.eq('icalSourceId', sourceId)).take(SOURCE_ROW_BATCH);
   for (const row of rows) await ctx.db.delete(row._id);
-  if (rows.length === SOURCE_ROW_BATCH) await ctx.scheduler.runAfter(0, internal.ical.continueRemoveSource, { sourceId });
+  if (rows.length === SOURCE_ROW_BATCH) await ctx.scheduler.runAfter(0, internal.bookings.calendar.ical.continueRemoveSource, { sourceId });
   else await ctx.db.delete(sourceId);
 }
 
@@ -166,7 +169,7 @@ async function pruneSourceRows(ctx: MutationCtx, sourceId: Id<'icalSources'>, ge
   const wanted = new Set(dates);
   const page = await ctx.db.query('availability').withIndex('by_icalSourceId', q => q.eq('icalSourceId', sourceId)).paginate({ numItems: SOURCE_ROW_BATCH, cursor });
   for (const row of page.page) if (!wanted.has(row.date)) await ctx.db.delete(row._id);
-  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.ical.continuePruneSource, { sourceId, generation, dates, cursor: page.continueCursor });
+  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.bookings.calendar.ical.continuePruneSource, { sourceId, generation, dates, cursor: page.continueCursor });
 }
 
 export const continuePruneSource = internalMutation({
@@ -250,7 +253,7 @@ type SyncResult = { ok: true; blockedNights: number; conflicts: number } | { ok:
 const SUPERSEDED_ERROR = 'This calendar changed while syncing. Sync it again.';
 
 async function syncSourceFeed(ctx: ActionCtx, sourceId: Id<'icalSources'>): Promise<SyncResult> {
-  const started: { ticket: number; icalUrl: string } | null = await ctx.runMutation(internal.ical.beginSync, { sourceId });
+  const started: { ticket: number; icalUrl: string } | null = await ctx.runMutation(internal.bookings.calendar.ical.beginSync, { sourceId });
   if (!started) return { ok: false, error: 'Calendar not found' };
   try {
     const response = await fetch(assertSafeIcalUrl(started.icalUrl), { redirect: 'error', headers: { Accept: 'text/calendar' }, signal: AbortSignal.timeout(10_000) });
@@ -260,12 +263,12 @@ async function syncSourceFeed(ctx: ActionCtx, sourceId: Id<'icalSources'>): Prom
     const from = resortTodayIso();
     const to = new Date(Date.parse(`${from}T00:00:00Z`) + 366 * DAY_MS).toISOString().slice(0, 10);
     const dates = blockedDatesFromIcal(text, from, to);
-    const applied: { blockedNights: number; conflicts: number } | null = await ctx.runMutation(internal.ical.applySource, { sourceId, ticket: started.ticket, dates });
+    const applied: { blockedNights: number; conflicts: number } | null = await ctx.runMutation(internal.bookings.calendar.ical.applySource, { sourceId, ticket: started.ticket, dates });
     if (!applied) return { ok: false, error: SUPERSEDED_ERROR };
     return { ok: true, blockedNights: applied.blockedNights, conflicts: applied.conflicts };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Calendar sync failed';
-    await ctx.runMutation(internal.ical.recordSyncError, { sourceId, ticket: started.ticket, message });
+    await ctx.runMutation(internal.bookings.calendar.ical.recordSyncError, { sourceId, ticket: started.ticket, message });
     return { ok: false, error: message };
   }
 }
@@ -286,7 +289,7 @@ export const syncAll = internalAction({
     if (maintenancePaused()) return;
     let cursor: string | null = null;
     do {
-      const page: { page: Doc<'icalSources'>[]; isDone: boolean; continueCursor: string } = await ctx.runQuery(internal.ical.pageSources, { paginationOpts: { numItems: 20, cursor } });
+      const page: { page: Doc<'icalSources'>[]; isDone: boolean; continueCursor: string } = await ctx.runQuery(internal.bookings.calendar.ical.pageSources, { paginationOpts: { numItems: 20, cursor } });
       for (const source of page.page) if (!source.deletingAt) await syncSourceFeed(ctx, source._id);
       cursor = page.isDone ? null : page.continueCursor;
     } while (cursor);

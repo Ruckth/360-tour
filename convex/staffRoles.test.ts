@@ -114,8 +114,8 @@ describe('staff permissions and invitations', () => {
     expect(await s.cashier.query(api.customers.searchCustomers, { query: 'Alice' })).toMatchObject([{ name: 'Alice' }]);
     expect((await s.cashier.query(api.customers.browseCustomers, { query: '', archived: false, paginationOpts: { numItems: 20, cursor: null } })).page).toEqual([]);
     const bookingId = await s.booking();
-    await expect(s.cashier.query(api.adminBookings.getForAdmin, { bookingId })).rejects.toThrow('Not authorized');
-    await expect(s.cashier.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 100, currency: 'THB', method: 'cash', reason: 'No', idempotencyKey: 'cashier-refund' })).rejects.toThrow('Not authorized');
+    await expect(s.cashier.query(api.bookings.admin.getForAdmin, { bookingId })).rejects.toThrow('Not authorized');
+    await expect(s.cashier.mutation(api.bookings.commands.recordRefund.recordRefund, { bookingId, expectedRevision: 0, amount: 100, currency: 'THB', method: 'cash', reason: 'No', idempotencyKey: 'cashier-refund' })).rejects.toThrow('Not authorized');
   });
 
   it('uses identity-bound claims, expiry, explicit resend, role change and revoke', async () => {

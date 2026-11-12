@@ -50,7 +50,7 @@ export function calendarMonths({
   return [...months].filter((month) => allowPast || month >= first).sort();
 }
 
-/** Most villa-nights one `getBlockedDatesByProperty` call may cover (MAX_PROPERTY_DAYS in convex/availability.ts). */
+/** Most villa-nights one `getBlockedDatesByProperty` call may cover (MAX_PROPERTY_DAYS in convex/bookings/calendar/availability.ts). */
 export const MAX_PROPERTY_DAYS = 3100;
 
 /** Splits villa ids into calls that fit the per-call villa-nights budget for a stay of `nights`. */

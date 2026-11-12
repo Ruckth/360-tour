@@ -56,12 +56,12 @@ describe('report money', () => {
 		const s = await setup();
 		const bookingId = await s.booking({ source: 'web', accessToken: 'token' });
 		async function online(sessionId: string, paymentIntentId: string, amount: number) {
-			const { request } = await s.t.mutation(internal.payments.beginCheckout, { bookingId, accessToken: 'token', siteUrl: 'https://example.com' });
+			const { request } = await s.t.mutation(internal.bookings.payments.stripe.beginCheckout, { bookingId, accessToken: 'token', siteUrl: 'https://example.com' });
 			if (!request) throw new Error('Expected a new checkout');
-			await s.t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken: 'token', sessionId, url: 'https://checkout.stripe.com/test', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
+			await s.t.mutation(internal.bookings.payments.stripe.saveCheckoutSession, { bookingId, accessToken: 'token', sessionId, url: 'https://checkout.stripe.com/test', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
 			const args = { bookingId, sessionId, paymentIntentId, amountTotal: amount, currency: 'thb' };
-			await s.t.mutation(internal.payments.completeCheckout, args);
-			return () => s.t.mutation(internal.payments.completeCheckout, args);
+			await s.t.mutation(internal.bookings.payments.stripe.completeCheckout, args);
+			return () => s.t.mutation(internal.bookings.payments.stripe.completeCheckout, args);
 		}
 		const replayFirst = await online('cs_first', 'pi_first', 100000);
 		await s.t.run(ctx => ctx.db.patch(bookingId, { total: 200000, subtotal: 200000 }));
@@ -87,9 +87,9 @@ describe('report money', () => {
 		await s.t.run(ctx => ctx.db.patch(bookingId, { total: 280000 }));
 		const current = (await s.t.run(ctx => ctx.db.get(bookingId)))!;
 		const refund = { bookingId, expectedRevision: current.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash' as const, orderId: orderId, reason: 'Shorter stay', idempotencyKey: 'stay-pos-refund', effectiveAt: now };
-		await s.admin.mutation(api.adminBookings.recordRefund, refund);
+		await s.admin.mutation(api.bookings.commands.recordRefund.recordRefund, refund);
 		const refunded = await s.report('cash');
-		await s.admin.mutation(api.adminBookings.recordRefund, refund);
+		await s.admin.mutation(api.bookings.commands.recordRefund.recordRefund, refund);
 		expect(await s.report('cash')).toEqual(refunded);
 		expect(refunded.events.filter(e => e.kind === 'refund')).toEqual([{ saleId: bookingId, kind: 'refund', day: '2026-11-09', amount: 20000 }]);
 		expect(refunded.sales.find(r => r.id === bookingId)?.refunded).toBe(20000);
@@ -100,10 +100,10 @@ describe('report money', () => {
 		const s = await setup();
 		const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation' });
 		await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-		const { bookingId } = await s.t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
+		const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
 		expect((await s.report()).sales).toEqual([]);
-		await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
-		await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+		await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
+		await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
 		await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'archived' });
 		const report = await s.report();
 		expect(report.sales).toMatchObject([{ id: bookingId, collected: 90000, discount: 10000, coupon: { couponId, code: 'VILLA100', campaignId: s.campaignId } }]);
@@ -529,10 +529,10 @@ it('reports zero coupon discount for a custom-price stay without changing coupon
 	const s = await setup();
 	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation' });
 	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-	const { bookingId } = await s.t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Custom guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
-	await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+	const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Custom guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
+	await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
 	const before = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', couponId)).unique() }));
-	await s.admin.mutation(api.adminBookings.editBooking, { bookingId, propertyId: s.propertyId, expectedRevision: before.booking!.revision ?? 0, checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, guestName: 'Custom guest', guestPhone: '+66811112222', guestEmail: 'guest@example.com', priceOverride: { total: 75000, reason: 'Agreed price' }, notifyGuest: false });
+	await s.admin.mutation(api.bookings.commands.editBooking.editBooking, { bookingId, propertyId: s.propertyId, expectedRevision: before.booking!.revision ?? 0, checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, guestName: 'Custom guest', guestPhone: '+66811112222', guestEmail: 'guest@example.com', priceOverride: { total: 75000, reason: 'Agreed price' }, notifyGuest: false });
 	for (const basis of ['cash', 'cohort'] as const) expect((await s.report(basis)).sales).toMatchObject([{ id: bookingId, customPrice: true, discount: 0, coupon: { couponId, code: 'VILLA100' } }]);
 	const after = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.get(before.redemption!._id) }));
 	expect(after.booking!.promotion).toEqual(before.booking!.promotion);
@@ -548,8 +548,8 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'BOTH100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation_and_services' });
 	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
 	await s.admin.mutation(api.marketingAffiliates.assignCoupon, { affiliateId, couponId });
-	const { bookingId } = await s.t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Private Guest', guestEmail: 'private@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'BOTH100' });
-	await s.t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+	const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Private Guest', guestEmail: 'private@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'BOTH100' });
+	await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
 	await s.t.run(ctx => ctx.db.patch(bookingId, { confirmationCode: 'PRIVATE-CONF' }));
 	const { orderId } = await s.admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
 	await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'BOTH100' });

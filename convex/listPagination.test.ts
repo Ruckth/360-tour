@@ -65,11 +65,11 @@ describe("bounded list queries", () => {
       }
     });
 
-    const firstPage = await admin.query(api.bookings.listByProperty, {
+    const firstPage = await admin.query(api.bookings.bookings.listByProperty, {
       propertyId,
       paginationOpts: { numItems: 2, cursor: null },
     });
-    const secondPage = await admin.query(api.bookings.listByProperty, {
+    const secondPage = await admin.query(api.bookings.bookings.listByProperty, {
       propertyId,
       paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
     });

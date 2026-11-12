@@ -5,7 +5,7 @@ import { ConvexError, v } from 'convex/values';
 import { staffQuery, adminQuery, staffMutation, adminMutation } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { isDocumentedLiveRefund, markBookingPaid, recordStayPayment } from './bookings';
+import { isDocumentedLiveRefund, markBookingPaid, recordStayPayment } from './bookings/model';
 import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomerReviewed, customerCard } from './customers';
 import { requireCashierAction, assertCashierDiscount, canReadCheckoutOrder, manualReduction, type StaffActor } from './lib/staffAccess';
 import { assertNoPendingApprovals } from './lib/staffApprovalState';

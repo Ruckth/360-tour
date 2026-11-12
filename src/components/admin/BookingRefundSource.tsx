@@ -7,8 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PAYMENT_ORIGIN_LABELS } from "./admin-bookings-shared";
 import { formatMoney } from "./labels";
 
-type Financials = NonNullable<FunctionReturnType<typeof api.adminBookings.bookingFinancials>>;
-type RefundInput = FunctionArgs<typeof api.adminBookings.recordRefund>;
+type Financials = NonNullable<FunctionReturnType<typeof api.bookings.admin.bookingFinancials>>;
+type RefundInput = FunctionArgs<typeof api.bookings.commands.recordRefund.recordRefund>;
 export type BookingRefundSource = {
   value: string; label: string; left: number; stripe: boolean;
   reference: Pick<RefundInput, "paymentId" | "orderId">;

@@ -114,7 +114,7 @@ it.each(['price', 'coupon'] as const)('recovers a revised-%s confirmation as a n
     await ctx.db.insert('messages', { sessionId: bookingArgs.sessionId, role: 'user', content: 'Please use coupon GUEST20', timestamp: Date.now() });
     return id;
   }) : undefined;
-  const original = await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, ...(couponId ? { couponCode: 'GUEST20' } : {}) });
+  const original = await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, ...(couponId ? { couponCode: 'GUEST20' } : {}) });
   await complete(t, args);
   await t.run(async ctx => {
     if (couponId) {
@@ -123,31 +123,31 @@ it.each(['price', 'coupon'] as const)('recovers a revised-%s confirmation as a n
     } else await ctx.db.patch(property._id, { pricePerNight: property.pricePerNight + 12345 });
   });
   const yes = await claim(t, 'yes', 'yes');
-  const revised = await t.mutation(internal.bookings.confirmChatBooking, { sessionId: yes.event.sessionId!, durableTool: { ...yes.args, key: 'confirm-call', name: 'confirm_booking' } });
+  const revised = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId: yes.event.sessionId!, durableTool: { ...yes.args, key: 'confirm-call', name: 'confirm_booking' } });
   if (!revised.needsReview) throw new Error('Expected revised price');
   expect(revised.quote.total).not.toBe(original.total);
   const recovered = await recover(t, yes.args);
   expect(recovered).toMatchObject({ model: 'tool_recovery', outcome: 'awaiting_guest' });
   expect(recovered.response).toContain(`Confirm & pay: ${siteUrl}/booking/pay?proposal=${encodeURIComponent(revised.quote.confirmToken)}${couponId ? '&coupon=GUEST20' : ''}`);
   expect(recovered.response).toContain((revised.quote.total / 100).toLocaleString('en-US'));
-  expect(await t.query(api.bookings.getConfirmProposal, { token: revised.quote.confirmToken })).toMatchObject({ checkIn: bookingArgs.checkIn });
-  expect(await t.query(api.bookings.getConfirmProposal, { token: original.confirmToken })).toBeNull();
-  const booked = await t.mutation(api.bookings.confirmProposal, { token: revised.quote.confirmToken });
+  expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: revised.quote.confirmToken })).toMatchObject({ checkIn: bookingArgs.checkIn });
+  expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: original.confirmToken })).toBeNull();
+  const booked = await t.mutation(api.bookings.bookings.confirmProposal, { token: revised.quote.confirmToken });
   expect(booked.needsReview).toBe(false);
 });
 
 it.each(['before preparation', 'after a thrown villa error'] as const)('recovers safely after invalidation crashes %s', async crash => {
   const { t, args, event, bookingArgs } = await setup();
-  const original = await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, durableTool: { ...args, key: 'first', name: 'prepare_booking' } });
+  const original = await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, durableTool: { ...args, key: 'first', name: 'prepare_booking' } });
   const durableTool = { ...args, key: 'replacement', name: 'prepare_booking' };
-  await t.mutation(internal.bookings.invalidateChatProposal, { sessionId: event.sessionId!, kind: 'villa', deadlineAt: Date.now() + 20000, durableTool });
+  await t.mutation(internal.bookings.bookings.invalidateChatProposal, { sessionId: event.sessionId!, kind: 'villa', deadlineAt: Date.now() + 20000, durableTool });
   if (crash === 'after a thrown villa error') {
-    await expect(t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, guests: 9999, durableTool })).rejects.toThrow();
+    await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, guests: 9999, durableTool })).rejects.toThrow();
   }
   const writes = (await t.run(ctx => ctx.db.get(event._id)))!.toolResults!;
   expect(writes).toHaveLength(2);
   expect(writes[1]).toMatchObject({ key: 'replacement', pending: true });
-  expect(await t.query(api.bookings.getConfirmProposal, { token: original.confirmToken })).toBeNull();
+  expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: original.confirmToken })).toBeNull();
   const recovered = await recover(t, args);
   expect(recovered).toMatchObject({ model: 'tool_recovery', outcome: 'needs_staff' });
   expect(recovered.response).not.toContain('Villa booking proposal');
@@ -156,7 +156,7 @@ it.each(['before preparation', 'after a thrown villa error'] as const)('recovers
 
 it.each(['malformed JSON', 'invalid arguments'] as const)('invalidates an old proposal even when a real model replacement has %s', async failure => {
   const { t, args, bookingArgs } = await setup();
-  const original = await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, durableTool: { ...args, key: 'first', name: 'prepare_booking' } });
+  const original = await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, durableTool: { ...args, key: 'first', name: 'prepare_booking' } });
   await complete(t, args);
   const replacement = await claim(t, 'replacement', 'Change my booking details');
   const { sessionId, ...input } = bookingArgs;
@@ -164,7 +164,7 @@ it.each(['malformed JSON', 'invalid arguments'] as const)('invalidates an old pr
   const reply = await t.action(internal.concierge.runTurn.runTurn, replacement.args);
   expect(reply.response).not.toContain('Villa booking proposal');
   expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
-  expect(await t.query(api.bookings.getConfirmProposal, { token: original.confirmToken })).toBeNull();
+  expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: original.confirmToken })).toBeNull();
   const recovered = await recover(t, replacement.args);
   expect(recovered).toMatchObject({ model: 'tool_recovery', outcome: 'needs_staff' });
   expect(recovered.response).not.toContain('Confirm & pay');
@@ -175,31 +175,31 @@ it('keeps real preparation retries idempotent and fences stale or superseded inv
   const { t, args, event, bookingArgs } = await setup();
   const durableTool = { ...args, key: 'first', name: 'prepare_booking' };
   const invalidation = { sessionId: event.sessionId!, kind: 'villa' as const, deadlineAt: Date.now() + 20000, durableTool };
-  await t.mutation(internal.bookings.invalidateChatProposal, invalidation);
-  const first = await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, durableTool });
+  await t.mutation(internal.bookings.bookings.invalidateChatProposal, invalidation);
+  const first = await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, durableTool });
   const before = await t.run(ctx => ctx.db.get(event.sessionId!));
-  await t.mutation(internal.bookings.invalidateChatProposal, invalidation);
-  expect(await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, durableTool })).toEqual(first);
+  await t.mutation(internal.bookings.bookings.invalidateChatProposal, invalidation);
+  expect(await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, durableTool })).toEqual(first);
   expect(await t.run(ctx => ctx.db.get(event.sessionId!))).toEqual(before);
   expect((await t.run(ctx => ctx.db.get(event._id)))!.toolResults).toHaveLength(1);
   vi.setSystemTime(Date.now() + LEASE_MS + 1);
   await t.mutation(internal.messaging.worker.claim, { eventId: event._id, token: 'second' });
-  await expect(t.mutation(internal.bookings.invalidateChatProposal, { ...invalidation, deadlineAt: Date.now() + 20000 })).rejects.toThrow('STALE_TURN');
+  await expect(t.mutation(internal.bookings.bookings.invalidateChatProposal, { ...invalidation, deadlineAt: Date.now() + 20000 })).rejects.toThrow('STALE_TURN');
   const resumed = { ...durableTool, claimToken: 'second' };
-  await t.mutation(internal.bookings.invalidateChatProposal, { ...invalidation, durableTool: resumed, deadlineAt: Date.now() + 20000 });
-  expect(await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, durableTool: resumed })).toEqual(first);
+  await t.mutation(internal.bookings.bookings.invalidateChatProposal, { ...invalidation, durableTool: resumed, deadlineAt: Date.now() + 20000 });
+  expect(await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, durableTool: resumed })).toEqual(first);
   const replacement = { ...resumed, key: 'replacement' };
-  await t.mutation(internal.bookings.invalidateChatProposal, { ...invalidation, durableTool: replacement, deadlineAt: Date.now() + 20000 });
-  const latest = await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, checkOut: '2027-02-04', durableTool: replacement });
-  await expect(t.mutation(internal.bookings.invalidateChatProposal, { ...invalidation, durableTool: resumed, deadlineAt: Date.now() + 20000 })).rejects.toThrow('superseded');
-  await expect(t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, durableTool: resumed })).rejects.toThrow('superseded');
-  expect(await t.query(api.bookings.getConfirmProposal, { token: latest.confirmToken })).toMatchObject({ checkOut: '2027-02-04' });
+  await t.mutation(internal.bookings.bookings.invalidateChatProposal, { ...invalidation, durableTool: replacement, deadlineAt: Date.now() + 20000 });
+  const latest = await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, checkOut: '2027-02-04', durableTool: replacement });
+  await expect(t.mutation(internal.bookings.bookings.invalidateChatProposal, { ...invalidation, durableTool: resumed, deadlineAt: Date.now() + 20000 })).rejects.toThrow('superseded');
+  await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, durableTool: resumed })).rejects.toThrow('superseded');
+  expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: latest.confirmToken })).toMatchObject({ checkOut: '2027-02-04' });
 });
 
 it('does not render a stored legacy proposal after its live quote was independently invalidated', async () => {
   const { t, args, event, bookingArgs } = await setup();
-  await t.mutation(internal.bookings.prepareChatBooking, { ...bookingArgs, durableTool: { ...args, key: 'first', name: 'prepare_booking' } });
-  await t.mutation(internal.bookings.invalidateChatProposal, { sessionId: event.sessionId!, kind: 'villa', deadlineAt: Date.now() + 20000, durableTurn: args });
+  await t.mutation(internal.bookings.bookings.prepareChatBooking, { ...bookingArgs, durableTool: { ...args, key: 'first', name: 'prepare_booking' } });
+  await t.mutation(internal.bookings.bookings.invalidateChatProposal, { sessionId: event.sessionId!, kind: 'villa', deadlineAt: Date.now() + 20000, durableTurn: args });
   expect((await t.run(ctx => ctx.db.get(event._id)))!.toolResults).toHaveLength(1);
   const recovered = await recover(t, args);
   expect(recovered).toMatchObject({ outcome: 'needs_staff', model: 'tool_recovery' });

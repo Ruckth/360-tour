@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import type { AdminBooking } from "convex/adminBookings";
+import type { AdminBooking } from "convex/bookings/model";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -40,8 +40,8 @@ export function BookingQuickActions({
   onNotice: (notice: { text: string; error?: boolean }) => void;
 }) {
   const { booking, rect } = target;
-  const detail = useQuery(api.adminBookings.getForAdmin, { bookingId: booking._id });
-  const updateBooking = useMutation(api.adminBookings.updateBooking);
+  const detail = useQuery(api.bookings.admin.getForAdmin, { bookingId: booking._id });
+  const updateBooking = useMutation(api.bookings.commands.updateBooking.updateBooking);
   const confirm = useConfirm();
   const status = hotelStatus(statusKey(booking));
   const editable = canEditBooking(booking);

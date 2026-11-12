@@ -2,14 +2,14 @@
 import { bahtToSatang } from 'convex/shared/money';
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
-import type { AdminBooking } from "convex/adminBookings";
+import type { AdminBooking } from "convex/bookings/model";
 import { format } from "date-fns";
 import { addDaysIso, isoToDate, todayIsoResort } from "@/lib/booking/dates";
 import type { ConfirmOptions } from "./ConfirmDialog";
 import { formatMoney, paymentLabel } from "./labels";
 import { CALENDAR_TONE_COLORS, STATUS_TONES, TONES, statusMeta } from "./status-tones";
 
-type ListData = FunctionReturnType<typeof api.adminBookings.listForAdmin>;
+type ListData = FunctionReturnType<typeof api.bookings.admin.listForAdmin>;
 export type AdminProperty = ListData["properties"][number];
 export type DateBlock = ListData["dateBlocks"][number];
 

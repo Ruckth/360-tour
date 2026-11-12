@@ -8,7 +8,7 @@ import { asksForStaff, queueStaffAlert } from '../chatKnowledge';
 
 export const LEASE_MS = 60_000;
 export const MAX_ATTEMPTS = 4;
-export { currentClaim, withDurableTool, durableToolValidator, durableTurnValidator, type DurableTool } from './claims';
+export { startDurablePreparation, currentClaim, withDurableTool, durableToolValidator, durableTurnValidator, type DurableTool } from './claims';
 export async function recordGuest(ctx: MutationCtx, sessionId: Id<'conversations'>, content: string, timestamp = Date.now()) {
   const messageId = await ctx.db.insert('messages', { sessionId, role: 'user', content, timestamp });
   await patchSessionAfterMessages(ctx, sessionId, { addedMessages: 1, latestMessageAt: timestamp, lastSeenAt: Date.now() });

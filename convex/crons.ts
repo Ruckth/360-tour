@@ -162,7 +162,7 @@ export const queueLifecycleEmails = internalMutation({
 const crons = cronJobs();
 crons.cron('clean raw marketing after 90 days', '0 3 * * *', internal.crons.cleanRawMarketing, {});
 crons.interval('expire unpaid bookings', { hours: 1 }, internal.crons.expirePending, {});
-crons.interval('sync OTA calendars', { minutes: 30 }, internal.ical.syncAll, {});
+crons.interval('sync OTA calendars', { minutes: 30 }, internal.bookings.calendar.ical.syncAll, {});
 crons.interval('clean rate limits', { hours: 1 }, internal.crons.cleanRateLimits, {});
 crons.interval('clean unattached staff and service photos', { hours: 6 }, internal.crons.cleanStaffAvatarUploads, {});
 crons.interval('clean pending customer displays', { minutes: 10 }, internal.displays.cleanPending, {});

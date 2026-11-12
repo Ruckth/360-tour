@@ -239,7 +239,7 @@ describe('linking a paid room row to a stay', () => {
 		const before = await receipt(orderId);
 		await link(orderId, lineId, { bookingId });
 		expect(await getBooking(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 3000000 });
-		const financials = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
+		const financials = await admin.query(api.bookings.admin.bookingFinancials, { bookingId });
 		expect(financials?.payments[0]).toMatchObject({ origin: 'pos', amount: 2000000, status: 'recorded', order: expect.objectContaining({ _id: orderId }) });
 		expect(await receipt(orderId)).toEqual(before);
 		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.orders.map((row) => row._id)).toContain(orderId);
@@ -265,11 +265,11 @@ describe('linking a paid room row to a stay', () => {
 		const bookingId = await stay();
 		const { orderId, lineId } = await paidRow({ kind: 'room', propertyId: villa }, 2);
 		const { linkId } = await link(orderId, lineId, { bookingId });
-		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, reason: 'Guest cancelled', notifyGuest: false });
-		await admin.mutation(api.adminBookings.recordRefund, {
+		await admin.mutation(api.bookings.commands.cancelStay.cancelStay, { bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, reason: 'Guest cancelled', notifyGuest: false });
+		await admin.mutation(api.bookings.commands.recordRefund.recordRefund, {
 			bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, amount: 500000, currency: 'THB', method: 'cash', reason: 'Part refund', idempotencyKey: 'stay-refund-0001', orderId: orderId
 		});
-		const financials = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
+		const financials = await admin.query(api.bookings.admin.bookingFinancials, { bookingId });
 		expect(financials?.payments.find((row) => row.origin === 'pos')).toMatchObject({ refunded: 500000, refundable: 1500000 });
 		await expect(unlink(orderId, linkId)).rejects.toThrow(/refunded/);
 	});
@@ -296,8 +296,8 @@ describe('linking a paid room row to a stay', () => {
 			}
 		});
 		await link(orderId, lineId, { bookingId });
-		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, reason: 'Guest cancelled', notifyGuest: false });
-		await admin.mutation(api.adminBookings.recordRefund, {
+		await admin.mutation(api.bookings.commands.cancelStay.cancelStay, { bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, reason: 'Guest cancelled', notifyGuest: false });
+		await admin.mutation(api.bookings.commands.recordRefund.recordRefund, {
 			bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, amount: 500000, currency: 'THB', method: 'cash',
 			reason: 'Return linked money', idempotencyKey: 'refund-relinked-stay', orderId: orderId
 		});
@@ -315,7 +315,7 @@ describe('linking a paid room row to a stay', () => {
 		const { linkId } = await link(orderId, lineId, { bookingId });
 		await unlink(orderId, linkId);
 		expect(await getBooking(bookingId)).toMatchObject({ paymentStatus: 'pending', amountPaid: 1000000 });
-		const financials = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
+		const financials = await admin.query(api.bookings.admin.bookingFinancials, { bookingId });
 		expect(financials?.payments[0]).toMatchObject({ origin: 'pos', status: 'cancelled' });
 		expect(financials?.money.owed).toBe(2000000);
 	});
@@ -408,7 +408,7 @@ describe('order corrections understand links', () => {
 			});
 		}
 		expect((await getAppointment(appointmentId)).paidAt).toBe(earlier);
-		const financials = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
+		const financials = await admin.query(api.bookings.admin.bookingFinancials, { bookingId });
 		expect(financials?.payments[0]).toMatchObject({ effectiveAt: earlier });
 		expect((await order(orderId)).links[0].effectiveAt).toBe(earlier);
 	});
