@@ -4,7 +4,7 @@ import type { Doc } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { approvalPayload, APPROVAL_TTL_MS } from './lib/staffTypes';
 import { canReadCheckoutOrder, cashierRules, requireCashierAction, requireStaff } from './lib/staffAccess';
-import { effectiveRequestStatus, orderFingerprint, requesterFingerprint } from './lib/staffApprovalState';
+import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from './lib/staffApprovalState';
 import { appendRecordHistory } from './lib/recordHistory';
 import { executeStaffApproval, previewStaffApproval } from './pos';
 
@@ -51,7 +51,7 @@ export const create = mutation({ args: { orderId: v.id('bills'), payload: approv
   const requestId = await ctx.db.insert('staffApprovalRequests', {
     orderId: order._id, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
-    orderFingerprint: await orderFingerprint(ctx, order._id, args.payload), orderRevision: order.revision, rulesRevision: rules.revision,
+    orderFingerprint: await orderFingerprint(ctx, order._id, args.payload), orderRevision: order.revision, rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules),
     status: 'pending', createdAt, expiresAt: createdAt + APPROVAL_TTL_MS, ...preview,
   });
   await appendRecordHistory(ctx, { entityType: 'staffApproval', entityId: order._id, actor: actor.email, kind: 'requested', reason,

@@ -135,7 +135,7 @@ describe('Independent order audit: identity, customer and settlement', () => {
     await expect(admin.mutation(api.pos.unlinkCustomer, { orderId })).rejects.toThrow('already paid');
     await admin.mutation(api.pos.voidOrder, { orderId, reason: 'Audit void' });
     const voided = await view(orderId);
-    expect(voided.lines).toEqual(paid.lines);
+    expect(voided.lines).toEqual(paid.lines.map((line: Doc<'billLines'>) => ({ ...line, remainingRefundableSatang: 0 })));
     expect(voided.payments).toEqual(paid.payments);
     expect(voided.order.receiptNumber).toBe(paid.order.receiptNumber);
     expect(voided.order.orderNumber).toBe(paid.order.orderNumber);

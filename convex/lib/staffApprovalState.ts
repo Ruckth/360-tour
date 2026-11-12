@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { accessForIdentity, cashierRules } from './staffAccess';
 import { orderLines } from './orderLines';
 import { orderLineLinks } from './lineLinks';
+import { orderRefunds } from './billRefunds';
 import { resortTodayIso } from './dates';
 
 /** Stable serialization includes optional fields, revisions, coupons and source records. */
@@ -13,6 +14,8 @@ function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
 }
+export const rulesFingerprint = (rules: Awaited<ReturnType<typeof cashierRules>>) => canonical(rules);
+
 type ReadCtx = MutationCtx | QueryCtx;
 export async function requesterFingerprint(ctx: ReadCtx, email: string, tokenIdentifier: string) {
   const access = await accessForIdentity(ctx, { email, tokenIdentifier });
@@ -39,7 +42,7 @@ export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'bills'>, paylo
   const coupon = order?.promotion ? await ctx.db.get(order.promotion.couponId) : null;
   const couponHistory = coupon ? await ctx.db.query('recordChanges')
     .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'coupon').eq('entityId', coupon._id)).order('desc').first() : null;
-  return canonical({ order, lines, links, coupon, couponHistoryId: couponHistory?._id, businessDate: resortTodayIso(),
+  return canonical({ order, lines, links, refunds: await orderRefunds(ctx, orderId), coupon, couponHistoryId: couponHistory?._id, businessDate: resortTodayIso(),
     bookings: await Promise.all([...bookingIds].sort().map(id => ctx.db.get(id))),
     appointments: await Promise.all([...appointmentIds].sort().map(id => ctx.db.get(id))),
     customer: customerId ? await ctx.db.get(customerId) : null,
@@ -52,7 +55,7 @@ export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffAp
   const [rules, requester] = await Promise.all([
     cashierRules(ctx), requesterFingerprint(ctx, request.requesterEmail, request.requesterTokenIdentifier),
   ]);
-  if (rules.revision !== request.rulesRevision || requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) return 'stale';
+  if (rules.revision !== request.rulesRevision || rulesFingerprint(rules) !== request.rulesFingerprint || requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) return 'stale';
   if (await orderFingerprint(ctx, request.orderId, request.payload) !== request.orderFingerprint) return 'stale';
   return 'pending';
 }

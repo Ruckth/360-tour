@@ -128,12 +128,14 @@ export async function readMarketingReport(
 	 * an order paid in it: an order is paid before it is refunded. Only an order whose payment date was
 	 * corrected later can have older refunds; order() reads those one by one.
 	 */
+	let posRefundsInRange: Doc<'billRefunds'>[] = [];
 	let apptRefundsFromStart: Doc<'appointmentRefunds'>[] = [];
 	let receiptRefundsByBill = new Map<Id<'bills'>, Doc<'appointmentRefunds'>[]>();
 	let stayRefundsFromStart: Doc<'bookingRefunds'>[] = [];
 	/** A stay refund against a receipt with no stay payment row returns an old order's stay money. */
 	let oldOrderRefundsByBill = new Map<Id<'bills'>, Doc<'bookingRefunds'>[]>();
 	async function readMoneyByDate() {
+		posRefundsInRange = await rows(ctx.db.query('billRefunds').withIndex('by_businessDate', q => q.gte('businessDate', from).lte('businessDate', to)));
 		tendersByBill = group(await rows(ctx.db.query('billPayments').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end))), p => p.billId);
 		stayRowsInRange = await rows(ctx.db.query('bookingPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)));
 		stayPosByBill = group(stayRowsInRange.filter(p => p.origin === 'pos'), p => p.billId);
@@ -248,7 +250,8 @@ export async function readMarketingReport(
 		const record = orderPaymentRecord(bill, tenders);
 		// The stay part of the order is on the stay (its POS payment row), so the order keeps only its own money.
 		const collected = round2(sum(record.tenders, p => p.amount) - sum(stayRows.filter(p => p.status === 'recorded' && p.origin === 'pos'), p => p.amount));
-		const refunded = sum(refunds, r => r.amount);
+		const posRefunds = await rows(ctx.db.query('billRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
+		const refunded = round2(sum(refunds, r => r.amount) + sum(posRefunds, r => r.amount / 100));
 		const discount = bill.promotion?.discount ?? 0;
 		if (collected === 0 && refunded === 0 && discount === 0) return null;
 		// The order's own stay, or the stay it charged when that stay already had another open order.
@@ -260,6 +263,7 @@ export async function readMarketingReport(
 		const sale: ReportSale = { kind: 'order', id, label: record.customer?.name ?? 'Walk-in', ref: orderTitle(bill.orderNumber), ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'pos', bucket: link && campaign ? 'tracked' : 'staff', ...(link && campaign ? { evidence: 'scanned', last: touch(touchFromLink(link, campaign)) } : {}), coupon: await coupon(bill.promotion), createdDay: day, ...(collected > 0 ? { paidDay: day } : {}), settlementDay: day, paid: true, collected, refunded, discount };
 		const events: ReportMoneyEvent[] = collected ? [{ saleId: id, kind: 'payment', day, amount: collected }] : [];
 		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
+		events.push(...posRefunds.map(r => ({ saleId: id, kind: 'refund' as const, day: r.businessDate, amount: r.amount / 100 })));
 		return include(sale, events);
 	}
 	async function appointment(id: Id<'serviceAppointments'>) {
@@ -303,6 +307,7 @@ export async function readMarketingReport(
 		return include(sale, [...payments.map(p => ({ saleId: id, kind: 'payment' as const, day: dayOf(p.effectiveAt), amount: p.amount })), ...ownRefunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount }))]);
 	}
 	async function readSales() {
+		if (basis === 'cash') for (const row of posRefundsInRange) await order(row.orderId);
 		if (basis === 'cohort') {
 			for await (const row of scan(ctx.db.query('bookings').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end)))) { cache.set(row._id, row); await stay(row._id); }
 		} else {

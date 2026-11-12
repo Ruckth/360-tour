@@ -19,7 +19,7 @@ it('authenticates every financial stream and rejects oversized or invalid pages'
     expect((await admin.query(reader, args)).page).toEqual([]);
   }
 });
-it('pages past the getOrder 20/50 windows in all four independent ledgers without cross-order leakage', async () => {
+it('pages past the getOrder 20/50 windows in all five independent ledgers without cross-order leakage', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com' });
   const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Tea', price: 10 } });
@@ -30,12 +30,16 @@ it('pages past the getOrder 20/50 windows in all four independent ledgers withou
     const appointmentId = await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: 1, end: 2, blockedUntil: 2, guestName: 'A', guestPhone: '0812345678', source: 'admin', status: 'completed', paymentStatus: 'paid', price: 100, currency: 'THB', confirmationCode: 'APPT-1', accessToken: 'local', createdAt: 1 });
     const propertyId = await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 10, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
     const bookingId = await ctx.db.insert('bookings', { propertyId, guestName: 'A', guestPhone: '0812345678', checkIn: '2026-10-01', checkOut: '2026-10-02', guests: 1, nights: 1, subtotal: 100, discountAmount: 0, total: 100, currency: 'THB', amountPaid: 100, paymentStatus: 'paid', status: 'confirmed', confirmationCode: 'STAY-1', createdAt: 1 });
-    for (const billId of [orderId, other]) for (let i = 1; i <= 61; i++) {
+    for (const billId of [orderId, other]) {
+      const line = (await ctx.db.query('billLines').withIndex('by_billId', q => q.eq('billId', billId)).first())!;
+      for (let i = 1; i <= 61; i++) {
       await ctx.db.insert('billCorrections', { billId, sequence: i, kind: 'amended', reason: `Correction ${i}`, actor: 'admin@example.com', recordedAt: i, idempotencyKey: `${billId}-${i}` });
       await ctx.db.insert('billAudit', { billId, at: i, actor: 'admin@example.com', kind: 'price_override', fromPrice: i, toPrice: i + 1, note: `Activity ${i}` });
       const refund = { billId, amount: 1, currency: 'THB', method: 'cash' as const, reason: `Refund ${i}`, effectiveAt: i, recordedAt: i, recordedBy: 'admin@example.com', idempotencyKey: `${billId}-${i}`, netBefore: 100 - i, netAfter: 99 - i };
       await ctx.db.insert('bookingRefunds', { ...refund, bookingId, context: 'credit' });
       await ctx.db.insert('appointmentRefunds', { ...refund, appointmentId });
+      await ctx.db.insert('billRefunds', { orderId: billId, lineId: line._id, amount: 1, currency: 'THB', method: 'cash', reason: `Return ${i}`, idempotencyKey: `pos:${billId}:${i}`, createdBy: 'admin', createdByEmail: 'admin@example.com', createdAt: i, businessDate: '2026-11-12' });
+      }
     }
   });
   for (const reader of Object.values(readers)) {
@@ -44,7 +48,7 @@ it('pages past the getOrder 20/50 windows in all four independent ledgers withou
     for (let page = 0; page < 4; page++) {
       const result: FunctionReturnType<typeof reader> = await admin.query(reader, { orderId, paginationOpts: { numItems: 20, cursor } });
       expect(result.page.length).toBe(page < 3 ? 20 : 1);
-      expect(result.page.every(r => r.billId === orderId)).toBe(true);
+      expect(result.page.every(r => ('orderId' in r ? r.orderId : r.billId) === orderId)).toBe(true);
       seen.push(...result.page.map(r => r._id));
       expect(result.isDone).toBe(page === 3); cursor = result.continueCursor;
     }

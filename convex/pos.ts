@@ -1,3 +1,4 @@
+import { assertNoPosRefunds, assertLineHasNoPosRefunds, billRefundView, executeBillRefund, isWalkInLine, orderRefunds, refundState } from './lib/billRefunds';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from './lib/affiliateCredits';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
@@ -9,7 +10,7 @@ import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomer
 import { requireAdmin } from './lib/adminAuth';
 import { requireStaff, requireCashierAction, assertCashierDiscount, canReadCheckoutOrder, manualReduction, type StaffActor } from './lib/staffAccess';
 import { assertNoPendingApprovals } from './lib/staffApprovalState';
-import { lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
+import { billRefundFields, lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
 import type { Infer } from 'convex/values';
 import { STALE_APPOINTMENT, recordAppointmentChange } from './lib/appointmentChanges';
 import { appointmentMoney } from './lib/appointmentFinance';
@@ -598,7 +599,7 @@ export const getOrder = query({
 		const order = await ctx.db.get(orderId);
 		if (!order || !canReadCheckoutOrder(actor, order)) return null;
 		const open = isOpenOrder(order);
-		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds, links] = await Promise.all([
+		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds, links, posRefunds] = await Promise.all([
 			orderLines(ctx, order._id),
 			ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(10),
 			ctx.db.query('billAudit').withIndex('by_billId_and_at', (q) => q.eq('billId', order._id)).order('desc').take(50),
@@ -607,8 +608,12 @@ export const getOrder = query({
 			ctx.db.query('bookingRefunds').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(MAX_STAY_ROWS),
 			ctx.db.query('billCorrections').withIndex('by_billId_and_sequence', (q) => q.eq('billId', order._id)).order('desc').take(20),
 			ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).order('desc').take(MAX_STAY_ROWS),
-			isOpenOrder(order) ? [] : orderLineLinks(ctx, order._id)
+			isOpenOrder(order) ? [] : orderLineLinks(ctx, order._id),
+			order.status === 'paid' || order.status === 'void' ? orderRefunds(ctx, order._id) : []
 		]);
+		const refundedByLine = new Map<Id<'billLines'>, number>();
+		for (const refund of posRefunds) refundedByLine.set(refund.lineId, (refundedByLine.get(refund.lineId) ?? 0) + refund.amount);
+		const refundedAmountSatang = posRefunds.reduce((sum, row) => sum + row.amount, 0);
 		const reads = orderReads(ctx);
 		const sources = await orderSourceRefs(ctx, order, lines, reads);
 		const linkRows = [];
@@ -633,9 +638,16 @@ export const getOrder = query({
 			const photoKey = line.serviceId ?? line.propertyId ?? line.bookingId;
 			if (photoKey && !photos.has(photoKey)) photos.set(photoKey, linePhoto(ctx, line, reads));
 			const stay = line.bookingId ? await reads.booking(line.bookingId) : null;
+			// Optional at the type boundary so existing offline checkout adapters remain compatible.
+			const refundAmounts: { refundedAmountSatang?: number; remainingRefundableSatang?: number } = {
+				refundedAmountSatang: refundedByLine.get(line._id) ?? 0,
+				remainingRefundableSatang: order.status === 'paid' && order.paidAt !== undefined && isWalkInLine(line) && !links.some(link => link.lineId === line._id && link.status === 'active')
+					? Math.max(0, Math.round(lineNet(line) * 100) - (refundedByLine.get(line._id) ?? 0)) : 0,
+			};
 			rows.push({
 				...line,
 				net: lineNet(line),
+				...refundAmounts,
 				imageUrl: photoKey ? await photos.get(photoKey) : undefined,
 				// A paid row keeps the name it was issued with; an open row shows the therapist's current name.
 				staffName: line.staffId ? (open ? undefined : line.staffName) ?? staffNames.get(line.staffId) ?? 'Former staff member' : undefined,
@@ -645,6 +657,10 @@ export const getOrder = query({
 				stayCoupon: stay?.promotion && !stay.priceOverride ? { code: stay.promotion.code, discount: stay.promotion.discount } : null
 			});
 		}
+		const refundSummary: { posRefunds?: ReturnType<typeof billRefundView>[]; refundedAmountSatang?: number; fullyRefunded?: boolean } = {
+			posRefunds: posRefunds.slice(-50).reverse().map(billRefundView), refundedAmountSatang,
+			fullyRefunded: order.status === 'paid' && refundedAmountSatang > 0 && refundedAmountSatang === Math.round(billTotals(lines).total * 100),
+		};
 		const promotion: OrderPromotionView | null = order.promotion ? {
 			code: order.promotion.code, couponVersion: order.promotion.couponVersion, discount: order.promotion.discount,
 			problem: order.promotion.problem ?? null,
@@ -664,6 +680,7 @@ export const getOrder = query({
 			sources,
 			parentOrder: parent ? { _id: parent._id, title: orderTitle(parent.orderNumber) } : null,
 			lines: rows,
+			...refundSummary,
 			/** R2b: the order's coupon; the split is on each row's `couponDiscount`, the total in `totals.coupon`. */
 			promotion,
 			/** As recorded when the receipt was issued; never changed (see `paymentRecord` for corrections). */
@@ -1581,6 +1598,12 @@ export const settleOrder = mutation({
 	}
 });
 
+/** Record a walk-in line return in satang; money is handed back outside the app. */
+export const refundLine = mutation({
+ args: { orderId: v.id('bills'), reason: v.string(), ...billRefundFields },
+ handler: async (ctx, args) => executeBillRefund(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+
 /**
  * Voids a paid order. The record, its order and receipt numbers, payments and audit trail stay;
  * charged bookings and appointments keep their paid status, because the money was received (record
@@ -1600,6 +1623,7 @@ export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof void
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
+		await assertNoPosRefunds(ctx, order._id);
 		const now = Date.now();
 		await syncOrderCouponRedemption(ctx, order._id, 'reversed');
 		await ctx.db.patch(order._id, { status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, updatedAt: now });
@@ -1774,6 +1798,7 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
+		await assertNoPosRefunds(ctx, order._id);
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason')!;
 
@@ -2291,6 +2316,7 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the link')!;
 		const { line, target, amount } = linkableRow(order, await ctx.db.get(args.lineId));
+		await assertLineHasNoPosRefunds(ctx, line._id);
 		if (await activeLineLink(ctx, line._id)) throw new ConvexError('This row is already linked. Unlink it first.');
 		const now = Date.now();
 		const effectiveAt = order.paymentEffectiveAt ?? order.paidAt ?? now;
@@ -2433,6 +2459,11 @@ export const createOrder = mutation({ args: {}, handler: async ctx => {
 
 /** Read-only proposal for the approval card. Execution still runs every original validation. */
 export async function previewStaffApproval(ctx: MutationCtx, order: Order, payload: ApprovalPayload) {
+ if (payload.kind === 'refund') {
+  const state = await refundState(ctx, { ...payload, orderId: order._id, reason: 'Approval preview' });
+  const totalBefore = round2(billTotals(await orderLines(ctx, order._id)).total - state.refunds.reduce((sum, row) => sum + row.amount, 0) / 100);
+  return { totalBefore, totalAfter: round2(totalBefore - payload.amount / 100), amount: payload.amount / 100 };
+ }
  const lines = await orderLines(ctx, order._id);
  let proposed: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }> = lines.map(line => ({ ...line }));
  const totalBefore = billTotals(lines).total;
@@ -2522,6 +2553,7 @@ export async function executeStaffApproval(ctx: MutationCtx, request: Doc<'staff
  if (!order) throw new ConvexError('Order not found');
  const correction = { orderId: order._id, reason: request.reason, expectedCorrectionRevision: order.correctionRevision ?? 0, idempotencyKey: `approval:${request._id}` };
  switch (payload.kind) {
+  case 'refund': return await executeBillRefund(ctx, { ...payload, orderId: order._id, reason: request.reason }, actor);
   case 'discount': return await executeUpdateLine(ctx, { lineId: payload.lineId, discount: payload.discount }, actor);
   case 'customPrice':
    switch (payload.action) {
