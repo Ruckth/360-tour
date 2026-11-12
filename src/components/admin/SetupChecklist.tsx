@@ -4,7 +4,7 @@ import { useAction, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { CheckCircle2, Circle, Copy, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { CHANNEL_WEBHOOK_PATH, type ChannelKey } from "@/lib/admin/channel-config";
@@ -30,18 +30,10 @@ type Item = {
 const CONVEX_SITE =
   process.env.NEXT_PUBLIC_CONVEX_SITE_URL || process.env.NEXT_PUBLIC_CONVEX_URL?.replace(/\.convex\.cloud$/, ".convex.site");
 
-/** Browser origin after mount (undefined during SSR, so the first render matches the server). */
-function useOrigin() {
-  const [origin, setOrigin] = useState<string>();
-  useEffect(() => setOrigin(window.location.origin), []);
-  return origin;
-}
-
 /** Setup items computed from existing data: Convex env and records, plus the website's channel env vars. */
 export function useSetupChecklist(): { items: Item[]; loading: boolean } {
   const facts = useQuery(api.settings.setupChecklist, {});
   const config = useChannelConfig();
-  const origin = useOrigin();
   if (!facts) return { items: [], loading: true };
 
   const channelItems = (Object.keys(CHANNEL_WEBHOOK_PATH) as ChannelKey[]).map((channel): Item => {
@@ -58,13 +50,13 @@ export function useSetupChecklist(): { items: Item[]; loading: boolean } {
           : config.state === "error"
             ? `Could not check the website configuration: ${config.message}`
             : missing.length
-              ? `Set ${missing.join(", ")} in Vercel, then paste the webhook URL into the ${sourceLabel(channel)} console.`
+              ? `Set ${missing.join(", ")} in Convex, then paste the webhook URL into the ${sourceLabel(channel)} console.`
               : replied
                 ? undefined
                 : "Configured. Send a test message to confirm the AI replies.",
       href: "/admin/settings?tab=channels",
       linkLabel: "Channel health",
-      copy: origin ? { label: "Webhook URL", value: `${origin}${CHANNEL_WEBHOOK_PATH[channel]}` } : undefined,
+      copy: CONVEX_SITE ? { label: "Webhook URL", value: `${CONVEX_SITE}${CHANNEL_WEBHOOK_PATH[channel]}` } : undefined,
     };
   });
 
@@ -120,9 +112,9 @@ export function useSetupChecklist(): { items: Item[]; loading: boolean } {
     },
     {
       id: "secret",
-      label: "Server secret shared with Convex",
-      done: facts.serverSecret,
-      detail: "Set the same CONVEX_SERVER_SECRET in Convex and Vercel so channel webhooks are trusted.",
+      label: "Social card image conversion",
+      done: facts.messagingImageSecret,
+      detail: "Set MESSAGING_IMAGE_SECRET in Convex and Vercel to authorize social card image conversion.",
       href: "/admin/settings?tab=channels",
       linkLabel: "Backend services",
     },

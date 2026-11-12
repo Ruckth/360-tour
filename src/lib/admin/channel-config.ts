@@ -7,15 +7,15 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   whatsapp: "WhatsApp",
 };
 
-/** Webhook routes on the website (see DEPLOYMENT.md); paste `<site origin><path>` into each platform's console. */
+/** Webhook routes on the Convex HTTP site (see DEPLOYMENT.md); paste `<Convex site origin><path>` into each platform's console. */
 export const CHANNEL_WEBHOOK_PATH: Record<ChannelKey, string> = {
-  line: "/api/line/webhook",
-  facebook: "/api/facebook/webhook",
-  instagram: "/api/instagram/webhook",
-  whatsapp: "/api/whatsapp/webhook",
+  line: "/line/webhook",
+  facebook: "/facebook/webhook",
+  instagram: "/instagram/webhook",
+  whatsapp: "/whatsapp/webhook",
 };
 
-/** Vercel env vars each channel webhook needs (see src/app/api/<channel>/webhook/route.ts). "A|B" = either. */
+/** Vercel env vars each channel webhook needs (see src/app/<channel>/webhook/route.ts). "A|B" = either. */
 const CHANNEL_ENV: Record<ChannelKey, string[]> = {
   line: ["LINE_CHANNEL_SECRET", "LINE_CHANNEL_ACCESS_TOKEN"],
   facebook: ["FACEBOOK_APP_SECRET|META_APP_SECRET", "FACEBOOK_VERIFY_TOKEN", "FACEBOOK_ACCESS_TOKEN"],

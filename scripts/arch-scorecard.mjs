@@ -13,7 +13,13 @@ import { join, relative, sep } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const args = process.argv.slice(2);
-const phaseArg = args.includes('--phase') ? Number(args[args.indexOf('--phase') + 1]) : null;
+// Accept the task's --phase2 spelling as well as the documented --phase 2 form.
+const compactPhase = args.find(arg => /^--phase[0-4]$/.test(arg));
+const phaseArg = args.includes('--phase') ? Number(args[args.indexOf('--phase') + 1]) : compactPhase ? Number(compactPhase.slice(7)) : null;
+if (phaseArg !== null && (!Number.isInteger(phaseArg) || phaseArg < 0 || phaseArg > 4)) {
+  console.error('Expected --phase 0..4 or --phase0..4');
+  process.exit(2);
+}
 const asJson = args.includes('--json');
 
 // ---------- file helpers ----------

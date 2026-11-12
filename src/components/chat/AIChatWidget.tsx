@@ -1,5 +1,10 @@
 "use client";
 
+import { Component, useState, type ReactNode } from 'react';
+import { invalidGuest } from './session/useGuestSession';
+import { clearStoredSessionId } from './session/credentials';
+import { ConvexProvider, ConvexReactClient } from 'convex/react';
+import { useOptionalConvex } from '@/lib/react/convex';
 import { CheckCircle2, Copy, ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -110,7 +115,7 @@ function ChatBrowserGate({
   );
 }
 
-function ChatExperience(props: ChatExperienceProps) {
+function ChatExperienceBody(props: ChatExperienceProps) {
   const t = useTranslations("Chat");
   const {
     mode,
@@ -271,6 +276,32 @@ function ChatExperience(props: ChatExperienceProps) {
       />
     </ChatShell>
   );
+}
+
+/** A rotated handoff token invalidates the former browser's subscriptions. Keep the unsent draft. */
+class ChatCredentialBoundary extends Component<{ children: ReactNode }, { error: Error | null; revision: number }> {
+  state = { error: null as Error | null, revision: 0 };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) {
+    if (invalidGuest(error)) {
+      clearStoredSessionId();
+      this.setState(state => ({ error: null, revision: state.revision + 1 }));
+    }
+  }
+  render() {
+    if (this.state.error) { if (invalidGuest(this.state.error)) return null; throw this.state.error; }
+    return <div key={this.state.revision} className="contents">{this.props.children}</div>;
+  }
+}
+
+/** The disconnected branch only issues skipped queries. It never connects to a backend. */
+function DisconnectedChat(props: ChatExperienceProps) {
+  const [client] = useState(() => new ConvexReactClient('https://disconnected-demo.convex.cloud'));
+  return <ConvexProvider client={client}><ChatExperienceBody {...props} /></ConvexProvider>;
+}
+function ChatExperience(props: ChatExperienceProps) {
+  const client = useOptionalConvex();
+  return <ChatCredentialBoundary>{client ? <ChatExperienceBody {...props} /> : <DisconnectedChat {...props} />}</ChatCredentialBoundary>;
 }
 
 export function AIChatWidget(props: {

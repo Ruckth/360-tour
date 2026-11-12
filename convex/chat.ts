@@ -1,8 +1,9 @@
 import { createGuestToken, hashGuestToken, requireGuestToken } from './lib/guestToken';
-import { requireServerSecret } from './lib/serverSecret';
 import { cleanCapture, marketingCaptureValidator } from './lib/marketingAttribution';
-import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './auth/model';
+import { internalMutation, internalQuery, mutation, query, guestMutation, type MutationCtx } from './auth/model';
 import { v } from 'convex/values';
+import { internal } from './_generated/api';
+import { recordGuest } from './messaging/model';
 import type { Doc } from './_generated/dataModel';
 import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
 import {
@@ -434,26 +435,49 @@ export const getMessages = query({
 });
 
 export const getRecentMessages = internalQuery({
-	args: {
-		sessionId: v.id('conversations'),
-		limit: v.number()
-	},
-	handler: async (ctx, args) => {
-		const recent = await ctx.db
-			.query('messages')
-			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-			.order('desc')
-			.take(args.limit);
-
-		return recent.reverse();
-	}
+ args: { sessionId: v.id('conversations'), limit: v.number(), throughMessageId: v.optional(v.id('messages')) },
+ handler: async (ctx, args) => {
+  const limit = Math.min(100, Math.max(1, args.limit));
+  const through = args.throughMessageId ? await ctx.db.get(args.throughMessageId) : null;
+  if (!through) return (await ctx.db.query('messages').withIndex('by_session', q => q.eq('sessionId', args.sessionId)).order('desc').take(limit)).reverse();
+  const [users, answers] = await Promise.all([
+    ctx.db.query('messages').withIndex('by_sessionId_and_role', q => q.eq('sessionId', args.sessionId).eq('role', 'user').lte('_creationTime', through._creationTime)).order('desc').take(limit),
+    ctx.db.query('messages').withIndex('by_sessionId_and_role', q => q.eq('sessionId', args.sessionId).eq('role', 'assistant')).order('desc').take(limit),
+  ]);
+  const unlinked = answers.filter(row => !row.replyToMessageId && row._creationTime <= through._creationTime);
+  const ordered = users.reverse().flatMap(user => [user, ...answers.filter(answer => answer.replyToMessageId === user._id).reverse()]);
+  return [...unlinked.reverse(), ...ordered].slice(-limit);
+ }
 });
 
-/** Temporary server bridge until channel ingress moves into Convex in Phase 2. */
-export const isAiPausedForServer = query({
-	args: { sessionId: v.id('conversations'), serverSecret: v.string() },
-	handler: async (ctx, args) => {
-		await requireServerSecret(args.serverSecret);
-		return Boolean((await ctx.db.get(args.sessionId))?.aiPaused);
-	}
+/** Acknowledgement means both the user message and the durable work exist. */
+export const sendMessage = guestMutation({
+  args: {
+    clientMessageId: v.string(), content: v.string(), locale: v.optional(v.string()), propertySlug: v.optional(v.string()),
+    actionHint: v.optional(chatActionValidator), marketing: v.optional(marketingCaptureValidator),
+  },
+  returns: v.object({ eventId: v.id('channelEvents'), userMessageId: v.id('messages'), duplicate: v.boolean() }),
+  handler: async (ctx, args) => {
+    if (!/^[a-zA-Z0-9_-]{16,100}$/.test(args.clientMessageId)) throw new Error('Invalid client message identifier');
+    const content = args.content.trim();
+    if (!content || content.length > 2000) throw new Error('Message must be between 1 and 2000 characters');
+    const eventKey = `${args.sessionId}:${args.clientMessageId}`;
+    const prior = await ctx.db.query('channelEvents').withIndex('by_channel_and_eventKey', q => q.eq('channel', 'web').eq('eventKey', eventKey)).unique();
+    if (prior?.userMessageId) {
+      if (prior.messageText !== content) throw new Error('This message identifier was used for different content');
+      return { eventId: prior._id, userMessageId: prior.userMessageId, duplicate: true };
+    }
+    await consumeChatAdmission(ctx, args.sessionId);
+    if (args.marketing !== undefined) await ctx.db.patch(args.sessionId, { marketingCapture: cleanCapture(args.marketing) });
+    const now = Date.now();
+    const userMessageId = await recordGuest(ctx, args.sessionId, content);
+    const eventId = await ctx.db.insert('channelEvents', {
+      channel: 'web', eventKey, sessionId: args.sessionId, eventType: 'message', messageText: content, userMessageId,
+      locale: args.locale, propertySlug: args.propertySlug, actionHint: args.actionHint,
+      status: ctx.guestSession.aiPaused ? 'ignored' : 'received', attempts: 0, admittedAt: now, arrivedAt: now,
+      processingStartedAt: now, nextAttemptAt: now, createdAt: now, updatedAt: now,
+    });
+    if (!ctx.guestSession.aiPaused) await ctx.scheduler.runAfter(0, internal.messaging.worker.run, { eventId });
+    return { eventId, userMessageId, duplicate: false };
+  },
 });

@@ -1,18 +1,12 @@
+import { generateTestReply, respondTest } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { testServerSecret } from "./testing/fixtures.test-support";
 import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import { getResortRealityDisclosure, resortTodayLine } from "./chatAi";
 import schema from "./schema";
-
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
 
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
@@ -36,7 +30,7 @@ describe('concierge model routing', () => {
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      const result = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: message });
+      const result = await generateTestReply(t, { sessionId, userMessage: message });
       expect(result.model).toBe(model);
       expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://ai.example.test/v1${endpoint}`);
     } finally {
@@ -79,7 +73,7 @@ describe("reply outcome evidence", () => {
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      const result = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: "Do you have Wi-Fi?" });
+      const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "Do you have Wi-Fi?" });
       expect(result).toMatchObject({ outcome });
       expect(result.response).not.toMatch(/\[\[(ANSWERED|AWAITING_GUEST|NEEDS_STAFF)\]\]/);
       const session = await t.run(ctx => ctx.db.get(sessionId));
@@ -98,7 +92,7 @@ describe("concierge without AI credentials", () => {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
       await t.run(ctx => ctx.db.patch(sessionId, { channel }));
-      const reply = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(),
+      const reply = await generateTestReply(t, {
         sessionId, userMessage: "I want to book a villa", siteUrl: "https://resort.test",
       });
       expect(reply.response).toContain("verified information");
@@ -116,10 +110,10 @@ describe("concierge without AI credentials", () => {
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      const hello = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: "Hello!" });
+      const hello = await generateTestReply(t, { sessionId, userMessage: "Hello!" });
       expect(hello.model).toBe("unknown_fallback");
       expect(await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10))).toHaveLength(1);
-      const policy = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: "Is helicopter transfer included?" });
+      const policy = await generateTestReply(t, { sessionId, userMessage: "Is helicopter transfer included?" });
       expect(policy.model).toBe("unknown_fallback");
       expect(policy.response).toContain("verified information");
       const reports = await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10));
@@ -209,7 +203,7 @@ describe("retired question-bank routing", () => {
       vi.stubGlobal("fetch", fetchMock);
       const sessionId = await createWebSession(t);
 
-      const result = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: "มีบริการอะไรบ้าง", locale: "th" });
+      const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "มีบริการอะไรบ้าง", locale: "th" });
 
       expect(result.response).toContain("Traditional Thai Massage");
       expect(result.response).toContain("฿1,500");
@@ -232,7 +226,7 @@ describe("retired question-bank routing", () => {
       }), { status: 200 })));
       const sessionId = await createWebSession(t);
 
-      const result = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: "Is helicopter transfer included?" });
+      const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "Is helicopter transfer included?" });
       const unknownRows = await adminTest(t).query(api.chatKnowledge.adminListUnknownQuestions, {
         status: "new", paginationOpts: { numItems: 10, cursor: null },
       });
@@ -254,7 +248,7 @@ describe("AI takeover", () => {
       const sessionId = await createWebSession(t);
       await adminTest(t).mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
 
-      const result = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken,
+      const result = await respondTest(t, { guestToken: fixtureGuestToken,
         sessionId,
         userMessage: "Is Auralis Cove a real luxury villa resort?",
       });
@@ -265,7 +259,7 @@ describe("AI takeover", () => {
         ["user", "Is Auralis Cove a real luxury villa resort?"],
       ]);
       await expect(
-        t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: "Hello?", channel: "whatsapp" }),
+        generateTestReply(t, { sessionId, userMessage: "Hello?", channel: "whatsapp" }),
       ).rejects.toThrow(/paused/);
     } finally {
       vi.unstubAllEnvs();

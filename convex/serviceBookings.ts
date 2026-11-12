@@ -1,3 +1,4 @@
+import { durableToolValidator, withDurableTool } from './messaging/model';
 import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { v } from 'convex/values';
@@ -86,11 +87,11 @@ export const checkServiceAvailability = internalQuery({
 });
 
 export const prepareChatServiceBooking = internalMutation({
-	args: {
+	args: { durableTool: v.optional(durableToolValidator),
 		sessionId: v.id('conversations'), serviceSlug: v.string(), date: v.string(), time: v.string(),
 		guestName: v.string(), guestPhone: v.optional(v.string()), staffPreference: v.optional(v.string()), deadlineAt: v.optional(v.number())
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args) => withDurableTool(ctx, args.sessionId, args.durableTool, async () => {
 		const session = await sessionFor(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
 		try {
@@ -100,7 +101,7 @@ export const prepareChatServiceBooking = internalMutation({
 			await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
 			return { error: error instanceof Error ? error.message : 'Could not prepare the service booking.', alternatives: [] };
 		}
-	}
+	})
 });
 
 async function prepareQuote(
@@ -145,8 +146,8 @@ async function prepareQuote(
 }
 
 export const confirmChatServiceBooking = internalMutation({
-	args: { sessionId: v.id('conversations'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
-	handler: async (ctx, args) => {
+	args: { durableTool: v.optional(durableToolValidator), sessionId: v.id('conversations'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
+	handler: async (ctx, args) => withDurableTool(ctx, args.sessionId, args.durableTool, async () => {
 		const session = await sessionFor(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
 		const quote = session.pendingServiceQuote;
@@ -195,7 +196,7 @@ export const confirmChatServiceBooking = internalMutation({
 			service: service.name, price: service.price, currency: service.currency, ...resortLocalParts(quote.start),
 			staff: firstName((await ctx.db.get(created.staffId))?.name ?? 'Staff'), alreadyConfirmed: false
 		};
-	}
+	})
 });
 
 async function guestAppointments(ctx: ReadCtx, session: Doc<'conversations'>) {
@@ -220,8 +221,8 @@ export const listChatGuestServiceBookings = internalQuery({
 });
 
 export const cancelChatServiceBooking = internalMutation({
-	args: { sessionId: v.id('conversations'), reference: v.string(), turnStartedAt: v.number(), deadlineAt: v.optional(v.number()) },
-	handler: async (ctx, args) => {
+	args: { durableTool: v.optional(durableToolValidator), sessionId: v.id('conversations'), reference: v.string(), turnStartedAt: v.number(), deadlineAt: v.optional(v.number()) },
+	handler: async (ctx, args) => withDurableTool(ctx, args.sessionId, args.durableTool, async () => {
 		const session = await sessionFor(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
 		const appointment = (await guestAppointments(ctx, session)).find((row) => row.confirmationCode.toUpperCase() === args.reference.trim().toUpperCase());
@@ -244,5 +245,5 @@ export const cancelChatServiceBooking = internalMutation({
 		await cancelAppointmentRecord(ctx, appointment, { actor: 'guest' });
 		await ctx.db.patch(args.sessionId, { pendingServiceCancellation: undefined });
 		return { state: 'cancelled' as const, ...summary };
-	}
+	})
 });

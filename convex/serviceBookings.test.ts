@@ -1,8 +1,8 @@
+import { generateTestReply } from './testing/turn.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
-import { testServerSecret } from "./testing/fixtures.test-support";
 import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
@@ -242,7 +242,7 @@ describe('AI service booking', () => {
 		const s = await setup();
 		const results: string[] = [];
 		mockAi([{ name: 'prepare_service_booking', args: request }, { name: 'confirm_service_booking' }], results);
-		const proposal = await s.t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId: s.sessionId, userMessage: 'Book Thai massage', channel: 'whatsapp', bookingFlow: true });
+		const proposal = await generateTestReply(s.t, { sessionId: s.sessionId, userMessage: 'Book Thai massage', channel: 'whatsapp', bookingFlow: true });
 		expect(proposal.response).toContain('not confirmed yet');
 		expect(proposal.response).toContain('Reply yes');
 		expect(await appointments(s.t)).toHaveLength(0);
@@ -250,21 +250,21 @@ describe('AI service booking', () => {
 		vi.unstubAllGlobals();
 		const listing: string[] = [];
 		mockAi([{ name: 'get_my_bookings' }], listing);
-		const bookingList = await s.t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId: s.sessionId, userMessage: 'What are my bookings?', channel: 'whatsapp', bookingFlow: true });
+		const bookingList = await generateTestReply(s.t, { sessionId: s.sessionId, userMessage: 'What are my bookings?', channel: 'whatsapp', bookingFlow: true });
 		expect(bookingList.response).toContain('status: booked');
 		expect(bookingList.response).toContain('SVC-');
 		const reference = (await appointments(s.t))[0].confirmationCode;
 		vi.unstubAllGlobals();
 		const firstCancel: string[] = [];
 		mockAi([{ name: 'cancel_booking', args: { reference } }], firstCancel);
-		const cancellationProposal = await s.t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId: s.sessionId, userMessage: `Cancel ${reference}`, channel: 'whatsapp', bookingFlow: true });
+		const cancellationProposal = await generateTestReply(s.t, { sessionId: s.sessionId, userMessage: `Cancel ${reference}`, channel: 'whatsapp', bookingFlow: true });
 		expect(cancellationProposal.response).toContain('not been cancelled yet');
 		expect(cancellationProposal.response).toContain(reference);
 		vi.advanceTimersByTime(1000);
 		vi.unstubAllGlobals();
 		const confirmedCancel: string[] = [];
 		mockAi([{ name: 'cancel_booking', args: { reference } }], confirmedCancel);
-		const cancelledReply = await s.t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId: s.sessionId, userMessage: 'Yes, cancel it', channel: 'whatsapp', bookingFlow: true });
+		const cancelledReply = await generateTestReply(s.t, { sessionId: s.sessionId, userMessage: 'Yes, cancel it', channel: 'whatsapp', bookingFlow: true });
 		expect(cancelledReply.response).toContain(`Booking cancelled.\n${reference}`);
 		expect((await appointments(s.t))[0].status).toBe('cancelled');
 	});

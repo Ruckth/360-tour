@@ -1,21 +1,14 @@
+import { acceptTestEvent, completeTestEvent } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { buildAdminSearchText } from "./lib/adminChatMetadata";
 import schema from "./schema";
 
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
-
 const modules = import.meta.glob("./**/*.ts");
-const TEST_SERVER_SECRET = "test-server-secret";
-beforeEach(() => vi.stubEnv("CONVEX_SERVER_SECRET", TEST_SERVER_SECRET));
 const adminEmail = "admin@example.com";
 
 function adminTest(t: ReturnType<typeof convexTest>) {
@@ -817,33 +810,18 @@ describe("admin chat metadata writes", () => {
   it("LINE inbound and reply paths update session metadata", async () => {
     const t = convexTest(schema, modules);
 
-    const claim = await t.mutation(api.line.claimEvent, {
-      serverSecret: TEST_SERVER_SECRET,
+    const claim = await acceptTestEvent(t, 'line', {
       eventKey: "line-admin-metadata",
-      lineUserId: "UMETA",
+      recipient: "UMETA",
       sourceType: "user",
       eventType: "message",
       messageText: "Can I check in late?",
       eventTimestamp: 1_700_000_000_000,
     });
     const sessionId = claim.sessionId as Id<"conversations">;
-
-    await t.mutation(api.line.recordInboundEvent, {
-      serverSecret: TEST_SERVER_SECRET,
-      eventId: claim.eventId,
-      sessionId,
-      userContent: "Can I check in late?",
-    });
     const afterInbound = await t.query(internal.chat.getSessionInternal, { sessionId });
 
-    await t.mutation(api.line.completeEvent, {
-      serverSecret: TEST_SERVER_SECRET,
-      eventId: claim.eventId,
-      sessionId,
-      assistantContent: "Late check-in depends on availability.",
-      replyMode: "unknown_fallback",
-      lineReplyStatus: 200,
-    });
+    await completeTestEvent(t, claim.eventId, "Late check-in depends on availability.");
     const afterReply = await t.query(internal.chat.getSessionInternal, { sessionId });
 
     expect(afterInbound?.messageCount).toBe(1);
@@ -858,34 +836,19 @@ describe("admin chat metadata writes", () => {
   it("WhatsApp inbound and reply paths update session metadata", async () => {
     const t = convexTest(schema, modules);
 
-    const claim = await t.mutation(api.whatsapp.claimEvent, {
-      serverSecret: TEST_SERVER_SECRET,
+    const claim = await acceptTestEvent(t, 'whatsapp', {
       eventKey: "whatsapp-admin-metadata",
-      whatsappUserId: "66956823432",
+      recipient: "66956823432",
       profileName: "WhatsApp Guest",
-      phoneNumberId: "1134040116463992",
+      accountId: "1134040116463992",
       eventType: "message",
       messageText: "Can I check in late?",
       eventTimestamp: 1_700_000_000_000,
     });
     const sessionId = claim.sessionId as Id<"conversations">;
-
-    await t.mutation(api.whatsapp.recordInboundEvent, {
-      serverSecret: TEST_SERVER_SECRET,
-      eventId: claim.eventId,
-      sessionId,
-      userContent: "Can I check in late?",
-    });
     const afterInbound = await t.query(internal.chat.getSessionInternal, { sessionId });
 
-    await t.mutation(api.whatsapp.completeEvent, {
-      serverSecret: TEST_SERVER_SECRET,
-      eventId: claim.eventId,
-      sessionId,
-      assistantContent: "Late check-in depends on availability.",
-      replyMode: "unknown_fallback",
-      whatsappReplyStatus: 200,
-    });
+    await completeTestEvent(t, claim.eventId, "Late check-in depends on availability.");
     const afterReply = await t.query(internal.chat.getSessionInternal, { sessionId });
 
     expect(afterInbound?.messageCount).toBe(1);
@@ -961,24 +924,21 @@ describe("channel profile names", () => {
   it("stores LINE, Facebook, and Instagram profile names on the session", async () => {
     const t = convexTest(schema, modules);
     const claims = await Promise.all([
-      t.mutation(api.line.claimEvent, {
-        serverSecret: TEST_SERVER_SECRET,
-        eventKey: "line-name",
-        lineUserId: "U-name",
+      acceptTestEvent(t, 'line', {
+          eventKey: "line-name",
+        recipient: "U-name",
         profileName: " Somchai ",
         eventType: "message",
       }),
-      t.mutation(api.facebook.claimEvent, {
-        serverSecret: TEST_SERVER_SECRET,
-        eventKey: "fb-name",
-        facebookUserId: "fb-name",
+      acceptTestEvent(t, 'facebook', {
+          eventKey: "fb-name",
+        recipient: "fb-name",
         profileName: "Maya Chen",
         eventType: "message",
       }),
-      t.mutation(api.instagram.claimEvent, {
-        serverSecret: TEST_SERVER_SECRET,
-        eventKey: "ig-name",
-        instagramUserId: "ig-name",
+      acceptTestEvent(t, 'instagram', {
+          eventKey: "ig-name",
+        recipient: "ig-name",
         profileName: "ana.travels",
         eventType: "message",
       }),

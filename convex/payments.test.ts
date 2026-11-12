@@ -4,7 +4,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
 
-declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob('./**/*.ts');
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });

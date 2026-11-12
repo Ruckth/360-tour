@@ -10,12 +10,6 @@ import { markBookingPaid } from './bookings';
 import { READ_BUDGET_ERROR, readBudget, ReadBudget, ReadBudgetExceeded, reserveWrites } from './lib/readBudget';
 import schema from './schema';
 
-declare global {
-	interface ImportMeta {
-		glob(pattern: string): Record<string, () => Promise<unknown>>;
-	}
-}
-
 const modules = import.meta.glob('./**/*.ts');
 const adminEmail = 'admin@example.com';
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(Date.UTC(2030, 0, 1)); });

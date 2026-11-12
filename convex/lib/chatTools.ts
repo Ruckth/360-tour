@@ -1,3 +1,4 @@
+import type { DurableTool } from '../messaging/model';
 import { satangToBaht } from '../shared/money';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -268,6 +269,7 @@ export type ToolContext = {
 	/** When the current AI turn started; lets two-step tools require a guest reply in between. */
 	turnStartedAt: number;
 	deadlineAt?: number;
+ durableTurn?: Pick<DurableTool, 'eventId' | 'claimToken'>;
 	bookingProposal?: string;
 	serviceProposal?: string;
 };
@@ -338,6 +340,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'prepare_service_booking': {
 			const summary = await ctx.runMutation(internal.serviceBookings.prepareChatServiceBooking, {
 				sessionId: toolContext.sessionId,
+        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
 				serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
 				time: String(fnArgs.time ?? ''), guestName: String(fnArgs.guestName ?? ''),
@@ -350,6 +353,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'confirm_service_booking':
 			return humanToolResult(await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
 				sessionId: toolContext.sessionId,
+        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
 				expectedProposal: toolContext.serviceProposal ?? '',
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			}));
@@ -465,6 +469,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'prepare_booking': {
 			const summary = await ctx.runMutation(internal.bookings.prepareChatBooking, {
 				sessionId: toolContext.sessionId,
+        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
 				propertySlug: String(fnArgs.propertySlug ?? ''),
 				checkIn: String(fnArgs.checkIn ?? ''),
@@ -483,6 +488,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'confirm_booking': {
 			const booking = await ctx.runMutation(internal.bookings.confirmChatBooking, {
 				sessionId: toolContext.sessionId,
+        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
 				expectedProposal: toolContext.bookingProposal ?? '',
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			});
@@ -524,6 +530,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const result = await ctx.runMutation(reference.trim().toUpperCase().startsWith('SVC-')
 				? internal.serviceBookings.cancelChatServiceBooking : internal.bookings.cancelChatBooking, {
 				sessionId: toolContext.sessionId,
+        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
 				reference,
 				turnStartedAt: toolContext.turnStartedAt,
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
@@ -541,7 +548,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 }
 
 /** LLM/tool output is a presentation boundary; IDs, counts and timestamps retain their units. */
-function humanToolResult(value: unknown): string {
+export function humanToolResult(value: unknown): string {
  const currencyFields = new Set(["price","pricePerNight","nightlyRate","directPrice","totalDirect","totalOTA","listedTotal","discountPercent","discountAmount","directTotal","maxSavings","total","subtotal","discount","amount","saving","fee","owed","minEligibleSubtotal","eligibleSubtotal"]);
  return JSON.stringify(value, (key, item) => typeof item === 'number' && currencyFields.has(key) ? satangToBaht(item) : item);
 }

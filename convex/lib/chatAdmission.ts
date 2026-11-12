@@ -1,9 +1,14 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { enforceRateLimit } from './rateLimit';
+import { RateLimiter, HOUR } from '@convex-dev/rate-limiter';
+import { components } from '../_generated/api';
 
-/** Charge both admission budgets within the caller's transaction. */
+export const chatLimiter = new RateLimiter(components.rateLimiter, {
+  session: { kind: 'fixed window', rate: 20, period: HOUR },
+  global: { kind: 'fixed window', rate: 500, period: HOUR, shards: 10 },
+});
+/** Both admissions and the message commit atomically; duplicate retries consume neither. */
 export async function consumeChatAdmission(ctx: MutationCtx, sessionId: Id<'conversations'>) {
-  await enforceRateLimit(ctx, `chat:${sessionId}`, 20, 60 * 60 * 1000);
-  await enforceRateLimit(ctx, 'chat:global', 500, 60 * 60 * 1000);
+  await chatLimiter.limit(ctx, 'session', { key: sessionId, throws: true });
+  await chatLimiter.limit(ctx, 'global', { throws: true });
 }

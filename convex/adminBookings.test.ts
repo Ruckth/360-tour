@@ -7,12 +7,6 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
-
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
 

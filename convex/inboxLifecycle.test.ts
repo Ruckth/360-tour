@@ -6,11 +6,6 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { sendFailed, staffNeeded } from "./lib/inboxLifecycle";
 
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
 const modules = import.meta.glob("./**/*.ts");
 beforeEach(() => vi.stubEnv("ADMIN_EMAILS", "admin@example.com"));
 afterEach(() => vi.unstubAllEnvs());

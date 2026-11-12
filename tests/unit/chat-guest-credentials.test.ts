@@ -3,8 +3,8 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { ConvexReactClient } from 'convex/react';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from 'convex/_generated/api';
-import { askConcierge, claimChatBrowserHandoff, closeChatSession, createChatBrowserHandoff, createChatSession, getChatMessages, getNextChatSuggestions, markChatSuggestionsShown, markChatSuggestionClicked, identifyChatVisitor, touchChatSession } from '@/lib/react/convex-api';
-import { clearStoredSessionId, getStoredGuestToken, getStoredSessionId, setStoredSessionId, storeGuestToken } from '@/components/chat/session/message-cache';
+import { claimChatBrowserHandoff, closeChatSession, createChatBrowserHandoff, createChatSession, getChatMessages, getNextChatSuggestions, markChatSuggestionsShown, markChatSuggestionClicked, identifyChatVisitor, touchChatSession } from '@/lib/react/convex-api';
+import { clearStoredSessionId, getStoredGuestToken, getStoredSessionId, setStoredSessionId, storeGuestToken } from '@/components/chat/session/credentials';
 
 beforeEach(() => localStorage.clear());
 
@@ -29,11 +29,11 @@ it('persists guest credentials through creation, reload, and handoff and sends t
 	await markChatSuggestionsShown(client, { sessionId, suggestions: [{ source: 'static', suggestionId: 'availability' }] });
 	await markChatSuggestionClicked(client, { sessionId, suggestion: { source: 'static', suggestionId: 'availability' } });
 	await createChatBrowserHandoff(client, { sessionId });
-	await askConcierge(client, { sessionId, userMessage: 'hello' });
+	await client.mutation(api.chat.sendMessage, { sessionId: sessionId as never, guestToken: getStoredGuestToken(sessionId)!, clientMessageId: crypto.randomUUID(), content: 'hello' });
 	await closeChatSession(client, { sessionId });
 	for (const [, args] of mutation.mock.calls.slice(1)) expect(args).toMatchObject({ sessionId, guestToken: 'original-token' });
 	for (const [, args] of query.mock.calls) expect(args).toMatchObject({ sessionId, guestToken: 'original-token' });
-	expect(action).toHaveBeenCalledWith(api.chatAi.respond, expect.objectContaining({ sessionId, guestToken: 'original-token' }));
+	expect(action).not.toHaveBeenCalled();
 	await claimChatBrowserHandoff(client, { token: 'handoff' });
 	await getChatMessages(client, { sessionId });
 	expect(query).toHaveBeenLastCalledWith(api.chat.getMessages, { sessionId, guestToken: 'rotated-token' });

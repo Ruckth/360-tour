@@ -1,6 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "convex/_generated/api";
-import { channelConfigStatus } from "@/lib/admin/channel-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,10 +21,10 @@ export async function GET(request: Request) {
   const client = new ConvexHttpClient(convexUrl);
   client.setAuth(token);
   try {
-    await client.query(api.settings.admins, {});
+    const facts = await client.query(api.settings.setupChecklist, {});
+    return Response.json({ channels: facts.channelConfig }, { headers: { "cache-control": "no-store" } });
   } catch {
     return Response.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  return Response.json({ channels: channelConfigStatus() }, { headers: { "cache-control": "no-store" } });
 }

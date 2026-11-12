@@ -5,12 +5,6 @@ import { api } from "./_generated/api";
 import { resortTodayIso } from "./lib/dates";
 import schema from "./schema";
 
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
-
 const modules = import.meta.glob("./**/*.ts");
 afterEach(() => {
   vi.useRealTimers();

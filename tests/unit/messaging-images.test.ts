@@ -7,7 +7,7 @@ const source = 'https://test.convex.cloud/api/storage/photo-id';
 function imageUrl() {
   return withMessagingImages({ kind: 'service', items: [{ title: 'Massage', lines: [], actions: [], imageUrl: source }] }, 'https://tour.example')!.items[0].imageUrl!;
 }
-beforeEach(() => vi.stubEnv('CONVEX_SERVER_SECRET', 'image-signing-test-secret'));
+beforeEach(() => vi.stubEnv('MESSAGING_IMAGE_SECRET', 'image-signing-test-secret'));
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('messaging image conversion', () => {
@@ -40,7 +40,7 @@ describe('messaging image conversion', () => {
   });
 
   it('omits image headers if signing is not configured', () => {
-    vi.stubEnv('CONVEX_SERVER_SECRET', '');
+    vi.stubEnv('MESSAGING_IMAGE_SECRET', '');
     expect(imageUrl()).toBeUndefined();
   });
 

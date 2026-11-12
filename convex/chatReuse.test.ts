@@ -5,12 +5,6 @@ import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
-
 const modules = import.meta.glob("./**/*.ts");
 
 describe("chat session reuse", () => {

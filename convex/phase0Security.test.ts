@@ -1,3 +1,6 @@
+import { respondTest } from './testing/turn.test-support';
+import * as ingress from './messaging/ingress';
+import * as worker from './messaging/worker';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -13,15 +16,16 @@ import { hashGuestToken } from './lib/guestToken';
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 it('rejects webhook mutations when the server secret is missing', async () => {
-	vi.stubEnv('CONVEX_SERVER_SECRET', '');
-	const t = createHarness(convexTest);
-	for (const claim of [api.line.claimEvent, api.facebook.claimEvent, api.instagram.claimEvent, api.whatsapp.claimEvent]) {
-		await expect(t.mutation(claim, { serverSecret: '', eventKey: 'test-event', eventType: 'message' })).rejects.toThrow('not configured');
-	}
-	expect(await t.run(ctx => ctx.db.query('conversations').collect())).toEqual([]);
-	const guest = await guestSession(t);
-	await expect(t.action(api.chatAi.generateReply, { sessionId: guest.sessionId, userMessage: 'hello', serverSecret: '' })).rejects.toThrow('not configured');
-	await expect(t.query(api.chat.isAiPausedForServer, { sessionId: guest.sessionId, serverSecret: '' })).rejects.toThrow('not configured');
+  // The shared secret bridge is retired. No public event mutation exists; ingress requires a provider signature.
+  const t = createHarness(convexTest);
+  expect(ingress.accept.isInternal).toBe(true);
+  expect(worker.claim.isInternal).toBe(true);
+  expect(worker.commitTurn.isInternal).toBe(true);
+  for (const channel of ['line','facebook','instagram','whatsapp']) {
+    expect((await t.fetch(`/${channel}/webhook`, { method: 'POST', body: '{}' })).status).toBe(401);
+    await expect(t.mutation(makeFunctionReference<'mutation'>(`${channel}:claimEvent`), {})).rejects.toThrow();
+  }
+  expect(await t.run(ctx => ctx.db.query('conversations').collect())).toEqual([]);
 });
 
 it('rejects assistant messages from the browser', async () => {
@@ -35,8 +39,8 @@ it('rejects assistant messages from the browser', async () => {
 	expect(chatEval.writeMessage.isInternal).toBe(true);
 	expect(recordUnknownQuestion.isInternal).toBe(true);
 	expect(chatAi.getGuardrailReply).not.toHaveProperty('isPublic');
-	await expect(t.action(api.chatAi.generateReply, { sessionId: guest.sessionId, userMessage: forged.content, serverSecret: '' })).rejects.toThrow();
-	await expect(t.action(api.chatAi.respond, { ...forged, userMessage: 'hello' } as never)).rejects.toThrow();
+	await expect(t.action(makeFunctionReference<'action'>('chatAi:generateReply'), {})).rejects.toThrow();
+	await expect(t.mutation(api.chat.sendMessage, { ...forged, clientMessageId: crypto.randomUUID() } as never)).rejects.toThrow();
 	expect(await t.query(api.chat.getMessages, guest)).toEqual([]);
 });
 
@@ -70,7 +74,7 @@ it('rejects respond for a session the caller does not own', async () => {
 	const social = await t.run(ctx => ctx.db.insert('conversations', { channel: 'line', createdAt: Date.now() }));
 	for (const sessionId of [owner.sessionId, social]) {
 		for (const guestToken of [undefined, stranger.guestToken]) {
-			await expect(t.action(api.chatAi.respond, { sessionId, guestToken, userMessage: 'hello' })).rejects.toThrow('INVALID_GUEST_TOKEN');
+			await expect(respondTest(t, { sessionId, guestToken, userMessage: 'hello' })).rejects.toThrow('INVALID_GUEST_TOKEN');
 		}
 	}
 	expect(await t.query(api.chat.getMessages, owner)).toEqual([]);
@@ -135,17 +139,11 @@ it('rejects suggestion tracking without a valid guest token', async () => {
 	await expect(t.mutation(api.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId: 'availability' } })).resolves.toEqual({ clicked: true });
 });
 
-it('requires the server secret to read booking flow state', async () => {
-	const t = createHarness(convexTest);
-	const guest = await guestSession(t);
-	vi.stubEnv('CONVEX_SERVER_SECRET', 'server-only');
-	for (const serverSecret of ['', 'wrong']) {
-		await expect(t.query(api.bookings.isChatBookingFlowActive, { sessionId: guest.sessionId, serverSecret })).rejects.toThrow();
-	}
-	await t.run(ctx => ctx.db.patch(guest.sessionId, { bookingFlowAt: Date.now() }));
-	expect(await t.query(api.bookings.isChatBookingFlowActive, { sessionId: guest.sessionId, serverSecret: 'server-only' })).toBe(true);
-	vi.stubEnv('CONVEX_SERVER_SECRET', '');
-	await expect(t.query(api.bookings.isChatBookingFlowActive, { sessionId: guest.sessionId, serverSecret: '' })).rejects.toThrow('not configured');
+it('retires the public booking-flow and AI-pause server bridges', async () => {
+ const t = createHarness(convexTest);
+ for (const path of ['bookings:isChatBookingFlowActive','chat:isAiPausedForServer']) {
+   await expect(t.query(makeFunctionReference<'query'>(path), {})).rejects.toThrow();
+ }
 });
 
 
