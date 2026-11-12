@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
-import { errorText, useNow } from "@/lib/staff-bookings";
+import { useNow } from "@/lib/staff-bookings";
 import { useCheckoutBackend, type ApprovalRequest } from "./backend";
 import { CheckoutSheetContent } from "./CheckoutLayers";
+import { checkoutErrorText } from "./refunds";
 import { approvalAsk, minutesLeft, personName, type ApprovalStatus } from "./staff-approvals";
 
 /**
@@ -95,6 +96,8 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
   const [error, setError] = useState("");
   const lock = useRef(false);
   const title = order?.order.title ?? "Order";
+  const refund = request.payload.kind === "refund" ? request.payload : null;
+  const lineName = order?.lines.find((line) => line._id === request.lineId)?.name;
 
   async function decide(choice: "approve" | "decline") {
     if (lock.current) return;
@@ -110,7 +113,7 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
         onResult(resultText(result.status, false, title));
       }
     } catch (err) {
-      setError(errorText(err, choice === "approve" ? "Couldn’t approve. Nothing changed." : "Couldn’t decline. Try again."));
+      setError(checkoutErrorText(err, choice === "approve" ? "Couldn’t approve. Nothing changed." : "Couldn’t decline. Try again."));
     } finally {
       lock.current = false;
       setBusy(null);
@@ -119,10 +122,10 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
 
   return (
     <li className="grid gap-2 rounded-xl border border-border bg-card p-4" data-testid="approval-request">
-      <p className="text-sm font-semibold [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request)}</p>
-      <blockquote className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{request.reason}”</blockquote>
+      <p className="text-sm font-semibold [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request, lineName)}</p>
+      <blockquote className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{refund?.reason ?? request.reason}”</blockquote>
       <p className="text-sm text-muted-foreground tabular-nums">
-        {title} · Total {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
+        {title} · {refund ? "Net received" : "Total"} {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
       </p>
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         Expires in {minutesLeft(request.expiresAt, now)} min

@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { errorText, useNow } from "@/lib/staff-bookings";
+import { useNow } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import type { ApprovalPayload } from "convex/lib/staffTypes";
 import { useCheckoutBackend, type ApprovalRequest, type OrderId } from "./backend";
+import { checkoutErrorText } from "./refunds";
 import { approvalOutcome, approvalWhat, shownRequest } from "./staff-approvals";
 
 /** Sends one cashier request; resolves to an error message, or null once it is waiting for a manager. */
@@ -20,7 +21,7 @@ export function useSendApproval() {
       await actions.createApproval({ orderId, payload, reason });
       return null;
     } catch (err) {
-      return errorText(err, "Couldn’t send the request. Try again.");
+      return checkoutErrorText(err, "Couldn’t send the request. Try again.");
     }
   };
 }
@@ -81,7 +82,7 @@ export function ApprovalRequestForm({
  * The order's request, one line: "Waiting for a manager · ฿150 discount" with Cancel for the
  * cashier who asked, then its outcome for a few minutes.
  */
-export function OrderApprovalStatus({ requests, className }: { requests: ApprovalRequest[] | undefined; className?: string }) {
+export function OrderApprovalStatus({ requests, lines, className }: { requests: ApprovalRequest[] | undefined; lines?: { _id: string; name: string }[]; className?: string }) {
   const now = useNow(15_000);
   const access = useStaffAccess();
   const actions = useCheckoutBackend().useActions();
@@ -98,7 +99,7 @@ export function OrderApprovalStatus({ requests, className }: { requests: Approva
     try {
       await actions.cancelApproval({ requestId: request._id });
     } catch (err) {
-      setError(errorText(err, "Couldn’t cancel the request."));
+      setError(checkoutErrorText(err, "Couldn’t cancel the request."));
     } finally {
       setCancelling(false);
     }
@@ -114,7 +115,7 @@ export function OrderApprovalStatus({ requests, className }: { requests: Approva
       )}
     >
       <span className="min-w-0">
-        {pending ? <><span className="font-semibold">Waiting for a manager</span> · {approvalWhat(request)}</> : approvalOutcome(request)}
+        {pending ? <><span className="font-semibold">Waiting for a manager</span> · {approvalWhat(request, lines?.find((line) => line._id === request.lineId)?.name)}</> : approvalOutcome(request)}
       </span>
       {pending && mine ? (
         <Button type="button" size="sm" variant="ghost" className="h-8" disabled={cancelling} onClick={() => void cancel()}>Cancel</Button>

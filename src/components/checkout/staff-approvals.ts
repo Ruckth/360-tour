@@ -74,10 +74,12 @@ export function needsApproval(err: unknown): NeedsApproval | null {
 }
 
 
-/** "฿120 discount", "custom price", "void", "payment fix": what a request asks for, as one phrase. */
-export function approvalWhat(request: Pick<ApprovalView, "payload" | "amount">) {
+/** "฿120 discount", "custom price", "void", "payment fix", "refund ฿300 · Foot spa": what a request asks for, as one phrase. */
+export function approvalWhat(request: Pick<ApprovalView, "payload" | "amount">, lineName?: string) {
   const { payload } = request;
   switch (payload.kind) {
+    case "refund":
+      return [`refund ${formatMoney(payload.amountSatang / 100, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
       return `${formatMoney(request.amount)} discount`;
     case "customPrice":
@@ -89,10 +91,12 @@ export function approvalWhat(request: Pick<ApprovalView, "payload" | "amount">) 
   }
 }
 
-/** The manager's view: "asks for a ฿120 discount (10%)", "asks to void a paid sale". */
-export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "percent">) {
+/** The manager's view: "asks for a ฿120 discount (10%)", "asks to void a paid sale", "asks to refund ฿300 · Foot spa". */
+export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "percent">, lineName?: string) {
   const { payload } = request;
   switch (payload.kind) {
+    case "refund":
+      return [`asks to refund ${formatMoney(payload.amountSatang / 100, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
       return `asks for a ${formatMoney(request.amount)} discount${request.percent !== undefined ? ` (${formatPercent(request.percent)}%)` : ""}`;
     case "customPrice":
