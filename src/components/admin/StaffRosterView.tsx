@@ -43,10 +43,10 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { appointmentGuestLabel, errorText, formatResortDate, formatResortTime, resortIsoDate } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
-type Week = FunctionReturnType<typeof api.roster.getWeek>;
+type Week = FunctionReturnType<typeof api.services.roster.getWeek>;
 type Cell = Week["cells"][number];
-type Conflict = Extract<FunctionReturnType<typeof api.roster.applyCells>, { ok: false }>["conflicts"][number];
-type CopyResult = FunctionReturnType<typeof api.roster.copyWeek>;
+type Conflict = Extract<FunctionReturnType<typeof api.services.roster.applyCells>, { ok: false }>["conflicts"][number];
+type CopyResult = FunctionReturnType<typeof api.services.roster.copyWeek>;
 type Plan = { shifts: Array<{ start: string; end: string }>; breaks: Array<{ start: string; end: string; label: string }> };
 type Pos = { row: number; col: number };
 type Notice = { text: string; details?: string[] };
@@ -115,12 +115,12 @@ export function StaffRosterView() {
   const anchorBase = useRef<Set<string>>(new Set());
   const confirm = useConfirm();
 
-  const data = useQuery(api.roster.getWeek, { weekStart });
-  const historyStaff = useQuery(api.adminServices.listStaff, { includeArchived: true }) ?? [];
-  const applyCells = useMutation(api.roster.applyCells);
-  const resetCells = useMutation(api.roster.resetCells);
-  const makeDefault = useMutation(api.roster.makeDefault);
-  const undo = useMutation(api.roster.undo);
+  const data = useQuery(api.services.roster.getWeek, { weekStart });
+  const historyStaff = useQuery(api.services.admin.listStaff, { includeArchived: true }) ?? [];
+  const applyCells = useMutation(api.services.roster.applyCells);
+  const resetCells = useMutation(api.services.roster.resetCells);
+  const makeDefault = useMutation(api.services.roster.makeDefault);
+  const undo = useMutation(api.services.roster.undo);
 
   const staff = useMemo(() => data?.staff ?? [], [data?.staff]);
   const dates = useMemo(() => data?.dates ?? [], [data?.dates]);
@@ -800,7 +800,7 @@ function CopyWeekDialog({
   onClose: () => void;
   onDone: (result: CopyResult, weeks: number) => void;
 }) {
-  const copyWeek = useMutation(api.roster.copyWeek);
+  const copyWeek = useMutation(api.services.roster.copyWeek);
   const [choice, setChoice] = useState<(typeof WEEK_CHOICES)[number]>("10");
   const [custom, setCustom] = useState("12");
   const [conflict, setConflict] = useState<"skip" | "overwrite">("skip");

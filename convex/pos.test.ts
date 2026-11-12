@@ -19,9 +19,9 @@ async function setup() {
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
-	const nok = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
-	const ploy = await admin.mutation(api.adminServices.createStaff, { name: 'Ploy', role: 'Therapist', color: '#def', ...hours });
-	const serviceId = await admin.mutation(api.adminServices.createService, {
+	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
+	const ploy = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Ploy', role: 'Therapist', color: '#def', ...hours });
+	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: '', category: 'Massage',
 		durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [nok]
 	});
@@ -552,7 +552,7 @@ describe('source changes', () => {
 		await admin.mutation(api.pos.openOrderFor, { bookingId });
 		await admin.mutation(api.pos.openOrderFor, { appointmentId: id });
 		await expect(admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'markPaid' })).rejects.toThrow('on Order #1, which is still open');
-		await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id })).rejects.toThrow('on Order #2, which is still open');
+		await expect(admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId: id })).rejects.toThrow('on Order #2, which is still open');
 	});
 
 	it('keeps a booking with an order from being deleted', async () => {
@@ -579,8 +579,8 @@ describe('source changes', () => {
 		expect((await admin.query(api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 10, cursor: null } })).page).toEqual([]);
 		// The stay's appointment goes on the stay's order; a standalone one gets its own.
 		const start = new Date('2026-12-02T03:00:00.000Z').getTime();
-		const { appointmentId: related } = await admin.mutation(api.adminServices.createAppointment, { serviceId, start, guestName: 'Mia', guestPhone: '0811111111', bookingId });
-		const { appointmentId: alone } = await admin.mutation(api.adminServices.createAppointment, { serviceId, start: start + 7_200_000, guestName: 'Leo', guestPhone: '0822222222' });
+		const { appointmentId: related } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start, guestName: 'Mia', guestPhone: '0811111111', bookingId });
+		const { appointmentId: alone } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: start + 7_200_000, guestName: 'Leo', guestPhone: '0822222222' });
 		expect((await admin.query(api.pos.ordersForBooking, { appointmentId: related }))?.activeOrder?._id).toBe(orderId);
 		expect((await admin.query(api.pos.ordersForBooking, { appointmentId: alone }))?.activeOrder?.title).toBe('Order #2');
 		// Opening it at checkout charges the stay on that same order.
@@ -703,7 +703,7 @@ describe('settlement', () => {
 
 	it('refuses a payment for an order that changed at the same total (C4-06)', async () => {
 		const { admin, serviceId, nok, order } = await setup();
-		const other = await admin.mutation(api.adminServices.createService, {
+		const other = await admin.mutation(api.services.commands.createService.createService, {
 			slug: 'aroma', name: 'Aroma oil', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [nok]
 		});
 		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
@@ -765,7 +765,7 @@ describe('order rows', () => {
 		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
 		await admin.mutation(api.pos.updateLine, { lineId, staffId: nok });
 		await settle({ orderId, idempotencyKey: 'attempt-0001', expectedDue: 120000, tenders: [{ method: 'card', amount: 120000 }] });
-		await admin.mutation(api.adminServices.updateStaff, { staffId: nok, name: 'Nok R.' });
+		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId: nok, name: 'Nok R.' });
 		expect((await order(orderId)).lines[0].staffName).toBe('Nok');
 	});
 
@@ -835,7 +835,7 @@ describe('order rows', () => {
 
 	it('only sells and charges THB prices (C4-01)', async () => {
 		const { t, admin, nok, propertyId, order } = await setup();
-		const usd = await admin.mutation(api.adminServices.createService, {
+		const usd = await admin.mutation(api.services.commands.createService.createService, {
 			slug: 'usd-massage', name: 'USD massage', description: '', category: 'Massage',
 			durationMin: 60, bufferMin: 0, price: 10000, currency: 'USD', staffIds: [nok]
 		});

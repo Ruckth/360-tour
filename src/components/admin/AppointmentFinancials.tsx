@@ -22,11 +22,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatResortDateTime } from "@/lib/staff-bookings";
 
 type Appointment = Doc<"appointments">;
-type Finance = FunctionReturnType<typeof api.adminServices.getAppointmentFinancials>;
+type Finance = FunctionReturnType<typeof api.services.admin.getAppointmentFinancials>;
 type Dialog = { kind: "pay" } | { kind: "refund"; paymentId?: Id<"appointmentPayments">; orderId?: Id<"orders">; max: number } | { kind: "amend" | "cancel"; payment: Doc<"appointmentPayments"> };
 
 export function AppointmentFinancials({ appointment }: { appointment: Appointment }) {
-  const data = useQuery(api.adminServices.getAppointmentFinancials, { appointmentId: appointment._id });
+  const data = useQuery(api.services.admin.getAppointmentFinancials, { appointmentId: appointment._id });
   const [dialog, setDialog] = useState<Dialog | null>(null);
   if (!data) return <p className="text-sm text-muted-foreground">Loading payment records…</p>;
   const money = (n: number) => formatMoney(n, appointment.currency);
@@ -69,9 +69,9 @@ export function AppointmentMoneyDialog({ appointment, revision, dialog, onClose 
   const [method, setMethod] = useState<string>((dialog.kind === "amend" ? dialog.payment.method : "cash"));
   const [reason, setReason] = useState("");
   const effective = useEffectiveTime(dialog.kind === "amend" ? dialog.payment.effectiveAt : undefined);
-  const pay = useMutation(api.adminServices.markAppointmentPaid);
-  const refund = useMutation(api.adminServices.refundAppointment);
-  const correct = useMutation(api.adminServices.correctAppointmentPaymentEntry);
+  const pay = useMutation(api.services.commands.markAppointmentPaid.markAppointmentPaid);
+  const refund = useMutation(api.services.commands.refundAppointment.refundAppointment);
+  const correct = useMutation(api.services.commands.correctAppointmentPaymentEntry.correctAppointmentPaymentEntry);
   const isRefund = dialog.kind === "refund";
   const isCancel = dialog.kind === "cancel";
   const title = isRefund ? "Record refund" : dialog.kind === "pay" ? "Record payment" : isCancel ? "Cancel mistaken payment entry" : "Correct payment method or date";

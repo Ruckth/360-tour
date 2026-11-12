@@ -20,14 +20,14 @@ const future = at('2026-11-02');
 async function setup() {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-  const staffId = await admin.mutation(api.adminServices.createStaff, {
+  const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Mali', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
   });
-  const serviceId = await admin.mutation(api.adminServices.createService, {
+  const serviceId = await admin.mutation(api.services.commands.createService.createService, {
     slug: 'massage', name: 'Thai massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staffId]
   });
-  const book = async (start = past, extra: { historicalReason?: string } = {}) => (await admin.mutation(api.adminServices.createAppointment, {
+  const book = async (start = past, extra: { historicalReason?: string } = {}) => (await admin.mutation(api.services.commands.createAppointment.createAppointment, {
     staffId, serviceId, start, guestName: 'Ann', guestPhone: '', ...extra
   })).appointmentId;
   const get = async (id: Id<'appointments'>) => (await t.run(ctx => ctx.db.get(id)))!;
@@ -51,7 +51,7 @@ describe('admin appointment corrections', () => {
     const [creation] = await history(id);
     expect(creation).toMatchObject({ kind: 'created', actor: 'admin@example.com', recordedAt: now, effectiveAt: past, after: { status: 'completed', paymentStatus: 'unpaid' } });
     expect(JSON.stringify(creation)).not.toContain((await get(id)).accessToken);
-    const page = await admin.query(api.adminServices.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 10, cursor: null } });
+    const page = await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 10, cursor: null } });
     expect(page.page[0].changes).toEqual(expect.arrayContaining([{ field: 'created', from: null, to: (await get(id)).confirmationCode }, { field: 'status', from: null, to: 'completed' }, { field: 'paymentStatus', from: null, to: 'unpaid' }]));
   });
 
@@ -81,16 +81,16 @@ describe('admin appointment corrections', () => {
 
   it('accepts archived historical sources with descriptive snapshots and roster warnings, while future use remains protected', async () => {
     const { t, admin, staffId, serviceId, book, get, history } = await setup();
-    await admin.mutation(api.adminServices.archiveStaff, { staffId });
-    await admin.mutation(api.adminServices.archiveService, { serviceId });
+    await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId });
+    await admin.mutation(api.services.commands.archiveService.archiveService, { serviceId });
     const id = await book();
     expect(await get(id)).toMatchObject({ staffId, serviceId, staffNameSnapshot: 'Mali', serviceNameSnapshot: 'Thai massage' });
     expect(JSON.stringify(await history(id))).toContain('archived');
     await expect(book(future)).rejects.toThrow('Service unavailable');
-    const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, staffId, date: '2020-01-02' });
+    const slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, staffId, date: '2020-01-02' });
     expect(slots.some(slot => slot.start === past)).toBe(true);
     await t.run(ctx => ctx.db.patch(staffId, { workingHours: [], breaks: [] }));
-    const review = await admin.query(api.adminServices.previewAppointmentTime, { serviceId, staffId, start: past + 2 * 3600000 });
+    const review = await admin.query(api.services.admin.previewAppointmentTime, { serviceId, staffId, start: past + 2 * 3600000 });
     expect(review.warnings.join(' ')).toContain('roster');
     expect(review.needsReason).toBe(false);
   });
@@ -112,7 +112,7 @@ describe('admin appointment corrections', () => {
     expect((await get(id)).start).toBe(actual);
     await expect(t.run(ctx => createAppointmentRecord(ctx, { serviceId, staffId, start: actual, guestName: 'Ann', guestPhone: '+66123', source: 'web' }))).rejects.toThrow('future');
     await expect(book(future + 7 * 60000)).rejects.toThrow('15-minute');
-    expect(await admin.query(api.adminServices.previewAppointmentTime, { serviceId, staffId, start: future + 7 * 60000 })).toMatchObject({ problem: expect.stringContaining('15-minute') });
+    expect(await admin.query(api.services.admin.previewAppointmentTime, { serviceId, staffId, start: future + 7 * 60000 })).toMatchObject({ problem: expect.stringContaining('15-minute') });
   });
 
   it('preserves issued receipt, tender and line snapshots when a paid appointment time is corrected', async () => {
@@ -128,7 +128,7 @@ describe('admin appointment corrections', () => {
     const facts = await readFinancialFacts();
     expect(facts.order?.status).toBe('paid');
     expect(facts.payments).toHaveLength(1);
-    await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: id, expectedRevision: (await get(id)).revision ?? 0, staffId, start: at('2020-01-03') });
+    await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: id, expectedRevision: (await get(id)).revision ?? 0, staffId, start: at('2020-01-03') });
     expect(await readFinancialFacts()).toEqual(facts);
     expect((await get(id)).paymentStatus).toBe('paid');
   });
@@ -136,17 +136,17 @@ describe('admin appointment corrections', () => {
   it('corrects completed paid service time with a revision guard and preserves payment terms and issued facts', async () => {
     const { t, admin, book, staffId, serviceId, get, history } = await setup();
     const id = await book();
-    await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id, expectedRevision: 0, effectiveAt: past + 3600000 });
+    await admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId: id, expectedRevision: 0, effectiveAt: past + 3600000 });
     expect((await get(id)).status).toBe('completed');
-    await admin.mutation(api.adminServices.updateService, { serviceId, price: 999900, durationMin: 90 });
+    await admin.mutation(api.services.commands.updateService.updateService, { serviceId, price: 999900, durationMin: 90 });
     const before = await get(id);
     const orders = await t.run(ctx => ctx.db.query('orders').take(100));
     const move = { appointmentId: id, staffId, start: at('2020-01-03'), expectedRevision: 1 };
-    await admin.mutation(api.adminServices.rescheduleAppointment, move);
+    await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, move);
     expect(await get(id)).toMatchObject({ start: move.start, end: move.start + 3600000, price: before.price, currency: before.currency, paymentStatus: 'paid', paidAt: past + 3600000, status: 'completed', revision: 2 });
     expect(await t.run(ctx => ctx.db.query('orders').take(100))).toEqual(orders);
     const changes = await history(id);
-    await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, start: at('2020-01-04') })).rejects.toThrow(STALE_APPOINTMENT);
+    await expect(admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { ...move, start: at('2020-01-04') })).rejects.toThrow(STALE_APPOINTMENT);
     expect(await history(id)).toEqual(changes);
     expect(canCorrectAppointmentTime(before, now)).toBe(true);
     expect(canReschedule(before, now)).toBe(false);
@@ -158,22 +158,22 @@ describe('admin appointment corrections', () => {
     // Fixture represents a preexisting legacy status and cancellation metadata.
     await t.run(ctx => ctx.db.patch(id, { status, cancelledAt: past, cancelledBy: 'old@example.com', cancellationReason: 'Legacy' }));
     const correction = { appointmentId: id, expectedRevision: 0, status: 'arrived' as const, effectiveAt: past };
-    await expect(admin.mutation(api.adminServices.correctAppointmentStatus, correction)).rejects.toThrow('Explain why');
-    await admin.mutation(api.adminServices.correctAppointmentStatus, { ...correction, reason: 'Wrong button selected' });
+    await expect(admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, correction)).rejects.toThrow('Explain why');
+    await admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, { ...correction, reason: 'Wrong button selected' });
     expect(await get(id)).toMatchObject({ status: 'arrived', revision: 1 });
     expect((await get(id)).cancelledAt).toBeUndefined();
     expect((await history(id)).slice(-1)[0]).toMatchObject({ kind: 'status', reason: 'Wrong button selected', actor: 'admin@example.com', effectiveAt: past, recordedAt: now, before: expect.objectContaining({ status }), after: expect.objectContaining({ status: 'arrived' }) });
-    await expect(admin.mutation(api.adminServices.correctAppointmentStatus, { ...correction, reason: 'Old revision', status: 'booked' })).rejects.toThrow(STALE_APPOINTMENT);
+    await expect(admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, { ...correction, reason: 'Old revision', status: 'booked' })).rejects.toThrow(STALE_APPOINTMENT);
   });
 
   it('rejects a conflicting future reopen and leaves status, revision and history untouched', async () => {
     const { admin, book, get, history } = await setup();
     const id = await book(future);
-    await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: id, expectedRevision: 0 });
+    await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: id, expectedRevision: 0 });
     await book(future);
     const before = await get(id);
     const logs = await history(id);
-    await expect(admin.mutation(api.adminServices.correctAppointmentStatus, { appointmentId: id, expectedRevision: 1, status: 'booked', reason: 'Cancelled wrong guest', effectiveAt: now })).rejects.toThrow('That time was just taken');
+    await expect(admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, { appointmentId: id, expectedRevision: 1, status: 'booked', reason: 'Cancelled wrong guest', effectiveAt: now })).rejects.toThrow('That time was just taken');
     expect(await get(id)).toEqual(before);
     expect(await history(id)).toEqual(logs);
   });
@@ -182,8 +182,8 @@ describe('admin appointment corrections', () => {
     const { admin, staffId, book, get } = await setup();
     const id = await book(future);
     await expect(book(future, { historicalReason: 'Attempted future override' })).rejects.toThrow('That time was just taken');
-    await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: id, status: 'arrived', expectedRevision: 0 });
-    await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: id, staffId, expectedRevision: 1, start: future + 2 * 3600000 });
+    await admin.mutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus, { appointmentId: id, status: 'arrived', expectedRevision: 0 });
+    await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: id, staffId, expectedRevision: 1, start: future + 2 * 3600000 });
     expect(await get(id)).toMatchObject({ status: 'arrived', start: future + 2 * 3600000, revision: 2 });
     vi.setSystemTime(at('2026-11-01', '10:30'));
     const started = at('2026-11-01', '10:00');
@@ -198,11 +198,11 @@ describe('admin appointment corrections', () => {
     const before = await get(id);
     const logs = await history(id);
     const move = { appointmentId: id, expectedRevision: 0, staffId, start: future + 2 * 3600000 };
-    await expect(admin.mutation(api.adminServices.rescheduleAppointment, move)).rejects.toThrow('That time was just taken');
+    await expect(admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, move)).rejects.toThrow('That time was just taken');
     expect(await get(id)).toEqual(before);
     expect(await history(id)).toEqual(logs);
-    await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: competitor, expectedRevision: 0 });
-    await admin.mutation(api.adminServices.rescheduleAppointment, move);
+    await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: competitor, expectedRevision: 0 });
+    await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, move);
     expect(await get(id)).toMatchObject({ start: move.start, revision: 1 });
   });
 
@@ -210,24 +210,24 @@ describe('admin appointment corrections', () => {
     const { t, admin, book, get, history } = await setup();
     const id = await book();
     await t.run(ctx => ctx.db.patch(id, { refundedAt: past - 1 }));
-    await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id, expectedRevision: 0, effectiveAt: past });
+    await admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId: id, expectedRevision: 0, effectiveAt: past });
     expect(await get(id)).toMatchObject({ paidAt: past, paidBy: 'admin@example.com', paymentStatus: 'paid' });
     expect((await get(id)).refundedAt).toBeUndefined();
     expect((await history(id)).slice(-1)[0]).toMatchObject({ effectiveAt: past, actor: 'admin@example.com', kind: 'payment' });
-    await admin.mutation(api.adminServices.refundAppointment, { appointmentId: id, expectedRevision: 1 });
+    await admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId: id, expectedRevision: 1 });
     const refunded = await get(id);
-    await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id, expectedRevision: 2 })).rejects.toThrow('Only unpaid');
+    await expect(admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId: id, expectedRevision: 2 })).rejects.toThrow('Only unpaid');
     expect(await get(id)).toEqual(refunded);
   });
 
   it('pages every history entry beyond 50 and does not invent original legacy creation evidence', async () => {
     const { t, admin, book, get } = await setup();
     const id = await book();
-    for (let revision = 0; revision < 57; revision++) await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId: id, expectedRevision: revision, guestName: `Guest ${revision}`, guestPhone: '' });
+    for (let revision = 0; revision < 57; revision++) await admin.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, { appointmentId: id, expectedRevision: revision, guestName: `Guest ${revision}`, guestPhone: '' });
     const found: Doc<'appointmentChanges'>[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < 10; page++) {
-      const result: PaginationResult<Doc<'appointmentChanges'>> = await admin.query(api.adminServices.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 11, cursor } });
+      const result: PaginationResult<Doc<'appointmentChanges'>> = await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 11, cursor } });
       found.push(...result.page);
       if (result.isDone) break;
       cursor = result.continueCursor;
@@ -237,31 +237,31 @@ describe('admin appointment corrections', () => {
     expect(found[found.length - 1]?.changes.some(change => change.field === 'created')).toBe(true);
     const original = await get(id);
     const legacy = await t.run(ctx => insertFixture(ctx, 'appointments', { serviceId: original.serviceId, staffId: original.staffId, start: past, end: past + 3600000, blockedUntil: past + 3600000, guestName: '', guestPhone: '', source: 'admin', status: 'cancelled', paymentStatus: 'unpaid', price: 10000, currency: 'THB', confirmationCode: 'OLD', accessToken: 'never-log-this', createdAt: past }));
-    expect((await admin.query(api.adminServices.listAppointmentHistoryPage, { appointmentId: legacy, paginationOpts: { numItems: 10, cursor: null } })).page).toEqual([]);
-    await expect(admin.query(api.adminServices.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 101, cursor: null } })).rejects.toThrow('Page size');
+    expect((await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: legacy, paginationOpts: { numItems: 10, cursor: null } })).page).toEqual([]);
+    await expect(admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 101, cursor: null } })).rejects.toThrow('Page size');
   });
 
   it('pages ended time off with explicit past/all ranges, audits edits/removal and restores archived service assignments', async () => {
     const { t, admin, staffId, serviceId } = await setup();
-    const [created] = await admin.mutation(api.adminServices.addTimeOff, { staffId, start: past, end: past + 3600000, label: 'Sick day' });
+    const [created] = await admin.mutation(api.services.commands.addTimeOff.addTimeOff, { staffId, start: past, end: past + 3600000, label: 'Sick day' });
     const id = created.timeOffId!;
-    await admin.mutation(api.adminServices.updateTimeOff, { timeOffId: id, start: past, end: past + 7200000, label: 'Sick leave', expected: { start: past, end: past + 3600000, label: 'Sick day' } });
+    await admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId: id, start: past, end: past + 7200000, label: 'Sick leave', expected: { start: past, end: past + 3600000, label: 'Sick day' } });
     const query = { staffId, range: 'past' as const, paginationOpts: { numItems: 1, cursor: null } };
-    expect((await admin.query(api.adminServices.listTimeOffPage, query)).page).toMatchObject([{ label: 'Sick leave' }]);
-    expect((await admin.query(api.adminServices.listTimeOffPage, { ...query, range: 'upcoming' })).page).toEqual([]);
-    await admin.mutation(api.adminServices.removeTimeOff, { timeOffId: id });
+    expect((await admin.query(api.services.admin.listTimeOffPage, query)).page).toMatchObject([{ label: 'Sick leave' }]);
+    expect((await admin.query(api.services.admin.listTimeOffPage, { ...query, range: 'upcoming' })).page).toEqual([]);
+    await admin.mutation(api.services.commands.removeTimeOff.removeTimeOff, { timeOffId: id });
     const logs = await t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'timeOff').eq('entityId', id)).take(100));
     expect(logs.map(row => row.kind)).toEqual(['created', 'updated', 'removed']);
-    await admin.mutation(api.adminServices.archiveStaff, { staffId });
+    await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId });
     expect((await t.run(ctx => ctx.db.get(serviceId)))?.staffIds).toEqual([]);
-    await admin.mutation(api.adminServices.updateStaff, { staffId, status: 'active' });
+    await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, status: 'active' });
     expect((await t.run(ctx => ctx.db.get(serviceId)))?.staffIds).toEqual([staffId]);
   });
 
   it('rejects unauthenticated corrections and fails overflowing integrity reads instead of silently truncating', async () => {
     const { t, book } = await setup();
     const id = await book();
-    await expect(t.mutation(api.adminServices.correctAppointmentStatus, { appointmentId: id, expectedRevision: 0, status: 'completed', effectiveAt: now })).rejects.toThrow('Not authenticated');
+    await expect(t.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, { appointmentId: id, expectedRevision: 0, status: 'completed', effectiveAt: now })).rejects.toThrow('Not authenticated');
     async function* rows() { yield 1; yield 2; yield 3; }
     const read = async () => { const found = []; for await (const row of boundedIntegrityRows(rows(), 2)) found.push(row); return found; };
     await expect(read()).rejects.toThrow('Too many records');

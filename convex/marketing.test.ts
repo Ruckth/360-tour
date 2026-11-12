@@ -370,8 +370,8 @@ describe('POS coupon ledger', () => {
     const { t, admin } = await setup();
     const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 50000 }, scope: 'services' });
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-    const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
-    const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 180000, currency: 'THB', staffIds: [staffId] });
+    const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
+    const serviceId = await admin.mutation(api.services.commands.createService.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 180000, currency: 'THB', staffIds: [staffId] });
     const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
     const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Anna Lee' });
     await admin.mutation(api.pos.linkCustomer, { orderId, customerId });

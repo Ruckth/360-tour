@@ -29,8 +29,8 @@ export function AppointmentCorrectionDialog({ appointment, payment = false, onCl
   const [openedAt] = useState(() => Date.now());
   const [date, setDate] = useState(resortIsoDate(openedAt));
   const [time, setTime] = useState(resortTime24(openedAt));
-  const correct = useMutation(api.adminServices.correctAppointmentStatus);
-  const pay = useMutation(api.adminServices.markAppointmentPaid);
+  const correct = useMutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus);
+  const pay = useMutation(api.services.commands.markAppointmentPaid.markAppointmentPaid);
   const requiresReason = !payment && ["completed", "cancelled", "no_show", "in_service"].includes(original.status);
 
   async function save() {

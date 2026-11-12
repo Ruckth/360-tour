@@ -32,7 +32,7 @@ export function BreakEditDialog({
   initial?: { start: string; end: string };
   onClose: () => void;
 }) {
-  const editBreak = useMutation(api.roster.editBreak);
+  const editBreak = useMutation(api.services.roster.editBreak);
   // The day as shown when this opened; the server refuses the edit if it has changed since.
   const [shown] = useState(block);
   const { original } = shown;
@@ -47,7 +47,7 @@ export function BreakEditDialog({
   const timesValid = remove || (TIME.test(start) && TIME.test(end) && start < end);
   const unchanged = next !== null && next.start === original.start && next.end === original.end && next.label === original.label;
   const args = { staffId: shown.staffId, date: shown.date, scope, original, next, expectedPlan: shown.plan };
-  const preview = useQuery(api.roster.previewBreakChange, timesValid && !unchanged ? args : "skip");
+  const preview = useQuery(api.services.roster.previewBreakChange, timesValid && !unchanged ? args : "skip");
   const conflicts = preview?.conflicts ?? [];
   const problem = !timesValid ? "Enter a start before the end, as HH:mm." : unchanged ? "Change the time or label, or remove the break." : preview?.problem;
   const scopeText = (value: Scope) => (value === "day" ? "This day only" : `Every ${weekday} (weekly default)`);

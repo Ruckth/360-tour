@@ -30,7 +30,7 @@ export function TurnaroundDialog({
   initialMin?: number;
   onClose: () => void;
 }) {
-  const update = useMutation(api.adminServices.updateAppointmentTurnaround);
+  const update = useMutation(api.services.commands.updateAppointmentTurnaround.updateAppointmentTurnaround);
   const [original] = useState(appointment);
   const current = turnaroundMinutes(original);
   const [value, setValue] = useState(String(initialMin ?? current));

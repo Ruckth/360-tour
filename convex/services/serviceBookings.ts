@@ -1,27 +1,18 @@
-import { durableToolValidator, withDurableTool } from './messaging/model';
-import { bookingsByPhone } from './lib/bookingPhone';
-import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from './_generated/server';
-import type { MutationCtx, QueryCtx } from './_generated/server';
-import type { Doc, Id } from './_generated/dataModel';
-import { getEffectiveSettings } from './lib/siteSettings';
-import { appointmentRevision } from './lib/appointmentWindow';
-import { cancelAppointmentRecord } from './lib/appointmentChanges';
-import { enforceRateLimit } from './lib/rateLimit';
-import {
-	assertAppointmentStart,
-	createAppointmentRecord,
-	findOpenSlots,
-	localDateTimeUtc,
-	resortLocalParts,
-	serviceRostered,
-	SLOT_CONFLICT
-} from './lib/serviceSlots';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { internalMutation, internalQuery } from '../_generated/server';
+import { cancelAppointmentRecord } from '../lib/appointmentChanges';
+import { appointmentRevision } from '../lib/appointmentWindow';
+import { bookingsByPhone } from '../lib/bookingPhone';
+import { assertChatWriteAllowed, assertSameProposal } from '../lib/chatWriteGuard';
+import { enforceRateLimit } from '../lib/rateLimit';
+import { SLOT_CONFLICT, assertAppointmentStart, createAppointmentRecord, findOpenSlots, localDateTimeUtc, resortLocalParts, serviceRostered } from '../lib/serviceSlots';
+import { getEffectiveSettings } from '../lib/siteSettings';
+import { durableToolValidator, withDurableTool } from '../messaging/model';
+import { NOT_SCHEDULED } from './model';
 
 type ReadCtx = QueryCtx | MutationCtx;
-
-export const NOT_SCHEDULED = 'The staff schedule for this date is not set yet, so it is not fully booked. Say it is not scheduled yet and offer another date or to have the team follow up.';
 
 async function sessionFor(ctx: ReadCtx, sessionId: Id<'conversations'>) {
 	const session = await ctx.db.get(sessionId);

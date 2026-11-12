@@ -97,8 +97,8 @@ export function AppointmentSheet({
   onBookAgain: (appointment: Appointment) => void;
   onClose: () => void;
 }) {
-  const updateStatus = useMutation(api.adminServices.updateAppointmentStatus);
-  const originalReference = useQuery(api.adminServices.getAppointmentReference, appointment?.rebookedFromId ? { appointmentId: appointment.rebookedFromId } : "skip");
+  const updateStatus = useMutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus);
+  const originalReference = useQuery(api.services.admin.getAppointmentReference, appointment?.rebookedFromId ? { appointmentId: appointment.rebookedFromId } : "skip");
   const [feePending, setFeePending] = useState(false);
   const [pending, setPending] = useState<StatusAction | null>(null);
   const [editing, setEditing] = useState(false);
@@ -306,7 +306,7 @@ function AppointmentEditForm({
   services: Service[];
   onDone: () => void;
 }) {
-  const updateDetails = useMutation(api.adminServices.updateAppointmentDetails);
+  const updateDetails = useMutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails);
   const [original] = useState(appointment);
   const contactRequired = original.source !== "admin" || Boolean(original.chatSessionId);
   const revision = appointmentRevision(original);

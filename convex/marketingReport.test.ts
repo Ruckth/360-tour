@@ -37,9 +37,9 @@ async function setup(couponAmount = 10000) {
 		return () => admin.mutation(api.pos.settleOrder, args);
 	};
 	const payment = (bookingId: Id<'bookings'>, amount: number, effectiveAt = now, status: 'recorded' | 'cancelled' = 'recorded') => t.run(ctx => ctx.db.insert('bookingPayments', { bookingId, origin: 'manual', method: 'cash', currency: 'THB', amount, effectiveAt, recordedAt: now, recordedBy: email, status, refunded: 0 }));
-	const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
-	const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 50000, currency: 'THB', staffIds: [staffId] });
-	const appointment = (start = now - day) => admin.mutation(api.adminServices.createAppointment, { serviceId, staffId, start, guestName: 'Desk guest', guestPhone: '' }).then(r => r.appointmentId);
+	const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
+	const serviceId = await admin.mutation(api.services.commands.createService.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 50000, currency: 'THB', staffIds: [staffId] });
+	const appointment = (start = now - day) => admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, staffId, start, guestName: 'Desk guest', guestPhone: '' }).then(r => r.appointmentId);
 	/** An order paid before stay payments were itemised: ฿1,000 for the stay and ฿50 of water, with no bookingPayments row. */
 	const oldOrder = (bookingId: Id<'bookings'>) => t.run(async ctx => {
 		const id = await insertFixture(ctx, 'orders', { status: 'paid', bookingId, currency: 'THB', itemCount: 2, total: 105000, due: 0, hasItems: true, revision: 1, paidAt: now, paymentEffectiveAt: now, createdBy: email, createdAt: now, updatedAt: now });
@@ -163,14 +163,14 @@ describe('report money', () => {
 	it('counts desk appointment payments/refunds and routes receipt refunds exclusively to the order', async () => {
 		const s = await setup();
 		const appointmentId = await s.appointment();
-		const paid = await s.admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'desk-payment-001' });
-		await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: 1, amount: 10000, currency: 'THB', method: 'cash', reason: 'Courtesy', paymentId: paid.paymentId, idempotencyKey: 'desk-refund-001' });
-		const second = await s.admin.mutation(api.adminServices.createAppointment, { serviceId: s.serviceId, staffId: s.staffId, start: now - 2 * day, guestName: 'POS guest', guestPhone: '' });
+		const paid = await s.admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'desk-payment-001' });
+		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: 1, amount: 10000, currency: 'THB', method: 'cash', reason: 'Courtesy', paymentId: paid.paymentId, idempotencyKey: 'desk-refund-001' });
+		const second = await s.admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId: s.serviceId, staffId: s.staffId, start: now - 2 * day, guestName: 'POS guest', guestPhone: '' });
 		const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId: second.appointmentId });
 		await s.payOrder(orderId, now - day);
 		const args = { appointmentId: second.appointmentId, expectedRevision: 1, amount: 20000, currency: 'THB', method: 'cash' as const, reason: 'Courtesy', orderId: orderId, idempotencyKey: 'receipt-refund-001' };
-		await s.admin.mutation(api.adminServices.refundAppointment, args);
-		await s.admin.mutation(api.adminServices.refundAppointment, args);
+		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, args);
+		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, args);
 		const report = await s.report('cash');
 		expect(report.sales).toHaveLength(2);
 		expect(report.sales.find(r => r.id === appointmentId)).toMatchObject({ kind: 'appointment', channel: 'desk', collected: 50000, refunded: 10000 });
@@ -302,7 +302,7 @@ describe('report attribution and limits', () => {
 		await s.payOrder(orderId, now - 5 * day);
 		vi.setSystemTime(now - 3 * day);
 		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
-		await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'early-refund-001' });
+		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'early-refund-001' });
 		vi.setSystemTime(now);
 		await s.admin.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'later-date-001', reason: 'Wrong day', effectiveAt: now - day, tenders: [{ method: 'cash', amount: 50000 }] });
 		// The range starts after the refund's day; the sale still shows what was given back.
@@ -315,7 +315,7 @@ describe('report attribution and limits', () => {
 		const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId });
 		await s.payOrder(orderId);
 		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
-		await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'backdated-refund-001', effectiveAt: now - 3 * day });
+		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'backdated-refund-001', effectiveAt: now - 3 * day });
 		expect((await s.report()).sales).toMatchObject([{ id: orderId, collected: 50000, refunded: 20000 }]);
 		// The money view dates it where staff put it.
 		expect((await s.report('cash')).events).toEqual([{ saleId: orderId, kind: 'payment', day: '2026-11-09', amount: 50000 }]);
@@ -339,7 +339,7 @@ describe('report attribution and limits', () => {
 		const bookingId = await s.booking({ source: 'admin' });
 		const appointmentId = await s.appointment();
 		await s.t.run(ctx => ctx.db.patch(appointmentId, { bookingId }));
-		await s.admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'desk-stay-appt' });
+		await s.admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'desk-stay-appt' });
 		const cash = await s.report('cash');
 		expect(cash.sales).toMatchObject([{ id: appointmentId, kind: 'appointment', channel: 'desk', collected: 50000, propertyId: s.propertyId }]);
 		expect(cash.events).toMatchObject([{ saleId: appointmentId, kind: 'payment', amount: 50000 }]);
@@ -519,7 +519,7 @@ it('retains consumed coupon discount after a real service refund', async () => {
 	const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { appointmentId });
 	await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA100' });
 	await s.payOrder(orderId);
-	await s.admin.mutation(api.adminServices.refundAppointment, { appointmentId, expectedRevision: 1, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'coupon-refund-001' });
+	await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: 1, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'coupon-refund-001' });
 	const cash = await s.report('cash');
 	expect(cash.sales).toMatchObject([{ id: orderId, collected: 40000, refunded: 20000, discount: 10000, paidDay: '2026-11-09' }]);
 	expect(await s.t.run(ctx => ctx.db.get(s.couponId))).toMatchObject({ used: 1, discountGranted: 10000 });
@@ -556,7 +556,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 	await s.payOrder(orderId);
 	await s.t.run(ctx => ctx.db.patch(orderId, { customerSnapshot: { name: 'Private Customer' } }));
 	const appointmentId = await s.appointment();
-	await s.admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'privacy-desk' });
+	await s.admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'privacy-desk' });
 	const reader = role === 'admin' ? s.admin : s.t.withIdentity({ email: 'reader@example.com', tokenIdentifier: 'reader' });
 	if (role !== 'admin') await s.t.run(ctx => ctx.db.insert('marketingGrants', { email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: now, updatedAt: now, updatedByEmail: email }));
 	const data = await reader.query(api.marketingReport.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' });

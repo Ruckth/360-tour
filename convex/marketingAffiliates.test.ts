@@ -137,7 +137,7 @@ async function lateLinkSale() {
   const anna = await s.partner();
   const bob = await s.partner("bob");
   await s.coupon(anna, "services");
-  const staffId = await s.admin.mutation(api.adminServices.createStaff, {
+  const staffId = await s.admin.mutation(api.services.commands.createStaff.createStaff, {
     name: "Therapist",
     role: "Therapist",
     color: "#abc",
@@ -148,7 +148,7 @@ async function lateLinkSale() {
     })),
     breaks: [],
   });
-  const serviceId = await s.admin.mutation(api.adminServices.createService, {
+  const serviceId = await s.admin.mutation(api.services.commands.createService.createService, {
     slug: "spa",
     name: "Spa",
     description: "",
@@ -794,7 +794,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
   const s = await setup();
   const anna = await s.partner();
   const couponId = await s.coupon(anna, "services", 10000);
-  const staffId = await s.admin.mutation(api.adminServices.createStaff, {
+  const staffId = await s.admin.mutation(api.services.commands.createStaff.createStaff, {
     name: "Therapist",
     role: "Therapist",
     color: "#abc",
@@ -805,7 +805,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
     })),
     breaks: [],
   });
-  const serviceId = await s.admin.mutation(api.adminServices.createService, {
+  const serviceId = await s.admin.mutation(api.services.commands.createService.createService, {
     slug: "spa",
     name: "Spa",
     description: "",
@@ -1049,7 +1049,7 @@ it("keeps zero-cash coupon-covered service orders as zero-net reporting credit w
   const s = await setup();
   const anna = await s.partner();
   await s.coupon(anna, "services", 100000);
-  const staffId = await s.admin.mutation(api.adminServices.createStaff, {
+  const staffId = await s.admin.mutation(api.services.commands.createStaff.createStaff, {
     name: "Therapist",
     role: "Therapist",
     color: "#abc",
@@ -1060,7 +1060,7 @@ it("keeps zero-cash coupon-covered service orders as zero-net reporting credit w
     })),
     breaks: [],
   });
-  const serviceId = await s.admin.mutation(api.adminServices.createService, {
+  const serviceId = await s.admin.mutation(api.services.commands.createService.createService, {
     slug: "spa",
     name: "Spa",
     description: "",

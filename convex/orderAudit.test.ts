@@ -21,11 +21,11 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 async function setup() {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'order-audit@example.com', tokenIdentifier: 'order-audit' });
-  const staffId = await admin.mutation(api.adminServices.createStaff, {
+  const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Audit therapist', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
   });
-  const serviceId = await admin.mutation(api.adminServices.createService, {
+  const serviceId = await admin.mutation(api.services.commands.createService.createService, {
     slug: 'order-audit-service', name: 'Audit massage', description: '', category: 'Massage',
     durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staffId]
   });
@@ -158,7 +158,7 @@ describe('Independent order audit: identity, customer and settlement', () => {
     await admin.mutation(api.pos.settleOrder, await review(orderId));
     const before = await view(orderId);
     expect(before.lines[0].staffName).toBe('Audit therapist');
-    await admin.mutation(api.adminServices.updateStaff, { staffId, name: 'Renamed therapist' });
+    await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, name: 'Renamed therapist' });
     expect((await view(orderId)).lines[0].staffName).toBe(before.lines[0].staffName);
   });
 
@@ -218,7 +218,7 @@ describe('Independent order audit: booking/source integrity', () => {
     expect((await view(orderId)).totals.due).toBe(2120000);
     await expect(admin.mutation(api.pos.attach, { bookingId })).rejects.toThrow('already on');
     await expect(admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'markPaid' })).rejects.toThrow('still open');
-    await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId })).rejects.toThrow('still open');
+    await expect(admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId })).rejects.toThrow('still open');
   });
 
   it.each([
@@ -289,7 +289,7 @@ describe('Independent order audit: booking/source integrity', () => {
 
   it('REGRESSION COVERAGE: shared appointment creation establishes an order before first checkout', async () => {
     const { admin, serviceId, staffId } = await setup();
-    const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, {
+    const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, {
       serviceId, staffId, start: localDateTimeUtc('2026-11-03', '10:00'), guestName: '', guestPhone: ''
     });
     expect((await admin.query(api.pos.ordersForBooking, { appointmentId })).activeOrder).not.toBeNull();

@@ -9,8 +9,8 @@ import type { Id } from "convex/_generated/dataModel";
  * If the save fails the upload is dropped again; a cron catches any that slip through.
  */
 export function usePhotoUpload() {
-  const uploadPhoto = useAction(api.adminServices.uploadStaffAvatar);
-  const discardUpload = useMutation(api.adminServices.discardStaffAvatarUpload);
+  const uploadPhoto = useAction(api.services.commands.uploadStaffAvatar.uploadStaffAvatar);
+  const discardUpload = useMutation(api.services.commands.discardStaffAvatarUpload.discardStaffAvatarUpload);
   return async function saveWithPhoto<T>(photo: Blob, save: (storageId: Id<"_storage">) => Promise<T>): Promise<T> {
     const storageId = await uploadPhoto({ bytes: await photo.arrayBuffer(), contentType: photo.type });
     try {
