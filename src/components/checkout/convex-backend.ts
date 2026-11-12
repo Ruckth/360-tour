@@ -3,9 +3,13 @@
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { useMemo } from "react";
-import type { CheckoutBackend } from "./backend";
+import { useStaffAccess } from "@/components/admin/staff-access";
+import type { CheckoutBackend, CustomerPage } from "./backend";
 
 const SKIP = "skip" as const;
+const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: () => {} };
+/** Cashiers may only search active customers by at least two characters (customers.browseCustomers). */
+const cashierCannotBrowse = (query: string, archived: boolean) => archived || query.trim().length < 2;
 
 /** The live checkout: Convex queries and mutations from convex/pos.ts and convex/customers.ts. */
 export const convexCheckoutBackend: CheckoutBackend = {
@@ -28,7 +32,11 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const results = useQuery(api.customers.searchCustomers, text.length >= 2 ? { query: text } : SKIP);
     return text.length >= 2 ? results : [];
   },
-  useCustomerPage: (query, archived) => usePaginatedQuery(api.customers.browseCustomers, { query: query.trim(), archived }, { initialNumItems: 20 }),
+  useCustomerPage: (query, archived) => {
+    const skip = useStaffAccess().role === "cashier" && cashierCannotBrowse(query, archived);
+    const page = usePaginatedQuery(api.customers.browseCustomers, skip ? SKIP : { query: query.trim(), archived }, { initialNumItems: 20 });
+    return skip ? (NOTHING_TO_LOAD as CustomerPage<(typeof page.results)[number]>) : page;
+  },
   useCustomer: (customerId) => useQuery(api.customers.getCustomer, { customerId }),
   useCustomerHistory: (customerId) => usePaginatedQuery(api.customers.customerHistory, { customerId }, { initialNumItems: 20 }),
   useCustomerOrders: (customerId) => usePaginatedQuery(api.customers.listCustomerOrders, { customerId }, { initialNumItems: 20 }),
@@ -39,6 +47,9 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useAttachLookupStatus: ({ orderId, query }) => useQuery(api.pos.attachLookupStatus, { orderId: orderId ?? undefined, query: query.trim() || undefined }),
   useLinkCandidates: ({ orderId, lineId, query }) => useQuery(api.pos.linkCandidates, { orderId, lineId, query: query.trim() || undefined }),
   useBusinessName: () => useQuery(api.settings.publicProfile, {})?.businessName,
+  useOrderApprovals: (orderId) => useQuery(api.staffApprovals.forOrder, orderId ? { orderId } : SKIP),
+  usePendingApprovals: () => useQuery(api.staffApprovals.pending, useStaffAccess().capabilities.approve ? {} : SKIP),
+  useFindOrder: (orderNumber) => useQuery(api.pos.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),
   useActions: () => {
     const noteCouponRefusal = useMutation(api.marketingReport.noteCouponRefusal);
     const discardOrder = useMutation(api.pos.discardOrder);
@@ -69,13 +80,19 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const updateCustomer = useMutation(api.customers.updateCustomer);
     const setCustomerArchived = useMutation(api.customers.setCustomerArchived);
     const mergeCustomers = useMutation(api.customers.mergeCustomers);
+    const createOrder = useMutation(api.pos.createOrder);
+    const createApproval = useMutation(api.staffApprovals.create);
+    const approveApproval = useMutation(api.staffApprovals.approve);
+    const rejectApproval = useMutation(api.staffApprovals.reject);
+    const cancelApproval = useMutation(api.staffApprovals.cancel);
     return useMemo(
       () => ({
         noteCouponRefusal, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine,
         linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
         applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, linkPaidLine, unlinkPaidLine,
+        createOrder, createApproval, approveApproval, rejectApproval, cancelApproval,
       }),
-      [noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers, linkPaidLine, unlinkPaidLine],
+      [createOrder, createApproval, approveApproval, rejectApproval, cancelApproval, noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers, linkPaidLine, unlinkPaidLine],
     );
   },
 };

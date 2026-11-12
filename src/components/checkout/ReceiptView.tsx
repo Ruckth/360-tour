@@ -4,6 +4,7 @@ import { Ban, ChevronLeft, Copy, Plus, Printer, Share2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
+import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,9 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
+import { OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type OrderId } from "./backend";
+import { needsApproval } from "./staff-approvals";
 import { PaymentRecord } from "./PaymentRecord";
 import { OrderHistory } from "./OrderHistory";
 import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
@@ -62,6 +65,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const backend = useCheckoutBackend();
   const view = backend.useOrder(orderId);
   const business = backend.useBusinessName() ?? "";
+  const cashier = useStaffAccess().role === "cashier";
+  const approvals = backend.useOrderApprovals(view ? view.order._id : null);
   const [paper, setPaper] = useState<Paper>("80");
   const [notice, setNotice] = useState("");
   const receiptRef = useRef<HTMLElement>(null);
@@ -86,7 +91,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   }, [measure]);
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
-  if (view === null) return <p className="p-10 text-center text-sm text-muted-foreground">Receipt not found.</p>;
+  // Cashiers open today's receipts only; older ones come back as missing.
+  if (view === null) return <p className="p-10 text-center text-sm text-muted-foreground">{cashier ? "Not available." : "Receipt not found."}</p>;
   if (view.order.state === "unpaid" || view.order.state === "discarded") {
     return (
       <div className="grid flex-1 place-items-center gap-3 p-10 text-center">
@@ -250,6 +256,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       </div>
 
       <div className="grid min-w-0 content-start gap-5 print:hidden">
+        <OrderApprovalStatus requests={approvals} className="max-w-md" />
         <AfterPayment view={view} />
         <PaymentRecord view={view} />
         <OrderHistory orderId={orderId} />
@@ -257,7 +264,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           <p className="text-xs text-muted-foreground">Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>
         ) : (
           <div className="border-t border-border pt-4">
-            <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} />
+            <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} waiting={approvals?.some((r) => r.status === "pending") ?? false} />
           </div>
         )}
       </div>
@@ -269,8 +276,13 @@ const QUIET_SELECTED =
   "data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=on]:ring-1 data-[state=on]:ring-border data-[state=on]:focus-visible:ring-2 data-[state=on]:focus-visible:ring-ring";
 
 /** The Void… button and its dialog; the button is the trigger, so Cancel puts focus back on it. */
-function VoidDialog({ orderId, receipt, hasAttached }: { orderId: OrderId; receipt: string; hasAttached: boolean }) {
+function VoidDialog({ orderId, receipt, hasAttached, waiting }: { orderId: OrderId; receipt: string; hasAttached: boolean; waiting: boolean }) {
   const actions = useCheckoutBackend().useActions();
+  const access = useStaffAccess();
+  const send = useSendApproval();
+  // A cashier whose rules keep voids for managers sends the void as a request, with its reason.
+  const [refused, setRefused] = useState(false);
+  const ask = access.role === "cashier" && (refused || access.cashierRules.voidPaidSale === "manager");
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -283,10 +295,19 @@ function VoidDialog({ orderId, receipt, hasAttached }: { orderId: OrderId; recei
     setSaving(true);
     setError("");
     try {
+      if (ask) {
+        const failed = await send(orderId, { kind: "voidPaidSale" }, reason);
+        if (failed) setError(failed);
+        else setOpen(false);
+        return;
+      }
       await actions.voidOrder({ orderId, reason });
       setOpen(false);
     } catch (err) {
-      setError(errorText(err, "Couldn't void the receipt."));
+      if (access.role === "cashier" && needsApproval(err)) {
+        setRefused(true);
+        setError("This needs a manager. Send it as a request.");
+      } else setError(errorText(err, "Couldn't void the receipt."));
     } finally {
       lock.current = false;
       setSaving(false);
@@ -300,7 +321,7 @@ function VoidDialog({ orderId, receipt, hasAttached }: { orderId: OrderId; recei
       </DialogTrigger>
       <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
         <DialogHeader>
-          <DialogTitle>Void receipt {receipt}?</DialogTitle>
+          <DialogTitle>{ask ? `Ask a manager to void ${receipt}?` : `Void receipt ${receipt}?`}</DialogTitle>
           <DialogDescription asChild>
             <ul className="grid list-disc gap-1 pl-5">
               <li>The order and receipt stay on record, marked void, with their numbers.</li>
@@ -317,9 +338,9 @@ function VoidDialog({ orderId, receipt, hasAttached }: { orderId: OrderId; recei
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
           <Button variant="outline" disabled={saving} onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="destructive" disabled={!reason.trim() || saving} onClick={submit}>
+          <Button variant="destructive" disabled={!reason.trim() || saving || (ask && waiting)} onClick={submit}>
             {saving ? <Spinner className="text-current" /> : null}
-            Void receipt
+            {ask ? "Send request" : "Void receipt"}
           </Button>
         </DialogFooter>
       </DialogContent>
