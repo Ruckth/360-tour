@@ -31,7 +31,7 @@ export const satangInput = (satang: number) => (satang / 100).toFixed(satang % 1
 /** Typed baht ("250", "99.5") to whole satang, or null when it isn't a positive amount with at most two decimals. */
 export function refundAmountSatang(text: string) {
   const clean = text.trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
+  if (!/^(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(clean)) return null;
   const satang = Math.round(Number(clean) * 100);
   return Number.isSafeInteger(satang) && satang > 0 ? satang : null;
 }
@@ -86,7 +86,7 @@ export function checkoutErrorText(err: unknown, fallback: string) {
     case "PENDING_APPROVAL":
       return "A request is already waiting on this order.";
     case "IDEMPOTENCY_CONFLICT":
-      return "This refund was already sent with other details. Close it and check the receipt.";
+      return "Already recorded with other details. Check the receipt.";
     case "INVALID_REFUND_REASON":
       return "Add a reason, up to 500 characters.";
     case "INVALID_REFUND_AMOUNT":
@@ -114,6 +114,10 @@ export function errorCode(err: unknown) {
   const code = errorData(err)?.code;
   return typeof code === "string" ? code : null;
 }
+
+/** The server answered with a refusal (typed, or a ConvexError with a plain message), so nothing was written. */
+export const answeredRefusal = (err: unknown) =>
+  errorCode(err) !== null || (Boolean(err) && typeof err === "object" && typeof (err as { data?: unknown }).data === "string");
 
 /** The server's remaining satang from REFUND_EXCEEDS_REMAINING, or null. */
 export function remainingFromError(err: unknown) {

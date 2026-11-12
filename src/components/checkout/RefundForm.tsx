@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { newAttemptKey, useCheckoutBackend, type OrderLine, type OrderView } from "./backend";
 import { TOUCH_TARGETS, amountInput } from "./checkout-ui";
 import {
-  REFUND_METHODS, checkoutErrorText, errorCode, defaultRefundMethod, refundAmountSatang, remainingFromError, satangInput, satangMoney, type RefundMethod,
+  REFUND_METHODS, answeredRefusal, checkoutErrorText, defaultRefundMethod, refundAmountSatang, remainingFromError, satangInput, satangMoney, type RefundMethod,
 } from "./refunds";
 import { needsApproval } from "./staff-approvals";
 
@@ -43,7 +43,10 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
   // replays with the same key, so only the server's own cap applies until it answers.
   const [uncertain, setUncertain] = useState(false);
   const cap = Math.min(uncertain ? Number.POSITIVE_INFINITY : line.remainingRefundableSatang ?? 0, serverCap ?? Number.POSITIVE_INFINITY);
-  const [amount, setAmount] = useState(() => satangInput(line.remainingRefundableSatang ?? 0));
+  // Until staff type or submit, the amount follows what is left, so another till's refund lowers it.
+  const [typed, setTyped] = useState<string | null>(null);
+  const amount = typed ?? satangInput(Math.max(0, Number.isFinite(cap) ? cap : line.remainingRefundableSatang ?? 0));
+  const setAmount = setTyped;
   const [method, setMethod] = useState<RefundMethod>(() => defaultRefundMethod(view));
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -58,6 +61,8 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
     event?.preventDefault();
     if (lock.current || !ready || satang === null) return;
     lock.current = true;
+    // Freeze the amount: a retry must resend exactly what this key was first sent with.
+    setTyped(amount);
     setSaving(true);
     setError("");
     const clean = reason.trim();
@@ -80,7 +85,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
         setError("This needs a manager. Send it as a request.");
         return;
       }
-      setUncertain(!errorCode(err));
+      setUncertain(!answeredRefusal(err));
       const remaining = remainingFromError(err);
       if (remaining !== null) {
         setServerCap(remaining);
@@ -152,7 +157,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
         <Label htmlFor={`${id}-reason`}>Reason</Label>
         <Textarea id={`${id}-reason`} value={reason} maxLength={500} required disabled={saving} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Shortened treatment" className="min-h-16 bg-background text-sm" />
       </div>
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : ask && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
       <Button type="submit" className="w-full" disabled={!ready || saving}>
         {saving ? <Spinner label={ask ? "Sending" : "Recording"} className="text-current" /> : null}
         {ask ? "Send request" : "Record refund"}

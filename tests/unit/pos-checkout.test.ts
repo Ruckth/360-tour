@@ -195,3 +195,47 @@ describe("shared receipt text", () => {
     expect(text).not.toContain("Change");
   });
 });
+
+describe("shared receipt text with POS refunds", () => {
+  const view = (extra: Record<string, unknown>) =>
+    ({
+      order: { status: "paid", receiptNumber: 142, orderNumber: 1042, title: "Order #1042", paidAt: Date.parse("2026-10-29T14:05:00+07:00") },
+      receiptCustomer: null,
+      legacyGuest: null,
+      source: null,
+      lines: [{ name: "Thai massage 60", qty: 1, net: 1200, refundedAmountSatang: 30000 }, { name: "Foot spa 45", qty: 1, net: 600, refundedAmountSatang: 0 }],
+      payments: [{ method: "card", amount: 1800 }],
+      totals: { subtotal: 1800, discount: 0, total: 1800, vat: 117.76, deposit: 0, due: 1800 },
+      ...extra,
+    }) as unknown as Parameters<typeof receiptText>[0];
+
+  it("matches the printed receipt: refunded rows and the net", () => {
+    const text = receiptText(view({ refundedAmountSatang: 30000 }), "Resort");
+    expect(text).toContain("  Refunded  -฿300");
+    expect(text).toContain("Refunded  -฿300\nNet  ฿1,500");
+  });
+
+  it("shows no refund rows without refunds or past the history limit", () => {
+    expect(receiptText(view({ lines: [{ name: "Foot spa 45", qty: 1, net: 600 }], refundedAmountSatang: 0 }), "Resort")).not.toContain("Refunded");
+    const truncated = receiptText(view({ refundedAmountSatang: 30000, refundHistoryTruncated: true }), "Resort");
+    expect(truncated).not.toContain("Refunded");
+    expect(truncated).not.toContain("Net");
+  });
+});
+
+describe("refund amount input", () => {
+  it("turns typed baht into whole satang", async () => {
+    const { refundAmountSatang, answeredRefusal } = await import("@/components/checkout/refunds");
+    expect(refundAmountSatang("250")).toBe(25000);
+    expect(refundAmountSatang("0.29")).toBe(29);
+    expect(refundAmountSatang(".5")).toBe(50);
+    expect(refundAmountSatang("12.")).toBe(1200);
+    expect(refundAmountSatang("0")).toBeNull();
+    expect(refundAmountSatang("1.234")).toBeNull();
+    expect(refundAmountSatang(".")).toBeNull();
+    // A refusal the server answered, typed or plain, wrote nothing; a lost answer is unknown.
+    expect(answeredRefusal({ data: { code: "PENDING_APPROVAL" } })).toBe(true);
+    expect(answeredRefusal({ data: "Not allowed" })).toBe(true);
+    expect(answeredRefusal(new Error("Network"))).toBe(false);
+  });
+});

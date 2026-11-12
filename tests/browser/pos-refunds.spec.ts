@@ -23,7 +23,7 @@ test.use({ viewport: { width: 1360, height: 1000 } });
 test("a manager refunds part of a line, then the rest of the receipt", async ({ page }) => {
   await open(page, "?role=manager&scenario=refund");
   const r = receipt(page);
-  await expect(page.getByTestId("receipt-status")).toHaveText("Paid");
+  await expect(page.getByTestId("receipt-status")).toHaveCount(0);
   await expect(r.getByTestId("receipt-net")).toHaveCount(0);
 
   await r.getByRole("button", { name: "Refund Thai massage 60" }).click();
@@ -46,7 +46,7 @@ test("a manager refunds part of a line, then the rest of the receipt", async ({ 
   await expect(r.getByTestId("receipt-line-refunded")).toHaveText("Refunded-฿300");
   await expect(r.getByTestId("receipt-refunded")).toHaveText("Refunded-฿300");
   await expect(r.getByTestId("receipt-net")).toHaveText("Net฿1,500");
-  await expect(page.getByTestId("receipt-status")).toHaveText("Paid");
+  await expect(page.getByTestId("receipt-status")).toHaveCount(0);
 
   // The rest of the massage: the form now offers what is left.
   const rest = await refund(page, "Thai massage 60", null, "Guest left early");

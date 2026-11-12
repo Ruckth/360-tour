@@ -217,11 +217,11 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     if (reductionSatang > limitSatang) throw new ConvexError({ code: "NEEDS_APPROVAL", kind, message: "This manual discount needs manager approval.", subtotalSatang, reductionSatang, limitSatang, amount: reductionSatang / 100, discountLimitPercent: rules.discountLimitPercent });
   };
   const requests: ApprovalRequest[] = [];
-  /** As effectiveRequestStatus: past its deadline it expired; any change to the order made it stale. */
+  /** As effectiveRequestStatus: past its deadline it expired; any change to the order or the cashier rules made it stale. */
   const requestStatus = (request: ApprovalRequest): ApprovalRequest["status"] => {
     if (request.status !== "pending") return request.status;
     if (Date.now() >= request.expiresAt) return "expired";
-    return state.orders.get(request.orderId)?.revision === request.orderRevision ? "pending" : "stale";
+    return state.orders.get(request.orderId)?.revision === request.orderRevision && request.rulesRevision === rules.revision ? "pending" : "stale";
   };
   const effective = (request: ApprovalRequest) => ({ ...request, status: requestStatus(request) });
   const feeAttempts = new Map<string, { fingerprint: string; orderId: Id<"bills">; lineId: Id<"billLines"> }>();

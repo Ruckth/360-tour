@@ -128,7 +128,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   // A cashier who must ask can't send a second request while one waits.
   const refundLocked = cashier && access.cashierRules.refund === "manager" && waiting;
 
-  /** Closes the form and puts focus back on its line's Refund, or on the notice when that line is done. */
+  /** Closes the form. Cancel returns focus to the line's Refund; a finished refund or request focuses the notice. */
   function closeRefund(lineId: Id<"billLines">, message?: string) {
     flushSync(() => {
       setRefunding(null);
@@ -185,10 +185,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           </button>
           <h2 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
             Receipt {receiptNumber}
-            {paid ? (
-              <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", view.fullyRefunded ? TONES.muted.bg : TONES.success.bg, view.fullyRefunded ? TONES.muted.text : TONES.success.text)}>
-                {view.fullyRefunded ? "Refunded" : "Paid"}
-              </span>
+            {paid && view.fullyRefunded ? (
+              <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", TONES.muted.bg, TONES.muted.text)}>Refunded</span>
             ) : null}
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -284,13 +282,13 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                   <div data-screen-only="" className="flex justify-end print:hidden">
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       data-refund-trigger={line._id}
                       aria-label={`Refund ${line.name}`}
                       disabled={refundLocked || refunding !== null}
                       onClick={() => setRefunding(line._id)}
-                      className="h-7 px-2 font-sans text-xs text-muted-foreground hover:text-foreground"
+                      className="h-8 px-3 font-sans text-xs"
                     >
                       Refund
                     </Button>
@@ -410,7 +408,7 @@ function VoidDialog({ orderId, receipt, hasAttached, waiting }: { orderId: Order
           <DialogDescription asChild>
             <ul className="grid list-disc gap-1 pl-5">
               <li>The order and receipt stay on record, marked void, with their numbers.</li>
-              <li>A void sends or records no refund.</li>
+              <li>No refund is sent or recorded here.</li>
               {hasAttached ? <li>Its bookings and appointments stay marked paid. Record a refund on them if needed.</li> : null}
               <li>No money received at all? Use “No money was received” on the receipt instead.</li>
             </ul>
