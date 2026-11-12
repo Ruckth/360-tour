@@ -1,5 +1,6 @@
 import type { DurableTool } from '../messaging/model';
-import { satangToBaht } from '../shared/money';
+import { bookingPaymentUrl, humanToolResult, presentMutationToolResult } from './chatToolPresentation';
+export { humanToolResult } from './chatToolPresentation';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { api, internal } from '../_generated/api';
@@ -269,15 +270,10 @@ export type ToolContext = {
 	/** When the current AI turn started; lets two-step tools require a guest reply in between. */
 	turnStartedAt: number;
 	deadlineAt?: number;
- durableTurn?: Pick<DurableTool, 'eventId' | 'claimToken'>;
+	durableTool?: DurableTool;
 	bookingProposal?: string;
 	serviceProposal?: string;
 };
-
-function paymentUrl(toolContext: ToolContext, bookingId: string, accessToken: string) {
-	const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
-	return `${base}/booking/pay?bookingId=${bookingId}&token=${accessToken}`;
-}
 
 function findProperty(properties: Doc<'properties'>[], slug: unknown): Doc<'properties'> | null {
 	if (typeof slug !== 'string') return null;
@@ -340,23 +336,25 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'prepare_service_booking': {
 			const summary = await ctx.runMutation(internal.serviceBookings.prepareChatServiceBooking, {
 				sessionId: toolContext.sessionId,
-        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
+				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
 				serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
 				time: String(fnArgs.time ?? ''), guestName: String(fnArgs.guestName ?? ''),
 				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {}),
 				...(typeof fnArgs.staffPreference === 'string' ? { staffPreference: fnArgs.staffPreference } : {})
 			});
-			return humanToolResult('error' in summary ? summary : { ...summary, next: 'Ask the guest to reply "yes" to confirm.' });
+			return presentMutationToolResult({ name: fnName, result: summary }, toolContext.siteUrl);
 		}
 
-		case 'confirm_service_booking':
-			return humanToolResult(await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
+		case 'confirm_service_booking': {
+			const result = await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
 				sessionId: toolContext.sessionId,
-        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
+				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				expectedProposal: toolContext.serviceProposal ?? '',
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
-			}));
+			});
+			return presentMutationToolResult({ name: fnName, result }, toolContext.siteUrl);
+		}
 
 		case 'check_availability': {
 			const property = findProperty(properties, fnArgs.propertySlug);
@@ -469,7 +467,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'prepare_booking': {
 			const summary = await ctx.runMutation(internal.bookings.prepareChatBooking, {
 				sessionId: toolContext.sessionId,
-        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
+				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
 				propertySlug: String(fnArgs.propertySlug ?? ''),
 				checkIn: String(fnArgs.checkIn ?? ''),
@@ -479,34 +477,17 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {}),
 				...(typeof fnArgs.couponCode === 'string' ? { couponCode: fnArgs.couponCode } : {})
 			});
-			const { confirmToken, ...details } = summary;
-			const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
-			const confirmUrl = `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}${summary.coupon ? `&coupon=${encodeURIComponent(summary.coupon.code)}` : ""}`;
-			return humanToolResult({ ...details, confirmUrl, next: 'Share confirmUrl as "Confirm & pay", or offer replying "yes". No booking or hold exists until confirmation.' });
+			return presentMutationToolResult({ name: fnName, result: summary }, toolContext.siteUrl);
 		}
 
 		case 'confirm_booking': {
 			const booking = await ctx.runMutation(internal.bookings.confirmChatBooking, {
 				sessionId: toolContext.sessionId,
-        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
+				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				expectedProposal: toolContext.bookingProposal ?? '',
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			});
-      if (booking.needsReview) {
-        const { confirmToken, ...quote } = booking.quote;
-        const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
-        return humanToolResult({ ...quote, needsReview: true, confirmUrl: `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}${quote.coupon ? `&coupon=${encodeURIComponent(quote.coupon.code)}` : ''}` });
-      }
-			return humanToolResult({
-				confirmationCode: booking.confirmationCode,
-				property: booking.property, checkIn: booking.checkIn, checkOut: booking.checkOut, guests: booking.guests, nights: booking.nights,
-				status: booking.paymentStatus === 'paid' ? 'paid' : 'pending_payment',
-				total: booking.total,
-				currency: booking.currency,
-				...(booking.coupon ? { coupon: booking.coupon } : {}),
-				...(booking.paymentStatus === 'pending' && booking.accessToken ? { paymentUrl: paymentUrl(toolContext, booking.bookingId, booking.accessToken) } : {}),
-				alreadyConfirmed: booking.alreadyConfirmed
-			});
+			return presentMutationToolResult({ name: fnName, result: booking }, toolContext.siteUrl);
 		}
 
 		case 'get_my_bookings': {
@@ -519,7 +500,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			return humanToolResult({
 				bookings: bookings.map(({ bookingId, accessToken, ...booking }) => ({
 					...booking,
-					...(accessToken ? { paymentUrl: paymentUrl(toolContext, bookingId, accessToken) } : {})
+					...(accessToken ? { paymentUrl: bookingPaymentUrl(toolContext.siteUrl, bookingId, accessToken) } : {})
 				})),
 				services
 			});
@@ -530,25 +511,15 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const result = await ctx.runMutation(reference.trim().toUpperCase().startsWith('SVC-')
 				? internal.serviceBookings.cancelChatServiceBooking : internal.bookings.cancelChatBooking, {
 				sessionId: toolContext.sessionId,
-        ...(toolContext.durableTurn ? { durableTool: { ...toolContext.durableTurn, key: fnName, name: fnName } } : {}),
+				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				reference,
 				turnStartedAt: toolContext.turnStartedAt,
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			});
-			return humanToolResult(
-				result.state === 'needs_confirmation'
-					? { ...result, next: 'Ask the guest to reply "yes" to cancel this booking.' }
-					: result
-			);
+			return presentMutationToolResult({ name: fnName, result }, toolContext.siteUrl);
 		}
 
 		default:
 			return humanToolResult({ error: `Unknown function: ${fnName}` });
 	}
-}
-
-/** LLM/tool output is a presentation boundary; IDs, counts and timestamps retain their units. */
-export function humanToolResult(value: unknown): string {
- const currencyFields = new Set(["price","pricePerNight","nightlyRate","directPrice","totalDirect","totalOTA","listedTotal","discountPercent","discountAmount","directTotal","maxSavings","total","subtotal","discount","amount","saving","fee","owed","minEligibleSubtotal","eligibleSubtotal"]);
- return JSON.stringify(value, (key, item) => typeof item === 'number' && currencyFields.has(key) ? satangToBaht(item) : item);
 }

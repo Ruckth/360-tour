@@ -201,8 +201,8 @@ export async function generateConciergeReply(
 		tools,
 		deadlineAt,
 		request: (messages, requestTools, timeoutMs) => callAI(apiBase, apiKey, selectedModel, messages, requestTools, trace => { calls.push(trace); args.llmTrace?.push(trace); }, { timeoutMs }),
-		invalidateProposal: async name => { await ctx.runMutation(internal.bookings.invalidateChatProposal, { sessionId: args.sessionId, kind: name === 'prepare_booking' ? 'villa' : 'service', deadlineAt, ...(args.durableTurn ? { durableTurn: args.durableTurn } : {}) }); },
-		execute: (name, toolArgs) => executeTool(ctx, name, toolArgs, properties, { sessionId: args.sessionId, siteUrl: args.siteUrl, turnStartedAt, deadlineAt, durableTurn: args.durableTurn, bookingProposal: proposalIdentity(session.pendingBookingQuote), serviceProposal: proposalIdentity(session.pendingServiceQuote) }),
+		invalidateProposal: async (name, key) => { await ctx.runMutation(internal.bookings.invalidateChatProposal, { sessionId: args.sessionId, kind: name === 'prepare_booking' ? 'villa' : 'service', deadlineAt, ...(args.durableTurn ? { durableTool: { ...args.durableTurn, key, name } } : {}) }); },
+		execute: (name, toolArgs, key) => executeTool(ctx, name, toolArgs, properties, { sessionId: args.sessionId, siteUrl: args.siteUrl, turnStartedAt, deadlineAt, ...(args.durableTurn ? { durableTool: { ...args.durableTurn, key, name } } : {}), bookingProposal: proposalIdentity(session.pendingBookingQuote), serviceProposal: proposalIdentity(session.pendingServiceQuote) }),
 		metrics: {
 			recordModelRequest: ms => recordModelRequest(metrics, ms),
 			recordTool: (name, ms, ok) => recordTool(metrics, name, ms, ok)

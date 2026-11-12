@@ -3,7 +3,7 @@ import { internal } from '../_generated/api';
 import { v } from 'convex/values';
 import { generateConciergeReply, withReplyOutcome, type ConciergeReply } from '../chatAi';
 import { committedReply, proposalReply, toolFailureReply } from './copy';
-import { humanToolResult } from '../lib/chatTools';
+import { presentStoredToolResult, storedProposalIsCurrent } from '../lib/chatToolPresentation';
 import { localizedGreetingReply, detectReplyLocale, parseLineLocaleFromPostback } from './copy';
 
 export const load = internalQuery({
@@ -22,11 +22,15 @@ export async function runTurnHandler(ctx: ActionCtx, args: { eventId: import('..
     const locale = event.locale ?? parseLineLocaleFromPostback(event.postbackData) ?? detectReplyLocale(event.messageText);
     // Recover committed tool facts without asking a model to choose/replay booking writes.
     if (event.toolResults?.length) {
-      const writes = [...event.toolResults].reverse();
-      for (const write of writes) {
-        const result = JSON.parse(humanToolResult(JSON.parse(write.resultJson))) as Record<string, unknown>;
-        const response = committedReply(write.name, result, event.messageText ?? '') ?? proposalReply(write.name, result, event.messageText ?? '');
-        if (response) return { response, model: 'tool_recovery', outcome: write.name.startsWith('prepare_') ? 'awaiting_guest' : 'answered' };
+      // The last write/intent is authoritative. A failed or unfinished replacement must never
+      // fall through to an older successful proposal whose live quote was invalidated.
+      const write = event.toolResults[event.toolResults.length - 1];
+      if (!write.pending && storedProposalIsCurrent(write, session)) {
+        const result = JSON.parse(presentStoredToolResult(write, process.env.SITE_URL ?? 'https://tour.helpgueststay.com')) as Record<string, unknown>;
+        const committed = committedReply(write.name, result, event.messageText ?? '');
+        if (committed) return { response: committed, model: 'tool_recovery', outcome: 'answered' };
+        const proposal = proposalReply(write.name, result, event.messageText ?? '');
+        if (proposal) return { response: proposal, model: 'tool_recovery', outcome: 'awaiting_guest' };
       }
       return { response: toolFailureReply(event.messageText ?? ''), model: 'tool_recovery', outcome: 'needs_staff' };
     }

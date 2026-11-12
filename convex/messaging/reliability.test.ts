@@ -135,6 +135,7 @@ it('deduplicates web sends before charging admission and rejects altered replay 
   expect(await t.run(ctx => ctx.db.query('channelEvents').take(10))).toHaveLength(1);
 });
 it('recovers a real committed booking without replaying the model or booking mutation', async () => {
+  vi.stubEnv('SITE_URL', 'https://resort.example');
   const t = createHarness(convexTest);
   await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
   const property = (await t.run(ctx => ctx.db.query('properties').take(10))).find(row => row.status === 'active')!;
@@ -158,6 +159,8 @@ it('recovers a real committed booking without replaying the model or booking mut
   const recovered = await t.action(internal.concierge.runTurn.runTurn, { eventId: confirmation._id, claimToken: 'recovery-claim' });
   expect(recovered).toMatchObject({ model: 'tool_recovery', outcome: 'answered' });
   expect(recovered.response).toContain('payment is pending');
+  if (committed.needsReview) throw new Error('Expected a committed booking');
+  expect(recovered.response.split('\n').filter(line => line.includes('/booking/pay?'))).toEqual([`https://resort.example/booking/pay?bookingId=${committed.bookingId}&token=${committed.accessToken}`]);
   expect(recovered.response).toContain((proposal.total / 100).toLocaleString('en-US'));
   expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toEqual(before);
   expect(transport).not.toHaveBeenCalled();

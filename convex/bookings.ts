@@ -1,4 +1,5 @@
 import { durableToolValidator, durableTurnValidator, currentClaim, withDurableTool } from './messaging/model';
+import { startDurablePreparation } from './messaging/claims';
 import { satangToBaht } from './shared/money';
 import { activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity, type ChatCouponSnapshot } from './lib/chatCoupon';
 import { normalizeCouponCode } from './lib/offers';
@@ -369,7 +370,7 @@ export const touchChatBookingFlow = internalMutation({
 
 /** Invalidate the old draft even when a replacement tool call later fails parsing or validation. */
 export const invalidateChatProposal = internalMutation({
-	args: { durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
+	args: { durableTool: v.optional(durableToolValidator), durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
 	handler: async (ctx, args) => {
     if (args.durableTurn) {
       const event = await currentClaim(ctx, args.durableTurn.eventId, args.durableTurn.claimToken);
@@ -377,6 +378,10 @@ export const invalidateChatProposal = internalMutation({
     }
 		const session = await loadChatSession(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
+		if (args.durableTool) {
+			if (args.durableTool.name !== (args.kind === 'villa' ? 'prepare_booking' : 'prepare_service_booking')) throw new Error('Preparation kind mismatch');
+			if (!await startDurablePreparation(ctx, args.sessionId, args.durableTool)) return;
+		}
 		await ctx.db.patch(args.sessionId, args.kind === 'villa' ? { pendingBookingQuote: undefined } : { pendingServiceQuote: undefined });
 	}
 });

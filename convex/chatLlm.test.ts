@@ -79,7 +79,7 @@ test('Sol tools round-trip through Responses while retaining encrypted reasoning
 	const result = await runConciergeTurn({ message: 'Compare spa packages.', messages, tools, deadlineAt: Date.now() + 20000,
 		request: (history, offered, timeoutMs) => callAI('https://openrouter.ai/api/v1', 'test-key', 'openai/gpt-6.1-sol', history, offered, trace, { timeoutMs }), execute });
 	expect(result).toEqual({ content: 'Massage costs THB 2,400.', failed: false });
-	expect(execute).toHaveBeenCalledExactlyOnceWith('list_services', {});
+	expect(execute).toHaveBeenCalledExactlyOnceWith('list_services', {}, '[1,"call-1"]');
 	expect(fetchMock.mock.calls[0][0]).toBe('https://openrouter.ai/api/v1/responses');
 	const body = JSON.parse(fetchMock.mock.calls[0][1].body);
 	expect(body).toMatchObject({ model: 'openai/gpt-6.1-sol', reasoning: { effort: 'low' }, max_output_tokens: 4096, store: false, include: ['reasoning.encrypted_content'], tools: [{ type: 'function', name: 'list_services', strict: false }] });

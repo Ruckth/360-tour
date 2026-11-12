@@ -1215,7 +1215,7 @@ export default defineSchema({
     responseText: v.optional(v.string()), responseModel: v.optional(v.string()), responseCardJson: v.optional(v.string()),
     responseOutcome: v.optional(v.union(v.literal('answered'), v.literal('awaiting_guest'), v.literal('needs_staff'))),
     locale: v.optional(v.string()), propertySlug: v.optional(v.string()), actionHint: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
-    toolResults: v.optional(v.array(v.object({ key: v.string(), name: v.string(), resultJson: v.string() }))),
+    toolResults: v.optional(v.array(v.object({ key: v.string(), name: v.string(), resultJson: v.string(), pending: v.optional(v.boolean()) }))),
 		sessionId: v.optional(v.id('conversations')),
 		lineUserId: v.optional(v.string()),
   facebookUserId: v.optional(v.string()), pageId: v.optional(v.string()),
