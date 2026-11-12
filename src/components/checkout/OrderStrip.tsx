@@ -625,6 +625,7 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                   <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                     {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                   </span>
+                  {row.refundedAmountSatang ? <span className="block text-xs text-muted-foreground tabular-nums">Refunded {formatMoney(row.refundedAmountSatang / 100, row.currency)}</span> : null}
                 </span>
                 {/* The row itself opens the order. */}
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
