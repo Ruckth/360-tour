@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scalable Architecture Plan</title>
+<style>
+/* Layout: single reading column, phase cards stacked in dependency order; matches docs/plans house style */
+:root{
+  --bg:#f7f7f5;--surface:#ffffff;--surface-2:#f0efeb;--text:#1c1c1a;--muted:#6b6a64;--border:#e2e0da;
+  --accent:#2f5bd3;--accent-soft:#e8eefc;--p1:#b42318;--p1-soft:#fdecea;--p2:#a15c07;--p2-soft:#fdf3e1;
+  --ok:#1f7a4d;--ok-soft:#e5f4ec;--code:#f2f1ed;--codex:#0f766e;--kiro:#7c3aed;--claude:#c2410c;
+  --radius:12px;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141413;--surface:#1c1c1a;--surface-2:#252522;--text:#ecebe6;--muted:#a19f97;--border:#33322e;
+  --accent:#8aa8ff;--accent-soft:#1f2a44;--p1:#ff8a7a;--p1-soft:#3a1d1a;--p2:#f0b45c;--p2-soft:#36290f;
+  --ok:#6fd3a0;--ok-soft:#163026;--code:#22221f;--codex:#4fd1c5;--kiro:#b79cff;--claude:#ff9a62;color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#141413;--surface:#1c1c1a;--surface-2:#252522;--text:#ecebe6;--muted:#a19f97;--border:#33322e;
+  --accent:#8aa8ff;--accent-soft:#1f2a44;--p1:#ff8a7a;--p1-soft:#3a1d1a;--p2:#f0b45c;--p2-soft:#36290f;
+  --ok:#6fd3a0;--ok-soft:#163026;--code:#22221f;--codex:#4fd1c5;--kiro:#b79cff;--claude:#ff9a62;color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+main{max-width:920px;margin:0 auto;padding-block:32px 72px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:30px;line-height:1.15;margin:6px 0 10px;letter-spacing:-.015em;text-wrap:balance}
+h2{font-size:20px;margin:52px 0 6px;letter-spacing:-.005em;text-wrap:balance}
+h3{font-size:15.5px;margin:0 0 4px;text-wrap:balance}
+p{margin:0 0 12px}
+ul,ol{margin:0;padding-left:18px}
+li{margin:3px 0}
+a{color:var(--accent)}
+.lede{color:var(--muted);max-width:68ch;font-size:16px}
+.eyebrow{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.sub{color:var(--muted);margin:0 0 16px;max-width:68ch}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+code{background:var(--code);padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+.pill{display:inline-block;font:600 11px/1 var(--sans);padding:5px 8px;border-radius:999px;white-space:nowrap;background:var(--surface-2);color:var(--muted)}
+.pill.low{background:var(--ok-soft);color:var(--ok)}
+.pill.med{background:var(--p2-soft);color:var(--p2)}
+.pill.high{background:var(--p1-soft);color:var(--p1)}
+.pill.rec{background:var(--accent-soft);color:var(--accent)}
+.pill.changed{background:var(--p2-soft);color:var(--p2)}
+.pill.codex{background:transparent;border:1px solid var(--codex);color:var(--codex)}
+.pill.kiro{background:transparent;border:1px solid var(--kiro);color:var(--kiro)}
+.pill.claude{background:transparent;border:1px solid var(--claude);color:var(--claude)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;min-width:0}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:24px 0 8px}
+.metric strong{display:block;font-size:24px;line-height:1.15;font-weight:650;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.metric strong .to{color:var(--ok)}
+.metric span{font-size:12.5px;color:var(--muted);display:block;margin-top:4px}
+.gate{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:18px 0}
+.gate p{margin:0}
+.gate p + p{margin-top:8px}
+.warn{border-left-color:var(--p1);background:var(--p1-soft)}
+/* rules */
+.rules{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:8px;counter-reset:r}
+.rules li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start;margin:0}
+.rules li::before{counter-increment:r;content:counter(r);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font:600 12.5px var(--mono)}
+.rules p{margin:0;color:var(--muted)}
+.rules b{color:var(--text)}
+/* domain grid */
+.domains{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
+.domain{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;min-width:0}
+.domain h3{font-family:var(--mono);font-size:13px;margin-bottom:6px}
+.domain p{font-size:13px;color:var(--muted);margin:0}
+.domain.shared{grid-column:1/-1;background:var(--surface-2)}
+/* decisions */
+.decisions{display:grid;gap:8px;margin-top:14px}
+.decision{display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px}
+.decision .id{font:600 13px var(--mono);color:var(--muted);padding-top:2px}
+.decision p{margin:4px 0 0;font-size:14px;color:var(--muted)}
+.decision .choice{color:var(--text)}
+/* phases */
+.phase{margin-top:16px;padding:0;overflow:hidden}
+.phase-head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline;padding:16px 18px 12px;border-bottom:1px solid var(--border)}
+.phase-head h3{font-size:17px;margin:0;flex:1 1 280px}
+.phase-head .num{font:600 12px var(--mono);color:var(--accent);letter-spacing:.06em;text-transform:uppercase;flex-basis:100%}
+.phase-head .tags{display:flex;flex-wrap:wrap;gap:6px}
+.phase-body{padding:14px 18px 16px}
+.phase-body > p{color:var(--muted);max-width:70ch}
+.items{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:10px}
+.items li{margin:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding-top:10px;border-top:1px dashed var(--border)}
+.items li:first-child{border-top:0;padding-top:0}
+.items .what{font-weight:600}
+.items .why{grid-column:1/-1;color:var(--muted);font-size:13.5px}
+.items .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-self:start}
+.exit{margin-top:14px;padding:10px 14px;border-radius:8px;background:var(--ok-soft);color:var(--ok);font-size:13.5px}
+.exit b{font-weight:650}
+.scope{margin-top:8px;font-size:13px;color:var(--muted)}
+/* runbook */
+.steps{margin:10px 0 0;padding-left:22px;display:grid;gap:6px;font-size:14px}
+.steps li{margin:0;padding-left:4px}
+.steps li::marker{font:600 12.5px var(--mono);color:var(--accent)}
+/* tables */
+.scroll{overflow-x:auto;margin-top:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font:600 11px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--surface-2)}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+td .k{display:inline-block;font:600 10.5px/1 var(--mono);padding:4px 6px;border-radius:5px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.k.keep{background:var(--surface-2);color:var(--muted)}
+.k.rename{background:var(--accent-soft);color:var(--accent)}
+.k.merge{background:var(--p2-soft);color:var(--p2)}
+.k.del{background:var(--p1-soft);color:var(--p1)}
+/* code trees */
+pre{margin:12px 0 0;background:var(--code);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;overflow-x:auto;font:12.5px/1.55 var(--mono);color:var(--text)}
+pre .c{color:var(--muted)}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.cols .card h3{margin-bottom:8px}
+.cols .card ul{font-size:14px;color:var(--muted)}
+.changes{display:grid;gap:6px;margin-top:12px;font-size:14px}
+.changes li{color:var(--muted)}
+.changes b{color:var(--text)}
+footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:760px){
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .domains{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cols{grid-template-columns:minmax(0,1fr)}
+  .items li{grid-template-columns:minmax(0,1fr)}
+  .items .tags{justify-content:flex-start}
+}
+@media (max-width:440px){.domains{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<main>
+
+<div class="eyebrow">Plan · v2 · 12 Nov 2026 · reviewed by Codex and Kiro · no real users, so data can be wiped</div>
+<h1>Scalable Architecture Plan</h1>
+<p class="lede">The goal is a codebase that is faster and safer to build on, with an architecture simple enough to state in five rules. The work is about five weeks. First we close two security holes. Then we delete dead code and reset the schema to its final names. Then we rebuild messaging, the most duplicated area, and draw domain boundaries one PR at a time, with no feature freeze. Anything that is really a new product feature waits until a feature needs it.</p>
+
+<div class="metrics">
+  <div class="card metric"><strong>72 <span class="to">→ 55</span></strong><span>Convex tables. 14 deleted, 4 webhook tables merged into 1</span></div>
+  <div class="card metric"><strong>296 <span class="to">→ 0</span></strong><span>public functions whose access check is written by hand</span></div>
+  <div class="card metric"><strong>61 <span class="to">→ 0</span></strong><span><code>as never</code> casts (37 in webhooks, 24 in data wrappers; vendored reui excluded)</span></div>
+  <div class="card metric"><strong>8 <span class="to">→ 1</span></strong><span>near-copies of the channel pipeline across 3,294 lines, replaced by one pipeline plus a small adapter per channel</span></div>
+</div>
+
+<div class="gate warn"><p><b>Status 12 Nov, re-baselined on <code>origin/main</code>.</b> The first audits read a local <code>main</code> that was 55 commits behind. On the real <code>main</code>, both security holes are already fixed: the secret check fails closed, and <code>chat.addMessage</code> no longer exists (#52). The guest session token is still missing. Marketing added 16 tables, so there are now 87, and they form a 9th domain, <code>marketing</code>.</p><p><b>Phase 1 and later wait until three open feature branches land,</b> because each one changes <code>convex/schema.ts</code>: <code>feat/staff-roles-backend</code> and <code>feat/staff-roles-ui</code>, <code>feat/pos-partial-refunds</code>, and the <code>marketing-r3b</code> work. Starting the schema reset under them would conflict with all three. Phase 0 runs now on the branch <code>arch/integration</code>.</p></div>
+
+<div class="gate"><p><b>This plan runs itself.</b> A phase is finished only when <code>pnpm arch:score --phase N</code> exits 0 and the standard commands pass. Nobody has to judge "done". Who does what, when it stops, and the only points where it needs you are listed under <a href="#run">How it runs without you</a>.</p></div>
+
+<h2>Target architecture: five rules</h2>
+<p class="sub">These rules go into <code>ARCHITECTURE.md</code>. Rules 2–5 are enforced by lint in Phase 3.</p>
+<ol class="rules">
+  <li><div><b>One deployment serves one resort.</b><p>We sell a custom build to each client (<code>BUSINESS_PLAN.md</code>), so delete <code>tenants</code> and <code>tenantId</code>. Anything an admin can edit lives in Convex. Build-time brand and theme live in <code>src/config</code>.</p></div></li>
+  <li><div><b>Each domain owns its tables and functions, and exposes one file.</b><p>Backend code lives in <code>convex/&lt;domain&gt;/</code>. Other domains may import only <code>convex/&lt;domain&gt;/model.ts</code>, which holds plain helpers that take the caller's <code>ctx</code>, so cross-domain work stays inside one transaction. Every other file in the domain is private to it.</p></div></li>
+  <li><div><b>Each business rule is written once, in <code>convex/shared/</code>.</b><p>Money, dates, resort time, pricing, overlap and time-off rules are pure code. <code>shared</code> never imports <code>_generated/server</code> or takes a <code>ctx</code>. <code>src</code> imports only <code>convex/shared</code> and <code>convex/_generated</code>, and <code>convex</code> never imports <code>src</code>.</p></div></li>
+  <li><div><b>Every public function states who may call it.</b><p>Only <code>convex/auth/</code> may import the raw <code>query</code>, <code>mutation</code> and <code>action</code> builders. Everything else uses <code>publicQuery</code>, <code>guestQuery</code>/<code>guestMutation</code> (needs the chat session token), <code>deviceQuery</code>/<code>deviceMutation</code> (needs the display token), <code>adminQuery</code>/<code>adminMutation</code>/<code>adminAction</code>, or <code>internal*</code>. Once <code>feat/staff-roles</code> lands, add <code>staffQuery</code>/<code>staffMutation</code> on top of its role model.</p></div></li>
+  <li><div><b>Types run end to end, and money is integer satang.</b><p>No <code>as never</code>. Functions that need no login return explicitly listed fields and declare return validators. New code throws <code>ConvexError({ code, message })</code> for failures the user should see.</p></div></li>
+</ol>
+
+<h2>Domain map</h2>
+<p class="sub">Nine domains plus shared code, grouped by which tables are used together. Table names are the targets after Phase 1.</p>
+<div class="domains">
+  <div class="domain"><h3>auth</h3><p>Builders, users, admin allowlist. Owns no business tables</p></div>
+  <div class="domain"><h3>catalog</h3><p>properties, tourScenes, reviews, reviewStats, otaRates. The only runtime source of villa content</p></div>
+  <div class="domain"><h3>bookings</h3><p>Stays, payments and refunds for stays, availability, date blocks, iCal sync, Stripe checkout</p></div>
+  <div class="domain"><h3>services</h3><p>Services, appointments and their money, staff, time off, roster. These tables are always read together</p></div>
+  <div class="domain"><h3>pos</h3><p>orders, orderLines, order payments, customers, tills, customer displays</p></div>
+  <div class="domain"><h3>marketing</h3><p>Campaigns, links, coupons and redemptions, affiliates and credits, sessions, spend, attribution</p></div>
+  <div class="domain"><h3>messaging</h3><p>conversations, messages, channelEvents, channel adapters, inbox, guest tokens, staff alerts, leads</p></div>
+  <div class="domain"><h3>concierge</h3><p>The AI turn, prompt, tools, businessFacts, unanswered questions</p></div>
+  <div class="domain"><h3>settings</h3><p>Resort settings and their change history, the record-history log</p></div>
+  <div class="domain shared"><h3>shared · maintenance · testing</h3><p>Pure rules (money, dates, resort time, pricing, overlap) · seed scenarios and evals · the test harness and fixtures</p></div>
+</div>
+
+<h2>Decisions for you</h2>
+<p class="sub">Each has a recommended default, and the plan goes ahead with it unless you say otherwise. <span class="pill changed">changed</span> marks a recommendation that changed after review.</p>
+<div class="decisions">
+  <div class="card decision"><div class="id">D1</div><div><h3>Tenancy</h3><p class="choice"><span class="pill rec">Recommended</span> One deployment per resort. Delete <code>tenants</code> and <code>tenantId</code> (10 references in 5 files).</p><p>Alternative: build organizations and memberships now. That would touch every table and every access check, for a SaaS model the business plan mentions only as a Year 3 idea.</p></div></div>
+  <div class="card decision"><div class="id">D2</div><div><h3>Demo mode without Convex</h3><p class="choice"><span class="pill rec">Recommended</span> Drop <code>dev:demo</code>, <code>useOptionalConvex</code> and the demo branches. CI and local development run against a seeded local Convex backend.</p><p>This is a medium-sized task on its own. 9 of the 10 E2E specs depend on demo mode (for example <code>bookingId=demo</code> at <code>tests/e2e/booking.spec.ts:42</code>), so the change, a local backend in CI, a seed step, a Clerk test user and the rewritten specs must land in one PR. Keep the checkout preview fixture as a design tool, but stop it from re-implementing the money rules.</p></div></div>
+  <div class="card decision"><div class="id">D3</div><div><h3>Payments model <span class="pill changed">changed</span></h3><p class="choice"><span class="pill rec">Recommended</span> Keep the current payment tables. Switch all money to integer satang with one rounding function, behind tests that pin down today's behavior. Postpone a unified ledger.</p><p>v1 said a POS settlement recorded the same money three times. It doesn't: the stay payment is a link to the order (<code>method: 'order'</code>, <code>convex/bookings.ts:240</code>). The real bug is rounding. Stay pricing turns a 10% discount on 100.50 into 10 (<code>convex/lib/pricing.ts:19</code>), while POS gives 10.05 (<code>convex/lib/billMath.ts:66</code>). Revisit the ledger when split payments across a stay and spa become a real need.</p></div></div>
+  <div class="card decision"><div class="id">D4</div><div><h3>Where webhooks run <span class="pill changed">moved earlier</span></h3><p class="choice"><span class="pill rec">Recommended</span> Move them to Convex <code>httpAction</code>s, and do it in Phase 2, before the general file move.</p><p>This is the biggest win in the plan. It removes 37 of the 61 casts, all 20 secret-protected mutations, and the Next.js route that calls the AI inside the request with a 22-second timeout per event (<code>src/lib/chat/messaging-reply.ts:128</code>). Doing it first also means those files aren't moved in Phase 3 and then deleted.</p></div></div>
+  <div class="card decision"><div class="id">D5</div><div><h3>Source of villa content</h3><p class="choice"><span class="pill rec">Recommended</span> Convex is the only runtime source for content admins edit: properties, reviews, pricing and social proof. <code>resort-config.ts</code> and <code>booking-config.ts</code> stay in code.</p><p>28 files import <code>@/lib/data</code> today, and the server and client read different endpoints.</p></div></div>
+  <div class="card decision"><div class="id">D6</div><div><h3>Renames <span class="pill changed">changed</span></h3><p class="choice"><span class="pill rec">Recommended</span> Do these during the Phase 1 reset: <code>bill*→order*</code>, <code>serviceAppointments→appointments</code>, <code>rooms→tourScenes</code>, <code>chatSessions→conversations</code>, <code>chatMessages→messages</code>, <code>socialProof→reviewStats</code>. Keep <code>customers</code>.</p><p>The code already says "order" (<code>orderLinks</code>, <code>orderLifecycle</code>), and a <code>room</code> here is really a 360° tour scene. Renaming in Phase 1 means later moves carry the final names, so no line is touched twice.</p></div></div>
+</div>
+
+<h2>Phases</h2>
+<p class="sub">Order matters: start clean, then delete, then reset, then rebuild messaging, then draw boundaries. One domain per PR, each landing within a day. Feature work continues in between.</p>
+
+<!-- Phase -1 -->
+<div class="card phase">
+  <div class="phase-head"><div class="num">Phase −1 · before anything else</div><h3>Start from a clean tree</h3><div class="tags"><span class="pill low">low risk</span></div></div>
+  <div class="phase-body">
+    <ul class="items">
+      <li><span class="what">Land or park the POS and customer-display work in progress</span><span class="tags"><span class="pill">S</span><span class="pill claude">Claude</span></span><span class="why">There are 166 changed paths, including <code>convex/pos.ts</code>, <code>schema.ts</code>, displays and checkout. Every later phase touches those files and would conflict.</span></li>
+    </ul>
+    <div class="exit"><b>Gate:</b> <code>pnpm arch:score --phase -1</code> exits 0 (no modified tracked files).</div>
+  </div>
+</div>
+
+<!-- Phase 0 -->
+<div class="card phase">
+  <div class="phase-head"><div class="num">Phase 0 · 2–3 days</div><h3>Close trust holes and set a baseline</h3><div class="tags"><span class="pill low">low risk</span></div></div>
+  <div class="phase-body">
+    <ul class="items">
+      <li><span class="what">Make the webhook secret check fail closed</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Throw when <code>CONVEX_SERVER_SECRET</code> is missing. Confirm the variable is set on every deployment before merging. This stays in force until Phase 2 retires the secret.</span></li>
+      <li><span class="what">Add a guest session token for web chat</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">The token is 32 random bytes, issued when a web session is created. Convex stores only its hash on the session. The browser keeps the token next to the session ID and sends it with all 11 public functions in <code>chat.ts</code> and with <code>chatAi.respond</code>, which currently accepts any session ID (<code>convex/chatAi.ts:652</code>). Claiming a browser handoff issues a new token. Social-channel sessions never get a token, so only internal functions can touch them.</span></li>
+      <li><span class="what">Accept only user messages from the browser</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why"><code>chat.addMessage</code> accepts only <code>role: 'user'</code>. Assistant messages go through an internal mutation. Update the eval writer (<code>convex/chatEval.ts:42</code>) in the same PR. Make <code>recordUnknownQuestion</code> internal and update its caller (<code>convex/chatAi.ts:333</code>).</span></li>
+      <li><span class="what">Stop leaking draft content</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why"><code>properties.getRooms</code> must check that the parent property is active, and reviews and social proof need the same check (<code>convex/properties.ts:167</code>). Replace the copy-then-remove projection in <code>properties.toPublic</code> with an explicit list of fields, like <code>publicProperties.publicVilla</code>.</span></li>
+      <li><span class="what">Record a baseline and add a shared test harness</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Record the current test results. Add <code>convex/testing/harness.ts</code> to cover schema and module discovery, admin and guest identities, a clock, and fixtures. Today 64 suites each build this setup themselves.</span></li>
+      <li><span class="what">Clean up the repo</span><span class="tags"><span class="pill">S</span><span class="pill kiro">Kiro</span></span><span class="why">Ignore <code>output/</code>, <code>tmp/</code> (121 JS/TS files that lint scans), <code>graphify-out/</code> and root screenshots. Delete <code>static/</code>: all 17 files are byte-identical to <code>public/</code>. Remove the 3 Svelte skills. Move finished plans to <code>docs/archive/</code>.</span></li>
+      <li><span class="what">Scorecard ratchet in CI</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Add <code>.arch-phase</code>, holding the last finished phase, and a CI step that runs <code>pnpm arch:score --phase $(cat .arch-phase)</code>. A finished phase then fails CI if any of its metrics slips back.</span></li>
+    </ul>
+    <div class="exit"><b>Gate:</b> <code>pnpm arch:score --phase 0</code> exits 0. That requires the 5 named security tests, the secret check failing closed, <code>static/</code> gone, the scratch folders ignored and the harness in place. The standard commands must also pass.</div>
+  </div>
+</div>
+
+<!-- Phase 1 -->
+<div class="card phase">
+  <div class="phase-head"><div class="num">Phase 1 · ~1.5 weeks</div><h3>Delete dead code, then reset the schema to final names</h3><div class="tags"><span class="pill med">medium risk in money</span></div></div>
+  <div class="phase-body">
+    <p>Everything deleted here is code nobody has to move, type or test later. The renames and the satang change happen in the same wipe and reseed, so no later phase touches the same lines again.</p>
+    <ul class="items">
+      <li><span class="what">1a · Retired Q&amp;A system: 13 tables and about 3,500 lines</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">Delete <code>chatAnswers</code>, <code>chatQuestions</code>, <code>chatSuggestedQuestions</code>, <code>curatedChatQuestions</code>, <code>curatedChatQuestionVariants</code>, <code>chatQuestionInteractions</code>, <code>chatKnowledgeScopes</code>, <code>chatAnswerPropertyScopes</code>, <code>chatTopics</code>, <code>chatAnswerTopics</code>, <code>pricing</code>, <code>propertyKnowledge</code> and <code>recentBookingDisplay</code>. Remove every reader, writer, validator and test in the same PR. Two of these are still live: suggestion tracking writes curated interactions (<code>convex/chatSuggestions.ts:1005</code>), and property deletion reads three of the tables (<code>convex/adminProperties.ts:259</code>). Narrow those first. <b>Keep</b> the 8 staff and unknown-question endpoints and the static suggestions (<code>nextForSession</code>, <code>markShown</code>, <code>markClicked</code>).</span></li>
+      <li><span class="what">1b · Other dead code</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Delete <code>convex/lib/chatFallback.ts</code> (a 477-line keyword answerer) and use the honest "I don't know" reply instead. Delete the <code>factRetrieval</code> flag, all 8 migrations, <code>orderBackfill</code>, <code>inboxBackfill</code> and the migrations component. Delete the dead files <code>TrustBadges</code>, <code>wheel-picker</code>, <code>booking-config</code>'s discount helper and <code>booking-documents</code>, and their dependencies. Move the 9 real public pages into <code>[locale]</code> and delete the re-export copies. Add knip to CI, configured with the Next and Convex entry points.</span></li>
+      <li><span class="what">1c · Schema reset</span><span class="tags"><span class="pill">L</span><span class="pill codex">Codex</span></span><span class="why">Do the D6 renames and delete <code>tenants</code> (D1). Make fields that only existed for old data required, or delete them: <code>chatSessions.messages</code>, <code>bills.held</code>, <code>walkInNumber</code>, the legacy Stripe fields, legacy payment inference, <code>staffNameBackfilledAt</code>, and <code>socialProof.isSuperhost</code>/<code>breakdown</code>. Merge the 4 webhook event tables into <code>channelEvents</code>; Phase 2 builds on it.</span></li>
+      <li><span class="what">1d · Integer satang (D3)</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span><span class="pill claude">audit</span></span><span class="why">Before changing anything, write tests that pin down today's rounding, refunds, corrections and replayed settlement. Then store every amount as integer satang and percentages as basis points, with one rounding function in <code>convex/shared/money.ts</code>. Stripe already converts baht × 100 (<code>convex/payments.ts:155</code>); remove that step at the same time, or customers get charged 100 times too much. Format money only in the UI.</span></li>
+      <li><span class="what">1e · Reseed and seed scenarios</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Today <code>seed:seedAll</code> exits as soon as any property exists (<code>convex/seed.ts:19</code>). Replace it with named scenarios such as <code>empty</code>, <code>demo-resort</code> and <code>busy-weekend</code> (stays, appointments, an open order, an inbox thread). The test harness and E2E use the same scenarios. Every record a scenario creates is complete, with no optional fields left blank only because old data lacked them.</span></li>
+    </ul>
+    <h3 style="margin-top:16px">Reset runbook, run once per deployment</h3>
+    <ol class="steps">
+      <li>Pause ingress. Turn off the channel webhooks in each provider console and expire any open Stripe Checkout sessions.</li>
+      <li>Snapshot the deployment with <code>npx convex export</code> so a rollback is possible.</li>
+      <li>Cancel scheduled functions and pause the 7 crons (<code>convex/crons.ts</code>).</li>
+      <li>While the old code is still deployed, clear every table that is being removed or changed. Convex rejects a deploy if stored documents don't match the new schema.</li>
+      <li>Deploy the new code. Production deploys through <code>vercel-build</code>, which runs <code>convex deploy</code>.</li>
+      <li>Seed the scenario. Check counts, sign in as admin, and complete one booking, one POS settlement and one chat.</li>
+      <li>Turn webhooks and crons back on. Old Stripe events can refer to deleted IDs, and Stripe retries for 3 days. They must be acknowledged with 200 and recorded as orphaned, not answered with a 500 (<code>convex/http.ts:47</code>).</li>
+    </ol>
+    <p class="scope">Run on dev first. Only Claude runs it on production, after you approve.</p>
+    <div class="exit"><b>Gate:</b> <code>pnpm arch:score --phase 1</code> exits 0. That means 55 tables, 0 retired or old-named tables, 0 files mentioning "legacy" or "backfill", 0 migrations, 0 re-export pages, and the 4 named money and reset tests present. The standard commands must also pass against a freshly seeded <code>demo-resort</code>.</div>
+  </div>
+</div>
+
+<!-- Phase 2 -->
+<div class="card phase">
+  <div class="phase-head"><div class="num">Phase 2 · ~1.5–2 weeks</div><h3>One messaging pipeline on Convex</h3><div class="tags"><span class="pill med">medium risk</span></div></div>
+  <div class="phase-body">
+    <ul class="items">
+      <li><span class="what">2a · Webhooks as Convex HTTP actions (D4)</span><span class="tags"><span class="pill">L</span><span class="pill codex">Codex</span><span class="pill claude">audit</span></span><span class="why">The HTTP action checks the signature against the raw body. That check currently uses Node crypto (<code>src/lib/meta/signature.ts</code>) and must be ported to Web Crypto. Then the action awaits <b>one</b> internal mutation that removes duplicates, stores the event in <code>channelEvents</code> and schedules the turn, and only after that returns 200. A crash after the 200 can no longer lose the message. The 20 secret-protected mutations, the 37 casts and the shared secret are deleted.</span></li>
+      <li><span class="what">2b · Reliable turn worker</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">Scheduled functions run at most once and are not retried. Each event therefore holds a lease with a claim token: a stale lease is taken over, completion must present the matching token, and turns run in order within one conversation. Booking tools are never replayed blindly.</span></li>
+      <li><span class="what">2c · Channel adapters</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">Each channel implements <code>{ verify, normalize, send, replyWindowMs }</code>. Facebook and Instagram share one Meta adapter that takes a graph host parameter (<code>graph.facebook.com</code> vs <code>graph.instagram.com</code>). LINE stores each reply token and when it arrived. If a reply call times out, the event is marked ambiguous and is not pushed automatically, because the reply may already have been delivered. LINE pushes only after an explicit expired-token error.</span></li>
+      <li><span class="what">2d · One internal concierge turn</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">Split the 210-line <code>generateConciergeReply</code> into four parts: <code>loadTurnContext</code>, a pure <code>buildPrompt</code> with snapshot tests, the existing <code>runConciergeTurn</code>, and <code>commitTurn</code>. Web and social channels both call one internal <code>runTurn</code>. Move the fixed reply copy to one <code>concierge/copy.ts</code>, behind one locale detector.</span></li>
+      <li><span class="what">2e · Web chat with the server as the source of truth</span><span class="tags"><span class="pill">M</span><span class="pill kiro">Kiro</span></span><span class="why">A <code>guestMutation</code> called <code>sendMessage</code> schedules <code>runTurn</code>, and the transcript renders from <code>useQuery</code>. Delete <code>message-cache</code>, <code>transport-recovery</code> and <code>generation-token</code>. Split <code>useChatSession.ts</code> (1,633 lines, 29 state hooks) into session, transcript, viewport, handoff and suggestion hooks. Needs browser QA, recorded via Codex.</span></li>
+      <li><span class="what">2f · Shard the global rate limit</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Every turn writes one <code>chat:global</code> row (<code>convex/chatAi.ts:38</code>). Move to <code>@convex-dev/rate-limiter</code> with shards, keeping today's limits.</span></li>
+    </ul>
+    <p class="scope"><b>Out of scope:</b> a generic notification outbox. Failed sends are recorded on the event and retried by the worker.</p>
+    <div class="exit"><b>Gate:</b> <code>pnpm arch:score --phase 2</code> exits 0. That means 0 Next.js webhook folders, 0 <code>requireServerSecret</code> calls, 0 casts in <code>src/app/api</code>, 0 uses of <code>chat:global</code>, and the 6 named reliability tests present.</div>
+  </div>
+</div>
+
+<!-- Phase 3 -->
+<div class="card phase">
+  <div class="phase-head"><div class="num">Phase 3 · ~1.5 weeks · one PR per step, no feature freeze</div><h3>Draw the boundaries</h3><div class="tags"><span class="pill med">medium risk</span></div></div>
+  <div class="phase-body">
+    <p>Moving a Convex file changes its API path. For example, <code>api.pos.settle</code> becomes <code>api.pos.orders.settle</code>. Every move PR must update all <code>api.*</code> and <code>internal.*</code> references in <code>src</code>, <code>convex</code>, <code>tests</code>, crons and the scheduler, using one scripted codemod. Each PR lands within a day.</p>
+    <ul class="items">
+      <li><span class="what">3a · Access builders, in place</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span><span class="pill claude">audit</span></span><span class="why">Use <code>convex-helpers</code> custom functions for queries, mutations and actions. Actions have no database, so admin actions verify identity themselves. Write a table that maps each of the 296 public functions to a builder, and remember that some callers don't fit the obvious slot: public booking creation, users who are signed in to Clerk but not admins, and display devices (<code>convex/displays.ts:14</code>). Keep the per-record checks that exist today, such as the access token on <code>bookings.getById</code>.</span></li>
+      <li><span class="what">3b · Split <code>schema.ts</code>, then move one domain per PR</span><span class="tags"><span class="pill">L</span><span class="pill codex">Codex</span></span><span class="why">First split <code>schema.ts</code> into a <code>tables.ts</code> per domain. Then move the domains in this order: catalog, bookings, services, pos, concierge, settings (messaging moved in Phase 2). Split <code>pos.ts</code> (1,899 lines), <code>adminServices.ts</code> and <code>adminBookings.ts</code> into one file per command. Shared helpers leave endpoint files and go into <code>model.ts</code>: today <code>pos.ts</code> imports from <code>bookings.ts</code> (<code>convex/pos.ts:6</code>).</span></li>
+      <li><span class="what">3c · <code>convex/shared/</code></span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">Move <code>billMath</code> and <code>appointmentWindow</code> first; they account for 20 of the 37 imports from <code>src</code> into <code>convex/lib</code>. Then move dates and phone rules, and delete the frontend copies in <code>src/lib/booking/quote.ts</code>, <code>dates.ts</code>, <code>stayConflicts</code> and <code>staff-bookings.ts</code>. Fix <code>convex/customers.ts:11</code>, which imports from <code>src</code>. Resort time stays a fixed UTC+7 offset in <code>shared/time.ts</code>: zone-aware helpers broke in the Convex runtime (<code>convex/lib/serviceSlots.ts:11</code>). Fix <code>todayIso()</code>, which uses UTC.</span></li>
+      <li><span class="what">3d · One way to load data (D2)</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">Delete the <code>convex-api.ts</code> wrappers, <code>useConvexQuery</code> and the null-client branch. That removes the last 24 casts. In the same PR, add a seeded local Convex backend to CI, a Clerk test user, and rewritten E2E specs. Shrink <code>checkout/fixture-backend.ts</code> (942 lines) to canned state.</span></li>
+      <li><span class="what">3e · Lint guardrails, <code>ARCHITECTURE.md</code> and a feature recipe</span><span class="tags"><span class="pill">S</span><span class="pill kiro">Kiro</span></span><span class="why">Add <code>no-restricted-imports</code> for rules 2–4 and <code>--max-warnings 0</code>. Add <code>no-floating-promises</code>, which needs type-aware parser settings. <code>ARCHITECTURE.md</code> includes a worked recipe for adding a table, an endpoint and an admin page; this is the template agents copy. <code>AGENTS.md</code> points to it, and a PR template lists the commands and a screenshot checklist.</span></li>
+      <li><span class="what">3f · Faster dev loop</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">One <code>pnpm dev</code> runs <code>convex dev</code> and <code>next dev</code> together and seeds an empty deployment. Add Vitest projects for unit, DOM and Convex tests so a UI change doesn't run all 64 backend suites. Add a Convex preview deploy key so each PR gets a seeded backend.</span></li>
+    </ul>
+    <p class="scope"><b>Out of scope:</b> route groups and moving <code>src/components</code> to <code>src/features</code>. Admin already gets a bare shell (<code>src/components/global/SiteShell.tsx:130</code>), and <code>src/components</code> is already organized by feature.</p>
+    <div class="exit"><b>Gate:</b> <code>pnpm arch:score --phase 3</code> exits 0. That means 0 raw public functions, 0 <code>as never</code>, 0 imports in either direction between <code>src</code> and <code>convex/lib</code>, 8 domain folders with 0 imports that bypass <code>model.ts</code>, 0 demo-mode files, 0 placeholder backends in CI, <code>ARCHITECTURE.md</code> with a recipe, and 0 files over 1,000 lines.</div>
+  </div>
+</div>
+
+<!-- Phase 4 -->
+<div class="card phase">
+  <div class="phase-head"><div class="num">Phase 4 · ~1 week</div><h3>Contracts and measured hot spots</h3><div class="tags"><span class="pill low">low risk</span></div></div>
+  <div class="phase-body">
+    <ul class="items">
+      <li><span class="what">Return validators where no login is required</span><span class="tags"><span class="pill">M</span><span class="pill codex">Codex</span></span><span class="why">About 40 functions in chat, properties, public properties, bookings, availability, displays and users. Each returns an explicit list of fields. Validators live in domain <code>validators.ts</code> files that the schema also uses.</span></li>
+      <li><span class="what">Inbox list cost</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Store <code>lastMessagePreview</code>, <code>lastDeliveryStatus</code> and <code>needsStaff</code> on <code>conversations</code>, indexed by <code>[inboxState, lastActivityAt]</code>, so the <code>needs_reply</code> filter uses an index. Target: at most 1 extra read per row, measured with a read counter in <code>queryScale.test.ts</code>.</span></li>
+      <li><span class="what">Review totals and stay-owner index</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Update <code>reviewStats</code> on each review write instead of rescanning every review. Add a booking-owner index on <code>availability</code> so releasing a stay doesn't scan its date range.</span></li>
+      <li><span class="what">Fix the appointment double audit write</span><span class="tags"><span class="pill">S</span><span class="pill codex">Codex</span></span><span class="why">Appointment changes write to both <code>appointmentChanges</code> and <code>recordChanges</code> (<code>convex/lib/appointmentChanges.ts:56</code>). Keep one. Merging all the audit tables is postponed.</span></li>
+    </ul>
+    <div class="exit"><b>Gate:</b> <code>pnpm arch:score --phase 4</code> exits 0. Every no-login function has <code>returns:</code>, and the named read-budget test passes.</div>
+  </div>
+</div>
+
+<h2>Table disposition</h2>
+<p class="sub">All 72 current tables. 14 are deleted, 4 merge into 1, and 55 remain.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Domain</th><th>Tables after Phase 1</th><th></th></tr></thead>
+  <tbody>
+    <tr><td>deleted (14)</td><td>The 13 Q&amp;A, pricing and knowledge tables listed in 1a, plus <code>tenants</code></td><td><span class="k del">delete</span></td></tr>
+    <tr><td>messaging (8)</td><td><code>channelEvents</code> ← 4 × <code>*WebhookEvents</code></td><td><span class="k merge">merge</span></td></tr>
+    <tr><td></td><td><code>conversations</code> ← chatSessions, <code>messages</code> ← chatMessages</td><td><span class="k rename">rename</span></td></tr>
+    <tr><td></td><td><code>adminReplyAttempts</code>, <code>chatBrowserHandoffs</code>, <code>chatStaticSuggestionInteractions</code>, <code>leads</code>, <code>rateLimits</code></td><td><span class="k keep">keep</span></td></tr>
+    <tr><td>catalog (6)</td><td><code>tourScenes</code> ← rooms, <code>reviewStats</code> ← socialProof</td><td><span class="k rename">rename</span></td></tr>
+    <tr><td></td><td><code>properties</code>, <code>reviews</code>, <code>tourSnippets</code>, <code>otaRates</code></td><td><span class="k keep">keep</span></td></tr>
+    <tr><td>bookings (8)</td><td><code>bookings</code>, <code>bookingPayments</code>, <code>bookingRefunds</code>, <code>stripeRefundCharges</code>, <code>bookingCreateAttempts</code>, <code>availability</code>, <code>dateBlocks</code>, <code>icalSources</code></td><td><span class="k keep">keep</span></td></tr>
+    <tr><td>services (14)</td><td><code>appointments</code> ← serviceAppointments</td><td><span class="k rename">rename</span></td></tr>
+    <tr><td></td><td><code>services</code>, <code>staff</code>, <code>staffAvatarUploads</code>, <code>staffTimeOff</code>, <code>staffPatternVersions</code>, <code>staffDays</code>, <code>rosterBatches</code>, <code>rosterBatchItems</code>, <code>appointmentChanges</code>, <code>appointmentPayments</code>, <code>appointmentPaymentCorrections</code>, <code>appointmentRefunds</code>, <code>appointmentFeeAttempts</code></td><td><span class="k keep">keep</span></td></tr>
+    <tr><td>pos (13)</td><td><code>orders</code>, <code>orderLines</code>, <code>orderPayments</code>, <code>orderCorrections</code>, <code>orderAudit</code>, <code>orderCounters</code> ← bill*</td><td><span class="k rename">rename</span></td></tr>
+    <tr><td></td><td><code>customers</code>, <code>customerMergeJobs</code>, <code>tills</code>, <code>displays</code>, <code>displayDriverLeases</code>, <code>displayPresence</code>, <code>displayPairLinks</code></td><td><span class="k keep">keep</span></td></tr>
+    <tr><td>concierge (2)</td><td><code>businessFacts</code>, <code>chatUnknownQuestions</code></td><td><span class="k keep">keep</span></td></tr>
+    <tr><td>settings · auth (4)</td><td><code>siteSettings</code>, <code>configurationHistoryIndex</code>, <code>recordChanges</code>, <code>users</code></td><td><span class="k keep">keep</span></td></tr>
+  </tbody>
+</table></div>
+
+<h2>Target folders</h2>
+<pre><span class="c"># backend: each domain exposes model.ts to the others; everything else is private</span>
+convex/
+  schema.ts  http.ts  crons.ts      <span class="c"># schema combines each domain's tables.ts</span>
+  auth/        <span class="c"># builders, users, admin allowlist</span>
+  catalog/  bookings/{payments,calendar}/  services/  pos/  settings/
+  messaging/
+    channels/{adapter,line,meta,whatsapp}.ts
+    ingress.ts  worker.ts  inbox.ts  guestToken.ts
+  concierge/
+    runTurn.ts  context.ts  prompt.ts  copy.ts  tools/
+  shared/      <span class="c"># pure: money, time, dates, pricing, overlap, phone</span>
+  maintenance/ <span class="c"># seed scenarios, evals</span>
+  testing/     <span class="c"># harness, fixtures</span>
+
+<span class="c"># frontend: structure stays; the admin folder gets subfolders as it is touched</span>
+src/components/admin/{bookings,services,inbox,properties,settings}/
+src/config/    <span class="c"># build-time brand and theme per client</span></pre>
+
+<h2>Later, when a feature needs it</h2>
+<p class="sub">These are real ideas from the audits, but each one is a new product capability or a gain nobody has measured yet. Building them now would slow the core work.</p>
+<div class="cols">
+  <div class="card"><h3>Product features</h3><ul>
+    <li>A unified payments ledger with allocations, once split payments across a stay and spa are needed</li>
+    <li>Contact identities and lead capture events, once you want a CRM. Customers are deliberately never matched automatically (<code>convex/customers.ts:13</code>)</li>
+    <li>Staff roles and permissions, once staff sign in</li>
+    <li>Multi-tenant organizations, if a SaaS version becomes real</li>
+    <li>A timezone setting, if a resort outside UTC+7 signs up</li>
+  </ul></div>
+  <div class="card"><h3>Structural extras</h3><ul>
+    <li>Merging the three audit tables into one</li>
+    <li>A generic notification outbox</li>
+    <li>Route groups and <code>src/features</code></li>
+    <li><code>activeOrderSources</code>; the indexed lookup capped at 500 rows is fine for one resort</li>
+    <li>A separate presence table, once heartbeats cause measurable cost</li>
+    <li>Splitting large screens, trimming the reui calendar, and the <code>ConvexError</code> sweep: do each when you next touch that file</li>
+  </ul></div>
+</div>
+
+<h2>Scorecard</h2>
+<p class="sub"><code>scripts/arch-scorecard.mjs</code> (<code>pnpm arch:score</code>) measures all 31 metrics from the source tree in under a second. It needs no network, build or deploy. <code>--phase N</code> exits 1 unless every metric due by phase N meets its target. Required tests are matched by exact title, so implementers must use those titles. A zero counts only once the thing it measures exists: an import count of 0 before any domain folders exist does not pass. Baseline taken 12 Nov 2026 on <code>origin/main</code> (64dfe01).</p>
+<div class="scroll"><table>
+  <thead><tr><th>Phase</th><th>Metric id</th><th>What it counts</th><th>Today</th><th>Target</th></tr></thead>
+  <tbody>
+    <tr><td class="num">-1</td><td><code>clean-tree</code></td><td>Modified tracked files</td><td class="num">0 (arch worktree)</td><td class="num">0</td></tr>
+    <tr><td class="num">0</td><td><code>secret-fails-open</code></td><td>Paths that skip the secret when it is unset</td><td class="num">0 ✓</td><td class="num">0</td></tr>
+    <tr><td class="num">0</td><td><code>phase0-tests</code></td><td>Named security tests present</td><td class="num">0</td><td class="num">5</td></tr>
+    <tr><td class="num">0</td><td><code>static-dir · ignored-scratch · test-harness</code></td><td>Repo hygiene</td><td class="num">1 · 3 · 0</td><td class="num">0 · 0 · 1</td></tr>
+    <tr><td class="num">1</td><td><code>tables · channel-events-table</code></td><td>Convex tables (shown for information only) · unified <code>channelEvents</code></td><td class="num">87 · 0</td><td class="num">info · 1</td></tr>
+    <tr><td class="num">1</td><td><code>retired-tables · old-table-names</code></td><td>Retired or pre-rename tables</td><td class="num">14 · 15</td><td class="num">0 · 0</td></tr>
+    <tr><td class="num">1</td><td><code>legacy-files · migrations</code></td><td>Files mentioning legacy/backfill · migrations</td><td class="num">33 · 9</td><td class="num">0 · 0</td></tr>
+    <tr><td class="num">1</td><td><code>reexport-pages</code></td><td>Re-export files under <code>[locale]</code></td><td class="num">15</td><td class="num">0</td></tr>
+    <tr><td class="num">1</td><td><code>phase1-tests</code></td><td>Named money and reset tests present</td><td class="num">0</td><td class="num">4</td></tr>
+    <tr><td class="num">2</td><td><code>channel-routes</code></td><td>Next.js webhook folders</td><td class="num">4</td><td class="num">0</td></tr>
+    <tr><td class="num">2</td><td><code>server-secret-uses · as-never-webhooks</code></td><td>Secret checks · casts in webhook routes</td><td class="num">23 · 40</td><td class="num">0 · 0</td></tr>
+    <tr><td class="num">2</td><td><code>global-rate-row</code></td><td>Uses of the <code>chat:global</code> key</td><td class="num">1</td><td class="num">0</td></tr>
+    <tr><td class="num">2</td><td><code>phase2-tests</code></td><td>Named reliability tests present</td><td class="num">0</td><td class="num">6</td></tr>
+    <tr><td class="num">3</td><td><code>raw-public-functions</code></td><td>Public functions with no declared trust level</td><td class="num">344</td><td class="num">0</td></tr>
+    <tr><td class="num">3</td><td><code>as-never</code></td><td><code>as never</code> casts (excluding reui)</td><td class="num">66</td><td class="num">0</td></tr>
+    <tr><td class="num">3</td><td><code>src-imports-convex-lib · convex-imports-src</code></td><td>Imports across the src/convex boundary</td><td class="num">75 · 1</td><td class="num">0 · 0</td></tr>
+    <tr><td class="num">3</td><td><code>domain-folders · cross-domain</code></td><td>Domain folders · imports that bypass <code>model.ts</code></td><td class="num">0 · n/a</td><td class="num">9 · 0</td></tr>
+    <tr><td class="num">3</td><td><code>demo-mode · ci-placeholder-backend</code></td><td>Demo-mode files · placeholder backends in CI</td><td class="num">29 · 3</td><td class="num">0 · 0</td></tr>
+    <tr><td class="num">3</td><td><code>architecture-doc · files-over-1000</code></td><td>Recipe doc · files over 1,000 lines</td><td class="num">0 · 6</td><td class="num">1 · 0</td></tr>
+    <tr><td class="num">4</td><td><code>no-login-without-returns</code></td><td>No-login functions without <code>returns:</code></td><td class="num">n/a</td><td class="num">0</td></tr>
+    <tr><td class="num">4</td><td><code>phase4-tests</code></td><td>Named read-budget test present</td><td class="num">0</td><td class="num">1</td></tr>
+  </tbody>
+</table></div>
+<p class="scope">Two checks stay outside the script because they need a running backend: the standard commands (<code>pnpm verify &amp;&amp; pnpm test:booking-ui &amp;&amp; pnpm test:e2e:smoke</code>) and, for Phase 1, a seed of <code>demo-resort</code> from empty.</p>
+
+<h2 id="run">How it runs without you</h2>
+<p class="sub">The loop below repeats until the Phase 4 gate passes. Each step either finishes or stops at one of the listed stop points, so nothing waits on you by accident.</p>
+<ol class="steps">
+  <li><b>Pick the next step.</b> Claude reads <code>pnpm arch:score --json</code> and takes the first failing metric in the lowest unfinished phase.</li>
+  <li><b>Delegate.</b> Codex (backend, data, money) or Kiro (UI, copy, docs) works in its own worktree branched from the current <code>origin/main</code>. Its brief contains the plan item, the metric ids it must move, the exact test titles, and the out-of-scope list.</li>
+  <li><b>Self-check.</b> The implementer runs the scorecard and the standard commands, then hands back with its branch, its head SHA, and the before and after metric values.</li>
+  <li><b>Gate.</b> Claude reruns both checks on the branch, reviews the diff, and confirms that no metric due in an earlier phase got worse. Every change to money, access, webhooks or the reset also gets an independent audit by a second model.</li>
+  <li><b>Fix or stop.</b> If the gate fails, the implementer gets the findings and tries again, at most twice. A third failure stops the step and reports what was tried.</li>
+  <li><b>Ship.</b> The branch becomes a PR with the scorecard diff in its description. It merges according to the merge rule below, and then the loop picks the next step.</li>
+  <li><b>Ratchet.</b> When a phase gate passes on <code>main</code>, its number is written to <code>.arch-phase</code>. CI runs <code>pnpm arch:score --phase $(cat .arch-phase)</code>, so a finished phase can never quietly regress. Adding this CI step is part of Phase 0.</li>
+</ol>
+<div class="gate"><p><b>Merge rule.</b> The current rule: Claude opens each PR once it passes its gate, then waits for your approval to merge. PRs are batched so you approve once per phase. Alternative, available if you switch to it: PRs that pass their gate merge automatically, except money, access, webhook and reset changes, which still wait for you.</p></div>
+<div class="cols">
+  <div class="card"><h3>It stops and asks you only for</h3><ul>
+    <li>Running the reset runbook on <b>production</b></li>
+    <li>Turning provider webhooks or Stripe off or on, and setting secrets in provider consoles</li>
+    <li>A failed gate after 2 retries</li>
+    <li>A step that would change a decision (D1–D6) or touch something in "Later"</li>
+    <li>Any metric due in an earlier phase getting worse on <code>main</code></li>
+  </ul></div>
+  <div class="card"><h3>Status you can check anytime</h3><ul>
+    <li><code>pnpm arch:score</code> shows every metric with ✓/✗ and how far each phase has got</li>
+    <li>Each PR description shows the scorecard before and after</li>
+    <li>One summary at each phase gate: metrics moved, PRs merged, anything parked</li>
+  </ul></div>
+</div>
+
+<h2>What changed after review</h2>
+<p class="sub">Codex (gpt-6.1-sol) checked every claim against the code as of 12 Nov. Kiro (Opus 5.5) reviewed the plan for scope and simplicity. Claude confirmed each point that overturned v1 before accepting it.</p>
+<ul class="changes">
+  <li><b>Smaller scope, about 5 weeks instead of 8.</b> The payments ledger, contact identities, staff roles, outbox, audit merge, route groups and <code>src/features</code> moved to "Later" (Kiro).</li>
+  <li><b>D3 reversed.</b> Settlement links the stay payment to the order instead of recording it twice. The real fix is satang and one rounding function (Kiro, confirmed at <code>bookings.ts:240</code>).</li>
+  <li><b>New order:</b> start from a clean tree, then put the renames and satang in the Phase 1 reset, then messaging before the general move, so no code is moved twice (Kiro).</li>
+  <li><b>Guest token moved into Phase 0, with a spec.</b> <code>respond</code> and 11 chat functions trust any session ID (Codex, Kiro).</li>
+  <li><b>Reset runbook added:</b> clear data while the old code is still deployed, because Convex validates stored documents against the new schema. Seed scenarios replace a seed that exits early (Codex).</li>
+  <li><b>Money cutover safety:</b> remove the Stripe × 100 step and acknowledge old Stripe events instead of answering with a 500 (Codex).</li>
+  <li><b>Messaging design hardened:</b> a Web Crypto port, storing the event before the 200, a lease worker, and LINE ambiguous-delivery handling (Codex).</li>
+  <li><b>Domains cut from 9 to 8:</b> staff merged into services, customers into pos, and leads, guest tokens and staff alerts into messaging. Rule 2 now names <code>model.ts</code> as the only file other domains may import (Kiro).</li>
+  <li><b>Counts corrected:</b> 72 tables, 296 public functions, 37 <code>src→convex/lib</code> imports. Inbox rows cost up to 3 extra reads, not 6. Facebook and Instagram differ by API host, not only by names (Codex).</li>
+  <li><b>Kept as is:</b> UTC+7 stays a fixed offset because zone-aware helpers broke in the Convex runtime. API path changes from file moves get a codemod. Each phase lists exact commands and an out-of-scope list (Codex, Kiro).</li>
+</ul>
+
+<footer>
+  v1 (9 Nov) drew on five read-only audits: Codex covered the data model, backend and tooling, and Opus covered messaging and the frontend. v2 (12 Nov) adds the Codex correctness review and the Kiro simplicity review. Related: <code>docs/plans/ai-context-retirement.md</code>, <code>BUSINESS_PLAN.md</code>.
+</footer>
+
+</main>
+</body>
+</html>
