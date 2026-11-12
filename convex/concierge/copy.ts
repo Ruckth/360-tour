@@ -33,6 +33,8 @@ export function detectReplyLocale(text?: string) {
   if (/\p{Script=Han}/u.test(clean)) return "zh-CN";
 
   const normalized = clean.normalize("NFKC").toLowerCase();
+  const realityLanguage = realityGuardrailPatterns.find(candidate => candidate.patterns.some(pattern => pattern.test(normalized)))?.locale;
+  if (realityLanguage) return realityLanguage;
   if (/\b(?:voir|visite)\b/u.test(normalized)) return 'fr';
   if (/\b(?:ansehen|kontakt)\b/u.test(normalized)) return 'de';
   if (/\bvedi\b/u.test(normalized)) return 'it';
@@ -493,22 +495,14 @@ const realityDisclosureByLocale: Record<RealityGuardrailLocale, (linkText: strin
 		`Auralis Cove Retreat यहां booking और 360° villa tours के लिए demo/preview experience के रूप में दिखाया गया है, इसलिए मैं इस chat में यह दावा नहीं कर सकता कि यह real-world verified resort है। मैं फिर भी demo villas, pricing, availability और 360° tour links में मदद कर सकता हूं${linkText}.`
 };
 
-function detectRealityGuardrailLocale(message: string): RealityGuardrailLocale | null {
-	const normalized = message.normalize('NFKC').trim().toLocaleLowerCase();
-	if (!normalized) return null;
-
-	for (const candidate of realityGuardrailPatterns) {
-		if (candidate.patterns.some((pattern) => pattern.test(normalized))) {
-			return candidate.locale;
-		}
-	}
-
-	return null;
+function isRealityQuestion(message: string): boolean {
+ const normalized = message.normalize('NFKC').trim().toLocaleLowerCase();
+ return !!normalized && realityGuardrailPatterns.some(candidate => candidate.patterns.some(pattern => pattern.test(normalized)));
 }
 
 export function getResortRealityDisclosure(message: string, siteUrl?: string) {
-	const locale = detectRealityGuardrailLocale(message);
-	if (!locale) return null;
+	if (!isRealityQuestion(message)) return null;
+ const locale = detectReplyLocale(message) ?? 'en';
 
 	const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
 	const linkText = normalizedSiteUrl ? ` ${normalizedSiteUrl}` : '';
