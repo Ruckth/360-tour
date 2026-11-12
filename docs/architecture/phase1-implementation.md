@@ -1,6 +1,6 @@
 # Phase 1 implementation evidence
 
-Phase 1a–e is implemented. The source and local checks pass; no shared development or production data was cleared, seeded, or deployed. The parent owns independent review, merge, and the live cutover described in [the reset runbook](phase1-reset-runbook.md).
+Phase 1a–e is merged in PR #62 at exact main `4027d87e81047d000913075251ac53023117aebe` (reviewed head `a08175a`). Root completed the production 91→74 reset, seed and backend acceptance; shared development was intentionally preserved. Root owns frontend readiness, traffic restoration and further live operations described in [the reset runbook](phase1-reset-runbook.md).
 
 The branch preserves the unpublished Phase 0 base, merges the reviewed staff/refund stack, and merges `origin/main` at `72a657f`. Cashier receipt write visibility from `1832607` remains in all five paid-correction functions and its previous/future business-date regression passes.
 
@@ -50,3 +50,11 @@ The isolated rehearsal subsequently deployed the reviewed new schema successfull
 Focused follow-up review found the cutoff must precede the earliest ingress block, including Vercel pause, rather than the later export/clear moment. The runbook now preserves that timestamp across the whole blocked window. It also requires a fresh production build against the unpaused seeded backend before restoring Vercel traffic. convex-helpers is pinned to 0.1.120, whose Convex peer range ^1.32.0 includes the locked1.34.1, instead of the incompatible newer helper release.
 
 The actual read-only production export was restored into the isolated backend after rehearsing the NEW74-to-OLD91 rollback. Re-export comparison matched all96 snapshot table entries and915 documents, including component/storage metadata; no scheduled functions were imported and no shared data was modified. The controlled runbook deploys the reviewed backend under maintenance, seeds and accepts it, then merges/builds the frontend against live seeded data before reopening Vercel.
+
+## Production cutover evidence supplied by root
+
+The quiesced production backup contained 915 documents across 96 snapshot entries. Root restored that exact export on isolated `judicious-rhinoceros-930` and matched all counts before the production clear. Root also verified the new-74-to-old-91 rollback path. Production `wary-toad-189` was reset from 91 to 74 tables, seeded and accepted through backend tests. The exact merged source is main `4027d87e81047d000913075251ac53023117aebe`; the compatible helpers pin remains exactly `0.1.120`.
+
+Vercel project pause blocks builds. Root holds traffic with a temporary all-path firewall deny rule while the project is unpaused and the fresh frontend builds; remove the rule only after the deployment is READY and accepted. Root observed that Convex `--replace-all` applies to the whole component tree even when `--component migrations` is supplied: inspect the CLI summary, then verify every root table's emptiness before attempting any additional root clear.
+
+Production Stripe keys were absent and no open stored Checkout sessions existed. This evidence does not claim an actual Clerk browser sign-in, live Stripe charge or external social send. Shared development was deliberately left unchanged. Root owns remaining restoration and observation.

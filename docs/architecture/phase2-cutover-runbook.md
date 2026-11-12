@@ -1,6 +1,6 @@
 # Phase 2 messaging cutover
 
-This procedure is parent-owned. Implementation used only an anonymous local backend in this checkout; it did not deploy, reset or change secrets on shared `optimistic-turtle-573` or production `wary-toad-189`. No live social message was sent. Phase 1 remains the dependent base, including `a08175a` and its cutoff correction.
+This procedure is parent-owned. Implementation used only an anonymous local backend in this checkout; it did not deploy, reset or change secrets on shared `optimistic-turtle-573` or production `wary-toad-189`. No live social message was sent. Phase 1 is merged at exact main `4027d87e81047d000913075251ac53023117aebe`, including reviewed `a08175a` and its cutoff correction. Root completed its production reset/seed/backend acceptance and intentionally preserved shared development.
 
 ## Before deploying
 
@@ -32,11 +32,11 @@ Callbacks for the parent-verified mapping:
 | Instagram | `https://wary-toad-189.convex.site/instagram/webhook` | `https://optimistic-turtle-573.convex.site/instagram/webhook` |
 | WhatsApp | `https://wary-toad-189.convex.site/whatsapp/webhook` | `https://optimistic-turtle-573.convex.site/whatsapp/webhook` |
 
-Deploy the reviewed frontend/backend together, installing the pinned rate-limiter component. Verify each Meta GET challenge with the matching Convex token, and verify signed POSTs from a dedicated provider test account. LINE health GET does not replace a signed POST acceptance test. Keep client-certificate attachment off unless validation is separately implemented. The removed `/api/<channel>/webhook` paths must no longer be configured.
+Deploy the reviewed backend under maintenance, installing the pinned rate-limiter component, then accept it before building the matching frontend. Keep public traffic blocked with an all-path firewall deny rule while Vercel is unpaused; project pause blocks builds. Build against the accepted, unpaused backend and remove the rule only after the fresh deployment is READY and accepted. Verify each Meta GET challenge with the matching Convex token, and verify signed POSTs from a dedicated provider test account. LINE health GET does not replace a signed POST acceptance test. Keep client-certificate attachment off unless validation is separately implemented. The removed `/api/<channel>/webhook` paths must no longer be configured.
 
 ## Acceptance and delivery reconciliation
 
-1. While the website is still paused, clear the backend pause for controlled acceptance. Use notification-free test data and dedicated provider test accounts. Send a web message; refresh and reopen with its session credential; confirm only one guest/assistant exchange exists. Try a repeated client identifier, a foreign token, handoff rotation, and a staff reply.
+1. While website traffic is still blocked, clear the backend pause for controlled acceptance. Use notification-free test data and dedicated provider test accounts. Send a web message; refresh and reopen with its session credential; confirm only one guest/assistant exchange exists. Try a repeated client identifier, a foreign token, handoff rotation, and a staff reply.
 2. Replay a signed webhook. It must acknowledge the duplicate without creating another event, message, turn or delivery. Verify typed messages, follows/postbacks, unsupported media, echo/delivery receipts and WhatsApp allowlisted card buttons.
 3. Confirm booking proposal → separate guest yes → one booking, coupon review, service booking, cancellation confirmation/deadline, payment link, static suggestions and unknown-question/staff behavior. Stored amounts remain integer satang; tool/rendered amounts are baht. Test cards with the actual configured providers before enabling the rich-card flags.
 4. Inspect `channelEvents` and the staff inbox. Pending processing owns a token and lease. Only the current token can commit. Stale pre-dispatch work retries in conversation order, with a bounded attempt budget. A recorded booking-tool result is reused without another model/tool write. Explicitly rejected sends retry the persisted reply with backoff and no extra admission charge; uncertain/partial sends do not retry.
