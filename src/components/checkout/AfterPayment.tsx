@@ -11,16 +11,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { errorText } from "@/lib/staff-bookings";
 import { formatReceiptNumber } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
 import type { Id } from "convex/_generated/dataModel";
 import { newAttemptKey, useCheckoutBackend, type LinkCandidate, type OrderLine, type OrderLink, type OrderView } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { scheduleLabel } from "./checkout-ui";
+import { checkoutErrorText } from "./refunds";
 
 /** Paid rows that can be applied to an appointment (service) or stay (room) after payment. */
-const linkTarget = (line: OrderLine) => (line.fee || line.net <= 0 ? null : line.kind === "service" ? "appointment" : line.kind === "room" ? "booking" : null);
+/** A row with line refunds can't be linked (LINE_HAS_REFUNDS); a linked row has none. */
+const linkTarget = (line: OrderLine) => (line.fee || line.net <= 0 || line.refundedAmountSatang ? null : line.kind === "service" ? "appointment" : line.kind === "room" ? "booking" : null);
 
 /**
  * After payment: payment, scheduling and booking are separate. Each paid service or room row can be
@@ -110,7 +111,7 @@ function useOnceWrite() {
       return true;
     } catch (err) {
       // The key stays: a refused attempt wrote nothing, and one whose answer was lost replays.
-      setError(errorText(err, fallback));
+      setError(checkoutErrorText(err, fallback));
       return false;
     } finally {
       lock.current = false;

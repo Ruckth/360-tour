@@ -16,7 +16,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { errorText } from "@/lib/staff-bookings";
 import { TENDER_METHODS, type TenderMethod } from "convex/lib/billMath";
 import {
   newAttemptKey,
@@ -28,6 +27,7 @@ import {
 import { amountInput, correctionTitle, TENDER_LABELS } from "./checkout-ui";
 import { useSendApproval } from "./ApprovalRequest";
 import { needsApproval } from "./staff-approvals";
+import { checkoutErrorText, hasLineRefunds } from "./refunds";
 
 import { historyTime } from "./OrderHistory";
 import { paymentDateInput, paymentDateValue } from "./payment-time";
@@ -86,9 +86,12 @@ export function PaymentRecord({ view }: { view: OrderView }) {
           <Button variant="outline" onClick={() => setEditing("amend")}>
             Correct payment recording
           </Button>
-          <Button variant="ghost" onClick={() => setEditing("unreceived")}>
-            No money was received…
-          </Button>
+          {/* Refused after a line refund: money was received. */}
+          {hasLineRefunds(view) ? null : (
+            <Button variant="ghost" onClick={() => setEditing("unreceived")}>
+              No money was received…
+            </Button>
+          )}
         </div>
       ) : null}
       {editing ? (
@@ -189,7 +192,8 @@ export function PaymentRecord({ view }: { view: OrderView }) {
             </li>
           ))}
         </ol>
-        {record.correctionRevision > view.corrections.length ? (
+        {/* getOrder returns the latest 20. Refunds also advance correctionRevision, so it can't count amendments. */}
+        {view.corrections.length >= 20 && record.correctionRevision > view.corrections.length ? (
           <p className="text-xs text-muted-foreground">
             Showing the latest {view.corrections.length} amendments. Earlier
             amendments are available in Browse all financial history below.
@@ -363,7 +367,7 @@ function PaymentEditor({
         return;
       }
       setError(
-        errorText(
+        checkoutErrorText(
           err,
           "Couldn't save the correction. Retry this attempt or close and review the latest recording.",
         ),

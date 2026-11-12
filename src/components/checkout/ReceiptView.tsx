@@ -6,17 +6,21 @@ import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { errorText } from "@/lib/staff-bookings";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
 import { OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { needsApproval } from "./staff-approvals";
+import { RefundForm } from "./RefundForm";
+import { checkoutErrorText, hasLineRefunds, refundElsewhere, refundedSatang, satangMoney } from "./refunds";
+import { TONES } from "@/components/admin/status-tones";
+import type { Id } from "convex/_generated/dataModel";
 import { PaymentRecord } from "./PaymentRecord";
 import { OrderHistory } from "./OrderHistory";
 import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
@@ -54,8 +58,10 @@ function printCss(paper: Paper, lengthMm: number) {
         background: #fff !important; color: #000 !important; }
       .pos-receipt * { color: #000 !important; }
       .pos-receipt .text-xs { ${smallPrint} }
+      .pos-receipt [data-screen-only] { display: none !important; }
     }
     .pos-receipt[data-print-measure] { ${printBox(paper)} }
+    .pos-receipt[data-print-measure] [data-screen-only] { display: none !important; }
     .pos-receipt[data-print-measure] .text-xs { ${smallPrint} }
   `;
 }
@@ -65,10 +71,14 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const backend = useCheckoutBackend();
   const view = backend.useOrder(orderId);
   const business = backend.useBusinessName() ?? "";
-  const cashier = useStaffAccess().role === "cashier";
+  const access = useStaffAccess();
+  const cashier = access.role === "cashier";
   const approvals = backend.useOrderApprovals(view ? view.order._id : null);
   const [paper, setPaper] = useState<Paper>("80");
   const [notice, setNotice] = useState("");
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  // The line whose refund form is open; one at a time.
+  const [refunding, setRefunding] = useState<Id<"billLines"> | null>(null);
   const receiptRef = useRef<HTMLElement>(null);
   // Starts as an A4 length until the receipt has been measured.
   const [pageLengthMm, setPageLengthMm] = useState(297);
@@ -109,6 +119,24 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const change = changeDue(payments);
   const coupon = couponLabel(view);
   const staffDiscount = round2(totals.discount - totals.coupon);
+  // POS line refunds, in satang. Past the history limit the totals are lower bounds, so none are shown.
+  const truncated = Boolean(view.refundHistoryTruncated);
+  const refunded = truncated ? 0 : refundedSatang(view);
+  const net = (Math.round(totals.total * 100) - refunded) / 100;
+  const paid = order.status === "paid";
+  const waiting = approvals?.some((r) => r.status === "pending") ?? false;
+  // A cashier who must ask can't send a second request while one waits.
+  const refundLocked = cashier && access.cashierRules.refund === "manager" && waiting;
+
+  /** Closes the form and puts focus back on its line's Refund, or on the notice when that line is done. */
+  function closeRefund(lineId: Id<"billLines">, message?: string) {
+    flushSync(() => {
+      setRefunding(null);
+      if (message) setNotice(message);
+    });
+    const trigger = document.querySelector<HTMLElement>(`[data-refund-trigger="${lineId}"]`);
+    (trigger && !message ? trigger : noticeRef.current ?? trigger)?.focus();
+  }
 
   async function share() {
     const text = receiptText(view!, business);
@@ -155,7 +183,14 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           >
             <ChevronLeft aria-hidden className="size-4" /> Checkout
           </button>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Receipt {receiptNumber}</h2>
+          <h2 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
+            Receipt {receiptNumber}
+            {paid ? (
+              <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", view.fullyRefunded ? TONES.muted.bg : TONES.success.bg, view.fullyRefunded ? TONES.muted.text : TONES.success.text)}>
+                {view.fullyRefunded ? "Refunded" : "Paid"}
+              </span>
+            ) : null}
+          </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {order.title} · {formatMoney(totals.total)} · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith.toLowerCase()}` : ""}`}
           </p>
@@ -184,7 +219,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             If it still prints on another paper size, select the {paper} mm roll in the printer&apos;s own settings.
           </p>
         </details>
-        {notice ? <p role="status" className="w-full text-sm text-muted-foreground print:hidden">{notice}</p> : null}
+        {notice ? <p ref={noticeRef} tabIndex={-1} role="status" className="w-full rounded text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring print:hidden">{notice}</p> : null}
 
         <article ref={receiptRef} className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
@@ -202,10 +237,21 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           </header>
           <hr className="my-3 border-dashed border-border" />
           <ul className="space-y-2">
-            {lines.map((line) => (
+            {lines.map((line) => {
+              const lineRefunded = truncated ? 0 : line.refundedAmountSatang ?? 0;
+              const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
+              const elsewhere = paid && line.net > 0 ? refundElsewhere(view, line) : null;
+              return (
               <li key={line._id}>
                 <div className="flex justify-between gap-2">
-                  <span className="min-w-0">{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}</span>
+                  <span className="min-w-0">
+                    {line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}
+                    {elsewhere ? (
+                      <span data-screen-only="" className="ml-1 font-sans print:hidden">
+                        <InfoTip label={`Refunding ${line.name}`}>{elsewhere === "booking" ? "Refund this on the booking." : "Refund this on the appointment."}</InfoTip>
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="shrink-0 tabular-nums">{formatMoney(lineGross(line))}</span>
                 </div>
                 {line.staffName || line.qty > 1 ? (
@@ -225,9 +271,36 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                     <span className="shrink-0 tabular-nums">{formatMoney(-lineCouponDiscount(line))}</span>
                   </div>
                 ) : null}
+                {lineRefunded ? (
+                  <div className="flex justify-between gap-2 text-xs" data-testid="receipt-line-refunded">
+                    <span>Refunded</span>
+                    <span className="tabular-nums">{satangMoney(-lineRefunded, line.currency)}</span>
+                  </div>
+                ) : null}
+                {/* An open form stays until closed, even if this line was just refunded in full. */}
+                {paid && refunding === line._id ? (
+                  <RefundForm view={view} line={line} waiting={waiting} onCancel={() => closeRefund(line._id)} onDone={(message) => closeRefund(line._id, message)} />
+                ) : refundable ? (
+                  <div data-screen-only="" className="flex justify-end print:hidden">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-refund-trigger={line._id}
+                      aria-label={`Refund ${line.name}`}
+                      disabled={refundLocked || refunding !== null}
+                      onClick={() => setRefunding(line._id)}
+                      className="h-7 px-2 font-sans text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Refund
+                    </Button>
+                  </div>
+                ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
+          {truncated ? <p data-screen-only="" className="mt-2 font-sans text-xs text-muted-foreground print:hidden">Too many refunds to total here. See financial history.</p> : null}
           <hr className="my-3 border-dashed border-border" />
           <dl className="space-y-1">
             {totals.coupon ? (
@@ -247,6 +320,12 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
               </div>
             ))}
             {change ? <div className="flex justify-between"><dt>Change</dt><dd className="tabular-nums">{formatMoney(change)}</dd></div> : null}
+            {refunded ? (
+              <>
+                <div className="flex justify-between" data-testid="receipt-refunded"><dt>Refunded</dt><dd className="tabular-nums">{satangMoney(-refunded, order.currency)}</dd></div>
+                <div className="flex justify-between font-bold" data-testid="receipt-net"><dt>Net</dt><dd className="tabular-nums">{formatMoney(net, order.currency)}</dd></div>
+              </>
+            ) : null}
           </dl>
           {totals.coupon ? (
             <p className="mt-3 border-t border-dashed border-border pt-2 text-center text-xs">You saved {formatMoney(totals.coupon)} with <span className="whitespace-nowrap">{view.promotion?.code ?? "a coupon"}</span></p>
@@ -256,15 +335,21 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       </div>
 
       <div className="grid min-w-0 content-start gap-5 print:hidden">
-        <OrderApprovalStatus requests={approvals} className="max-w-md" />
+        <OrderApprovalStatus requests={approvals} lines={lines} className="max-w-md" />
         <AfterPayment view={view} />
         <PaymentRecord view={view} />
         <OrderHistory orderId={orderId} />
         {isVoid ? (
           <p className="text-xs text-muted-foreground">Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>
+        ) : hasLineRefunds(view) ? (
+          // pos.voidOrder and voidUnreceivedOrder refuse a receipt with refunds (ORDER_HAS_REFUNDS).
+          <div className="flex items-center gap-2 border-t border-border pt-4">
+            <Button variant="outline" disabled className="text-destructive"><Ban aria-hidden className="size-4" /> Void…</Button>
+            <InfoTip label="Why void is off">A receipt with refunds can’t be voided.</InfoTip>
+          </div>
         ) : (
           <div className="border-t border-border pt-4">
-            <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} waiting={approvals?.some((r) => r.status === "pending") ?? false} />
+            <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} waiting={waiting} />
           </div>
         )}
       </div>
@@ -307,7 +392,7 @@ function VoidDialog({ orderId, receipt, hasAttached, waiting }: { orderId: Order
       if (access.role === "cashier" && needsApproval(err)) {
         setRefused(true);
         setError("This needs a manager. Send it as a request.");
-      } else setError(errorText(err, "Couldn't void the receipt."));
+      } else setError(checkoutErrorText(err, "Couldn't void the receipt."));
     } finally {
       lock.current = false;
       setSaving(false);
@@ -325,7 +410,7 @@ function VoidDialog({ orderId, receipt, hasAttached, waiting }: { orderId: Order
           <DialogDescription asChild>
             <ul className="grid list-disc gap-1 pl-5">
               <li>The order and receipt stay on record, marked void, with their numbers.</li>
-              <li>No refund is sent or recorded here.</li>
+              <li>A void sends or records no refund.</li>
               {hasAttached ? <li>Its bookings and appointments stay marked paid. Record a refund on them if needed.</li> : null}
               <li>No money received at all? Use “No money was received” on the receipt instead.</li>
             </ul>
