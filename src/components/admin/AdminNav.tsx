@@ -3,7 +3,10 @@
 import { Menu, Search, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ADMIN_NAV, ADMIN_TAB_BAR, adminNavItem, type AdminNavItem } from "@/components/admin/admin-routes";
+import { adminTabBarFor } from "@/components/admin/admin-access";
+import { adminNavItem, type AdminNavItem } from "@/components/admin/admin-routes";
+import { ApprovalCountBadge } from "@/components/admin/ApprovalCountBadge";
+import { useAdminNav } from "@/components/admin/staff-access";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
@@ -38,11 +41,15 @@ function TileBody({ icon: Icon, label, fullLabel }: TileProps & { fullLabel?: st
 function SectionTile({ item, current, className }: { item: AdminNavItem; current: boolean; className?: string }) {
   const label = item.shortLabel ?? item.label;
   return (
-    <Link href={item.href} aria-current={current ? "page" : undefined} title={item.label} className={tile(current, className)}>
+    <Link href={item.href} aria-current={current ? "page" : undefined} title={item.label} className={tile(current, cn("relative", className))}>
       <TileBody icon={item.icon} label={label} fullLabel={item.label} />
+      {item.href === "/admin/checkout" ? <ApprovalCountBadge className="absolute top-1 right-1" /> : null}
     </Link>
   );
 }
+
+/** Tab bar columns: its sections plus Search and Menu. */
+const TAB_COLUMNS: Record<number, string> = { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
 
 function ActionTile({ onClick, className, ...body }: TileProps & { onClick: () => void }) {
   return (
@@ -55,12 +62,13 @@ function ActionTile({ onClick, className, ...body }: TileProps & { onClick: () =
 /** The rail's tiles: Menu and Search, then every section with its short label. */
 export function RailTiles({ onMenu, onSearch }: { onMenu: () => void; onSearch: () => void }) {
   const current = adminNavItem(usePathname())?.href;
+  const nav = useAdminNav();
   return (
     <>
       <ActionTile icon={Menu} label="Menu" onClick={onMenu} className="min-h-14 shrink-0" />
       <ActionTile icon={Search} label="Search" onClick={onSearch} className="min-h-14 shrink-0" />
       <div aria-hidden="true" className="mx-2 my-1 h-px shrink-0 bg-sidebar-border" />
-      {ADMIN_NAV.map((item) => (
+      {nav.map((item) => (
         <SectionTile key={item.href} item={item} current={item.href === current} className="min-h-14 shrink-0" />
       ))}
     </>
@@ -91,13 +99,14 @@ export function AdminRail() {
 export function AdminTabBar() {
   const current = adminNavItem(usePathname())?.href;
   const { setOpenMobile } = useSidebar();
-  const inMenu = !ADMIN_TAB_BAR.some((item) => item.href === current);
+  const sections = adminTabBarFor(useAdminNav());
+  const inMenu = !sections.some((item) => item.href === current);
   return (
     <nav
       aria-label="Admin sections"
-      className="sticky bottom-0 z-30 mt-auto grid shrink-0 grid-cols-5 gap-1 border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-sidebar-foreground backdrop-blur md:hidden"
+      className={cn("sticky bottom-0 z-30 mt-auto grid shrink-0 gap-1", TAB_COLUMNS[sections.length + 2] ?? "grid-cols-5", " border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-sidebar-foreground backdrop-blur md:hidden")}
     >
-      {ADMIN_TAB_BAR.map((item) => (
+      {sections.map((item) => (
         <SectionTile key={item.href} item={item} current={item.href === current} className="min-h-14" />
       ))}
       <ActionTile icon={Search} label="Search" onClick={openSearch} className="min-h-14" />
