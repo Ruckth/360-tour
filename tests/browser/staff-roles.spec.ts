@@ -179,8 +179,23 @@ test.describe("Settings › Team", () => {
     await rules.getByRole("button", { name: "Save rules" }).click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({
-      expectedRevision: 0, discountLimitPercent: 12.5, voidPaidSale: "cashier", customPrice: "manager", paymentFix: "manager",
+      expectedRevision: 0, discountLimitPercent: 12.5, voidPaidSale: "cashier", customPrice: "manager", paymentFix: "manager", refund: "manager",
     });
+  });
+
+  test("refunds come first in the cashier rules, default to Manager approves, and save", async ({ page }) => {
+    await open(page, "?view=settings&tab=team");
+    const rules = page.getByRole("form", { name: "Cashier rules" });
+    await expect(rules.getByRole("combobox")).toHaveCount(4);
+    await expect(rules.locator("label")).toHaveText(["Discount without approval", "Refunds", "Void a paid sale", "Custom price", "Fix a payment"]);
+    const refunds = rules.getByRole("combobox", { name: "Refunds" });
+    await expect(refunds).toHaveValue("manager");
+    await expect(refunds.locator("option")).toHaveText(["Manager approves", "Cashier can"]);
+    await refunds.selectOption("cashier");
+    await rules.getByRole("button", { name: "Save rules" }).click();
+    await expect(rules.getByRole("status")).toHaveText("Saved");
+    await expect(refunds).toHaveValue("cashier");
+    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 0, refund: "cashier" });
   });
 
   test("a rules conflict reloads the latest rules", async ({ page }) => {

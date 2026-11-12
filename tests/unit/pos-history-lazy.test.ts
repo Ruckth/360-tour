@@ -10,7 +10,7 @@ import type { Doc, Id } from 'convex/_generated/dataModel';
 
 let root: Root;
 const first = 'fxbill000002' as OrderId, second = 'fxbill000003' as OrderId;
-const hooks = ['useOrderHistory', 'useCorrectionHistory', 'useAuditHistory', 'useBookingRefundHistory', 'useAppointmentRefundHistory'] as const;
+const hooks = ['useOrderHistory', 'useCorrectionHistory', 'useAuditHistory', 'useBookingRefundHistory', 'useAppointmentRefundHistory', 'useBillRefundHistory'] as const;
 const toggle = async (title: string, open: boolean) => act(async () => {
   const details = [...document.querySelectorAll('details')].find(d => d.querySelector('summary')?.textContent === title)!;
   details.open = open;
@@ -46,6 +46,7 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
     useAuditHistory: instrument('useAuditHistory', base.useAuditHistory),
     useBookingRefundHistory: instrument('useBookingRefundHistory', base.useBookingRefundHistory),
     useAppointmentRefundHistory: instrument('useAppointmentRefundHistory', base.useAppointmentRefundHistory),
+    useBillRefundHistory: instrument('useBillRefundHistory', base.useBillRefundHistory),
   };
   await show(backend);
   for (const hook of hooks) expect(calls[hook]).not.toHaveBeenCalled();
@@ -53,19 +54,19 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
   expect(calls.useOrderHistory).toHaveBeenCalledOnce();
   for (const hook of hooks.slice(1)) expect(calls[hook]).not.toHaveBeenCalled();
   await toggle('Browse all financial history', true);
-  expect(mounts).toHaveBeenCalledTimes(5);
+  expect(mounts).toHaveBeenCalledTimes(6);
   await click('Load older payment amendments');
   const rows = () => document.querySelectorAll('[aria-label="All payment amendments"] li');
   expect(rows()).toHaveLength(40);
   await toggle('Browse all financial history', false); await toggle('Order history', false);
   expect(unmounts).not.toHaveBeenCalled();
   await toggle('Browse all financial history', true); await toggle('Order history', true);
-  expect(rows()).toHaveLength(40); expect(mounts).toHaveBeenCalledTimes(5);
+  expect(rows()).toHaveLength(40); expect(mounts).toHaveBeenCalledTimes(6);
   await click('Load older payment amendments'); await click('Load older payment amendments');
   expect(rows()).toHaveLength(61);
   const priorCalls = hooks.map(h => calls[h].mock.calls.length);
   await show(backend, second);
-  expect(unmounts).toHaveBeenCalledTimes(5);
+  expect(unmounts).toHaveBeenCalledTimes(6);
   expect(document.querySelectorAll('details[open]')).toHaveLength(0);
   expect(hooks.map(h => calls[h].mock.calls.length)).toEqual(priorCalls);
   await toggle('Browse all financial history', true);

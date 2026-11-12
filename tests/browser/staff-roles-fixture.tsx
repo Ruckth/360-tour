@@ -3,7 +3,7 @@ import { mergeSiteSettings } from "convex/lib/siteSettings";
 import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/lib/staffTypes";
 import { ConvexError } from "convex/values";
 import { NextIntlClientProvider } from "next-intl";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSettingsView } from "@/components/admin/AdminSettingsView";
@@ -31,6 +31,10 @@ import "@/app.css";
  *   scenario=pending             checkout for a manager: two cashier requests waiting
  *   scenario=discounted          checkout: the spa line already carries a 15% discount (as after approval)
  *   scenario=paid                checkout: the spa order paid by cash, on its receipt
+ *   scenario=refund              checkout: Thai massage 60 + Foot spa 45 (฿1,800) paid by card, on its receipt
+ *   scenario=refund-pending      the same, with a cashier's ฿300 refund request on the massage waiting
+ *   attached=1                   refund scenarios: also Somchai's attached Thai massage 90 appointment
+ *   refund=cashier               the cashier rule for refunds (Manager approves by default)
  *   limit=N                      the cashier discount limit (10 by default)
  *   serverLimit=N                the limit the fixture server enforces, when it differs from the UI's
  *   stale=1                      Team: someone else saves the cashier rules first
@@ -43,7 +47,11 @@ const role = (["owner", "manager", "cashier"] as const).find((value) => value ==
 const view = params.get("view") ?? "checkout";
 const scenario = params.get("scenario") ?? "";
 const EMAILS = { owner: "narin@auraliscove.co", manager: "ploy@auraliscove.co", cashier: "mint@auraliscove.co" } as const;
-const rules: CashierRules = { ...DEFAULT_CASHIER_RULES, discountLimitPercent: Number(params.get("limit") ?? DEFAULT_CASHIER_RULES.discountLimitPercent) };
+const rules: CashierRules = {
+  ...DEFAULT_CASHIER_RULES,
+  discountLimitPercent: Number(params.get("limit") ?? DEFAULT_CASHIER_RULES.discountLimitPercent),
+  refund: params.get("refund") === "cashier" ? "cashier" : "manager",
+};
 
 function accessFor(who: typeof role): StaffAccessView {
   const operations = who !== "cashier";
@@ -56,12 +64,17 @@ function accessFor(who: typeof role): StaffAccessView {
     },
   };
 }
-const access = accessFor(role);
+/** Who is signed in now: a spec can hand the till to another person (window.fixture.setRole). */
+let access = accessFor(role);
+const accessListeners = new Set<() => void>();
+const useAccess = () => useSyncExternalStore((fn) => { accessListeners.add(fn); return () => accessListeners.delete(fn); }, () => access);
 
 // ---------- Checkout ----------
 
 const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent: Number(params.get("serverLimit")) } : rules;
-const backend = createFixtureBackend({ staff: { role, email: EMAILS[role], rules: serverRules } });
+// Refund receipts are rung up by the owner, then handed to whoever the page is for.
+const refundScenario = scenario.startsWith("refund");
+const backend = createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
 
 async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boolean }> {
@@ -73,6 +86,25 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
       return { orderId, receipt: true };
     }
     return { orderId, receipt: false };
+  }
+  if (refundScenario) {
+    const massage = await actions.addItem({ item: service(1) });
+    await actions.addItem({ orderId: massage.orderId, item: service(7) });
+    let due = 1800;
+    if (params.get("attached") === "1") {
+      await actions.attach({ orderId: massage.orderId, appointmentId: "fxappt000002" as Id<"serviceAppointments"> });
+      due += 1600;
+    }
+    await actions.settleOrder({ orderId: massage.orderId, expectedRevision: params.get("attached") === "1" ? 3 : 2, expectedDue: due, idempotencyKey: "browser-refund-paid", tenders: [{ method: "card", amount: due }] });
+    if (scenario === "refund-pending") {
+      backend.setStaff({ role: "cashier", email: EMAILS.cashier, rules: serverRules });
+      await backend.seedApproval({
+        orderId: massage.orderId, requesterEmail: EMAILS.cashier, reason: "Shortened treatment",
+        payload: { kind: "refund", lineId: massage.lineId, amountSatang: 30000, currency: "THB", method: "card", idempotencyKey: "browser-refund-request", reason: "Shortened treatment" },
+      });
+    }
+    backend.setStaff({ role, email: EMAILS[role], rules: serverRules });
+    return { orderId: massage.orderId, receipt: true };
   }
   if (scenario === "discounted") {
     // Set as a manager-approved discount would leave it (use serverLimit=100 so the fixture accepts it).
@@ -92,11 +124,13 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
 }
 
 function CheckoutHarness({ initial }: { initial: { orderId: OrderId | null; receipt: boolean } }) {
+  const current = useAccess();
   const [orderId, setOrderId] = useState(initial.orderId);
   const [receiptId, setReceiptId] = useState<OrderId | null>(initial.receipt ? initial.orderId : null);
   return (
+    <StaffAccessProvider access={current}>
     <CheckoutBackendProvider backend={backend}>
-      <div className="flex h-dvh flex-col bg-background text-foreground" data-fixture-ready="">
+      <div className="flex h-dvh flex-col bg-background text-foreground" data-fixture-ready="" data-role={current.role ?? ""}>
         <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
           <div className="min-w-0 flex-1">
             <p className="admin-eyebrow">Concierge operations</p>
@@ -113,8 +147,33 @@ function CheckoutHarness({ initial }: { initial: { orderId: OrderId | null; rece
         )}
       </div>
     </CheckoutBackendProvider>
+    </StaffAccessProvider>
   );
 }
+
+/** Fixture-only controls for specs: a second person on the same till, refund attempts, a lost answer. */
+declare global {
+  interface Window {
+    fixture: {
+      setRole: (next: typeof role) => void;
+      refundAttempts: () => ReturnType<typeof backend.refundAttempts>;
+      loseNextRefundResponse: () => void;
+      lineId: (name: string) => string | undefined;
+      refundFromAnotherTill: (lineName: string, satang: number) => void;
+    };
+  }
+}
+window.fixture = {
+  setRole: (next) => {
+    backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
+    access = accessFor(next);
+    accessListeners.forEach((fn) => fn());
+  },
+  refundAttempts: () => backend.refundAttempts(),
+  loseNextRefundResponse: () => backend.loseNextRefundResponse(),
+  lineId: (name) => document.querySelector<HTMLElement>(`[data-refund-trigger][aria-label="Refund ${name}"]`)?.dataset.refundTrigger,
+  refundFromAnotherTill: (lineName, satang) => backend.refundFromAnotherTill(lineName, satang),
+};
 
 // ---------- Settings › Team ----------
 
@@ -214,9 +273,7 @@ async function main() {
   const initial = await seedCheckout();
   root.render(
     <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
-      <StaffAccessProvider access={access}>
-        <CheckoutHarness initial={initial} />
-      </StaffAccessProvider>
+      <CheckoutHarness initial={initial} />
     </NextIntlClientProvider>,
   );
 }
