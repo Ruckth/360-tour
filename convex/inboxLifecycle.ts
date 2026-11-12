@@ -4,7 +4,7 @@ import { sendFailed } from "./lib/inboxLifecycle";
 
 /** A crashed/timed-out Web generation must not remain “AI is answering” forever. */
 export const expireAnswer = internalMutation({
-  args: { sessionId: v.id("chatSessions"), messageId: v.id("chatMessages") },
+  args: { sessionId: v.id("conversations"), messageId: v.id("messages") },
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.sessionId);
     if (

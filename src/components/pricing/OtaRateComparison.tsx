@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
@@ -52,7 +54,7 @@ export function OtaRateComparison({
   const locale = useLocale();
   if (rates.length === 0) return null;
 
-  const money = (amount: number) => `${currencyPrefix(currency)}${amount.toLocaleString()}`;
+  const money = (amount: number) => `${currencyPrefix(currency)}${satangToBaht(amount).toLocaleString()}`;
   const stayNights = nights && nights > 0 ? nights : 1;
   const directTotal = calculateBookingQuote({
     pricePerNight,

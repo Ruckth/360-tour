@@ -18,7 +18,7 @@ it('rejects webhook mutations when the server secret is missing', async () => {
 	for (const claim of [api.line.claimEvent, api.facebook.claimEvent, api.instagram.claimEvent, api.whatsapp.claimEvent]) {
 		await expect(t.mutation(claim, { serverSecret: '', eventKey: 'test-event', eventType: 'message' })).rejects.toThrow('not configured');
 	}
-	expect(await t.run(ctx => ctx.db.query('chatSessions').collect())).toEqual([]);
+	expect(await t.run(ctx => ctx.db.query('conversations').collect())).toEqual([]);
 	const guest = await guestSession(t);
 	await expect(t.action(api.chatAi.generateReply, { sessionId: guest.sessionId, userMessage: 'hello', serverSecret: '' })).rejects.toThrow('not configured');
 	await expect(t.query(api.chat.isAiPausedForServer, { sessionId: guest.sessionId, serverSecret: '' })).rejects.toThrow('not configured');
@@ -67,7 +67,7 @@ it('rejects respond for a session the caller does not own', async () => {
 	const t = createHarness(convexTest);
 	const owner = await guestSession(t);
 	const stranger = await guestSession(t);
-	const social = await t.run(ctx => ctx.db.insert('chatSessions', { channel: 'line', createdAt: Date.now() }));
+	const social = await t.run(ctx => ctx.db.insert('conversations', { channel: 'line', createdAt: Date.now() }));
 	for (const sessionId of [owner.sessionId, social]) {
 		for (const guestToken of [undefined, stranger.guestToken]) {
 			await expect(t.action(api.chatAi.respond, { sessionId, guestToken, userMessage: 'hello' })).rejects.toThrow('INVALID_GUEST_TOKEN');
@@ -83,9 +83,9 @@ it('hides rooms and reviews of draft properties', async () => {
 	const admin = asAdmin(t);
 	const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Draft Villa' });
 	await t.run(async ctx => {
-		await ctx.db.insert('rooms', { propertyId, slug: 'room', name: 'Room', imagePath: '/room.webp', hotspots: [] });
+		await ctx.db.insert('tourScenes', { propertyId, slug: 'room', name: 'Room', imagePath: '/room.webp', hotspots: [] });
 		await ctx.db.insert('reviews', { propertyId, authorName: 'Guest', authorCity: '', authorCountry: '', authorAvatarUrl: '', rating: 5, title: 'Review', body: 'Draft review', date: '2026-11-12', verified: true });
-		await ctx.db.insert('socialProof', { propertyId, overallRating: 5, totalReviews: 1 });
+		await ctx.db.insert('reviewStats', { propertyId, overallRating: 5, totalReviews: 1 });
 	});
 	for (const status of ['draft', 'archived', 'active'] as const) {
 		await t.run(ctx => ctx.db.patch(propertyId, { status }));
@@ -117,7 +117,7 @@ it('rejects suggestion tracking without a valid guest token', async () => {
 	const t = createHarness(convexTest);
 	const guest = await guestSession(t);
 	const stranger = await guestSession(t);
-	const socialId = await t.run(ctx => ctx.db.insert('chatSessions', { channel: 'line', guestTokenHash: 'unused', createdAt: Date.now() }));
+	const socialId = await t.run(ctx => ctx.db.insert('conversations', { channel: 'line', guestTokenHash: 'unused', createdAt: Date.now() }));
 	const deleted = await guestSession(t);
 	await t.run(ctx => ctx.db.delete(deleted.sessionId));
 	for (const args of [

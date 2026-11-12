@@ -37,7 +37,7 @@ describe("chat browser handoffs", () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
     const sessionId = await t.run(async (ctx) => {
-      const session = await ctx.db.insert("chatSessions", { guestTokenHash: fixtureGuestTokenHash,
+      const session = await ctx.db.insert("conversations", { guestTokenHash: fixtureGuestTokenHash,
         channel: "web",
         visitorId: "visitor-expired",
         createdAt: now,

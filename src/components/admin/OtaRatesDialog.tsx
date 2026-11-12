@@ -1,5 +1,6 @@
-'use client';
+"use client";
 
+import { parseMoneyInput } from '@/lib/money-input';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
@@ -65,7 +66,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   async function save(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError('');
-    try { await upsertRate({ propertyId, platform, nightlyRate: Number(nightlyRate), url: url.trim() || undefined }); setNightlyRate(''); setUrl(''); }
+    try { await upsertRate({ propertyId, platform, nightlyRate: parseMoneyInput(nightlyRate), url: url.trim() || undefined }); setNightlyRate(''); setUrl(''); }
     catch (err) { setError(errorText(err, 'Could not save rate.')); }
     finally { setBusy(false); }
   }

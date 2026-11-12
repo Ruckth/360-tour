@@ -178,9 +178,9 @@ describe("dashboard view", () => {
       defaults: { campaignId: "c-ig", from: "2026-10-08", to: "2026-11-06" },
     });
     await act(async () => {
-      await spendDialog.last!.onSave({ campaignId: "c-ig" as never, amount: 5000, from: "2026-10-08", to: "2026-11-06" });
+      await spendDialog.last!.onSave({ campaignId: "c-ig" as never, amount: 500000, from: "2026-10-08", to: "2026-11-06" });
     });
-    expect(calls.spend).toEqual([{ campaignId: "c-ig", amount: 5000, from: "2026-10-08", to: "2026-11-06" }]);
+    expect(calls.spend).toEqual([{ campaignId: "c-ig", amount: 500000, from: "2026-10-08", to: "2026-11-06" }]);
     expect(spendDialog.last?.open).toBe(false);
   });
 
@@ -279,7 +279,7 @@ describe("dashboard view", () => {
 
     // Spend with no sales yet is a result, not an empty range.
     const empty = emptyRangeReport();
-    render(ready({ ...empty, spend: [{ id: "sp-only" as never, campaignId: "c-fb-nov" as never, amount: 10_000, from: empty.from, to: empty.to }] }));
+    render(ready({ ...empty, spend: [{ id: "sp-only" as never, campaignId: "c-fb-nov" as never, amount: 1000000, from: empty.from, to: empty.to }] }));
     expect(text()).not.toContain("No sales or tracked visits");
     expect(text()).toContain("0.00×");
 
@@ -306,7 +306,7 @@ describe("dashboard view", () => {
     });
     const exportButton = () => buttons("Export CSV")[0];
     const onboardingOnly = "Paid bookings and money from those links show up here";
-    const baht = (n: number) => `฿${n.toLocaleString("en-US")}`;
+    const baht = (n: number) => `฿${(n / 100).toLocaleString("en-US")}`;
 
     it("shows the business totals and export, with setup guidance alongside", () => {
       const report = untrackedReport();
@@ -327,14 +327,14 @@ describe("dashboard view", () => {
       expect(exportButton().disabled).toBe(false);
       click(exportButton());
       const preview = document.querySelector('[data-testid="csv-preview"]')?.textContent ?? "";
-      expect(preview.split(/\r?\n/).find((line) => line.startsWith("total,Business total"))).toMatch(new RegExp(`,${net}(,|$)`));
+      expect(preview.split(/\r?\n/).find((line) => line.startsWith("total,Business total"))).toMatch(new RegExp(`,${net / 100}(,|$)`));
     });
 
     it("counts a Finance range with only a refund as activity", () => {
       const report: ReportData = {
         ...untrackedReport({ basis: "cash" }),
-        sales: [sale({ id: "stay-r", createdDay: "2026-09-20", paidDay: "2026-09-20", collected: 4800, refunded: 4800 })],
-        events: [{ saleId: "stay-r", kind: "refund", day: "2026-10-20", amount: 4800 }],
+        sales: [sale({ id: "stay-r", createdDay: "2026-09-20", paidDay: "2026-09-20", collected: 480000, refunded: 480000 })],
+        events: [{ saleId: "stay-r", kind: "refund", day: "2026-10-20", amount: 480000 }],
       };
       render(ready(report), { request: { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" } });
       expect(text()).not.toContain(onboardingOnly);
@@ -344,7 +344,7 @@ describe("dashboard view", () => {
     });
 
     it("counts a coupon-only, zero-net sale as activity", () => {
-      const report: ReportData = { ...untrackedReport(), sessions: [], sales: [sale({ kind: "order", id: "order-c", propertyId: undefined, channel: "pos", bucket: "staff", collected: 0, discount: 500 })] };
+      const report: ReportData = { ...untrackedReport(), sessions: [], sales: [sale({ kind: "order", id: "order-c", propertyId: undefined, channel: "pos", bucket: "staff", collected: 0, discount: 50000 })] };
       render(ready(report));
       expect(text()).not.toContain(onboardingOnly);
       expect(text()).toContain("Business total");

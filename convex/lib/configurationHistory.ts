@@ -37,7 +37,7 @@ export function propertySnapshot(p: Doc<'properties'>) {
 		...(p.translations ? { translations: p.translations } : {})
 	};
 }
-export function roomSnapshot(r: Doc<'rooms'>) {
+export function roomSnapshot(r: Doc<'tourScenes'>) {
 	return { propertyId: r.propertyId, slug: r.slug, name: r.name, imagePath: r.imagePath, hotspots: r.hotspots };
 }
 
@@ -46,16 +46,16 @@ export async function logConfiguration(
 	ctx: MutationCtx,
 	actor: string,
 	kind: string,
-	before: Doc<'properties'> | Doc<'rooms'> | null,
-	after: Doc<'properties'> | Doc<'rooms'> | null,
+	before: Doc<'properties'> | Doc<'tourScenes'> | null,
+	after: Doc<'properties'> | Doc<'tourScenes'> | null,
 	type: 'property' | 'room'
 ) {
 	const row = after ?? before;
 	if (!row) throw new Error('Missing configuration record');
 	const entityId = row._id;
-	const propertyId = type === 'property' ? (row._id as Id<'properties'>) : (row as Doc<'rooms'>).propertyId;
+	const propertyId = type === 'property' ? (row._id as Id<'properties'>) : (row as Doc<'tourScenes'>).propertyId;
 	const snapshot = (value: typeof row) =>
-		type === 'property' ? propertySnapshot(value as Doc<'properties'>) : roomSnapshot(value as Doc<'rooms'>);
+		type === 'property' ? propertySnapshot(value as Doc<'properties'>) : roomSnapshot(value as Doc<'tourScenes'>);
 	await appendRecordHistory(ctx, {
 		entityType: type,
 		entityId,
@@ -81,8 +81,8 @@ export function configurationWriter(ctx: MutationCtx, actor: string) {
 			await logConfiguration(ctx, actor, 'created', null, await ctx.db.get(id), 'property');
 			return id;
 		},
-		async insertRoom(fields: Omit<Doc<'rooms'>, '_id' | '_creationTime'>) {
-			const id = await ctx.db.insert('rooms', fields);
+		async insertRoom(fields: Omit<Doc<'tourScenes'>, '_id' | '_creationTime'>) {
+			const id = await ctx.db.insert('tourScenes', fields);
 			await logConfiguration(ctx, actor, 'created', null, await ctx.db.get(id), 'room');
 			return id;
 		},
@@ -91,7 +91,7 @@ export function configurationWriter(ctx: MutationCtx, actor: string) {
 			await ctx.db.patch(id, fields);
 			await logConfiguration(ctx, actor, 'updated', before, await ctx.db.get(id), 'property');
 		},
-		async patchRoom(id: Id<'rooms'>, fields: Partial<Omit<Doc<'rooms'>, '_id' | '_creationTime'>>) {
+		async patchRoom(id: Id<'tourScenes'>, fields: Partial<Omit<Doc<'tourScenes'>, '_id' | '_creationTime'>>) {
 			const before = await ctx.db.get(id);
 			await ctx.db.patch(id, fields);
 			await logConfiguration(ctx, actor, 'updated', before, await ctx.db.get(id), 'room');
@@ -100,7 +100,7 @@ export function configurationWriter(ctx: MutationCtx, actor: string) {
 			await logConfiguration(ctx, actor, 'deleted', await ctx.db.get(id), null, 'property');
 			await ctx.db.delete(id);
 		},
-		async deleteRoom(id: Id<'rooms'>) {
+		async deleteRoom(id: Id<'tourScenes'>) {
 			await logConfiguration(ctx, actor, 'deleted', await ctx.db.get(id), null, 'room');
 			await ctx.db.delete(id);
 		}

@@ -1,5 +1,7 @@
 "use client";
 
+import { parseMoneyInput } from '@/lib/money-input';
+
 import { ChevronDown, Info, Plus, Search, SlidersHorizontal, Star } from "lucide-react";
 import { useId, useMemo, useState, type FormEvent } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
@@ -11,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { MAX_PRICE } from "convex/lib/billMath";
+import { MAX_PRICE } from "convex/lib/orderMath";
 import type { Catalog, CatalogItem, OrderLine } from "./backend";
 import { amountInput } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
@@ -98,7 +100,7 @@ export function CatalogPane({
   const tiles = useMemo(() => (catalog ? catalogTiles(catalog)[tab] : []), [catalog, tab]);
   const tabGroups = useMemo(() => [...new Set(tiles.map((t) => t.group))], [tiles]);
   const activeGroups = groups.filter((g) => tabGroups.includes(g));
-  const priceCap = Number(maxPrice) > 0 ? Number(maxPrice) : Infinity;
+  const priceCap = Number(maxPrice) > 0 ? parseMoneyInput(maxPrice) : Infinity;
   const text = search.trim().toLowerCase();
   const shown = tiles.filter(
     (t) => (!text || t.name.toLowerCase().includes(text)) && (!activeGroups.length || activeGroups.includes(t.group)) && t.price <= priceCap,
@@ -304,7 +306,7 @@ function CustomItemDialog({ onAdd, needsManager }: { onAdd: (item: CatalogItem) 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!valid) return;
-    onAdd({ kind: "extra", name: name.trim(), price: Number(price) });
+    onAdd({ kind: "extra", name: name.trim(), price: parseMoneyInput(price) });
     setName("");
     setPrice("");
     setOpen(false);

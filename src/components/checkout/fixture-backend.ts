@@ -4,19 +4,19 @@ import type { Doc, Id, TableNames } from "convex/_generated/dataModel";
 import {
   MAX_QTY,
   MERGES_QTY,
-  assertBillSize,
+  assertOrderSize,
   assertDiscount,
   assertPrice,
   assertPriceOverride,
   assertTenders,
-  billTotals,
+  orderTotals,
   bookingChargeTotal,
   lineNet,
   orderTitle,
-  round2,
-} from "convex/lib/billMath";
+  roundMoney,
+} from "convex/lib/orderMath";
 import { paymentDateInput } from "./payment-time";
-import { changeSchedule, scheduleFromStartAt } from "convex/lib/serviceSchedule";
+import { changeSchedule } from "convex/lib/serviceSchedule";
 import { effectiveTime } from "convex/lib/bookingMoney";
 import { normalizeCouponCode, type CouponRules } from "convex/lib/offers";
 import { evaluateOrderCoupon, posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
@@ -39,13 +39,13 @@ const ATTACHED_PRICE = "A stay is charged at its booked price. Change the price 
 const ONLINE_CHECKOUT = "Online checkout is in progress. Wait for it to finish or expire before taking payment at the desk.";
 const LATENCY_MS = 150;
 
-type Order = Doc<"bills">;
-type Line = Doc<"billLines">;
-type LineFields = Omit<Line, "_id" | "_creationTime" | "billId" | "createdAt">;
+type Order = Doc<"orders">;
+type Line = Doc<"orderLines">;
+type LineFields = Omit<Line, "_id" | "_creationTime" | "orderId" | "createdAt" | "catalogUnitPrice"> & { catalogUnitPrice?: number };
 type Guest = { name: string; phone?: string; email?: string };
 type FixtureBooking = { id: Id<"bookings">; propertyId?: Id<"properties">; guest: Guest; name: string; detail: string; reference: string; price: number; deposit: number; paid: boolean; providerRefundWaived?: number; checkoutInProgress?: boolean; promotion?: { code: string; discount: number } };
-type FixtureAppointment = Omit<FixtureBooking, "id"> & { appointmentId: Id<"serviceAppointments">; bookingId?: Id<"bookings">; serviceId: Id<"services">; staffId: Id<"staff">; start: number; status?: "booked" | "completed" | "no_show" | "cancelled"; revision?: number; amountPaid?: number; amountRefunded?: number };
-type Source = { bookingId?: Id<"bookings">; appointmentId?: Id<"serviceAppointments"> };
+type FixtureAppointment = Omit<FixtureBooking, "id"> & { appointmentId: Id<"appointments">; bookingId?: Id<"bookings">; serviceId: Id<"services">; staffId: Id<"staff">; start: number; status?: "booked" | "completed" | "no_show" | "cancelled"; revision?: number; amountPaid?: number; amountRefunded?: number };
+type Source = { bookingId?: Id<"bookings">; appointmentId?: Id<"appointments"> };
 
 const fid = <T extends TableNames>(prefix: string, n: number) => `fx${prefix}${String(n).padStart(6, "0")}` as Id<T>;
 const staffId = (n: number) => fid<"staff">("staff", n);
@@ -70,7 +70,7 @@ const SERVICES: [string, string, number, number, number[], string, string?][] = 
 
 const CATALOG: Catalog = {
   services: SERVICES.map(([name, category, durationMin, price, staff, description, imageUrl], i) => ({
-    _id: serviceId(i + 1), name, category, description, durationMin, price, currency: "THB", staffIds: staff.map(staffId), imageUrl,
+    _id: serviceId(i + 1), name, category, description, durationMin, price: price * 100, currency: "THB", staffIds: staff.map(staffId), imageUrl,
   })),
   // As convex/pos.ts: a villa's first image. The suite has none yet.
   rooms: ([
@@ -78,14 +78,14 @@ const CATALOG: Catalog = {
     ["Garden Villa", "Two bedrooms in the garden", 8500, 4, "/garden-image.webp"],
     ["Sunrise Suite", "Sea-view suite", 6200, 2, undefined],
   ] as const).map(([name, tagline, price, maxGuests, imageUrl], i) => ({
-    _id: propertyId(i + 1), name, tagline, price, currency: "THB", maxGuests, imageUrl,
+    _id: propertyId(i + 1), name, tagline, price: price * 100, currency: "THB", maxGuests, imageUrl,
   })),
   extras: [
-    { name: "Airport transfer", price: 1200, category: "Transport" },
-    { name: "Breakfast basket", price: 450, category: "Food & drink" },
-    { name: "Coconut water", price: 90, category: "Food & drink" },
-    { name: "Late checkout", price: 1500, category: "Stay" },
-    { name: "Laundry bag", price: 300, category: "Stay" },
+    { name: "Airport transfer", price: 120000, category: "Transport" },
+    { name: "Breakfast basket", price: 45000, category: "Food & drink" },
+    { name: "Coconut water", price: 9000, category: "Food & drink" },
+    { name: "Late checkout", price: 150000, category: "Stay" },
+    { name: "Laundry bag", price: 30000, category: "Stay" },
   ],
   staff: STAFF,
   frequent: [`service:${serviceId(1)}`, `service:${serviceId(7)}`, `service:${serviceId(10)}`, "extra:Breakfast basket", `room:${propertyId(2)}`, `service:${serviceId(5)}`],
@@ -99,14 +99,14 @@ function createCoupons(): FixtureCoupon[] {
     id: fid("coupon", n), terms, rules: { code, version: 1, status: "active", benefit, scope, used: 0, discountGranted: 0, ...rules },
   });
   return [
-    coupon(1, "DCNT-SPA-500", { kind: "fixed", amount: 500 }, "services", "฿500 off spa services of ฿1,500 or more. Extras and stays are not included.", { minEligibleSubtotal: 1500, used: 14, discountGranted: 7000 }),
-    coupon(2, "DCNT-L-10", { kind: "percent", percent: 10 }, "accommodation_and_services", "10% off stays and spa services.", { used: 22, discountGranted: 9800 }),
-    coupon(3, "DCNT-RAIN-15", { kind: "percent", percent: 15 }, "services", null, { bookTo: "2026-10-31", used: 31, discountGranted: 14_250 }),
-    coupon(4, "DCNT-YOGA-200", { kind: "fixed", amount: 200 }, "services", null, { usageLimit: 20, used: 20, discountGranted: 4000 }),
+    coupon(1, "DCNT-SPA-500", { kind: "fixed", amount: 50000 }, "services", "฿500 off spa services of ฿1,500 or more. Extras and stays are not included.", { minEligibleSubtotal: 150000, used: 14, discountGranted: 700000 }),
+    coupon(2, "DCNT-L-10", { kind: "percent", percent: 1000 }, "accommodation_and_services", "10% off stays and spa services.", { used: 22, discountGranted: 980000 }),
+    coupon(3, "DCNT-RAIN-15", { kind: "percent", percent: 1500 }, "services", null, { bookTo: "2026-10-31", used: 31, discountGranted: 1425000 }),
+    coupon(4, "DCNT-YOGA-200", { kind: "fixed", amount: 20000 }, "services", null, { usageLimit: 20, used: 20, discountGranted: 400000 }),
     // One use left: another till can take it while this order is at payment.
-    coupon(5, "DCNT-L2-300", { kind: "fixed", amount: 300 }, "services", "฿300 off spa services.", { usageLimit: 50, used: 49, discountGranted: 14_700 }),
-    coupon(6, "DCNT-VILLA-10", { kind: "percent", percent: 10 }, "accommodation_and_services", null, { propertySlugs: ["tideglass-pool-residence"] }),
-    coupon(7, "DCNT-F1-20", { kind: "percent", percent: 20 }, "accommodation", null, { minNights: 2, maxSaving: 3000, used: 38, discountGranted: 66_450 }),
+    coupon(5, "DCNT-L2-300", { kind: "fixed", amount: 30000 }, "services", "฿300 off spa services.", { usageLimit: 50, used: 49, discountGranted: 1470000 }),
+    coupon(6, "DCNT-VILLA-10", { kind: "percent", percent: 1000 }, "accommodation_and_services", null, { propertySlugs: ["tideglass-pool-residence"] }),
+    coupon(7, "DCNT-F1-20", { kind: "percent", percent: 2000 }, "accommodation", null, { minNights: 2, maxSaving: 300000, used: 38, discountGranted: 6645000 }),
   ];
 }
 /** Short links on this site and the code each carries (null: a link without an offer). */
@@ -131,12 +131,12 @@ function createState() {
   const now = Date.now();
   const bookings: FixtureBooking[] = [
     // Deposit taken online by Stripe; the rest is paid at checkout.
-    { id: fid("bkg", 1), propertyId: propertyId(1), guest: ANNA, name: "Stay · Lagoon Pool Villa", detail: "3 nights · CONF-2026-A1B2C3", reference: "CONF-2026-A1B2C3", price: 36000, deposit: 10000, paid: false },
-    { id: fid("bkg", 2), propertyId: propertyId(3), guest: MIA, name: "Stay · Sunrise Suite", detail: "1 night · CONF-2026-MIA", reference: "CONF-2026-MIA", price: 6200, deposit: 0, paid: false, checkoutInProgress: true },
+    { id: fid("bkg", 1), propertyId: propertyId(1), guest: ANNA, name: "Stay · Lagoon Pool Villa", detail: "3 nights · CONF-2026-A1B2C3", reference: "CONF-2026-A1B2C3", price: 3600000, deposit: 1000000, paid: false },
+    { id: fid("bkg", 2), propertyId: propertyId(3), guest: MIA, name: "Stay · Sunrise Suite", detail: "1 night · CONF-2026-MIA", reference: "CONF-2026-MIA", price: 620000, deposit: 0, paid: false, checkoutInProgress: true },
   ];
   const appointments: FixtureAppointment[] = [
-    { appointmentId: fid("appt", 1), bookingId: fid("bkg", 1), guest: ANNA, serviceId: serviceId(5), staffId: staffId(3), start: todayAt(16), name: "Hot stone 60", detail: "", reference: "SVC-0001", price: 1500, deposit: 0, paid: false },
-    { appointmentId: fid("appt", 2), guest: SOMCHAI, serviceId: serviceId(2), staffId: staffId(1), start: todayAt(11), name: "Thai massage 90", detail: "", reference: "SVC-0002", price: 1600, deposit: 0, paid: false },
+    { appointmentId: fid("appt", 1), bookingId: fid("bkg", 1), guest: ANNA, serviceId: serviceId(5), staffId: staffId(3), start: todayAt(16), name: "Hot stone 60", detail: "", reference: "SVC-0001", price: 150000, deposit: 0, paid: false },
+    { appointmentId: fid("appt", 2), guest: SOMCHAI, serviceId: serviceId(2), staffId: staffId(1), start: todayAt(11), name: "Thai massage 90", detail: "", reference: "SVC-0002", price: 160000, deposit: 0, paid: false },
   ];
   for (const a of appointments) a.detail = `${paymentDateInput(a.start).replace("T", " ")} · ${a.reference}`;
 
@@ -153,25 +153,25 @@ function createState() {
   // A standalone sale saved earlier, for Somchai.
   const saved: Order = {
     _id: fid("bill", 2), _creationTime: now - 3_600_000, ...base, status: "draft", orderNumber: 1042, customerId: fid("cust", 2),
-    itemCount: 3, total: 780, due: 780, hasItems: true, revision: 2, createdAt: now - 3_600_000, updatedAt: now - 1_800_000,
+    itemCount: 3, total: 78000, due: 78000, hasItems: true, revision: 2, createdAt: now - 3_600_000, updatedAt: now - 1_800_000,
   };
   const savedLines: Line[] = [
-    { _id: fid("line", 1), _creationTime: now, billId: saved._id, kind: "service", serviceId: serviceId(7), name: "Foot spa 45", detail: "45 min", unitPrice: 600, currency: "THB", qty: 1, staffId: staffId(2), createdAt: now },
-    { _id: fid("line", 2), _creationTime: now, billId: saved._id, kind: "extra", name: "Coconut water", unitPrice: 90, currency: "THB", qty: 2, createdAt: now },
+    { _id: fid("line", 1), _creationTime: now, orderId: saved._id, kind: "service", serviceId: serviceId(7), name: "Foot spa 45", detail: "45 min", unitPrice: 60000, catalogUnitPrice: 60000, currency: "THB", qty: 1, staffId: staffId(2), createdAt: now },
+    { _id: fid("line", 2), _creationTime: now, orderId: saved._id, kind: "extra", name: "Coconut water", unitPrice: 9000, catalogUnitPrice: 9000, currency: "THB", qty: 2, createdAt: now },
   ];
   return {
-    orders: new Map<Id<"bills">, Order>([[stayOrder._id, stayOrder], [saved._id, saved]]),
+    orders: new Map<Id<"orders">, Order>([[stayOrder._id, stayOrder], [saved._id, saved]]),
     lines: savedLines,
-    payments: [] as Doc<"billPayments">[],
-    audit: [] as Doc<"billAudit">[],
+    payments: [] as Doc<"orderPayments">[],
+    audit: [] as Doc<"orderAudit">[],
     orderHistory: [] as Doc<"recordChanges">[],
-    corrections: [] as Doc<"billCorrections">[],
-    links: [] as Doc<"billLineLinks">[],
-    refunds: [] as (OrderView["refunds"][number] & { billId: Id<"bills"> })[],
-    /** POS line refunds (billRefunds), in satang. */
-    posRefunds: [] as Doc<"billRefunds">[],
+    corrections: [] as Doc<"orderCorrections">[],
+    links: [] as Doc<"orderLineLinks">[],
+    refunds: [] as (OrderView["refunds"][number] & { orderId: Id<"orders"> })[],
+    /** POS line refunds (orderRefunds), in satang. */
+    posRefunds: [] as Doc<"orderRefunds">[],
     mergeJobs: [] as Doc<"customerMergeJobs">[],
-    sourcePayments: new Map<Id<"bills">, { bookingId?: Id<"bookings">; appointmentId?: Id<"serviceAppointments">; amount: number; effectiveAt: number; originalPrice: number }[]>(),
+    sourcePayments: new Map<Id<"orders">, { bookingId?: Id<"bookings">; appointmentId?: Id<"appointments">; amount: number; effectiveAt: number; originalPrice: number }[]>(),
     counters: new Map([["order", 1042], ["receipt", 141]]),
     customers,
     customerHistory: [] as Doc<"recordChanges">[],
@@ -184,12 +184,12 @@ function createState() {
 
 /** Who the preview is signed in as. A cashier gets the server's limits and approval requests. */
 export type FixtureStaff = { role: "owner" | "manager" | "cashier"; email: string; rules?: CashierRules };
-type SeededApproval = { orderId: Id<"bills">; payload: ApprovalPayload; reason: string; requesterEmail: string; createdAt?: number };
+type SeededApproval = { orderId: Id<"orders">; payload: ApprovalPayload; reason: string; requesterEmail: string; createdAt?: number };
 
 type RefundArgs = Parameters<CheckoutActions["refundLine"]>[0];
 
-export function createFixtureBackend(options: { bookings?: Partial<FixtureBooking>[]; appointments?: Partial<FixtureAppointment>[]; appointmentRefunds?: Doc<"appointmentRefunds">[]; financialHistory?: Partial<{ [K in FinancialStream]: FinancialRows[K][] }>; recordedRefunds?: (OrderView["refunds"][number] & { billId: Id<"bills"> })[]; staff?: FixtureStaff } = {}): CheckoutBackend & {
-  setAppointmentSnapshot: (id: Id<"serviceAppointments">, patch: Partial<FixtureAppointment>) => void; setBookingSnapshot: (id: Id<"bookings">, patch: Partial<FixtureBooking>) => void; setCouponSnapshot: (code: string, patch: Partial<CouponRules>) => void; appointmentSnapshot: (id: Id<"serviceAppointments">) => FixtureAppointment | undefined; seedApproval: (request: SeededApproval) => Promise<Id<"staffApprovalRequests">>;
+export function createFixtureBackend(options: { bookings?: Partial<FixtureBooking>[]; appointments?: Partial<FixtureAppointment>[]; appointmentRefunds?: Doc<"appointmentRefunds">[]; financialHistory?: Partial<{ [K in FinancialStream]: FinancialRows[K][] }>; recordedRefunds?: (OrderView["refunds"][number] & { orderId: Id<"orders"> })[]; staff?: FixtureStaff } = {}): CheckoutBackend & {
+  setAppointmentSnapshot: (id: Id<"appointments">, patch: Partial<FixtureAppointment>) => void; setBookingSnapshot: (id: Id<"bookings">, patch: Partial<FixtureBooking>) => void; setCouponSnapshot: (code: string, patch: Partial<CouponRules>) => void; appointmentSnapshot: (id: Id<"appointments">) => FixtureAppointment | undefined; seedApproval: (request: SeededApproval) => Promise<Id<"staffApprovalRequests">>;
   /** Signs another person in on the same data, as a second till would (fixture only). */
   setStaff: (next: FixtureStaff) => void;
   /** Every pos.refundLine call, in order, as sent. */
@@ -214,7 +214,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     if (!cashier) return;
     const { subtotalSatang, reductionSatang } = manualReductionSatang(line);
     const limitSatang = discountLimitSatang(subtotalSatang, rules.discountLimitPercent);
-    if (reductionSatang > limitSatang) throw new ConvexError({ code: "NEEDS_APPROVAL", kind, message: "This manual discount needs manager approval.", subtotalSatang, reductionSatang, limitSatang, amount: reductionSatang / 100, discountLimitPercent: rules.discountLimitPercent });
+    if (reductionSatang > limitSatang) throw new ConvexError({ code: "NEEDS_APPROVAL", kind, message: "This manual discount needs manager approval.", subtotalSatang, reductionSatang, limitSatang, amount: reductionSatang, discountLimitPercent: rules.discountLimitPercent });
   };
   const requests: ApprovalRequest[] = [];
   /** As effectiveRequestStatus: past its deadline it expired; any change to the order or the cashier rules made it stale. */
@@ -224,11 +224,11 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     return state.orders.get(request.orderId)?.revision === request.orderRevision && request.rulesRevision === rules.revision ? "pending" : "stale";
   };
   const effective = (request: ApprovalRequest) => ({ ...request, status: requestStatus(request) });
-  const feeAttempts = new Map<string, { fingerprint: string; orderId: Id<"bills">; lineId: Id<"billLines"> }>();
+  const feeAttempts = new Map<string, { fingerprint: string; orderId: Id<"orders">; lineId: Id<"orderLines"> }>();
   state.refunds = [...new Map([
     ...(options.recordedRefunds ?? []),
-    ...(options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).flatMap(r => r.billId ? [{ sourceType: "appointment" as const, _id: r._id, billId: r.billId, appointmentId: r.appointmentId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
-    ...(options.financialHistory?.bookingRefunds ?? []).flatMap(r => r.billId ? [{ sourceType: "booking" as const, _id: r._id, billId: r.billId, bookingId: r.bookingId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
+    ...(options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).flatMap(r => r.orderId ? [{ sourceType: "appointment" as const, _id: r._id, orderId: r.orderId, appointmentId: r.appointmentId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
+    ...(options.financialHistory?.bookingRefunds ?? []).flatMap(r => r.orderId ? [{ sourceType: "booking" as const, _id: r._id, orderId: r.orderId, bookingId: r.bookingId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
   ].map(r => [r._id, r])).values()];
   state.bookings = state.bookings.map(b => ({ ...b, ...options.bookings?.find(p => p.id === b.id) }));
   state.appointments = state.appointments.map(a => ({ ...a, ...options.appointments?.find(p => p.appointmentId === a.appointmentId) }));
@@ -249,18 +249,18 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     state.counters.set(key, value);
     return value;
   };
-  const linesOf = (orderId: Id<"bills">) => state.lines.filter((line) => line.billId === orderId);
-  const isOpen = (order: Order) => order.status === "draft" || order.status === "held";
+  const linesOf = (orderId: Id<"orders">) => state.lines.filter((line) => line.orderId === orderId);
+  const isOpen = (order: Order) => order.status === "draft";
   const chargePrice = (item: FixtureBooking | FixtureAppointment) => "id" in item ? bookingChargeTotal({ total: item.price, providerRefundWaived: item.providerRefundWaived }) : item.price;
-  const bookingDetail = (b: FixtureBooking) => `${b.detail}${b.providerRefundWaived ? ` · ${b.providerRefundWaived} THB refunded charge waived` : ""}`;
+  const bookingDetail = (b: FixtureBooking) => `${b.detail}${b.providerRefundWaived ? ` · ${b.providerRefundWaived / 100} THB refunded charge waived` : ""}`;
   const stateOf = (order: Order) => (isOpen(order) ? ("unpaid" as const) : order.status === "paid" ? ("paid" as const) : order.status === "discarded" ? ("discarded" as const) : ("void" as const));
-  const patchOrder = (orderId: Id<"bills">, patch: Partial<Order>) => state.orders.set(orderId, { ...state.orders.get(orderId)!, ...patch });
-  const patchLine = (lineId: Id<"billLines">, patch: Partial<Line>) => {
+  const patchOrder = (orderId: Id<"orders">, patch: Partial<Order>) => state.orders.set(orderId, { ...state.orders.get(orderId)!, ...patch });
+  const patchLine = (lineId: Id<"orderLines">, patch: Partial<Line>) => {
     state.lines = state.lines.map((line) => (line._id === lineId ? { ...line, ...patch } : line));
   };
   const stayPromotion = (line: Line) => (line.kind === "booking" ? state.bookings.find((b) => b.id === line.bookingId)?.promotion ?? null : null);
   /** Prices the order's coupon with the shared engine and its live counters, as pos.ts does on every change. */
-  const quoteCoupon = (orderId: Id<"bills">, coupon: FixtureCoupon) => {
+  const quoteCoupon = (orderId: Id<"orders">, coupon: FixtureCoupon) => {
     const lines = linesOf(orderId);
     return evaluateOrderCoupon({
       lines: lines.map((line) => ({ ...line, id: line._id })),
@@ -270,37 +270,37 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     });
   };
   /** Re-splits the coupon over the rows; when it no longer fits, every share goes and the problem is stored. */
-  const splitCoupon = (orderId: Id<"bills">) => {
+  const splitCoupon = (orderId: Id<"orders">) => {
     const promotion = state.orders.get(orderId)!.promotion;
     if (!promotion) return;
     const coupon = state.coupons.find((c) => c.id === promotion.couponId)!;
     const result = quoteCoupon(orderId, coupon);
     const shares = new Map(result.ok ? result.allocation.map((share) => [share.lineId, share.discount]) : []);
-    state.lines = state.lines.map((line) => (line.billId === orderId ? { ...line, couponDiscount: shares.get(line._id) || undefined } : line));
+    state.lines = state.lines.map((line) => (line.orderId === orderId ? { ...line, couponDiscount: shares.get(line._id) || undefined } : line));
     patchOrder(orderId, { promotion: { ...promotion, discount: result.ok ? result.discount : 0, problem: result.ok ? undefined : result.problem } });
   };
-  const promotionSnapshot = (orderId: Id<"bills">) => {
+  const promotionSnapshot = (orderId: Id<"orders">) => {
     const promotion = state.orders.get(orderId)!.promotion!;
     return { code: promotion.code, couponVersion: promotion.couponVersion, discount: promotion.discount };
   };
-  const refresh = (orderId: Id<"bills">) => {
+  const refresh = (orderId: Id<"orders">) => {
     splitCoupon(orderId);
     const lines = linesOf(orderId);
-    const totals = billTotals(lines);
-    assertBillSize(totals);
+    const totals = orderTotals(lines);
+    assertOrderSize(totals);
     const revision = state.orders.get(orderId)!.revision + 1;
     patchOrder(orderId, { itemCount: lines.reduce((n, l) => n + l.qty, 0), total: totals.total, due: totals.due, hasItems: lines.length > 0, revision, updatedAt: Date.now() });
   };
-  const audit = (entry: Omit<Doc<"billAudit">, "_id" | "_creationTime" | "at" | "actor">) =>
+  const audit = (entry: Omit<Doc<"orderAudit">, "_id" | "_creationTime" | "at" | "actor">) =>
     state.audit.push({ _id: nextId("audit"), _creationTime: Date.now(), at: Date.now(), actor: ACTOR, ...entry });
 
-  const orderEvent = (orderId: Id<"bills">, kind: string, before?: unknown, after?: unknown, reason?: string) => {
+  const orderEvent = (orderId: Id<"orders">, kind: string, before?: unknown, after?: unknown, reason?: string) => {
     const now = Date.now();
     state.orderHistory.push({ _id: nextId("history"), _creationTime: now, entityType: "order", entityId: orderId, actor: ACTOR, recordedAt: now, effectiveAt: now, kind, before, after, ...(reason ? { reason } : {}) });
   };
   const lineSnapshot = (line: Line) => {
-    const { _id: lineId, _creationTime, billId, createdAt, schedule, ...fields } = line;
-    void _creationTime; void billId; void createdAt;
+    const { _id: lineId, _creationTime, orderId, createdAt, schedule, ...fields } = line;
+    void _creationTime; void orderId; void createdAt;
     return Object.fromEntries(Object.entries({ ...fields, serviceDate: schedule?.date, serviceTime: schedule?.time, lineId, priceOverride: fields.priceOverride ? { price: fields.priceOverride.price, note: fields.priceOverride.note } : undefined }).filter(([, value]) => value !== undefined));
   };
   const createOrder = (links: Partial<Order> = {}): Order => {
@@ -312,7 +312,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     state.orders.set(order._id, order);
     return order;
   };
-  const editableOrder = (orderId?: Id<"bills">): Order => {
+  const editableOrder = (orderId?: Id<"orders">): Order => {
     if (!orderId) return createOrder();
     const order = state.orders.get(orderId);
     if (!order) throw new Error("Order not found");
@@ -321,13 +321,13 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     if (order.status === "discarded") throw new Error("This order was discarded. Restore it from Orders → Discarded before changing or paying it.");
     return order;
   };
-  const editableLine = (lineId: Id<"billLines">) => {
+  const editableLine = (lineId: Id<"orderLines">) => {
     const line = state.lines.find((l) => l._id === lineId);
     if (!line) throw new Error("Item not found");
-    return { line, order: editableOrder(line.billId) };
+    return { line, order: editableOrder(line.orderId) };
   };
-  const addLine = (orderId: Id<"bills">, line: LineFields) => {
-    const row: Line = { _id: nextId("line"), _creationTime: Date.now(), billId: orderId, createdAt: Date.now(), ...line };
+  const addLine = (orderId: Id<"orders">, line: LineFields) => {
+    const row: Line = { _id: nextId("line"), _creationTime: Date.now(), orderId: orderId, createdAt: Date.now(), ...line, catalogUnitPrice: line.catalogUnitPrice ?? line.unitPrice };
     state.lines.push(row);
     return row._id;
   };
@@ -335,8 +335,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     target.bookingId ? state.bookings.find((b) => b.id === target.bookingId) : state.appointments.find((a) => a.appointmentId === target.appointmentId);
   const charging = (target: Source) => {
     const line = state.lines.find((l) =>
-      (target.bookingId ? l.bookingId === target.bookingId : l.appointmentId === target.appointmentId) && isOpen(state.orders.get(l.billId)!));
-    return line ? state.orders.get(line.billId)! : null;
+      (target.bookingId ? l.bookingId === target.bookingId : l.appointmentId === target.appointmentId) && isOpen(state.orders.get(l.orderId)!));
+    return line ? state.orders.get(line.orderId)! : null;
   };
   const linked = (target: Source) =>
     [...state.orders.values()].find((o) => isOpen(o) && (target.bookingId ? o.bookingId === target.bookingId : o.appointmentId === target.appointmentId)) ?? null;
@@ -404,12 +404,12 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     return customer;
   };
   const discardedInfo = (o: Order) => o.status === "discarded" ? { at: o.discardedAt ?? o.updatedAt, by: o.discardedBy ?? null, reason: o.discardReason ?? null } : null;
-  const liveFees = (id: Id<"serviceAppointments">, except?: Id<"bills">) => state.lines.filter(l => l.feeAppointmentId === id && l.billId !== except && (isOpen(state.orders.get(l.billId)!) || state.orders.get(l.billId)?.status === "paid" || (state.orders.get(l.billId)?.status === "void" && !state.orders.get(l.billId)?.voidUnreceived)));
+  const liveFees = (id: Id<"appointments">, except?: Id<"orders">) => state.lines.filter(l => l.feeAppointmentId === id && l.orderId !== except && (isOpen(state.orders.get(l.orderId)!) || state.orders.get(l.orderId)?.status === "paid" || (state.orders.get(l.orderId)?.status === "void" && !state.orders.get(l.orderId)?.voidUnreceived)));
   const feeBlocker = (a: FixtureAppointment | undefined, kind: "no_show" | "late_cancellation") => !a ? "This appointment no longer exists." : a.status !== (kind === "no_show" ? "no_show" : "cancelled") ? "The appointment status changed. Review the fee." : a.paid ? "This appointment is already paid. Record a refund of the difference instead of charging a fee." : null;
   const sourceIssue = (line: Line): OrderView["lines"][number]["sourceIssue"] => {
     if (line.feeAppointmentId && line.fee) {
       const a = state.appointments.find(a => a.appointmentId === line.feeAppointmentId);
-      const message = feeBlocker(a, line.fee.kind) ?? (liveFees(line.feeAppointmentId, line.billId).length ? "A fee for this appointment is already on another order or was charged." : null);
+      const message = feeBlocker(a, line.fee.kind) ?? (liveFees(line.feeAppointmentId, line.orderId).length ? "A fee for this appointment is already on another order or was charged." : null);
       return message ? { kind: "settled", message } : null;
     }
     if (!line.bookingId && !line.appointmentId) return null;
@@ -442,13 +442,13 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     if (linkedElsewhere) return "This stay is already linked to another paid row.";
     if (open) return `This stay is on ${orderTitle(open.orderNumber)}, which is still open. Take the payment there, or remove it from that order first.`;
     if (linesOf(order._id).some(l => l.bookingId === item.id)) return "This order already paid for this stay at checkout.";
-    const owed = item.paid ? 0 : round2(chargePrice(item) - item.deposit);
+    const owed = item.paid ? 0 : roundMoney(chargePrice(item) - item.deposit);
     if (owed <= 0) return "Nothing is left to pay on this stay.";
-    if (lineNet(line) > owed) return `This stay owes ${owed.toLocaleString("en-US")} THB, less than this row's ${lineNet(line).toLocaleString("en-US")}. Correct the stay's price first, or link a smaller charge.`;
+    if (lineNet(line) > owed) return `This stay owes ${(owed / 100).toLocaleString("en-US")} THB, less than this row's ${(lineNet(line) / 100).toLocaleString("en-US")}. Correct the stay's price first, or link a smaller charge.`;
     return null;
   };
   /** As linkReversal in convex/pos.ts: undoes exactly what the link applied, or refuses. */
-  const reverseLink = (link: Doc<"billLineLinks">, reason: string, sequence: number) => {
+  const reverseLink = (link: Doc<"orderLineLinks">, reason: string, sequence: number) => {
     const item = sourceOf(link);
     if (!item) throw new Error("The linked booking no longer exists, so its payment can't be reversed.");
     if ("appointmentId" in item) {
@@ -456,14 +456,14 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (!item.paid || item.price !== link.amount) throw new Error("The appointment changed since it was linked (repaid or repriced), so it can't be unlinked automatically.");
       Object.assign(item, { paid: false, price: link.appointmentPriceBefore ?? item.price, amountPaid: 0, amountRefunded: 0, revision: (item.revision ?? 0) + 1 });
     } else {
-      Object.assign(item, { deposit: Math.max(round2(item.deposit - link.amount), 0), paid: false });
+      Object.assign(item, { deposit: Math.max(roundMoney(item.deposit - link.amount), 0), paid: false });
     }
     state.links = state.links.map(l => l._id === link._id ? { ...l, status: "unlinked" as const, unlinkedAt: Date.now(), unlinkedBy: ACTOR, unlinkReason: reason, unlinkSequence: sequence } : l);
   };
-  const linkCandidates = (orderId: Id<"bills">, lineId: Id<"billLines">, query: string): LinkCandidate[] | null => {
+  const linkCandidates = (orderId: Id<"orders">, lineId: Id<"orderLines">, query: string): LinkCandidate[] | null => {
     const order = state.orders.get(orderId);
     const line = state.lines.find(l => l._id === lineId);
-    if (order?.status !== "paid" || !line || line.billId !== orderId || line.fee || (line.kind !== "service" && line.kind !== "room")) return null;
+    if (order?.status !== "paid" || !line || line.orderId !== orderId || line.fee || (line.kind !== "service" && line.kind !== "room")) return null;
     const text = query.trim();
     const customer = state.customers.find((c) => c._id === order.customerId);
     const wanted = (guest: Guest, reference: string) => (customer && sameContact(guest, customer)) || (text.length >= 2 && (matches(text, guest) || reference.toLowerCase() === text.toLowerCase()));
@@ -473,18 +473,18 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         currency: "THB", date: paymentDateInput(a.start).slice(0, 10), revision: a.revision ?? 0, problem: linkProblem(order, line, a),
       }))
       : state.bookings.filter(b => wanted(b.guest, b.reference)).map(b => ({
-        kind: "booking" as const, id: b.id, name: b.name, detail: bookingDetail(b), guestName: b.guest.name, price: chargePrice(b), owed: b.paid ? 0 : round2(chargePrice(b) - b.deposit),
+        kind: "booking" as const, id: b.id, name: b.name, detail: bookingDetail(b), guestName: b.guest.name, price: chargePrice(b), owed: b.paid ? 0 : roundMoney(chargePrice(b) - b.deposit),
         currency: "THB", date: null, revision: 0, problem: linkProblem(order, line, b),
       }));
     return rows.sort((a, b) => Number(a.problem !== null) - Number(b.problem !== null));
   };
-  const restoreCheck = (orderId: Id<"bills">): RestoreReview => {
+  const restoreCheck = (orderId: Id<"orders">): RestoreReview => {
     const o = state.orders.get(orderId); if (!o) return null;
     if (o.status !== "discarded") return { discarded: null, revision: o.revision, conflicts: [], blocking: 0, rowsLeft: 0 };
     const conflicts: Array<NonNullable<RestoreReview>["conflicts"][number]> = [];
     const lines = linesOf(orderId);
     for (const l of lines) {
-      const other = l.feeAppointmentId ? liveFees(l.feeAppointmentId, orderId).map(l => state.orders.get(l.billId)!).find(isOpen) : (l.bookingId || l.appointmentId) ? charging(l) : null;
+      const other = l.feeAppointmentId ? liveFees(l.feeAppointmentId, orderId).map(l => state.orders.get(l.orderId)!).find(isOpen) : (l.bookingId || l.appointmentId) ? charging(l) : null;
       if (other) conflicts.push({ kind: "charged_elsewhere", blocking: true, lineId: l._id, name: l.name, message: `${l.name} is now on ${orderTitle(other.orderNumber)}.`, order: { _id: other._id, title: orderTitle(other.orderNumber) } });
       else { const issue = sourceIssue(l); if (issue) conflicts.push({ ...issue, blocking: false, lineId: l._id, name: l.name, order: null }); }
     }
@@ -498,30 +498,30 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const blocking = conflicts.filter(c => c.blocking).length;
     return { discarded: discardedInfo(o)!, revision: o.revision, conflicts, blocking, rowsLeft: lines.length - blocking };
   };
-  /** As convex/lib/billRefunds.ts: typed refusals in satang. */
+  /** As convex/lib/orderRefunds.ts: typed refusals in satang. */
   const refundFail = (code: string, message: string, extra: Record<string, unknown> = {}): never => { throw new ConvexError({ code, message, ...extra }); };
-  const posRefundsOf = (orderId: Id<"bills">) => state.posRefunds.filter((r) => r.orderId === orderId);
-  const refundedOn = (lineId: Id<"billLines">) => state.posRefunds.filter((r) => r.lineId === lineId).reduce((n, r) => n + r.amount, 0);
+  const posRefundsOf = (orderId: Id<"orders">) => state.posRefunds.filter((r) => r.orderId === orderId);
+  const refundedOn = (lineId: Id<"orderLines">) => state.posRefunds.filter((r) => r.lineId === lineId).reduce((n, r) => n + r.amount, 0);
   const walkIn = (line: Line) => !line.bookingId && !line.appointmentId && line.kind !== "booking" && line.kind !== "appointment" && !state.links.some((l) => l.lineId === line._id && l.status === "active");
-  const remainingOn = (order: Order, line: Line) => (order.status === "paid" && order.paidAt !== undefined && !order.voidUnreceived && walkIn(line) ? Math.max(0, Math.round(lineNet(line) * 100) - refundedOn(line._id)) : 0);
-  const refundView = (row: Doc<"billRefunds">): LineRefund => ({
+  const remainingOn = (order: Order, line: Line) => (order.status === "paid" && order.paidAt !== undefined && !order.voidUnreceived && walkIn(line) ? Math.max(0, lineNet(line) - refundedOn(line._id)) : 0);
+  const refundView = (row: Doc<"orderRefunds">): LineRefund => ({
     _id: row._id, _creationTime: row._creationTime, orderId: row.orderId, lineId: row.lineId, amount: row.amount, currency: row.currency, method: row.method,
     reason: row.reason, idempotencyKey: row.idempotencyKey, createdAt: row.createdAt, createdByEmail: row.createdByEmail, businessDate: row.businessDate,
   });
   /** As refundState: the order, the line and its remaining satang, or a typed refusal. */
-  const refundCheck = (orderId: Id<"bills">, lineId: Id<"billLines">, currency: string, amount: number, reason: string) => {
+  const refundCheck = (orderId: Id<"orders">, lineId: Id<"orderLines">, currency: string, amount: number, reason: string) => {
     if (!Number.isSafeInteger(amount) || amount <= 0) refundFail("INVALID_REFUND_AMOUNT", "Refund must be a positive integer in satang.");
     if (!reason.trim() || reason.trim().length > 500) refundFail("INVALID_REFUND_REASON", "Give a refund reason of 1–500 characters.");
     const order = state.orders.get(orderId);
     if (!order || order.status !== "paid" || order.paidAt === undefined || order.voidUnreceived) return refundFail("ORDER_NOT_PAID", "Only a paid, settled order can be refunded.");
     const line = state.lines.find((l) => l._id === lineId);
-    if (!line || line.billId !== order._id || !walkIn(line)) return refundFail("LINE_NOT_REFUNDABLE", "Use the stay or appointment refund flow for attached lines; choose a walk-in line on this order.");
+    if (!line || line.orderId !== order._id || !walkIn(line)) return refundFail("LINE_NOT_REFUNDABLE", "Use the stay or appointment refund flow for attached lines; choose a walk-in line on this order.");
     if (currency !== line.currency || currency !== order.currency) refundFail("REFUND_CURRENCY_MISMATCH", `Refund currency must be ${order.currency}.`);
     const remaining = remainingOn(order, line);
     if (amount > remaining) refundFail("REFUND_EXCEEDS_REMAINING", `At most ${remaining} satang remains refundable.`, { remaining });
     return { order, line, remaining };
   };
-  /** As executeBillRefund: replay by key, the refund rule, the cap, then one ledger row. */
+  /** As executeOrderRefund: replay by key, the refund rule, the cap, then one ledger row. */
   const executeRefund = (args: RefundArgs) => {
     const reason = args.reason.trim();
     const key = args.idempotencyKey.trim();
@@ -538,13 +538,13 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     cashierAction("refund");
     const { order, line, remaining } = refundCheck(args.orderId, args.lineId, args.currency, args.amount, reason);
     const now = Date.now();
-    const row: Doc<"billRefunds"> = {
+    const row: Doc<"orderRefunds"> = {
       _id: nextId("refund"), _creationTime: now, orderId: order._id, lineId: line._id, amount: args.amount, currency: args.currency, method: args.method,
       reason, idempotencyKey: key, createdBy: staff.email, createdByEmail: staff.email, createdAt: now, businessDate: businessDayOf(now),
     };
     state.posRefunds.push(row);
     patchOrder(order._id, { revision: order.revision + 1, correctionRevision: (order.correctionRevision ?? 0) + 1, updatedAt: now });
-    audit({ billId: order._id, lineId: line._id, kind: "refund", note: `${line.name}: ${args.amount / 100} ${args.currency} returned (${args.method}). ${reason}`, fromPrice: remaining / 100, toPrice: (remaining - args.amount) / 100 });
+    audit({ orderId: order._id, lineId: line._id, kind: "refund", note: `${line.name}: ${args.amount / 100} ${args.currency} returned (${args.method}). ${reason}`, fromPrice: remaining, toPrice: remaining - args.amount });
     orderEvent(order._id, "refund", undefined, { refundId: row._id, lineId: line._id, amount: args.amount, currency: args.currency, method: args.method, businessDate: row.businessDate }, reason);
     return { refund: refundView(row), replayed: false };
   };
@@ -565,7 +565,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       editableOrder(o._id);
       if (o.revision !== args.expectedRevision) throw new Error("The order changed since you opened it. Review it and try again.");
       const lines = linesOf(o._id); if (!lines.length) throw new Error("This order has no items, so it isn’t listed and there is nothing to discard.");
-      if (state.payments.some(p => p.billId === o._id)) throw new Error("This order has payments recorded, so it can’t be discarded.");
+      if (state.payments.some(p => p.orderId === o._id)) throw new Error("This order has payments recorded, so it can’t be discarded.");
       patchOrder(o._id, { status: "discarded", discardedAt: Date.now(), discardedBy: ACTOR, discardReason: args.reason?.trim() || undefined, lifecycleKey: args.idempotencyKey, revision: o.revision + 1, updatedAt: Date.now() });
       orderEvent(o._id, "discarded", { ...o, lines: lines.map(lineSnapshot) }, { status: "discarded" }, args.reason);
       return { replayed: false };
@@ -597,14 +597,14 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (args.expectedRevision !== undefined && (!Number.isInteger(args.expectedRevision) || args.expectedRevision !== (a?.revision ?? 0))) throw new Error("This appointment changed. Review it before adding a fee.");
       const blocked = feeBlocker(a, args.kind); if (blocked || !a) throw new Error(blocked ?? "Appointment not found");
       assertPrice(args.amount);
-      if (args.amount <= 0 || round2(args.amount) !== args.amount || (a.price > 0 && args.amount > a.price)) throw new Error("Fee must be positive, whole satang and no more than the appointment price.");
+      if (args.amount <= 0 || roundMoney(args.amount) !== args.amount || (a.price > 0 && args.amount > a.price)) throw new Error("Fee must be positive, whole satang and no more than the appointment price.");
       const others = liveFees(a.appointmentId);
-      const same = others.find(l => l.billId === args.orderId && isOpen(state.orders.get(l.billId)!) && l.fee?.kind === args.kind && l.unitPrice === args.amount);
+      const same = others.find(l => l.orderId === args.orderId && isOpen(state.orders.get(l.orderId)!) && l.fee?.kind === args.kind && l.unitPrice === args.amount);
       if (same) {
-        if (key) feeAttempts.set(key, { fingerprint, orderId: same.billId, lineId: same._id });
-        return { orderId: same.billId, lineId: same._id, replayed: true };
+        if (key) feeAttempts.set(key, { fingerprint, orderId: same.orderId, lineId: same._id });
+        return { orderId: same.orderId, lineId: same._id, replayed: true };
       }
-      if (others.length) throw new Error(`A fee for this appointment is already on ${orderTitle(state.orders.get(others[0].billId)!.orderNumber)} or was charged.`);
+      if (others.length) throw new Error(`A fee for this appointment is already on ${orderTitle(state.orders.get(others[0].orderId)!.orderNumber)} or was charged.`);
       const o = editableOrder(args.orderId);
       const lineId = addLine(o._id, { kind: "extra", name: `${args.kind === "no_show" ? "No-show fee" : "Late cancellation fee"} · ${a.name}`, detail: `${a.detail} · service not given`, unitPrice: args.amount, currency: "THB", qty: 1, feeAppointmentId: a.appointmentId, fee: { kind: args.kind, reason: args.reason?.trim() || undefined, by: ACTOR, at: Date.now() } });
       refresh(o._id); orderEvent(o._id, "fee_added", undefined, lineSnapshot(state.lines.find(l => l._id === lineId)!), args.reason);
@@ -634,7 +634,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         cashierAction("customPrice");
         if (!item.name.trim()) throw new Error("Name the item");
         assertPrice(item.price);
-        line = { kind: "extra", name: item.name.trim(), unitPrice: round2(item.price), currency: "THB", qty: 1 };
+        line = { kind: "extra", name: item.name.trim(), unitPrice: roundMoney(item.price), currency: "THB", qty: 1 };
       }
       const same = MERGES_QTY[line.kind]
         ? linesOf(order._id).find((l) => l.kind === line.kind && !l.fee && !l.priceOverride && !l.discount && l.unitPrice === line.unitPrice &&
@@ -650,7 +650,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       attachTo(order, target);
       return { orderId: order._id };
     }),
-    updateLine: ({ lineId, staffId: staff, startAt, serviceDate, serviceTime, qtyChange, discount }) => later(() => {
+    updateLine: ({ lineId, staffId: staff, serviceDate, serviceTime, qtyChange, discount }) => later(() => {
       const { line, order } = editableLine(lineId);
       if (line.fee) throw new Error("Remove and add the fee again to change its amount.");
       const patch: Partial<Line> = {};
@@ -660,12 +660,10 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         patch.staffId = staff ?? undefined;
       }
       const scheduling = serviceDate !== undefined || serviceTime !== undefined;
-      if (scheduling && startAt !== undefined) throw new Error("Set the service date and time, or a start time, not both");
-      if (startAt !== undefined) { patch.startAt = startAt ?? undefined; patch.schedule = undefined; }
       if (scheduling) {
         // As pos.updateLine: independent optional parts; a legacy row keeps its other part.
         if (line.kind !== "service") throw new Error("Only service rows take a date and time here");
-        const next = changeSchedule(line.schedule ?? (line.startAt !== undefined ? scheduleFromStartAt(line.startAt) : {}), { date: serviceDate, time: serviceTime });
+        const next = changeSchedule(line.schedule ?? {}, { date: serviceDate, time: serviceTime });
         if ("problem" in next) throw new Error(next.problem);
         patch.schedule = next.schedule;
         patch.startAt = undefined;
@@ -691,16 +689,16 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (line.fee) throw new Error("Remove and add the fee again to change its amount.");
       if (line.kind === "booking" && price !== null) throw new Error(ATTACHED_PRICE);
       cashierAction("customPrice");
-      cashierDiscount({ ...line, priceOverride: price === null ? undefined : { price: round2(price), note, by: ACTOR, at: 0 } }, "customPrice");
+      cashierDiscount({ ...line, priceOverride: price === null ? undefined : { price: roundMoney(price), note, by: ACTOR, at: 0 } }, "customPrice");
       const fromPrice = line.priceOverride?.price ?? line.unitPrice;
       if (price === null) {
         if (!line.priceOverride) return null;
         patchLine(line._id, { priceOverride: undefined });
-        audit({ billId: order._id, lineId, kind: "price_override", fromPrice, toPrice: line.unitPrice, note: note.trim() || undefined });
+        audit({ orderId: order._id, lineId, kind: "price_override", fromPrice, toPrice: line.unitPrice, note: note.trim() || undefined });
       } else {
         const clean = assertPriceOverride(price, note);
-        patchLine(line._id, { priceOverride: { price: round2(price), note: clean, by: ACTOR, at: Date.now() } });
-        audit({ billId: order._id, lineId, kind: "price_override", fromPrice, toPrice: round2(price), note: clean });
+        patchLine(line._id, { priceOverride: { price: roundMoney(price), note: clean, by: ACTOR, at: Date.now() } });
+        audit({ orderId: order._id, lineId, kind: "price_override", fromPrice, toPrice: roundMoney(price), note: clean });
       }
       refresh(order._id);
       return null;
@@ -720,11 +718,11 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (issue.kind === "changed") {
         const item = sourceOf(line)!;
         patchLine(line._id, { unitPrice: chargePrice(item), deposit: item.deposit || undefined, detail: "id" in item ? bookingDetail(item) : item.detail, ...("appointmentId" in item ? { staffId: item.staffId, serviceId: item.serviceId, startAt: item.start } : {}) });
-        audit({ billId: order._id, lineId, kind: "source_updated", fromPrice: line.unitPrice, toPrice: item.price }); refresh(order._id);
+        audit({ orderId: order._id, lineId, kind: "source_updated", fromPrice: line.unitPrice, toPrice: item.price }); refresh(order._id);
         return { result: "updated" as const };
       }
       state.lines = state.lines.filter((l) => l._id !== lineId);
-      audit({ billId: order._id, lineId, kind: "source_removed", fromPrice: line.unitPrice, note: line.name });
+      audit({ orderId: order._id, lineId, kind: "source_removed", fromPrice: line.unitPrice, note: line.name });
       refresh(order._id);
       return { result: "removed" as const };
     }),
@@ -751,7 +749,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (!order.promotion) return { revision: order.revision };
       const before = { code: order.promotion.code, discount: order.promotion.discount };
       patchOrder(order._id, { promotion: undefined });
-      state.lines = state.lines.map((line) => (line.billId === order._id ? { ...line, couponDiscount: undefined } : line));
+      state.lines = state.lines.map((line) => (line.orderId === order._id ? { ...line, couponDiscount: undefined } : line));
       refresh(order._id);
       orderEvent(order._id, "coupon_removed", before);
       return { revision: state.orders.get(order._id)!.revision };
@@ -827,14 +825,14 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const order = editableOrder(orderId);
       if (order.customerId === customerId) return { orderId: order._id };
       patchOrder(order._id, { customerId, revision: order.revision + 1, updatedAt: Date.now() });
-      audit({ billId: order._id, kind: "customer_linked", customerId, note: customer.name });
+      audit({ orderId: order._id, kind: "customer_linked", customerId, note: customer.name });
       return { orderId: order._id };
     }),
     unlinkCustomer: ({ orderId }) => later(() => {
       const order = editableOrder(orderId);
       if (!order.customerId) return { orderId };
       patchOrder(order._id, { customerId: undefined, revision: order.revision + 1, updatedAt: Date.now() });
-      audit({ billId: order._id, kind: "customer_unlinked", customerId: order.customerId });
+      audit({ orderId: order._id, kind: "customer_unlinked", customerId: order.customerId });
       return { orderId };
     }),
     saveOrder: ({ orderId }) => later(() => {
@@ -847,10 +845,10 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       editableOrder(orderId);
       const lines = linesOf(orderId);
       if (lines.length) orderEvent(orderId, "cleared", { lines: lines.map(lineSnapshot) });
-      state.lines = state.lines.filter((l) => l.billId !== orderId);
+      state.lines = state.lines.filter((l) => l.orderId !== orderId);
       // As on the server (pos.clearOrder): starting over drops the coupon too.
       patchOrder(orderId, { promotion: undefined });
-      audit({ billId: orderId, kind: "cleared" });
+      audit({ orderId: orderId, kind: "cleared" });
       refresh(orderId);
       return null;
     }),
@@ -878,8 +876,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
           throw new ConvexError({ code: "coupon_changed", message: `The coupon now saves ${formatMoney(result.discount)}. Check the coupon again before taking payment.`, discount: result.discount });
         }
       }
-      const totals = billTotals(lines);
-      if (totals.due !== round2(expectedDue) || order.revision !== expectedRevision) throw new Error("The order changed. Check the total and pay again.");
+      const totals = orderTotals(lines);
+      if (totals.due !== roundMoney(expectedDue) || order.revision !== expectedRevision) throw new Error("The order changed. Check the total and pay again.");
       assertTenders(tenders, totals.due);
       const customer = order.customerId ? checkedCustomer(order.customerId) : undefined;
       if (order.customerId && expectedCustomerRevision !== (customer?.revision ?? 0)) throw new Error("The customer changed. Review the customer and pay again.");
@@ -898,7 +896,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       }
       const now = Date.now();
       for (const tender of tenders) {
-        state.payments.push({ _id: nextId("pay"), _creationTime: now, billId: orderId, ...tender, idempotencyKey, createdBy: ACTOR, createdAt: now, effectiveAt: paymentAt });
+        state.payments.push({ _id: nextId("pay"), _creationTime: now, orderId: orderId, ...tender, idempotencyKey, createdBy: ACTOR, createdAt: now, effectiveAt: paymentAt });
       }
       const receiptNumber = nextNumber("receipt");
       patchOrder(orderId, {
@@ -906,10 +904,10 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         ...(customer ? { customerSnapshot: { name: customer.name, phone: customer.phone, email: customer.email } } : {}),
       });
       if (promotion && coupon) {
-        coupon.rules = { ...coupon.rules, used: coupon.rules.used + 1, discountGranted: round2(coupon.rules.discountGranted + promotion.discount) };
+        coupon.rules = { ...coupon.rules, used: coupon.rules.used + 1, discountGranted: roundMoney(coupon.rules.discountGranted + promotion.discount) };
         patchOrder(orderId, { promotion: { ...promotion, redemptionId: nextId("redemption") } });
       }
-      audit({ billId: orderId, kind: "paid", toPrice: totals.due });
+      audit({ orderId: orderId, kind: "paid", toPrice: totals.due });
       return { receiptNumber, replayed: false };
     }),
     amendOrderPayment: (args) => later(() => {
@@ -919,10 +917,10 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const order = correctionOrder(args.orderId, args.expectedCorrectionRevision);
       const reason = checkedReason(args.reason);
       const patch: Partial<Order> = {};
-      const change: Partial<Doc<"billCorrections">> = {};
-      const payments = state.payments.filter(p => p.billId === order._id);
+      const change: Partial<Doc<"orderCorrections">> = {};
+      const payments = state.payments.filter(p => p.orderId === order._id);
       if (args.tenders) {
-        const total = round2(payments.reduce((n, p) => n + p.amount, 0));
+        const total = roundMoney(payments.reduce((n, p) => n + p.amount, 0));
         if (!total) throw new Error("Nothing was paid on this order, so there are no tenders to correct.");
         assertTenders(args.tenders, total);
         const before = order.amendedTenders ?? payments.map(cleanTender);
@@ -952,7 +950,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       addCorrection(order._id, args.idempotencyKey, sequence, "amended", reason, change);
       patchOrder(order._id, { ...patch, correctionRevision: sequence });
       if (patch.paymentEffectiveAt !== undefined) for (const row of state.sourcePayments.get(order._id) ?? []) row.effectiveAt = patch.paymentEffectiveAt;
-      if (patch.paymentEffectiveAt !== undefined) state.links = state.links.map(l => l.billId === order._id && l.status === "active" ? { ...l, effectiveAt: patch.paymentEffectiveAt! } : l);
+      if (patch.paymentEffectiveAt !== undefined) state.links = state.links.map(l => l.orderId === order._id && l.status === "active" ? { ...l, effectiveAt: patch.paymentEffectiveAt! } : l);
       return { sequence, replayed: false };
     }),
     linkPaidLine: (args) => later(() => {
@@ -968,7 +966,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (order?.status !== "paid") throw new Error("Only a paid order’s rows can be linked.");
       if ((order.correctionRevision ?? 0) !== args.expectedCorrectionRevision) throw new Error("This receipt was corrected since you opened it. Review it and try again.");
       const reason = checkedReason(args.reason);
-      const line = state.lines.find(l => l._id === args.lineId && l.billId === order._id);
+      const line = state.lines.find(l => l._id === args.lineId && l.orderId === order._id);
       if (!line) throw new Error("Item not found on this order");
       if (state.links.some(l => l.lineId === line._id && l.status === "active")) throw new Error("This row is already linked. Unlink it first.");
       if (refundedOn(line._id)) refundFail("LINE_HAS_REFUNDS", "A refunded line cannot be allocated to a stay or appointment.");
@@ -980,14 +978,14 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const amount = lineNet(line);
       const now = Date.now();
       const sequence = (order.correctionRevision ?? 0) + 1;
-      const link: Doc<"billLineLinks"> = {
-        _id: nextId("link"), _creationTime: now, billId: order._id, lineId: line._id, amount, currency: "THB", status: "active",
+      const link: Doc<"orderLineLinks"> = {
+        _id: nextId("link"), _creationTime: now, orderId: order._id, lineId: line._id, amount, currency: "THB", status: "active",
         effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? now, reason, linkedAt: now, linkedBy: ACTOR, sequence,
         ...("appointmentId" in item ? { kind: "appointment" as const, appointmentId: item.appointmentId, appointmentPriceBefore: item.price } : { kind: "booking" as const, bookingId: item.id }),
       };
       // As pos.linkPaidLine: the appointment is paid at what the row was charged; the stay gets this payment.
       if ("appointmentId" in item) Object.assign(item, { paid: true, price: amount, amountPaid: amount, amountRefunded: 0, revision: (item.revision ?? 0) + 1 });
-      else Object.assign(item, { deposit: round2(item.deposit + amount), paid: round2(item.deposit + amount) >= chargePrice(item) });
+      else Object.assign(item, { deposit: roundMoney(item.deposit + amount), paid: roundMoney(item.deposit + amount) >= chargePrice(item) });
       state.links.push(link);
       addCorrection(order._id, args.idempotencyKey, sequence, "linked", reason, { lineId: line._id, linkId: link._id, amount, ...target });
       patchOrder(order._id, { correctionRevision: sequence });
@@ -1004,7 +1002,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (order?.status !== "paid") throw new Error("Only a paid order’s links can be undone.");
       if ((order.correctionRevision ?? 0) !== args.expectedCorrectionRevision) throw new Error("This receipt was corrected since you opened it. Review it and try again.");
       const reason = checkedReason(args.reason);
-      const link = state.links.find(l => l._id === args.linkId && l.billId === order._id);
+      const link = state.links.find(l => l._id === args.linkId && l.orderId === order._id);
       if (!link) throw new Error("Link not found on this order");
       if (link.status !== "active") throw new Error("This link was already undone.");
       const sequence = (order.correctionRevision ?? 0) + 1;
@@ -1019,7 +1017,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const order = correctionOrder(args.orderId, args.expectedCorrectionRevision);
       const reason = checkedReason(args.reason);
       if (posRefundsOf(order._id).length) refundFail("ORDER_HAS_REFUNDS", "This order has recorded refunds and cannot be voided.");
-      if (state.refunds.some(r => r.billId === order._id && r.amount > 0) || (options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).some(r => r.billId === order._id || linesOf(order._id).some(l => l.appointmentId === r.appointmentId))) throw new Error("Money was refunded, so money was received.");
+      if (state.refunds.some(r => r.orderId === order._id && r.amount > 0) || (options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).some(r => r.orderId === order._id || linesOf(order._id).some(l => l.appointmentId === r.appointmentId))) throw new Error("Money was refunded, so money was received.");
       for (const line of linesOf(order._id)) {
         const source = sourceOf(line);
         const payment = (state.sourcePayments.get(order._id) ?? []).find(row => line.bookingId ? row.bookingId === line.bookingId : row.appointmentId === line.appointmentId);
@@ -1031,14 +1029,14 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         if (source && payment) { source.paid = false; if (line.appointmentId && "appointmentId" in source) { source.price = payment.originalPrice; source.amountPaid = 0; source.amountRefunded = 0; } }
       }
       // Rows linked after payment are reversed too (a refusal throws and the fixture rolls back).
-      for (const link of state.links.filter(l => l.billId === order._id && l.status === "active")) reverseLink(link, `Order voided as recorded in error: ${reason}`, (order.correctionRevision ?? 0) + 1);
+      for (const link of state.links.filter(l => l.orderId === order._id && l.status === "active")) reverseLink(link, `Order voided as recorded in error: ${reason}`, (order.correctionRevision ?? 0) + 1);
       // No money was received, so the coupon use is given back (a plain void keeps it).
       const used = order.promotion ? state.coupons.find((c) => c.id === order.promotion!.couponId) : undefined;
-      if (used && order.promotion) used.rules = { ...used.rules, used: Math.max(0, used.rules.used - 1), discountGranted: Math.max(0, round2(used.rules.discountGranted - order.promotion.discount)) };
+      if (used && order.promotion) used.rules = { ...used.rules, used: Math.max(0, used.rules.used - 1), discountGranted: Math.max(0, roundMoney(used.rules.discountGranted - order.promotion.discount)) };
       const sequence = (order.correctionRevision ?? 0) + 1;
       addCorrection(order._id, args.idempotencyKey, sequence, "void_unreceived", reason);
       patchOrder(order._id, { status: "void", voidUnreceived: true, correctionRevision: sequence, voidedAt: Date.now(), voidedBy: ACTOR, voidReason: reason, updatedAt: Date.now() });
-      audit({ billId: order._id, kind: "void", note: `Recorded in error, no money received: ${reason}` });
+      audit({ orderId: order._id, kind: "void", note: `Recorded in error, no money received: ${reason}` });
       return { replayed: false };
     }),
     voidOrder: ({ orderId, reason }) => later(() => {
@@ -1048,39 +1046,39 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       if (order?.status !== "paid") throw new Error("Only a paid order can be voided");
       if (posRefundsOf(orderId).length) refundFail("ORDER_HAS_REFUNDS", "This order has recorded refunds and cannot be voided.");
       patchOrder(orderId, { status: "void", voidedAt: Date.now(), voidedBy: ACTOR, voidReason: reason.trim(), updatedAt: Date.now() });
-      audit({ billId: orderId, kind: "void", note: reason.trim() });
+      audit({ orderId: orderId, kind: "void", note: reason.trim() });
       return null;
     }),
   };
 
   /** As previewStaffApproval, without coupon re-splitting: the amount and the total before and after. */
-  const previewRequest = (orderId: Id<"bills">, payload: ApprovalPayload) => {
+  const previewRequest = (orderId: Id<"orders">, payload: ApprovalPayload) => {
     const order = state.orders.get(orderId);
     if (!order) throw new ConvexError("Order not found");
     const lines = linesOf(orderId);
-    const totalBefore = billTotals(lines).total;
+    const totalBefore = orderTotals(lines).total;
     if (payload.kind === "discount" || (payload.kind === "customPrice" && payload.action === "overrideLinePrice")) {
       if (!isOpen(order)) throw new ConvexError("Only an unpaid order can be changed");
       const line = lines.find((row) => row._id === payload.lineId);
       if (!line) throw new ConvexError("Item not found on this order");
       const next: Line = payload.kind === "discount"
         ? { ...line, discount: payload.discount }
-        : { ...line, priceOverride: payload.price === null ? undefined : { price: round2(payload.price), note: payload.note, by: "", at: 0 } };
+        : { ...line, priceOverride: payload.price === null ? undefined : { price: roundMoney(payload.price), note: payload.note, by: "", at: 0 } };
       const { subtotalSatang, reductionSatang } = manualReductionSatang(next);
-      const after = billTotals(lines.map((row) => (row._id === line._id ? next : row))).total;
-      return { totalBefore, totalAfter: after, amount: reductionSatang / 100, percent: subtotalSatang ? (reductionSatang * 100) / subtotalSatang : 0 };
+      const after = orderTotals(lines.map((row) => (row._id === line._id ? next : row))).total;
+      return { totalBefore, totalAfter: after, amount: reductionSatang, percent: subtotalSatang ? Math.round((reductionSatang * 10000) / subtotalSatang) : 0 };
     }
     if (payload.kind === "customPrice" && payload.action === "addCustomItem") {
       if (!isOpen(order)) throw new ConvexError("Only an unpaid order can be changed");
       assertPrice(payload.price);
-      return { totalBefore, totalAfter: round2(totalBefore + payload.price), amount: round2(payload.price) };
+      return { totalBefore, totalAfter: roundMoney(totalBefore + payload.price), amount: roundMoney(payload.price) };
     }
     if (payload.kind === "customPrice") throw new ConvexError("The preview doesn't model this request.");
     if (payload.kind === "refund") {
       // Net received: the receipt's charge less its line refunds, before and after this one.
       refundCheck(orderId, payload.lineId, payload.currency, payload.amountSatang, payload.reason);
-      const before = (Math.round(totalBefore * 100) - posRefundsOf(orderId).reduce((n, r) => n + r.amount, 0)) / 100;
-      return { totalBefore: before, totalAfter: round2(before - payload.amountSatang / 100), amount: payload.amountSatang / 100 };
+      const before = totalBefore - posRefundsOf(orderId).reduce((n, r) => n + r.amount, 0);
+      return { totalBefore: before, totalAfter: roundMoney(before - payload.amountSatang), amount: payload.amountSatang };
     }
     if (order.status !== "paid") throw new ConvexError("Only a paid order can be corrected");
     return { totalBefore, totalAfter: payload.kind === "paymentFix" && payload.action === "voidUnreceivedOrder" ? 0 : totalBefore, amount: totalBefore };
@@ -1098,7 +1096,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     return request;
   };
   /** Runs an approved request with the approver's own writes, as executeStaffApproval does. */
-  const executeRequest = async (payload: ApprovalPayload, orderId: Id<"bills">) => {
+  const executeRequest = async (payload: ApprovalPayload, orderId: Id<"orders">) => {
     if (payload.kind === "discount") return posActions.updateLine({ lineId: payload.lineId, discount: payload.discount });
     if (payload.kind === "customPrice" && payload.action === "overrideLinePrice") return posActions.overrideLinePrice({ lineId: payload.lineId, price: payload.price, note: payload.note });
     if (payload.kind === "customPrice" && payload.action === "addCustomItem") return posActions.addItem({ orderId, item: { kind: "extra", name: payload.name, price: payload.price } });
@@ -1173,20 +1171,20 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
   const checkedEffective = effectiveTime;
   const checkedReason = (reason: string) => { if (!reason.trim() || reason.trim().length > 500) throw new Error("Enter a reason (at most 500 characters)"); return reason.trim(); };
   const cleanTender = (p: OrderView["paymentRecord"]["tenders"][number]) => ({ method: p.method, amount: p.amount, ...(p.received !== undefined ? { received: p.received } : {}) });
-  const correctionReplay = (orderId: Id<"bills">, key: string, kind: Doc<"billCorrections">["kind"]) => {
+  const correctionReplay = (orderId: Id<"orders">, key: string, kind: Doc<"orderCorrections">["kind"]) => {
     if (key.trim().length < 8 || key.trim().length > 100) throw new Error("Invalid correction attempt");
-    const row = state.corrections.find(c => c.billId === orderId && c.idempotencyKey === key.trim());
+    const row = state.corrections.find(c => c.orderId === orderId && c.idempotencyKey === key.trim());
     if (row && row.kind !== kind) throw new Error("This correction attempt was already used for another action.");
     return row;
   };
-  const correctionOrder = (orderId: Id<"bills">, revision: number) => {
+  const correctionOrder = (orderId: Id<"orders">, revision: number) => {
     const order = state.orders.get(orderId);
     if (order?.status !== "paid") throw new Error("Only a paid order’s payment can be corrected.");
     if ((order.correctionRevision ?? 0) !== revision) throw new Error("The payment recording changed. Review it before correcting again.");
     return order;
   };
-  const addCorrection = (billId: Id<"bills">, idempotencyKey: string, sequence: number, kind: Doc<"billCorrections">["kind"], reason: string, change: Partial<Doc<"billCorrections">> = {}) => {
-    state.corrections.push({ _id: nextId("correction"), _creationTime: Date.now(), billId, sequence, kind, reason, actor: ACTOR, recordedAt: Date.now(), idempotencyKey: idempotencyKey.trim(), ...change });
+  const addCorrection = (orderId: Id<"orders">, idempotencyKey: string, sequence: number, kind: Doc<"orderCorrections">["kind"], reason: string, change: Partial<Doc<"orderCorrections">> = {}) => {
+    state.corrections.push({ _id: nextId("correction"), _creationTime: Date.now(), orderId, sequence, kind, reason, actor: ACTOR, recordedAt: Date.now(), idempotencyKey: idempotencyKey.trim(), ...change });
   };
   const moveMergeBatch = (sourceId: Id<"customers">) => {
     const job = state.mergeJobs.find(j => j.sourceId === sourceId);
@@ -1214,7 +1212,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const b = state.bookings.find((x) => x.id === bookingId);
     return b ? { kind: "booking", id: b.id, reference: b.reference, guestName: b.guest.name, guestPhone: b.guest.phone, guestEmail: b.guest.email, name: b.name, linked } : null;
   };
-  const appointmentRef = (appointmentId: Id<"serviceAppointments">, linked: boolean): SourceRef | null => {
+  const appointmentRef = (appointmentId: Id<"appointments">, linked: boolean): SourceRef | null => {
     const a = state.appointments.find((x) => x.appointmentId === appointmentId);
     return a ? { kind: "appointment", id: a.appointmentId, reference: a.reference, guestName: a.guest.name, guestPhone: a.guest.phone, guestEmail: a.guest.email, name: a.name, linked } : null;
   };
@@ -1249,10 +1247,10 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
   };
   const allRefunds = () => [...new Map([
     ...state.refunds,
-    ...(options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).flatMap(r => r.billId ? [{ sourceType: "appointment" as const, _id: r._id, billId: r.billId, appointmentId: r.appointmentId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
-    ...(options.financialHistory?.bookingRefunds ?? []).flatMap(r => r.billId ? [{ sourceType: "booking" as const, _id: r._id, billId: r.billId, bookingId: r.bookingId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
+    ...(options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).flatMap(r => r.orderId ? [{ sourceType: "appointment" as const, _id: r._id, orderId: r.orderId, appointmentId: r.appointmentId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
+    ...(options.financialHistory?.bookingRefunds ?? []).flatMap(r => r.orderId ? [{ sourceType: "booking" as const, _id: r._id, orderId: r.orderId, bookingId: r.bookingId, amount: r.amount, currency: r.currency, method: r.method, reason: r.reason, effectiveAt: r.effectiveAt, recordedAt: r.recordedAt, recordedBy: r.recordedBy }] : []),
   ].map(r => [r._id, r])).values()];
-  const orderView = (orderId: Id<"bills">): OrderView | null => {
+  const orderView = (orderId: Id<"orders">): OrderView | null => {
     const order = state.orders.get(orderId);
     if (!order) return null;
     const lines = linesOf(orderId);
@@ -1263,12 +1261,11 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     return {
       order: { ...order, title: orderTitle(order.orderNumber), state: stateOf(order) },
       refundedAmountSatang,
-      fullyRefunded: order.status === "paid" && refundedAmountSatang > 0 && refundedAmountSatang === Math.round(billTotals(lines).total * 100),
+      fullyRefunded: order.status === "paid" && refundedAmountSatang > 0 && refundedAmountSatang === orderTotals(lines).total,
       refundHistoryTruncated: false,
       posRefunds: posRefunds.toReversed().slice(0, 50).map(refundView),
       customer: customer ? card(customer) : null,
       receiptCustomer: order.customerSnapshot ?? null,
-      legacyGuest: null,
       source: sourceRefs(order)[0] ?? null,
       sources: sourceRefs(order),
       parentOrder: parent ? { _id: parent._id, title: orderTitle(parent.orderNumber) } : null,
@@ -1286,20 +1283,20 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         code: order.promotion.code, couponVersion: order.promotion.couponVersion, discount: order.promotion.discount, problem: order.promotion.problem ?? null,
         terms: state.coupons.find((c) => c.id === order.promotion!.couponId)?.terms ?? null,
       } : null,
-      payments: state.payments.filter((p) => p.billId === orderId),
-      audit: state.audit.filter((a) => a.billId === orderId).toReversed().slice(0, 50),
-      totals: billTotals(lines),
+      payments: state.payments.filter((p) => p.orderId === orderId),
+      audit: state.audit.filter((a) => a.orderId === orderId).toReversed().slice(0, 50),
+      totals: orderTotals(lines),
       paymentRecord: {
         effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? null,
-        tenders: order.amendedTenders ?? state.payments.filter(p => p.billId === orderId).map(cleanTender),
+        tenders: order.amendedTenders ?? state.payments.filter(p => p.orderId === orderId).map(cleanTender),
         tendersAmended: order.amendedTenders !== undefined,
         customer: order.amendedCustomer !== undefined ? order.amendedCustomer : order.customerSnapshot ?? null,
         customerAmended: order.amendedCustomer !== undefined,
         correctionRevision: order.correctionRevision ?? 0, voidUnreceived: order.voidUnreceived ?? false,
       },
       discarded: discardedInfo(order),
-      corrections: state.corrections.filter(c => c.billId === orderId).toReversed().slice(0, 20),
-      links: state.links.filter(l => l.billId === orderId).toReversed().map(l => {
+      corrections: state.corrections.filter(c => c.orderId === orderId).toReversed().slice(0, 20),
+      links: state.links.filter(l => l.orderId === orderId).toReversed().map(l => {
         const ref = l.appointmentId ? appointmentRef(l.appointmentId, false) : stayRef(l.bookingId!, false);
         return {
           _id: l._id, lineId: l.lineId, kind: l.kind, status: l.status, amount: l.amount, currency: l.currency, effectiveAt: l.effectiveAt, reason: l.reason,
@@ -1307,7 +1304,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
           target: { id: ref?.id ?? (l.appointmentId ?? l.bookingId!), reference: ref?.reference ?? "Deleted booking", name: ref?.name ?? "Booking", guestName: ref?.guestName ?? null },
         };
       }),
-      refunds: [...allRefunds().filter(r => r.billId === orderId && r.sourceType === "booking").slice(0, 100), ...allRefunds().filter(r => r.billId === orderId && r.sourceType === "appointment").toReversed().slice(0, 100)].sort((a,b) => b.recordedAt - a.recordedAt).map(({ billId, ...refund }) => { void billId; return refund; }),
+      refunds: [...allRefunds().filter(r => r.orderId === orderId && r.sourceType === "booking").slice(0, 100), ...allRefunds().filter(r => r.orderId === orderId && r.sourceType === "appointment").toReversed().slice(0, 100)].sort((a,b) => b.recordedAt - a.recordedAt).map(({ orderId, ...refund }) => { void orderId; return refund; }),
     };
   };
   /** As linePhoto in convex/pos.ts: the service's, room's or booked villa's photo, looked up, never stored. */
@@ -1320,7 +1317,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const refs = sourceRefs(order);
     return {
     _id: order._id, orderNumber: order.orderNumber, title: orderTitle(order.orderNumber), state: stateOf(order), itemCount: order.itemCount,
-    total: order.total, due: isOpen(order) ? order.due ?? billTotals(linesOf(order._id)).due : 0, currency: order.currency, updatedAt: order.updatedAt, receiptNumber: order.receiptNumber,
+    total: order.total, due: isOpen(order) ? order.due ?? orderTotals(linesOf(order._id)).due : 0, currency: order.currency, updatedAt: order.updatedAt, receiptNumber: order.receiptNumber,
     customerName: order.customerSnapshot?.name ?? state.customers.find((c) => c._id === order.customerId)?.name,
     discarded: discardedInfo(order),
     bookingReference: refs[0]?.reference, otherBookings: Math.max(refs.length - 1, 0),
@@ -1385,12 +1382,12 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       }, [orderNumber, v]);
     },
     useRestoreCheck: (orderId) => { useVersion(); return restoreCheck(orderId); },
-    useAppointmentFees: (appointmentId) => { useVersion(); return state.lines.filter(l => l.feeAppointmentId === appointmentId && l.fee).toReversed().slice(0, 20).map(l => { const o = state.orders.get(l.billId)!; return { lineId: l._id, kind: l.fee!.kind, amount: lineNet(l), currency: l.currency, reason: l.fee!.reason ?? null, by: l.fee!.by, at: l.fee!.at, order: { _id: o._id, title: orderTitle(o.orderNumber), state: stateOf(o), receiptNumber: o.receiptNumber ?? null } }; }); },
-    useCorrectionHistory: (id) => { useVersion(); return usePage(state.corrections.filter(r => r.billId === id).toReversed(), id); },
-    useAuditHistory: (id) => { useVersion(); return usePage(state.audit.filter(r => r.billId === id).toReversed(), id); },
-    useBookingRefundHistory: (id) => { useVersion(); return usePage((options.financialHistory?.bookingRefunds ?? state.refunds.flatMap(r => "bookingId" in r ? [r] : [])).filter(r => r.billId === id).toReversed(), id); },
-    useAppointmentRefundHistory: (id) => { useVersion(); return usePage((options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).filter(r => r.billId === id).toReversed(), id); },
-    useBillRefundHistory: (id) => { useVersion(); return usePage([...(options.financialHistory?.billRefunds ?? []), ...posRefundsOf(id).map(refundView)].filter(r => r.orderId === id).sort((a, b) => b.createdAt - a.createdAt), id); },
+    useAppointmentFees: (appointmentId) => { useVersion(); return state.lines.filter(l => l.feeAppointmentId === appointmentId && l.fee).toReversed().slice(0, 20).map(l => { const o = state.orders.get(l.orderId)!; return { lineId: l._id, kind: l.fee!.kind, amount: lineNet(l), currency: l.currency, reason: l.fee!.reason ?? null, by: l.fee!.by, at: l.fee!.at, order: { _id: o._id, title: orderTitle(o.orderNumber), state: stateOf(o), receiptNumber: o.receiptNumber ?? null } }; }); },
+    useCorrectionHistory: (id) => { useVersion(); return usePage(state.corrections.filter(r => r.orderId === id).toReversed(), id); },
+    useAuditHistory: (id) => { useVersion(); return usePage(state.audit.filter(r => r.orderId === id).toReversed(), id); },
+    useBookingRefundHistory: (id) => { useVersion(); return usePage((options.financialHistory?.bookingRefunds ?? state.refunds.flatMap(r => "bookingId" in r ? [r] : [])).filter(r => r.orderId === id).toReversed(), id); },
+    useAppointmentRefundHistory: (id) => { useVersion(); return usePage((options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).filter(r => r.orderId === id).toReversed(), id); },
+    useOrderRefundHistory: (id) => { useVersion(); return usePage([...(options.financialHistory?.orderRefunds ?? []), ...posRefundsOf(id).map(refundView)].filter(r => r.orderId === id).sort((a, b) => b.createdAt - a.createdAt), id); },
     useCatalog: () => CATALOG,
     useOrder: (orderId) => {
       const v = useVersion();

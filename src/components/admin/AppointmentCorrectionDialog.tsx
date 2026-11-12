@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { resortDateTime, resortIsoDate, resortTime24 } from "@/lib/staff-bookings";
 
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 const STATUSES: Appointment["status"][] = ["booked", "arrived", "in_service", "completed", "cancelled", "no_show"];
 
 /** Retains the reviewed revision and all input after a failed/pending save. */

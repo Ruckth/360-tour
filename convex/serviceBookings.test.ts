@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
@@ -30,10 +31,10 @@ async function setup(channel: 'whatsapp' | 'facebook' = 'whatsapp', secondStaff 
 		}) : undefined;
 		const serviceId = await ctx.db.insert('services', {
 			slug: 'thai-massage', name: 'Thai massage', description: 'One hour massage', category: 'Wellness',
-			durationMin: 60, bufferMin: 15, price: 2000, currency: 'THB', staffIds: otherId ? [staffId, otherId] : [staffId],
+			durationMin: 60, bufferMin: 15, price: 200000, currency: 'THB', staffIds: otherId ? [staffId, otherId] : [staffId],
 			status: 'active', createdAt: Date.now(), updatedAt: Date.now()
 		});
-		const sessionId = await ctx.db.insert('chatSessions', { guestTokenHash: fixtureGuestTokenHash,
+		const sessionId = await ctx.db.insert('conversations', { guestTokenHash: fixtureGuestTokenHash,
 			channel, visitorId: 'guest', ...(channel === 'whatsapp' ? { visitorPhone: '66956823432', visitorName: 'Rugby' } : {}),
 			createdAt: Date.now()
 		});
@@ -47,7 +48,7 @@ type Fixture = Awaited<ReturnType<typeof setup>>;
 const prepare = (fixture: Fixture, extra = {}) =>
 	fixture.t.mutation(internal.serviceBookings.prepareChatServiceBooking, { sessionId: fixture.sessionId, ...request, ...extra });
 const appointments = (t: Awaited<ReturnType<typeof setup>>['t']) =>
-	t.run(async (ctx) => await ctx.db.query('serviceAppointments').take(20));
+	t.run(async (ctx) => await ctx.db.query('appointments').take(20));
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -80,12 +81,12 @@ describe('AI service booking', () => {
 	it('lists active services and open local times, then prepares without creating an appointment', async () => {
 		const s = await setup();
 		expect(await s.t.query(internal.serviceBookings.listActiveServices, {})).toMatchObject([
-			{ slug: 'thai-massage', durationMin: 60, price: 2000, staff: ['Mali'] }
+			{ slug: 'thai-massage', durationMin: 60, price: 200000, staff: ['Mali'] }
 		]);
 		const open = await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
 		expect(open).toMatchObject({ available: true });
 		const summary = await prepare(s);
-		expect(summary).toMatchObject({ service: 'Thai massage', date, time: '14:00', price: 2000, staff: 'any available therapist/staff' });
+		expect(summary).toMatchObject({ service: 'Thai massage', date, time: '14:00', price: 200000, staff: 'any available therapist/staff' });
 		expect((await s.t.run(async (ctx) => ctx.db.get(s.sessionId)))?.pendingServiceQuote).toMatchObject({ start: at('14:00'), guestPhone: '66956823432' });
 		expect(await appointments(s.t)).toHaveLength(0);
 	});
@@ -104,9 +105,9 @@ describe('AI service booking', () => {
 			await ctx.db.patch(row!._id, { shifts: [{ start: '09:00', end: '10:00' }] });
 		});
 		await s.t.run(async (ctx) => {
-			await ctx.db.insert('serviceAppointments', {
+			await insertFixture(ctx, 'appointments', {
 				serviceId: s.serviceId, staffId: s.staffId, start: at('09:00'), end: at('10:00'), blockedUntil: at('10:00'),
-				guestName: 'A', guestPhone: '1', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1, currency: 'THB',
+				guestName: 'A', guestPhone: '1', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 100, currency: 'THB',
 				confirmationCode: 'SVC-1', accessToken: 'x', createdAt: Date.now()
 			});
 		});
@@ -138,10 +139,10 @@ describe('AI service booking', () => {
 		const s = await setup();
 		await prepare(s);
 		await s.t.run(async (ctx) => {
-			await ctx.db.insert('serviceAppointments', {
+			await insertFixture(ctx, 'appointments', {
 				serviceId: s.serviceId, staffId: s.staffId, start: at('14:00'), end: at('15:00'), blockedUntil: at('15:15'),
 				guestName: 'Other', guestPhone: '000', source: 'admin', status: 'booked', paymentStatus: 'unpaid',
-				price: 2000, currency: 'THB', confirmationCode: 'SVC-OTHER', accessToken: 'token', createdAt: Date.now()
+				price: 200000, currency: 'THB', confirmationCode: 'SVC-OTHER', accessToken: 'token', createdAt: Date.now()
 			});
 		});
 		const result = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
@@ -154,7 +155,7 @@ describe('AI service booking', () => {
 		const s = await setup();
 		await prepare(s);
 		await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
-		const secondSession = await s.t.run(async (ctx) => ctx.db.insert('chatSessions', { guestTokenHash: fixtureGuestTokenHash,
+		const secondSession = await s.t.run(async (ctx) => ctx.db.insert('conversations', { guestTokenHash: fixtureGuestTokenHash,
 			channel: 'whatsapp', visitorPhone: '66999999999', visitorId: 'second', createdAt: Date.now()
 		}));
 		const result = await s.t.mutation(internal.serviceBookings.prepareChatServiceBooking, { sessionId: secondSession, ...request });
@@ -166,12 +167,12 @@ describe('AI service booking', () => {
 		const s = await setup();
 		const bookingId = await s.t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', {
-				slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 1000, currency: 'THB', maxGuests: 2,
+				slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100000, currency: 'THB', maxGuests: 2,
 				bedrooms: 1, bathrooms: 1, area: 80, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 			});
-			return await ctx.db.insert('bookings', {
+			return await insertFixture(ctx, 'bookings', {
 				propertyId, guestName: 'Rugby', guestPhone, checkIn: date, checkOut: '2026-09-27',
-				guests: 1, nights: 2, subtotal: 2000, discountAmount: 0, total: 2000, currency: 'THB',
+				guests: 1, nights: 2, subtotal: 200000, discountAmount: 0, total: 200000, currency: 'THB',
 				paymentStatus: 'paid', status: 'confirmed', createdAt: Date.now()
 			});
 		});
@@ -280,12 +281,12 @@ describe('AI service booking', () => {
 		const s = await setup();
 		await s.t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', {
-				slug: 'pool-villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 1, currency: 'THB', maxGuests: 2,
+				slug: 'pool-villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2,
 				bedrooms: 1, bathrooms: 1, area: 1, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 			});
-			await ctx.db.insert('bookings', {
+			await insertFixture(ctx, 'bookings', {
 				propertyId, guestName: 'Rugby', guestPhone: '66956823432', checkIn: '2026-10-01', checkOut: '2026-10-05', guests: 2, nights: 4,
-				subtotal: 1, discountAmount: 0, total: 1, currency: 'THB', paymentStatus: 'paid', status: 'confirmed', createdAt: Date.now()
+				subtotal: 100, discountAmount: 0, total: 100, currency: 'THB', paymentStatus: 'paid', status: 'confirmed', createdAt: Date.now()
 			});
 		});
 		await prepare(s);

@@ -69,7 +69,7 @@ const ROOMS = [
 
 export async function seedRooms(ctx: MutationCtx, properties: PropertyMap): Promise<void> {
 	for (const { propertyKey, ...rest } of ROOMS) {
-		await ctx.db.insert('rooms', {
+		await ctx.db.insert('tourScenes', {
 			propertyId: properties[propertyKey],
 			...rest
 		});

@@ -1,10 +1,11 @@
 import { bookingHoldExpiresAt } from './lib/siteSettings';
 import { v } from 'convex/values';
-import { action, internalMutation, mutation } from './_generated/server';
+import { appendRecordHistory } from './lib/recordHistory';
+import { action, internalMutation, mutation, type MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
-import { isDocumentedLiveRefund, legacyStripeCharge, recordStayPayment } from './bookings';
+import { isDocumentedLiveRefund, recordStayPayment } from './bookings';
 import { assertBookingRevision, stayMoney, writeBooking } from './lib/bookingMoney';
-import { round2 } from './lib/billMath';
+import { roundMoney } from './lib/orderMath';
 import { requireAdmin } from './lib/adminAuth';
 import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 
@@ -14,7 +15,7 @@ type Booking = import('./_generated/dataModel').Doc<'bookings'>;
 
 /** Returned provider money is waived, never silently presented for collection again. */
 function checkoutBalance(booking: Booking) {
-  return Math.max(0, round2(booking.total - stayMoney(booking).net - (booking.providerRefundWaived ?? 0)));
+  return Math.max(0, roundMoney(booking.total - stayMoney(booking).net - (booking.providerRefundWaived ?? 0)));
 }
 
 /** Pending or confirmed stays may pay their remaining, unwaived balance online. */
@@ -98,7 +99,7 @@ export const saveCheckoutSession = internalMutation({
       booking.checkIn !== args.checkIn || booking.checkOut !== args.checkOut) {
       throw new Error('Booking changed during checkout. Please start a new checkout.');
     }
-    if (!Number.isSafeInteger(Math.round(args.total * 100)) || args.total <= 0 || !Number.isSafeInteger(args.expiresAt) || args.expiresAt <= Date.now()) throw new Error('Invalid checkout amount or expiry');
+    if (!Number.isSafeInteger(args.total) || args.total <= 0 || !Number.isSafeInteger(args.expiresAt) || args.expiresAt <= Date.now()) throw new Error('Invalid checkout amount or expiry');
     if (booking.stripeCheckoutSessionId === args.sessionId) return;
     if (booking.checkoutRequest?.attempt !== args.attempt ||
       booking.checkoutRequest.total !== args.total || booking.checkoutRequest.currency !== args.currency ||
@@ -158,7 +159,7 @@ export const createCheckout = action({
     const { checkoutUrl, request } = await ctx.runMutation(internal.payments.beginCheckout, { ...args, siteUrl });
     if (checkoutUrl) return { url: checkoutUrl };
     if (!request) throw new Error('Could not start checkout');
-    const amount = Math.round(request.total * 100);
+    const amount = request.total;
     if (!Number.isSafeInteger(amount) || amount < 1) throw new Error('Invalid booking amount');
     const currency = request.currency.toLowerCase();
     if (!/^[a-z]{3}$/.test(currency)) throw new Error('Invalid booking currency');
@@ -220,38 +221,29 @@ export const completeCheckout = internalMutation({
   },
   handler: async (ctx, args) => {
     let booking = await ctx.db.get(args.bookingId);
-    if (!booking) throw new Error('Booking not found');
+    if (!booking) { await recordOrphan(ctx, args.sessionId, { bookingId: args.bookingId, type: 'checkout' }); return; }
     if (!Number.isSafeInteger(args.amountTotal) || args.amountTotal <= 0 || booking.currency.toLowerCase() !== args.currency.toLowerCase()) throw new Error('Checkout amount mismatch');
     const key = `stripe-checkout:${args.sessionId}`;
     const replay = await ctx.db.query('bookingPayments').withIndex('by_idempotencyKey', q => q.eq('idempotencyKey', key)).unique();
     if (replay) {
-      if (replay.bookingId !== booking._id || Math.round(replay.amount * 100) !== args.amountTotal || replay.providerPaymentIntentId !== args.paymentIntentId) throw new Error('Checkout replay mismatch');
+      if (replay.bookingId !== booking._id || replay.amount !== args.amountTotal || replay.providerPaymentIntentId !== args.paymentIntentId) throw new Error('Checkout replay mismatch');
       return;
     }
     // A PaymentIntent is recorded at most once, whichever session delivers it.
     if (await ctx.db.query('bookingPayments').withIndex('by_providerPaymentIntentId', q => q.eq('providerPaymentIntentId', args.paymentIntentId)).first()) throw new Error('Checkout replay mismatch');
-    // Redelivery of a completion the pre-itemisation code already recorded: the signed event names
-    // this stay's legacy Stripe PaymentIntent (unique per payment) and its exact amount. A later
-    // checkout may have replaced the stored session, so the session id is not required to match.
-    const hasItemised = Boolean(await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', args.bookingId)).first());
-    const legacy = legacyStripeCharge(booking, hasItemised);
-    if (legacy && legacy.paymentIntentId === args.paymentIntentId) {
-      if (Math.round(legacy.gross * 100) !== args.amountTotal) throw new Error('Checkout replay mismatch');
-      return;
-    }
     if (booking.stripeCheckoutSessionId !== args.sessionId) throw new Error('Checkout session mismatch');
     // An expiry can win the race with a delayed signed completion. Recover only an
     // automatically expired stay, with the original session and amount. The payment
     // writer rechecks occupancy atomically; a sold night fails for host reconciliation.
     if (booking.status === 'cancelled' && (booking.cancelledBy === 'system:expiry' || booking.cancelledBy === 'system:stripe') &&
-      Math.round((booking.stripeCheckoutAmount ?? booking.total) * 100) === args.amountTotal &&
-      Math.round(checkoutBalance(booking) * 100) === args.amountTotal) {
+      (booking.stripeCheckoutAmount ?? booking.total) === args.amountTotal &&
+      checkoutBalance(booking) === args.amountTotal) {
       booking = await writeBooking(ctx, booking, { status: 'pending', paymentStatus: 'pending', cancelledAt: undefined, cancelledBy: undefined },
         { actor: 'system:stripe', kind: 'checkout_recovered' }, { deferCouponSync: true });
     }
     // checkoutBalance > 0 means no credit, so it equals stayMoney().owed, which recordStayPayment checks again.
-    if (!isPayable(booking) || Math.round((booking.stripeCheckoutAmount ?? booking.total) * 100) !== args.amountTotal || Math.round(checkoutBalance(booking) * 100) !== args.amountTotal) throw new Error('Checkout amount mismatch');
-    const { paymentId } = await recordStayPayment(ctx, booking._id, { origin: 'online', method: 'stripe', actor: 'system:stripe', legacyMethod: 'stripe', expectedAmount: args.amountTotal / 100, idempotencyKey: key });
+    if (!isPayable(booking) || (booking.stripeCheckoutAmount ?? booking.total) !== args.amountTotal || checkoutBalance(booking) !== args.amountTotal) throw new Error('Checkout amount mismatch');
+    const { paymentId } = await recordStayPayment(ctx, booking._id, { origin: 'online', method: 'stripe', actor: 'system:stripe', paymentLabel: 'stripe', expectedAmount: args.amountTotal, idempotencyKey: key });
     if (!paymentId) throw new Error('No checkout balance remaining');
     await ctx.db.patch(paymentId, { providerPaymentIntentId: args.paymentIntentId });
     await ctx.db.patch(booking._id, { stripePaymentIntentId: args.paymentIntentId, stripeCheckoutUrl: undefined, stripeCheckoutExpiresAt: undefined, checkoutRequest: undefined });
@@ -270,9 +262,8 @@ export const recordRefund = internalMutation({
       !Number.isSafeInteger(args.amount) || args.amount <= 0 || !Number.isSafeInteger(args.amountRefunded) || args.amountRefunded < 0 || args.amountRefunded > args.amount) throw new Error('Invalid provider refund amount or identifiers');
     const source = await ctx.db.query('bookingPayments').withIndex('by_providerPaymentIntentId', q => q.eq('providerPaymentIntentId', args.paymentIntentId)).unique();
     const booking = source ? await ctx.db.get(source.bookingId)
-      : await ctx.db.query('bookings').withIndex('by_stripePaymentIntentId', q => q.eq('stripePaymentIntentId', args.paymentIntentId)).unique()
-        ?? await ctx.db.query('bookings').withIndex('by_legacyStripePaymentIntentId', q => q.eq('legacyStripePaymentIntentId', args.paymentIntentId)).unique();
-    if (!booking) throw new Error('Provider payment is not reconciled to a booking yet');
+      : await ctx.db.query('bookings').withIndex('by_stripePaymentIntentId', q => q.eq('stripePaymentIntentId', args.paymentIntentId)).unique();
+    if (!booking) { await recordOrphan(ctx, args.eventId, { paymentIntentId: args.paymentIntentId, type: 'refund' }); return; }
     if (booking.currency.toLowerCase() !== args.currency.toLowerCase()) throw new Error('Refund currency mismatch');
     const checkpoint = await ctx.db.query('stripeRefundCharges').withIndex('by_chargeId', q => q.eq('chargeId', args.chargeId)).unique();
     if (checkpoint && (checkpoint.bookingId !== booking._id || checkpoint.amount !== args.amount || checkpoint.paymentIntentId !== args.paymentIntentId || checkpoint.currency !== args.currency.toLowerCase())) throw new Error('Charge identity mismatch');
@@ -280,15 +271,10 @@ export const recordRefund = internalMutation({
     const payments = await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', booking._id)).take(201);
     const refunds = await ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', booking._id)).take(201);
     if (payments.length > 200 || refunds.length > 200) throw new Error('Financial entries need a complete reconciliation');
-    const legacyOnline = payments.filter(p => p.origin === 'online' && p.method === 'stripe' && p.status === 'recorded' && !p.providerPaymentIntentId);
-    const payment = payments.find(p => p.providerPaymentIntentId === args.paymentIntentId && p.origin === 'online' && p.status === 'recorded')
-      ?? (booking.stripePaymentIntentId === args.paymentIntentId && legacyOnline.length === 1 ? legacyOnline[0] : undefined);
+    const payment = payments.find(p => p.providerPaymentIntentId === args.paymentIntentId && p.origin === 'online' && p.status === 'recorded');
     const money = stayMoney(booking);
-    // Unitemised legacy Stripe money only when provable (see legacyStripeCharge); never the stay's
-    // gross once other itemised money exists.
-    const legacy = payment ? null : legacyStripeCharge(booking, payments.length > 0);
-    const providerGross = payment?.amount ?? (legacy?.paymentIntentId === args.paymentIntentId ? legacy.gross : 0);
-    if (Math.round(providerGross * 100) !== args.amount) throw new Error('Provider charge does not match recorded provider money');
+    const providerGross = payment?.amount ?? 0;
+    if (providerGross !== args.amount) throw new Error('Provider charge does not match recorded provider money');
     if (payment && !payment.providerPaymentIntentId) await ctx.db.patch(payment._id, { providerPaymentIntentId: args.paymentIntentId });
     // Never guess that a hand-entered refund is this provider refund because the amounts match.
     const manual = refunds.filter(r => r.method === 'stripe' && !r.providerEventId);
@@ -297,29 +283,28 @@ export const recordRefund = internalMutation({
     if (!checkpoint) for (const recorded of linked) {
       const evidence = args.refunds.find(r => r.id === recorded.providerRefundId);
       if (!evidence) throw new Error('Snapshot lacks the linked manual refund ID; reconcile using a complete later charge snapshot');
-      if (!Number.isSafeInteger(evidence.amount) || evidence.amount !== Math.round(recorded.amount * 100) || evidence.currency.toLowerCase() !== recorded.currency.toLowerCase() || (evidence.status && evidence.status !== 'succeeded')) throw new Error('Linked manual refund differs from actual provider refund evidence');
+      if (!Number.isSafeInteger(evidence.amount) || evidence.amount !== recorded.amount || evidence.currency.toLowerCase() !== recorded.currency.toLowerCase() || (evidence.status && evidence.status !== 'succeeded')) throw new Error('Linked manual refund differs from actual provider refund evidence');
     }
-    const linkedAmount = checkpoint ? 0 : Math.round(linked.reduce((sum, r) => sum + r.amount, 0) * 100);
+    const linkedAmount = checkpoint ? 0 : linked.reduce((sum, r) => sum + r.amount, 0);
     const deltaMinor = args.amountRefunded - (checkpoint?.cumulative ?? 0) - linkedAmount;
     if (deltaMinor < 0) throw new Error('Provider cumulative amount is less than explicitly linked manual refunds');
-    const delta = deltaMinor / 100;
-    // Legacy full-refund flags already account for all money, but supply no original amount ledger.
-    const legacyCovered = money.legacyRefund ? Math.min(delta, money.refunded) : 0;
-    const applied = round2(delta - legacyCovered);
-    const linkedSourceAmount = checkpoint || !payment ? 0 : round2(linked.filter(r => r.paymentId !== payment._id).reduce((sum, r) => sum + r.amount, 0));
-    if (payment && round2(payment.refunded + applied + linkedSourceAmount) > payment.amount) throw new Error('Provider refund exceeds remaining source payment money');
+    const delta = deltaMinor;
+
+    const applied = delta;
+    const linkedSourceAmount = checkpoint || !payment ? 0 : roundMoney(linked.filter(r => r.paymentId !== payment._id).reduce((sum, r) => sum + r.amount, 0));
+    if (payment && roundMoney(payment.refunded + applied + linkedSourceAmount) > payment.amount) throw new Error('Provider refund exceeds remaining source payment money');
     if (applied > money.net) throw new Error('Provider refund exceeds remaining recorded money');
     const effectiveAt = args.eventCreated * 1000;
     if (delta > 0) await ctx.db.insert('bookingRefunds', {
       bookingId: booking._id, amount: delta, currency: booking.currency, method: 'stripe',
-      reason: legacyCovered ? 'Provider refund evidence for a legacy fully refunded booking; already included in legacy balance' : 'Refund confirmed by Stripe charge.refunded',
+      reason: 'Refund confirmed by Stripe charge.refunded',
       context: booking.status === 'cancelled' ? 'cancellation' : 'credit', ...(payment ? { paymentId: payment._id } : {}),
       providerChargeId: args.chargeId, providerEventId: args.eventId, providerCumulative: args.amountRefunded,
       effectiveAt, recordedAt: Date.now(), recordedBy: 'system:stripe', idempotencyKey: `stripe:${args.chargeId}:${args.amountRefunded}`,
-      netBefore: money.net, netAfter: round2(money.net - applied)
+      netBefore: money.net, netAfter: roundMoney(money.net - applied)
     });
-    if (payment && (applied || linkedSourceAmount)) await ctx.db.patch(payment._id, { refunded: round2(payment.refunded + applied + linkedSourceAmount) });
-    const netAfter = round2(money.net - applied);
+    if (payment && (applied || linkedSourceAmount)) await ctx.db.patch(payment._id, { refunded: roundMoney(payment.refunded + applied + linkedSourceAmount) });
+    const netAfter = roundMoney(money.net - applied);
     // A cancelled stay with nothing left becomes refunded. A live stay keeps an ordinary money state
     // (as reopen and payment reversal do: paid while money is held, otherwise pending), so it stays
     // editable and can still collect any unwaived balance, such as a later extension.
@@ -328,10 +313,10 @@ export const recordRefund = internalMutation({
       : booking.status === 'cancelled' ? { paymentStatus: 'refunded' as const, refundedAt: booking.refundedAt ?? effectiveAt }
       : booking.paymentStatus === 'paid' ? { paymentStatus: 'pending' as const } : {};
     await writeBooking(ctx, booking, {
-      amountRefunded: round2(money.refunded + applied),
-      providerRefundWaived: round2((booking.providerRefundWaived ?? 0) + delta + linkedAmount / 100),
+      amountRefunded: roundMoney(money.refunded + applied),
+      providerRefundWaived: roundMoney((booking.providerRefundWaived ?? 0) + delta + linkedAmount),
       ...statusPatch
-    }, { actor: 'system:stripe', kind: 'provider_refund', effectiveAt, details: { chargeId: args.chargeId, eventId: args.eventId, cumulativeMinor: args.amountRefunded, amount: delta, applied, legacyCovered } });
+    }, { actor: 'system:stripe', kind: 'provider_refund', effectiveAt, details: { chargeId: args.chargeId, eventId: args.eventId, cumulativeMinor: args.amountRefunded, amount: delta, applied } });
     const state = { bookingId: booking._id, chargeId: args.chargeId, paymentIntentId: args.paymentIntentId, amount: args.amount, currency: args.currency.toLowerCase(), cumulative: args.amountRefunded, eventId: args.eventId };
     if (checkpoint) await ctx.db.patch(checkpoint._id, state);
     else await ctx.db.insert('stripeRefundCharges', state);
@@ -351,7 +336,7 @@ export const linkRecordedStripeRefund = mutation({
     if (refund.providerChargeId === args.chargeId && refund.providerRefundId === args.providerRefundId) return;
     assertBookingRevision(booking, args.expectedRevision);
     if (refund.providerRefundId) throw new Error('This refund is already linked');
-    if (refund.billId) throw new Error('This refund references POS money; review its source before linking a Stripe refund');
+    if (refund.orderId) throw new Error('This refund references POS money; review its source before linking a Stripe refund');
     if (refund.paymentId) {
       const payment = await ctx.db.get(refund.paymentId);
       if (!payment || payment.origin !== 'online') throw new Error('This refund references a manual or POS payment, not a provider payment');
@@ -364,3 +349,8 @@ export const linkRecordedStripeRefund = mutation({
     await writeBooking(ctx, booking, {}, { actor: admin.email, kind: 'stripe_refund_linked', details: { refundId: refund._id, chargeId: args.chargeId, providerRefundId: args.providerRefundId } });
   }
 });
+
+async function recordOrphan(ctx: MutationCtx, eventId: string, details: Record<string, string>) {
+ const existing = await ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'stripe_orphan').eq('entityId', eventId)).first();
+ if (!existing) await appendRecordHistory(ctx, { entityType: 'stripe_orphan', entityId: eventId, actor: 'system:stripe', kind: 'orphaned', after: details });
+}

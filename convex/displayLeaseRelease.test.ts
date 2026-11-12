@@ -21,7 +21,7 @@ it.each(['release', 'new-sale'] as const)('a delayed renewal cannot resurrect an
 	const { secret } = await admin.mutation(api.displays.createPairLink, { clientId });
 	const claim = await t.mutation(api.displays.claimLink, { secret });
 	if (!claim.ok) throw new Error('Pairing failed');
-	const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Previous guest massage', price: 1200 } });
+	const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Previous guest massage', price: 120000 } });
 	await admin.mutation(api.displays.showOrder, { clientId, leaseId, orderId });
 	expect(await t.query(api.displays.current, { token: claim.token })).toMatchObject({ state: 'order' });
 	if (exit === 'release') await t.mutation(api.displays.releaseDisplay, { clientId, leaseId });

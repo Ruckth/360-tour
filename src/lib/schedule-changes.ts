@@ -9,7 +9,7 @@ import { formatResortFullDate, formatResortTime, resortIsoDate, resortTime24 } f
 
 const MINUTE = 60_000;
 
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 export type ScheduleData = FunctionReturnType<typeof api.adminServices.listSchedule>;
 /** A roster break on the calendar, with the date and day plan it was read from. */
 export type BreakBlock = Extract<ScheduleData["blocks"][number], { kind: "break" }>;

@@ -28,10 +28,10 @@ function NavigableCheckout({ backend, initialOrder }: { backend: CheckoutBackend
 async function setup() {
   const backend = createFixtureBackend();
   const actions = backend.useActions();
-  const one = actions.addItem({ item: { kind: 'extra', name: 'First sale', price: 100 } });
+  const one = actions.addItem({ item: { kind: 'extra', name: 'First sale', price: 10000 } });
   await settle();
   const a = (await one).orderId;
-  const two = actions.addItem({ item: { kind: 'extra', name: 'Second sale', price: 200 } });
+  const two = actions.addItem({ item: { kind: 'extra', name: 'Second sale', price: 20000 } });
   await settle();
   const b = (await two).orderId;
   return { backend, actions, a, b };

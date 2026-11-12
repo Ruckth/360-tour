@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { formatReceiptNumber } from "convex/lib/billMath";
+import { formatReceiptNumber } from "convex/lib/orderMath";
 import { cn } from "@/lib/utils";
 import type { Id } from "convex/_generated/dataModel";
 import { newAttemptKey, useCheckoutBackend, type LinkCandidate, type OrderLine, type OrderLink, type OrderView } from "./backend";
@@ -137,7 +137,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
     if (!chosen) return;
     const ok = await save((idempotencyKey) => actions.linkPaidLine({
       orderId: view.order._id, lineId: line._id,
-      ...(chosen.kind === "appointment" ? { appointmentId: chosen.id as Id<"serviceAppointments"> } : { bookingId: chosen.id as Id<"bookings"> }),
+      ...(chosen.kind === "appointment" ? { appointmentId: chosen.id as Id<"appointments"> } : { bookingId: chosen.id as Id<"bookings"> }),
       expectedCorrectionRevision: view.paymentRecord.correctionRevision, expectedTargetRevision: chosen.revision, idempotencyKey, reason,
       ...(chosen.kind === "booking" ? { notifyGuest } : {}),
     }), `Couldn't link this ${what}.`);

@@ -17,7 +17,7 @@ export async function attachPhotoUpload(ctx: MutationCtx, storageId: Id<'_storag
 	return url;
 }
 
-/** Called after detaching the owner, in the same transaction. Legacy clients can reuse any photo URL. */
+
 export async function deleteUnreferencedPhoto(ctx: MutationCtx, storageId: Id<'_storage'>, url: string | undefined, detachedStaffId?: Id<'staff'>) {
 	if (url) {
 		const references = await ctx.db.query('staff').withIndex('by_avatarUrl', (q) => q.eq('avatarUrl', url)).take(2);

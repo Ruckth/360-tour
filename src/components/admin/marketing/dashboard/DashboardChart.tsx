@@ -15,6 +15,7 @@ const num = (value: number) => value.toLocaleString("en-US");
 
 function tick(value: number, money: boolean) {
   if (!money) return num(value);
+  value /= 100;
   if (value >= 1_000_000) return `฿${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   if (value >= 10_000) return `฿${Math.round(value / 1000)}K`;
   return thb(value);

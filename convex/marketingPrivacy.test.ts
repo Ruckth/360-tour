@@ -23,9 +23,9 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protect
   const creditId = await t.run(async ctx => {
     const id = await ctx.db.insert('affiliateCredits', {
       sourceKey: 'privacy-test', snapshot: { capturedAt: 1, candidates: [{ affiliateId, name: 'Partner', slug: 'private-partner', origin: 'link', eligible: true, contactEmail: 'private-partner@example.com' }], flags: [] },
-      affiliateId, state: 'pending', eligibleNet: 100, approvedNet: 0, eligible: true, revision: 1, createdAt: 1, updatedAt: 1, reason: 'Guest private-guest@example.com'
+      affiliateId, state: 'pending', eligibleNet: 10000, approvedNet: 0, eligible: true, revision: 1, createdAt: 1, updatedAt: 1, reason: 'Guest private-guest@example.com'
     });
-    await ctx.db.insert('affiliateCreditChanges', { creditId: id, revision: 1, actor: 'private-actor@example.com', kind: 'created', reason: 'Guest private-guest@example.com', state: 'pending', eligibleNet: 100, approvedNet: 0, affiliateId, recordedAt: 1 });
+    await ctx.db.insert('affiliateCreditChanges', { creditId: id, revision: 1, actor: 'private-actor@example.com', kind: 'created', reason: 'Guest private-guest@example.com', state: 'pending', eligibleNet: 10000, approvedNet: 0, affiliateId, recordedAt: 1 });
     return id;
   });
   const partners = await reader.query(api.marketingAffiliates.listAffiliates, {});

@@ -1,5 +1,6 @@
+import { percentageOf, basisPointsToPercent } from 'convex/shared/money';
 import { formatMoney } from "@/components/admin/labels";
-import { lineCouponBase, round2, type LineDiscount, type PricedLine } from "convex/lib/billMath";
+import { lineCouponBase, roundMoney, type LineDiscount, type PricedLine } from "convex/lib/orderMath";
 import type { ApprovalPayload, CashierRules } from "convex/lib/staffTypes";
 
 /**
@@ -37,14 +38,14 @@ type BaselineLine = PricedLine & { catalogUnitPrice?: number };
  * coupon is left out.
  */
 export function manualReductionSatang(line: BaselineLine) {
-  const subtotalSatang = Math.round(round2(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty) * 100);
-  const reductionSatang = Math.max(0, subtotalSatang - Math.round(lineCouponBase(line) * 100));
+  const subtotalSatang = roundMoney(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty);
+  const reductionSatang = Math.max(0, subtotalSatang - lineCouponBase(line));
   return { subtotalSatang, reductionSatang };
 }
 
 /** The most a cashier may take off the baseline: the limit in hundredths of a percent, halves up, as assertCashierDiscount. */
 export function discountLimitSatang(subtotalSatang: number, limitPercent: number) {
-  return Math.floor((2 * subtotalSatang * Math.round(limitPercent * 100) + 10000) / 20000);
+  return percentageOf(subtotalSatang, limitPercent);
 }
 
 /**
@@ -56,12 +57,12 @@ export function discountOverLimit(line: BaselineLine, discount: LineDiscount, ru
   if (!Number.isFinite(discount.value) || discount.value < 0) return null;
   const { subtotalSatang, reductionSatang } = manualReductionSatang({ ...line, discount });
   if (reductionSatang <= discountLimitSatang(subtotalSatang, rules.discountLimitPercent)) return null;
-  return { amount: reductionSatang / 100, limitPercent: rules.discountLimitPercent };
+  return { amount: reductionSatang, limitPercent: rules.discountLimitPercent };
 }
 
 /** "10", "12.5": a percent with at most two decimals. */
 export function formatPercent(value: number) {
-  return String(round2(value));
+  return String(basisPointsToPercent(value));
 }
 
 export type NeedsApproval = { code: "NEEDS_APPROVAL"; kind: ApprovalKind; message?: string; amount?: number; discountLimitPercent?: number };
@@ -79,7 +80,7 @@ export function approvalWhat(request: Pick<ApprovalView, "payload" | "amount">, 
   const { payload } = request;
   switch (payload.kind) {
     case "refund":
-      return [`refund ${formatMoney(payload.amountSatang / 100, payload.currency)}`, lineName].filter(Boolean).join(" · ");
+      return [`refund ${formatMoney(payload.amountSatang, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
       return `${formatMoney(request.amount)} discount`;
     case "customPrice":
@@ -96,7 +97,7 @@ export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "
   const { payload } = request;
   switch (payload.kind) {
     case "refund":
-      return [`asks to refund ${formatMoney(payload.amountSatang / 100, payload.currency)}`, lineName].filter(Boolean).join(" · ");
+      return [`asks to refund ${formatMoney(payload.amountSatang, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
       return `asks for a ${formatMoney(request.amount)} discount${request.percent !== undefined ? ` (${formatPercent(request.percent)}%)` : ""}`;
     case "customPrice":

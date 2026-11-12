@@ -82,7 +82,7 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
   if (scenario === "spa" || scenario === "paid") {
     const { orderId } = await actions.addItem({ item: service(1) });
     if (scenario === "paid") {
-      await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 1200, idempotencyKey: "browser-staff-paid", tenders: [{ method: "cash", amount: 1200 }] });
+      await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 120000, idempotencyKey: "browser-staff-paid", tenders: [{ method: "cash", amount: 120000 }] });
       return { orderId, receipt: true };
     }
     return { orderId, receipt: false };
@@ -92,7 +92,7 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
     await actions.addItem({ orderId: massage.orderId, item: service(7) });
     let due = 1800;
     if (params.get("attached") === "1") {
-      await actions.attach({ orderId: massage.orderId, appointmentId: "fxappt000002" as Id<"serviceAppointments"> });
+      await actions.attach({ orderId: massage.orderId, appointmentId: "fxappt000002" as Id<"appointments"> });
       due += 1600;
     }
     await actions.settleOrder({ orderId: massage.orderId, expectedRevision: params.get("attached") === "1" ? 3 : 2, expectedDue: due, idempotencyKey: "browser-refund-paid", tenders: [{ method: "card", amount: due }] });
@@ -224,7 +224,7 @@ registerFixtureFunctions({
       if (team.staleOnce) {
         // Another owner saved a moment earlier.
         team.staleOnce = false;
-        team.rules = { ...team.rules, discountLimitPercent: 12, revision: team.rules.revision + 1 };
+        team.rules = { ...team.rules, discountLimitPercent: 1200, revision: team.rules.revision + 1 };
         notifyFixtureStore();
       }
       if (expectedRevision !== team.rules.revision) throw new ConvexError({ code: "STALE_RULES", message: "Cashier rules changed. Reload and try again." });

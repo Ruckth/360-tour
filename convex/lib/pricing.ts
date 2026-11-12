@@ -1,3 +1,4 @@
+import { percentageOf } from '../shared/money';
 import type { Doc } from '../_generated/dataModel';
 
 export type PriceQuote = {
@@ -16,7 +17,7 @@ export function calculateDirectQuote(
 ): PriceQuote {
 	const subtotal = property.pricePerNight * nights;
 	const discountPercent = property.directDiscountPercent;
-	const discountAmount = Math.round(subtotal * (discountPercent / 100));
+	const discountAmount = percentageOf(subtotal, discountPercent);
 	const directTotal = subtotal - discountAmount;
 
 	return {

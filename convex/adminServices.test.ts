@@ -2,7 +2,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, internal } from './_generated/api';
+import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { createAppointmentRecord, localDateTimeUtc } from './lib/serviceSlots';
 import schema from './schema';
@@ -23,11 +23,11 @@ async function setup() {
 	});
 	const serviceId = await admin.mutation(api.adminServices.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: 'Massage', category: 'Wellness',
-		durationMin: 60, bufferMin: 15, price: 2000, currency: 'THB', staffIds: [staffId]
+		durationMin: 60, bufferMin: 15, price: 200000, currency: 'THB', staffIds: [staffId]
 	});
 	const booking = { serviceId, staffId, guestName: 'Guest', guestPhone: '+66000000000' };
-	const appointment = async (id: Id<'serviceAppointments'>) => (await t.run((ctx) => ctx.db.get(id)))!;
-	const revision = async (id: Id<'serviceAppointments'>) => (await appointment(id)).revision ?? 0;
+	const appointment = async (id: Id<'appointments'>) => (await t.run((ctx) => ctx.db.get(id)))!;
+	const revision = async (id: Id<'appointments'>) => (await appointment(id)).revision ?? 0;
 	return { t, admin, staffId, serviceId, booking, appointment, revision };
 }
 
@@ -90,7 +90,7 @@ describe('admin services', () => {
 
 	it('preserves contact details for chat-linked appointments when staff create or edit them', async () => {
 		const { t, admin, booking } = await setup();
-		const chatSessionId = await t.run((ctx) => ctx.db.insert('chatSessions', { channel: 'web', visitorId: 'visitor', createdAt: Date.now() }));
+		const chatSessionId = await t.run((ctx) => ctx.db.insert('conversations', { channel: 'web', visitorId: 'visitor', createdAt: Date.now() }));
 		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), chatSessionId, guestName: '', guestPhone: '' })).rejects.toThrow('Guest name is required');
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00'), chatSessionId });
 		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId, expectedRevision: 0, guestName: 'Guest', guestPhone: '' })).rejects.toThrow('Guest phone is required');
@@ -136,11 +136,11 @@ describe('admin services', () => {
 		await expect(admin.mutation(api.adminServices.updateStaff, { staffId, breaks: [{ weekday: 1, start: '13:00', end: '12:00', label: 'Lunch' }] })).rejects.toThrow('Start must be before end');
 		await expect(admin.mutation(api.adminServices.updateService, { serviceId, durationMin: 61 })).rejects.toThrow('multiple of 15');
 		await expect(admin.mutation(api.adminServices.updateService, { serviceId, bufferMin: 7 })).rejects.toThrow('multiple of 5');
-		await expect(admin.mutation(api.adminServices.updateService, { serviceId, price: -1 })).rejects.toThrow('Price');
+		await expect(admin.mutation(api.adminServices.updateService, { serviceId, price: -100 })).rejects.toThrow('Price');
 		await expect(admin.mutation(api.adminServices.addTimeOff, { staffId, start: at('09:00'), end: at('09:00') + 61 * 86_400_000, label: 'Leave' })).rejects.toThrow('60 days');
 		await expect(admin.mutation(api.adminServices.createService, {
 			slug: 'thai-massage', name: 'Duplicate', description: '', category: 'Wellness',
-			durationMin: 60, bufferMin: 0, price: 1, currency: 'THB', staffIds: [staffId]
+			durationMin: 60, bufferMin: 0, price: 100, currency: 'THB', staffIds: [staffId]
 		})).rejects.toThrow('slug already exists');
 	});
 
@@ -188,16 +188,6 @@ describe('admin services', () => {
 		await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: second.appointmentId });
 		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId, expectedRevision: 1 });
 		await expect(admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId: second.appointmentId, status: 'arrived' })).rejects.toThrow('Invalid appointment status transition');
-	});
-
-	it('seeds staff and services idempotently', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-		const t = convexTest(schema, modules);
-		expect((await t.mutation(internal.seed.seedStaffServices, {})).appointmentsCreated).toBe(4);
-		expect(await t.mutation(internal.seed.seedStaffServices, {})).toMatchObject({ staff: 5, services: 6, appointmentsCreated: 0 });
-		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-		expect(await admin.query(api.adminServices.listStaff, {})).toHaveLength(5);
-		expect(await admin.query(api.adminServices.listServices, {})).toHaveLength(6);
 	});
 
 	it('moves appointments without changing their length and refuses to archive staff with upcoming appointments', async () => {
@@ -301,7 +291,7 @@ describe('admin services', () => {
 		const { admin, booking, staffId, revision } = await setup();
 		const facialId = await admin.mutation(api.adminServices.createService, {
 			slug: 'facial', name: 'Facial', description: '', category: 'Wellness',
-			durationMin: 90, bufferMin: 0, price: 3000, currency: 'THB', staffIds: [staffId]
+			durationMin: 90, bufferMin: 0, price: 300000, currency: 'THB', staffIds: [staffId]
 		});
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('10:00') });
 		const find = async () => (await admin.query(api.adminServices.listSchedule, { from: at('00:00'), to: at('23:00') })).appointments.find((a) => a._id === appointmentId);
@@ -319,7 +309,7 @@ describe('admin services', () => {
 		await expect(edit({ guestName: 'Ann', guestPhone: '+66111', guestEmail: 'nope' })).rejects.toThrow();
 
 		await edit({ guestName: 'Ann', guestPhone: '+66111', serviceId: facialId });
-		expect(await find()).toMatchObject({ serviceId: facialId, end: at('11:30'), blockedUntil: at('11:30'), price: 3000 });
+		expect(await find()).toMatchObject({ serviceId: facialId, end: at('11:30'), blockedUntil: at('11:30'), price: 300000 });
 		// 13:00 massage, then 14:15 massage: a 90-minute facial at 13:00 would overlap the second one.
 		const later = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('13:00') });
 		await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('14:15') });
@@ -329,7 +319,7 @@ describe('admin services', () => {
 		});
 		const nailsId = await admin.mutation(api.adminServices.createService, {
 			slug: 'nails', name: 'Nails', description: '', category: 'Beauty',
-			durationMin: 30, bufferMin: 0, price: 500, currency: 'THB', staffIds: [otherId]
+			durationMin: 30, bufferMin: 0, price: 50000, currency: 'THB', staffIds: [otherId]
 		});
 		await expect(edit({ guestName: 'Ann', guestPhone: '+66111', serviceId: nailsId })).rejects.toThrow("Mali doesn't perform Nails");
 
@@ -384,7 +374,7 @@ describe('admin services', () => {
 		const hours = weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' }));
 		const nokId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#def', workingHours: hours, breaks: [] });
 		const nailsId = await admin.mutation(api.adminServices.createService, {
-			slug: 'nails', name: 'Nails', description: '', category: 'Beauty', durationMin: 30, bufferMin: 0, price: 500, currency: 'THB', staffIds: [staffId]
+			slug: 'nails', name: 'Nails', description: '', category: 'Beauty', durationMin: 30, bufferMin: 0, price: 50000, currency: 'THB', staffIds: [staffId]
 		});
 		const staffOf = async () => Object.fromEntries((await admin.query(api.adminServices.listServices, { includeArchived: true })).map((s) => [s.name, s.staffIds]));
 

@@ -1,15 +1,15 @@
 // @vitest-environment edge-runtime
 import { expect, it } from 'vitest';
 import { calculateDirectQuote } from './lib/pricing';
-import { billTotals, lineStaffDiscount } from './lib/billMath';
+import { orderTotals, lineStaffDiscount } from './lib/orderMath';
 
-it('pins the pre-cutover stay rounding discrepancy and the order satang rule', () => {
-  const stay = calculateDirectQuote({ pricePerNight: 100.50, directDiscountPercent: 10, currency: 'THB' }, 1);
-  expect(stay.discountAmount).toBe(10);
-  expect(lineStaffDiscount({ unitPrice: 100.50, qty: 1, discount: { type: 'percent', value: 10 } })).toBe(10.05);
-  expect(lineStaffDiscount({ unitPrice: 10.05, qty: 1, discount: { type: 'percent', value: 10 } })).toBe(1.01);
+it('rounds a percentage discount identically for stays and orders', () => {
+  const stay = calculateDirectQuote({ pricePerNight: 10050, directDiscountPercent: 1000, currency: 'THB' }, 1);
+  expect(stay.discountAmount).toBe(1005);
+  expect(lineStaffDiscount({ unitPrice: 10050, qty: 1, discount: { type: 'percent', value: 1000 } })).toBe(stay.discountAmount);
+  expect(lineStaffDiscount({ unitPrice: 1005, qty: 1, discount: { type: 'percent', value: 1000 } })).toBe(101);
 });
 
 it('pins deposit settlement without collecting the linked payment twice', () => {
-  expect(billTotals([{ unitPrice: 100.50, qty: 1, deposit: 20.25 }])).toMatchObject({ total: 100.50, deposit: 20.25, due: 80.25, vat: 6.57 });
+  expect(orderTotals([{ unitPrice: 10050, qty: 1, deposit: 2025 }])).toMatchObject({ total: 10050, deposit: 2025, due: 8025, vat: 657 });
 });

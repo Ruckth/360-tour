@@ -5,7 +5,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { stayMoney, type BookingPatch } from './bookingMoney';
 import { evaluateOffer, type CouponProblem, type CouponRules } from './offers';
 import { resortTodayIso } from './dates';
-import { round2 } from './billMath';
+import { roundMoney } from './orderMath';
 
 export type HoldInput = { coupon: Doc<'coupons'>; couponVersion: number; discount: number; bookingId: Id<'bookings'> };
 
@@ -101,7 +101,7 @@ export async function syncCouponRedemption(ctx: MutationCtx, booking: Doc<'booki
 	if (state === redemption.state) return;
 	if (held !== (coupon.held ?? 0) || heldDiscount !== (coupon.heldDiscount ?? 0) || used !== coupon.used || discountGranted !== coupon.discountGranted) {
 		// Checkout uses can carry satang; round so the budget check never sees binary noise.
-		await ctx.db.patch(coupon._id, { held, heldDiscount, used, discountGranted: round2(discountGranted) });
+		await ctx.db.patch(coupon._id, { held, heldDiscount, used, discountGranted: roundMoney(discountGranted) });
 	}
 	await ctx.db.patch(redemption._id, { state, overLimit, updatedAt: Date.now() });
 }
@@ -143,38 +143,38 @@ export async function repriceCouponBooking(ctx: MutationCtx, { coupon, redemptio
 	const delta = pricing.promotion.discount - redemption.discount;
 	if (delta !== 0) {
 		if (redemption.state === 'held') await ctx.db.patch(coupon._id, { heldDiscount: (coupon.heldDiscount ?? 0) + delta });
-		else if (redemption.state !== 'released') await ctx.db.patch(coupon._id, { discountGranted: round2(coupon.discountGranted + delta) });
+		else if (redemption.state !== 'released') await ctx.db.patch(coupon._id, { discountGranted: roundMoney(coupon.discountGranted + delta) });
 		await ctx.db.patch(redemption._id, { discount: pricing.promotion.discount, updatedAt: Date.now() });
 	}
 }
 
 /** POS has no holds. The caller validates the frozen quote before any money writes. */
-export async function consumeOrderCoupon(ctx: MutationCtx, billId: Id<'bills'>, promotion: NonNullable<Doc<'bills'>['promotion']>) {
-	const existing = await ctx.db.query('couponRedemptions').withIndex('by_billId', q => q.eq('billId', billId)).unique();
+export async function consumeOrderCoupon(ctx: MutationCtx, orderId: Id<'orders'>, promotion: NonNullable<Doc<'orders'>['promotion']>) {
+	const existing = await ctx.db.query('couponRedemptions').withIndex('by_orderId', q => q.eq('orderId', orderId)).unique();
 	let redemptionId = existing?._id;
 	if (!existing) {
 		const coupon = await ctx.db.get(promotion.couponId);
 		if (!coupon) throw new Error('Redemption coupon not found');
 		const now = Date.now();
 		redemptionId = await ctx.db.insert('couponRedemptions', {
-			couponId: coupon._id, couponVersion: promotion.couponVersion, code: coupon.code, billId,
+			couponId: coupon._id, couponVersion: promotion.couponVersion, code: coupon.code, orderId,
 			state: 'consumed', discount: promotion.discount, createdAt: now, updatedAt: now
 		});
-		await ctx.db.patch(coupon._id, { used: coupon.used + 1, discountGranted: round2(coupon.discountGranted + promotion.discount) });
+		await ctx.db.patch(coupon._id, { used: coupon.used + 1, discountGranted: roundMoney(coupon.discountGranted + promotion.discount) });
 		// The receipt names the code the coupon has when it is used (it may be renamed before its first use).
 		promotion = { ...promotion, code: coupon.code };
 	}
-	await ctx.db.patch(billId, { promotion: { ...promotion, redemptionId } });
+	await ctx.db.patch(orderId, { promotion: { ...promotion, redemptionId } });
 }
 
 /** Real voids retain capacity; correcting money never received releases it exactly once. */
-export async function syncOrderCouponRedemption(ctx: MutationCtx, billId: Id<'bills'>, state: 'reversed' | 'released') {
-	const redemption = await ctx.db.query('couponRedemptions').withIndex('by_billId', q => q.eq('billId', billId)).unique();
+export async function syncOrderCouponRedemption(ctx: MutationCtx, orderId: Id<'orders'>, state: 'reversed' | 'released') {
+	const redemption = await ctx.db.query('couponRedemptions').withIndex('by_orderId', q => q.eq('orderId', orderId)).unique();
 	if (!redemption || (redemption.state !== 'consumed' && redemption.state !== 'reversed') || redemption.state === state) return;
 	if (state === 'released') {
 		const coupon = await ctx.db.get(redemption.couponId);
 		if (!coupon) throw new Error('Redemption coupon not found');
-		await ctx.db.patch(coupon._id, { used: Math.max(0, coupon.used - 1), discountGranted: Math.max(0, round2(coupon.discountGranted - redemption.discount)) });
+		await ctx.db.patch(coupon._id, { used: Math.max(0, coupon.used - 1), discountGranted: Math.max(0, roundMoney(coupon.discountGranted - redemption.discount)) });
 	}
 	await ctx.db.patch(redemption._id, { state, updatedAt: Date.now() });
 }

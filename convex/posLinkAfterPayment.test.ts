@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
@@ -26,30 +27,30 @@ async function setup() {
 	const service = (slug: string, name: string, price: number) => admin.mutation(api.adminServices.createService, {
 		slug, name, description: '', category: 'Massage', durationMin: 60, bufferMin: 15, price, currency: 'THB', staffIds: [nok]
 	});
-	const massage = await service('thai-massage', 'Thai massage', 1200);
-	const scrub = await service('scrub', 'Body scrub', 900);
+	const massage = await service('thai-massage', 'Thai massage', 120000);
+	const scrub = await service('scrub', 'Body scrub', 90000);
 	const { villa, otherVilla } = await t.run(async (ctx) => {
 		const property = (slug: string, name: string) => ctx.db.insert('properties', {
-			slug, name, tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 4,
+			slug, name, tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 4,
 			bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 		});
 		return { villa: await property('villa', 'Pool Villa'), otherVilla: await property('garden', 'Garden Villa') };
 	});
-	const stay = (overrides: Record<string, unknown> = {}) => t.run((ctx) => ctx.db.insert('bookings', {
+	const stay = (overrides: Record<string, unknown> = {}) => t.run((ctx) => insertFixture(ctx, 'bookings', {
 		propertyId: villa, guestName: 'Anna', guestPhone: '+66 81 234 5678', guestPhoneDigits: '66812345678', checkIn: '2026-12-01', checkOut: '2026-12-04',
-		guests: 2, nights: 3, subtotal: 30000, discountAmount: 0, total: 30000, currency: 'THB', amountPaid: 10000,
+		guests: 2, nights: 3, subtotal: 3000000, discountAmount: 0, total: 3000000, currency: 'THB', amountPaid: 1000000,
 		paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'CONF-ANNA', guestEmailsOff: true, createdAt: Date.now(), ...overrides
 	}));
 	const appointment = (overrides: Record<string, unknown> = {}) => {
 		const start = Date.now() + 2 * 86_400_000;
-		return t.run((ctx) => ctx.db.insert('serviceAppointments', {
+		return t.run((ctx) => insertFixture(ctx, 'appointments', {
 			serviceId: massage, staffId: nok, start, end: start + 3_600_000, blockedUntil: start + 4_500_000, guestName: 'Eve', guestPhone: '+66 82 000 1111',
-			source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1300, currency: 'THB', confirmationCode: 'SVC-EVE', accessToken: 'tok', createdAt: Date.now(),
+			source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 130000, currency: 'THB', confirmationCode: 'SVC-EVE', accessToken: 'tok', createdAt: Date.now(),
 			...overrides
 		}));
 	};
-	const order = (orderId: Id<'bills'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
-	const pay = async (orderId: Id<'bills'>) => {
+	const order = (orderId: Id<'orders'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
+	const pay = async (orderId: Id<'orders'>) => {
 		const view = await order(orderId);
 		return admin.mutation(api.pos.settleOrder, {
 			orderId, idempotencyKey: `pay-${orderId}`, expectedDue: view.totals.due, expectedRevision: view.order.revision,
@@ -63,10 +64,10 @@ async function setup() {
 		await pay(orderId);
 		return { orderId, lineId };
 	};
-	const getAppointment = (id: Id<'serviceAppointments'>) => t.run((ctx) => ctx.db.get(id)).then((row) => row!);
+	const getAppointment = (id: Id<'appointments'>) => t.run((ctx) => ctx.db.get(id)).then((row) => row!);
 	const getBooking = (id: Id<'bookings'>) => t.run((ctx) => ctx.db.get(id)).then((row) => row!);
 	let attempt = 0;
-	const link = async (orderId: Id<'bills'>, lineId: Id<'billLines'>, target: { appointmentId: Id<'serviceAppointments'> } | { bookingId: Id<'bookings'> }, extra: Partial<{ key: string; correction: number; revision: number }> = {}) => {
+	const link = async (orderId: Id<'orders'>, lineId: Id<'orderLines'>, target: { appointmentId: Id<'appointments'> } | { bookingId: Id<'bookings'> }, extra: Partial<{ key: string; correction: number; revision: number }> = {}) => {
 		const view = await order(orderId);
 		const revision = extra.revision ?? ('appointmentId' in target ? (await getAppointment(target.appointmentId)).revision ?? 0 : (await getBooking(target.bookingId)).revision ?? 0);
 		return admin.mutation(api.pos.linkPaidLine, {
@@ -74,12 +75,12 @@ async function setup() {
 			idempotencyKey: extra.key ?? `link-attempt-${++attempt}`, reason: 'Booked the prepaid service'
 		});
 	};
-	const unlink = async (orderId: Id<'bills'>, linkId: Id<'billLineLinks'>, key = `unlink-attempt-${++attempt}`) => {
+	const unlink = async (orderId: Id<'orders'>, linkId: Id<'orderLineLinks'>, key = `unlink-attempt-${++attempt}`) => {
 		const view = await order(orderId);
 		return admin.mutation(api.pos.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: view.paymentRecord.correctionRevision, idempotencyKey: key, reason: 'Linked the wrong one' });
 	};
 	/** What the receipt shows; linking must never change any of it. */
-	const receipt = async (orderId: Id<'bills'>) => {
+	const receipt = async (orderId: Id<'orders'>) => {
 		const view = await order(orderId);
 		return {
 			receiptNumber: view.order.receiptNumber, paidAt: view.order.paidAt, total: view.order.total, totals: view.totals,
@@ -110,7 +111,6 @@ describe('optional service date and time', () => {
 
 		await expect(admin.mutation(api.pos.updateLine, { lineId, serviceDate: '2026-02-30' })).rejects.toThrow(/YYYY-MM-DD/);
 		await expect(admin.mutation(api.pos.updateLine, { lineId, serviceTime: '24:00' })).rejects.toThrow(/HH:MM/);
-		await expect(admin.mutation(api.pos.updateLine, { lineId, serviceTime: '10:00', startAt: Date.now() })).rejects.toThrow(/not both/);
 		expect((await row()).schedule).toEqual({});
 
 		// A known day with no time is a complete answer: payment needs neither part.
@@ -122,28 +122,6 @@ describe('optional service date and time', () => {
 		expect(paid.lines[0].schedule).toEqual({ date: '2026-12-03' });
 		expect(paid.lines[0].startAt).toBeUndefined();
 		await expect(admin.mutation(api.pos.updateLine, { lineId, serviceTime: '10:00' })).rejects.toThrow(/already paid/);
-	});
-
-	it('keeps legacy rows on startAt until edited, then keeps their other part', async () => {
-		const { t, admin, massage, order } = await setup();
-		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 50 } });
-		const at = Date.parse('2026-10-26T09:15:00+07:00');
-		const [legacyNow, legacyTimed] = await t.run(async (ctx) => [
-			await ctx.db.insert('billLines', { billId: orderId, kind: 'service', serviceId: massage, name: 'Thai massage', unitPrice: 1200, currency: 'THB', qty: 1, createdAt: 1 }),
-			await ctx.db.insert('billLines', { billId: orderId, kind: 'service', serviceId: massage, name: 'Thai massage', unitPrice: 1200, currency: 'THB', qty: 1, startAt: at, createdAt: 2 })
-		]);
-		const line = async (id: Id<'billLines'>) => (await order(orderId)).lines.find((row) => row._id === id)!;
-		// Untouched legacy rows read exactly as stored: absent startAt still means "now".
-		expect((await line(legacyNow)).schedule).toBeUndefined();
-		expect((await line(legacyNow)).startAt).toBeUndefined();
-		expect((await line(legacyTimed)).startAt).toBe(at);
-
-		await admin.mutation(api.pos.updateLine, { lineId: legacyTimed, serviceTime: '16:00' });
-		expect(await line(legacyTimed)).toMatchObject({ schedule: { date: '2026-10-26', time: '16:00' } });
-		expect((await line(legacyTimed)).startAt).toBeUndefined();
-		// A legacy "now" row given only a date keeps its time unset; nothing is filled from the clock.
-		await admin.mutation(api.pos.updateLine, { lineId: legacyNow, serviceDate: '2026-10-27' });
-		expect((await line(legacyNow)).schedule).toEqual({ date: '2026-10-27' });
 	});
 });
 
@@ -158,20 +136,20 @@ describe('linking a paid service row to an appointment', () => {
 		const result = await link(orderId, lineId, { appointmentId });
 		expect(result).toMatchObject({ sequence: 1, replayed: false });
 		const linked = await getAppointment(appointmentId);
-		expect(linked).toMatchObject({ paymentStatus: 'paid', price: 1200, amountPaid: 1200, amountRefunded: 0, paidAt: paidOrder.order.paymentEffectiveAt });
+		expect(linked).toMatchObject({ paymentStatus: 'paid', price: 120000, amountPaid: 120000, amountRefunded: 0, paidAt: paidOrder.order.paymentEffectiveAt });
 		expect(await receipt(orderId)).toEqual(before);
 
 		const view = await order(orderId);
 		expect(view.paymentRecord.correctionRevision).toBe(1);
-		expect(view.corrections[0]).toMatchObject({ kind: 'linked', sequence: 1, lineId, appointmentId, amount: 1200 });
-		expect(view.links).toEqual([expect.objectContaining({ lineId, kind: 'appointment', status: 'active', amount: 1200, target: expect.objectContaining({ reference: 'SVC-EVE' }) })]);
+		expect(view.corrections[0]).toMatchObject({ kind: 'linked', sequence: 1, lineId, appointmentId, amount: 120000 });
+		expect(view.links).toEqual([expect.objectContaining({ lineId, kind: 'appointment', status: 'active', amount: 120000, target: expect.objectContaining({ reference: 'SVC-EVE' }) })]);
 
 		const sheet = await admin.query(api.pos.ordersForBooking, { appointmentId });
 		expect(sheet?.orders.map((row) => row._id)).toContain(orderId);
 		expect(sheet?.balance.owed).toBe(0);
 		// The receipt owns the money: it is refundable from that receipt, and not payable again.
 		const financials = await admin.query(api.adminServices.getAppointmentFinancials, { appointmentId });
-		expect(financials.orders).toEqual([expect.objectContaining({ billId: orderId, charged: 1200, refundable: 1200 })]);
+		expect(financials.orders).toEqual([expect.objectContaining({ orderId: orderId, charged: 120000, refundable: 120000 })]);
 		await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId })).rejects.toThrow(/unpaid/);
 		await expect(admin.mutation(api.pos.attach, { appointmentId })).rejects.toThrow(/nothing left to pay/);
 	});
@@ -229,7 +207,7 @@ describe('linking a paid service row to an appointment', () => {
 		const { linkId } = await link(orderId, lineId, { appointmentId });
 
 		await unlink(orderId, linkId, 'unlink-once-0001');
-		expect(await getAppointment(appointmentId)).toMatchObject({ paymentStatus: 'unpaid', price: 1300, amountPaid: 0 });
+		expect(await getAppointment(appointmentId)).toMatchObject({ paymentStatus: 'unpaid', price: 130000, amountPaid: 0 });
 		expect((await getAppointment(appointmentId)).paidAt).toBeUndefined();
 		expect(await unlink(orderId, linkId, 'unlink-once-0001')).toMatchObject({ replayed: true });
 		await expect(unlink(orderId, linkId)).rejects.toThrow(/already undone/);
@@ -242,7 +220,7 @@ describe('linking a paid service row to an appointment', () => {
 		const relinked = await link(orderId, lineId, { appointmentId });
 		const appt = await getAppointment(appointmentId);
 		await admin.mutation(api.adminServices.refundAppointment, {
-			appointmentId, expectedRevision: appt.revision ?? 0, amount: 200, currency: 'THB', method: 'cash', reason: 'Shorter session', idempotencyKey: 'refund-0001', billId: orderId
+			appointmentId, expectedRevision: appt.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Shorter session', idempotencyKey: 'refund-0001', orderId: orderId
 		});
 		await expect(unlink(orderId, relinked.linkId)).rejects.toThrow(/refunded/);
 		await expect(admin.mutation(api.pos.voidUnreceivedOrder, {
@@ -260,9 +238,9 @@ describe('linking a paid room row to a stay', () => {
 		const { orderId, lineId } = await paidRow({ kind: 'room', propertyId: villa }, 2);
 		const before = await receipt(orderId);
 		await link(orderId, lineId, { bookingId });
-		expect(await getBooking(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 30000 });
+		expect(await getBooking(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 3000000 });
 		const financials = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
-		expect(financials?.payments[0]).toMatchObject({ origin: 'pos', amount: 20000, status: 'recorded', order: expect.objectContaining({ _id: orderId }) });
+		expect(financials?.payments[0]).toMatchObject({ origin: 'pos', amount: 2000000, status: 'recorded', order: expect.objectContaining({ _id: orderId }) });
 		expect(await receipt(orderId)).toEqual(before);
 		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.orders.map((row) => row._id)).toContain(orderId);
 
@@ -270,15 +248,15 @@ describe('linking a paid room row to a stay', () => {
 		const partStay = await stay({ confirmationCode: 'CONF-PART', guestName: 'Part', checkIn: '2027-01-01', checkOut: '2027-01-04' });
 		const part = await paidRow({ kind: 'room', propertyId: villa });
 		await link(part.orderId, part.lineId, { bookingId: partStay });
-		expect(await getBooking(partStay)).toMatchObject({ paymentStatus: 'pending', amountPaid: 20000 });
+		expect(await getBooking(partStay)).toMatchObject({ paymentStatus: 'pending', amountPaid: 2000000 });
 
 		// More than the stay owes, or a different villa: refused.
-		const smallStay = await stay({ confirmationCode: 'CONF-SMALL', total: 15000, amountPaid: 10000, checkIn: '2027-02-01', checkOut: '2027-02-04' });
+		const smallStay = await stay({ confirmationCode: 'CONF-SMALL', total: 1500000, amountPaid: 1000000, checkIn: '2027-02-01', checkOut: '2027-02-04' });
 		const big = await paidRow({ kind: 'room', propertyId: villa });
 		await expect(link(big.orderId, big.lineId, { bookingId: smallStay })).rejects.toThrow(/less than this row/);
 		const elsewhere = await stay({ confirmationCode: 'CONF-GARDEN', propertyId: otherVilla });
 		await expect(link(big.orderId, big.lineId, { bookingId: elsewhere })).rejects.toThrow(/different villa/);
-		expect((await getBooking(smallStay)).amountPaid).toBe(10000);
+		expect((await getBooking(smallStay)).amountPaid).toBe(1000000);
 		expect((await order(big.orderId)).paymentRecord.correctionRevision).toBe(0);
 	});
 
@@ -289,10 +267,10 @@ describe('linking a paid room row to a stay', () => {
 		const { linkId } = await link(orderId, lineId, { bookingId });
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, reason: 'Guest cancelled', notifyGuest: false });
 		await admin.mutation(api.adminBookings.recordRefund, {
-			bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, amount: 5000, currency: 'THB', method: 'cash', reason: 'Part refund', idempotencyKey: 'stay-refund-0001', billId: orderId
+			bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, amount: 500000, currency: 'THB', method: 'cash', reason: 'Part refund', idempotencyKey: 'stay-refund-0001', orderId: orderId
 		});
 		const financials = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
-		expect(financials?.payments.find((row) => row.origin === 'pos')).toMatchObject({ refunded: 5000, refundable: 15000 });
+		expect(financials?.payments.find((row) => row.origin === 'pos')).toMatchObject({ refunded: 500000, refundable: 1500000 });
 		await expect(unlink(orderId, linkId)).rejects.toThrow(/refunded/);
 	});
 
@@ -312,7 +290,7 @@ describe('linking a paid room row to a stay', () => {
 		await t.run(async (ctx) => {
 			for (let n = 0; n < 101; n++) {
 				await ctx.db.insert('bookingPayments', {
-					bookingId, billId: orderId, origin: 'pos', method: 'order', amount: 20000, currency: 'THB',
+					bookingId, orderId: orderId, origin: 'pos', method: 'order', amount: 2000000, currency: 'THB',
 					effectiveAt: n, recordedAt: n, recordedBy: 'desk@example.com', status: 'cancelled', refunded: 0
 				});
 			}
@@ -320,14 +298,14 @@ describe('linking a paid room row to a stay', () => {
 		await link(orderId, lineId, { bookingId });
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, reason: 'Guest cancelled', notifyGuest: false });
 		await admin.mutation(api.adminBookings.recordRefund, {
-			bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, amount: 5000, currency: 'THB', method: 'cash',
-			reason: 'Return linked money', idempotencyKey: 'refund-relinked-stay', billId: orderId
+			bookingId, expectedRevision: (await getBooking(bookingId)).revision ?? 0, amount: 500000, currency: 'THB', method: 'cash',
+			reason: 'Return linked money', idempotencyKey: 'refund-relinked-stay', orderId: orderId
 		});
 		const payment = await t.run(async (ctx) => {
-			const link = await ctx.db.query('billLineLinks').withIndex('by_lineId_and_status', (q) => q.eq('lineId', lineId).eq('status', 'active')).unique();
+			const link = await ctx.db.query('orderLineLinks').withIndex('by_lineId_and_status', (q) => q.eq('lineId', lineId).eq('status', 'active')).unique();
 			return ctx.db.get(link!.bookingPaymentId!);
 		});
-		expect(payment).toMatchObject({ status: 'recorded', refunded: 5000 });
+		expect(payment).toMatchObject({ status: 'recorded', refunded: 500000 });
 	});
 
 	it('unlinks by cancelling only the link’s payment and restoring the stay’s pending status', async () => {
@@ -336,10 +314,10 @@ describe('linking a paid room row to a stay', () => {
 		const { orderId, lineId } = await paidRow({ kind: 'room', propertyId: villa }, 2);
 		const { linkId } = await link(orderId, lineId, { bookingId });
 		await unlink(orderId, linkId);
-		expect(await getBooking(bookingId)).toMatchObject({ paymentStatus: 'pending', amountPaid: 10000 });
+		expect(await getBooking(bookingId)).toMatchObject({ paymentStatus: 'pending', amountPaid: 1000000 });
 		const financials = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
 		expect(financials?.payments[0]).toMatchObject({ origin: 'pos', status: 'cancelled' });
-		expect(financials?.money.owed).toBe(20000);
+		expect(financials?.money.owed).toBe(2000000);
 	});
 });
 
@@ -352,8 +330,8 @@ describe('order corrections understand links', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.patch(current.orderId, { updatedAt: 1 });
 			for (let n = 0; n < 21; n++) {
-				await ctx.db.insert('billLineLinks', {
-					billId: previous.orderId, lineId: previous.lineId, kind: 'appointment', appointmentId, amount: 1200, currency: 'THB',
+				await ctx.db.insert('orderLineLinks', {
+					orderId: previous.orderId, lineId: previous.lineId, kind: 'appointment', appointmentId, amount: 120000, currency: 'THB',
 					status: 'unlinked', effectiveAt: 1, reason: 'Previous link', linkedAt: n, linkedBy: 'desk@example.com', sequence: n + 1,
 					unlinkedAt: n + 1, unlinkedBy: 'desk@example.com', unlinkReason: 'Previous unlink'
 				});
@@ -372,8 +350,8 @@ describe('order corrections understand links', () => {
 		// A history accumulated by repeated linking and unlinking must not hide today's active link.
 		await t.run(async (ctx) => {
 			for (let n = 0; n < 101; n++) {
-				await ctx.db.insert('billLineLinks', {
-					billId: orderId, lineId, kind: 'appointment', appointmentId, amount: 1200, currency: 'THB',
+				await ctx.db.insert('orderLineLinks', {
+					orderId: orderId, lineId, kind: 'appointment', appointmentId, amount: 120000, currency: 'THB',
 					status: 'unlinked', effectiveAt: 1, reason: 'Previous link', linkedAt: n, linkedBy: 'desk@example.com', sequence: n + 1,
 					unlinkedAt: n + 1, unlinkedBy: 'desk@example.com', unlinkReason: 'Previous unlink'
 				});
@@ -406,7 +384,7 @@ describe('order corrections understand links', () => {
 		await admin.mutation(api.pos.voidUnreceivedOrder, {
 			orderId, expectedCorrectionRevision: (await order(orderId)).paymentRecord.correctionRevision, idempotencyKey: 'void-unreceived-2', reason: 'Card declined after all'
 		});
-		expect(await getAppointment(appointmentId)).toMatchObject({ paymentStatus: 'unpaid', price: 1300, amountPaid: 0 });
+		expect(await getAppointment(appointmentId)).toMatchObject({ paymentStatus: 'unpaid', price: 130000, amountPaid: 0 });
 		const view = await order(orderId);
 		expect(view.order.status).toBe('void');
 		expect(view.links[0]).toMatchObject({ status: 'unlinked' });

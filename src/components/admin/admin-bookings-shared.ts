@@ -1,3 +1,5 @@
+
+import { bahtToSatang } from 'convex/shared/money';
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { AdminBooking } from "convex/adminBookings";
@@ -122,7 +124,7 @@ export function parseAmount(text: string): number | null {
   const trimmed = text.trim().replace(/,/g, "");
   if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
   const value = Number(trimmed);
-  return Number.isFinite(value) ? value : null;
+  return Number.isFinite(value) ? bahtToSatang(value) : null;
 }
 
 export function payLink(bookingId: string, accessToken: string) {

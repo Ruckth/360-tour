@@ -23,14 +23,14 @@ async function setup(limits: Limits = {}) {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email, tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', {
-    slug: 'mossbell', name: 'Mossbell Garden Suite', tagline: '', description: '', pricePerNight: 4500, currency: 'THB', maxGuests: 2,
-    bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 15, status: 'active'
+    slug: 'mossbell', name: 'Mossbell Garden Suite', tagline: '', description: '', pricePerNight: 450000, currency: 'THB', maxGuests: 2,
+    bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'
   }));
   const rules = {
-    code: 'DCNT-F1-20', benefit: { kind: 'percent' as const, percent: limits.percent ?? 20 }, scope: 'accommodation' as const,
+    code: 'DCNT-F1-20', benefit: { kind: 'percent' as const, percent: limits.percent ?? 2000 }, scope: 'accommodation' as const,
     bookFrom: '2026-11-01', bookTo: '2026-11-30', stayFrom: '2026-11-01', stayTo: '2026-12-20',
-    minNights: limits.minNights ?? 2, maxSaving: limits.maxSaving ?? 3000, usageLimit: limits.usageLimit ?? 500,
-    discountBudget: limits.discountBudget ?? 80000
+    minNights: limits.minNights ?? 2, maxSaving: limits.maxSaving ?? 300000, usageLimit: limits.usageLimit ?? 500,
+    discountBudget: limits.discountBudget ?? 8000000
   };
   const { couponId } = await admin.mutation(api.marketing.saveCoupon, rules);
   await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
@@ -55,7 +55,7 @@ async function setup(limits: Limits = {}) {
     if (!request) throw new Error('Missing checkout request');
     const sessionId = `cs_${id}`;
     await t.mutation(internal.payments.saveCheckoutSession, { bookingId: id, accessToken: b.accessToken!, sessionId, url: 'https://checkout.stripe.com/test', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
-    return { bookingId: id, sessionId, amountTotal: request.total * 100, currency: 'thb', paymentIntentId: `pi_${id}` };
+    return { bookingId: id, sessionId, amountTotal: request.total, currency: 'thb', paymentIntentId: `pi_${id}` };
   };
   const expire = async (id: Id<'bookings'>, sessionId?: string) => {
     await t.run(ctx => ctx.db.patch(id, { unpaidHoldExpiresAt: NOW - 1, stripeCheckoutExpiresAt: NOW - 1 }));
@@ -87,14 +87,14 @@ async function setup(limits: Limits = {}) {
 describe('booking coupon reservations', () => {
   it('Mossbell 2n F1-20: freezes 7200 and holds one 1800 redemption; previews reserve nothing', async () => {
     const s = await setup();
-    expect(await s.t.query(api.marketing.previewCoupon, { code: s.input.couponCode, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut: s.input.checkOut })).toMatchObject({ couponStatus: 'applied', total: 7200 });
+    expect(await s.t.query(api.marketing.previewCoupon, { code: s.input.couponCode, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut: s.input.checkOut })).toMatchObject({ couponStatus: 'applied', total: 720000 });
     expect(await s.coupon()).toMatchObject({ used: 0 });
     const { bookingId, accessToken } = await s.web();
-    expect(await s.t.query(api.bookings.getById, { id: bookingId, accessToken })).toMatchObject({ promotion: { code: 'DCNT-F1-20', discount: 1800 } });
-    expect(await s.get(bookingId)).toMatchObject({ subtotal: 9000, discountAmount: 1800, total: 7200, promotion: { code: 'DCNT-F1-20', couponVersion: 1, discount: 1800 } });
-    expect(await s.row(bookingId)).toMatchObject({ bookingId, state: 'held', discount: 1800 });
-    expect(await s.admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ promotion: { discount: 1800 } });
-    expect(await s.admin.query(api.adminBookings.listForAdmin, { from: '2026-11-10', to: '2026-11-13' })).toMatchObject({ bookings: [{ promotion: { discount: 1800 } }] });
+    expect(await s.t.query(api.bookings.getById, { id: bookingId, accessToken })).toMatchObject({ promotion: { code: 'DCNT-F1-20', discount: 180000 } });
+    expect(await s.get(bookingId)).toMatchObject({ subtotal: 900000, discountAmount: 180000, total: 720000, promotion: { code: 'DCNT-F1-20', couponVersion: 1, discount: 180000 } });
+    expect(await s.row(bookingId)).toMatchObject({ bookingId, state: 'held', discount: 180000 });
+    expect(await s.admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ promotion: { discount: 180000 } });
+    expect(await s.admin.query(api.adminBookings.listForAdmin, { from: '2026-11-10', to: '2026-11-13' })).toMatchObject({ bookings: [{ promotion: { discount: 180000 } }] });
     await s.reconcile();
   });
 
@@ -110,34 +110,34 @@ describe('booking coupon reservations', () => {
     const s = await setup({ usageLimit: 1 });
     const stale = await s.coupon();
     const first = await s.create();
-    await expect(s.t.run(ctx => holdCouponRedemption(ctx, { coupon: stale, couponVersion: 1, discount: 1800, bookingId: first }))).rejects.toThrow(/sold_out/);
+    await expect(s.t.run(ctx => holdCouponRedemption(ctx, { coupon: stale, couponVersion: 1, discount: 180000, bookingId: first }))).rejects.toThrow(/sold_out/);
     await s.reconcile();
   });
 
   it('rechecks budget in holdCouponRedemption rather than trusting the supplied snapshot', async () => {
-    const s = await setup({ discountBudget: 1800 });
+    const s = await setup({ discountBudget: 180000 });
     const stale = await s.coupon();
     const id = await s.create();
-    await expect(s.t.run(ctx => holdCouponRedemption(ctx, { coupon: stale, couponVersion: 1, discount: 1800, bookingId: id }))).rejects.toThrow(/budget_used/);
+    await expect(s.t.run(ctx => holdCouponRedemption(ctx, { coupon: stale, couponVersion: 1, discount: 180000, bookingId: id }))).rejects.toThrow(/budget_used/);
     await s.reconcile();
   });
 
   it('reserves discount budget, caps the final quote to remaining budget, then refuses another hold', async () => {
-    const s = await setup({ discountBudget: 3400 });
+    const s = await setup({ discountBudget: 340000 });
     await s.create();
     const second = await s.create({ checkIn: '2026-11-14', checkOut: '2026-11-16' });
-    expect(await s.get(second)).toMatchObject({ discountAmount: 1600, total: 7400 });
+    expect(await s.get(second)).toMatchObject({ discountAmount: 160000, total: 740000 });
     await expect(s.create({ checkIn: '2026-11-17', checkOut: '2026-11-19' })).rejects.toThrow(/coupon_unavailable.*budget_used/);
     await s.reconcile();
   });
 
-  it.each([10, 20])('coupon_worse books direct without a hold (%s percent)', async percent => {
+  it.each([1000, 2000])('coupon_worse books direct without a hold (%s percent)', async percent => {
     const s = await setup({ percent });
-    if (percent === 20) await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 12000 }));
-    const id = await s.create(percent === 20 ? { checkOut: '2026-11-13' } : {});
+    if (percent === 2000) await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 1200000 }));
+    const id = await s.create(percent === 2000 ? { checkOut: '2026-11-13' } : {});
     const b = await s.get(id);
     expect(b.promotion).toBeUndefined();
-    expect(b.total).toBe(percent === 20 ? 30600 : 7650);
+    expect(b.total).toBe(percent === 2000 ? 3060000 : 765000);
     expect(await s.row(id)).toBeNull();
     await s.reconcile();
   });
@@ -160,7 +160,7 @@ describe('booking coupon reservations', () => {
   it.each(['admin', 'web', 'whatsapp', 'messenger', 'line', 'instagram'] as const)('preserves no-code direct pricing for %s', async source => {
     const s = await setup();
     const { bookingId } = await s.t.run(ctx => createBookingRecord(ctx, { ...s.input, couponCode: '  ', source }));
-    expect(await s.get(bookingId)).toMatchObject({ subtotal: 9000, discountAmount: 1350, total: 7650 });
+    expect(await s.get(bookingId)).toMatchObject({ subtotal: 900000, discountAmount: 135000, total: 765000 });
     expect((await s.get(bookingId)).promotion).toBeUndefined();
     await s.reconcile();
   });
@@ -174,10 +174,10 @@ describe('payment and status synchronization', () => {
     expect(args.amountTotal).toBe(720000);
     await s.t.mutation(internal.payments.completeCheckout, args);
     const before = await s.row(bookingId);
-    expect(before).toMatchObject({ state: 'consumed', discount: 1800 });
+    expect(before).toMatchObject({ state: 'consumed', discount: 180000 });
     await s.t.mutation(internal.payments.completeCheckout, args);
     expect(await s.row(bookingId)).toEqual(before);
-    expect(await s.coupon()).toMatchObject({ held: 0, used: 1, heldDiscount: 0, discountGranted: 1800 });
+    expect(await s.coupon()).toMatchObject({ held: 0, used: 1, heldDiscount: 0, discountGranted: 180000 });
     await s.reconcile();
   });
 
@@ -188,7 +188,7 @@ describe('payment and status synchronization', () => {
     else {
       const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { bookingId: id });
       const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
-      expect(view.totals.due).toBe(7200);
+      expect(view.totals.due).toBe(720000);
       await s.admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: 'pos-coupon-payment', tenders: [{ method: 'cash', amount: view.totals.due }] });
     }
     expect(await s.row(id)).toMatchObject({ state: 'consumed' });
@@ -198,7 +198,7 @@ describe('payment and status synchronization', () => {
   it('consumes on a partial deposit even while paymentStatus is pending', async () => {
     const s = await setup();
     const id = await s.create();
-    await s.t.run(async ctx => { const b = (await ctx.db.get(id))!; await writeBooking(ctx, b, { amountPaid: 100 }, { actor: email, kind: 'deposit' }); });
+    await s.t.run(async ctx => { const b = (await ctx.db.get(id))!; await writeBooking(ctx, b, { amountPaid: 10000 }, { actor: email, kind: 'deposit' }); });
     expect(await s.row(id)).toMatchObject({ state: 'consumed' });
     await s.reconcile();
   });
@@ -216,21 +216,21 @@ describe('payment and status synchronization', () => {
   });
 
   it.each(['free', 'slot_full', 'budget_full'] as const)('honours expired-then-recovered checkout when capacity is %s', async capacity => {
-    const s = await setup({ usageLimit: capacity === 'slot_full' ? 1 : 500, discountBudget: capacity === 'budget_full' ? 1800 : 80000 });
+    const s = await setup({ usageLimit: capacity === 'slot_full' ? 1 : 500, discountBudget: capacity === 'budget_full' ? 180000 : 8000000 });
     const { bookingId } = await s.web();
     const args = await s.checkout(bookingId);
     await s.expire(bookingId, args.sessionId);
     if (capacity !== 'free') await s.create({ checkIn: '2026-11-14', checkOut: '2026-11-16' });
     await s.t.mutation(internal.payments.completeCheckout, args);
-    expect(await s.row(bookingId)).toMatchObject({ state: 'consumed', discount: 1800 });
+    expect(await s.row(bookingId)).toMatchObject({ state: 'consumed', discount: 180000 });
     expect((await s.row(bookingId)).overLimit).toBe(capacity !== 'free' ? true : undefined);
-    expect(await s.get(bookingId)).toMatchObject({ total: 7200, amountPaid: 7200, status: 'confirmed' });
+    expect(await s.get(bookingId)).toMatchObject({ total: 720000, amountPaid: 720000, status: 'confirmed' });
     await s.t.mutation(internal.payments.completeCheckout, args);
     await s.reconcile();
   });
 
   it.each(['slot', 'budget'] as const)('rejects unpaid reopen when another booking took its %s', async limit => {
-    const s = await setup(limit === 'slot' ? { usageLimit: 1 } : { discountBudget: 1800 });
+    const s = await setup(limit === 'slot' ? { usageLimit: 1 } : { discountBudget: 180000 });
     const id = await s.create();
     await s.cancel(id);
     await s.create({ checkIn: '2026-11-14', checkOut: '2026-11-16' });
@@ -239,7 +239,7 @@ describe('payment and status synchronization', () => {
       /coupon_unavailable.*DCNT-F1-20 has no uses left, so this booking can't reopen at its coupon price. Raise the coupon's limit, or create a new booking./
     );
     expect(await s.row(id)).toMatchObject({ state: 'released' });
-    expect(await s.get(id)).toMatchObject({ status: 'cancelled', total: 7200 });
+    expect(await s.get(id)).toMatchObject({ status: 'cancelled', total: 720000 });
     expect(await s.coupon()).toEqual(before);
     await s.reconcile();
   });
@@ -261,7 +261,7 @@ describe('payment and status synchronization', () => {
     const before = await s.coupon();
     await s.cancel(id);
     expect((await s.row(id)).state).toBe('reversed');
-    await s.admin.mutation(api.adminBookings.recordRefund, { bookingId: id, expectedRevision: (await s.get(id)).revision!, amount: 7200, currency: 'THB', method: 'cash', reason: 'Returned payment', idempotencyKey: 'coupon-full-refund' });
+    await s.admin.mutation(api.adminBookings.recordRefund, { bookingId: id, expectedRevision: (await s.get(id)).revision!, amount: 720000, currency: 'THB', method: 'cash', reason: 'Returned payment', idempotencyKey: 'coupon-full-refund' });
     expect(await s.coupon()).toEqual(before);
     await s.admin.mutation(api.adminBookings.reopenBooking, { bookingId: id, expectedRevision: (await s.get(id)).revision!, confirmed: false, reason: 'Guest returned', notifyGuest: false });
     expect((await s.row(id)).state).toBe('reversed');
@@ -275,7 +275,7 @@ describe('payment and status synchronization', () => {
     await s.pay(id);
     await s.edit(id, { checkOut: '2026-11-12' });
     const before = await s.coupon();
-    await s.admin.mutation(api.adminBookings.recordRefund, { bookingId: id, expectedRevision: (await s.get(id)).revision!, amount: 3600, currency: 'THB', method: 'cash', reason: 'Shorter stay', idempotencyKey: 'coupon-credit-refund' });
+    await s.admin.mutation(api.adminBookings.recordRefund, { bookingId: id, expectedRevision: (await s.get(id)).revision!, amount: 360000, currency: 'THB', method: 'cash', reason: 'Shorter stay', idempotencyKey: 'coupon-credit-refund' });
     expect(await s.row(id)).toMatchObject({ state: 'consumed' });
     expect(await s.coupon()).toEqual(before);
     await s.reconcile();
@@ -297,9 +297,9 @@ describe('admin coupon repricing', () => {
     const id = await s.create();
     if (state === 'consumed') await s.pay(id);
     await s.edit(id, { checkOut: '2026-11-13' });
-    expect(await s.get(id)).toMatchObject({ subtotal: 13500, discountAmount: 2700, total: 10800, promotion: { discount: 2700 } });
-    expect(await s.row(id)).toMatchObject({ state, discount: 2700 });
-    expect(await s.coupon()).toMatchObject(state === 'held' ? { heldDiscount: 2700, discountGranted: 0 } : { heldDiscount: 0, discountGranted: 2700 });
+    expect(await s.get(id)).toMatchObject({ subtotal: 1350000, discountAmount: 270000, total: 1080000, promotion: { discount: 270000 } });
+    expect(await s.row(id)).toMatchObject({ state, discount: 270000 });
+    expect(await s.coupon()).toMatchObject(state === 'held' ? { heldDiscount: 270000, discountGranted: 0 } : { heldDiscount: 0, discountGranted: 270000 });
     await s.reconcile();
   });
 
@@ -308,10 +308,10 @@ describe('admin coupon repricing', () => {
     const id = await s.create();
     if (state === 'consumed') await s.pay(id);
     await s.edit(id, { checkOut: '2026-11-11' });
-    expect(await s.get(id)).toMatchObject({ subtotal: 4500, discountAmount: 675, total: 3825 });
+    expect(await s.get(id)).toMatchObject({ subtotal: 450000, discountAmount: 67500, total: 382500 });
     expect((await s.get(id)).promotion).toBeUndefined();
-    expect(await s.row(id)).toMatchObject({ state: state === 'held' ? 'released' : 'reversed', discount: 1800 });
-    expect(await s.coupon()).toMatchObject(state === 'held' ? { held: 0, heldDiscount: 0, used: 0 } : { used: 1, discountGranted: 1800 });
+    expect(await s.row(id)).toMatchObject({ state: state === 'held' ? 'released' : 'reversed', discount: 180000 });
+    expect(await s.coupon()).toMatchObject(state === 'held' ? { held: 0, heldDiscount: 0, used: 0 } : { used: 1, discountGranted: 180000 });
     await s.reconcile();
   });
 
@@ -319,7 +319,7 @@ describe('admin coupon repricing', () => {
     const s = await setup();
     const id = await s.create();
     await s.edit(id, { checkOut: '2026-11-16' });
-    expect(await s.get(id)).toMatchObject({ subtotal: 27000, discountAmount: 4050, total: 22950 });
+    expect(await s.get(id)).toMatchObject({ subtotal: 2700000, discountAmount: 405000, total: 2295000 });
     expect((await s.get(id)).promotion).toBeUndefined();
     expect(await s.row(id)).toMatchObject({ state: 'released' });
     await s.reconcile();
@@ -328,33 +328,33 @@ describe('admin coupon repricing', () => {
   it('uses frozen rules as active after edits, pause, exhausted slots and the booking window closes', async () => {
     const s = await setup({ usageLimit: 1 });
     const id = await s.create();
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 5 }, minNights: 20 });
+    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 500 }, minNights: 20 });
     await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'paused' });
     vi.mocked(Date.now).mockReturnValue(Date.parse('2026-12-01T10:00:00Z'));
     await s.edit(id, { checkIn: '2026-12-02', checkOut: '2026-12-05' });
-    expect(await s.get(id)).toMatchObject({ total: 10800, promotion: { couponVersion: 1, discount: 2700 } });
+    expect(await s.get(id)).toMatchObject({ total: 1080000, promotion: { couponVersion: 1, discount: 270000 } });
     await s.reconcile();
   });
 
   it.each(['held', 'consumed'] as const)('excludes its own %s discount from the budget cap', async state => {
-    const s = await setup({ usageLimit: 1, discountBudget: 2700 });
+    const s = await setup({ usageLimit: 1, discountBudget: 270000 });
     const id = await s.create();
     if (state === 'consumed') await s.pay(id);
     await s.edit(id, { checkOut: '2026-11-13' });
-    expect(await s.row(id)).toMatchObject({ state, discount: 2700 });
+    expect(await s.row(id)).toMatchObject({ state, discount: 270000 });
     await s.edit(id, { guests: 1 });
-    expect(await s.row(id)).toMatchObject({ state, discount: 2700 });
+    expect(await s.row(id)).toMatchObject({ state, discount: 270000 });
     await s.reconcile();
   });
 
   it('includes other held and granted discounts when repricing within the budget', async () => {
-    const s = await setup({ discountBudget: 4000 });
+    const s = await setup({ discountBudget: 400000 });
     const id = await s.create();
     const second = await s.create({ checkIn: '2026-11-14', checkOut: '2026-11-16' });
     await s.pay(second);
     await s.edit(id, { checkOut: '2026-11-13' });
-    expect(await s.get(id)).toMatchObject({ total: 11300, discountAmount: 2200 });
-    expect(await s.coupon()).toMatchObject({ heldDiscount: 2200, discountGranted: 1800 });
+    expect(await s.get(id)).toMatchObject({ total: 1130000, discountAmount: 220000 });
+    expect(await s.coupon()).toMatchObject({ heldDiscount: 220000, discountGranted: 180000 });
     await s.reconcile();
   });
 
@@ -362,11 +362,11 @@ describe('admin coupon repricing', () => {
     const s = await setup();
     const id = await s.create();
     const before = await s.row(id);
-    await s.edit(id, { checkOut: '2026-11-13', priceOverride: { total: 8000, reason: 'Host quote' } });
-    expect(await s.get(id)).toMatchObject({ total: 8000, promotion: { discount: 1800 }, priceOverride: { total: 8000 } });
+    await s.edit(id, { checkOut: '2026-11-13', priceOverride: { total: 800000, reason: 'Host quote' } });
+    expect(await s.get(id)).toMatchObject({ total: 800000, promotion: { discount: 180000 }, priceOverride: { total: 800000 } });
     expect(await s.row(id)).toEqual(before);
     await s.edit(id, { priceOverride: null });
-    expect(await s.get(id)).toMatchObject({ total: 10800, discountAmount: 2700, promotion: { discount: 2700 } });
+    expect(await s.get(id)).toMatchObject({ total: 1080000, discountAmount: 270000, promotion: { discount: 270000 } });
     expect((await s.get(id)).priceOverride).toBeUndefined();
     await s.reconcile();
   });
@@ -378,7 +378,7 @@ describe('admin coupon repricing', () => {
     await s.t.run(async ctx => {
       for (let i = 1; i <= 51; i++) await ctx.db.insert('couponRedemptions', {
         couponId: s.couponId, couponVersion: 1, code: 'DCNT-F1-20', bookingId: id,
-        state: 'released', discount: 1800, createdAt: NOW + i, updatedAt: NOW + i
+        state: 'released', discount: 180000, createdAt: NOW + i, updatedAt: NOW + i
       });
     });
     const detail = (await s.admin.query(api.marketing.getCoupon, { couponId: s.couponId }))!;
@@ -421,7 +421,7 @@ describe('release 2a backend regressions', () => {
     if (paid) await s.pay(id);
     const before = await s.get(id);
     const redemption = await s.row(id);
-    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 6000, currency: 'USD' }));
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 600000, currency: 'USD' }));
     await s.edit(id, { guests: 1 });
     expect(await s.get(id)).toMatchObject({ guests: 1, subtotal: before.subtotal, discountAmount: before.discountAmount, total: before.total, currency: before.currency, promotion: before.promotion });
     expect((await s.get(id)).amountPaid).toBe(before.amountPaid);
@@ -432,19 +432,19 @@ describe('release 2a backend regressions', () => {
   it.each(['reset', 'override', 'stay'] as const)('guards paid currency on every price-writing path: %s', async path => {
     const s = await setup();
     const id = await s.create();
-    if (path === 'reset') await s.edit(id, { priceOverride: { total: 7000, reason: 'Host quote' } });
+    if (path === 'reset') await s.edit(id, { priceOverride: { total: 700000, reason: 'Host quote' } });
     await s.pay(id);
     const before = await s.get(id);
     const redemption = await s.row(id);
     await s.t.run(ctx => ctx.db.patch(s.propertyId, { currency: 'USD' }));
-    const changes = path === 'reset' ? { priceOverride: null } : path === 'override' ? { priceOverride: { total: 7500, reason: 'New quote' } } : { checkOut: '2026-11-13' };
+    const changes = path === 'reset' ? { priceOverride: null } : path === 'override' ? { priceOverride: { total: 750000, reason: 'New quote' } } : { checkOut: '2026-11-13' };
     await expect(s.edit(id, changes)).rejects.toThrow(/different currency/);
     expect(await s.get(id)).toEqual(before);
     expect(await s.row(id)).toEqual(redemption);
   });
 
   it.each(['manual', 'POS'] as const)('restores capacity when %s money was never received', async origin => {
-    const s = await setup({ usageLimit: 1, discountBudget: 1800 });
+    const s = await setup({ usageLimit: 1, discountBudget: 180000 });
     const id = await s.create();
     if (origin === 'manual') {
       await s.pay(id);
@@ -457,7 +457,7 @@ describe('release 2a backend regressions', () => {
       await s.admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-mistaken-pos', reason: 'No money was actually received' });
     }
     expect(await s.row(id)).toMatchObject({ state: 'held' });
-    expect(await s.coupon()).toMatchObject({ held: 1, heldDiscount: 1800, used: 0, discountGranted: 0 });
+    expect(await s.coupon()).toMatchObject({ held: 1, heldDiscount: 180000, used: 0, discountGranted: 0 });
     await s.cancel(id);
     expect(await s.row(id)).toMatchObject({ state: 'released' });
     expect(await s.coupon()).toMatchObject({ held: 0, heldDiscount: 0, used: 0, discountGranted: 0 });
@@ -466,7 +466,7 @@ describe('release 2a backend regressions', () => {
   });
 
   it.each(['admin', 'web'] as const)('rejects zero-total coupon creates on %s without reserving anything', async source => {
-    const s = await setup({ percent: 100, maxSaving: 10000 });
+    const s = await setup({ percent: 10000, maxSaving: 1000000 });
     await expect(source === 'admin' ? s.create() : s.web()).rejects.toThrow(/coupon_unavailable.*This code covers the whole stay, so it can't be booked online. Please contact us.*nothing_eligible/);
     expect(await s.t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
     expect(await s.t.run(ctx => ctx.db.query('couponRedemptions').take(10))).toHaveLength(0);
@@ -475,15 +475,15 @@ describe('release 2a backend regressions', () => {
   });
 
   it.each(['held', 'consumed'] as const)('quotes edits read-only with frozen rules and its own %s budget excluded', async state => {
-    const s = await setup({ discountBudget: 2700, usageLimit: 1 });
+    const s = await setup({ discountBudget: 270000, usageLimit: 1 });
     const id = await s.create();
     if (state === 'consumed') await s.pay(id);
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 30 } });
+    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 3000 } });
     const before = await s.get(id);
     const redemption = await s.row(id);
     const counters = await s.coupon();
     const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, { bookingId: id, propertySlug: 'mossbell', checkIn: before.checkIn, checkOut: '2026-11-13', guests: 2 });
-    expect(quote).toEqual({ subtotal: 13500, discountAmount: 2700, total: 10800, currency: 'THB', promotion: { code: 'DCNT-F1-20', couponVersion: 1, discount: 2700 }, couponRemoved: false, repriced: true });
+    expect(quote).toEqual({ subtotal: 1350000, discountAmount: 270000, total: 1080000, currency: 'THB', promotion: { code: 'DCNT-F1-20', couponVersion: 1, discount: 270000 }, couponRemoved: false, repriced: true });
     expect(await s.get(id)).toEqual(before);
     expect(await s.row(id)).toEqual(redemption);
     expect(await s.coupon()).toEqual(counters);
@@ -495,14 +495,14 @@ describe('release 2a backend regressions', () => {
   it('public custom-price projection hides historical coupon savings', async () => {
     const s = await setup();
     const { bookingId, accessToken } = await s.web();
-    expect(await s.t.query(api.bookings.getById, { id: bookingId, accessToken })).toMatchObject({ customPrice: false, promotion: { discount: 1800 } });
-    await s.edit(bookingId, { priceOverride: { total: 9000, reason: 'Full room rate agreed' } });
+    expect(await s.t.query(api.bookings.getById, { id: bookingId, accessToken })).toMatchObject({ customPrice: false, promotion: { discount: 180000 } });
+    await s.edit(bookingId, { priceOverride: { total: 900000, reason: 'Full room rate agreed' } });
     const projected = await s.t.query(api.bookings.getById, { id: bookingId, accessToken });
-    expect(projected).toMatchObject({ customPrice: true, total: 9000 });
+    expect(projected).toMatchObject({ customPrice: true, total: 900000 });
     expect(projected!.promotion).toBeUndefined();
-    expect((await s.get(bookingId)).promotion).toMatchObject({ discount: 1800 });
+    expect((await s.get(bookingId)).promotion).toMatchObject({ discount: 180000 });
     await s.edit(bookingId, { priceOverride: null });
-    expect(await s.t.query(api.bookings.getById, { id: bookingId, accessToken })).toMatchObject({ customPrice: false, total: 7200, promotion: { discount: 1800 } });
+    expect(await s.t.query(api.bookings.getById, { id: bookingId, accessToken })).toMatchObject({ customPrice: false, total: 720000, promotion: { discount: 180000 } });
   });
 });
 
@@ -511,12 +511,12 @@ describe('edit quote policy and lifecycle boundaries', () => {
   it.each([false, true])('quotes guest-only edits at stored totals even after rate/currency changes (custom=%s)', async custom => {
     const s = await setup();
     const id = await s.create();
-    if (custom) await s.edit(id, { priceOverride: { total: 8000, reason: 'Agreed price' } });
+    if (custom) await s.edit(id, { priceOverride: { total: 800000, reason: 'Agreed price' } });
     await s.pay(id);
-    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 6000, currency: 'USD' }));
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 600000, currency: 'USD' }));
     const b = await s.get(id);
     const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, { bookingId: id, propertySlug: 'mossbell', checkIn: b.checkIn, checkOut: b.checkOut, guests: 1 });
-    expect(quote).toEqual({ subtotal: b.subtotal, discountAmount: b.discountAmount, total: b.total, currency: 'THB', promotion: custom ? null : { code: 'DCNT-F1-20', couponVersion: 1, discount: 1800 }, couponRemoved: false, repriced: false });
+    expect(quote).toEqual({ subtotal: b.subtotal, discountAmount: b.discountAmount, total: b.total, currency: 'THB', promotion: custom ? null : { code: 'DCNT-F1-20', couponVersion: 1, discount: 180000 }, couponRemoved: false, repriced: false });
     await s.edit(id, { guests: 1 });
     expect((await s.get(id)).total).toBe(quote.total);
     await s.reconcile();
@@ -525,12 +525,12 @@ describe('edit quote policy and lifecycle boundaries', () => {
   it('does not reprice a redundant clear-override request', async () => {
     const s = await setup();
     const id = await s.create();
-    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 6000 }));
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 600000 }));
     const args = { bookingId: id, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut: s.input.checkOut, guests: 2, clearPriceOverride: true };
-    expect(await s.admin.query(api.adminBookings.quoteBookingEdit, args)).toMatchObject({ total: 7200, repriced: false });
+    expect(await s.admin.query(api.adminBookings.quoteBookingEdit, args)).toMatchObject({ total: 720000, repriced: false });
     await s.edit(id, { priceOverride: null });
-    expect((await s.get(id)).total).toBe(7200);
-    expect((await s.row(id)).discount).toBe(1800);
+    expect((await s.get(id)).total).toBe(720000);
+    expect((await s.row(id)).discount).toBe(180000);
     await s.reconcile();
   });
 
@@ -541,7 +541,7 @@ describe('edit quote policy and lifecycle boundaries', () => {
     let propertyId = s.propertyId;
     let propertySlug = 'mossbell';
     const checkOut = reason === 'minimum_nights' ? '2026-11-11' : '2026-11-13';
-    if (reason === 'direct_better') await s.t.run(ctx => ctx.db.patch(s.propertyId, { directDiscountPercent: 25 }));
+    if (reason === 'direct_better') await s.t.run(ctx => ctx.db.patch(s.propertyId, { directDiscountPercent: 2500 }));
     if (reason === 'wrong_property') {
       await s.t.run(async ctx => {
         const property = (await ctx.db.get(s.propertyId))!;
@@ -566,10 +566,10 @@ describe('edit quote policy and lifecycle boundaries', () => {
   it.each([false, true])('quotes override removal with the original coupon policy (stayChanged=%s)', async stayChanged => {
     const s = await setup();
     const id = await s.create();
-    await s.edit(id, { priceOverride: { total: 8000, reason: 'Agreed price' } });
+    await s.edit(id, { priceOverride: { total: 800000, reason: 'Agreed price' } });
     const checkOut = stayChanged ? '2026-11-13' : s.input.checkOut;
     const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, { bookingId: id, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut, guests: 2, clearPriceOverride: true });
-    expect(quote).toMatchObject({ total: stayChanged ? 10800 : 7200, promotion: { couponVersion: 1, discount: stayChanged ? 2700 : 1800 }, couponRemoved: false, repriced: true });
+    expect(quote).toMatchObject({ total: stayChanged ? 1080000 : 720000, promotion: { couponVersion: 1, discount: stayChanged ? 270000 : 180000 }, couponRemoved: false, repriced: true });
     expect((await s.get(id)).priceOverride).toBeDefined();
     await s.edit(id, { checkOut, priceOverride: null });
     expect((await s.get(id)).total).toBe(quote.total);
@@ -581,7 +581,7 @@ describe('edit quote policy and lifecycle boundaries', () => {
     const s = await setup();
     const id = await s.create({ couponCode: '' });
     const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, { bookingId: id, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut: '2026-11-13', guests: 2 });
-    expect(quote).toEqual({ subtotal: 13500, discountAmount: 2025, total: 11475, currency: 'THB', promotion: null, couponRemoved: false, repriced: true });
+    expect(quote).toEqual({ subtotal: 1350000, discountAmount: 202500, total: 1147500, currency: 'THB', promotion: null, couponRemoved: false, repriced: true });
     await s.edit(id, { checkOut: '2026-11-13' });
     expect((await s.get(id)).total).toBe(quote.total);
   });
@@ -593,7 +593,7 @@ describe('edit quote policy and lifecycle boundaries', () => {
     await expect(s.t.query(api.adminBookings.quoteBookingEdit, args)).rejects.toThrow(/Not authenticated/);
     await expect(s.admin.query(api.adminBookings.quoteBookingEdit, { ...args, checkOut: args.checkIn })).rejects.toThrow(/Check-out must be after check-in/);
     await expect(s.admin.query(api.adminBookings.quoteBookingEdit, { ...args, guests: 3 })).rejects.toThrow(/max capacity/);
-    await s.edit(id, { priceOverride: { total: 8000, reason: 'Agreed price' } });
+    await s.edit(id, { priceOverride: { total: 800000, reason: 'Agreed price' } });
     await expect(s.admin.query(api.adminBookings.quoteBookingEdit, { ...args, checkOut: '2026-11-13' })).rejects.toThrow(/custom price/);
     await s.pay(id);
     await s.t.run(ctx => ctx.db.patch(s.propertyId, { currency: 'USD' }));
@@ -612,10 +612,10 @@ describe('edit quote policy and lifecycle boundaries', () => {
     const other = await s.create({ checkIn: '2026-11-13', checkOut: '2026-11-15' });
     await s.pay(other);
     const args = { bookingId: id, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut: '2026-11-13', guests: 2 };
-    expect(await s.admin.query(api.adminBookings.quoteBookingEdit, args)).toMatchObject({ total: 10800 });
+    expect(await s.admin.query(api.adminBookings.quoteBookingEdit, args)).toMatchObject({ total: 1080000 });
     await expect(s.admin.query(api.adminBookings.quoteBookingEdit, { ...args, checkOut: '2026-11-14' })).rejects.toThrow();
     await expect(s.edit(id, { checkOut: '2026-11-14' })).rejects.toThrow();
-    expect((await s.row(id)).discount).toBe(1800);
+    expect((await s.row(id)).discount).toBe(180000);
     await s.reconcile();
   });
 
@@ -635,13 +635,13 @@ describe('edit quote policy and lifecycle boundaries', () => {
   it('keeps consumption when a mistaken payment is voided but an earlier deposit remains', async () => {
     const s = await setup();
     const id = await s.create();
-    await s.t.run(async ctx => { const b = (await ctx.db.get(id))!; await writeBooking(ctx, b, { amountPaid: 100 }, { actor: email, kind: 'deposit' }); });
+    await s.t.run(async ctx => { const b = (await ctx.db.get(id))!; await writeBooking(ctx, b, { amountPaid: 10000 }, { actor: email, kind: 'deposit' }); });
     await s.pay(id);
     const payment = (await s.t.run(ctx => ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', id)).first()))!;
     await s.admin.mutation(api.adminBookings.cancelPayment, { bookingId: id, expectedRevision: (await s.get(id)).revision!, paymentId: payment._id, reason: 'Balance was never received' });
-    expect((await s.get(id)).amountPaid).toBe(100);
+    expect((await s.get(id)).amountPaid).toBe(10000);
     expect((await s.row(id)).state).toBe('consumed');
-    expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 1800, held: 0, heldDiscount: 0 });
+    expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 180000, held: 0, heldDiscount: 0 });
     await s.reconcile();
   });
 });
@@ -653,9 +653,9 @@ describe('edit save matches the reviewed quote', () => {
     const s = await setup();
     const id = await s.create();
     const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, quoteArgs(id, '2026-11-13'));
-    expect(quote.total).toBe(10800);
+    expect(quote.total).toBe(1080000);
     // The villa rate changes between preview and save.
-    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 6000 }));
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 600000 }));
     const before = await s.get(id);
     const redemption = await s.row(id);
     await expect(s.edit(id, { checkOut: '2026-11-13', expectedPrice: { total: quote.total, currency: quote.currency } }))
@@ -681,20 +681,20 @@ describe('edit save matches the reviewed quote', () => {
   it('checks a custom price against the total reviewed', async () => {
     const s = await setup();
     const id = await s.create();
-    await expect(s.edit(id, { priceOverride: { total: 8000, reason: 'Agreed' }, expectedPrice: { total: 7200, currency: 'THB' } })).rejects.toThrow(/price changed/i);
-    await s.edit(id, { priceOverride: { total: 8000, reason: 'Agreed' }, expectedPrice: { total: 8000, currency: 'THB' } });
-    expect((await s.get(id)).total).toBe(8000);
+    await expect(s.edit(id, { priceOverride: { total: 800000, reason: 'Agreed' }, expectedPrice: { total: 720000, currency: 'THB' } })).rejects.toThrow(/price changed/i);
+    await s.edit(id, { priceOverride: { total: 800000, reason: 'Agreed' }, expectedPrice: { total: 800000, currency: 'THB' } });
+    expect((await s.get(id)).total).toBe(800000);
   });
 
   it('keeps guest-only edits on frozen coupon pricing at the reviewed stored total', async () => {
     const s = await setup();
     const id = await s.create();
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 30 } });
-    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 6000 }));
+    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 3000 } });
+    await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 600000 }));
     const quote = await s.admin.query(api.adminBookings.quoteBookingEdit, { ...quoteArgs(id, '2026-11-12'), guests: 1 });
-    expect(quote).toMatchObject({ total: 7200, repriced: false });
+    expect(quote).toMatchObject({ total: 720000, repriced: false });
     await s.edit(id, { guests: 1, expectedPrice: { total: quote.total, currency: quote.currency } });
-    expect(await s.get(id)).toMatchObject({ guests: 1, total: 7200, promotion: { couponVersion: 1, discount: 1800 } });
+    expect(await s.get(id)).toMatchObject({ guests: 1, total: 720000, promotion: { couponVersion: 1, discount: 180000 } });
     await s.reconcile();
   });
 });

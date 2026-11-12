@@ -43,7 +43,7 @@ const FIELD_LABELS: Record<string, string> = {
 const MONEY_FIELDS = new Set(["subtotal", "discountAmount", "total", "amountPaid", "amountRefunded", "amount", "keptPaid"]);
 const TIME_FIELDS = new Set(["paidAt", "refundedAt", "cancelledAt", "effectiveAt"]);
 /** Shown elsewhere (snapshots) or ids that mean nothing to staff. */
-const HIDDEN = new Set(["paymentId", "refundId", "billId", "sequence", "before", "after", "tendersChanged", "customerChanged", "revision", "unlinkedAppointments", "createdAt", "createdBy", "source", "hasStripePayment", "villaStatus"]);
+const HIDDEN = new Set(["paymentId", "refundId", "orderId", "sequence", "before", "after", "tendersChanged", "customerChanged", "revision", "unlinkedAppointments", "createdAt", "createdBy", "source", "hasStripePayment", "villaStatus"]);
 const hotelLabels: Record<string, string> = STATUS_LABELS.hotelBooking;
 const paymentLabels: Record<string, string> = STATUS_LABELS.payment;
 

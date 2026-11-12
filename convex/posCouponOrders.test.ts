@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
@@ -21,22 +22,22 @@ async function setup(limits: { usageLimit?: number; discountBudget?: number; amo
 	const nok = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const serviceId = await admin.mutation(api.adminServices.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: '', category: 'Massage',
-		durationMin: 60, bufferMin: 15, price: 1200, currency: 'THB', staffIds: [nok]
+		durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [nok]
 	});
 	const { propertyId, bookingId } = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
-			slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 4,
+			slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 4,
 			bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 		});
 		// A pending stay with a 10,000 Stripe deposit already paid online.
-		const bookingId = await ctx.db.insert('bookings', {
+		const bookingId = await insertFixture(ctx, 'bookings', {
 			propertyId, guestName: 'Anna', guestPhone: '+66 81 234 5678', guestPhoneDigits: '66812345678', checkIn: '2026-10-01', checkOut: '2026-10-04',
-			guests: 2, nights: 3, subtotal: 30000, discountAmount: 0, total: 30000, currency: 'THB', amountPaid: 10000,
+			guests: 2, nights: 3, subtotal: 3000000, discountAmount: 0, total: 3000000, currency: 'THB', amountPaid: 1000000,
 			paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'CONF-ANNA', createdAt: Date.now()
 		});
 		return { propertyId, bookingId };
 	});
-	const order = (orderId: Id<'bills'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
+	const order = (orderId: Id<'orders'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
 	/** settleOrder with the order and customer revisions the cashier is looking at now. */
 	const settle = async (args: Omit<FunctionArgs<typeof api.pos.settleOrder>, 'expectedRevision'>) => {
 		const view = await order(args.orderId);
@@ -44,26 +45,26 @@ async function setup(limits: { usageLimit?: number; discountBudget?: number; amo
 	};
 	const appointment = (overrides: Record<string, unknown> = {}) => {
 		const start = Date.now() + 3_600_000;
-		return t.run((ctx) => ctx.db.insert('serviceAppointments', {
+		return t.run((ctx) => insertFixture(ctx, 'appointments', {
 			serviceId, staffId: nok, start, end: start + 3_600_000, blockedUntil: start + 4_500_000, guestName: 'Eve', guestPhone: '+66 82 000 1111',
-			source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-1', accessToken: 'tok', createdAt: Date.now(),
+			source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 120000, currency: 'THB', confirmationCode: 'SVC-1', accessToken: 'tok', createdAt: Date.now(),
 			...overrides
 		}));
 	};
-	const extra = (orderId?: Id<'bills'>, price = 100) => admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Water', price } });
-	const rules = { code: 'SPA-500', benefit: { kind: 'fixed' as const, amount: limits.amount ?? 500 }, scope: 'services' as const,
-		minEligibleSubtotal: limits.min ?? 1500, usageLimit: limits.usageLimit, discountBudget: limits.discountBudget, terms: 'Spa services only.' };
+	const extra = (orderId?: Id<'orders'>, price = 10000) => admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Water', price } });
+	const rules = { code: 'SPA-500', benefit: { kind: 'fixed' as const, amount: limits.amount ?? 50000 }, scope: 'services' as const,
+		minEligibleSubtotal: limits.min ?? 150000, usageLimit: limits.usageLimit, discountBudget: limits.discountBudget, terms: 'Spa services only.' };
 	const { couponId } = await admin.mutation(api.marketing.saveCoupon, rules);
 	await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-	const addService = (orderId?: Id<'bills'>) => admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
+	const addService = (orderId?: Id<'orders'>) => admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
 	const sale = async () => {
 		const { orderId } = await addService();
 		const { lineId } = await addService(orderId);
-		await admin.mutation(api.pos.overrideLinePrice, { lineId, price: 600, note: 'Foot spa' });
+		await admin.mutation(api.pos.overrideLinePrice, { lineId, price: 60000, note: 'Foot spa' });
 		return orderId;
 	};
-	const apply = (orderId: Id<'bills'>) => admin.mutation(api.pos.applyOrderCoupon, { orderId, code: ' spa-500 ' });
-	const pay = async (orderId: Id<'bills'>, idempotencyKey = `coupon-pay-${orderId}`, effectiveAt?: number) => {
+	const apply = (orderId: Id<'orders'>) => admin.mutation(api.pos.applyOrderCoupon, { orderId, code: ' spa-500 ' });
+	const pay = async (orderId: Id<'orders'>, idempotencyKey = `coupon-pay-${orderId}`, effectiveAt?: number) => {
 		const view = await order(orderId);
 		return settle({ orderId, idempotencyKey, expectedDue: view.totals.due, tenders: view.totals.due ? [{ method: 'cash', amount: view.totals.due }] : [], effectiveAt });
 	};
@@ -81,22 +82,22 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 const unavailable = (code: string) => ({ data: expect.objectContaining({ code: 'coupon_unavailable', problem: expect.objectContaining({ code }) }) });
 
 describe('POS order coupons', () => {
-	it('splits SPA-500 333/167, consumes at 1300 and replays once even after the coupon is paused', async () => {
+	it('splits SPA-500 333.33/166.67, consumes at 1300 and replays once even after the coupon is paused', async () => {
 		const s = await setup();
 		const orderId = await s.sale();
 		const before = await s.order(orderId);
-		expect(await s.apply(orderId)).toEqual({ code: 'SPA-500', discount: 500, revision: before.order.revision + 1 });
+		expect(await s.apply(orderId)).toEqual({ code: 'SPA-500', discount: 50000, revision: before.order.revision + 1 });
 		const view = await s.order(orderId);
-		expect(view.lines.map(line => line.couponDiscount)).toEqual([333, 167]);
-		expect(view.promotion).toEqual({ code: 'SPA-500', couponVersion: 1, discount: 500, problem: null, terms: 'Spa services only.' });
-		expect(view.totals).toMatchObject({ total: 1300, coupon: 500, due: 1300 });
+		expect(view.lines.map(line => line.couponDiscount)).toEqual([33333, 16667]);
+		expect(view.promotion).toEqual({ code: 'SPA-500', couponVersion: 1, discount: 50000, problem: null, terms: 'Spa services only.' });
+		expect(view.totals).toMatchObject({ total: 130000, coupon: 50000, due: 130000 });
 		expect(await s.coupon()).toMatchObject({ used: 0, discountGranted: 0 });
 		expect(await s.ledger()).toEqual([]);
 		expect(await s.pay(orderId)).toMatchObject({ replayed: false });
 		await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'paused' });
 		expect(await s.pay(orderId)).toMatchObject({ replayed: true });
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
-		expect(await s.ledger()).toMatchObject([{ billId: orderId, state: 'consumed', discount: 500, couponVersion: 1 }]);
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
+		expect(await s.ledger()).toMatchObject([{ orderId: orderId, state: 'consumed', discount: 50000, couponVersion: 1 }]);
 		expect((await s.order(orderId)).order.promotion?.redemptionId).toBe((await s.ledger())[0]._id);
 	});
 
@@ -126,27 +127,27 @@ describe('POS order coupons', () => {
 		await s.admin.mutation(api.pos.addItem, { orderId, item: { kind: 'room', propertyId: s.propertyId } });
 		await s.extra(orderId, 450);
 		const appointmentId = await s.appointment({ status: 'no_show' });
-		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 100 });
+		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 10000 });
 		await s.apply(orderId);
 		const view = await s.order(orderId);
-		expect(view.lines.filter(line => line.kind === 'service').map(line => line.couponDiscount)).toEqual([333, 167]);
+		expect(view.lines.filter(line => line.kind === 'service').map(line => line.couponDiscount)).toEqual([33333, 16667]);
 		expect(view.lines.filter(line => line.kind !== 'service').every(line => line.couponDiscount === undefined)).toBe(true);
-		expect(view.totals.coupon).toBe(500);
+		expect(view.totals.coupon).toBe(50000);
 	});
 
 	it('refuses a coupon already on an attached stay and shows its booking promotion unless overridden', async () => {
 		const s = await setup();
 		const orderId = await s.sale();
 		await s.t.run(async ctx => {
-			const redemptionId = await ctx.db.insert('couponRedemptions', { couponId: s.couponId, couponVersion: 1, code: 'SPA-500', bookingId: s.bookingId, discount: 500, state: 'held', createdAt: Date.now(), updatedAt: Date.now() });
-			await ctx.db.patch(s.bookingId, { promotion: { couponId: s.couponId, couponVersion: 1, code: 'SPA-500', discount: 500, redemptionId } });
+			const redemptionId = await ctx.db.insert('couponRedemptions', { couponId: s.couponId, couponVersion: 1, code: 'SPA-500', bookingId: s.bookingId, discount: 50000, state: 'held', createdAt: Date.now(), updatedAt: Date.now() });
+			await ctx.db.patch(s.bookingId, { promotion: { couponId: s.couponId, couponVersion: 1, code: 'SPA-500', discount: 50000, redemptionId } });
 		});
 		await s.admin.mutation(api.pos.attach, { orderId, bookingId: s.bookingId });
 		const before = await s.order(orderId);
 		await expect(s.apply(orderId)).rejects.toMatchObject(unavailable('already_on_stay'));
 		expect(await s.order(orderId)).toEqual(before);
-		expect(before.lines.find(line => line.bookingId)?.stayCoupon).toEqual({ code: 'SPA-500', discount: 500 });
-		await s.t.run(ctx => ctx.db.patch(s.bookingId, { priceOverride: { total: 30000, quotedTotal: 30000, reason: 'Custom stay', by: 'admin@example.com', at: Date.now() } }));
+		expect(before.lines.find(line => line.bookingId)?.stayCoupon).toEqual({ code: 'SPA-500', discount: 50000 });
+		await s.t.run(ctx => ctx.db.patch(s.bookingId, { priceOverride: { total: 3000000, quotedTotal: 3000000, reason: 'Custom stay', by: 'admin@example.com', at: Date.now() } }));
 		expect((await s.order(orderId)).lines.find(line => line.bookingId)?.stayCoupon).toBeNull();
 	});
 
@@ -156,12 +157,12 @@ describe('POS order coupons', () => {
 		await s.apply(orderId);
 		await s.admin.mutation(api.pos.removeLine, { lineId: (await s.order(orderId)).lines[1]._id });
 		const view = await s.order(orderId);
-		expect(view.promotion).toMatchObject({ code: 'SPA-500', discount: 0, problem: { code: 'min_subtotal', eligibleSubtotal: 1200 } });
-		expect(view.totals).toMatchObject({ coupon: 0, due: 1200 });
+		expect(view.promotion).toMatchObject({ code: 'SPA-500', discount: 0, problem: { code: 'min_subtotal', eligibleSubtotal: 120000 } });
+		expect(view.totals).toMatchObject({ coupon: 0, due: 120000 });
 		expect(view.lines[0].couponDiscount).toBeUndefined();
 		await expect(s.pay(orderId)).rejects.toMatchObject(unavailable('min_subtotal'));
 		await s.addService(orderId);
-		expect((await s.order(orderId)).promotion).toMatchObject({ discount: 500, problem: null });
+		expect((await s.order(orderId)).promotion).toMatchObject({ discount: 50000, problem: null });
 		await s.pay(orderId);
 	});
 
@@ -176,19 +177,19 @@ describe('POS order coupons', () => {
 	});
 
 	it('requires review when another sale reduces the live budget and hence the saving', async () => {
-		const s = await setup({ discountBudget: 800 });
+		const s = await setup({ discountBudget: 80000 });
 		const first = await s.sale();
 		const second = await s.sale();
 		await s.apply(first);
 		await s.apply(second);
 		await s.pay(first);
-		await expect(s.pay(second)).rejects.toMatchObject({ data: { code: 'coupon_changed', message: 'The coupon now saves ฿300. Check the coupon again before taking payment.', discount: 300 } });
+		await expect(s.pay(second)).rejects.toMatchObject({ data: { code: 'coupon_changed', message: 'The coupon now saves ฿300. Check the coupon again before taking payment.', discount: 30000 } });
 		expect((await s.order(second)).payments).toEqual([]);
 		expect(await s.ledger()).toHaveLength(1);
 		await s.apply(second);
-		expect((await s.order(second)).lines.map(line => line.couponDiscount)).toEqual([200, 100]);
+		expect((await s.order(second)).lines.map(line => line.couponDiscount)).toEqual([20000, 10000]);
 		await s.pay(second);
-		expect(await s.coupon()).toMatchObject({ used: 2, discountGranted: 800 });
+		expect(await s.coupon()).toMatchObject({ used: 2, discountGranted: 80000 });
 	});
 
 	it('lets only one competing order consume the last use and leaves the loser unpaid', async () => {
@@ -205,18 +206,18 @@ describe('POS order coupons', () => {
 		expect((await s.order(loser)).payments).toEqual([]);
 		expect((await s.order(loser)).order.status).toBe('draft');
 		expect(await s.ledger()).toHaveLength(1);
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
 	});
 
 	it('settles a fully covered order without tenders', async () => {
-		const s = await setup({ amount: 1800 });
+		const s = await setup({ amount: 180000 });
 		const orderId = await s.sale();
 		await s.apply(orderId);
 		expect((await s.order(orderId)).totals.due).toBe(0);
 		await s.pay(orderId);
 		expect((await s.order(orderId)).order.status).toBe('paid');
 		expect((await s.order(orderId)).payments).toEqual([]);
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 1800 });
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 180000 });
 	});
 
 	it('a plain void keeps the use counted', async () => {
@@ -226,7 +227,7 @@ describe('POS order coupons', () => {
 		await s.pay(orderId);
 		await s.admin.mutation(api.pos.voidOrder, { orderId, reason: 'Void receipt' });
 		expect((await s.ledger())[0].state).toBe('reversed');
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
 	});
 
 	it('releases an unreceived payment exactly once', async () => {
@@ -245,19 +246,19 @@ describe('POS order coupons', () => {
 		const s = await setup();
 		const orderId = await s.sale();
 		await s.apply(orderId);
-		await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'fixed', amount: 900 }, terms: 'New terms' });
+		await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'fixed', amount: 90000 }, terms: 'New terms' });
 		await s.admin.mutation(api.pos.updateLine, { lineId: (await s.order(orderId)).lines[0]._id, staffId: s.nok });
-		expect((await s.order(orderId)).promotion).toMatchObject({ couponVersion: 1, discount: 500, terms: 'Spa services only.' });
+		expect((await s.order(orderId)).promotion).toMatchObject({ couponVersion: 1, discount: 50000, terms: 'Spa services only.' });
 		await s.pay(orderId);
-		await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'fixed', amount: 1000 } });
-		expect((await s.order(orderId)).lines.map(line => line.couponDiscount)).toEqual([333, 167]);
+		await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'fixed', amount: 100000 } });
+		expect((await s.order(orderId)).lines.map(line => line.couponDiscount)).toEqual([33333, 16667]);
 		await expect(s.apply(orderId)).rejects.toThrow('already paid');
 		const next = await s.sale();
 		await s.apply(next);
-		expect((await s.order(next)).promotion).toMatchObject({ couponVersion: 3, discount: 1000 });
+		expect((await s.order(next)).promotion).toMatchObject({ couponVersion: 3, discount: 100000 });
 		await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId });
 		await s.apply(next);
-		expect((await s.order(next)).promotion).toMatchObject({ couponVersion: 4, discount: 500 });
+		expect((await s.order(next)).promotion).toMatchObject({ couponVersion: 4, discount: 50000 });
 	});
 
 	it('removes shares and promotion, logs removal and replacement, and clearing removes the promotion', async () => {
@@ -270,14 +271,14 @@ describe('POS order coupons', () => {
 		const removed = await s.order(orderId);
 		expect(removed.promotion).toBeNull();
 		expect(removed.lines.every(line => line.couponDiscount === undefined)).toBe(true);
-		expect(removed.totals.due).toBe(1800);
+		expect(removed.totals.due).toBe(180000);
 		expect(await s.admin.mutation(api.pos.removeOrderCoupon, { orderId })).toEqual({ revision: revision + 1 });
 		await s.apply(orderId);
 		await s.admin.mutation(api.pos.clearOrder, { orderId });
 		expect((await s.order(orderId)).promotion).toBeNull();
 		const history = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'order').eq('entityId', orderId)).take(50));
-		expect(history.find(row => row.kind === 'coupon_removed')).toMatchObject({ before: { code: 'SPA-500', discount: 500 } });
-		expect(history.filter(row => row.kind === 'coupon_applied')[1]).toMatchObject({ before: { code: 'SPA-500' }, after: { code: 'SPA-500', couponVersion: 1, discount: 500 } });
+		expect(history.find(row => row.kind === 'coupon_removed')).toMatchObject({ before: { code: 'SPA-500', discount: 50000 } });
+		expect(history.filter(row => row.kind === 'coupon_applied')[1]).toMatchObject({ before: { code: 'SPA-500' }, after: { code: 'SPA-500', couponVersion: 1, discount: 50000 } });
 	});
 
 	it('uses real Bangkok today at payment even when effectiveAt is backdated', async () => {
@@ -304,8 +305,8 @@ describe('POS order coupons', () => {
 		await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'active' });
 		await s.apply(orderId);
 		await s.pay(orderId);
-		await s.admin.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'amend-coupon-001', reason: 'Card instead', tenders: [{ method: 'card', amount: 1300 }] });
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+		await s.admin.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'amend-coupon-001', reason: 'Card instead', tenders: [{ method: 'card', amount: 130000 }] });
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
 		expect((await s.ledger())[0].state).toBe('consumed');
 	});
 
@@ -324,7 +325,7 @@ describe('POS order coupons', () => {
 		await expect(s.admin.mutation(api.pos.applyOrderCoupon, { orderId, slug: 'spa' })).rejects.toMatchObject(unavailable('link_without_offer'));
 		expect(await s.order(orderId)).toEqual(before);
 		await s.admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
-		expect(await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, slug: 'spa' })).toMatchObject({ code: 'SPA-500', discount: 500 });
+		expect(await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, slug: 'spa' })).toMatchObject({ code: 'SPA-500', discount: 50000 });
 		await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'paused' });
 		await expect(s.admin.mutation(api.pos.applyOrderCoupon, { orderId, slug: 'spa' })).rejects.toMatchObject(unavailable('link_without_offer'));
 	});
@@ -346,15 +347,15 @@ describe('POS order coupons', () => {
 		await s.apply(orderId);
 		await s.pay(orderId);
 		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
-		expect(appointment).toMatchObject({ price: 700, amountPaid: 700 });
-		const refund = { appointmentId, billId: orderId, expectedRevision: appointment.revision ?? 0, currency: 'THB', method: 'cash' as const, reason: 'Guest refund', idempotencyKey: 'refund-coupon-001' };
-		await expect(s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 701 })).rejects.toThrow('At most 700');
+		expect(appointment).toMatchObject({ price: 70000, amountPaid: 70000 });
+		const refund = { appointmentId, orderId: orderId, expectedRevision: appointment.revision ?? 0, currency: 'THB', method: 'cash' as const, reason: 'Guest refund', idempotencyKey: 'refund-coupon-001' };
+		await expect(s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 70100 })).rejects.toThrow('At most 700');
 		// Even if other money was received for the appointment, this receipt only took 700.
-		await s.t.run(ctx => ctx.db.patch(appointmentId, { amountPaid: 1200 }));
-		await expect(s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 701 })).rejects.toThrow('Refund exceeds the actual money remaining on this receipt');
-		await s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 700 });
-		expect((await s.order(orderId)).lines[0].net).toBe(700);
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+		await s.t.run(ctx => ctx.db.patch(appointmentId, { amountPaid: 120000 }));
+		await expect(s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 70100 })).rejects.toThrow('Refund exceeds the actual money remaining on this receipt');
+		await s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 70000 });
+		expect((await s.order(orderId)).lines[0].net).toBe(70000);
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
 	});
 
 	it('requires admin for applying and removing coupons', async () => {
@@ -373,20 +374,20 @@ describe('POS order coupons: review fixes', () => {
 		const s = await setup();
 		const orderId = await s.sale();
 		const appointmentId = await s.appointment({ status: 'no_show' });
-		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 100 });
+		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 10000 });
 		await s.apply(orderId);
 		// Another staff member corrects the appointment after this fee was added.
-		await s.t.run(ctx => ctx.db.patch(appointmentId, { price: 50 }));
+		await s.t.run(ctx => ctx.db.patch(appointmentId, { price: 5000 }));
 		await expect(s.pay(orderId)).rejects.toThrow('price');
 		expect((await s.order(orderId)).payments).toEqual([]);
 		expect(await s.ledger()).toEqual([]);
 		expect(await s.coupon()).toMatchObject({ used: 0, discountGranted: 0 });
 		const fee = (await s.order(orderId)).lines.find(line => line.fee)!;
 		await s.admin.mutation(api.pos.removeLine, { lineId: fee._id });
-		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 50 });
+		await s.admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 5000 });
 		await s.pay(orderId);
-		expect((await s.order(orderId)).totals).toMatchObject({ coupon: 500, total: 1350 });
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+		expect((await s.order(orderId)).totals).toMatchObject({ coupon: 50000, total: 135000 });
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
 	});
 
 	it('releases an attachment-derived stay link while keeping the remaining service coupon', async () => {
@@ -400,11 +401,11 @@ describe('POS order coupons: review fixes', () => {
 		const detached = await s.order(orderId);
 		expect(detached.order.bookingId).toBeUndefined();
 		expect(detached.source).toBeNull();
-		expect(detached.totals).toMatchObject({ coupon: 500, total: 1300 });
-		expect(detached.lines.map(line => line.couponDiscount)).toEqual([333, 167]);
+		expect(detached.totals).toMatchObject({ coupon: 50000, total: 130000 });
+		expect(detached.lines.map(line => line.couponDiscount)).toEqual([33333, 16667]);
 		await s.pay(orderId);
-		expect(await s.ledger()).toMatchObject([{ billId: orderId, state: 'consumed', discount: 500 }]);
-		expect((await s.t.run(ctx => ctx.db.get(s.bookingId)))!.amountPaid).toBe(10000);
+		expect(await s.ledger()).toMatchObject([{ orderId: orderId, state: 'consumed', discount: 50000 }]);
+		expect((await s.t.run(ctx => ctx.db.get(s.bookingId)))!.amountPaid).toBe(1000000);
 	});
 
 	it('lowering the usage limit stops an order frozen on the earlier version', async () => {
@@ -427,12 +428,12 @@ describe('POS order coupons: review fixes', () => {
 		expect((await s.order(orderId)).promotion).toMatchObject({ discount: 0, problem: { code: 'not_active' } });
 		await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'active' });
 		// Payment re-checks: the coupon fits again, so staff must review the new saving first.
-		await expect(s.pay(orderId)).rejects.toMatchObject({ data: expect.objectContaining({ code: 'coupon_changed', discount: 500 }) });
+		await expect(s.pay(orderId)).rejects.toMatchObject({ data: expect.objectContaining({ code: 'coupon_changed', discount: 50000 }) });
 		const before = (await s.order(orderId)).order.revision;
-		expect(await s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).toEqual({ revision: before + 1, discount: 500, problem: null });
-		expect((await s.order(orderId)).lines.map(line => line.couponDiscount ?? 0)).toEqual([333, 167, 0]);
+		expect(await s.admin.mutation(api.pos.recheckOrderCoupon, { orderId })).toEqual({ revision: before + 1, discount: 50000, problem: null });
+		expect((await s.order(orderId)).lines.map(line => line.couponDiscount ?? 0)).toEqual([33333, 16667, 0]);
 		await s.pay(orderId);
-		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 500 });
+		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
 	});
 
 	it('a code renamed before its first use reaches the order, the ledger and the receipt', async () => {

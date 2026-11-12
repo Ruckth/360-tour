@@ -196,7 +196,7 @@ export const sendOwnerNotification = internalAction({
 });
 
 function formatMoney(amount: number, currency: string) {
-	return `${currency === 'THB' ? '฿' : `${currency} `}${amount.toLocaleString('en-US')}`;
+	return `${currency === 'THB' ? '฿' : `${currency} `}${(amount / 100).toLocaleString('en-US')}`;
 }
 
 type LifecycleKind = 'cancellation' | 'preArrival' | 'review' | 'updated';
@@ -283,7 +283,7 @@ export const sendReviewRequest = internalAction({
 
 export const sendStaffAlert = internalAction({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		channel: v.string(),
 		guestName: v.string(),
 		lastMessage: v.string()

@@ -6,7 +6,7 @@ export type AdminSessionStatus = "open" | "resolved" | "archived";
 export type SessionChannelFilter = "all" | "web" | "line" | "facebook" | "whatsapp" | "instagram";
 
 export type AdminMessage = {
-  _id: Id<"chatMessages">;
+  _id: Id<"messages">;
   role: "user" | "assistant";
   source?: "admin";
   content: string;
@@ -27,7 +27,7 @@ export type LineReplyMode =
   | "failed";
 
 export type AdminLineEvent = {
-  _id: Id<"lineWebhookEvents">;
+  _id: Id<"channelEvents">;
   eventType: "message" | "follow" | "postback" | "unsupported";
   messageText?: string;
   postbackData?: string;
@@ -41,7 +41,7 @@ export type AdminLineEvent = {
 };
 
 export type AdminFacebookEvent = {
-  _id: Id<"facebookWebhookEvents">;
+  _id: Id<"channelEvents">;
   eventType: "message" | "postback" | "unsupported";
   messageText?: string;
   postbackData?: string;
@@ -55,7 +55,7 @@ export type AdminFacebookEvent = {
 };
 
 export type AdminWhatsAppEvent = {
-  _id: Id<"whatsappWebhookEvents">;
+  _id: Id<"channelEvents">;
   eventType: "message" | "unsupported";
   messageText?: string;
   status: LineWebhookStatus;
@@ -68,7 +68,7 @@ export type AdminWhatsAppEvent = {
 };
 
 export type AdminInstagramEvent = {
-  _id: Id<"instagramWebhookEvents">;
+  _id: Id<"channelEvents">;
   eventType: "message" | "postback" | "unsupported";
   messageText?: string;
   postbackData?: string;
@@ -82,7 +82,7 @@ export type AdminInstagramEvent = {
 };
 
 export type AdminSession = {
-  _id: Id<"chatSessions">;
+  _id: Id<"conversations">;
   visitorId?: string;
   visitorName?: string;
   visitorEmail?: string;
@@ -113,7 +113,7 @@ export type AdminSession = {
   archivedAt?: number;
   aiPaused?: boolean;
   assignedAdminEmail?: string;
-  latestGuestMessageId?: Id<'chatMessages'>;
+  latestGuestMessageId?: Id<'messages'>;
   inboxState?: 'needs_staff' | 'processing' | 'done';
   inboxReason?: InboxReason;
   inboxSendError?: string;

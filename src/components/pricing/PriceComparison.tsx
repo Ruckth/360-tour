@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import Link from "next/link";
 import { Check, Globe2, ShieldCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
@@ -42,13 +44,13 @@ export function PriceComparison({
           <p className="mt-1 flex items-baseline gap-2">
             <span className="text-3xl font-bold text-foreground">
               {currencyPrefix(currency)}
-              {directRate.toLocaleString()}
+              {satangToBaht(directRate).toLocaleString()}
             </span>
             {discountPercent > 0 ? (
               <s className="text-sm text-muted-foreground">
                 <span className="sr-only">{pricingT("standardRate")} </span>
                 {currencyPrefix(currency)}
-                {pricePerNight.toLocaleString()}
+                {satangToBaht(pricePerNight).toLocaleString()}
               </s>
             ) : null}
           </p>
@@ -56,7 +58,7 @@ export function PriceComparison({
         </div>
         {discountPercent > 0 ? (
           <div className="shrink-0 rounded-full bg-gold/10 px-3 py-1 text-xs font-semibold text-gold">
-            {pricingT("directDiscount", { percent: discountPercent })}
+            {pricingT("directDiscount", { percent: discountPercent / 100 })}
           </div>
         ) : null}
       </div>

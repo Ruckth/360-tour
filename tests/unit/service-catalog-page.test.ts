@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import ServicesPage from "@/app/services/page";
-import ChatPage from "@/app/chat/page";
+import ServicesPage from "@/app/[locale]/services/page";
+import ChatPage from "@/app/[locale]/chat/page";
 import { getServiceCatalog, getPublicService } from "@/lib/server/services";
 import { getPublicMessages } from "@/lib/i18n/server-content";
 
@@ -19,7 +19,7 @@ const service = {
   name: "Thai Massage",
   category: "Spa & Wellness",
   description: "A traditional massage",
-  price: 2400,
+  price: 240000,
   currency: "THB",
   durationMin: 60,
 };

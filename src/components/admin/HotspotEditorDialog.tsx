@@ -19,7 +19,7 @@ import { toHotspotPosition, type HotspotPosition } from "@/lib/tour-geometry";
 import { useConfirm } from "./ConfirmDialog";
 import { NATIVE_SELECT, SaveStatus, useSaver } from "./property-form";
 
-type Room = Doc<"rooms">;
+type Room = Doc<"tourScenes">;
 type Draft = { key: number; id?: string; label: string; targetRoomSlug: string; position: HotspotPosition };
 type Marker = { key: number; label: string; targetRoomSlug: string; position: HotspotPosition };
 

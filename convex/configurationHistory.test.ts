@@ -203,7 +203,7 @@ describe('configuration history and safe restoration', () => {
 		const { t, admin } = setup();
 		const id = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
 		await t.run((ctx) => ctx.db.patch(id, { icalExportToken: 'private-export-token' }));
-		await admin.mutation(api.properties.update, { propertyId: id, images: ['/photos/one.jpg'], pricePerNight: 5000 });
+		await admin.mutation(api.properties.update, { propertyId: id, images: ['/photos/one.jpg'], pricePerNight: 500000 });
 		await admin.mutation(api.adminProperties.setSlug, { propertyId: id, slug: 'new-villa' });
 		for (const status of ['active', 'archived', 'active'] as const)
 			await admin.mutation(api.adminProperties.setStatus, { propertyId: id, status });
@@ -289,11 +289,11 @@ describe('configuration history and safe restoration', () => {
 		const rateId = await admin.mutation(api.properties.upsertOtaRate, {
 			propertyId: id,
 			platform: 'agoda',
-			nightlyRate: 1200
+			nightlyRate: 120000
 		});
 		await admin.mutation(api.properties.removeOtaRate, { rateId });
 		expect(
 			(await admin.query(list, { entityType: 'property', entityId: id, paginationOpts: page })).page[0]
-		).toMatchObject({ kind: 'ota_rate_removed', before: { platform: 'agoda', nightlyRate: 1200 }, after: null });
+		).toMatchObject({ kind: 'ota_rate_removed', before: { platform: 'agoda', nightlyRate: 120000 }, after: null });
 	});
 });

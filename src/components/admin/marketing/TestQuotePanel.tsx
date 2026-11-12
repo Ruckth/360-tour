@@ -85,7 +85,7 @@ export function TestQuotePanel({
     setError("");
     const lines = services
       .filter((line) => line.label.trim())
-      .map((line) => ({ label: line.label.trim(), amount: parseWhole(line.amount) ?? 0 }));
+      .map((line) => ({ label: line.label.trim(), amount: (parseWhole(line.amount) ?? 0) * 100 }));
     try {
       const quote = await testQuote({ code, propertySlug: villa, checkIn, checkOut, services: lines.length ? lines : undefined });
       const label = `${villaInfo?.name ?? villa} · ${nights} ${nights === 1 ? "night" : "nights"}${lines.length ? ` + ${lines.length} service${lines.length === 1 ? "" : "s"}` : ""}`;

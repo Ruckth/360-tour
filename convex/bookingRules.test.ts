@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -38,7 +39,7 @@ async function setup(rules?: Partial<BookingRules>) {
 			name: 'Pool Villa',
 			tagline: '',
 			description: '',
-			pricePerNight: 100,
+			pricePerNight: 10000,
 			currency: 'THB',
 			maxGuests: 4,
 			bedrooms: 1,
@@ -50,7 +51,7 @@ async function setup(rules?: Partial<BookingRules>) {
 			directDiscountPercent: 0,
 			status: 'active'
 		}),
-		sessionId: await ctx.db.insert('chatSessions', { channel: 'web', visitorId: 'guest', createdAt: now })
+		sessionId: await ctx.db.insert('conversations', { channel: 'web', visitorId: 'guest', createdAt: now })
 	}));
 	if (rules) await admin.mutation(api.settings.update, { bookingRules: rules });
 	const prepare = () => t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
@@ -315,10 +316,10 @@ describe('hold rollout and staff edits', () => {
 	});
 	it('keeps a legacy booking for its original 24 hours after rollout', async () => {
 		const { t, propertyId } = await setup({ unpaidHoldMinutes: 10 });
-		const bookingId = await t.run((ctx) => ctx.db.insert('bookings', {
+		const bookingId = await t.run((ctx) => insertFixture(ctx, 'bookings', {
 			propertyId, guestName: 'Legacy guest', guestPhone: '+66812345678',
 			checkIn: stay.checkIn, checkOut: stay.checkOut, guests: 2, nights: 2,
-			subtotal: 200, discountAmount: 0, total: 200, currency: 'THB',
+			subtotal: 20000, discountAmount: 0, total: 20000, currency: 'THB',
 			paymentStatus: 'pending', status: 'pending', source: 'web', createdAt: now
 		}));
 		vi.setSystemTime(now + 60 * minute);
@@ -331,14 +332,14 @@ describe('hold rollout and staff edits', () => {
 	it('allows a legacy booking to start checkout inside its original 24 hour window', async () => {
 		const { t, propertyId } = await setup();
 		const accessToken = 'legacy-access-token';
-		const bookingId = await t.run((ctx) => ctx.db.insert('bookings', {
+		const bookingId = await t.run((ctx) => insertFixture(ctx, 'bookings', {
 			propertyId, guestName: 'Legacy guest', guestPhone: '+66812345678',
 			checkIn: stay.checkIn, checkOut: stay.checkOut, guests: 2, nights: 2,
-			subtotal: 200, discountAmount: 0, total: 200, currency: 'THB', accessToken,
+			subtotal: 20000, discountAmount: 0, total: 20000, currency: 'THB', accessToken,
 			paymentStatus: 'pending', status: 'pending', source: 'web', createdAt: now
 		}));
 		vi.setSystemTime(now + 60 * minute);
-		await expect(startCheckout(t, { bookingId, accessToken })).resolves.toMatchObject({ total: 200 });
+		await expect(startCheckout(t, { bookingId, accessToken })).resolves.toMatchObject({ total: 20000 });
 	});
 	it('preserves an active Stripe extension after the hold setting changes', async () => {
 		const { t, admin } = await setup({ unpaidHoldMinutes: 10 });
@@ -382,14 +383,14 @@ describe('proposal confirm links', () => {
 			t.run(async (ctx) => ({
 				bookings: await ctx.db.query('bookings').take(10),
 				availability: await ctx.db.query('availability').take(10),
-				orders: await ctx.db.query('bills').take(10),
+				orders: await ctx.db.query('orders').take(10),
 				session: await ctx.db.get(sessionId),
 				jobs: await ctx.db.system.query('_scheduled_functions').collect()
 			}));
 		const before = await snapshot();
 		expect(await t.query(api.bookings.getConfirmProposal, { token: confirmToken })).toMatchObject({
 			property: 'Pool Villa',
-			total: 200,
+			total: 20000,
 			guests: 2,
 			unpaidHoldMinutes: 30,
 			cancellationPolicy: expect.any(String)
@@ -412,7 +413,7 @@ describe('proposal confirm links', () => {
 				repeats.every((result) => !result.needsReview && result.bookingId === first.bookingId && result.accessToken === first.accessToken)
 			).toBe(true);
 			expect(await t.run((ctx) => ctx.db.query('bookings').take(10))).toHaveLength(1);
-			expect(await t.run((ctx) => ctx.db.query('bills').take(10))).toHaveLength(1);
+			expect(await t.run((ctx) => ctx.db.query('orders').take(10))).toHaveLength(1);
 		}
 	);
 	it('expires exactly with the configurable chat validity, for query and mutation', async () => {
@@ -491,13 +492,13 @@ describe('proposal confirm links', () => {
 			guestName: stay.guestName, guestPhone: stay.guestPhone, expectedRevision: 0, notifyGuest: false
 		});
 		expect(await t.query(api.bookings.getConfirmProposal, { token: confirmToken })).toMatchObject({
-			checkIn: day(15), checkOut: day(18), nights: 3, guests: 3, total: 300, currency: 'THB'
+			checkIn: day(15), checkOut: day(18), nights: 3, guests: 3, total: 30000, currency: 'THB'
 		});
 	});
 	it('rejects a changed price without creating anything', async () => {
 		const { t, prepare, propertyId } = await setup();
 		const { confirmToken } = await prepare();
-		await t.run((ctx) => ctx.db.patch(propertyId, { pricePerNight: 150 }));
+		await t.run((ctx) => ctx.db.patch(propertyId, { pricePerNight: 15000 }));
 		await expect(t.mutation(api.bookings.confirmProposal, { token: confirmToken })).resolves.toMatchObject({ needsReview: true });
 		expect(await t.run((ctx) => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
@@ -536,9 +537,9 @@ it('follows configured pre-arrival and review windows, with catch-up and one-tim
 			guestEmail: 'guest@example.com',
 			guests: 1,
 			nights: 1,
-			subtotal: 100,
+			subtotal: 10000,
 			discountAmount: 0,
-			total: 100,
+			total: 10000,
 			currency: 'THB',
 			paymentStatus: 'paid' as const,
 			status: 'confirmed' as const,
@@ -546,7 +547,7 @@ it('follows configured pre-arrival and review windows, with catch-up and one-tim
 		};
 		const result = [];
 		for (const offset of [-8, -7, -4, -3, -2, -1, 0, 1, 2, 5, 6])
-			result.push(await ctx.db.insert('bookings', { ...base, checkIn: day(offset), checkOut: day(offset) }));
+			result.push(await insertFixture(ctx, 'bookings', { ...base, checkIn: day(offset), checkOut: day(offset) }));
 		return result;
 	});
 	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today: day(0) })).toBe(3);

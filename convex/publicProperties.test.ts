@@ -12,9 +12,9 @@ type Status = 'active' | 'draft' | 'archived';
 
 function villa(slug: string, status: Status) {
 	return {
-		slug, name: slug.toUpperCase(), tagline: 'Tagline', description: 'Description', pricePerNight: 5000,
+		slug, name: slug.toUpperCase(), tagline: 'Tagline', description: 'Description', pricePerNight: 500000,
 		currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: ['WiFi'],
-		tourRoomIds: [], directDiscountPercent: 15, status, icalExportToken: `secret-${slug}`
+		tourRoomIds: [], directDiscountPercent: 1500, status, icalExportToken: `secret-${slug}`
 	};
 }
 
@@ -33,7 +33,7 @@ async function setup() {
 		const archived = await ctx.db.insert('properties', villa('archived-villa', 'archived'));
 		await ctx.db.insert('reviews', review(active, 5, '2026-01-01'));
 		await ctx.db.insert('reviews', review(active, 4, '2026-03-01'));
-		await ctx.db.insert('socialProof', { propertyId: active, overallRating: 4.5, totalReviews: 2 });
+		await ctx.db.insert('reviewStats', { propertyId: active, overallRating: 4.5, totalReviews: 2 });
 		await ctx.db.insert('reviews', review(draft, 5, '2026-02-01'));
 		return { active, draft, archived };
 	});
@@ -83,7 +83,7 @@ describe('public villa queries', () => {
 			for (let i = 0; i < 205; i++) {
 				await ctx.db.insert('reviews', review(active, 3, `2027-${String(Math.floor(i / 28) + 1).padStart(2, '0')}-${String(i % 28 + 1).padStart(2, '0')}`));
 			}
-			const proof = await ctx.db.query('socialProof').withIndex('by_property', q => q.eq('propertyId', active)).first();
+			const proof = await ctx.db.query('reviewStats').withIndex('by_property', q => q.eq('propertyId', active)).first();
 			await ctx.db.patch(proof!._id, { totalReviews: 207, overallRating: 3.01 });
 		});
 		const detail = await t.query(api.publicProperties.getBySlug, { slug: 'active-villa' });
@@ -108,7 +108,7 @@ describe('public villa queries', () => {
 		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const editedAt = async () => (await t.run((ctx) => ctx.db.get(active)))?.contentEditedAt;
 
-		await admin.mutation(api.properties.update, { propertyId: active, pricePerNight: 6000, tagline: 'Tagline', amenities: ['WiFi'] });
+		await admin.mutation(api.properties.update, { propertyId: active, pricePerNight: 600000, tagline: 'Tagline', amenities: ['WiFi'] });
 		expect(await editedAt()).toBeUndefined();
 
 		await admin.mutation(api.properties.update, { propertyId: active, description: 'New description' });

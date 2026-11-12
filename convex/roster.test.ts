@@ -27,7 +27,7 @@ async function setup(names = ['Mali', 'Nok']) {
 	}
 	const serviceId = await admin.mutation(api.adminServices.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: '', category: 'Wellness',
-		durationMin: 60, bufferMin: 0, price: 2000, currency: 'THB', staffIds
+		durationMin: 60, bufferMin: 0, price: 200000, currency: 'THB', staffIds
 	});
 	const book = (staffId: Id<'staff'>, date: string, time: string) => admin.mutation(api.adminServices.createAppointment, {
 		serviceId, staffId, start: localDateTimeUtc(date, time), guestName: 'Guest One', guestPhone: '+66000000000'

@@ -27,7 +27,7 @@ function setup() {
 async function property(t: ReturnType<typeof convexTest>, slug: string, status: "active" | "draft" = "active") {
   return await t.run((ctx) =>
     ctx.db.insert("properties", {
-      slug, name: slug, tagline: "", description: "", pricePerNight: 100, currency: "THB",
+      slug, name: slug, tagline: "", description: "", pricePerNight: 10000, currency: "THB",
       maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [],
       directDiscountPercent: 0, status,
     }),
@@ -36,7 +36,7 @@ async function property(t: ReturnType<typeof convexTest>, slug: string, status: 
 
 async function session(t: ReturnType<typeof convexTest>, args: { propertySlug?: string; aiPaused?: boolean } = {}) {
   return await t.run((ctx) =>
-    ctx.db.insert("chatSessions", {
+    ctx.db.insert("conversations", {
       channel: "web", visitorId: `v-${Math.random()}`, createdAt: 1, lastSeenAt: 1,
       ...(args.propertySlug ? { propertySlug: args.propertySlug } : {}),
       ...(args.aiPaused ? { aiPaused: true } : {}),

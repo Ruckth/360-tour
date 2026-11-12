@@ -130,7 +130,7 @@ const capitalize = (text: string) => (text ? text[0].toUpperCase() + text.slice(
 
 /** "20% off" or "฿500 off" */
 export function benefitLabel(benefit: CouponBenefit) {
-  return benefit.kind === "percent" ? `${benefit.percent}% off` : `${thb(benefit.amount)} off`;
+  return benefit.kind === "percent" ? `${benefit.percent / 100}% off` : `${thb(benefit.amount)} off`;
 }
 
 /** "Accommodation, all villas" / "Accommodation: Mossbell Garden Suite" / "Spa services" … */
@@ -207,7 +207,7 @@ export function generatedTerms(rules: Rules & Pick<CouponVersion, "scope" | "usa
 
 /** Short lines for the QR offer card. */
 export function offerHeadline(benefit: CouponBenefit, scope: CouponScope) {
-  const head = benefit.kind === "percent" ? `Save ${benefit.percent}%` : `${thb(benefit.amount)} off`;
+  const head = benefit.kind === "percent" ? `Save ${benefit.percent / 100}%` : `${thb(benefit.amount)} off`;
   const sub =
     scope === "accommodation"
       ? "on villa stays booked direct"
@@ -304,8 +304,8 @@ export function qrDirectPercent(
 ) {
   const active = properties.filter((property) => property.status === "active");
   const slug = destination.kind === "villa" || destination.kind === "booking" ? destination.propertySlug : undefined;
-  if (slug) return Math.max(0, active.find((property) => property.slug === slug)?.directDiscountPercent ?? 0);
-  return active.length ? Math.max(0, Math.min(...active.map((property) => property.directDiscountPercent))) : 0;
+  if (slug) return Math.max(0, active.find((property) => property.slug === slug)?.directDiscountPercent ?? 0) / 100;
+  return active.length ? Math.max(0, Math.min(...active.map((property) => property.directDiscountPercent))) / 100 : 0;
 }
 
 /**

@@ -35,7 +35,7 @@ it("extracts known engine and settlement refusals without reporting unrelated fa
 });
 
 it.each(["invalid", "coupon_worse"] as const)("reports the guest's %s preview once while retries stay usable", async couponStatus => {
-  const result: OfferResult = { applied: "direct", couponStatus, ...(couponStatus === "invalid" ? { problem: { code: "sold_out" as const } } : {}), subtotal: 1000, discount: 100, directDiscount: 100, couponDiscount: 50, capped: false, total: 900, allocation: [] };
+  const result: OfferResult = { applied: "direct", couponStatus, ...(couponStatus === "invalid" ? { problem: { code: "sold_out" as const } } : {}), subtotal: 100000, discount: 10000, directDiscount: 10000, couponDiscount: 5000, capped: false, total: 90000, allocation: [] };
   const mutation = vi.fn().mockRejectedValue(new Error("diagnostics offline"));
   const client = { query: vi.fn().mockResolvedValue(result), mutation } as unknown as ConvexReactClient;
   let latest: ReturnType<typeof useCouponPreview>;

@@ -32,7 +32,7 @@ import { assertValidIsoDate } from './lib/validation';
 
 type ReadCtx = QueryCtx | MutationCtx;
 type Staff = Doc<'staff'>;
-type Appointment = Doc<'serviceAppointments'>;
+type Appointment = Doc<'appointments'>;
 type Pattern = Pick<Staff, 'workingHours' | 'breaks'>;
 
 const shiftValidator = v.object({ start: v.string(), end: v.string() });
@@ -50,7 +50,7 @@ export type RosterConflict = {
 	staffId: Id<'staff'>;
 	staffName: string;
 	date: string;
-	appointmentId: Id<'serviceAppointments'>;
+	appointmentId: Id<'appointments'>;
 	start: number;
 	end: number;
 	guestName: string;
@@ -126,7 +126,7 @@ async function appointmentsByCell(ctx: ReadCtx, first: string, last: string) {
 	const cells = new Map<string, Appointment[]>();
 	const from = localDayRange(first)[0];
 	const to = localDayRange(last)[1];
-	for await (const appointment of ctx.db.query('serviceAppointments').withIndex('by_start', (q) =>
+	for await (const appointment of ctx.db.query('appointments').withIndex('by_start', (q) =>
 		q.gte('start', from - APPOINTMENT_LOOKBACK).lt('start', to)
 	)) {
 		if (!blocksTime(appointment) || appointment.blockedUntil <= from) continue;
@@ -468,7 +468,7 @@ export const continueCopy = internalMutation({
 async function patternConflicts(ctx: ReadCtx, person: Staff, pattern: Pattern, overrideDates: Set<string>) {
 	const now = Date.now();
 	const blocked = new Map<string, Appointment[]>();
-	for await (const a of ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+	for await (const a of ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', person._id).gte('start', now - APPOINTMENT_LOOKBACK)
 	)) {
 		if (!blocksTime(a) || a.blockedUntil <= now) continue;

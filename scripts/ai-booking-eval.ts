@@ -73,7 +73,7 @@ function allBookings(): Booking[] {
 }
 
 function allServiceAppointments(): ServiceAppointment[] {
-  const out = execFileSync("npx", ["convex", "data", "serviceAppointments", "--limit", "500", "--format", "jsonLines"], {
+  const out = execFileSync("npx", ["convex", "data", "appointments", "--limit", "500", "--format", "jsonLines"], {
     encoding: "utf8",
   });
   return out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as ServiceAppointment);

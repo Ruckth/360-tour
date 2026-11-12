@@ -18,7 +18,7 @@ import "@/app.css";
  *   locale=th    Thai messages for the parts of checkout that are translated (the camera scanner)
  *   scenario=    fee, source-conflict, history, or a coupon state:
  *                coupon-entry    the spa order, no coupon yet
- *                coupon-applied  DCNT-SPA-500 split ฿333 + ฿167 (breakfast not covered)
+ *                coupon-applied  DCNT-SPA-500 split ฿333.33 + ฿166.67 (breakfast not covered)
  *                coupon-problem  the massage removed, so the coupon is below its minimum
  *                coupon-stay     Anna's stay priced with DCNT-F1-20, a massage with DCNT-L-10
  *                coupon-soldout  DCNT-L2-300 sold out by another till; paying is refused
@@ -33,8 +33,8 @@ document.documentElement.classList.toggle("dark", params.get("theme") === "dark"
 
 const scenario = params.get("scenario") ?? "";
 const backend = createFixtureBackend({
-  appointments: scenario === "fee" ? [{ appointmentId: "fxappt000002" as Id<"serviceAppointments">, status: "no_show" }] : [],
-  bookings: scenario === "coupon-stay" ? [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 3000 } }] : [],
+  appointments: scenario === "fee" ? [{ appointmentId: "fxappt000002" as Id<"appointments">, status: "no_show" }] : [],
+  bookings: scenario === "coupon-stay" ? [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 300000 } }] : [],
 });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
 
@@ -43,7 +43,7 @@ async function spaOrder() {
   const actions = backend.useActions();
   const { orderId, lineId } = await actions.addItem({ item: service(1) });
   await actions.addItem({ orderId, item: service(7) });
-  await actions.addItem({ orderId, item: { kind: "extra", name: "Breakfast basket", price: 450 } });
+  await actions.addItem({ orderId, item: { kind: "extra", name: "Breakfast basket", price: 45000 } });
   return { orderId, massage: lineId };
 }
 
@@ -60,13 +60,13 @@ async function couponSeed(): Promise<OrderId | null> {
   if (scenario === "coupon-soldout" || scenario === "coupon-changed") {
     await actions.applyOrderCoupon({ orderId, code: scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10" });
     // Another till used the last DCNT-L2-300; DCNT-L-10 was capped by its manager.
-    backend.setCouponSnapshot(scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10", scenario === "coupon-soldout" ? { used: 50 } : { maxSaving: 100 });
+    backend.setCouponSnapshot(scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10", scenario === "coupon-soldout" ? { used: 50 } : { maxSaving: 10000 });
     return orderId;
   }
   const applied = await actions.applyOrderCoupon({ orderId, slug: "q1" });
   if (scenario === "coupon-problem") await actions.removeLine({ lineId: massage });
   if (scenario === "coupon-paid") {
-    await actions.settleOrder({ orderId, expectedRevision: applied.revision, expectedDue: 2250 - applied.discount, idempotencyKey: "browser-pay-coupon", tenders: [{ method: "card", amount: 2250 - applied.discount }] });
+    await actions.settleOrder({ orderId, expectedRevision: applied.revision, expectedDue: 225000 - applied.discount, idempotencyKey: "browser-pay-coupon", tenders: [{ method: "card", amount: 225000 - applied.discount }] });
   }
   return orderId;
 }
@@ -76,12 +76,12 @@ async function seed() {
   let orderId: OrderId | undefined;
   if (scenario.startsWith("coupon-")) return couponSeed();
   if (params.get("scenario") === "fee") {
-    return (await actions.addAppointmentFee({ appointmentId: "fxappt000002" as Id<"serviceAppointments">, kind: "no_show", amount: 500, reason: "Guest did not attend" })).orderId;
+    return (await actions.addAppointmentFee({ appointmentId: "fxappt000002" as Id<"appointments">, kind: "no_show", amount: 50000, reason: "Guest did not attend" })).orderId;
   }
   if (params.get("scenario") === "source-conflict") {
-    const appointmentId = "fxappt000002" as Id<"serviceAppointments">;
+    const appointmentId = "fxappt000002" as Id<"appointments">;
     ({ orderId } = await actions.openOrderFor({ appointmentId }));
-    await actions.addItem({ orderId, item: { kind: "extra", name: "Retained tea", price: 50 } });
+    await actions.addItem({ orderId, item: { kind: "extra", name: "Retained tea", price: 5000 } });
     // Fixture starts this new order at revision 0; attach and add each bump it once.
     await actions.discardOrder({ orderId, expectedRevision: 2, idempotencyKey: "browser-discard-source" });
     await actions.openOrderFor({ appointmentId });
@@ -92,19 +92,19 @@ async function seed() {
     ({ orderId } = await actions.addItem({ item: service(2) }));
     await actions.linkCustomer({ orderId, customerId: "fxcust000002" as Id<"customers"> });
     if (scenario === "unscheduled-paid") {
-      await actions.settleOrder({ orderId, expectedRevision: 2, expectedDue: 1600, expectedCustomerRevision: 0, idempotencyKey: "browser-pay-unscheduled", tenders: [{ method: "cash", amount: 1600 }] });
+      await actions.settleOrder({ orderId, expectedRevision: 2, expectedDue: 160000, expectedCustomerRevision: 0, idempotencyKey: "browser-pay-unscheduled", tenders: [{ method: "cash", amount: 160000 }] });
     }
     return orderId;
   }
   if (params.get("scenario") === "history") {
-    ({ orderId } = await actions.addItem({ item: { kind: "extra", name: "Original tea", price: 100 } }));
-    await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 100, idempotencyKey: "browser-pay-history", tenders: [{ method: "card", amount: 100 }] });
-    for (let i = 0; i < 26; i++) await actions.amendOrderPayment({ orderId, expectedCorrectionRevision: i, idempotencyKey: `browser-correction-${i}`, reason: `Tender correction ${i + 1}`, tenders: [{ method: i % 2 ? "transfer" : "cash", amount: 100 }] });
+    ({ orderId } = await actions.addItem({ item: { kind: "extra", name: "Original tea", price: 10000 } }));
+    await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 10000, idempotencyKey: "browser-pay-history", tenders: [{ method: "card", amount: 10000 }] });
+    for (let i = 0; i < 26; i++) await actions.amendOrderPayment({ orderId, expectedCorrectionRevision: i, idempotencyKey: `browser-correction-${i}`, reason: `Tender correction ${i + 1}`, tenders: [{ method: i % 2 ? "transfer" : "cash", amount: 10000 }] });
     return orderId;
   }
   for (let i = 0; i < Number(params.get("lines") ?? 0); i += 1) {
     const name = `Layout check item ${i + 1} with a longer descriptive name`;
-    ({ orderId } = await actions.addItem({ orderId, item: { kind: "extra", name, price: 77_692.3 + i } }));
+    ({ orderId } = await actions.addItem({ orderId, item: { kind: "extra", name, price: 7_769_230 + i * 100 } }));
   }
   return orderId ?? null;
 }

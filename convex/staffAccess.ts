@@ -91,7 +91,7 @@ export const updateCashierRules = mutation({ args: { expectedRevision: v.number(
   const before = await cashierRules(ctx);
   if (args.expectedRevision !== before.revision) throw new ConvexError({ code: 'STALE_RULES', message: 'Cashier rules changed. Reload and try again.' });
   const limit = args.discountLimitPercent;
-  if (!Number.isFinite(limit) || limit < 0 || limit > 100 || Math.abs(Math.round(limit * 100) - limit * 100) > 1e-8) throw new ConvexError('Use 0–100%, up to two decimals.');
+  if (!Number.isSafeInteger(limit) || limit < 0 || limit > 10000) throw new ConvexError('Use 0–100%, up to two decimals.');
   const { discountLimitPercent, voidPaidSale, customPrice, paymentFix } = args;
   const rules = { discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund: args.refund ?? before.refund };
   const fields = { ...rules, revision: before.revision + 1, updatedAt: Date.now(), updatedByEmail: actor.email };

@@ -28,7 +28,7 @@ import {
 	loadProperty,
 	type BookingSource
 } from './lib/bookingWrites';
-import { round2 } from './lib/billMath';
+import { roundMoney } from './lib/orderMath';
 import { effectiveTime, resolveNotify, stayMoney, writeBooking } from './lib/bookingMoney';
 
 function assertBookingAccess(
@@ -120,30 +120,11 @@ export const create = mutation({
 	}
 });
 
-/**
- * A live stay a full provider refund marked `refunded` with its money written out explicitly:
- * gross `amountPaid` and an equal `amountRefunded`. Unlike a legacy refunded flag (no refund
- * amount), its balance is provable, so only what it still owes beyond the waived provider charge
- * may be collected. New provider refunds no longer write this state on live stays.
- */
+
 export function isDocumentedLiveRefund(booking: Doc<'bookings'>) {
 	return booking.status !== 'cancelled' && booking.paymentStatus === 'refunded' &&
 		booking.amountPaid !== undefined && booking.amountRefunded !== undefined &&
-		round2(booking.amountRefunded) === round2(booking.amountPaid);
-}
-
-/**
- * The Stripe payment recorded before payments were itemised, when it is provable: either captured
- * when the stay's first itemised payment was written, or (no itemised payment yet) the stay's own
- * Stripe PaymentIntent and gross. Provider evidence must still match its amount exactly.
- */
-export function legacyStripeCharge(booking: Doc<'bookings'>, hasItemisedPayments: boolean) {
-	if (booking.legacyStripePaymentIntentId !== undefined && booking.legacyStripeGross !== undefined) {
-		return { paymentIntentId: booking.legacyStripePaymentIntentId, gross: booking.legacyStripeGross, captured: true };
-	}
-	const gross = stayMoney(booking).gross;
-	if (hasItemisedPayments || booking.paymentMethod !== 'stripe' || !booking.stripePaymentIntentId || gross <= 0) return null;
-	return { paymentIntentId: booking.stripePaymentIntentId, gross, captured: false };
+		roundMoney(booking.amountRefunded) === roundMoney(booking.amountPaid);
 }
 
 export type StayPaymentInput = {
@@ -151,11 +132,11 @@ export type StayPaymentInput = {
 	method: Doc<'bookingPayments'>['method'];
 	/** Admin email, or `system:<provider>`. */
 	actor: string;
-	/** The legacy `bookings.paymentMethod` label written when it is the first payment ('admin', 'pos', 'stripe'). */
-	legacyMethod: string;
+
+	paymentLabel: string;
 	/** Business date the money was received; defaults to now. */
 	effectiveAt?: number;
-	billId?: Id<'bills'>;
+	orderId?: Id<'orders'>;
 	idempotencyKey?: string;
 	note?: string;
 	/** Undefined: default (online always; staff paths per lib/bookingMoney resolveNotify). */
@@ -188,13 +169,13 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 		throw new Error('An active Stripe checkout must expire before changing this booking manually.');
 	}
 	const money = stayMoney(booking);
-	if (input.expectedAmount !== undefined && round2(input.expectedAmount) !== money.owed) {
-		throw new Error(`This stay now owes ${money.owed}, not ${round2(input.expectedAmount)}. Review the balance and try again.`);
+	if (input.expectedAmount !== undefined && roundMoney(input.expectedAmount) !== money.owed) {
+		throw new Error(`This stay now owes ${money.owed}, not ${roundMoney(input.expectedAmount)}. Review the balance and try again.`);
 	}
 	if (money.owed <= 0) return { booking, paymentId: null };
 	const amount = input.amount ?? money.owed;
 	if (input.amount !== undefined) {
-		if (!Number.isFinite(amount) || amount <= 0 || round2(amount) !== amount) throw new Error('The amount must be more than zero, in whole satang.');
+		if (!Number.isFinite(amount) || amount <= 0 || roundMoney(amount) !== amount) throw new Error('The amount must be more than zero, in whole satang.');
 		if (amount > money.owed) throw new Error(`This stay owes ${money.owed}, less than ${amount}.`);
 		// `refunded` counts all money as returned and `failed` needs a reopen, so a part payment needs a live status.
 		if (amount < money.owed && booking.paymentStatus !== 'pending' && booking.paymentStatus !== 'paid') {
@@ -206,20 +187,11 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 	// this transaction; a conflict throws before anything is marked paid.
 	await blockBookingDates(ctx, booking, bookingId);
 
-	// The first itemised payment keeps the provable legacy Stripe payment's identity and amount, so
-	// a later refund or completion redelivery of it still reconciles (a later online payment
-	// replaces stripePaymentIntentId).
-	const hasItemised = Boolean(await ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', (q) => q.eq('bookingId', bookingId)).first());
-	const legacy = legacyStripeCharge(booking, hasItemised);
-	const legacyEvidence = legacy && !legacy.captured
-		? { legacyStripePaymentIntentId: legacy.paymentIntentId, legacyStripeGross: legacy.gross }
-		: {};
-
 	const now = Date.now();
 	const effectiveAt = effectiveTime(input.effectiveAt, now);
 	const paymentId = await ctx.db.insert('bookingPayments', {
 		bookingId, origin: input.origin, amount, currency: booking.currency, method: input.method,
-		...(input.billId ? { billId: input.billId } : {}),
+		...(input.orderId ? { orderId: input.orderId } : {}),
 		effectiveAt, recordedAt: now, recordedBy: input.actor,
 		...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
 		...(input.note ? { note: input.note } : {}),
@@ -232,18 +204,16 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 		// The first payment's business date; a later balance payment keeps it. A part payment leaves it.
 		paidAt: !full ? booking.paidAt : booking.paymentStatus === 'paid' ? (booking.paidAt ?? effectiveAt) : effectiveAt,
 		// Paid in full: a deposit taken earlier is part of the total, not on top of it.
-		amountPaid: round2(money.gross + amount),
-		paymentMethod: booking.paymentMethod ?? input.legacyMethod,
+		amountPaid: roundMoney(money.gross + amount),
+		paymentMethod: booking.paymentMethod ?? input.paymentLabel,
 		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
 		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
-		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText),
-		...legacyEvidence
+		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
 	}, {
 		actor: input.actor, kind: 'payment_recorded', effectiveAt,
 		...(input.note ? { reason: input.note } : {}),
 		details: {
-			paymentId, origin: input.origin, method: input.method, amount, ...(input.billId ? { billId: input.billId } : {}),
-			...('legacyStripeGross' in legacyEvidence ? { legacyStripeGross: legacyEvidence.legacyStripeGross } : {})
+			paymentId, origin: input.origin, method: input.method, amount, ...(input.orderId ? { orderId: input.orderId } : {})
 		}
 	});
 
@@ -253,12 +223,8 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 	return { booking: updated, paymentId };
 }
 
-/**
- * Marks what the stay owes paid. Kept for the online-payment and legacy callers: `stripe` and other
- * providers are online payments (and a repeat delivery is a no-op), `admin` is the legacy manual
- * "Mark paid" (method not recorded), `pos` a settled order.
- */
-export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string, options: Partial<Omit<StayPaymentInput, 'legacyMethod'>> = {}) {
+
+export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string, options: Partial<Omit<StayPaymentInput, 'paymentLabel'>> = {}) {
 	const origin = options.origin ?? (paymentMethod === 'admin' ? 'manual' : paymentMethod === 'pos' ? 'pos' : 'online');
 	if (origin === 'online') {
 		const booking = await ctx.db.get(bookingId);
@@ -266,7 +232,7 @@ export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'
 	}
 	const method = options.method ?? (origin === 'manual' ? 'unrecorded' : origin === 'pos' ? 'order' : paymentMethod === 'stripe' ? 'stripe' : 'provider');
 	const { booking } = await recordStayPayment(ctx, bookingId, {
-		...options, origin, method, actor: options.actor ?? `system:${paymentMethod}`, legacyMethod: paymentMethod
+		...options, origin, method, actor: options.actor ?? `system:${paymentMethod}`, paymentLabel: paymentMethod
 	});
 	return booking;
 }
@@ -374,7 +340,7 @@ export const listByProperty = query({
 
 // --- AI chat booking (prepare → confirm in chat or pay page) ---
 
-const chatSourceByChannel: Record<Doc<'chatSessions'>['channel'], BookingSource> = {
+const chatSourceByChannel: Record<Doc<'conversations'>['channel'], BookingSource> = {
 	web: 'web',
 	whatsapp: 'whatsapp',
 	facebook: 'messenger',
@@ -382,7 +348,7 @@ const chatSourceByChannel: Record<Doc<'chatSessions'>['channel'], BookingSource>
 	instagram: 'instagram'
 };
 
-async function loadChatSession(ctx: QueryCtx | MutationCtx, sessionId: Id<'chatSessions'>) {
+async function loadChatSession(ctx: QueryCtx | MutationCtx, sessionId: Id<'conversations'>) {
 	const session = await ctx.db.get(sessionId);
 	if (!session) throw new Error('Session not found');
 	return session;
@@ -390,7 +356,7 @@ async function loadChatSession(ctx: QueryCtx | MutationCtx, sessionId: Id<'chatS
 
 /** Whether the next message in this chat should be routed to the AI booking flow. */
 export const isChatBookingFlowActive = query({
-	args: { sessionId: v.id('chatSessions'), serverSecret: v.string() },
+	args: { sessionId: v.id('conversations'), serverSecret: v.string() },
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const session = await ctx.db.get(args.sessionId);
@@ -399,7 +365,7 @@ export const isChatBookingFlowActive = query({
 });
 
 export const touchChatBookingFlow = internalMutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.sessionId, { bookingFlowAt: Date.now() });
 	}
@@ -407,7 +373,7 @@ export const touchChatBookingFlow = internalMutation({
 
 /** Invalidate the old draft even when a replacement tool call later fails parsing or validation. */
 export const invalidateChatProposal = internalMutation({
-	args: { sessionId: v.id('chatSessions'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
+	args: { sessionId: v.id('conversations'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
@@ -417,7 +383,7 @@ export const invalidateChatProposal = internalMutation({
 
 /** A coupon price preview for web or messaging; never holds dates or coupon capacity. */
 export const previewChatCoupon = internalQuery({
-  args: { sessionId: v.id('chatSessions'), couponCode: v.string(), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.optional(v.number()) },
+  args: { sessionId: v.id('conversations'), couponCode: v.string(), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const code = normalizeCouponCode(args.couponCode);
     await assertGuestSuppliedCoupon(ctx, args.sessionId, code);
@@ -428,7 +394,7 @@ export const previewChatCoupon = internalQuery({
 });
 
 type PrepareChatBookingInput = {
-  sessionId: Id<'chatSessions'>; propertySlug: string; checkIn: string; checkOut: string; guests: number;
+  sessionId: Id<'conversations'>; propertySlug: string; checkIn: string; checkOut: string; guests: number;
   guestName: string; guestPhone?: string; couponCode?: string; deadlineAt?: number;
 };
 
@@ -495,7 +461,7 @@ async function prepareChatBookingRecord(ctx: MutationCtx, args: PrepareChatBooki
 
 export const prepareChatBooking = internalMutation({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		propertySlug: v.string(),
 		checkIn: v.string(),
 		checkOut: v.string(),
@@ -517,7 +483,7 @@ function bookedChatCoupon(booking: Doc<'bookings'>): ChatCouponSnapshot | undefi
 
 async function confirmPreparedBooking(
 	ctx: MutationCtx,
-	args: { sessionId: Id<'chatSessions'>; deadlineAt?: number; expectedProposal?: string; byGuest?: boolean; marketing?: MarketingCapture }
+	args: { sessionId: Id<'conversations'>; deadlineAt?: number; expectedProposal?: string; byGuest?: boolean; marketing?: MarketingCapture }
 ) {
 	const session = await loadChatSession(ctx, args.sessionId);
 	// The guest pressing Confirm & pay is not an AI write, so a staff takeover does not block it.
@@ -612,7 +578,7 @@ async function loadConfirmProposal(ctx: QueryCtx | MutationCtx, token: string) {
 	const parts = token.split('.');
 	if (parts.length !== 4) return null;
 	const [sessionKey, proposalId, expiry, signature] = parts;
-	const sessionId = ctx.db.normalizeId('chatSessions', sessionKey);
+	const sessionId = ctx.db.normalizeId('conversations', sessionKey);
 	if (!sessionId) return null;
 	const session = await ctx.db.get(sessionId);
 	const pending = session?.pendingBookingQuote;
@@ -678,7 +644,7 @@ export const confirmProposal = mutation({
 
 export const confirmChatBooking = internalMutation({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		deadlineAt: v.optional(v.number()),
 		expectedProposal: v.optional(v.string())
 	},
@@ -688,7 +654,7 @@ export const confirmChatBooking = internalMutation({
 });
 
 /** Bookings this chat guest may see: made in this chat, or (WhatsApp) under their verified number. */
-async function guestBookingsForSession(ctx: QueryCtx | MutationCtx, session: Doc<'chatSessions'>) {
+async function guestBookingsForSession(ctx: QueryCtx | MutationCtx, session: Doc<'conversations'>) {
 	const fromChat = await ctx.db
 		.query('bookings')
 		.withIndex('by_chatSession', (q) => q.eq('chatSessionId', session._id))
@@ -706,7 +672,7 @@ function bookingReference(booking: Doc<'bookings'>) {
 }
 
 export const listChatGuestBookings = internalQuery({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
 		const session = await loadChatSession(ctx, args.sessionId);
 		const bookings = await guestBookingsForSession(ctx, session);
@@ -734,7 +700,7 @@ export const listChatGuestBookings = internalQuery({
  */
 export const cancelChatBooking = internalMutation({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		reference: v.string(),
 		turnStartedAt: v.number(),
 		deadlineAt: v.optional(v.number())

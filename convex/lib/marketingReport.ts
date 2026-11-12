@@ -1,3 +1,4 @@
+import { roundRatio } from "../shared/money";
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { isIsoDate } from './dates';
@@ -18,7 +19,7 @@ import type { ATTRIBUTION_MODEL } from './marketingAttribution';
  *   that money and its refunds stay on the order and are taken off the stay.
  * - Older stay money with no payment row has no date of its own: it is dated by the stay's `paidAt`.
  * - A desk payment for an appointment is its own sale, also when the appointment belongs to a stay.
- * - Collected is money received (recorded payments, never `bills.total`). Cancelled payment rows and
+ * - Collected is money received (recorded payments, never `orders.total`). Cancelled payment rows and
  *   orders voided with "no money received" count nothing. An order voided with the money kept counts.
  * - Refunds are their own figure, dated by their business date. Net = collected - refunded. Net is not profit.
  * - Discount is the coupon discount only, counted on first payment or checkout settlement.
@@ -55,7 +56,7 @@ export type ReportTouch = {
 
 export type ReportSale = {
 	kind: 'stay' | 'order' | 'appointment';
-	/** The booking, bill or serviceAppointments id. */
+	/** The booking, bill or appointments id. */
 	id: string;
 	/** Staff-facing: guest or customer name, else "Walk-in". */
 	label: string;
@@ -154,13 +155,13 @@ export function reportRangeBounds(from: string, to: string): { start: number; en
 // ---------------------------------------------------------------- spend
 
 export type SpendDraft = { campaignId: Id<'marketingCampaigns'>; amount: number; from: string; to: string; note?: string };
-export const MAX_SPEND_AMOUNT = 100_000_000;
+export const MAX_SPEND_AMOUNT = 10_000_000_000;
 export const MAX_SPEND_DAYS = 366;
 export const MAX_SPEND_NOTE = 500;
 
 /** Shared by the spend dialog and saveSpend. Returns the first problem in plain words, or null. */
 export function validateSpend(draft: Omit<SpendDraft, 'campaignId'>): string | null {
-	if (!Number.isInteger(draft.amount) || draft.amount < 1) return 'Enter the amount in whole baht.';
+	if (!Number.isInteger(draft.amount) || draft.amount < 1) return 'Enter a positive amount with at most two decimals.';
 	if (draft.amount > MAX_SPEND_AMOUNT) return 'That amount is too large.';
 	const days = reportDayCount(draft.from, draft.to);
 	if (days === null) return 'Choose a start date on or before the end date.';
@@ -169,13 +170,15 @@ export function validateSpend(draft: Omit<SpendDraft, 'campaignId'>): string | n
 	return null;
 }
 
-/** The part of a spend entry that falls in [from, to], prorated by days. Not rounded. */
+/** The part of a spend entry that falls in [from, to], allocated by cumulative rounded days, preserving the whole entry across adjacent ranges. */
 export function spendInRange(entry: Pick<ReportSpend, 'amount' | 'from' | 'to'>, from: string, to: string): number {
 	const start = entry.from > from ? entry.from : from;
 	const end = entry.to < to ? entry.to : to;
 	const overlap = reportDayCount(start, end);
 	const total = reportDayCount(entry.from, entry.to);
-	return overlap && total ? (entry.amount * overlap) / total : 0;
+	if (!overlap || !total) return 0;
+  const before = reportDayCount(entry.from, start)! - 1;
+  return roundRatio(BigInt(entry.amount) * BigInt(before + overlap), total) - roundRatio(BigInt(entry.amount) * BigInt(before), total);
 }
 
 // ---------------------------------------------------------------- coupon refusals

@@ -14,7 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
 import { customerPhoneError } from "@/lib/booking/phone";
 import { cn } from "@/lib/utils";
-import { formatReceiptNumber } from "convex/lib/billMath";
+import { formatReceiptNumber } from "convex/lib/orderMath";
 import { useCheckoutBackend, type Attachable, type Customer, type CustomerId, type NewCustomer, type OrderFilter, type OrderId, type OrderView } from "./backend";
 import { orderTime } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
@@ -269,11 +269,7 @@ function CustomerPicker({
           <Button size="sm" disabled={linking} onClick={() => pick(saved.customerId)}>Link</Button>
         </div>
       ) : null}
-      {view?.legacyGuest ? (
-        <p className="text-xs text-muted-foreground">
-          This order was named “{view.legacyGuest.name}” before customers existed. That name is not a customer; link one to keep a record.
-        </p>
-      ) : null}
+
       <div className="relative">
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search customers" aria-label="Search customers" className="pl-9" autoFocus />
@@ -481,7 +477,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
   // Stays open while there is more to add, so a stay and its appointment take one visit.
   // A failed add closes the list so the page's error banner isn't hidden behind it.
   async function attach(row: Attachable) {
-    const target = row.kind === "booking" ? { bookingId: row.id as Id<"bookings"> } : { appointmentId: row.id as Id<"serviceAppointments"> };
+    const target = row.kind === "booking" ? { bookingId: row.id as Id<"bookings"> } : { appointmentId: row.id as Id<"appointments"> };
     const more = rows?.some((other) => other.id !== row.id && other.onOrder === null && !other.unavailableReason);
     const ok = await run((current) => actions.attach({ orderId: current, ...target }));
     if (!ok || !more) onDone();
@@ -625,7 +621,7 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                   <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                     {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                   </span>
-                  {row.refundedAmountSatang ? <span className="block text-xs text-muted-foreground tabular-nums">Refunded {formatMoney(row.refundedAmountSatang / 100, row.currency)}</span> : null}
+                  {row.refundedAmountSatang ? <span className="block text-xs text-muted-foreground tabular-nums">Refunded {formatMoney(row.refundedAmountSatang, row.currency)}</span> : null}
                 </span>
                 {/* The row itself opens the order. */}
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />

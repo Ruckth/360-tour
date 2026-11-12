@@ -25,7 +25,7 @@ afterEach(() => {
 
 const covered: ReportSale = {
   kind: "order", id: "covered", label: "Free service", channel: "pos", bucket: "staff", createdDay: "2026-11-09",
-  settlementDay: "2026-11-09", paid: true, collected: 0, refunded: 0, discount: 500,
+  settlementDay: "2026-11-09", paid: true, collected: 0, refunded: 0, discount: 50000,
 };
 async function render(sales: ReportSale[], events: ReportData["events"] = [], access?: MarketingAccess) {
   const report: ReportData = {
@@ -58,8 +58,8 @@ it("shows zero first-payment sales and one coupon-only settlement in Finance til
 });
 
 it("describes a partially paid stay as payment received and counts its first payment", async () => {
-  const stay: ReportSale = { ...covered, kind: "stay", id: "partial", label: "Partial stay", channel: "admin", discount: 0, collected: 300, settlementDay: undefined, paidDay: "2026-11-09" };
-  await render([stay], [{ saleId: stay.id, kind: "payment", day: "2026-11-09", amount: 300 }]);
+  const stay: ReportSale = { ...covered, kind: "stay", id: "partial", label: "Partial stay", channel: "admin", discount: 0, collected: 30000, settlementDay: undefined, paidDay: "2026-11-09" };
+  await render([stay], [{ saleId: stay.id, kind: "payment", day: "2026-11-09", amount: 30000 }]);
   const tile = [...host.querySelectorAll("p")].find(node => node.textContent === "First-payment sales")!.parentElement!;
   expect(tile.textContent).toContain("First-payment sales1");
   const detail = document.querySelector('[role="dialog"]')!;
@@ -71,8 +71,8 @@ it("describes a partially paid stay as payment received and counts its first pay
 
 it("gives role-only readers sale details without spend or operational booking and receipt actions", async () => {
   const access: MarketingAccess = { email: "viewer@example.com", role: "viewer", pendingInvitation: null, capabilities: { view: true, draft: false, publish: false, spend: false, partners: false, reviewCredits: false, manageAccess: false } };
-  const stay: ReportSale = { ...covered, kind: "stay", id: "stay", label: "Guest", collected: 300, discount: 0, settlementDay: undefined, paidDay: "2026-11-09" };
-  await render([covered, stay], [{ saleId: stay.id, kind: "payment", day: "2026-11-09", amount: 300 }], access);
+  const stay: ReportSale = { ...covered, kind: "stay", id: "stay", label: "Guest", collected: 30000, discount: 0, settlementDay: undefined, paidDay: "2026-11-09" };
+  await render([covered, stay], [{ saleId: stay.id, kind: "payment", day: "2026-11-09", amount: 30000 }], access);
   const detail = document.querySelector('[role="dialog"]')!;
   expect(detail.textContent).toContain("Read-only sale details");
   expect(detail.textContent).toContain("Free service");

@@ -369,7 +369,7 @@ export function NewBookingDialog({
             ) : property && dates.checkIn && dates.checkOut && !conflicts ? (
               <p className="text-sm text-muted-foreground">
                 Villa rate: {formatMoney(property.pricePerNight, property.currency)} per night
-                {property.directDiscountPercent ? `, ${property.directDiscountPercent}% direct discount` : ""}
+                {property.directDiscountPercent ? `, ${property.directDiscountPercent / 100}% direct discount` : ""}
               </p>
             ) : null}
           </div>

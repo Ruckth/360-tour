@@ -83,7 +83,7 @@ function validateService(input: Pick<Doc<'services'>, 'durationMin' | 'bufferMin
 	if (!Number.isInteger(input.durationMin) || input.durationMin <= 0 || input.durationMin % 15 !== 0) throw new Error('Duration must be a positive multiple of 15 minutes');
 	const turnaround = turnaroundProblem(input.bufferMin, input.durationMin);
 	if (turnaround) throw new Error(turnaround);
-	if (!Number.isFinite(input.price) || input.price < 0) throw new Error('Price must be nonnegative');
+	if (!Number.isSafeInteger(input.price) || input.price < 0) throw new Error('Price must be nonnegative');
 }
 
 async function validateStaffIds(ctx: MutationCtx, staffIds: Id<'staff'>[]) {
@@ -115,8 +115,8 @@ async function logService(ctx: MutationCtx, before: Doc<'services'> | null, afte
 async function countUpcoming(ctx: QueryCtx | MutationCtx, owner: { staffId: Id<'staff'> } | { serviceId: Id<'services'> }) {
 	const now = Date.now();
 	const rows = 'staffId' in owner
-		? ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) => q.eq('staffId', owner.staffId).gte('start', now - APPOINTMENT_LOOKBACK))
-		: ctx.db.query('serviceAppointments').withIndex('by_service_start', (q) => q.eq('serviceId', owner.serviceId).gte('start', now - APPOINTMENT_LOOKBACK));
+		? ctx.db.query('appointments').withIndex('by_staff_start', (q) => q.eq('staffId', owner.staffId).gte('start', now - APPOINTMENT_LOOKBACK))
+		: ctx.db.query('appointments').withIndex('by_service_start', (q) => q.eq('serviceId', owner.serviceId).gte('start', now - APPOINTMENT_LOOKBACK));
 	let count = 0;
 	for await (const appointment of boundedIntegrityRows(rows)) {
 		if (appointment.blockedUntil > now && blocksTime(appointment)) count++;
@@ -150,8 +150,8 @@ function assertTimeOffRange(start: number, end: number) {
 
 /** Booked appointments that would fall inside the time off. */
 async function timeOffConflicts(ctx: MutationCtx, staffId: Id<'staff'>, start: number, end: number) {
-	const conflicts: Array<{ appointmentId: Id<'serviceAppointments'>; start: number }> = [];
-	for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+	const conflicts: Array<{ appointmentId: Id<'appointments'>; start: number }> = [];
+	for await (const appointment of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staffId).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', end)
 	))) {
 		if (appointment.blockedUntil > Math.max(start, Date.now()) && blocksTime(appointment)) conflicts.push({ appointmentId: appointment._id, start: appointment.start });
@@ -262,7 +262,7 @@ export const updateStaff = mutation({
 			// New hours must still cover every upcoming appointment.
 			const next = { ...staff, ...changes };
 			const now = Date.now();
-			for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			for await (const appointment of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK)
 			))) {
 				if (appointment.blockedUntil <= now || !blocksTime(appointment)) continue;
@@ -480,7 +480,7 @@ export const addTimeOff = mutation({
 		const label = required(args.label, 'Label');
 		const people = await Promise.all(staffIds.map((id) => ctx.db.get(id)));
 		if (people.some((person) => !person)) throw new Error('Staff member not found');
-		const results: Array<{ staffId: Id<'staff'>; name: string; timeOffId?: Id<'staffTimeOff'>; conflicts: Array<{ appointmentId: Id<'serviceAppointments'>; start: number }> }> = [];
+		const results: Array<{ staffId: Id<'staff'>; name: string; timeOffId?: Id<'staffTimeOff'>; conflicts: Array<{ appointmentId: Id<'appointments'>; start: number }> }> = [];
 		for (const person of people as Doc<'staff'>[]) {
 			const conflicts = await timeOffConflicts(ctx, person._id, args.start, args.end);
 			const timeOffId = conflicts.length
@@ -531,13 +531,13 @@ export const listSchedule = query({
 		await requireAdmin(ctx);
 		if (!Number.isSafeInteger(args.from) || !Number.isSafeInteger(args.to) || args.to <= args.from || args.to - args.from > 14 * DAY) throw new Error('Schedule range must be at most 14 days');
 		const selected = args.staffIds ? new Set(args.staffIds) : undefined;
-		const inRange: Doc<'serviceAppointments'>[] = [];
+		const inRange: Doc<'appointments'>[] = [];
 		// A few selected people: read only their appointments. Otherwise one scan of the range.
 		const ranges = selected && selected.size <= SELECTED_STAFF_READ_LIMIT
-			? [...selected].map((staffId) => ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			? [...selected].map((staffId) => ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', staffId).gte('start', args.from - APPOINTMENT_LOOKBACK).lt('start', args.to)
 			))
-			: [ctx.db.query('serviceAppointments').withIndex('by_start', (q) =>
+			: [ctx.db.query('appointments').withIndex('by_start', (q) =>
 				q.gte('start', args.from - APPOINTMENT_LOOKBACK).lt('start', args.to)
 			)];
 		for (const range of ranges) {
@@ -608,7 +608,7 @@ export const findOpenSlots = query({
 		for (const id of new Set(slots.flatMap((slot) => slot.staffIds))) {
 			const person = await ctx.db.get(id);
 			let count = 0;
-			for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			for await (const appointment of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', id).gte('start', dayStart).lt('start', dayEnd)
 			))) {
 				if (blocksTime(appointment)) count++;
@@ -627,7 +627,7 @@ export const findOpenSlots = query({
 
 /** The original booking reference for rebooked appointments, including ones outside the visible calendar dates. */
 export const getAppointmentReference = query({
-	args: { appointmentId: v.id('serviceAppointments') },
+	args: { appointmentId: v.id('appointments') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		return (await ctx.db.get(args.appointmentId))?.confirmationCode ?? null;
@@ -637,8 +637,8 @@ export const getAppointmentReference = query({
 export const createAppointment = mutation({
 	args: {
 		serviceId: v.id('services'), start: v.number(), staffId: v.optional(v.id('staff')), guestName: v.string(), guestPhone: v.string(),
-		guestEmail: v.optional(v.string()), bookingId: v.optional(v.id('bookings')), chatSessionId: v.optional(v.id('chatSessions')),
-		rebookedFromId: v.optional(v.id('serviceAppointments')), historicalReason: v.optional(v.string())
+		guestEmail: v.optional(v.string()), bookingId: v.optional(v.id('bookings')), chatSessionId: v.optional(v.id('conversations')),
+		rebookedFromId: v.optional(v.id('appointments')), historicalReason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
@@ -650,7 +650,7 @@ export const createAppointment = mutation({
 	}
 });
 
-async function loadAppointment(ctx: QueryCtx | MutationCtx, appointmentId: Id<'serviceAppointments'>) {
+async function loadAppointment(ctx: QueryCtx | MutationCtx, appointmentId: Id<'appointments'>) {
 	const appointment = await ctx.db.get(appointmentId);
 	if (!appointment) throw new Error('Appointment not found');
 	return appointment;
@@ -663,7 +663,7 @@ async function boundedStaff(ctx: QueryCtx | MutationCtx) {
 }
 
 /** Admin-only slot list: past slots are evidence entry, future slots still require availability. */
-async function adminStarts(ctx: QueryCtx | MutationCtx, people: Doc<'staff'>[], date: string, occupyMs: number, ignoreId?: Id<'serviceAppointments'>, nonBlocking = false) {
+async function adminStarts(ctx: QueryCtx | MutationCtx, people: Doc<'staff'>[], date: string, occupyMs: number, ignoreId?: Id<'appointments'>, nonBlocking = false) {
 	const [from, to] = localDayRange(date);
 	const future = nonBlocking ? [] : await openStarts(ctx, people.filter(p => p.status === 'active'), date, occupyMs, ignoreId);
 	const slots = [...future];
@@ -674,7 +674,7 @@ async function adminStarts(ctx: QueryCtx | MutationCtx, people: Doc<'staff'>[], 
 }
 
 export const previewAppointmentTime = query({
-	args: { serviceId: v.id('services'), staffId: v.id('staff'), start: v.number(), appointmentId: v.optional(v.id('serviceAppointments')) },
+	args: { serviceId: v.id('services'), staffId: v.id('staff'), start: v.number(), appointmentId: v.optional(v.id('appointments')) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		try { assertAppointmentStart(args.start, { kind: 'admin_historical' }); }
@@ -696,7 +696,7 @@ export const previewAppointmentTime = query({
 
 /** Deliberate correction, separate from the frictionless forward operational buttons. */
 export const correctAppointmentStatus = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), status: v.union(v.literal('booked'), v.literal('arrived'), v.literal('in_service'), v.literal('completed'), v.literal('cancelled'), v.literal('no_show')), reason: v.optional(v.string()), effectiveAt: v.number() },
+	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), status: v.union(v.literal('booked'), v.literal('arrived'), v.literal('in_service'), v.literal('completed'), v.literal('cancelled'), v.literal('no_show')), reason: v.optional(v.string()), effectiveAt: v.number() },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
@@ -731,7 +731,7 @@ export const correctAppointmentStatus = mutation({
 });
 
 export const listAppointmentHistoryPage = query({
-	args: { appointmentId: v.id('serviceAppointments'), paginationOpts: paginationOptsValidator },
+	args: { appointmentId: v.id('appointments'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		assertPageSize(args.paginationOpts.numItems);
@@ -761,7 +761,7 @@ export const listTimeOffPage = query({
 
 /** Open start times for moving this appointment, keeping its length and turnaround; it doesn't block itself. */
 export const rescheduleOptions = query({
-	args: { appointmentId: v.id('serviceAppointments'), date: v.string() },
+	args: { appointmentId: v.id('appointments'), date: v.string() },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
@@ -780,7 +780,7 @@ export const rescheduleOptions = query({
  * Past roster gaps are logged; historical overlaps need a reason; current/future occupancy is strict.
  */
 export const rescheduleAppointment = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), start: v.number(), staffId: v.id('staff'), historicalReason: v.optional(v.string()) },
+	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), start: v.number(), staffId: v.id('staff'), historicalReason: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
@@ -811,7 +811,7 @@ export const rescheduleAppointment = mutation({
 
 /** This appointment's turnaround only; the service default is untouched. */
 export const updateAppointmentTurnaround = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), turnaroundMin: v.number() },
+	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), turnaroundMin: v.number() },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
@@ -831,7 +831,7 @@ export const updateAppointmentTurnaround = mutation({
 	}
 });
 
-const transitions: Record<Doc<'serviceAppointments'>['status'], Doc<'serviceAppointments'>['status'][]> = {
+const transitions: Record<Doc<'appointments'>['status'], Doc<'appointments'>['status'][]> = {
 	booked: ['arrived', 'in_service', 'completed', 'no_show'],
 	arrived: ['in_service', 'completed', 'no_show'],
 	in_service: ['completed'],
@@ -839,7 +839,7 @@ const transitions: Record<Doc<'serviceAppointments'>['status'], Doc<'serviceAppo
 };
 
 export const updateAppointmentStatus = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), status: appointmentStatus, expectedRevision: v.optional(v.number()) },
+	args: { appointmentId: v.id('appointments'), status: appointmentStatus, expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
@@ -851,7 +851,7 @@ export const updateAppointmentStatus = mutation({
 });
 
 export const markAppointmentPaid = mutation({
- args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), method: v.optional(manualPaymentMethod), idempotencyKey: v.optional(v.string()) },
+ args: { appointmentId: v.id('appointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), method: v.optional(manualPaymentMethod), idempotencyKey: v.optional(v.string()) },
  handler: async (ctx, args) => {
   const admin = await requireAdmin(ctx);
   return await recordAppointmentPayment(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
@@ -859,7 +859,7 @@ export const markAppointmentPaid = mutation({
 });
 
 export const getAppointmentFinancials = query({
- args: { appointmentId: v.id('serviceAppointments') },
+ args: { appointmentId: v.id('appointments') },
  handler: async (ctx, args) => {
   await requireAdmin(ctx);
   return await appointmentFinancials(ctx, await loadAppointment(ctx, args.appointmentId));
@@ -867,7 +867,7 @@ export const getAppointmentFinancials = query({
 });
 
 export const correctAppointmentPaymentEntry = mutation({
- args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), paymentId: v.optional(v.id('appointmentPayments')), legacyChangeId: v.optional(v.id('appointmentChanges')), idempotencyKey: v.string(), action: v.union(v.literal('amend'), v.literal('cancel')), reason: v.string(), method: v.optional(manualPaymentMethod), effectiveAt: v.optional(v.number()) },
+ args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), paymentId: v.id('appointmentPayments'), idempotencyKey: v.string(), action: v.union(v.literal('amend'), v.literal('cancel')), reason: v.string(), method: v.optional(manualPaymentMethod), effectiveAt: v.optional(v.number()) },
  handler: async (ctx, args) => {
   const admin = await requireAdmin(ctx);
   return await correctAppointmentPayment(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
@@ -877,7 +877,7 @@ export const correctAppointmentPaymentEntry = mutation({
 type ServiceTerms = Pick<Doc<'services'>, 'durationMin' | 'bufferMin' | 'price' | 'currency'>;
 
 /** Same staff and start time; the length, turnaround and price follow the reviewed service. */
-async function serviceChange(ctx: MutationCtx, appointment: Doc<'serviceAppointments'>, serviceId: Id<'services'>, expected?: ServiceTerms) {
+async function serviceChange(ctx: MutationCtx, appointment: Doc<'appointments'>, serviceId: Id<'services'>, expected?: ServiceTerms) {
 	if (appointment.status !== 'booked' && appointment.status !== 'arrived') throw new Error('Only booked or arrived appointments can change service');
 	if (appointment.paymentStatus !== 'unpaid') throw new Error('Paid appointments cannot change service');
 	const service = await ctx.db.get(serviceId);
@@ -900,7 +900,7 @@ async function serviceChange(ctx: MutationCtx, appointment: Doc<'serviceAppointm
 /** Guest details, notes and optionally the service, validated together and saved in one write. */
 export const updateAppointmentDetails = mutation({
 	args: {
-		appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), guestName: v.string(), guestPhone: v.string(),
+		appointmentId: v.id('appointments'), expectedRevision: v.number(), guestName: v.string(), guestPhone: v.string(),
 		guestEmail: v.optional(v.string()), notes: v.optional(v.string()), serviceId: v.optional(v.id('services')),
 		expectedService: v.optional(v.object({ durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string() }))
 	},
@@ -917,7 +917,7 @@ export const updateAppointmentDetails = mutation({
 
 /** Records a refund given at the desk; no money moves through the app. */
 export const refundAppointment = mutation({
- args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), amount: v.optional(v.number()), currency: v.optional(v.string()), method: v.optional(refundMethod), reason: v.optional(v.string()), idempotencyKey: v.optional(v.string()), paymentId: v.optional(v.id('appointmentPayments')), billId: v.optional(v.id('bills')) },
+ args: { appointmentId: v.id('appointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), amount: v.optional(v.number()), currency: v.optional(v.string()), method: v.optional(refundMethod), reason: v.optional(v.string()), idempotencyKey: v.optional(v.string()), paymentId: v.optional(v.id('appointmentPayments')), orderId: v.optional(v.id('orders')) },
  handler: async (ctx, args) => {
   const admin = await requireAdmin(ctx);
   return await recordAppointmentRefund(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
@@ -926,7 +926,7 @@ export const refundAppointment = mutation({
 
 /** Keeps the record and its payment state; frees the staff member's time. */
 export const cancelAppointment = mutation({
-	args: { appointmentId: v.id('serviceAppointments'), expectedRevision: v.number(), reason: v.optional(v.string()) },
+	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), reason: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
@@ -938,7 +938,7 @@ export const cancelAppointment = mutation({
 
 /** Newest first, at most HISTORY_LIMIT entries. */
 export const listAppointmentHistory = query({
-	args: { appointmentId: v.id('serviceAppointments') },
+	args: { appointmentId: v.id('appointments') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		return await appointmentHistory(ctx, args.appointmentId);

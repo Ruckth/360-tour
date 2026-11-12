@@ -11,7 +11,7 @@ type Financials = NonNullable<FunctionReturnType<typeof api.adminBookings.bookin
 type RefundInput = FunctionArgs<typeof api.adminBookings.recordRefund>;
 export type BookingRefundSource = {
   value: string; label: string; left: number; stripe: boolean;
-  reference: Pick<RefundInput, "paymentId" | "billId" | "unitemised">;
+  reference: Pick<RefundInput, "paymentId" | "orderId">;
 };
 
 /** Shared by standalone refunds and atomic cancellation/refund, including old receipt money. */
@@ -21,10 +21,6 @@ export function bookingRefundSources(data: Financials): BookingRefundSource[] {
       value: `payment:${p._id}`, label: `${formatMoney(p.amount, p.currency)} · ${PAYMENT_ORIGIN_LABELS[p.origin]}${p.order ? ` (${p.order.title})` : ""}`,
       left: p.refundable, stripe: p.origin === "online", reference: { paymentId: p._id },
     })),
-    ...data.legacyOrders.filter(o => o.refundable > 0).map(o => ({
-      value: `order:${o._id}`, label: `${o.title} (before itemised payments)`, left: o.refundable, stripe: false, reference: { billId: o._id },
-    })),
-    ...(data.unitemisedRefundable > 0 ? [{ value: "unitemised", label: "Older unitemised payment", left: data.unitemisedRefundable, stripe: false, reference: { unitemised: true } }] : []),
   ];
 }
 

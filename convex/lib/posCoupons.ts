@@ -1,9 +1,9 @@
 // POS coupons (marketing release 2b). Pure, no I/O: Convex (pos.ts) and the checkout UI's fixture
-// backend share it, as they share billMath. One coupon per order. It discounts service and
+// backend share it, as they share orderMath. One coupon per order. It discounts service and
 // appointment rows only; stays, rooms, extras and fees are never discounted, and an attached stay
 // keeps the price its own booking promotion gave it.
 import { v, type Infer } from 'convex/values';
-import { lineCouponBase, round2, type LineKind, type PricedLine } from './billMath';
+import { lineCouponBase, type LineKind, type PricedLine } from './orderMath';
 import { validateMarketingSlug } from './marketingSlugs';
 import { evaluateOffer, MAX_QUOTE_SUBTOTAL, normalizeCouponCode, type CouponProblem, type CouponRules } from './offers';
 
@@ -20,7 +20,7 @@ export type PosCouponProblem =
 	| { code: 'link_without_offer' };
 
 const plain = <C extends string>(code: C) => v.object({ code: v.literal(code) });
-/** Stored on `bills.promotion.problem`; mirrors PosCouponProblem exactly. */
+/** Stored on `orders.promotion.problem`; mirrors PosCouponProblem exactly. */
 export const posCouponProblemValidator = v.union(
 	plain('not_found'), plain('not_active'),
 	v.object({ code: v.literal('not_started'), startsOn: v.string() }),
@@ -63,7 +63,7 @@ export type OrderCouponInput = {
 export type OrderCouponResult =
 	| {
 			ok: true;
-			/** Baht, at most 2 decimals; equals the sum of `allocation`. */
+			/** Integer satang; equals the sum of `allocation`. */
 			discount: number;
 			capped: boolean;
 			eligibleSubtotal: number;
@@ -77,55 +77,25 @@ export function isCouponEligibleLine(line: { kind: LineKind; fee?: unknown }): b
 	return (line.kind === 'service' || line.kind === 'appointment') && !line.fee;
 }
 
-const toSatang = (baht: number) => Math.round(round2(baht) * 100);
-
-/** Engine money is in the unit it was given; turn a min_subtotal problem back into baht. */
-function problemInBaht(problem: CouponProblem, unit: number): CouponProblem {
-	return problem.code === 'min_subtotal'
-		? { code: 'min_subtotal', minEligibleSubtotal: round2(problem.minEligibleSubtotal / unit), eligibleSubtotal: round2(problem.eligibleSubtotal / unit) }
-		: problem;
-}
-
-/**
- * Prices the order's coupon with the shared offer engine, which takes integers. When every eligible
- * row is whole baht (the usual till) it runs in baht, so savings and the split are whole baht as on
- * bookings (฿500 over ฿1,200 + ฿600 is ฿333 + ฿167). A row with satang runs the whole quote in
- * satang (rows, fixed benefit, minimum, cap, budget and counters) and returns baht with 2 decimals.
- * There is no direct-booking offer at the desk.
- */
 export function evaluateOrderCoupon({ lines, coupon, today, usedOnAttachedStay }: OrderCouponInput): OrderCouponResult {
 	// A stays-only coupon has nothing to discount at the desk, whatever else is wrong with it.
 	if (coupon.scope === 'accommodation') return { ok: false, problem: { code: 'nothing_eligible' } };
 	const eligible = lines.filter(isCouponEligibleLine);
-	const unit = eligible.every((line) => Number.isInteger(lineCouponBase(line))) ? 1 : 100;
-	const scale = unit === 1 ? (baht: number) => baht : toSatang;
-	const scaleOptional = (baht: number | undefined) => (baht === undefined ? undefined : scale(baht));
-	const quoteLines = eligible.map((line) => ({ id: line.id, kind: 'service' as const, label: '', amount: scale(lineCouponBase(line)) }));
-	const eligibleUnits = quoteLines.reduce((sum, line) => sum + line.amount, 0);
-	if (eligibleUnits > MAX_QUOTE_SUBTOTAL) return { ok: false, problem: { code: 'order_too_large' } };
-	const rules: CouponRules = {
-		...coupon,
-		benefit: coupon.benefit.kind === 'fixed' ? { kind: 'fixed', amount: scale(coupon.benefit.amount) } : coupon.benefit,
-		minEligibleSubtotal: scaleOptional(coupon.minEligibleSubtotal),
-		maxSaving: scaleOptional(coupon.maxSaving),
-		discountBudget: scaleOptional(coupon.discountBudget),
-		// Counters may carry satang from earlier desk uses; the engine floors the remaining budget.
-		discountGranted: scale(coupon.discountGranted),
-		heldDiscount: scaleOptional(coupon.heldDiscount)
-	};
-	const toBaht = (units: number) => round2(units / unit);
-	const result = evaluateOffer({ lines: quoteLines, directDiscountPercent: 0, today, coupon: rules });
-	if (result.problem) return { ok: false, problem: problemInBaht(result.problem, unit) };
+ const quoteLines = eligible.map(line => ({ id: line.id, kind: 'service', label: '', amount: lineCouponBase(line) } as const));
+ const eligibleUnits = quoteLines.reduce((sum, line) => sum + line.amount, 0);
+ if (eligibleUnits > MAX_QUOTE_SUBTOTAL) return { ok: false, problem: { code: 'order_too_large' } };
+ const result = evaluateOffer({ lines: quoteLines, directDiscountPercent: 0, today, coupon });
+ if (result.problem) return { ok: false, problem: result.problem };
 	if (coupon.propertySlugs?.length) return { ok: false, problem: { code: 'villa_only' } };
 	if (usedOnAttachedStay) return { ok: false, problem: { code: 'already_on_stay' } };
 	// Nothing to give: a budget remainder under one unit, or a percentage too small to round to one.
 	if (result.couponStatus !== 'applied' || result.couponDiscount <= 0) return { ok: false, problem: { code: result.capped ? 'budget_used' : 'nothing_eligible' } };
 	return {
 		ok: true,
-		discount: toBaht(result.couponDiscount),
+		discount: result.couponDiscount,
 		capped: result.capped,
-		eligibleSubtotal: toBaht(eligibleUnits),
-		allocation: result.allocation.map((share) => ({ lineId: share.lineId, discount: toBaht(share.discount) }))
+		eligibleSubtotal: eligibleUnits,
+		allocation: result.allocation.map((share) => ({ lineId: share.lineId, discount: share.discount }))
 	};
 }
 
@@ -172,7 +142,7 @@ export function parseCouponInput(raw: string, siteOrigin: string): CouponInput {
 	return checked.reason ? { kind: 'invalid', reason: 'no_offer' } : { kind: 'slug', slug: checked.slug };
 }
 
-const money = (baht: number) => `฿${baht.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+const money = (baht: number) => `฿${(baht / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 const day = (iso: string) =>
 	new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 

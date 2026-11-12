@@ -1,3 +1,4 @@
+import { satangToBaht } from '../shared/money';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { api, internal } from '../_generated/api';
@@ -258,11 +259,11 @@ export function validateToolArgs(name: string, value: unknown): ToolArgs {
 }
 
 export function toolError(code: string, error: string) {
-	return JSON.stringify({ ok: false, code, error, retryable: false });
+	return humanToolResult({ ok: false, code, error, retryable: false });
 }
 
 export type ToolContext = {
-	sessionId: Id<'chatSessions'>;
+	sessionId: Id<'conversations'>;
 	siteUrl?: string;
 	/** When the current AI turn started; lets two-step tools require a guest reply in between. */
 	turnStartedAt: number;
@@ -310,7 +311,7 @@ export async function executeTool(
 
 async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: ToolArgs, properties: Doc<'properties'>[], toolContext: ToolContext): Promise<string> {
 	if (fnName === 'search_business_facts') {
-		return JSON.stringify(await ctx.runQuery(internal.businessFacts.search, {
+		return humanToolResult(await ctx.runQuery(internal.businessFacts.search, {
 			sessionId: toolContext.sessionId, query: fnArgs.query as string,
 			...(typeof fnArgs.propertySlug === 'string' ? { propertySlug: fnArgs.propertySlug } : {})
 		}));
@@ -325,11 +326,11 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const search = new URLSearchParams();
 			if (filters.category) search.set('category', filters.category);
 			if (filters.query) search.set('q', filters.query);
-			return JSON.stringify({ ...result, catalogUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/services${search.size ? `?${search}` : ''}` });
+			return humanToolResult({ ...result, catalogUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/services${search.size ? `?${search}` : ''}` });
 		}
 
 		case 'check_service_availability':
-			return JSON.stringify(await ctx.runQuery(internal.serviceBookings.checkServiceAvailability, {
+			return humanToolResult(await ctx.runQuery(internal.serviceBookings.checkServiceAvailability, {
 				serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
 				...(typeof fnArgs.time === 'string' ? { time: fnArgs.time } : {})
 			}));
@@ -343,11 +344,11 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 				...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {}),
 				...(typeof fnArgs.staffPreference === 'string' ? { staffPreference: fnArgs.staffPreference } : {})
 			});
-			return JSON.stringify('error' in summary ? summary : { ...summary, next: 'Ask the guest to reply "yes" to confirm.' });
+			return humanToolResult('error' in summary ? summary : { ...summary, next: 'Ask the guest to reply "yes" to confirm.' });
 		}
 
 		case 'confirm_service_booking':
-			return JSON.stringify(await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
+			return humanToolResult(await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
 				sessionId: toolContext.sessionId,
 				expectedProposal: toolContext.serviceProposal ?? '',
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
@@ -355,7 +356,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 
 		case 'check_availability': {
 			const property = findProperty(properties, fnArgs.propertySlug);
-			if (!property) return JSON.stringify({ error: 'Property not found' });
+			if (!property) return humanToolResult({ error: 'Property not found' });
 
 			const checkIn = String(fnArgs.checkIn);
 			const checkOut = String(fnArgs.checkOut);
@@ -370,7 +371,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const quote = calculateDirectQuote(property, nights);
 			const ota = await ownerOtaQuotes(ctx, property.slug, nights);
 
-			return JSON.stringify({
+			return humanToolResult({
 				property: property.name,
 				checkIn,
 				checkOut,
@@ -386,14 +387,14 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 
 		case 'calculate_price': {
 			const property = findProperty(properties, fnArgs.propertySlug);
-			if (!property) return JSON.stringify({ error: 'Property not found' });
+			if (!property) return humanToolResult({ error: 'Property not found' });
 
 			const nights = Number(fnArgs.nights);
 			if (fnArgs.guests !== undefined) assertCapacity(property, Number(fnArgs.guests));
 			const quote = calculateDirectQuote(property, nights);
 			const otaComparison = await ownerOtaQuotes(ctx, property.slug, nights);
 
-			return JSON.stringify({
+			return humanToolResult({
 				property: property.name,
 				nights,
 				guests: fnArgs.guests ?? 'any',
@@ -412,11 +413,11 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 
 		case 'get_property_details': {
 			const property = findProperty(properties, fnArgs.propertySlug);
-			if (!property) return JSON.stringify({ error: 'Property not found' });
+			if (!property) return humanToolResult({ error: 'Property not found' });
 
 			const oneNightQuote = calculateDirectQuote(property, 1);
 
-			return JSON.stringify({
+			return humanToolResult({
 				name: property.name,
 				imageUrl: property.images[0],
 				slug: property.slug,
@@ -449,7 +450,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 					bedrooms: p.bedrooms
 				};
 			});
-			return JSON.stringify({ properties: list, currency: properties[0]?.currency ?? 'THB' });
+			return humanToolResult({ properties: list, currency: properties[0]?.currency ?? 'THB' });
 		}
 
 
@@ -459,7 +460,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
         checkIn: String(fnArgs.checkIn), checkOut: String(fnArgs.checkOut), ...(typeof fnArgs.guests === 'number' ? { guests: fnArgs.guests } : {})
       });
       const params = new URLSearchParams({ unit: quote.propertySlug, checkin: quote.checkIn, checkout: quote.checkOut, guests: String(quote.guests), coupon: quote.coupon?.code ?? '' });
-      return JSON.stringify({ ...quote, bookingUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/booking?${params}` });
+      return humanToolResult({ ...quote, bookingUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/booking?${params}` });
     }
 		case 'prepare_booking': {
 			const summary = await ctx.runMutation(internal.bookings.prepareChatBooking, {
@@ -476,7 +477,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const { confirmToken, ...details } = summary;
 			const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
 			const confirmUrl = `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}${summary.coupon ? `&coupon=${encodeURIComponent(summary.coupon.code)}` : ""}`;
-			return JSON.stringify({ ...details, confirmUrl, next: 'Share confirmUrl as "Confirm & pay", or offer replying "yes". No booking or hold exists until confirmation.' });
+			return humanToolResult({ ...details, confirmUrl, next: 'Share confirmUrl as "Confirm & pay", or offer replying "yes". No booking or hold exists until confirmation.' });
 		}
 
 		case 'confirm_booking': {
@@ -488,9 +489,9 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
       if (booking.needsReview) {
         const { confirmToken, ...quote } = booking.quote;
         const base = toolContext.siteUrl?.replace(/\/+$/, '') ?? '';
-        return JSON.stringify({ ...quote, needsReview: true, confirmUrl: `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}${quote.coupon ? `&coupon=${encodeURIComponent(quote.coupon.code)}` : ''}` });
+        return humanToolResult({ ...quote, needsReview: true, confirmUrl: `${base}/booking/pay?proposal=${encodeURIComponent(confirmToken)}${quote.coupon ? `&coupon=${encodeURIComponent(quote.coupon.code)}` : ''}` });
       }
-			return JSON.stringify({
+			return humanToolResult({
 				confirmationCode: booking.confirmationCode,
 				property: booking.property, checkIn: booking.checkIn, checkOut: booking.checkOut, guests: booking.guests, nights: booking.nights,
 				status: booking.paymentStatus === 'paid' ? 'paid' : 'pending_payment',
@@ -509,7 +510,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const services = await ctx.runQuery(internal.serviceBookings.listChatGuestServiceBookings, {
 				sessionId: toolContext.sessionId
 			});
-			return JSON.stringify({
+			return humanToolResult({
 				bookings: bookings.map(({ bookingId, accessToken, ...booking }) => ({
 					...booking,
 					...(accessToken ? { paymentUrl: paymentUrl(toolContext, bookingId, accessToken) } : {})
@@ -527,7 +528,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 				turnStartedAt: toolContext.turnStartedAt,
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {})
 			});
-			return JSON.stringify(
+			return humanToolResult(
 				result.state === 'needs_confirmation'
 					? { ...result, next: 'Ask the guest to reply "yes" to cancel this booking.' }
 					: result
@@ -535,6 +536,12 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		}
 
 		default:
-			return JSON.stringify({ error: `Unknown function: ${fnName}` });
+			return humanToolResult({ error: `Unknown function: ${fnName}` });
 	}
+}
+
+/** LLM/tool output is a presentation boundary; IDs, counts and timestamps retain their units. */
+function humanToolResult(value: unknown): string {
+ const currencyFields = new Set(["price","pricePerNight","nightlyRate","directPrice","totalDirect","totalOTA","listedTotal","discountPercent","discountAmount","directTotal","maxSavings","total","subtotal","discount","amount","saving","fee","owed"]);
+ return JSON.stringify(value, (key, item) => typeof item === 'number' && currencyFields.has(key) ? satangToBaht(item) : item);
 }

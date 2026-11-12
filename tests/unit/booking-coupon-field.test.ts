@@ -9,14 +9,14 @@ import { CouponField } from "@/components/booking/CouponField";
 import { couponPhase, type CouponPhase } from "@/lib/booking/coupon";
 
 const F1: CouponRules = {
-  code: "DCNT-F1-20", version: 1, status: "active", benefit: { kind: "percent", percent: 20 }, scope: "accommodation",
-  stayFrom: "2026-11-01", stayTo: "2026-12-20", minNights: 2, maxSaving: 3000, used: 35, discountGranted: 0,
+  code: "DCNT-F1-20", version: 1, status: "active", benefit: { kind: "percent", percent: 2000 }, scope: "accommodation",
+  stayFrom: "2026-11-01", stayTo: "2026-12-20", minNights: 2, maxSaving: 300000, used: 35, discountGranted: 0,
 };
 const offer = (pricePerNight: number, checkIn: string, checkOut: string) => {
   const nights = (Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000;
   return evaluateOffer({
     lines: [{ id: "a", kind: "accommodation", propertySlug: "v", checkIn, checkOut, nights, amount: pricePerNight * nights }],
-    directDiscountPercent: 15, today: "2026-11-07", coupon: F1,
+    directDiscountPercent: 1500, today: "2026-11-07", coupon: F1,
   });
 };
 const ready = (result: ReturnType<typeof offer>) => couponPhase("DCNT-F1-20", { status: "ready", result });
@@ -64,7 +64,7 @@ describe("Have a code?", () => {
   });
 
   it("shows the saving and Remove when the code applies", async () => {
-    const props = await show({ phase: ready(offer(4500, "2026-11-12", "2026-11-14")) });
+    const props = await show({ phase: ready(offer(450000, "2026-11-12", "2026-11-14")) });
     expect(text()).toContain("DCNT-F1-20 applied. You save ฿1,800.");
     expect(text()).toContain("It replaces your direct-booking discount.");
     expect(text()).toContain("From your link");
@@ -73,7 +73,7 @@ describe("Have a code?", () => {
   });
 
   it("keeps the direct price when it's better", async () => {
-    await show({ phase: ready(offer(12000, "2026-11-12", "2026-11-15")) });
+    await show({ phase: ready(offer(1200000, "2026-11-12", "2026-11-15")) });
     expect(text()).toContain("Your direct rate is already better");
     expect(text()).toContain("We kept your direct price. DCNT-F1-20 would save ฿3,000; your direct rate saves ฿5,400.");
     expect(text()).toContain("Not used");

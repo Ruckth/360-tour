@@ -236,7 +236,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
             const oneNightQuote = calculateBookingQuote({
               pricePerNight: item.pricePerNight,
               nights: 1,
-              discountPercent: 15,
+              discountPercent: 1500,
               currency: resort.currency,
             });
 
@@ -309,7 +309,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
                         data-testid={`chat-villa-price-${item.id}`}
                         className="whitespace-nowrap text-[11px] font-bold text-gold"
                       >
-                        {moneyFormatter.format(oneNightQuote.directTotal)}
+                        {moneyFormatter.format(oneNightQuote.directTotal / 100)}
                         <span className="font-medium text-white/70"> {villaT("perNightWords")}</span>
                       </span>
                     </div>
@@ -359,7 +359,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
           <p className="font-semibold">{context.couponCode}</p>
           <p>{couponMessage}</p>
           {coupon.kind === "applied" ? <p>{couponT("appliedBody")}</p> : null}
-          {couponPreview.status === "ready" ? <p className="mt-1 font-semibold">{bookingT("total")}: {moneyFormatter.format(couponPreview.result.total)}</p> : null}
+          {couponPreview.status === "ready" ? <p className="mt-1 font-semibold">{bookingT("total")}: {moneyFormatter.format(couponPreview.result.total / 100)}</p> : null}
         </div>
       ) : null}
 

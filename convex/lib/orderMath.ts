@@ -1,23 +1,25 @@
+import { percentageOf, roundRatio, roundMoney } from '../shared/money';
+export { roundMoney } from '../shared/money';
 import { ConvexError } from 'convex/values';
 /**
  * POS order math, shared by Convex and the checkout UI. Prices include 7% VAT (the receipt
  * shows the VAT portion); there is no service charge. Amounts are in the order currency.
  */
 
-export const VAT_RATE = 0.07;
+export const VAT_RATE = 700;
 export const MAX_TENDERS = 3;
 /** Bound receipt refund reads; never truncate a money balance. */
-export const MAX_BILL_REFUNDS = 1000;
+export const MAX_ORDER_REFUNDS = 1000;
 export const NOTE_MAX = 500;
 /**
  * Till limits. They keep every intermediate exact in doubles: a bill is at most 1e9 satang, and a
  * percent discount multiplies a line's satang by hundredths of a percent (at most 1e4), so 1e13.
  */
-export const MAX_PRICE = 1_000_000;
+export const MAX_PRICE = 100_000_000;
 export const MAX_QTY = 99;
 /** Largest bill subtotal, and so the largest discount, payment or cash received. */
-export const MAX_BILL = 10_000_000;
-const atMost = (max: number) => `Amounts are at most ${max.toLocaleString('en-US')}`;
+export const MAX_ORDER = 1_000_000_000;
+const atMost = (max: number) => `Amounts are at most ${(max / 100).toLocaleString('en-US')}`;
 export const TENDER_METHODS = ['cash', 'promptpay', 'card', 'transfer'] as const;
 export type TenderMethod = (typeof TENDER_METHODS)[number];
 
@@ -42,28 +44,16 @@ export type PricedLine = {
 };
 export type Tender = { method: TenderMethod; amount: number; received?: number };
 /** `discount` is every discount, the coupon included; `coupon` is the coupon's part of it. */
-export type BillTotals = { subtotal: number; discount: number; coupon: number; total: number; vat: number; deposit: number; due: number };
+export type OrderTotals = { subtotal: number; discount: number; coupon: number; total: number; vat: number; deposit: number; due: number };
 
-/**
- * Money rounds to the satang, halves away from zero. `toPrecision(15)` drops binary noise first,
- * so a decimal half such as 1.005 (stored as 1.00499…) rounds up like it does on paper.
- */
-export const round2 = (n: number) => {
-	const satang = Math.round(Number((Math.abs(n) * 100).toPrecision(15)));
-	return (n < 0 ? -satang : satang) / 100;
-};
-/** Whole satang as an integer, for exact percentage arithmetic. */
-const toSatang = (n: number) => Math.round(round2(n) * 100);
-/** round(a / b) for non-negative integers, halves up, without floating-point error. */
-const divRound = (a: number, b: number) => Math.floor((2 * a + b) / (2 * b));
-const sum = (values: number[]) => round2(values.reduce((a, b) => a + b, 0));
+const sum = (values: number[]) => roundMoney(values.reduce((a, b) => a + b, 0));
 
 export function linePrice(line: PricedLine) {
 	return line.priceOverride?.price ?? line.unitPrice;
 }
 
 export function lineGross(line: PricedLine) {
-	return round2(linePrice(line) * line.qty);
+	return roundMoney(linePrice(line) * line.qty);
 }
 
 /** The staff discount (amount or percent) alone, at most the row's gross. */
@@ -72,55 +62,55 @@ export function lineStaffDiscount(line: PricedLine) {
 	if (!line.discount) return 0;
 	const value = Math.max(line.discount.value, 0);
 	// Percent: satang × hundredths of a percent, so 10% of 10.05 is exactly 1.005 → 1.01.
-	const raw = line.discount.type === 'percent' ? divRound(toSatang(gross) * toSatang(value), 10000) / 100 : value;
-	return round2(Math.min(raw, gross));
+	const raw = line.discount.type === 'percent' ? percentageOf(gross, value) : value;
+	return roundMoney(Math.min(raw, gross));
 }
 
 /** What a coupon may discount on a row: its price after the staff discount. */
 export function lineCouponBase(line: PricedLine) {
-	return round2(lineGross(line) - lineStaffDiscount(line));
+	return roundMoney(lineGross(line) - lineStaffDiscount(line));
 }
 
 /** The row's coupon share, never more than the staff discount leaves. */
 export function lineCouponDiscount(line: PricedLine) {
-	return round2(Math.min(Math.max(line.couponDiscount ?? 0, 0), lineCouponBase(line)));
+	return roundMoney(Math.min(Math.max(line.couponDiscount ?? 0, 0), lineCouponBase(line)));
 }
 
 /** Every discount on the row: the staff discount, then the coupon share. */
 export function lineDiscount(line: PricedLine) {
-	return round2(lineStaffDiscount(line) + lineCouponDiscount(line));
+	return roundMoney(lineStaffDiscount(line) + lineCouponDiscount(line));
 }
 
 export function lineNet(line: PricedLine) {
-	return round2(lineGross(line) - lineDiscount(line));
+	return roundMoney(lineGross(line) - lineDiscount(line));
 }
 
-export function billTotals(lines: readonly PricedLine[]): BillTotals {
+export function orderTotals(lines: readonly PricedLine[]): OrderTotals {
 	const subtotal = sum(lines.map(lineGross));
 	const discount = sum(lines.map(lineDiscount));
 	const coupon = sum(lines.map(lineCouponDiscount));
-	const total = round2(subtotal - discount);
+	const total = roundMoney(subtotal - discount);
 	const deposit = Math.min(sum(lines.map((line) => line.deposit ?? 0)), total);
 	// VAT included at 7%: total × 7/107, in whole satang.
-	const vat = divRound(toSatang(Math.max(total, 0)) * 7, 107) / 100;
-	return { subtotal, discount, coupon, total, vat, deposit, due: round2(total - deposit) };
+	const vat = roundRatio(BigInt(Math.max(total, 0)) * 7n, 107);
+	return { subtotal, discount, coupon, total, vat, deposit, due: roundMoney(total - deposit) };
 }
 
 export function assertDiscount(discount: LineDiscount) {
-	if (!Number.isFinite(discount.value) || discount.value < 0) throw new ConvexError('Discount must be zero or more');
-	if (discount.type === 'percent' && discount.value > 100) throw new ConvexError('A percent discount is at most 100%');
-	if (discount.value > MAX_BILL) throw new ConvexError(atMost(MAX_BILL));
+	if (!Number.isSafeInteger(discount.value) || discount.value < 0) throw new ConvexError('Discount must be zero or more');
+	if (discount.type === 'percent' && discount.value > 10000) throw new ConvexError('A percent discount is at most 100%');
+	if (discount.value > MAX_ORDER) throw new ConvexError(atMost(MAX_ORDER));
 }
 
 /** A typed price: finite, zero or more, and within MAX_PRICE. */
 export function assertPrice(price: number) {
-	if (!Number.isFinite(price) || price < 0) throw new ConvexError('Price must be zero or more');
+	if (!Number.isSafeInteger(price) || price < 0) throw new ConvexError('Price must be zero or more');
 	if (price > MAX_PRICE) throw new ConvexError(atMost(MAX_PRICE));
 }
 
 /** Every write to an order checks its subtotal, which also bounds booked stays and catalog prices. */
-export function assertBillSize(totals: Pick<BillTotals, 'subtotal'>) {
-	if (totals.subtotal > MAX_BILL) throw new ConvexError(`An order is at most ${MAX_BILL.toLocaleString('en-US')}. Split it into two orders.`);
+export function assertOrderSize(totals: Pick<OrderTotals, 'subtotal'>) {
+	if (totals.subtotal > MAX_ORDER) throw new ConvexError(`An order is at most ${(MAX_ORDER / 100).toLocaleString('en-US')}. Split it into two orders.`);
 }
 
 /** A one-off price change needs a reason for the audit trail. Returns the trimmed note. */
@@ -140,18 +130,18 @@ export function assertTenders(tenders: readonly Tender[], due: number) {
 	for (const tender of tenders) {
 		if (!TENDER_METHODS.includes(tender.method)) throw new ConvexError('Unknown payment method');
 		if (!Number.isFinite(tender.amount) || tender.amount <= 0) throw new ConvexError('Each payment must be more than zero');
-		if (tender.amount > MAX_BILL) throw new ConvexError(atMost(MAX_BILL));
-		if (round2(tender.amount) !== tender.amount) throw new ConvexError('Payments are in whole satang (at most 2 decimals)');
+		if (tender.amount > MAX_ORDER) throw new ConvexError(atMost(MAX_ORDER));
+		if (roundMoney(tender.amount) !== tender.amount) throw new ConvexError('Payments are in whole satang (at most 2 decimals)');
 		if (tender.received !== undefined) {
 			if (tender.method !== 'cash') throw new ConvexError('Only cash can have an amount received');
 			if (!Number.isFinite(tender.received)) throw new ConvexError('Cash received must be an amount');
-			if (tender.received > MAX_BILL) throw new ConvexError(atMost(MAX_BILL));
-			if (round2(tender.received) !== tender.received) throw new ConvexError('Cash received is in whole satang (at most 2 decimals)');
+			if (tender.received > MAX_ORDER) throw new ConvexError(atMost(MAX_ORDER));
+			if (roundMoney(tender.received) !== tender.received) throw new ConvexError('Cash received is in whole satang (at most 2 decimals)');
 			if (!(tender.received >= tender.amount)) throw new ConvexError('Cash received is less than the amount');
 		}
 	}
 	const paid = sum(tenders.map((tender) => tender.amount));
-	if (paid !== round2(due)) throw new ConvexError(`Payments add up to ${paid}, but ${round2(due)} is due`);
+	if (paid !== roundMoney(due)) throw new ConvexError(`Payments add up to ${paid / 100}, but ${roundMoney(due) / 100} is due`);
 }
 
 export function changeDue(tenders: readonly Tender[]) {
@@ -160,27 +150,22 @@ export function changeDue(tenders: readonly Tender[]) {
 
 type BookingMoney = { status: string; paymentStatus: string; total: number; amountPaid?: number; amountRefunded?: number; providerRefundWaived?: number };
 
-/**
- * What was paid on a booking (online or recorded), net of recorded refunds, and what is still owed
- * (negative: a credit owed back to the guest). `gross` is everything received; paid without an amount
- * means paid in full. A `refunded` stay has nothing left: a legacy one (refunded before amounts were
- * recorded) counts its whole payment as refunded, without inventing a refund record.
- */
+
 export function bookingBalance(booking: BookingMoney) {
-	const gross = round2(
-		booking.paymentStatus === 'paid' || booking.paymentStatus === 'refunded' ? (booking.amountPaid ?? booking.total) : (booking.amountPaid ?? 0)
+	const gross = roundMoney(
+		booking.paymentStatus === 'paid' || booking.paymentStatus === 'refunded' ? (booking.amountPaid ?? 0) : (booking.amountPaid ?? 0)
 	);
-	const refunded = booking.paymentStatus === 'refunded' ? gross : round2(Math.min(Math.max(booking.amountRefunded ?? 0, 0), gross));
-	const paid = round2(gross - refunded);
+	const refunded = roundMoney(Math.min(Math.max(booking.amountRefunded ?? 0, 0), gross));
+	const paid = roundMoney(gross - refunded);
 	// A provider refund waives that charge; it is neither money received nor a new deposit.
-	const collectible = Math.max(0, round2(booking.total - paid - (booking.providerRefundWaived ?? 0)));
-	const credit = Math.max(0, round2(paid - booking.total));
-	return { paid, owed: round2(collectible - credit), gross, refunded };
+	const collectible = Math.max(0, roundMoney(booking.total - paid - (booking.providerRefundWaived ?? 0)));
+	const credit = Math.max(0, roundMoney(paid - booking.total));
+	return { paid, owed: roundMoney(collectible - credit), gross, refunded };
 }
 
 /** Chargeable stay terms after a provider return, without treating waived money as a deposit. */
 export function bookingChargeTotal(booking: Pick<BookingMoney, 'total' | 'providerRefundWaived'>) {
-	return Math.max(0, round2(booking.total - (booking.providerRefundWaived ?? 0)));
+	return Math.max(0, roundMoney(booking.total - (booking.providerRefundWaived ?? 0)));
 }
 
 /** A live booking with money still owed, which checkout can collect (e.g. a paid stay that was extended). */
@@ -197,7 +182,7 @@ export function formatOrderNumber(n: number) {
 	return `#${n}`;
 }
 
-/** "Order #42"; a legacy order not yet numbered by migrations:backfillOrders is just "Order". */
+
 export function orderTitle(orderNumber: number | undefined) {
 	return orderNumber === undefined ? 'Order' : `Order ${formatOrderNumber(orderNumber)}`;
 }

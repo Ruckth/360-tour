@@ -30,7 +30,7 @@ export type BookingInput = StayInput & {
 	guestEmail?: string;
 	guestPhone: string;
 	source: BookingSource;
-	chatSessionId?: Id<'chatSessions'>;
+	chatSessionId?: Id<'conversations'>;
 	/** Who created it (an admin's email), recorded on the booking, its history and its order. Defaults to the channel. */
 	actor?: string;
 	/** Historical entries made without telling the guest; lifecycle emails then skip the booking. */
@@ -131,7 +131,7 @@ export function cleanGuestDetails(input: { guestName: string; guestPhone: string
 /** The exact-lookup forms stored with a booking's guest details (see schema `guestPhoneDigits`). */
 export function guestLookupFields(guest: { guestPhone: string; guestEmail?: string }) {
 	return {
-		guestPhoneDigits: guest.guestPhone.replace(/\D/g, '') || undefined,
+		guestPhoneDigits: guest.guestPhone.replace(/\D/g, ''),
 		guestEmailNormalized: guest.guestEmail?.trim().toLowerCase() || undefined
 	};
 }
@@ -187,11 +187,10 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		: createdAt + (await getEffectiveSettings(ctx)).bookingRules.unpaidHoldMinutes * 60_000;
 	const bookingId = await ctx.db.insert('bookings', {
 		propertyId: property._id,
-		tenantId: property.tenantId,
 		guestName,
 		...(guestEmail ? { guestEmail } : {}),
 		guestPhone,
-		...(guestPhoneDigits ? { guestPhoneDigits } : {}),
+		guestPhoneDigits,
 		...(guestEmailNormalized ? { guestEmailNormalized } : {}),
 		source: input.source,
 		...(marketingAttribution ? { marketingAttribution } : {}),
@@ -205,6 +204,7 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		total: offer?.total ?? quote.directTotal,
 		currency: quote.currency,
 		accessToken,
+		amountPaid: 0, amountRefunded: 0,
 		paymentStatus: 'pending',
 		status: 'pending',
 		revision: 0,

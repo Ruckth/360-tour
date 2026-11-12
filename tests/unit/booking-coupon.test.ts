@@ -36,7 +36,7 @@ function render(message: CouponMessage, catalog: Messages = en): string {
 }
 
 const format: CouponFormatters = {
-  money: (amount) => `฿${amount.toLocaleString("en-US")}`,
+  money: (amount) => `฿${(amount / 100).toLocaleString("en-US")}`,
   date: (iso) => `<${iso}>`,
   range: (from, to) => `<${from}..${to}>`,
 };
@@ -46,25 +46,25 @@ const F1: CouponRules = {
   code: "DCNT-F1-20",
   version: 1,
   status: "active",
-  benefit: { kind: "percent", percent: 20 },
+  benefit: { kind: "percent", percent: 2000 },
   scope: "accommodation",
   bookFrom: "2026-11-01",
   bookTo: "2026-11-30",
   stayFrom: "2026-11-01",
   stayTo: "2026-12-20",
   minNights: 2,
-  maxSaving: 3000,
+  maxSaving: 300000,
   usageLimit: 500,
-  discountBudget: 80000,
+  discountBudget: 8000000,
   used: 35,
-  discountGranted: 66450,
+  discountGranted: 6645000,
 };
 
 function quote(pricePerNight: number, checkIn: string, checkOut: string, coupon: CouponRules = F1): OfferResult {
   const nights = (Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000;
   return evaluateOffer({
     lines: [{ id: "accommodation", kind: "accommodation", propertySlug: "mossbell", checkIn, checkOut, nights, amount: pricePerNight * nights }],
-    directDiscountPercent: 15,
+    directDiscountPercent: 1500,
     today: "2026-11-07",
     coupon,
   });
@@ -90,22 +90,22 @@ describe("couponFromParam", () => {
 
 describe("coupon verdicts", () => {
   it("applies the coupon when it beats the direct offer (Mossbell 2 nights)", () => {
-    const result = quote(4500, "2026-11-12", "2026-11-14");
+    const result = quote(450000, "2026-11-12", "2026-11-14");
     expect(couponVerdict(result)).toEqual({ kind: "applied" });
-    expect(result.total).toBe(7200);
+    expect(result.total).toBe(720000);
   });
 
   it("keeps the direct price when it's better (Canopy 3 nights, capped)", () => {
-    const result = quote(12000, "2026-11-12", "2026-11-15");
+    const result = quote(1200000, "2026-11-12", "2026-11-15");
     expect(couponVerdict(result)).toEqual({ kind: "worse" });
   });
 
   it("keeps stay-dependent problems so a date or villa change can fix them", () => {
-    expect(couponVerdict(quote(8500, "2026-11-12", "2026-11-13"))).toEqual({
+    expect(couponVerdict(quote(850000, "2026-11-12", "2026-11-13"))).toEqual({
       kind: "not_used",
       problem: { code: "min_nights", minNights: 2, missingNights: 1 },
     });
-    expect(couponVerdict(quote(4500, "2026-12-22", "2026-12-24")).kind).toBe("not_used");
+    expect(couponVerdict(quote(450000, "2026-12-22", "2026-12-24")).kind).toBe("not_used");
     expect(couponVerdict({ couponStatus: "invalid", problem: { code: "wrong_property" } }).kind).toBe("not_used");
   });
 
@@ -133,7 +133,7 @@ describe("guest problem messages", () => {
     [{ code: "stay_outside_dates" }, "This code doesn't cover these dates"],
     [{ code: "min_nights", minNights: 2, missingNights: 1 }, "Add 1 more night to use this code"],
     [{ code: "min_nights", minNights: 4, missingNights: 2 }, "Add 2 more nights to use this code"],
-    [{ code: "min_subtotal", minEligibleSubtotal: 1500, eligibleSubtotal: 1200 }, "Spend ฿300 more to use this code"],
+    [{ code: "min_subtotal", minEligibleSubtotal: 150000, eligibleSubtotal: 120000 }, "Spend ฿300 more to use this code"],
     [{ code: "nothing_eligible" }, "This code is for spa services, not villa stays"],
   ])("explains %j", (problem, text) => {
     expect(render(couponProblemMessage(problem, format))).toBe(text);
@@ -154,7 +154,7 @@ describe("guest problem messages", () => {
       { code: "stay_outside_dates" },
       { code: "min_nights", minNights: 2, missingNights: 1 },
       { code: "min_nights", minNights: 3, missingNights: 2 },
-      { code: "min_subtotal", minEligibleSubtotal: 2, eligibleSubtotal: 1 },
+      { code: "min_subtotal", minEligibleSubtotal: 200, eligibleSubtotal: 100 },
       { code: "nothing_eligible" },
     ];
     for (const locale of locales) {
@@ -176,49 +176,49 @@ describe("guest problem messages", () => {
 
 describe("price summary lines", () => {
   it("shows the coupon line instead of the direct line when the coupon wins", () => {
-    const offer = quote(4500, "2026-11-12", "2026-11-14");
-    const price = stayPrice({ subtotal: 9000, directDiscount: 1350, code: "DCNT-F1-20", offer });
+    const offer = quote(450000, "2026-11-12", "2026-11-14");
+    const price = stayPrice({ subtotal: 900000, directDiscount: 135000, code: "DCNT-F1-20", offer });
     expect(price).toEqual({
-      subtotal: 9000,
-      discount: 1800,
-      total: 7200,
-      lines: [{ kind: "coupon", code: "DCNT-F1-20", amount: 1800 }],
+      subtotal: 900000,
+      discount: 180000,
+      total: 720000,
+      lines: [{ kind: "coupon", code: "DCNT-F1-20", amount: 180000 }],
       couponApplied: true,
     });
   });
 
   it("shows the direct line when the coupon doesn't win", () => {
-    const offer = quote(12000, "2026-11-12", "2026-11-15");
-    const price = stayPrice({ subtotal: 36000, directDiscount: 5400, code: "DCNT-F1-20", offer });
-    expect(price.lines).toEqual([{ kind: "direct", amount: 5400 }]);
-    expect(price.total).toBe(30600);
+    const offer = quote(1200000, "2026-11-12", "2026-11-15");
+    const price = stayPrice({ subtotal: 3600000, directDiscount: 540000, code: "DCNT-F1-20", offer });
+    expect(price.lines).toEqual([{ kind: "direct", amount: 540000 }]);
+    expect(price.total).toBe(3060000);
     expect(price.couponApplied).toBe(false);
   });
 
   it("ignores a preview for another stay, so a stale answer never sets the total", () => {
-    const twoNights = quote(4500, "2026-11-12", "2026-11-14");
-    const price = stayPrice({ subtotal: 13500, directDiscount: 2025, code: "DCNT-F1-20", offer: twoNights });
-    expect(price.total).toBe(11475);
-    expect(price.lines).toEqual([{ kind: "direct", amount: 2025 }]);
+    const twoNights = quote(450000, "2026-11-12", "2026-11-14");
+    const price = stayPrice({ subtotal: 1350000, directDiscount: 202500, code: "DCNT-F1-20", offer: twoNights });
+    expect(price.total).toBe(1147500);
+    expect(price.lines).toEqual([{ kind: "direct", amount: 202500 }]);
   });
 
   it("has no discount line without any discount", () => {
-    expect(stayPrice({ subtotal: 4200, directDiscount: 0 }).lines).toEqual([]);
+    expect(stayPrice({ subtotal: 420000, directDiscount: 0 }).lines).toEqual([]);
   });
 
   it("keeps the direct part of a stacked discount as its own line", () => {
-    expect(discountLines(1850, { code: "DCNT-SPA-500", amount: 500 })).toEqual([
-      { kind: "coupon", code: "DCNT-SPA-500", amount: 500 },
-      { kind: "direct", amount: 1350 },
+    expect(discountLines(185000, { code: "DCNT-SPA-500", amount: 50000 })).toEqual([
+      { kind: "coupon", code: "DCNT-SPA-500", amount: 50000 },
+      { kind: "direct", amount: 135000 },
     ]);
-    expect(discountLines(1800, { code: "DCNT-F1-20", amount: 1800 })).toEqual([{ kind: "coupon", code: "DCNT-F1-20", amount: 1800 }]);
-    expect(discountLines(1350, null)).toEqual([{ kind: "direct", amount: 1350 }]);
+    expect(discountLines(1800, { code: "DCNT-F1-20", amount: 180000 })).toEqual([{ kind: "coupon", code: "DCNT-F1-20", amount: 180000 }]);
+    expect(discountLines(135000, null)).toEqual([{ kind: "direct", amount: 135000 }]);
   });
 });
 
 describe("coupon phase", () => {
-  const applied = quote(4500, "2026-11-12", "2026-11-14");
-  const minNights = quote(8500, "2026-11-12", "2026-11-13");
+  const applied = quote(450000, "2026-11-12", "2026-11-14");
+  const minNights = quote(850000, "2026-11-12", "2026-11-13");
 
   it("follows the preview", () => {
     expect(couponPhase(null, { status: "ready", result: applied })).toEqual({ kind: "none" });
@@ -259,17 +259,17 @@ describe("coupon phase", () => {
 
 describe("booking records and errors", () => {
   it("reads a promotion only when its shape is right", () => {
-    expect(bookingPromotion({ promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 1800, redemptionId: "r1" } })).toEqual({
+    expect(bookingPromotion({ promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 180000, redemptionId: "r1" } })).toEqual({
       couponId: "c1",
       couponVersion: 1,
       code: "DCNT-F1-20",
-      discount: 1800,
+      discount: 180000,
       redemptionId: "r1",
     });
-    expect(bookingPromotion({ promotion: { code: "DCNT-F1-20", discount: 1800 } })).toEqual({ code: "DCNT-F1-20", discount: 1800 });
-    expect(bookingPromotion({ total: 7200 })).toBeNull();
+    expect(bookingPromotion({ promotion: { code: "DCNT-F1-20", discount: 180000 } })).toEqual({ code: "DCNT-F1-20", discount: 180000 });
+    expect(bookingPromotion({ total: 720000 })).toBeNull();
     expect(bookingPromotion({ promotion: null })).toBeNull();
-    expect(bookingPromotion({ promotion: { code: "", discount: 1 } })).toBeNull();
+    expect(bookingPromotion({ promotion: { code: "", discount: 100 } })).toBeNull();
     expect(bookingPromotion(null)).toBeNull();
   });
 
@@ -296,24 +296,24 @@ describe("booking records and errors", () => {
 });
 
 describe("booked price view", () => {
-  const promotion = { code: "DCNT-F1-20", couponVersion: 1, discount: 1800 };
+  const promotion = { code: "DCNT-F1-20", couponVersion: 1, discount: 180000 };
 
   it("shows the coupon line and the saving for a coupon-priced booking", () => {
-    expect(bookedPriceView({ discountAmount: 1800, promotion })).toEqual({
-      lines: [{ kind: "coupon", code: "DCNT-F1-20", amount: 1800 }],
+    expect(bookedPriceView({ discountAmount: 180000, promotion })).toEqual({
+      lines: [{ kind: "coupon", code: "DCNT-F1-20", amount: 180000 }],
       totalLabel: "total",
-      saving: { code: "DCNT-F1-20", amount: 1800 },
+      saving: { code: "DCNT-F1-20", amount: 180000 },
     });
   });
 
   it("shows the direct discount and no saving without a coupon", () => {
-    expect(bookedPriceView({ discountAmount: 1350 })).toEqual({ lines: [{ kind: "direct", amount: 1350 }], totalLabel: "total", saving: null });
+    expect(bookedPriceView({ discountAmount: 135000 })).toEqual({ lines: [{ kind: "direct", amount: 135000 }], totalLabel: "total", saving: null });
   });
 
   it("shows only the stay price and agreed price for a custom price, even with a stale promotion", () => {
     // The audit's case: custom total 9,000 on a stay first booked at 7,200 with the coupon.
-    expect(bookedPriceView({ discountAmount: 1350, customPrice: true, promotion })).toEqual({ lines: [], totalLabel: "agreedPrice", saving: null });
-    expect(bookedPriceView({ discountAmount: 1350, customPrice: true })).toEqual({ lines: [], totalLabel: "agreedPrice", saving: null });
+    expect(bookedPriceView({ discountAmount: 135000, customPrice: true, promotion })).toEqual({ lines: [], totalLabel: "agreedPrice", saving: null });
+    expect(bookedPriceView({ discountAmount: 135000, customPrice: true })).toEqual({ lines: [], totalLabel: "agreedPrice", saving: null });
   });
 });
 

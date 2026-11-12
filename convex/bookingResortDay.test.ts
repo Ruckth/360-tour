@@ -24,7 +24,7 @@ async function setup(now: string) {
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
     await ctx.db.insert("properties", {
-      slug: "villa", name: "Villa", tagline: "", description: "", pricePerNight: 100, currency: "THB", maxGuests: 4,
+      slug: "villa", name: "Villa", tagline: "", description: "", pricePerNight: 10000, currency: "THB", maxGuests: 4,
       bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: "active",
     });
   });

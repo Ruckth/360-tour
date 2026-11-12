@@ -177,9 +177,9 @@ export function AdminSessionDetail({
   onBack?: () => void;
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
-  const previousSessionIdRef = useRef<Id<"chatSessions"> | null>(null);
+  const previousSessionIdRef = useRef<Id<"conversations"> | null>(null);
   const previousMessageCountRef = useRef(0);
-  const previousLatestMessageIdRef = useRef<Id<"chatMessages"> | null>(null);
+  const previousLatestMessageIdRef = useRef<Id<"messages"> | null>(null);
   const pendingOlderScrollRef = useRef<{ height: number; top: number } | null>(null);
   const nearBottomRef = useRef(true);
   const lastLoadRequestCountRef = useRef<number | null>(null);

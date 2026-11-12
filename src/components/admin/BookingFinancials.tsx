@@ -1,10 +1,12 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { formatReceiptNumber } from "convex/lib/billMath";
+import { formatReceiptNumber } from "convex/lib/orderMath";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
@@ -40,8 +42,7 @@ type Dialog =
   | { kind: "pay" }
   | { kind: "refund"; target?: string }
   | { kind: "amend"; payment: Payment }
-  | { kind: "cancelEntry"; payment: Payment }
-  | { kind: "cancelLegacy"; amount: number };
+  | { kind: "cancelEntry"; payment: Payment };
 
 /**
  * The stay's money in the booking sheet: what was received (each payment with how and when),
@@ -58,7 +59,7 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
   if (data === null) return null;
   const { money } = data;
   const cancelled = booking.status === "cancelled";
-  const canPay = !cancelled && money.owed > 0 && !money.legacyRefund && booking.paymentStatus !== "failed";
+  const canPay = !cancelled && money.owed > 0 && booking.paymentStatus !== "failed";
   const close = (done?: string) => {
     setDialog(null);
     if (done) setNotice(done);
@@ -81,9 +82,7 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
                 : "Settled"}
         </span>
       </p>
-      {money.legacyRefund ? (
-        <p className="text-xs text-muted-foreground">Marked refunded before refund amounts were recorded: the whole payment counts as refunded.</p>
-      ) : null}
+
 
       {data.payments.length ? (
         <ul className="grid gap-2">
@@ -92,28 +91,8 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
           ))}
         </ul>
       ) : null}
-      {data.unitemised > 0 ? (
-        <div className="grid gap-1 text-sm text-muted-foreground">
-          <p>{formatMoney(data.unitemised, money.currency)} was recorded before payments were itemised.</p>
-          {data.legacyManual.cancellable ? (
-            <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "cancelLegacy", amount: data.legacyManual.cancellable ? data.legacyManual.amount : 0 })}>
-              Not received…
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {data.legacyOrders.length ? (
-        <ul className="grid gap-1 text-sm text-muted-foreground">
-          {data.legacyOrders.map((order) => (
-            <li key={order._id} className="flex flex-wrap items-center justify-between gap-2">
-              <Link className="underline-offset-2 hover:underline" href={receiptPath(order._id)}>
-                {order.title}{order.receiptNumber !== undefined ? ` · ${formatReceiptNumber(order.receiptNumber)}` : ""}
-              </Link>
-              <span>Took {formatMoney(order.charged, money.currency)} for the stay</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+
+
 
       {data.refunds.length ? (
         <ul className="grid gap-1 text-sm" aria-label="Refunds">
@@ -156,12 +135,12 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
       {dialog?.kind === "linkStripe" ? <LinkStripeRefundDialog booking={booking} refund={dialog.refund} onClose={close} /> : null}
       {dialog?.kind === "refund" ? <RefundDialog booking={booking} data={data} initialTarget={dialog.target} onClose={close} /> : null}
       {dialog?.kind === "amend" ? <AmendPaymentDialog booking={booking} payment={dialog.payment} onClose={close} /> : null}
-      {dialog?.kind === "cancelEntry" || dialog?.kind === "cancelLegacy" ? (
+      {dialog?.kind === "cancelEntry" ? (
         <CancelEntryDialog
           booking={booking}
-          owedAfter={money.owed + (dialog.kind === "cancelEntry" ? dialog.payment.amount : dialog.amount)}
-          amount={dialog.kind === "cancelEntry" ? dialog.payment.amount : dialog.amount}
-          paymentId={dialog.kind === "cancelEntry" ? dialog.payment._id : undefined}
+          owedAfter={money.owed + (dialog.payment.amount)}
+          amount={dialog.payment.amount}
+          paymentId={dialog.payment._id}
           onClose={close}
         />
       ) : null}
@@ -302,7 +281,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
   const [target, setTarget] = useState(initialTarget ?? targets[0]?.value ?? "none");
   const chosen = targets.find((t) => t.value === target);
   const cap = Math.min(money.refundable, chosen?.left ?? money.refundable);
-  const [amountText, setAmountText] = useState(String(cap));
+  const [amountText, setAmountText] = useState(String(satangToBaht(cap)));
   const [method, setMethod] = useState<RefundMethod>(chosen?.stripe ? "stripe" : "cash");
   const [reason, setReason] = useState("");
   const when = useEffectiveTime();
@@ -416,7 +395,7 @@ function CancelEntryDialog({
   booking: BookingDetail;
   amount: number;
   owedAfter: number;
-  paymentId?: Id<"bookingPayments">;
+  paymentId: Id<"bookingPayments">;
   onClose: (done?: string) => void;
 }) {
   const cancelPayment = useMutation(api.adminBookings.cancelPayment);
@@ -438,7 +417,7 @@ function CancelEntryDialog({
       onConfirm={async () => {
         await cancelPayment({
           bookingId: booking._id, expectedRevision: revision, reason,
-          ...(paymentId ? { paymentId } : { legacy: true }),
+          paymentId,
         });
         done.saved();
       }}

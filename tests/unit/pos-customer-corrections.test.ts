@@ -25,7 +25,7 @@ async function show(backend: CheckoutBackend, orderId: OrderId) {
 async function setup() {
   const backend = createFixtureBackend();
   const actions = backend.useActions();
-  const sale = actions.addItem({ item: { kind: 'extra', name: 'Water', price: 100 } });
+  const sale = actions.addItem({ item: { kind: 'extra', name: 'Water', price: 10000 } });
   await settle(); const { orderId } = await sale;
   const linking = actions.linkCustomer({ orderId, customerId }); await settle(); await linking;
   return { backend, actions, orderId };
@@ -178,7 +178,7 @@ it('offers independent full order and history pagination in customer details', a
 it('shows bounded large-merge progress and an active resume action that safely races scheduled continuation', async () => {
   const { backend, actions, orderId } = await setup();
   for (let i = 0; i < 204; i++) {
-    const adding = actions.addItem({ item: { kind: 'extra', name: `History ${i}`, price: 1 } });
+    const adding = actions.addItem({ item: { kind: 'extra', name: `History ${i}`, price: 100 } });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
     const added = await adding;
     const linking = actions.linkCustomer({ orderId: added.orderId, customerId });

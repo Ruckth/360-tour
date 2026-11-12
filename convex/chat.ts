@@ -40,7 +40,7 @@ async function resolvePropertyId(
 }
 
 /** Guest-facing session metadata; internal staff state stays on the server. */
-function publicSession(session: Doc<'chatSessions'>) {
+function publicSession(session: Doc<'conversations'>) {
 	return {
 		_id: session._id,
 		_creationTime: session._creationTime,
@@ -86,7 +86,7 @@ export const createSession = mutation({
 		const marketingCapture = cleanCapture(args.marketing);
 		const now = Date.now();
 		const guestToken = createGuestToken();
-		const sessionId = await ctx.db.insert('chatSessions', {
+		const sessionId = await ctx.db.insert('conversations', {
 			guestTokenHash: await hashGuestToken(guestToken),
 			...(marketingCapture ? { marketingCapture } : {}),
 			propertyId,
@@ -126,7 +126,7 @@ export const createSession = mutation({
 
 export const touchSession = mutation({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
 		propertySlug: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
@@ -204,7 +204,7 @@ export const touchSession = mutation({
 });
 
 export const closeSession = mutation({
-	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
+	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 
@@ -217,7 +217,7 @@ export const closeSession = mutation({
 });
 
 export const createBrowserHandoff = mutation({
-	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
+	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 
@@ -266,7 +266,7 @@ export const claimBrowserHandoff = mutation({
 
 export const identifyVisitor = mutation({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
@@ -318,7 +318,7 @@ export const identifyVisitor = mutation({
 
 export const acceptGuestMessage = internalMutation({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
 		content: v.string(),
 		/** Release 3a: the guest's tab and consent as of this message; `{}` clears it. Web chat only. */
@@ -338,7 +338,7 @@ export const acceptGuestMessage = internalMutation({
 		}
 
 		const timestamp = Date.now();
-		const messageId = await ctx.db.insert('chatMessages', {
+		const messageId = await ctx.db.insert('messages', {
 			sessionId: args.sessionId,
 			role: 'user',
 			content: args.content,
@@ -358,12 +358,12 @@ export const acceptGuestMessage = internalMutation({
 
 export const addAssistantMessageWithSuggestions = internalMutation({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		content: v.string(),
 		action: v.optional(chatActionValidator),
 		locale: v.optional(v.string()),
 		propertySlug: v.optional(v.string()),
-		replyToMessageId: v.optional(v.id('chatMessages')),
+		replyToMessageId: v.optional(v.id('messages')),
 		skipSuggestions: v.optional(v.boolean()),
 		outcome: v.optional(replyOutcomeValidator)
 	},
@@ -373,7 +373,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 		if (session.aiPaused) return { stored: false as const, messageId: null };
 
 		const timestamp = Date.now();
-		const messageId = await ctx.db.insert('chatMessages', {
+		const messageId = await ctx.db.insert('messages', {
 			sessionId: args.sessionId,
 			role: 'assistant',
 			content: args.content,
@@ -395,7 +395,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 
 /** Public view of a chat session: no admin-only or visitor-contact fields. */
 export const getSession = query({
-	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
+	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		return publicSession(session);
@@ -403,13 +403,13 @@ export const getSession = query({
 });
 
 export const getSessionInternal = internalQuery({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => await ctx.db.get(args.sessionId)
 });
 
 /** Guest view of whether staff took over this chat. */
 export const isAiPaused = query({
-	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
+	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		return Boolean(session?.aiPaused);
@@ -418,14 +418,14 @@ export const isAiPaused = query({
 
 export const getMessages = query({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		const recent = await ctx.db
-			.query('chatMessages')
+			.query('messages')
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 			.order('desc')
 			.take(args.limit ?? 100);
@@ -435,12 +435,12 @@ export const getMessages = query({
 
 export const getRecentMessages = internalQuery({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		limit: v.number()
 	},
 	handler: async (ctx, args) => {
 		const recent = await ctx.db
-			.query('chatMessages')
+			.query('messages')
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 			.order('desc')
 			.take(args.limit);
@@ -451,7 +451,7 @@ export const getRecentMessages = internalQuery({
 
 /** Temporary server bridge until channel ingress moves into Convex in Phase 2. */
 export const isAiPausedForServer = query({
-	args: { sessionId: v.id('chatSessions'), serverSecret: v.string() },
+	args: { sessionId: v.id('conversations'), serverSecret: v.string() },
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		return Boolean((await ctx.db.get(args.sessionId))?.aiPaused);

@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,7 +56,7 @@ describe("checkout source boundaries", () => {
 
   it("opens valid order IDs and safely handles missing and wrong-table IDs", async () => {
     const { t, admin } = setup();
-    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: "extra", name: "Water", price: 100 } });
+    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: "extra", name: "Water", price: 10000 } });
     expect(await admin.query(api.pos.getOrder, { orderId })).toMatchObject({ order: { _id: orderId }, lines: [{ name: "Water" }] });
     const customerId = await admin.mutation(api.customers.createCustomer, { name: "Payer" });
     await expect(admin.query(api.pos.getOrder, { orderId: customerId })).resolves.toBeNull();
@@ -75,23 +76,23 @@ describe("checkout source boundaries", () => {
     });
     const serviceId = await admin.mutation(api.adminServices.createService, {
       slug: "massage", name: "Massage", description: "", category: "Massage", durationMin: 60,
-      bufferMin: 0, price: 100, currency: "THB", staffIds: [staffId],
+      bufferMin: 0, price: 10000, currency: "THB", staffIds: [staffId],
     });
     const { bookingId, appointmentId } = await t.run(async ctx => {
       const propertyId = await ctx.db.insert("properties", {
-        slug: "villa", name: "Villa", tagline: "", description: "", pricePerNight: 100, currency: "THB",
+        slug: "villa", name: "Villa", tagline: "", description: "", pricePerNight: 10000, currency: "THB",
         maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 100, images: [], amenities: [], tourRoomIds: [],
         directDiscountPercent: 0, status: "active",
       });
-      const bookingId = await ctx.db.insert("bookings", {
+      const bookingId = await insertFixture(ctx, "bookings", {
         propertyId, guestName: "Guest", guestPhone: "0812345678", checkIn: "2026-11-10", checkOut: "2026-11-11",
-        guests: 1, nights: 1, subtotal: 100, discountAmount: 0, total: 100, currency: "THB", amountPaid: 0,
+        guests: 1, nights: 1, subtotal: 10000, discountAmount: 0, total: 10000, currency: "THB", amountPaid: 0,
         paymentStatus: "pending", status: "confirmed", confirmationCode: "CONF-LINK", createdAt: Date.now(),
       });
       const start = Date.now() + 3_600_000;
-      const appointmentId = await ctx.db.insert("serviceAppointments", {
+      const appointmentId = await insertFixture(ctx, "appointments", {
         serviceId, staffId, start, end: start + 3_600_000, blockedUntil: start + 3_600_000,
-        guestName: "Guest", guestPhone: "0812345678", source: "admin", status: "booked", paymentStatus: "unpaid", price: 100,
+        guestName: "Guest", guestPhone: "0812345678", source: "admin", status: "booked", paymentStatus: "unpaid", price: 10000,
         currency: "THB", confirmationCode: "SVC-LINK", accessToken: "test", createdAt: Date.now(),
       });
       return { bookingId, appointmentId };
@@ -106,7 +107,7 @@ describe("checkout source boundaries", () => {
     await t.run(async ctx => {
       await ctx.db.delete(stay.orderId);
       await ctx.db.delete(service.orderId);
-      for (const line of await ctx.db.query("billLines").collect()) await ctx.db.delete(line._id);
+      for (const line of await ctx.db.query("orderLines").collect()) await ctx.db.delete(line._id);
       await ctx.db.delete(bookingId);
       await ctx.db.delete(appointmentId);
     });

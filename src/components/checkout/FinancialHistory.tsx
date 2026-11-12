@@ -1,6 +1,6 @@
 "use client";
 
-import { round2 } from "convex/lib/billMath";
+import { roundMoney } from "convex/lib/orderMath";
 import type { ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -67,19 +67,19 @@ function RefundBalances({ view, rows, complete, kind }: { view?: OrderView; rows
   const groups = new Map<string, { amount: number; currency: string }>();
   for (const row of rows) {
     const id = kind === "booking" ? row.bookingId : row.appointmentId;
-    if (id) groups.set(id, { amount: round2((groups.get(id)?.amount ?? 0) + row.amount), currency: row.currency });
+    if (id) groups.set(id, { amount: roundMoney((groups.get(id)?.amount ?? 0) + row.amount), currency: row.currency });
   }
   return <div className="grid gap-2 text-xs">{[...groups].map(([id, sum]) => {
     const lines = view.lines.filter(line => kind === "booking" ? line.bookingId === id : line.appointmentId === id);
-    const gross = round2(lines.reduce((n, line) => n + line.net - (line.deposit ?? 0), 0));
+    const gross = roundMoney(lines.reduce((n, line) => n + line.net - (line.deposit ?? 0), 0));
     const issued = view.order.state === "paid" || (view.order.state === "void" && !view.paymentRecord.voidUnreceived);
-    return <p key={id}><span className="font-medium">{view.sources.find(s => s.id === id)?.reference ?? id}</span> · {complete ? "Refunded" : "Refunds shown"} {formatMoney(sum.amount, sum.currency)}{complete && issued && lines.length ? ` · Received on this receipt ${formatMoney(gross, sum.currency)} · Net retained ${formatMoney(round2(gross - sum.amount), sum.currency)}` : ""}</p>;
+    return <p key={id}><span className="font-medium">{view.sources.find(s => s.id === id)?.reference ?? id}</span> · {complete ? "Refunded" : "Refunds shown"} {formatMoney(sum.amount, sum.currency)}{complete && issued && lines.length ? ` · Received on this receipt ${formatMoney(gross, sum.currency)} · Net retained ${formatMoney(roundMoney(gross - sum.amount), sum.currency)}` : ""}</p>;
   })}{!complete ? <p>Load older refunds to see complete per-source net balances.</p> : null}</div>;
 }
 
-/** POS line refunds (orderHistoryPages.billRefunds): amounts in satang, dated by the Bangkok business day. */
+/** POS line refunds (orderHistoryPages.orderRefunds): amounts in satang, dated by the Bangkok business day. */
 function LineRefunds({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
-  const page = useCheckoutBackend().useBillRefundHistory(orderId);
+  const page = useCheckoutBackend().useOrderRefundHistory(orderId);
   return <Page page={page} label="line refunds" render={row => <>
     <p className="font-medium">Refunded · {satangMoney(row.amount, row.currency)} · {refundMethodName(row.method)}</p>
     <p>{view?.lines.find(line => line._id === row.lineId)?.name ?? "Receipt line"}</p>

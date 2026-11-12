@@ -86,8 +86,8 @@ describe('rich message presentation contract', () => {
 
   it('keeps services visible when a stored slug cannot be represented as a browsing callback', () => {
     const card = replyCardFromTool({ name: 'list_services', args: {}, result: JSON.stringify({ services: [
-      { name: 'Thai massage', slug: 'thai-massage', price: 1000, currency: 'THB', durationMin: 60 },
-      { name: 'นวดไทย', slug: 'นวดไทย', price: 800, currency: 'THB', durationMin: 60 },
+      { name: 'Thai massage', slug: 'thai-massage', price: 100000, currency: 'THB', durationMin: 60 },
+      { name: 'นวดไทย', slug: 'นวดไทย', price: 80000, currency: 'THB', durationMin: 60 },
     ] }) }, { siteUrl: 'https://tour.example' });
     const messages = whatsappReplyMessages('Choose a service', card);
     expect(JSON.stringify(messages)).toContain('นวดไทย');

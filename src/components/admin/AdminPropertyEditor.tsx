@@ -1,5 +1,7 @@
 "use client";
 
+import { bahtToSatang, satangToBaht, percentToBasisPoints, basisPointsToPercent } from 'convex/shared/money';
+
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
@@ -28,7 +30,7 @@ type Property = Doc<"properties">;
 const TABS = [
   ["details", "Details"],
   ["photos", "Photos"],
-  ["rooms", "360 rooms"],
+  ["tourScenes", "360 rooms"],
   ["pricing", "Pricing & OTA"],
   ["reviews", "Reviews"],
   ["calendar", "Calendar sync"],
@@ -100,7 +102,7 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
               </>
             ) : tab === "photos" ? (
               <PropertyPhotosEditor property={data.property} />
-            ) : tab === "rooms" ? (
+            ) : tab === "tourScenes" ? (
               <PropertyRoomsEditor propertyId={data.property._id} rooms={data.rooms} />
             ) : tab === "pricing" ? (
               <Section
@@ -262,9 +264,9 @@ function DetailsForm({ property }: { property: Property }) {
         name: text("name"),
         tagline: text("tagline"),
         description: text("description"),
-        pricePerNight: Number(text("pricePerNight")),
+        pricePerNight: bahtToSatang(Number(text("pricePerNight"))),
         currency: text("currency"),
-        directDiscountPercent: Number(text("directDiscountPercent")),
+        directDiscountPercent: percentToBasisPoints(Number(text("directDiscountPercent"))),
         maxGuests: Number(text("maxGuests")),
         bedrooms: Number(text("bedrooms")),
         bathrooms: Number(text("bathrooms")),
@@ -288,13 +290,13 @@ function DetailsForm({ property }: { property: Property }) {
         </Field>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Price per night" htmlFor="pr-price">
-            <Input id="pr-price" name="pricePerNight" type="number" min={0} defaultValue={property.pricePerNight} required />
+            <Input id="pr-price" name="pricePerNight" type="number" step="0.01" min={0} defaultValue={satangToBaht(property.pricePerNight)} required />
           </Field>
           <Field label="Currency" htmlFor="pr-currency">
             <Input id="pr-currency" name="currency" maxLength={3} defaultValue={property.currency} required />
           </Field>
           <Field label="Direct discount (%)" htmlFor="pr-discount">
-            <Input id="pr-discount" name="directDiscountPercent" type="number" min={0} max={100} defaultValue={property.directDiscountPercent} required />
+            <Input id="pr-discount" name="directDiscountPercent" type="number" step="0.01" min={0} max={100} defaultValue={basisPointsToPercent(property.directDiscountPercent)} required />
           </Field>
           <Field label="Max guests" htmlFor="pr-guests">
             <Input id="pr-guests" name="maxGuests" type="number" min={1} defaultValue={property.maxGuests} required />

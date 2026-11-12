@@ -48,7 +48,7 @@ async function getOrCreateLineSession(
 
 	const visitorId = lineVisitorId(trimmedLineUserId);
 	const existingSessions = await ctx.db
-		.query('chatSessions')
+		.query('conversations')
 		.withIndex('by_visitor', (q) => q.eq('visitorId', visitorId))
 		.order('desc')
 		.take(10);
@@ -70,7 +70,7 @@ async function getOrCreateLineSession(
 		return existingSession._id;
 	}
 
-	return await ctx.db.insert('chatSessions', {
+	return await ctx.db.insert('conversations', {
 		channel: 'line',
 		visitorId,
 		...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
@@ -109,8 +109,8 @@ export const claimEvent = mutation({
 		if (!eventKey) throw new Error('LINE event key is required');
 
 		const existing = await ctx.db
-			.query('lineWebhookEvents')
-			.withIndex('by_event_key', (q) => q.eq('eventKey', eventKey))
+			.query('channelEvents')
+			.withIndex('by_channel_and_eventKey', (q) => q.eq('channel', 'line').eq('eventKey', eventKey))
 			.unique();
 		const now = Date.now();
 
@@ -162,7 +162,7 @@ export const claimEvent = mutation({
 			};
 		}
 
-		const eventId = await ctx.db.insert('lineWebhookEvents', {
+		const eventId = await ctx.db.insert('channelEvents', { channel: 'line',
 			eventKey,
 			...eventPatch,
 			createdAt: now
@@ -180,14 +180,14 @@ export const claimEvent = mutation({
 export const recordInboundEvent = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('lineWebhookEvents'),
-		sessionId: v.id('chatSessions'),
+		eventId: v.id('channelEvents'),
+		sessionId: v.id('conversations'),
 		userContent: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('LINE event not found');
+		if (!event || event.channel !== 'line') throw new Error('LINE event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return {
 				recorded: false,
@@ -202,7 +202,7 @@ export const recordInboundEvent = mutation({
 
 		if (userContent && !userMessageId) {
 			const timestamp = event.eventTimestamp ?? now;
-			userMessageId = await ctx.db.insert('chatMessages', {
+			userMessageId = await ctx.db.insert('messages', {
 				sessionId: args.sessionId,
 				role: 'user',
 				content: userContent,
@@ -244,11 +244,11 @@ export const recordInboundEvent = mutation({
 
 /** Persist before calling the provider: failed/ambiguous/partial sends must not replay. */
 export const beginDelivery = mutation({
-    args: { serverSecret: v.string(), eventId: v.id('lineWebhookEvents') },
+    args: { serverSecret: v.string(), eventId: v.id('channelEvents') },
     handler: async (ctx, args) => {
         await requireServerSecret(args.serverSecret);
         const event = await ctx.db.get(args.eventId);
-        if (!event || event.status !== 'processing' || event.deliveryStartedAt !== undefined) return { started: false };
+        if (!event || event.channel !== 'line' || event.status !== 'processing' || event.deliveryStartedAt !== undefined) return { started: false };
         const session = event.sessionId ? await ctx.db.get(event.sessionId) : null;
         if (!session) return { started: false };
         if (session.aiPaused) {
@@ -263,8 +263,8 @@ export const beginDelivery = mutation({
 export const completeEvent = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('lineWebhookEvents'),
-		sessionId: v.id('chatSessions'),
+		eventId: v.id('channelEvents'),
+		sessionId: v.id('conversations'),
 		userContent: v.optional(v.string()),
 		assistantContent: v.string(),
 		replyMode: replyModeValidator,
@@ -274,7 +274,7 @@ export const completeEvent = mutation({
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('LINE event not found');
+		if (!event || event.channel !== 'line') throw new Error('LINE event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return { completed: false, duplicate: true };
 		}
@@ -283,12 +283,12 @@ export const completeEvent = mutation({
 		const userContent = args.userContent?.trim();
 		const assistantContent = args.assistantContent.trim();
 		let userMessageId = event.userMessageId;
-		let assistantMessageId: Id<'chatMessages'> | undefined;
+		let assistantMessageId: Id<'messages'> | undefined;
 		let addedMessages = 0;
 		let latestMessageAt = event.eventTimestamp ?? now;
 
 		if (userContent && !userMessageId) {
-			userMessageId = await ctx.db.insert('chatMessages', {
+			userMessageId = await ctx.db.insert('messages', {
 				sessionId: args.sessionId,
 				role: 'user',
 				content: userContent,
@@ -300,7 +300,7 @@ export const completeEvent = mutation({
 		}
 
 		if (assistantContent) {
-			assistantMessageId = await ctx.db.insert('chatMessages', {
+			assistantMessageId = await ctx.db.insert('messages', {
 				sessionId: args.sessionId,
 				role: 'assistant',
 				replyToMessageId: userMessageId,
@@ -354,13 +354,13 @@ export const completeEvent = mutation({
 export const markEventIgnored = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('lineWebhookEvents'),
+		eventId: v.id('channelEvents'),
 		reason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('LINE event not found');
+		if (!event || event.channel !== 'line') throw new Error('LINE event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return { ignored: false, duplicate: true };
 		}
@@ -380,14 +380,14 @@ export const markEventIgnored = mutation({
 export const markEventFailed = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('lineWebhookEvents'),
+		eventId: v.id('channelEvents'),
 		error: v.string(),
 		lineReplyStatus: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('LINE event not found');
+		if (!event || event.channel !== 'line') throw new Error('LINE event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return { failed: false, duplicate: true };
 		}

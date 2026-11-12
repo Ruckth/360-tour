@@ -46,7 +46,7 @@ async function getOrCreateInstagramSession(
 
 	const visitorId = instagramVisitorId(trimmedInstagramUserId);
 	const existingSessions = await ctx.db
-		.query('chatSessions')
+		.query('conversations')
 		.withIndex('by_visitor', (q) => q.eq('visitorId', visitorId))
 		.order('desc')
 		.take(10);
@@ -68,7 +68,7 @@ async function getOrCreateInstagramSession(
 		return existingSession._id;
 	}
 
-	return await ctx.db.insert('chatSessions', {
+	return await ctx.db.insert('conversations', {
 		channel: 'instagram',
 		visitorId,
 		...(trimmedProfileName ? { visitorName: trimmedProfileName } : {}),
@@ -107,8 +107,8 @@ export const claimEvent = mutation({
 		if (!eventKey) throw new Error('Instagram event key is required');
 
 		const existing = await ctx.db
-			.query('instagramWebhookEvents')
-			.withIndex('by_event_key', (q) => q.eq('eventKey', eventKey))
+			.query('channelEvents')
+			.withIndex('by_channel_and_eventKey', (q) => q.eq('channel', 'instagram').eq('eventKey', eventKey))
 			.unique();
 		const now = Date.now();
 
@@ -161,7 +161,7 @@ export const claimEvent = mutation({
 			};
 		}
 
-		const eventId = await ctx.db.insert('instagramWebhookEvents', {
+		const eventId = await ctx.db.insert('channelEvents', { channel: 'instagram',
 			eventKey,
 			...eventPatch,
 			createdAt: now
@@ -179,14 +179,14 @@ export const claimEvent = mutation({
 export const recordInboundEvent = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('instagramWebhookEvents'),
-		sessionId: v.id('chatSessions'),
+		eventId: v.id('channelEvents'),
+		sessionId: v.id('conversations'),
 		userContent: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('Instagram event not found');
+		if (!event || event.channel !== 'instagram') throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return {
 				recorded: false,
@@ -201,7 +201,7 @@ export const recordInboundEvent = mutation({
 
 		if (userContent && !userMessageId) {
 			const timestamp = event.eventTimestamp ?? now;
-			userMessageId = await ctx.db.insert('chatMessages', {
+			userMessageId = await ctx.db.insert('messages', {
 				sessionId: args.sessionId,
 				role: 'user',
 				content: userContent,
@@ -244,8 +244,8 @@ export const recordInboundEvent = mutation({
 export const completeEvent = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('instagramWebhookEvents'),
-		sessionId: v.id('chatSessions'),
+		eventId: v.id('channelEvents'),
+		sessionId: v.id('conversations'),
 		userContent: v.optional(v.string()),
 		assistantContent: v.string(),
 		replyMode: replyModeValidator,
@@ -255,7 +255,7 @@ export const completeEvent = mutation({
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('Instagram event not found');
+		if (!event || event.channel !== 'instagram') throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return { completed: false, duplicate: true };
 		}
@@ -264,12 +264,12 @@ export const completeEvent = mutation({
 		const userContent = args.userContent?.trim();
 		const assistantContent = args.assistantContent.trim();
 		let userMessageId = event.userMessageId;
-		let assistantMessageId: Id<'chatMessages'> | undefined;
+		let assistantMessageId: Id<'messages'> | undefined;
 		let addedMessages = 0;
 		let latestMessageAt = event.eventTimestamp ?? now;
 
 		if (userContent && !userMessageId) {
-			userMessageId = await ctx.db.insert('chatMessages', {
+			userMessageId = await ctx.db.insert('messages', {
 				sessionId: args.sessionId,
 				role: 'user',
 				content: userContent,
@@ -281,7 +281,7 @@ export const completeEvent = mutation({
 		}
 
 		if (assistantContent) {
-			assistantMessageId = await ctx.db.insert('chatMessages', {
+			assistantMessageId = await ctx.db.insert('messages', {
 				sessionId: args.sessionId,
 				role: 'assistant',
 				replyToMessageId: userMessageId,
@@ -335,13 +335,13 @@ export const completeEvent = mutation({
 export const markEventIgnored = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('instagramWebhookEvents'),
+		eventId: v.id('channelEvents'),
 		reason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('Instagram event not found');
+		if (!event || event.channel !== 'instagram') throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return { ignored: false, duplicate: true };
 		}
@@ -361,14 +361,14 @@ export const markEventIgnored = mutation({
 export const markEventFailed = mutation({
 	args: {
 		serverSecret: v.string(),
-		eventId: v.id('instagramWebhookEvents'),
+		eventId: v.id('channelEvents'),
 		error: v.string(),
 		instagramReplyStatus: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		await requireServerSecret(args.serverSecret);
 		const event = await ctx.db.get(args.eventId);
-		if (!event) throw new Error('Instagram event not found');
+		if (!event || event.channel !== 'instagram') throw new Error('Instagram event not found');
 		if (event.status === 'replied' || event.status === 'ignored') {
 			return { failed: false, duplicate: true };
 		}

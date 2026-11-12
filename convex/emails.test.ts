@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -27,7 +28,7 @@ it.each([false, true])('sends confirmation through the real Resend SDK using fet
 	const t = convexTest(schema, modules);
 	const result = await t.action(internal.emails.sendBookingConfirmation, {
 		guestName: 'Guest <script>', guestEmail: 'guest@example.com', propertyName: 'Pool Villa',
-		checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, guests: 2, total: 300, currency: 'THB'
+		checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, guests: 2, total: 30000, currency: 'THB'
 	});
 	expect(result).toEqual(providerError ? { sent: false, reason: 'Sender not verified' } : { sent: true });
 	expect(fetchMock).toHaveBeenCalledOnce();
@@ -48,14 +49,14 @@ async function bookingTest(checkInOffset = 2, checkOutOffset = 5) {
 	const t = convexTest(schema, modules);
 	const bookingId = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
-			slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100,
+			slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000,
 			currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40,
 			images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 		});
-		return await ctx.db.insert('bookings', {
+		return await insertFixture(ctx, 'bookings', {
 			propertyId, guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '123',
-			checkIn: day(checkInOffset), checkOut: day(checkOutOffset), guests: 1, nights: 3, subtotal: 300,
-			discountAmount: 0, total: 300, currency: 'THB', paymentStatus: 'paid',
+			checkIn: day(checkInOffset), checkOut: day(checkOutOffset), guests: 1, nights: 3, subtotal: 30000,
+			discountAmount: 0, total: 30000, currency: 'THB', paymentStatus: 'paid',
 			status: 'confirmed', createdAt: Date.now()
 		});
 	});
@@ -64,7 +65,7 @@ async function bookingTest(checkInOffset = 2, checkOutOffset = 5) {
 
 it('throttles staff alerts for a session to one per 30 minutes', async () => {
 	const t = convexTest(schema, modules);
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', {
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', {
 		channel: 'web', visitorName: 'Guest', createdAt: Date.now()
 	}));
 	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
@@ -129,7 +130,7 @@ it('detects staff requests without flagging booking questions', async () => {
 it('caps staff alerts globally so anonymous sessions cannot flood the owner', async () => {
 	const t = convexTest(schema, modules);
 	await t.run(async ctx => await ctx.db.insert('rateLimits', { key: 'staff-alert:global', count: 30, expiresAt: Date.now() + 60 * 60 * 1000 }));
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: Date.now() }));
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'web', createdAt: Date.now() }));
 	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeFalsy();
 });
@@ -141,7 +142,7 @@ it('uses a rolling hour for the global staff alert cap', async () => {
 		key: 'staff-alert:global', count: 30, expiresAt: now + 60 * 60 * 1000,
 		timestamps: [now - 61 * 60 * 1000, ...Array(29).fill(now - 30 * 60 * 1000)]
 	}));
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: now }));
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'web', createdAt: now }));
 	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeTruthy();
 	const limit = await t.run(async ctx => await ctx.db.query('rateLimits')
@@ -156,6 +157,6 @@ it('treats missing email configuration as a non-fatal skip', async () => {
 	await t.run(async ctx => await ctx.db.patch(bookingId, { cancellationEmailQueuedAt: Date.now(), status: 'cancelled' }));
 	expect(await t.action(internal.emails.sendCancellation, { bookingId })).toEqual({ sent: false, reason: 'missing_config' });
 	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review' })).toBe(0);
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'line', createdAt: Date.now() }));
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'line', createdAt: Date.now() }));
 	await expect(t.action(internal.emails.sendStaffAlert, { sessionId, channel: 'line', guestName: 'Guest', lastMessage: 'Help' })).resolves.toBeNull();
 });

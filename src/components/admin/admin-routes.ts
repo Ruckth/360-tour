@@ -66,7 +66,7 @@ export function adminMarketingPath(page: AdminMarketingPage): string {
 /** Sidebar sections, in order. Add a page under `src/app/admin/<section>` and list it here. */
 export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/chats", label: "Chats", icon: MessageCircle, keywords: ["inbox", "messages", "conversations"] },
-  { href: "/admin/hotel", label: "Hotel bookings", shortLabel: "Hotel", icon: BedDouble, keywords: ["reservations", "rooms"] },
+  { href: "/admin/hotel", label: "Hotel bookings", shortLabel: "Hotel", icon: BedDouble, keywords: ["reservations", "tourScenes"] },
   {
     href: "/admin/staff/calendar",
     label: "Staff bookings",

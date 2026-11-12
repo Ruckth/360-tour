@@ -24,7 +24,7 @@ export default defineSchema({
  }).index('by_email', ['email']).index('by_tokenIdentifier', ['tokenIdentifier']),
  cashierRules: defineTable({ key: v.literal('default'), ...cashierRulesFields, revision: v.number(), updatedAt: v.number(), updatedByEmail: v.string() }).index('by_key', ['key']),
  staffApprovalRequests: defineTable({
-  orderId: v.id('bills'), lineId: v.optional(v.id('billLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund')),
+  orderId: v.id('orders'), lineId: v.optional(v.id('orderLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund')),
   payload: storedApprovalPayload, reason: v.string(), requesterEmail: v.string(), requesterTokenIdentifier: v.string(),
   requesterAccessFingerprint: v.string(), orderFingerprint: v.string(), orderRevision: v.number(), rulesRevision: v.number(), rulesFingerprint: v.optional(v.string()),
   status: approvalStatus, createdAt: v.number(), expiresAt: v.number(), resolvedAt: v.optional(v.number()),
@@ -32,7 +32,7 @@ export default defineSchema({
   totalBefore: v.number(), totalAfter: v.number(), amount: v.number(), percent: v.optional(v.number())
  }).index('by_orderId_and_status', ['orderId', 'status']).index('by_orderId_and_createdAt', ['orderId', 'createdAt']).index('by_status_and_createdAt', ['status', 'createdAt']),
  appointmentFeeAttempts: defineTable({
-  key: v.string(), actor: v.string(), fingerprint: v.string(), orderId: v.id('bills'), lineId: v.id('billLines')
+  key: v.string(), actor: v.string(), fingerprint: v.string(), orderId: v.id('orders'), lineId: v.id('orderLines')
  }).index('by_key', ['key']),
  bookingCreateAttempts: defineTable({
   key: v.string(), actor: v.string(), bookingId: v.id('bookings'), fingerprint: v.string(), recordedAt: v.number()
@@ -53,16 +53,7 @@ export default defineSchema({
 		.index('by_token', ['tokenIdentifier'])
 		.index('by_clerk_id', ['clerkId']),
 
-	tenants: defineTable({
-		name: v.string(),
-		email: v.string(),
-		whatsappNumber: v.optional(v.string()),
-		lineId: v.optional(v.string()),
-		createdAt: v.number()
-	}).index('by_email', ['email']),
-
 	properties: defineTable({
-		tenantId: v.optional(v.id('tenants')),
 		icalExportToken: v.optional(v.string()),
 		slug: v.string(),
 		name: v.string(),
@@ -95,10 +86,9 @@ export default defineSchema({
 	})
 		.index('by_slug', ['slug'])
 		.index('by_icalExportToken', ['icalExportToken'])
-		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status']),
 
-	rooms: defineTable({
+	tourScenes: defineTable({
 		propertyId: v.id('properties'),
 		slug: v.string(),
 		name: v.string(),
@@ -117,13 +107,12 @@ export default defineSchema({
 
 	bookings: defineTable({
 		propertyId: v.id('properties'),
-		tenantId: v.optional(v.id('tenants')),
 		guestName: v.string(),
 		guestEmail: v.optional(v.string()),
 		guestPhone: v.string(),
 		// Exact-lookup forms of the guest's phone (digits only) and email (trimmed, lower case).
-		// Written with every booking; migrations:backfillBookingGuestLookup fills older rows.
-		guestPhoneDigits: v.optional(v.string()),
+
+		guestPhoneDigits: v.string(),
 		guestEmailNormalized: v.optional(v.string()),
 		source: v.optional(
 			v.union(
@@ -135,7 +124,7 @@ export default defineSchema({
 				v.literal('admin')
 			)
 		),
-		chatSessionId: v.optional(v.id('chatSessions')),
+		chatSessionId: v.optional(v.id('conversations')),
 		checkIn: v.string(),
 		checkOut: v.string(),
 		guests: v.number(),
@@ -146,11 +135,11 @@ export default defineSchema({
 		currency: v.string(),
 		paidAt: v.optional(v.number()),
 		// What the guest actually paid; the total can change later if an admin edits the stay.
-		// Gross: every payment received, before refunds (see lib/billMath bookingBalance).
-		amountPaid: v.optional(v.number()),
-		/** Sum of bookingRefunds rows. Absent on legacy rows: a legacy `refunded` stay counts as fully refunded. */
-		amountRefunded: v.optional(v.number()),
-		/** Provider returns waived from collection; parent billMath must subtract this from owed. */
+		// Gross: every payment received, before refunds (see lib/orderMath bookingBalance).
+		amountPaid: v.number(),
+
+		amountRefunded: v.number(),
+		/** Provider returns waived from collection; parent orderMath must subtract this from owed. */
 		providerRefundWaived: v.optional(v.number()),
 		/** When the stay became fully refunded (business date for recorded refunds). */
 		refundedAt: v.optional(v.number()),
@@ -169,7 +158,7 @@ export default defineSchema({
 		affiliateSnapshot: v.optional(affiliateSnapshot),
 		/** Bumped on every staff/system write that goes through lib/bookingMoney; absent = 0. */
 		revision: v.optional(v.number()),
-		/** Who entered it (admin email or `system:<channel>`); absent on legacy rows. */
+
 		createdBy: v.optional(v.string()),
 		/** Set for historical entries created without guest notification; lifecycle emails then skip it. */
 		guestEmailsOff: v.optional(v.boolean()),
@@ -189,11 +178,9 @@ export default defineSchema({
 		 * the time) when its first itemised payment is written. Provider refunds and completion
 		 * redeliveries for it must still match this amount exactly; nothing is inferred from it.
 		 */
-		legacyStripePaymentIntentId: v.optional(v.string()),
-		legacyStripeGross: v.optional(v.number()),
 		stripeCheckoutUrl: v.optional(v.string()),
 		stripeCheckoutExpiresAt: v.optional(v.number()),
-		/** Original guest hold deadline; absent legacy bookings retain their 24-hour hold. */
+
 		unpaidHoldExpiresAt: v.optional(v.number()),
 		checkoutAttempt: v.optional(v.number()),
 		checkoutRequest: v.optional(v.object({
@@ -230,7 +217,6 @@ export default defineSchema({
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
 		.index('by_property_checkOut', ['propertyId', 'checkOut'])
 		.index('by_checkIn', ['checkIn'])
-		.index('by_tenant', ['tenantId'])
 		.index('by_status', ['status'])
 		.index('by_status_createdAt', ['status', 'createdAt'])
 		.index('by_createdAt', ['createdAt'])
@@ -240,7 +226,6 @@ export default defineSchema({
 		.index('by_status_checkIn', ['status', 'checkIn'])
 		.index('by_status_checkOut', ['status', 'checkOut'])
 		.index('by_stripePaymentIntentId', ['stripePaymentIntentId'])
-		.index('by_legacyStripePaymentIntentId', ['legacyStripePaymentIntentId'])
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone'])
 		.index('by_guestPhoneDigits', ['guestPhoneDigits'])
@@ -252,7 +237,7 @@ export default defineSchema({
 	 * Money received for a stay, one row per recorded payment (lib/bookingMoney.ts). The booking's
 	 * `amountPaid` is the transactional total; these rows say where each part came from. Rows are
 	 * never deleted: a mistaken manual entry is marked cancelled, and online money is never changed.
-	 * Payments recorded before this table existed have no row (see `bookingFinancials.unitemised`).
+	 * Every new payment has an explicit source row.
 	 */
 	bookingPayments: defineTable({
 		bookingId: v.id('bookings'),
@@ -263,7 +248,7 @@ export default defineSchema({
 		/** Manual: how it was received. POS: `order` (tenders are on the order). Online: the provider. */
 		method: storedPaymentMethod,
 		/** The order that settled it (POS). */
-		billId: v.optional(v.id('bills')),
+		orderId: v.optional(v.id('orders')),
 		/** Business date the money was received, distinct from when it was recorded. */
 		effectiveAt: v.number(),
 		recordedAt: v.number(),
@@ -280,7 +265,7 @@ export default defineSchema({
 		amendedBy: v.optional(v.string())
 	})
 		.index('by_bookingId_and_recordedAt', ['bookingId', 'recordedAt'])
-		.index('by_billId', ['billId'])
+		.index('by_orderId', ['orderId'])
 		.index('by_providerPaymentIntentId', ['providerPaymentIntentId'])
 		.index('by_idempotencyKey', ['idempotencyKey'])
 		// Release 3b: the marketing report's cash view reads money by business date.
@@ -301,7 +286,7 @@ export default defineSchema({
 		/** `credit`: what exceeded the price of a live stay. `cancellation`: money kept on a cancelled stay. */
 		context: v.union(v.literal('credit'), v.literal('cancellation')),
 		paymentId: v.optional(v.id('bookingPayments')),
-		billId: v.optional(v.id('bills')),
+		orderId: v.optional(v.id('orders')),
 		effectiveAt: v.number(),
 		recordedAt: v.number(),
 		recordedBy: v.string(),
@@ -310,7 +295,7 @@ export default defineSchema({
 		netAfter: v.number()
 	})
 		.index('by_bookingId_and_recordedAt', ['bookingId', 'recordedAt'])
-		.index('by_billId', ['billId'])
+		.index('by_orderId', ['orderId'])
 		.index('by_idempotencyKey', ['idempotencyKey'])
 		.index('by_providerRefundId', ['providerRefundId'])
 		.index('by_recordedAt', ['recordedAt']),
@@ -322,7 +307,7 @@ export default defineSchema({
 	}).index('by_chargeId', ['chargeId']).index('by_bookingId', ['bookingId']),
 
 	appointmentPayments: defineTable({
-		appointmentId: v.id('serviceAppointments'), amount: v.number(), currency: v.string(), method: storedPaymentMethod,
+		appointmentId: v.id('appointments'), amount: v.number(), currency: v.string(), method: storedPaymentMethod,
 		effectiveAt: v.number(), recordedAt: v.number(), recordedBy: v.string(), idempotencyKey: v.string(),
 		status: v.union(v.literal('recorded'), v.literal('cancelled')), refunded: v.number(),
 		amendedAt: v.optional(v.number()), amendedBy: v.optional(v.string()),
@@ -330,16 +315,16 @@ export default defineSchema({
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt']).index('by_idempotencyKey', ['idempotencyKey'])
 		.index('by_effectiveAt', ['effectiveAt']),
 	appointmentPaymentCorrections: defineTable({
-		appointmentId: v.id('serviceAppointments'), paymentId: v.optional(v.id('appointmentPayments')), legacyChangeId: v.optional(v.id('appointmentChanges')), idempotencyKey: v.string(),
+		appointmentId: v.id('appointments'), paymentId: v.id('appointmentPayments'), idempotencyKey: v.string(),
 		requestFingerprint: v.string(), actor: v.string(), recordedAt: v.number(), reason: v.string()
 	}).index('by_idempotencyKey', ['idempotencyKey']),
 	appointmentRefunds: defineTable({
-		appointmentId: v.id('serviceAppointments'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
+		appointmentId: v.id('appointments'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
 		reason: v.string(), effectiveAt: v.number(), recordedAt: v.number(), recordedBy: v.string(), idempotencyKey: v.string(),
-		paymentId: v.optional(v.id('appointmentPayments')), billId: v.optional(v.id('bills')),
+		paymentId: v.optional(v.id('appointmentPayments')), orderId: v.optional(v.id('orders')),
 		netBefore: v.number(), netAfter: v.number()
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt'])
-		.index('by_billId', ['billId']).index('by_idempotencyKey', ['idempotencyKey'])
+		.index('by_orderId', ['orderId']).index('by_idempotencyKey', ['idempotencyKey'])
 		.index('by_recordedAt', ['recordedAt']),
 	staff: defineTable({
 		name: v.string(),
@@ -456,15 +441,15 @@ export default defineSchema({
 		}))
 	}).index('by_batch', ['batchId']),
 
-	serviceAppointments: defineTable({
+	appointments: defineTable({
 		serviceId: v.id('services'),
 		staffId: v.id('staff'),
-		/** Descriptions retained when recording work; absent on legacy appointments. */
-		amountPaid: v.optional(v.number()),
-		amountRefunded: v.optional(v.number()),
+
+		amountPaid: v.number(),
+		amountRefunded: v.number(),
 		financialRevision: v.optional(v.number()),
-		serviceNameSnapshot: v.optional(v.string()),
-		staffNameSnapshot: v.optional(v.string()),
+		serviceNameSnapshot: v.string(),
+		staffNameSnapshot: v.string(),
 		createdBy: v.optional(v.string()),
 		paidAt: v.optional(v.number()),
 		paidBy: v.optional(v.string()),
@@ -477,11 +462,11 @@ export default defineSchema({
 		// Exact-lookup forms of the guest's phone (digits only, '' when it has none) and email
 		// (trimmed, lower case), written with every appointment (lib/serviceSlots.ts
 		// appointmentLookupFields). Missing guestPhoneDigits means a row saved before these fields;
-		// migrations:backfillAppointmentGuestLookup fills them.
-		guestPhoneDigits: v.optional(v.string()),
+
+		guestPhoneDigits: v.string(),
 		guestEmailNormalized: v.optional(v.string()),
 		bookingId: v.optional(v.id('bookings')),
-		chatSessionId: v.optional(v.id('chatSessions')),
+		chatSessionId: v.optional(v.id('conversations')),
 		source: v.union(
 			v.literal('web'),
 			v.literal('whatsapp'),
@@ -513,7 +498,7 @@ export default defineSchema({
 		cancelledBy: v.optional(v.string()),
 		cancellationReason: v.optional(v.string()),
 		/** The cancelled or no-show appointment this one was booked again from. */
-		rebookedFromId: v.optional(v.id('serviceAppointments'))
+		rebookedFromId: v.optional(v.id('appointments'))
 	})
 		.index('by_staff_start', ['staffId', 'start'])
 		.index('by_service_start', ['serviceId', 'start'])
@@ -522,7 +507,7 @@ export default defineSchema({
 		.index('by_chatSession', ['chatSessionId'])
 		.index('by_guestPhone', ['guestPhone'])
 		// Checkout's "Add booking" finds unpaid appointments by the guest's phone digits or email.
-		// `eq('guestPhoneDigits', undefined)` lists rows not yet backfilled.
+
 		.index('by_guestPhoneDigits_and_paymentStatus', ['guestPhoneDigits', 'paymentStatus'])
 		.index('by_guestEmailNormalized_and_paymentStatus', ['guestEmailNormalized', 'paymentStatus'])
 		// Checkout's "Add booking" search finds appointments by their reference too.
@@ -532,7 +517,7 @@ export default defineSchema({
 
 	/** Who changed an appointment, when, and the old and new value of each changed field. */
 	appointmentChanges: defineTable({
-		appointmentId: v.id('serviceAppointments'),
+		appointmentId: v.id('appointments'),
 		at: v.number(),
 		/** Admin email, or "guest" for chat. */
 		actor: v.string(),
@@ -563,39 +548,31 @@ export default defineSchema({
 	 * and audit rows stay valid. An order may link to a booking or appointment and, separately,
 	 * to a reusable customer; it may also have neither.
 	 */
-	bills: defineTable({
-		/**
-		 * draft = unpaid. `held` is legacy (the old Hold button); migrations:backfillOrders turns it into draft.
-		 * `discarded` = an unpaid order staff set aside (pos.discardOrder): lines, links and customer are kept,
-		 * nothing on it can be charged, and it charges no source until pos.restoreOrder makes it a draft again.
-		 */
-		status: v.union(v.literal('draft'), v.literal('held'), v.literal('paid'), v.literal('void'), v.literal('discarded')),
-		/** Permanent "Order #N", issued when the order is created and never changed. Optional only until migrations:backfillOrders numbers legacy rows. */
-		orderNumber: v.optional(v.number()),
-		/** Deprecated: the old per-day "Walk-in #N". Kept on legacy rows only; never written or shown. */
-		walkInNumber: v.optional(v.number()),
-		/** Deprecated: a copied guest name/contact from before customers existed. Read only for legacy rows; never written. */
-		guestName: v.optional(v.string()),
-		guestPhone: v.optional(v.string()),
-		guestEmail: v.optional(v.string()),
+	orders: defineTable({
+
+		status: v.union(v.literal('draft'), v.literal('paid'), v.literal('void'), v.literal('discarded')),
+
+		orderNumber: v.number(),
+
+
 		/** The reusable customer (payer) this order is for, if any. Not the booking's guest. */
 		customerId: v.optional(v.id('customers')),
 		/** The stay this order belongs to. Its checkout reuses the open order rather than starting another. */
 		bookingId: v.optional(v.id('bookings')),
 		/** The standalone appointment (not part of a stay) this order belongs to. */
-		appointmentId: v.optional(v.id('serviceAppointments')),
-		/** True only for a source link acquired by attaching a row to a standalone sale; released with its last source row. Legacy links without provenance retain their identity. */
+		appointmentId: v.optional(v.id('appointments')),
+
 		implicitSourceLink: v.optional(v.boolean()),
 		/** For a later charge on a booking whose earlier order was already paid: that earlier order. */
-		parentOrderId: v.optional(v.id('bills')),
+		parentOrderId: v.optional(v.id('orders')),
 		/** Who the receipt was issued to, frozen when the order is paid so later profile edits don't rewrite it. */
 		customerSnapshot: v.optional(v.object({ name: v.string(), phone: v.optional(v.string()), email: v.optional(v.string()) })),
 		currency: v.string(),
 		// Kept in step with the lines so the orders list needs no line reads.
 		itemCount: v.number(),
 		total: v.number(),
-		/** What is still to pay: total less deposits paid before checkout. 0 once paid. Optional until backfilled. */
-		due: v.optional(v.number()),
+
+		due: v.number(),
 		/** itemCount > 0, indexed so empty orders (e.g. one created with a booking) stay out of the orders list. */
 		hasItems: v.boolean(),
 		/** Bumped on every change to the lines or customer; settleOrder refuses a payment reviewed on an older one. */
@@ -615,9 +592,9 @@ export default defineSchema({
 		paymentEffectiveAt: v.optional(v.number()),
 		/** The linked customer's revision when the receipt was issued. */
 		customerRevisionAtPayment: v.optional(v.number()),
-		/** Bumped by every billCorrections row; corrections send the revision they reviewed. Absent = 0. */
+		/** Bumped by every orderCorrections row; corrections send the revision they reviewed. Absent = 0. */
 		correctionRevision: v.optional(v.number()),
-		/** Corrected tenders (same total). The original billPayments rows are never changed. */
+		/** Corrected tenders (same total). The original orderPayments rows are never changed. */
 		amendedTenders: v.optional(v.array(correctedTender)),
 		/** Corrected payer; null = no named customer. `customerSnapshot` stays what the receipt was issued with. */
 		amendedCustomer: v.optional(v.union(v.null(), receiptCustomer)),
@@ -629,7 +606,7 @@ export default defineSchema({
 		lifecycleKey: v.optional(v.string()),
 		/**
 		 * Marketing release 2b: the order's one coupon (pos.applyOrderCoupon). Its version is frozen when
-		 * applied; the rows carry the split (billLines.couponDiscount). Nothing is held while unpaid:
+		 * applied; the rows carry the split (orderLines.couponDiscount). Nothing is held while unpaid:
 		 * settleOrder re-checks it and writes a consumed couponRedemptions row in the same transaction.
 		 */
 		promotion: v.optional(v.object({
@@ -653,7 +630,7 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		// The orders list: orders with items by status, newest change first. Status is a range so
-		// Unpaid covers `draft` and legacy `held` (adjacent in index order) in one paginated read.
+
 		.index('by_hasItems_and_status_and_updatedAt', ['hasItems', 'status', 'updatedAt'])
 		.index('by_orderNumber', ['orderNumber'])
 		.index('by_bookingId_and_status', ['bookingId', 'status'])
@@ -702,19 +679,19 @@ export default defineSchema({
         }), createdAt: v.number(), updatedAt: v.number(), completedAt: v.optional(v.number())
     }).index('by_sourceId', ['sourceId']).index('by_destinationId_and_status', ['destinationId', 'status']),
 
-	billLines: defineTable({
-		billId: v.id('bills'),
+	orderLines: defineTable({
+		orderId: v.id('orders'),
 		kind: v.union(v.literal('service'), v.literal('room'), v.literal('extra'), v.literal('booking'), v.literal('appointment')),
 		serviceId: v.optional(v.id('services')),
 		propertyId: v.optional(v.id('properties')),
 		bookingId: v.optional(v.id('bookings')),
-		appointmentId: v.optional(v.id('serviceAppointments')),
+		appointmentId: v.optional(v.id('appointments')),
 		name: v.string(),
 		/** Short second line, e.g. "60 min" or "12 Oct – 15 Oct". */
 		detail: v.optional(v.string()),
 		unitPrice: v.number(),
-		/** Catalog subtotal baseline before manual reductions and coupons. Legacy rows use unitPrice. */
-		catalogUnitPrice: v.optional(v.number()),
+
+		catalogUnitPrice: v.number(),
 		/** Currency of unitPrice when the row was added (always THB). */
 		currency: v.string(),
 		qty: v.number(),
@@ -722,25 +699,16 @@ export default defineSchema({
 		staffId: v.optional(v.id('staff')),
 		/** The therapist's name as printed on the receipt, frozen when the order is paid. */
 		staffName: v.optional(v.string()),
-		/**
-		 * Set only when migrations:backfillOrders copied `staffName` onto a row paid before names
-		 * were frozen. It is the therapist's name at migration time, not proven to be the name at
-		 * payment. Absent on rows frozen at payment.
-		 */
-		staffNameBackfilledAt: v.optional(v.number()),
-		/** Legacy rows (no `schedule`): the service's start; absent = now. Never set together with `schedule`. */
+
+
 		startAt: v.optional(v.number()),
-		/**
-		 * A service row's planned resort date ("YYYY-MM-DD") and time ("HH:MM"), each optional and
-		 * independent (lib/serviceSchedule.ts). `{}` = not scheduled; a blank part is unset, never now.
-		 * Absent on rows saved before it existed, which keep `startAt`'s legacy meaning.
-		 */
+
 		schedule: v.optional(v.object({ date: v.optional(v.string()), time: v.optional(v.string()) })),
 		discount: v.optional(v.object({ type: v.union(v.literal('amount'), v.literal('percent')), value: v.number() })),
 		priceOverride: v.optional(v.object({ price: v.number(), note: v.string(), by: v.string(), at: v.number() })),
 		/** Paid before checkout (an attached booking's online payment); deducted from what is due. */
 		deposit: v.optional(v.number()),
-		/** This row's share of the order's coupon (bills.promotion), in baht. Recomputed while unpaid, frozen once paid. */
+		/** This row's share of the order's coupon (orders.promotion), in baht. Recomputed while unpaid, frozen once paid. */
 		couponDiscount: v.optional(v.number()),
 		/**
 		 * A no-show or late-cancellation fee (pos.addAppointmentFee), on an `extra` row. It refers to the
@@ -753,26 +721,26 @@ export default defineSchema({
 			at: v.number()
 		})),
 		/** The appointment a fee row is for (with `fee`). Deliberately not `appointmentId`, which means "charges it". */
-		feeAppointmentId: v.optional(v.id('serviceAppointments')),
+		feeAppointmentId: v.optional(v.id('appointments')),
 		createdAt: v.number()
 	})
-		.index('by_billId', ['billId'])
+		.index('by_orderId', ['orderId'])
 		.index('by_feeAppointmentId', ['feeAppointmentId'])
 		// The booking and appointment rows of an order, for the booking references the orders list shows.
-		.index('by_billId_and_kind', ['billId', 'kind'])
+		.index('by_orderId_and_kind', ['orderId', 'kind'])
 		.index('by_bookingId', ['bookingId'])
 		.index('by_appointmentId', ['appointmentId']),
 
 	/** Append-only POS returns, in integer satang. Recording moves no money. */
-	billRefunds: defineTable({
-		orderId: v.id('bills'), lineId: v.id('billLines'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
+	orderRefunds: defineTable({
+		orderId: v.id('orders'), lineId: v.id('orderLines'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
 		reason: v.string(), idempotencyKey: v.string(), createdBy: v.string(), createdByEmail: v.string(),
 		createdAt: v.number(), businessDate: v.string()
 	}).index('by_orderId', ['orderId']).index('by_orderId_and_businessDate', ['orderId', 'businessDate']).index('by_lineId', ['lineId'])
 		.index('by_idempotencyKey', ['idempotencyKey']).index('by_businessDate', ['businessDate']),
 
-	billPayments: defineTable({
-		billId: v.id('bills'),
+	orderPayments: defineTable({
+		orderId: v.id('orders'),
 		method: v.union(v.literal('cash'), v.literal('promptpay'), v.literal('card'), v.literal('transfer')),
 		amount: v.number(),
 		/** Cash handed over; the change is received - amount. */
@@ -783,7 +751,7 @@ export default defineSchema({
 		/** Business date the money was received; `createdAt` is when it was recorded. Absent = createdAt. */
 		effectiveAt: v.optional(v.number())
 	})
-		.index('by_billId', ['billId'])
+		.index('by_orderId', ['orderId'])
 		// Release 3b: tenders are written with createdAt = the order's paidAt, so the report reads a range of them at once.
 		.index('by_createdAt', ['createdAt']),
 
@@ -791,8 +759,8 @@ export default defineSchema({
 	 * Audited corrections to a paid order (pos.amendOrderPayment, pos.voidUnreceivedOrder). The issued
 	 * receipt, its payments and audit rows stay as they were; each row records before and after.
 	 */
-	billCorrections: defineTable({
-		billId: v.id('bills'),
+	orderCorrections: defineTable({
+		orderId: v.id('orders'),
 		/** The order's correctionRevision this row produced (1, 2, …). */
 		sequence: v.number(),
 		/** `linked` / `unlinked`: a paid row applied to (or taken off) an appointment or stay later (pos.linkPaidLine). */
@@ -802,9 +770,9 @@ export default defineSchema({
 		recordedAt: v.number(),
 		idempotencyKey: v.string(),
 		/** Link corrections: the row, the link and its target, and the amount applied. */
-		lineId: v.optional(v.id('billLines')),
-		linkId: v.optional(v.id('billLineLinks')),
-		appointmentId: v.optional(v.id('serviceAppointments')),
+		lineId: v.optional(v.id('orderLines')),
+		linkId: v.optional(v.id('orderLineLinks')),
+		appointmentId: v.optional(v.id('appointments')),
 		bookingId: v.optional(v.id('bookings')),
 		amount: v.optional(v.number()),
 		tendersBefore: v.optional(v.array(correctedTender)),
@@ -816,22 +784,22 @@ export default defineSchema({
 		effectiveAtBefore: v.optional(v.number()),
 		effectiveAtAfter: v.optional(v.number())
 	})
-		.index('by_billId_and_sequence', ['billId', 'sequence'])
+		.index('by_orderId_and_sequence', ['orderId', 'sequence'])
 		.index('by_idempotencyKey', ['idempotencyKey']),
 
 	/**
 	 * A paid service or room row applied later to the appointment or stay it paid for
 	 * (pos.linkPaidLine). The row and its issued receipt never change: the link lives here, and the
 	 * target is recorded as paid by this order exactly as checkout would have done (an appointment's
-	 * payment fields; a stay's `bookingPayments` row with `billId`). One active link per row and per
+	 * payment fields; a stay's `bookingPayments` row with `orderId`). One active link per row and per
 	 * target. Unlinking (or voiding the order as unreceived) reverses exactly what the link applied
-	 * and keeps the row as `unlinked`. Every link and unlink is also a billCorrections row.
+	 * and keeps the row as `unlinked`. Every link and unlink is also a orderCorrections row.
 	 */
-	billLineLinks: defineTable({
-		billId: v.id('bills'),
-		lineId: v.id('billLines'),
+	orderLineLinks: defineTable({
+		orderId: v.id('orders'),
+		lineId: v.id('orderLines'),
 		kind: v.union(v.literal('appointment'), v.literal('booking')),
-		appointmentId: v.optional(v.id('serviceAppointments')),
+		appointmentId: v.optional(v.id('appointments')),
 		bookingId: v.optional(v.id('bookings')),
 		/** What this order charged for the row (lineNet), applied to the target. */
 		amount: v.number(),
@@ -848,22 +816,22 @@ export default defineSchema({
 		reason: v.string(),
 		linkedAt: v.number(),
 		linkedBy: v.string(),
-		/** The billCorrections sequence that made it, and the one that ended it. */
+		/** The orderCorrections sequence that made it, and the one that ended it. */
 		sequence: v.number(),
 		unlinkedAt: v.optional(v.number()),
 		unlinkedBy: v.optional(v.string()),
 		unlinkReason: v.optional(v.string()),
 		unlinkSequence: v.optional(v.number())
 	})
-		.index('by_billId_and_status', ['billId', 'status'])
+		.index('by_orderId_and_status', ['orderId', 'status'])
 		.index('by_lineId_and_status', ['lineId', 'status'])
 		.index('by_appointmentId_and_status', ['appointmentId', 'status'])
 		.index('by_bookingId_and_status', ['bookingId', 'status']),
 
 	/** Price overrides, customer links, source updates, payments and voids on an order: who, when, why, old and new price. */
-	billAudit: defineTable({
-		billId: v.id('bills'),
-		lineId: v.optional(v.id('billLines')),
+	orderAudit: defineTable({
+		orderId: v.id('orders'),
+		lineId: v.optional(v.id('orderLines')),
 		at: v.number(),
 		actor: v.string(),
 		kind: v.union(
@@ -881,10 +849,10 @@ export default defineSchema({
 		fromPrice: v.optional(v.number()),
 		toPrice: v.optional(v.number()),
 		note: v.optional(v.string())
-	}).index('by_billId_and_at', ['billId', 'at']),
+	}).index('by_orderId_and_at', ['orderId', 'at']),
 
-	/** Running numbers: "order" and "receipt". Legacy rows "walkin:YYYY-MM-DD" are no longer used. */
-	billCounters: defineTable({ key: v.string(), value: v.number() }).index('by_key', ['key']),
+
+	orderCounters: defineTable({ key: v.string(), value: v.number() }).index('by_key', ['key']),
 
 	/**
 	 * The shop's till: a single row with key 'default'. `orderId` is the order the customer display
@@ -895,7 +863,7 @@ export default defineSchema({
 	 */
 	tills: defineTable({
 		key: v.literal('default'),
-		orderId: v.optional(v.id('bills')),
+		orderId: v.optional(v.id('orders')),
 		driverId: v.optional(v.string()),
 		publishedAt: v.optional(v.number()),
 		leaseId: v.optional(v.string()),
@@ -967,22 +935,10 @@ export default defineSchema({
 		.index('by_property_date', ['propertyId', 'date'])
 		.index('by_rating', ['rating']),
 
-	socialProof: defineTable({
+	reviewStats: defineTable({
 		propertyId: v.id('properties'),
 		overallRating: v.number(),
 		totalReviews: v.number(),
-		// Derived from real reviews by lib/socialProof.ts; the two fields below only exist on legacy seeded rows.
-		isSuperhost: v.optional(v.boolean()),
-		breakdown: v.optional(
-			v.object({
-				cleanliness: v.number(),
-				accuracy: v.number(),
-				communication: v.number(),
-				location: v.number(),
-				checkIn: v.number(),
-				value: v.number()
-			})
-		)
 	}).index('by_property', ['propertyId']),
 
 	tourSnippets: defineTable({
@@ -993,14 +949,6 @@ export default defineSchema({
 		authorName: v.string(),
 		authorCity: v.string(),
 		rating: v.number()
-	}).index('by_property', ['propertyId']),
-
-	recentBookingDisplay: defineTable({
-		propertyId: v.id('properties'),
-		name: v.string(),
-		city: v.string(),
-		dates: v.string(),
-		timeAgo: v.string()
 	}).index('by_property', ['propertyId']),
 
 	leads: defineTable({
@@ -1025,28 +973,6 @@ export default defineSchema({
 		// Staff alerts keep at most 30 timestamps for a rolling one-hour cap.
 		timestamps: v.optional(v.array(v.number()))
 	}).index('by_key', ['key']).index('by_expiresAt', ['expiresAt']),
-
-	// Legacy seeded OTA fee estimates; no longer read (see otaRates). Kept so existing deployments with rows still validate.
-	pricing: defineTable({
-		propertyId: v.id('properties'),
-		directRate: v.number(),
-		otaPricing: v.array(
-			v.object({
-				platform: v.string(),
-				displayName: v.string(),
-				nightlyRate: v.number(),
-				serviceFeePercent: v.number(),
-				cleaningFee: v.number(),
-				logo: v.string()
-			})
-		),
-		directBenefits: v.array(
-			v.object({
-				benefit: v.string(),
-				directOnly: v.boolean()
-			})
-		)
-	}).index('by_property', ['propertyId']),
 
 	// Owner-entered OTA nightly rates for the guest "book direct vs OTA" comparison.
 	otaRates: defineTable({
@@ -1106,7 +1032,7 @@ export default defineSchema({
 		.index('by_property_date', ['propertyId', 'date']),
 
 	// Phase 3: AI Chat
-	chatSessions: defineTable({
+	conversations: defineTable({
 		guestTokenHash: v.optional(v.string()),
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
@@ -1149,10 +1075,10 @@ export default defineSchema({
 		adminSortAt: v.optional(v.number()),
 		adminSearchText: v.optional(v.string()),
 		// Guest message an admin marked as settled; clears the unanswered warning.
-		settledGuestMessageId: v.optional(v.id('chatMessages')),
-		// Automatic responder lifecycle; optional while existing rows are reviewed/backfilled.
-		latestGuestMessageId: v.optional(v.id('chatMessages')),
-		answeredGuestMessageId: v.optional(v.id('chatMessages')),
+		settledGuestMessageId: v.optional(v.id('messages')),
+
+		latestGuestMessageId: v.optional(v.id('messages')),
+		answeredGuestMessageId: v.optional(v.id('messages')),
 		inboxState: v.optional(v.union(v.literal('needs_staff'), v.literal('processing'), v.literal('done'))),
 		inboxReason: v.optional(inboxReasonValidator),
 		inboxHandoff: v.optional(v.boolean()),
@@ -1161,7 +1087,7 @@ export default defineSchema({
 		inboxSendRequestId: v.optional(v.string()),
 		inboxSendError: v.optional(v.string()),
 		resolutionSource: v.optional(v.union(v.literal('ai'), v.literal('staff'), v.literal('manual'))),
-		resolutionMessageId: v.optional(v.id('chatMessages')),
+		resolutionMessageId: v.optional(v.id('messages')),
 		// Inbox lifecycle set by admins; undefined = open. A new guest message reopens it.
 		adminStatus: v.optional(
 			v.union(v.literal('open'), v.literal('resolved'), v.literal('archived'))
@@ -1206,10 +1132,10 @@ export default defineSchema({
 			price: v.number(),
 			currency: v.string(),
 			createdAt: v.number(),
-			appointmentId: v.optional(v.id('serviceAppointments'))
+			appointmentId: v.optional(v.id('appointments'))
 		})),
 		pendingServiceCancellation: v.optional(v.object({
-			appointmentId: v.id('serviceAppointments'),
+			appointmentId: v.id('appointments'),
 			expectedRevision: v.optional(v.number()),
 			createdAt: v.number()
 		})),
@@ -1219,17 +1145,6 @@ export default defineSchema({
 				bookingId: v.id('bookings'),
 				createdAt: v.number()
 			})
-		),
-		// Legacy embedded messages — kept optional for migration compatibility.
-		// New sessions write to the chatMessages table instead.
-		messages: v.optional(
-			v.array(
-				v.object({
-					role: v.union(v.literal('user'), v.literal('assistant')),
-					content: v.string(),
-					timestamp: v.number()
-				})
-			)
 		),
 		createdAt: v.number()
 	})
@@ -1249,11 +1164,11 @@ export default defineSchema({
 			searchField: 'adminSearchText'
 		}),
 
-	chatMessages: defineTable({
-		sessionId: v.id('chatSessions'),
+	messages: defineTable({
+		sessionId: v.id('conversations'),
 		role: v.union(v.literal('user'), v.literal('assistant')),
 		source: v.optional(v.literal('admin')),
-		replyToMessageId: v.optional(v.id('chatMessages')),
+		replyToMessageId: v.optional(v.id('messages')),
 		content: v.string(),
 		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
 		timestamp: v.number()
@@ -1266,9 +1181,9 @@ export default defineSchema({
 
 	adminReplyAttempts: defineTable({
 		requestId: v.string(),
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		adminEmail: v.string(),
-		replyToMessageId: v.optional(v.id('chatMessages')),
+		replyToMessageId: v.optional(v.id('messages')),
 		content: v.string(),
 		status: v.union(v.literal('pending'), v.literal('sent'), v.literal('failed')),
 		createdAt: v.number(),
@@ -1280,7 +1195,7 @@ export default defineSchema({
 
 	chatBrowserHandoffs: defineTable({
 		token: v.string(),
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		expiresAt: v.number(),
 		claimedAt: v.optional(v.number()),
 		createdAt: v.number()
@@ -1289,10 +1204,15 @@ export default defineSchema({
 		.index('by_expires_at', ['expiresAt'])
 		.index('by_sessionId', ['sessionId']),
 
-	lineWebhookEvents: defineTable({
+	channelEvents: defineTable({
+		channel: v.union(v.literal('line'), v.literal('facebook'), v.literal('instagram'), v.literal('whatsapp')),
 		eventKey: v.string(),
-		sessionId: v.optional(v.id('chatSessions')),
+		sessionId: v.optional(v.id('conversations')),
 		lineUserId: v.optional(v.string()),
+  facebookUserId: v.optional(v.string()), pageId: v.optional(v.string()),
+  instagramUserId: v.optional(v.string()), instagramAccountId: v.optional(v.string()),
+  whatsappUserId: v.optional(v.string()), phoneNumberId: v.optional(v.string()),
+  facebookReplyStatus: v.optional(v.number()), instagramReplyStatus: v.optional(v.number()), whatsappReplyStatus: v.optional(v.number()),
 		sourceType: v.optional(v.string()),
 		eventType: v.union(
 			v.literal('message'),
@@ -1324,8 +1244,8 @@ export default defineSchema({
 			)
 		),
 		lineReplyStatus: v.optional(v.number()),
-		userMessageId: v.optional(v.id('chatMessages')),
-		assistantMessageId: v.optional(v.id('chatMessages')),
+		userMessageId: v.optional(v.id('messages')),
+		assistantMessageId: v.optional(v.id('messages')),
 		error: v.optional(v.string()),
 		eventTimestamp: v.optional(v.number()),
 		processingStartedAt: v.number(),
@@ -1335,168 +1255,13 @@ export default defineSchema({
 		createdAt: v.number(),
 		updatedAt: v.number()
 	})
-		.index('by_event_key', ['eventKey'])
-		.index('by_session', ['sessionId'])
-		.index('by_status_and_created_at', ['status', 'createdAt']),
-
-	facebookWebhookEvents: defineTable({
-		eventKey: v.string(),
-		sessionId: v.optional(v.id('chatSessions')),
-		facebookUserId: v.optional(v.string()),
-		pageId: v.optional(v.string()),
-		eventType: v.union(
-			v.literal('message'),
-			v.literal('postback'),
-			v.literal('unsupported')
-		),
-		messageText: v.optional(v.string()),
-		postbackData: v.optional(v.string()),
-		status: v.union(
-			v.literal('received'),
-			v.literal('processing'),
-			v.literal('replied'),
-			v.literal('ignored'),
-			v.literal('failed')
-		),
-		replyMode: v.optional(
-			v.union(
-				v.literal('exact'),
-				v.literal('approved_exact'),
-				v.literal('question_bank_exact'),
-				v.literal('question_bank_semantic'),
-				v.literal('ai'),
-				v.literal('unknown_fallback'),
-				v.literal('postback'),
-				v.literal('ignored'),
-				v.literal('failed')
-			)
-		),
-		facebookReplyStatus: v.optional(v.number()),
-		userMessageId: v.optional(v.id('chatMessages')),
-		assistantMessageId: v.optional(v.id('chatMessages')),
-		error: v.optional(v.string()),
-		eventTimestamp: v.optional(v.number()),
-		processingStartedAt: v.number(),
-		processedAt: v.optional(v.number()),
-		createdAt: v.number(),
-		updatedAt: v.number()
-	})
-		.index('by_event_key', ['eventKey'])
-		.index('by_session', ['sessionId'])
-		.index('by_status_and_created_at', ['status', 'createdAt']),
-
-	instagramWebhookEvents: defineTable({
-		eventKey: v.string(),
-		sessionId: v.optional(v.id('chatSessions')),
-		instagramUserId: v.optional(v.string()),
-		instagramAccountId: v.optional(v.string()),
-		eventType: v.union(
-			v.literal('message'),
-			v.literal('postback'),
-			v.literal('unsupported')
-		),
-		messageText: v.optional(v.string()),
-		postbackData: v.optional(v.string()),
-		status: v.union(
-			v.literal('received'),
-			v.literal('processing'),
-			v.literal('replied'),
-			v.literal('ignored'),
-			v.literal('failed')
-		),
-		replyMode: v.optional(
-			v.union(
-				v.literal('exact'),
-				v.literal('approved_exact'),
-				v.literal('question_bank_exact'),
-				v.literal('question_bank_semantic'),
-				v.literal('ai'),
-				v.literal('unknown_fallback'),
-				v.literal('postback'),
-				v.literal('ignored'),
-				v.literal('failed')
-			)
-		),
-		instagramReplyStatus: v.optional(v.number()),
-		userMessageId: v.optional(v.id('chatMessages')),
-		assistantMessageId: v.optional(v.id('chatMessages')),
-		error: v.optional(v.string()),
-		eventTimestamp: v.optional(v.number()),
-		processingStartedAt: v.number(),
-		processedAt: v.optional(v.number()),
-		createdAt: v.number(),
-		updatedAt: v.number()
-	})
-		.index('by_event_key', ['eventKey'])
-		.index('by_session', ['sessionId'])
-		.index('by_status_and_created_at', ['status', 'createdAt']),
-
-	whatsappWebhookEvents: defineTable({
-		eventKey: v.string(),
-		sessionId: v.optional(v.id('chatSessions')),
-		whatsappUserId: v.optional(v.string()),
-		phoneNumberId: v.optional(v.string()),
-		eventType: v.union(v.literal('message'), v.literal('unsupported')),
-		messageText: v.optional(v.string()),
-		status: v.union(
-			v.literal('received'),
-			v.literal('processing'),
-			v.literal('replied'),
-			v.literal('ignored'),
-			v.literal('failed')
-		),
-		replyMode: v.optional(
-			v.union(
-				v.literal('exact'),
-				v.literal('approved_exact'),
-				v.literal('question_bank_exact'),
-				v.literal('question_bank_semantic'),
-				v.literal('ai'),
-				v.literal('unknown_fallback'),
-				v.literal('ignored'),
-				v.literal('failed')
-			)
-		),
-		whatsappReplyStatus: v.optional(v.number()),
-		userMessageId: v.optional(v.id('chatMessages')),
-		assistantMessageId: v.optional(v.id('chatMessages')),
-		error: v.optional(v.string()),
-		eventTimestamp: v.optional(v.number()),
-		processingStartedAt: v.number(),
-        /** A provider send may have succeeded; automatic webhook replay is unsafe. */
-        deliveryStartedAt: v.optional(v.number()),
-		processedAt: v.optional(v.number()),
-		createdAt: v.number(),
-		updatedAt: v.number()
-	})
-		.index('by_event_key', ['eventKey'])
-		.index('by_session', ['sessionId'])
-		.index('by_status_and_created_at', ['status', 'createdAt']),
-
-	chatSuggestedQuestions: defineTable({
-		sessionId: v.id('chatSessions'),
-		assistantMessageId: v.id('chatMessages'),
-		userMessageId: v.optional(v.id('chatMessages')),
-		question: v.string(),
-		normalizedQuestion: v.string(),
-		translations: v.optional(v.record(v.string(), v.string())),
-		locale: v.string(),
-		propertySlug: v.optional(v.string()),
-		topic: v.string(),
-		score: v.number(),
-		status: v.union(v.literal('active'), v.literal('clicked'), v.literal('archived')),
-		shownAt: v.optional(v.number()),
-		clickedAt: v.optional(v.number()),
-		createdAt: v.number()
-	})
-		.index('by_session_and_status', ['sessionId', 'status'])
-		.index('by_session_status_score', ['sessionId', 'status', 'score'])
-		.index('by_session_and_assistant', ['sessionId', 'assistantMessageId'])
-		.index('by_created_at', ['createdAt'])
-		.index('by_status_and_created_at', ['status', 'createdAt']),
+		.index('by_channel_and_eventKey', ['channel', 'eventKey'])
+ .index('by_channel_and_createdAt', ['channel', 'createdAt'])
+		.index('by_channel_and_sessionId', ['channel', 'sessionId'])
+		.index('by_channel_and_status_and_createdAt', ['channel', 'status', 'createdAt']),
 
 	chatStaticSuggestionInteractions: defineTable({
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		suggestionKey: v.string(),
 		shownAt: v.optional(v.number()),
 		clickedAt: v.optional(v.number()),
@@ -1505,158 +1270,6 @@ export default defineSchema({
 	})
 		.index('by_session', ['sessionId'])
 		.index('by_session_and_suggestionKey', ['sessionId', 'suggestionKey']),
-
-	curatedChatQuestions: defineTable({
-		question: v.string(),
-		normalizedQuestion: v.string(),
-		translations: v.optional(v.record(v.string(), v.string())),
-		answer: v.optional(v.string()),
-		answerTranslations: v.optional(v.record(v.string(), v.string())),
-		answerMode: v.optional(v.union(v.literal('static'), v.literal('dynamic'))),
-		dynamicIntent: v.optional(
-			v.union(
-				v.literal('availability'),
-				v.literal('pricing'),
-				v.literal('property_details'),
-				v.literal('booking_help'),
-				v.literal('contact')
-			)
-		),
-		propertySlug: v.optional(v.string()),
-		topic: v.string(),
-		score: v.number(),
-		status: v.union(v.literal('active'), v.literal('archived')),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-		archivedAt: v.optional(v.number()),
-		createdByAdminEmail: v.string(),
-		updatedByAdminEmail: v.string(),
-		archivedByAdminEmail: v.optional(v.string())
-	})
-		.index('by_created_at', ['createdAt'])
-		.index('by_status_and_created_at', ['status', 'createdAt'])
-		.index('by_status_and_score', ['status', 'score'])
-		.index('by_propertySlug_and_normalizedQuestion', ['propertySlug', 'normalizedQuestion'])
-		.index('by_status_and_propertySlug_and_score', ['status', 'propertySlug', 'score']),
-
-	// Exact-match lookup rows for curatedChatQuestions: one per normalized question text and
-	// translation. Written by every curated writer; migrations:backfillCuratedQuestionVariants fills old rows.
-	curatedChatQuestionVariants: defineTable({
-		questionId: v.id('curatedChatQuestions'),
-		normalizedVariant: v.string(),
-		propertySlug: v.optional(v.string())
-	})
-		.index('by_questionId', ['questionId'])
-		.index('by_normalizedVariant_and_propertySlug', ['normalizedVariant', 'propertySlug']),
-
-	chatQuestionInteractions: defineTable({
-		sessionId: v.id('chatSessions'),
-		questionId: v.id('curatedChatQuestions'),
-		shownAt: v.optional(v.number()),
-		clickedAt: v.optional(v.number()),
-		createdAt: v.number()
-	})
-		.index('by_session', ['sessionId'])
-		.index('by_session_and_question', ['sessionId', 'questionId'])
-		.index('by_questionId', ['questionId']),
-
-	chatAnswers: defineTable({
-		propertyId: v.optional(v.id('properties')),
-		title: v.string(),
-		answer: v.string(),
-		status: v.union(v.literal('draft'), v.literal('approved'), v.literal('archived')),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-		archivedAt: v.optional(v.number()),
-		createdByAdminEmail: v.string(),
-		updatedByAdminEmail: v.string(),
-		archivedByAdminEmail: v.optional(v.string())
-	})
-		.index('by_createdAt', ['createdAt'])
-		.index('by_status_and_updatedAt', ['status', 'updatedAt'])
-		.index('by_propertyId_and_status_and_updatedAt', ['propertyId', 'status', 'updatedAt'])
-		.searchIndex('search_title', { searchField: 'title', filterFields: ['status'] })
-		.searchIndex('search_answer', { searchField: 'answer', filterFields: ['status'] }),
-
-	chatQuestions: defineTable({
-		propertyId: v.optional(v.id('properties')),
-		answerId: v.id('chatAnswers'),
-		questionText: v.string(),
-		normalizedQuestion: v.string(),
-		isPrimary: v.boolean(),
-		isAiTrigger: v.boolean(),
-		createdBy: v.union(v.literal('admin'), v.literal('ai')),
-		status: v.union(v.literal('approved'), v.literal('suggested'), v.literal('rejected')),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-		approvedAt: v.optional(v.number()),
-		rejectedAt: v.optional(v.number()),
-		createdByAdminEmail: v.optional(v.string()),
-		updatedByAdminEmail: v.optional(v.string())
-	})
-		.index('by_answerId', ['answerId'])
-		.index('by_propertyId', ['propertyId'])
-		.index('by_answerId_and_normalizedQuestion', ['answerId', 'normalizedQuestion'])
-		.index('by_answerId_and_status', ['answerId', 'status'])
-		.index('by_answerId_and_status_and_isPrimary', ['answerId', 'status', 'isPrimary'])
-		.index('by_status_and_createdAt', ['status', 'createdAt'])
-		.index('by_status_and_normalizedQuestion', ['status', 'normalizedQuestion'])
-		.index('by_status_and_normalizedQuestion_and_propertyId', [
-			'status',
-			'normalizedQuestion',
-			'propertyId'
-		]),
-
-	chatKnowledgeScopes: defineTable({
-		slug: v.string(),
-		normalizedSlug: v.string(),
-		label: v.string(),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-		createdByAdminEmail: v.string(),
-		updatedByAdminEmail: v.string()
-	})
-		.index('by_normalizedSlug', ['normalizedSlug'])
-		.index('by_createdAt', ['createdAt']),
-
-	chatAnswerPropertyScopes: defineTable({
-		propertyId: v.optional(v.id('properties')),
-		answerId: v.id('chatAnswers'),
-		propertySlug: v.string(),
-		normalizedSlug: v.string(),
-		source: v.union(v.literal('property'), v.literal('custom')),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-		createdByAdminEmail: v.string(),
-		updatedByAdminEmail: v.string()
-	})
-		.index('by_answerId', ['answerId'])
-		.index('by_propertyId', ['propertyId'])
-		.index('by_normalizedSlug', ['normalizedSlug'])
-		.index('by_propertySlug', ['propertySlug'])
-		.index('by_propertySlug_and_answerId', ['propertySlug', 'answerId']),
-
-	chatTopics: defineTable({
-		propertyId: v.optional(v.id('properties')),
-		name: v.string(),
-		normalizedName: v.string(),
-		description: v.string(),
-		createdAt: v.number(),
-		updatedAt: v.number()
-	})
-		.index('by_propertyId', ['propertyId'])
-		.index('by_propertyId_and_normalizedName', ['propertyId', 'normalizedName'])
-		.index('by_normalizedName', ['normalizedName']),
-
-	chatAnswerTopics: defineTable({
-		propertyId: v.optional(v.id('properties')),
-		answerId: v.id('chatAnswers'),
-		topicId: v.id('chatTopics'),
-		createdAt: v.number()
-	})
-		.index('by_answerId', ['answerId'])
-		.index('by_topicId', ['topicId'])
-		.index('by_propertyId', ['propertyId']),
 
 	// Owner-maintained evidence, independent from the retired question/answer bank.
 	businessFacts: defineTable({
@@ -1672,7 +1285,7 @@ export default defineSchema({
 	chatUnknownQuestions: defineTable({
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
-		sessionId: v.optional(v.id('chatSessions')),
+		sessionId: v.optional(v.id('conversations')),
 		userQuestion: v.string(),
 		normalizedQuestion: v.string(),
 		detectedTopic: v.optional(v.string()),
@@ -1689,8 +1302,6 @@ export default defineSchema({
 				v.literal('pricing_availability')
 			)
 		),
-		resolvedAnswerId: v.optional(v.id('chatAnswers')),
-		resolvedQuestionId: v.optional(v.id('chatQuestions')),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 		resolvedAt: v.optional(v.number()),
@@ -1704,8 +1315,6 @@ export default defineSchema({
 		.index('by_propertyId_and_status_and_createdAt', ['propertyId', 'status', 'createdAt'])
 		.index('by_sessionId_and_normalizedQuestion', ['sessionId', 'normalizedQuestion'])
 		.index('by_sessionId', ['sessionId'])
-		.index('by_resolvedAnswerId', ['resolvedAnswerId'])
-		.index('by_resolvedQuestionId', ['resolvedQuestionId'])
 		.searchIndex('search_userQuestion', { searchField: 'userQuestion', filterFields: ['status'] }),
 
 	// Admin-editable business profile; a single row with key 'default'. Missing fields fall back to lib/siteSettings defaults.
@@ -1775,7 +1384,7 @@ export default defineSchema({
 	affiliateCredits: defineTable({
 		sourceKey: v.string(),
 		bookingId: v.optional(v.id('bookings')),
-		billId: v.optional(v.id('bills')),
+		orderId: v.optional(v.id('orders')),
 		snapshot: affiliateSnapshot,
 		affiliateId: v.optional(v.id('marketingAffiliates')),
 		state: creditState,
@@ -1876,7 +1485,7 @@ export default defineSchema({
 		count: v.number()
 	}).index('by_day_and_linkId_and_campaignId', ['day', 'linkId', 'campaignId']),
 
-	// Release 3b: what a campaign cost, entered by staff in whole baht and spread evenly over its days.
+	// Release 3b: what a campaign cost, entered by staff in integer satang and spread evenly over its days.
 	marketingSpend: defineTable({
 		campaignId: v.id('marketingCampaigns'),
 		amount: v.number(),
@@ -1932,8 +1541,8 @@ export default defineSchema({
 		couponVersion: v.number(),
 		code: v.string(),
 		bookingId: v.optional(v.id('bookings')),
-		/** Release 2b: a checkout order's coupon use. Exactly one of bookingId / billId is set. */
-		billId: v.optional(v.id('bills')),
+		/** Release 2b: a checkout order's coupon use. Exactly one of bookingId / orderId is set. */
+		orderId: v.optional(v.id('orders')),
 		state: v.union(v.literal('held'), v.literal('consumed'), v.literal('released'), v.literal('reversed')),
 		discount: v.number(),
 		// Captured money is always honoured: set when a late payment consumed a slot past the limit or budget.
@@ -1942,7 +1551,7 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_bookingId', ['bookingId'])
-		.index('by_billId', ['billId'])
+		.index('by_orderId', ['orderId'])
 		.index('by_couponId_and_state', ['couponId', 'state'])
 		.index('by_couponId_and_createdAt', ['couponId', 'createdAt']),
 
@@ -1969,14 +1578,4 @@ export default defineSchema({
 		createdAt: v.number(),
 		createdByEmail: v.string()
 	}).index('by_coupon_and_version', ['couponId', 'version']),
-
-	propertyKnowledge: defineTable({
-		propertyId: v.id('properties'),
-		category: v.union(
-			v.literal('pricing_rules'),
-			v.literal('availability_notes'),
-			v.literal('faq_pairs')
-		),
-		content: v.string()
-	}).index('by_property', ['propertyId'])
 });

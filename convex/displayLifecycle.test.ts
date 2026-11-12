@@ -44,7 +44,7 @@ async function setup() {
 		await t.finishInProgressScheduledFunctions();
 	};
 	const order = async (name: string, customer?: string) => {
-		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name, price: 1200 } });
+		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name, price: 120000 } });
 		if (customer) await admin.mutation(api.pos.linkCustomer, { orderId, customerId: await admin.mutation(api.customers.createCustomer, { name: customer }) });
 		return orderId;
 	};
@@ -176,7 +176,7 @@ describe('H1-03: the display shows an open order only while its checkout is live
 			orderId, expectedRevision: order.revision, expectedDue: totals.due, idempotencyKey: 'lease-paid-0001', tenders: [{ method: 'cash', amount: totals.due }],
 			...(customer && 'revision' in customer && typeof customer.revision === 'number' ? { expectedCustomerRevision: customer.revision } : {})
 		});
-		const paid = { state: 'paid', customerFirstName: 'Anna', amountPaid: 1200 };
+		const paid = { state: 'paid', customerFirstName: 'Anna', amountPaid: 120000 };
 		expect(await current()).toMatchObject(paid);
 		await release(LEASE_A);
 		expect(await current()).toMatchObject(paid);
@@ -197,7 +197,7 @@ describe('H1-03: the display shows an open order only while its checkout is live
 	it('shows nothing for an order published before leases existed', async () => {
 		const { t, current, orderId, till } = await driving();
 		const { _id } = await till();
-		await t.run((ctx) => ctx.db.patch(_id, { orderId: orderId as Id<'bills'>, leaseId: undefined }));
+		await t.run((ctx) => ctx.db.patch(_id, { orderId: orderId as Id<'orders'>, leaseId: undefined }));
 		expect(await current()).toEqual(IDLE);
 	});
 

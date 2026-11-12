@@ -5,18 +5,18 @@ describe("calculateBookingQuote", () => {
   it("calculates subtotal, discount, and direct total", () => {
     expect(
       calculateBookingQuote({
-        pricePerNight: 8500,
+        pricePerNight: 850000,
         nights: 3,
-        discountPercent: 15,
+        discountPercent: 1500,
         currency: "THB",
       }),
     ).toEqual({
-      pricePerNight: 8500,
+      pricePerNight: 850000,
       nights: 3,
-      subtotal: 25500,
-      discountPercent: 15,
-      discountAmount: 3825,
-      directTotal: 21675,
+      subtotal: 2550000,
+      discountPercent: 1500,
+      discountAmount: 382500,
+      directTotal: 2167500,
       currency: "THB",
     });
   });
@@ -24,9 +24,9 @@ describe("calculateBookingQuote", () => {
   it("clamps negative nights to zero", () => {
     expect(
       calculateBookingQuote({
-        pricePerNight: 4500,
+        pricePerNight: 450000,
         nights: -2,
-        discountPercent: 15,
+        discountPercent: 1500,
         currency: "THB",
       }),
     ).toMatchObject({
@@ -40,11 +40,11 @@ describe("calculateBookingQuote", () => {
   it("rounds fractional discount amounts", () => {
     expect(
       calculateBookingQuote({
-        pricePerNight: 3333,
+        pricePerNight: 333300,
         nights: 1,
-        discountPercent: 12.5,
+        discountPercent: 1250,
         currency: "THB",
       }).discountAmount,
-    ).toBe(417);
+    ).toBe(41663);
   });
 });

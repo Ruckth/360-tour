@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Next's plugin discovers app routes, layouts, instrumentation, middleware and config.
+  "next": true,
+  // Convex exports functions by file path; maintenance and test module discovery are dynamic.
+  "entry": [
+    "convex/*.ts!",
+    "convex/maintenance/*.ts!",
+    "tests/**/*.test.ts",
+    "tests/**/*.spec.ts",
+    "tests/browser/*fixture*.tsx",
+    "tests/browser/*-mock.{ts,tsx}",
+    "scripts/**/*.{ts,mjs}",
+    "*.config.{ts,mjs}"
+  ],
+  "project": ["src/**/*.{ts,tsx,css}", "convex/**/*.ts", "tests/**/*.{ts,tsx}", "scripts/**/*.{ts,mjs}"]
+}

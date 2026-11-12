@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import type { RegisteredQuery } from 'convex/server';
@@ -19,14 +20,14 @@ async function fixture() {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'reads@example.com', tokenIdentifier: 'reads' });
   const ids = await t.run(async ctx => {
-    const propertyId = await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: 'Pool', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 30, images: ['/villa.jpg'], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
-    const bookingId = await ctx.db.insert('bookings', { propertyId, guestName: 'Guest', guestPhone: '0800000000', checkIn: '2026-11-01', checkOut: '2026-11-02', guests: 1, nights: 1, subtotal: 100, discountAmount: 0, total: 100, currency: 'THB', amountPaid: 0, paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'READS', createdAt: 1 });
+    const propertyId = await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: 'Pool', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 30, images: ['/villa.jpg'], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
+    const bookingId = await insertFixture(ctx, 'bookings', { propertyId, guestName: 'Guest', guestPhone: '0800000000', checkIn: '2026-11-01', checkOut: '2026-11-02', guests: 1, nights: 1, subtotal: 10000, discountAmount: 0, total: 10000, currency: 'THB', amountPaid: 0, paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'READS', createdAt: 1 });
     const staffId = await ctx.db.insert('staff', { name: 'Current therapist', role: 'Therapist', color: '#abc', workingHours: [], breaks: [], status: 'active', createdAt: 1, updatedAt: 1 });
-    const serviceId = await ctx.db.insert('services', { slug: 'massage', name: 'Massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 0, price: 100, currency: 'THB', staffIds: [staffId], imageUrl: '/service.jpg', status: 'active', createdAt: 1, updatedAt: 1 });
-    const appointmentId = await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: 1, end: 2, blockedUntil: 2, guestName: 'Guest', guestPhone: '0800000000', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 100, currency: 'THB', confirmationCode: 'APPT', accessToken: 'test-only', createdAt: 1 });
+    const serviceId = await ctx.db.insert('services', { slug: 'massage', name: 'Massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 0, price: 10000, currency: 'THB', staffIds: [staffId], imageUrl: '/service.jpg', status: 'active', createdAt: 1, updatedAt: 1 });
+    const appointmentId = await insertFixture(ctx, 'appointments', { serviceId, staffId, start: 1, end: 2, blockedUntil: 2, guestName: 'Guest', guestPhone: '0800000000', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 10000, currency: 'THB', confirmationCode: 'APPT', accessToken: 'test-only', createdAt: 1 });
     return { propertyId, bookingId, staffId, serviceId, appointmentId };
   });
-  const read = (orderId: Id<'bills'>) => admin.run(async ctx => {
+  const read = (orderId: Id<'orders'>) => admin.run(async ctx => {
     const gets = vi.spyOn(ctx.db, 'get'), queries = vi.spyOn(ctx.db, 'query');
     const result = await handler(getOrder)(ctx, { orderId });
     const calls = { gets: gets.mock.calls.map(args => args[args.length - 1]), queries: queries.mock.calls.map(args => args[0]) };
@@ -70,7 +71,7 @@ it('reuses appointment/service joins and sees edited or deleted appointment, ser
   await t.run(async ctx => {
     await ctx.db.patch(serviceId, { name: 'New service', imageUrl: '/new-service.jpg' });
     await ctx.db.patch(staffId, { name: 'Renamed therapist' });
-    await ctx.db.patch(appointmentId, { price: 200 });
+    await ctx.db.patch(appointmentId, { price: 20000 });
   });
   const edited = await read(orderId);
   expect(edited.result?.source?.name).toBe('New service');
@@ -94,10 +95,10 @@ it('keeps one photo lookup for 100 rows, skips fully frozen settled staff, and r
   const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
   const lineIds = await t.run(async ctx => {
     await ctx.db.patch(orderId, { status: 'paid' });
-    const line = (await ctx.db.query('billLines').withIndex('by_billId', q => q.eq('billId', orderId)).first())!;
+    const line = (await ctx.db.query('orderLines').withIndex('by_orderId', q => q.eq('orderId', orderId)).first())!;
     await ctx.db.patch(line._id, { staffId, staffName: 'Frozen therapist' });
     const ids = [line._id];
-    for (let i = 1; i < 100; i++) ids.push(await ctx.db.insert('billLines', { billId: orderId, kind: 'service', serviceId, staffId, staffName: 'Frozen therapist', name: 'Massage', unitPrice: 100, qty: 1, currency: 'THB', createdAt: i }));
+    for (let i = 1; i < 100; i++) ids.push(await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'service', serviceId, staffId, staffName: 'Frozen therapist', name: 'Massage', unitPrice: 10000, qty: 1, currency: 'THB', createdAt: i }));
     return ids;
   });
   const frozen = await read(orderId);
@@ -128,24 +129,24 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
   });
   const stable = await measure(handler(stableCatalog)), empty = await measure(handler(recentCatalogRanking));
   expect(stable.tables).toEqual(['services', 'properties', 'staff']);
-  expect(empty).toEqual({ result: [], tables: ['billLines'] });
+  expect(empty).toEqual({ result: [], tables: ['orderLines'] });
   const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
   await t.run(async ctx => {
     // Older than the recent-300 cutoff; quantity never contributes to frequency.
-    await ctx.db.insert('billLines', { billId: orderId, kind: 'extra', name: 'Outside', qty: 99, unitPrice: 1, currency: 'THB', createdAt: 0 });
-    for (let i = 0; i < 300; i++) await ctx.db.insert('billLines', { billId: orderId, kind: 'extra', name: `Tie ${i % 10}`, qty: i % 99 + 1, unitPrice: 1, currency: 'THB', createdAt: i });
+    await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'extra', name: 'Outside', qty: 99, unitPrice: 100, currency: 'THB', createdAt: 0 });
+    for (let i = 0; i < 300; i++) await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'extra', name: `Tie ${i % 10}`, qty: i % 99 + 1, unitPrice: 100, currency: 'THB', createdAt: i });
   });
   const ranked = await measure(handler(recentCatalogRanking));
-  expect(ranked.tables).toEqual(['billLines']);
+  expect(ranked.tables).toEqual(['orderLines']);
   expect(ranked.result).toEqual(Array.from({ length: 8 }, (_, i) => `extra:Tie ${9 - i}`));
   expect((await measure(handler(stableCatalog))).result).toEqual(stable.result);
   expect((await measure(handler(catalog))).result).toEqual({ ...stable.result, frequent: ranked.result });
   await t.run(async ctx => {
-    await ctx.db.patch(serviceId, { price: 200, imageUrl: '/edited.jpg' });
+    await ctx.db.patch(serviceId, { price: 20000, imageUrl: '/edited.jpg' });
     await ctx.db.patch(propertyId, { currency: 'USD' });
   });
   const edited = await admin.query(api.pos.stableCatalog, {});
-  expect(edited.services[0]).toMatchObject({ price: 200, imageUrl: '/edited.jpg' });
+  expect(edited.services[0]).toMatchObject({ price: 20000, imageUrl: '/edited.jpg' });
   expect(edited.rooms).toEqual([]);
   expect(await admin.query(api.pos.recentCatalogRanking, {})).toEqual(ranked.result);
   await t.run(ctx => ctx.db.patch(serviceId, { status: 'archived' }));
@@ -158,14 +159,14 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
 
 it('counts rows rather than quantity, excludes appointment fees and source rows, and filters non-THB catalog entries', async () => {
   const { t, admin, serviceId, propertyId, staffId, appointmentId } = await fixture();
-  const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'High quantity', price: 1 } });
+  const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'High quantity', price: 100 } });
   await t.run(async ctx => {
-    const original = (await ctx.db.query('billLines').first())!;
+    const original = (await ctx.db.query('orderLines').first())!;
     await ctx.db.patch(original._id, { qty: 99 });
-    for (let i = 0; i < 2; i++) await ctx.db.insert('billLines', { billId: orderId, kind: 'room', propertyId, name: 'Villa', unitPrice: 1, currency: 'THB', qty: 1, createdAt: i });
-    await ctx.db.insert('billLines', { billId: orderId, kind: 'service', serviceId, name: 'Massage', unitPrice: 1, currency: 'THB', qty: 99, createdAt: 3 });
-    await ctx.db.insert('billLines', { billId: orderId, kind: 'extra', name: 'Fee', unitPrice: 1, currency: 'THB', qty: 1, feeAppointmentId: appointmentId, fee: { kind: 'no_show', by: 'cashier', at: 1 }, createdAt: 4 });
-    await ctx.db.insert('billLines', { billId: orderId, kind: 'appointment', appointmentId, name: 'Appointment', unitPrice: 1, currency: 'THB', qty: 1, createdAt: 5 });
+    for (let i = 0; i < 2; i++) await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'room', propertyId, name: 'Villa', unitPrice: 100, currency: 'THB', qty: 1, createdAt: i });
+    await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'service', serviceId, name: 'Massage', unitPrice: 100, currency: 'THB', qty: 99, createdAt: 3 });
+    await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'extra', name: 'Fee', unitPrice: 100, currency: 'THB', qty: 1, feeAppointmentId: appointmentId, fee: { kind: 'no_show', by: 'cashier', at: 1 }, createdAt: 4 });
+    await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'appointment', appointmentId, name: 'Appointment', unitPrice: 100, currency: 'THB', qty: 1, createdAt: 5 });
     await ctx.db.patch(serviceId, { currency: 'USD' });
     await ctx.db.patch(staffId, { status: 'archived' });
   });

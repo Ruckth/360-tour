@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
@@ -30,7 +31,7 @@ async function setup(channel: "whatsapp" | "line" | "facebook" | "web" = "whatsa
       name: "Pool Villa",
       tagline: "Private stay",
       description: "A private villa for testing.",
-      pricePerNight: 10000,
+      pricePerNight: 1000000,
       currency: "THB",
       maxGuests: 4,
       bedrooms: 2,
@@ -39,10 +40,10 @@ async function setup(channel: "whatsapp" | "line" | "facebook" | "web" = "whatsa
       images: [],
       amenities: ["Private Pool"],
       tourRoomIds: [],
-      directDiscountPercent: 15,
+      directDiscountPercent: 1500,
       status: "active",
     });
-    const sessionId = await ctx.db.insert("chatSessions", {
+    const sessionId = await ctx.db.insert("conversations", {
       channel,
       visitorId: `${channel}:guest`,
       ...(channel === "whatsapp" ? { visitorPhone: "66956823432", visitorName: "Rugby" } : {}),
@@ -119,7 +120,7 @@ describe("AI chat booking", () => {
   it("rejects dates that are already taken", async () => {
     const { t, sessionId, propertyId } = await setup();
     await t.run(async (ctx) => {
-      await ctx.db.insert("bookings", {
+      await insertFixture(ctx, "bookings", {
         propertyId,
         guestName: "Someone",
         guestPhone: "+66000000000",
@@ -127,9 +128,9 @@ describe("AI chat booking", () => {
         checkOut: isoInDays(35),
         guests: 2,
         nights: 4,
-        subtotal: 40000,
+        subtotal: 4000000,
         discountAmount: 0,
-        total: 40000,
+        total: 4000000,
         currency: "THB",
         paymentStatus: "paid",
         status: "confirmed",
@@ -159,7 +160,7 @@ describe("AI chat booking", () => {
       source: "whatsapp",
       chatSessionId: sessionId,
       status: "pending",
-      total: 25500,
+      total: 2550000,
       confirmationCode: first.confirmationCode,
     });
   });
@@ -249,7 +250,7 @@ describe("AI chat booking through generateReply", () => {
     const { t, sessionId } = await setup("line");
     const reply = (userMessage: string) =>
       t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(),
-        sessionId: sessionId as Id<"chatSessions">,
+        sessionId: sessionId as Id<"conversations">,
         userMessage,
         channel: "line",
         siteUrl: "https://tour.example.com",
@@ -346,7 +347,7 @@ describe("AI chat booking through generateReply", () => {
   });
 });
 
-async function bookViaChat(t: ReturnType<typeof convexTest>, sessionId: Id<"chatSessions">, guestPhone?: string) {
+async function bookViaChat(t: ReturnType<typeof convexTest>, sessionId: Id<"conversations">, guestPhone?: string) {
   await t.mutation(internal.bookings.prepareChatBooking, {
     sessionId,
     ...stay,
@@ -364,7 +365,7 @@ describe("get_my_bookings / cancel_booking", () => {
     await t.run(async (ctx) => {
       // A website booking with the same phone, and one with a different phone.
       for (const guestPhone of ["66956823432", "+66000000000"]) {
-        await ctx.db.insert("bookings", {
+        await insertFixture(ctx, "bookings", {
           propertyId,
           guestName: "Web guest",
           guestPhone,
@@ -374,9 +375,9 @@ describe("get_my_bookings / cancel_booking", () => {
           checkOut: isoInDays(62),
           guests: 2,
           nights: 2,
-          subtotal: 20000,
-          discountAmount: 3000,
-          total: 17000,
+          subtotal: 2000000,
+          discountAmount: 300000,
+          total: 1700000,
           currency: "THB",
           paymentStatus: "pending",
           status: "pending",
@@ -396,7 +397,7 @@ describe("get_my_bookings / cancel_booking", () => {
     const { t, sessionId } = await setup("facebook");
     await bookViaChat(t, sessionId, "0812345678");
     const otherSession = await t.run(async (ctx) =>
-      ctx.db.insert("chatSessions", { channel: "facebook", visitorId: "facebook:other", createdAt: Date.now() }),
+      ctx.db.insert("conversations", { channel: "facebook", visitorId: "facebook:other", createdAt: Date.now() }),
     );
 
     expect(await t.query(internal.bookings.listChatGuestBookings, { sessionId: otherSession })).toHaveLength(0);

@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,7 +21,7 @@ it('keeps OTA sources separate and preserves other blocked dates when one is rem
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-  const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
+  const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const airbnb = await admin.mutation(api.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   const booking = await admin.mutation(api.ical.addSource, { propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
   await applyFeed(t, airbnb, ['2030-01-01', '2030-01-02']);
@@ -37,10 +38,10 @@ it('exports future bookings even when more than 500 past bookings exist', async 
   const futureCheckIn = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
   const futureCheckOut = new Date(Date.now() + 33 * 86_400_000).toISOString().slice(0, 10);
   const { futureId } = await t.run(async ctx => {
-    const propertyId = await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active', icalExportToken: 'export-token' });
-    const base = { propertyId, guestName: 'Guest', guestPhone: '123', guests: 2, nights: 2, subtotal: 200, discountAmount: 0, total: 200, currency: 'THB', paymentStatus: 'paid' as const, status: 'confirmed' as const, createdAt: Date.now() };
-    for (let i = 0; i < 501; i++) await ctx.db.insert('bookings', { ...base, checkIn: '2020-01-01', checkOut: '2020-01-03' });
-    const futureId = await ctx.db.insert('bookings', { ...base, checkIn: futureCheckIn, checkOut: futureCheckOut });
+    const propertyId = await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active', icalExportToken: 'export-token' });
+    const base = { propertyId, guestName: 'Guest', guestPhone: '123', guests: 2, nights: 2, subtotal: 20000, discountAmount: 0, total: 20000, currency: 'THB', paymentStatus: 'paid' as const, status: 'confirmed' as const, createdAt: Date.now() };
+    for (let i = 0; i < 501; i++) await insertFixture(ctx, 'bookings', { ...base, checkIn: '2020-01-01', checkOut: '2020-01-03' });
+    const futureId = await insertFixture(ctx, 'bookings', { ...base, checkIn: futureCheckIn, checkOut: futureCheckOut });
     return { futureId };
   });
   const exported = await t.query(internal.ical.getExport, { token: 'export-token' });
@@ -51,7 +52,7 @@ async function sourceSetup() {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-  const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
+  const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const sourceId = await admin.mutation(api.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   return { t, admin, sourceId };
 }

@@ -53,21 +53,21 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 const at = (date: string, time: string) => Date.parse(`${date}T${time}:00+07:00`);
 const NOW = at("2026-10-28", "10:00");
 
-const money = { total: 17000, currency: "THB", gross: 25500, refunded: 0, net: 25500, owed: 0, credit: 8500, refundable: 8500, refundContext: "credit" as const, legacyRefund: false };
+const money = { total: 1700000, currency: "THB", gross: 2550000, refunded: 0, net: 2550000, owed: 0, credit: 850000, refundable: 850000, refundContext: "credit" as const, legacyRefund: false };
 const booking = {
   _id: "b1", propertyId: "p1", guestName: "Mia", guestPhone: "+66 81", guestEmail: "mia@example.com", checkIn: "2026-10-20", checkOut: "2026-10-22",
-  guests: 2, nights: 2, total: 17000, currency: "THB", status: "completed", paymentStatus: "paid", paymentMethod: "admin", amountPaid: 25500,
-  source: "admin", createdAt: 0, revision: 7, propertyName: "Pool Villa", propertyStatus: "active", subtotal: 20000, discountAmount: 3000,
+  guests: 2, nights: 2, total: 1700000, currency: "THB", status: "completed", paymentStatus: "paid", paymentMethod: "admin", amountPaid: 2550000,
+  source: "admin", createdAt: 0, revision: 7, propertyName: "Pool Villa", propertyStatus: "active", subtotal: 2000000, discountAmount: 300000,
   priceOverride: null, hasStripePayment: false, checkoutLive: false, money, historical: true, guestEmailsOff: false, notifyByDefault: false,
   confirmationEmailed: true,
 } as unknown as BookingDetail;
 
 const cashPayment = {
-  _id: "pay1", origin: "manual", amount: 25500, currency: "THB", method: "cash", effectiveAt: at("2026-10-20", "15:00"), recordedAt: at("2026-10-21", "09:00"),
-  recordedBy: "desk@example.com", refunded: 0, refundable: 25500, status: "recorded", order: null, amendBlocker: null, cancelBlocker: null,
+  _id: "pay1", origin: "manual", amount: 2550000, currency: "THB", method: "cash", effectiveAt: at("2026-10-20", "15:00"), recordedAt: at("2026-10-21", "09:00"),
+  recordedBy: "desk@example.com", refunded: 0, refundable: 2550000, status: "recorded", order: null, amendBlocker: null, cancelBlocker: null,
 };
 const onlinePayment = {
-  ...cashPayment, _id: "pay2", origin: "online", method: "stripe", amount: 1000, refundable: 1000, recordedBy: "system:stripe",
+  ...cashPayment, _id: "pay2", origin: "online", method: "stripe", amount: 100000, refundable: 100000, recordedBy: "system:stripe",
   amendBlocker: "Online payments are the provider’s record and can’t be changed here.", cancelBlocker: "Online payments are the provider’s record.",
 };
 const financials = {
@@ -99,12 +99,12 @@ beforeEach(() => {
   for (const mutation of Object.values(mutations)) mutation.mockReset().mockResolvedValue(null);
   queries.bookingFinancials.mockReset().mockReturnValue(financials);
   queries.getForAdmin.mockReset().mockReturnValue(booking);
-  queries.quoteBookingEdit.mockReset().mockReturnValue({ subtotal: 20000, discountAmount: 3000, total: 17000, currency: "THB", promotion: null, couponRemoved: false, repriced: false });
+  queries.quoteBookingEdit.mockReset().mockReturnValue({ subtotal: 2000000, discountAmount: 300000, total: 1700000, currency: "THB", promotion: null, couponRemoved: false, repriced: false });
   pages.read.mockReset().mockReturnValue({ results: [], status: "Exhausted", loadMore: pages.loadMore });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 it("links exact Stripe evidence with the reviewed revision and retains the identical attempt after a lost response", async () => {
-  queries.bookingFinancials.mockReturnValue({ ...financials, refunds: [{ _id: "refund1", amount: 500, currency: "THB", method: "stripe", reason: "Returned online", effectiveAt: NOW, recordedBy: "desk@example.com", order: null }] });
+  queries.bookingFinancials.mockReturnValue({ ...financials, refunds: [{ _id: "refund1", amount: 50000, currency: "THB", method: "stripe", reason: "Returned online", effectiveAt: NOW, recordedBy: "desk@example.com", order: null }] });
   mutations.linkRecordedStripeRefund.mockRejectedValueOnce(new Error("Response lost")).mockResolvedValue(null);
   await render(createElement(BookingFinancials, { booking }));
   await click(button("Link Stripe refund evidence"));
@@ -130,7 +130,7 @@ afterEach(async () => {
 
 describe("booking payments and refunds", () => {
   it("keeps Edit and Cancel reachable for a live fully refunded stay", async () => {
-    queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", paymentStatus: "refunded", money: { ...money, gross: 17000, refunded: 17000, net: 0, owed: 0, credit: 0, refundable: 0 } });
+    queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", paymentStatus: "refunded", money: { ...money, gross: 1700000, refunded: 1700000, net: 0, owed: 0, credit: 0, refundable: 0 } });
     await render(createElement(BookingSheet, { bookingId: booking._id, properties: [], onClose: vi.fn() }));
     expect(button("Edit")).toBeDefined();
     expect(button("Cancel booking")).toBeDefined();
@@ -174,7 +174,7 @@ describe("booking payments and refunds", () => {
     const [first, retry] = mutations.recordRefund.mock.calls.map(([args]) => args);
     expect(retry).toEqual(first);
     expect(retry).toMatchObject({
-      bookingId: "b1", expectedRevision: 7, amount: 8500, currency: "THB", method: "card", reason: "Left a night early",
+      bookingId: "b1", expectedRevision: 7, amount: 850000, currency: "THB", method: "card", reason: "Left a night early",
       paymentId: "pay1", effectiveAt: NOW,
     });
     expect(retry.idempotencyKey).toMatch(/^refund-/);
@@ -183,7 +183,7 @@ describe("booking payments and refunds", () => {
   });
 
   it("records a desk payment with its method and the date it was received, without emailing for a past stay", async () => {
-    const owing = { ...booking, money: { ...money, credit: 0, refundable: 0, owed: 4000, net: 13000 }, confirmationEmailed: false } as BookingDetail;
+    const owing = { ...booking, money: { ...money, credit: 0, refundable: 0, owed: 400000, net: 1300000 }, confirmationEmailed: false } as BookingDetail;
     queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money, payments: [] });
     let finish!: () => void;
     mutations.recordPayment.mockImplementation(() => new Promise((resolve) => { finish = () => resolve({ paymentId: "p", replayed: false }); }));
@@ -198,7 +198,7 @@ describe("booking payments and refunds", () => {
     expect(button("Close")?.disabled).toBe(true);
     await act(async () => finish());
     expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({
-      bookingId: "b1", expectedRevision: 7, expectedAmount: 4000, method: "transfer", effectiveAt: at("2026-10-28", "08:30"), notifyGuest: false,
+      bookingId: "b1", expectedRevision: 7, expectedAmount: 400000, method: "transfer", effectiveAt: at("2026-10-28", "08:30"), notifyGuest: false,
     }));
   });
 
@@ -214,7 +214,7 @@ describe("booking payments and refunds", () => {
 });
 
 describe("cancel and reopen", () => {
-  const paidFuture = { ...booking, status: "confirmed", checkIn: "2026-11-20", historical: false, notifyByDefault: true, money: { ...money, total: 25500, credit: 0, refundable: 25500, refundContext: "cancellation" } } as BookingDetail;
+  const paidFuture = { ...booking, status: "confirmed", checkIn: "2026-11-20", historical: false, notifyByDefault: true, money: { ...money, total: 2550000, credit: 0, refundable: 2550000, refundContext: "cancellation" } } as BookingDetail;
 
   it("cancels keeping the payment by default, with the guest email choice explicit", async () => {
     const onClose = vi.fn();
@@ -238,7 +238,7 @@ describe("cancel and reopen", () => {
     await click(button("Cancel & record refund"));
     expect(mutations.cancelStay).toHaveBeenCalledWith(expect.objectContaining({
       expectedRevision: 7, notifyGuest: true,
-      refund: expect.objectContaining({ amount: 20000, currency: "THB", method: "cash", reason: "Cancellation fee kept", effectiveAt: NOW, paymentId: cashPayment._id }),
+      refund: expect.objectContaining({ amount: 2000000, currency: "THB", method: "cash", reason: "Cancellation fee kept", effectiveAt: NOW, paymentId: cashPayment._id }),
     }));
   });
 
@@ -260,27 +260,16 @@ describe("cancel and reopen", () => {
     await click(button("Cancel & record refund"));
     const [first, retry] = mutations.cancelStay.mock.calls.map(([args]) => args);
     expect(retry).toEqual(first);
-    expect(first.refund).toMatchObject({ paymentId: onlinePayment._id, amount: 500, reason: "Returned from selected payment" });
+    expect(first.refund).toMatchObject({ paymentId: onlinePayment._id, amount: 50000, reason: "Returned from selected payment" });
   });
 
-  it("waits for payment history and caps a cancellation refund from older unitemised money", async () => {
+  it("waits for recorded payment history before allowing a cancellation refund", async () => {
     queries.bookingFinancials.mockReturnValue(undefined);
     await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
     await click(button("Record a refund"));
     expect(document.body.textContent).toContain("Loading refundable payments");
     expect(button("Cancel & record refund")?.disabled).toBe(true);
-    queries.bookingFinancials.mockReturnValue({ ...financials, unitemisedRefundable: 200 });
-    await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
-    await act(async () => { document.getElementById("cancel-refund-source")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
-    const option = [...document.querySelectorAll('[role="option"]')].find(el => el.textContent?.includes("Older unitemised payment"))!;
-    await act(async () => { option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
-    await type("cancel-refund-reason", "Returned the older deposit");
-    await type("cancel-refund-amount", "201");
-    expect(button("Cancel & record refund")?.disabled).toBe(true);
-    await type("cancel-refund-amount", "200");
-    await click(button("Cancel & record refund"));
-    expect(mutations.cancelStay).toHaveBeenCalledWith(expect.objectContaining({ refund: expect.objectContaining({ amount: 200, unitemised: true }) }));
-    expect(mutations.cancelStay.mock.calls[0][0].refund.paymentId).toBeUndefined();
+
   });
 
   it("reopens with a required reason and an archived-villa reason", async () => {
@@ -303,7 +292,7 @@ describe("booking history", () => {
     pages.read.mockReturnValue({
       status: "CanLoadMore", loadMore: pages.loadMore,
       results: [
-        { _id: "h2", kind: "refund_recorded", actor: "desk@example.com", recordedAt: NOW, effectiveAt: NOW - 86_400_000, reason: "Left early", before: { amountRefunded: null }, after: { amountRefunded: 8500, amount: 8500, method: "card" } },
+        { _id: "h2", kind: "refund_recorded", actor: "desk@example.com", recordedAt: NOW, effectiveAt: NOW - 86_400_000, reason: "Left early", before: { amountRefunded: null }, after: { amountRefunded: 850000, amount: 850000, method: "card" } },
         { _id: "h1", kind: "payment_amended", actor: "desk@example.com", recordedAt: NOW, effectiveAt: NOW, reason: "Was a transfer", before: {}, after: { before: { method: "cash" }, after: { method: "transfer" } } },
       ],
     });
@@ -322,7 +311,7 @@ describe("booking history", () => {
 });
 
 describe("editing the stay price", () => {
-  const villa = { _id: "p1", slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 10000, directDiscountPercent: 15, currency: "THB" };
+  const villa = { _id: "p1", slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 1000000, directDiscountPercent: 1500, currency: "THB" };
 
   it("sets a custom price with a reason against the reviewed revision, silent for a past stay unless chosen", async () => {
     mutations.editBooking.mockRejectedValueOnce(new Error("Uncaught Error: These dates are no longer available.\n"));
@@ -342,34 +331,34 @@ describe("editing the stay price", () => {
     await click(button("Save changes"));
     expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({
       bookingId: "b1", expectedRevision: 7, checkIn: "2026-10-20", checkOut: "2026-10-22",
-      priceOverride: { total: 15000, reason: "Negotiated with the owner" }, notifyGuest: true,
-      expectedPrice: { total: 15000, currency: "THB" },
+      priceOverride: { total: 1500000, reason: "Negotiated with the owner" }, notifyGuest: true,
+      expectedPrice: { total: 1500000, currency: "THB" },
     }));
     expect(onClose).toHaveBeenCalled();
   });
 
   it("returns a custom price to the villa rate explicitly", async () => {
-    queries.quoteBookingEdit.mockReturnValue({ subtotal: 20000, discountAmount: 3000, total: 17000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
-    const custom = { ...booking, priceOverride: { total: 15000, quotedTotal: 17000, reason: "Deal", by: "a", at: 0 }, total: 15000 } as BookingDetail;
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 2000000, discountAmount: 300000, total: 1700000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
+    const custom = { ...booking, priceOverride: { total: 1500000, quotedTotal: 1700000, reason: "Deal", by: "a", at: 0 }, total: 1500000 } as BookingDetail;
     await render(createElement(EditBookingDialog, { booking: custom, properties: [villa] as never, onClose: vi.fn() }));
     await click(document.getElementById("eb-custom"));
     expect(document.body.textContent).toContain("Saving returns this stay to the villa rate.");
     expect(document.body.textContent).toContain("New total ฿17,000");
     await click(button("Save changes"));
-    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ priceOverride: null, expectedRevision: 7, expectedPrice: { total: 17000, currency: "THB" } }));
+    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ priceOverride: null, expectedRevision: 7, expectedPrice: { total: 1700000, currency: "THB" } }));
     expect(queries.quoteBookingEdit).toHaveBeenLastCalledWith(expect.objectContaining({ bookingId: "b1", propertySlug: "pool-villa", clearPriceOverride: true }));
   });
 
   it("shows the server's quote for a coupon stay and waits for it before saving", async () => {
-    const promoted = { ...booking, total: 7200, amountPaid: 7200, promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 1800 } } as unknown as BookingDetail;
+    const promoted = { ...booking, total: 720000, amountPaid: 720000, promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 180000 } } as unknown as BookingDetail;
     queries.quoteBookingEdit.mockReturnValue(undefined);
     await render(createElement(EditBookingDialog, { booking: promoted, properties: [villa] as never, onClose: vi.fn() }));
     expect(document.body.textContent).toContain("Checking the price…");
     expect(button("Save changes")?.disabled).toBe(true);
 
     queries.quoteBookingEdit.mockReturnValue({
-      subtotal: 13500, discountAmount: 2700, total: 10800, currency: "THB",
-      promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 2700 }, couponRemoved: false, repriced: true,
+      subtotal: 1350000, discountAmount: 270000, total: 1080000, currency: "THB",
+      promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 270000 }, couponRemoved: false, repriced: true,
     });
     await type("eb-guests", "3");
     const text = document.body.textContent ?? "";
@@ -378,35 +367,35 @@ describe("editing the stay price", () => {
     expect(text).toContain("Balance due ฿3,600");
     expect(queries.quoteBookingEdit).toHaveBeenLastCalledWith({ bookingId: "b1", propertySlug: "pool-villa", checkIn: "2026-10-20", checkOut: "2026-10-22", guests: 3 });
 
-    queries.quoteBookingEdit.mockReturnValue({ subtotal: 13500, discountAmount: 2025, total: 11475, currency: "THB", promotion: null, couponRemoved: true, repriced: true });
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 1350000, discountAmount: 202500, total: 1147500, currency: "THB", promotion: null, couponRemoved: true, repriced: true });
     await type("eb-guests", "2");
     expect(document.body.textContent).toContain("Coupon DCNT-F1-20 no longer applies — direct rate");
 
-    queries.quoteBookingEdit.mockReturnValue({ subtotal: 9000, discountAmount: 1800, total: 7200, currency: "THB", promotion: null, couponRemoved: false, repriced: false });
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 900000, discountAmount: 180000, total: 720000, currency: "THB", promotion: null, couponRemoved: false, repriced: false });
     await type("eb-guests", "1");
     expect(document.body.textContent).toContain("Price unchanged: ฿7,200");
     expect(button("Save changes")?.disabled).toBe(false);
     // A guest-only change confirms the stored total it showed.
     await click(button("Save changes"));
-    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ guests: 1, expectedPrice: { total: 7200, currency: "THB" } }));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ guests: 1, expectedPrice: { total: 720000, currency: "THB" } }));
   });
 
   it("saves the quoted total it showed and keeps the form open with the server's retry message when the price moved", async () => {
     const onClose = vi.fn();
-    queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 4500, total: 25500, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 3000000, discountAmount: 450000, total: 2550000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
     mutations.editBooking.mockRejectedValueOnce(new Error("The price changed to THB 26,000 since you reviewed THB 25,500. Check the new price and save again."));
     await render(createElement(EditBookingDialog, { booking, properties: [villa] as never, onClose }));
     await type("eb-guests", "3");
     expect(document.body.textContent).toContain("New total ฿25,500");
     await click(button("Save changes"));
-    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ guests: 3, expectedPrice: { total: 25500, currency: "THB" } }));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ guests: 3, expectedPrice: { total: 2550000, currency: "THB" } }));
     expect(alertText()).toContain("Check the new price and save again.");
     expect(onClose).not.toHaveBeenCalled();
-    queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 4000, total: 26000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 3000000, discountAmount: 400000, total: 2600000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
     await render(createElement(EditBookingDialog, { booking, properties: [villa] as never, onClose }));
     expect(document.body.textContent).toContain("New total ฿26,000");
     await click(button("Save changes"));
-    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ expectedPrice: { total: 26000, currency: "THB" } }));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ expectedPrice: { total: 2600000, currency: "THB" } }));
     expect(onClose).toHaveBeenCalled();
   });
 });

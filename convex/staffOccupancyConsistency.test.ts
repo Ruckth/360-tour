@@ -35,7 +35,7 @@ async function setup() {
     category: "Wellness",
     durationMin: 60,
     bufferMin: 15,
-    price: 2000,
+    price: 200000,
     currency: "THB",
     staffIds: [maliId],
   });
@@ -52,7 +52,7 @@ async function setup() {
       guestPhone: "+66111",
       ...extra,
     });
-  const get = async (id: Id<"serviceAppointments">) =>
+  const get = async (id: Id<"appointments">) =>
     (await t.run((ctx) => ctx.db.get(id)))!;
   return { t, admin, maliId, serviceId, book, get };
 }
@@ -215,7 +215,7 @@ describe("staff occupancy and finance consistency", () => {
           appointmentId,
         })
       ).money,
-    ).toMatchObject({ owed: 0, gross: 2000, net: 2000 });
+    ).toMatchObject({ owed: 0, gross: 200000, net: 200000 });
     await admin.mutation(api.adminServices.correctAppointmentStatus, {
       appointmentId,
       expectedRevision: 2,
@@ -250,7 +250,7 @@ describe("staff occupancy and finance consistency", () => {
             appointmentId,
           })
         ).money.owed,
-      ).toBe(2000);
+      ).toBe(200000);
       vi.setSystemTime(at("10:05"));
       await admin.mutation(api.adminServices.correctAppointmentStatus, {
         appointmentId,
@@ -289,7 +289,7 @@ describe("staff occupancy and finance consistency", () => {
             appointmentId: paid.appointmentId,
           })
         ).money,
-      ).toMatchObject({ owed: 0, gross: 2000, net: 2000, refunded: 0 });
+      ).toMatchObject({ owed: 0, gross: 200000, net: 200000, refunded: 0 });
       await admin.mutation(api.adminServices.correctAppointmentStatus, {
         appointmentId,
         expectedRevision: 1,
@@ -303,7 +303,7 @@ describe("staff occupancy and finance consistency", () => {
             appointmentId,
           })
         ).money.owed,
-      ).toBe(2000);
+      ).toBe(200000);
     },
   );
 });

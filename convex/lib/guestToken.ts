@@ -11,7 +11,7 @@ export async function hashGuestToken(token: string) {
 	return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function requireGuestToken(session: Doc<'chatSessions'> | null, token?: string) {
+export async function requireGuestToken(session: Doc<'conversations'> | null, token?: string) {
 	if (!session || session.channel !== 'web' || !token || !session.guestTokenHash ||
 		await hashGuestToken(token) !== session.guestTokenHash) {
 		throw new ConvexError({ code: 'INVALID_GUEST_TOKEN', message: 'A valid guest session token is required' });

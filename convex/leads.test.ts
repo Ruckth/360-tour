@@ -40,7 +40,7 @@ describe('admin leads list', () => {
 				name: 'Villa A',
 				tagline: 'Private stay',
 				description: 'A villa for testing.',
-				pricePerNight: 8500,
+				pricePerNight: 850000,
 				currency: 'THB',
 				maxGuests: 4,
 				bedrooms: 2,
@@ -49,7 +49,7 @@ describe('admin leads list', () => {
 				images: [],
 				amenities: [],
 				tourRoomIds: [],
-				directDiscountPercent: 15,
+				directDiscountPercent: 1500,
 				status: 'active'
 			})
 		);

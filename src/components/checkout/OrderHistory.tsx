@@ -185,7 +185,7 @@ function HistoryPage({ orderId }: { orderId: OrderId }) {
             {entry.reason ? <p>{entry.reason}</p> : null}
             {/* A POS line refund: its amount is satang, unlike the other entries' baht. */}
             {entry.kind === "refund" && entry.after && typeof entry.after === "object" && typeof (entry.after as { amount?: unknown }).amount === "number" ? (
-              <p className="text-xs">{formatMoney((entry.after as { amount: number }).amount / 100, String((entry.after as { currency?: unknown }).currency ?? "THB"))}</p>
+              <p className="text-xs">{formatMoney((entry.after as { amount: number }).amount, String((entry.after as { currency?: unknown }).currency ?? "THB"))}</p>
             ) : null}
             {entry.before !== undefined ? (
               <div>

@@ -18,7 +18,7 @@ function dbVilla(overrides: Partial<DbVillaList["villas"][number]> = {}): DbVill
     name: "Tideglass Pool Residence",
     tagline: seededPool.tagline,
     description: seededPool.description,
-    pricePerNight: 9000,
+    pricePerNight: 900000,
     currency: "THB",
     maxGuests: 4,
     bedrooms: 2,
@@ -27,7 +27,7 @@ function dbVilla(overrides: Partial<DbVillaList["villas"][number]> = {}): DbVill
     images: ["/a.webp"],
     amenities: ["Private Pool"],
     tourRoomIds: [],
-    directDiscountPercent: 10,
+    directDiscountPercent: 1000,
     translations: [],
     contentEditedAt: null,
     reviewCount: 0,
@@ -91,7 +91,7 @@ describe("villa catalog fallback", () => {
       { hasProperties: true, villas: [dbVilla({ reviewCount: 2, averageRating: 4.5 }), dbVilla({ slug: "new", name: "New" })] },
     );
     expect(catalog.source).toBe("db");
-    expect(catalog.villas[0]).toMatchObject({ id: "pool-villa", pricePerNight: 9000, directDiscountPercent: 10, rating: { average: 4.5, count: 2 } });
+    expect(catalog.villas[0]).toMatchObject({ id: "pool-villa", pricePerNight: 900000, directDiscountPercent: 1000, rating: { average: 4.5, count: 2 } });
     expect(catalog.villas[1]).toMatchObject({ id: "new", rating: null });
   });
 

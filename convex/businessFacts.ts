@@ -1,4 +1,3 @@
-import { factRetrievalEnabled } from './lib/factRetrieval';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { internalQuery, mutation, query, type MutationCtx } from './_generated/server';
@@ -77,8 +76,7 @@ export const adminSave = mutation({
 			if (args.status !== 'approved') throw new Error('Approve the fact before resolving missing information');
 			if (args.propertyId && unknown.propertyId !== args.propertyId) throw new Error('The fact must apply to the reported property');
 			await ctx.db.patch(unknown._id, {
-				status: 'resolved', resolvedFactId: factId, resolvedSource: undefined, resolvedAnswerId: undefined, resolvedQuestionId: undefined,
-				resolvedAt: Date.now(), updatedAt: Date.now(), ignoredAt: undefined
+				status: 'resolved', resolvedFactId: factId, resolvedSource: undefined, resolvedAt: Date.now(), updatedAt: Date.now(), ignoredAt: undefined
 			});
 		}
 		return factId;
@@ -87,11 +85,10 @@ export const adminSave = mutation({
 
 /** Session authorization and real property scope are resolved server-side, never from a user ID. */
 export const search = internalQuery({
-	args: { sessionId: v.id('chatSessions'), query: v.string(), propertySlug: v.optional(v.string()) },
+	args: { sessionId: v.id('conversations'), query: v.string(), propertySlug: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session || session.aiPaused) throw new Error('No active AI session');
-		if (!factRetrievalEnabled(args.sessionId)) return { facts: [], noMatch: true };
 		const queryText = text(args.query, 'Search query', 500);
 		const terms = queryText.match(/[\p{L}\p{N}]+/gu)?.filter(term => term.length <= 32).slice(0, 16).join(' ') ?? '';
 		if (!terms) return { facts: [], noMatch: true };
@@ -176,8 +173,6 @@ export const adminResolveUnknownGroups = mutation({
 					status: 'resolved',
 					resolvedFactId: args.factId,
 					resolvedSource: args.structuredSource,
-					resolvedAnswerId: undefined,
-					resolvedQuestionId: undefined,
 					resolvedAt: now,
 					ignoredAt: undefined,
 					updatedAt: now

@@ -36,7 +36,7 @@ describe("automatic responder lifecycle", () => {
     const s = await setup();
     await s.t.run(async ctx => {
       await ctx.db.patch(s.sessionId, { latestGuestMessageId: undefined, inboxState: undefined, inboxReason: undefined });
-      await ctx.db.insert("chatMessages", {
+      await ctx.db.insert("messages", {
         sessionId: s.sessionId, role: "assistant", content: "Historical reply", timestamp: Date.now(),
       });
     });

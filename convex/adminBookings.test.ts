@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
@@ -39,7 +40,7 @@ async function setup() {
       name: "Pool Villa",
       tagline: "Private stay",
       description: "A private villa for testing.",
-      pricePerNight: 10000,
+      pricePerNight: 1000000,
       currency: "THB",
       maxGuests: 4,
       bedrooms: 2,
@@ -48,7 +49,7 @@ async function setup() {
       images: [],
       amenities: [],
       tourRoomIds: [],
-      directDiscountPercent: 15,
+      directDiscountPercent: 1500,
       status: "active",
     });
   });
@@ -81,7 +82,7 @@ describe("Stripe checkout confirmation", () => {
       guestEmail: "guest@example.com",
     });
     await attachCheckout(t, bookingId, accessToken, 'cs_test_1', Date.now() + 1000);
-    const amountTotal = await t.run(async ctx => Math.round((await ctx.db.get(bookingId))!.total * 100));
+    const amountTotal = await t.run(async ctx => (await ctx.db.get(bookingId))!.total);
     await t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: "cs_test_1", amountTotal, currency: "thb", paymentIntentId: "pi_test_1" });
     const paid = await t.run(async ctx => await ctx.db.get(bookingId));
     expect(paid).toMatchObject({ paymentStatus: "paid", status: "confirmed", paymentMethod: "stripe" });
@@ -169,7 +170,7 @@ describe("admin bookings", () => {
     expect(bookings[0]).toMatchObject({ paymentStatus: "paid", status: "confirmed", paymentMethod: "admin" });
   });
 
-  it("cancels a paid booking keeping the payment, or with the legacy full-refund flag", async () => {
+  it("cancels a paid booking keeping its recorded payment", async () => {
     const { t, admin } = await setup();
     const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, guestEmail: "guest@example.com" });
     await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "markPaid" });
@@ -178,19 +179,11 @@ describe("admin bookings", () => {
     // Cancelling no longer implies a refund: the money is kept until a refund is recorded.
     await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "cancel" });
     const kept = await t.run(ctx => ctx.db.get(bookingId));
-    expect(kept).toMatchObject({ status: "cancelled", paymentStatus: "paid", amountPaid: 25500 });
+    expect(kept).toMatchObject({ status: "cancelled", paymentStatus: "paid", amountPaid: 2550000 });
     expect(kept?.cancellationEmailQueuedAt).toEqual(expect.any(Number));
     expect(await bookedDates(t)).toBe(0);
 
-    // The legacy flag still records a full refund (method not entered) in the same transaction.
-    const other = await admin.mutation(api.adminBookings.createBooking, { ...stay, guestEmail: "guest@example.com" });
-    await admin.mutation(api.adminBookings.updateBooking, { bookingId: other, action: "markPaid" });
-    await admin.mutation(api.adminBookings.updateBooking, { bookingId: other, action: "cancel", refundRecorded: true });
-    const refunded = await t.run(ctx => ctx.db.get(other));
-    expect(refunded).toMatchObject({ status: "cancelled", paymentStatus: "refunded", amountPaid: 25500, amountRefunded: 25500 });
-    expect(refunded?.refundedAt).toEqual(expect.any(Number));
-    const refunds = await t.run(ctx => ctx.db.query("bookingRefunds").collect());
-    expect(refunds).toMatchObject([{ bookingId: other, amount: 25500, method: "unrecorded", context: "cancellation" }]);
+
   });
 
   it("rejects draft and archived properties for quotes and admin bookings", async () => {
@@ -261,7 +254,7 @@ describe("editBooking", () => {
     const { t, admin } = await setup();
     const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
     await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' });
-    const usdVilla = await addVilla(t, 'usd-villa', 500);
+    const usdVilla = await addVilla(t, 'usd-villa', 50000);
     await t.run(ctx => ctx.db.patch(usdVilla, { currency: 'USD' }));
     await expect(admin.mutation(api.adminBookings.editBooking, edit(bookingId, usdVilla))).rejects.toThrow('different currency');
     expect((await t.run(ctx => ctx.db.get(bookingId)))?.currency).toBe('THB');
@@ -274,7 +267,7 @@ describe("editBooking", () => {
     await admin.mutation(api.adminBookings.editBooking, edit(bookingId, propertyId, { checkIn: isoInDays(50), checkOut: isoInDays(54), guestName: "Rugby B" }));
     // 4 nights x 10,000 with the 15% direct discount.
     expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({
-      checkIn: isoInDays(50), checkOut: isoInDays(54), nights: 4, subtotal: 40000, discountAmount: 6000, total: 34000, guestName: "Rugby B",
+      checkIn: isoInDays(50), checkOut: isoInDays(54), nights: 4, subtotal: 4000000, discountAmount: 600000, total: 3400000, guestName: "Rugby B",
     });
     expect(await heldNights(t, bookingId)).toEqual([isoInDays(50), isoInDays(51), isoInDays(52), isoInDays(53)]);
     const scheduled = await t.run(async (ctx) => (await ctx.db.system.query("_scheduled_functions").collect()).map((job) => job.name));
@@ -287,17 +280,17 @@ describe("editBooking", () => {
     const { t, admin } = await setup();
     const propertyId = await propertyIdOf(t);
     const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
-    await t.run((ctx) => ctx.db.patch(propertyId, { pricePerNight: 99999 }));
+    await t.run((ctx) => ctx.db.patch(propertyId, { pricePerNight: 9999900 }));
     await admin.mutation(api.adminBookings.editBooking, edit(bookingId, propertyId, { guestPhone: "+66 1" }));
-    expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ total: 25500, guestPhone: "+66 1" });
+    expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ total: 2550000, guestPhone: "+66 1" });
   });
 
   it("moves a booking to another villa", async () => {
     const { t, admin } = await setup();
-    const other = await addVilla(t, "garden-villa", 5000);
+    const other = await addVilla(t, "garden-villa", 500000);
     const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
     await admin.mutation(api.adminBookings.editBooking, edit(bookingId, other));
-    expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ propertyId: other, total: 15000 });
+    expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ propertyId: other, total: 1500000 });
     const rows = await t.run(async (ctx) => (await ctx.db.query("availability").collect()).filter((a) => a.bookingId === bookingId));
     expect(rows).toHaveLength(3);
     expect(rows.every((row) => row.propertyId === other)).toBe(true);
@@ -324,7 +317,7 @@ describe("editBooking", () => {
     const propertyId = await propertyIdOf(t);
     const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
     await expect(admin.mutation(api.adminBookings.editBooking, edit(bookingId, propertyId, { guests: 9 }))).rejects.toThrow("max capacity");
-    const draft = await addVilla(t, "draft-villa", 100);
+    const draft = await addVilla(t, "draft-villa", 10000);
     await t.run((ctx) => ctx.db.patch(draft, { status: "draft" }));
     await expect(admin.mutation(api.adminBookings.editBooking, edit(bookingId, draft))).rejects.toThrow("not available");
   });
@@ -336,7 +329,7 @@ describe("editBooking", () => {
     await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: "markPaid" });
     await admin.mutation(api.adminBookings.editBooking, edit(bookingId, propertyId, { checkOut: isoInDays(34) }));
     const detail = await admin.query(api.adminBookings.getForAdmin, { bookingId });
-    expect(detail).toMatchObject({ paymentStatus: "paid", total: 34000, amountPaid: 25500 });
+    expect(detail).toMatchObject({ paymentStatus: "paid", total: 3400000, amountPaid: 2550000 });
     expect(detail?.accessToken).toBeUndefined();
     expect(await heldNights(t, bookingId)).toHaveLength(4);
   });
@@ -353,7 +346,7 @@ describe("editBooking", () => {
     const edited = await t.run((ctx) => ctx.db.get(bookingId));
     expect(edited?.stripeCheckoutSessionId).toBeUndefined();
     expect(edited?.stripeCheckoutUrl).toBeUndefined();
-    expect(edited?.total).toBe(34000);
+    expect(edited?.total).toBe(3400000);
     // The guest's base hold remains active even after the checkout expires.
     expect(await heldNights(t, bookingId)).toHaveLength(4);
   });
@@ -370,12 +363,12 @@ describe("editBooking", () => {
 describe("deleteBooking", () => {
   it("deletes unpaid test bookings and clears the chat references", async () => {
     const { t, admin } = await setup();
-    const sessionId = await t.run((ctx) => ctx.db.insert("chatSessions", { channel: "web", createdAt: Date.now() }));
+    const sessionId = await t.run((ctx) => ctx.db.insert("conversations", { channel: "web", createdAt: Date.now() }));
     const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
     await t.run(async (ctx) => {
       await ctx.db.patch(bookingId, { chatSessionId: sessionId });
       await ctx.db.patch(sessionId, {
-        pendingBookingQuote: { ...stay, nights: 3, total: 25500, currency: "THB", createdAt: Date.now(), bookingId },
+        pendingBookingQuote: { ...stay, nights: 3, total: 2550000, currency: "THB", createdAt: Date.now(), bookingId },
         pendingCancellation: { bookingId, createdAt: Date.now() },
       });
     });
@@ -391,7 +384,7 @@ describe("deleteBooking", () => {
     const confirmed = await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
     await expect(admin.mutation(api.adminBookings.deleteBooking, { bookingId: confirmed })).rejects.toThrow("Only unpaid");
     await admin.mutation(api.adminBookings.updateBooking, { bookingId: confirmed, action: "markPaid" });
-    await admin.mutation(api.adminBookings.updateBooking, { bookingId: confirmed, action: "cancel", refundRecorded: true });
+    await admin.mutation(api.adminBookings.updateBooking, { bookingId: confirmed, action: "cancel" });
     await expect(admin.mutation(api.adminBookings.deleteBooking, { bookingId: confirmed })).rejects.toThrow("Only unpaid");
     const stripe = await admin.mutation(api.adminBookings.createBooking, stay);
     await t.run((ctx) => ctx.db.patch(stripe, { status: "cancelled", stripePaymentIntentId: "pi_1" }));
@@ -408,8 +401,8 @@ describe("deleteBooking", () => {
     const bookingId = await admin.mutation(api.adminBookings.createBooking, stay);
     await t.run(async ctx => {
       const staffId = await ctx.db.insert('staff', { name: 'Staff', role: 'Spa', color: '#fff', status: 'active', workingHours: [], breaks: [], createdAt: 0, updatedAt: 0 });
-      const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 100, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
-      for (let i = 0; i < 51; i++) await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: i, end: i + 1, blockedUntil: i + 1, guestName: 'Guest', guestPhone: '123', bookingId, source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 100, currency: 'THB', confirmationCode: `SPA${i}`, accessToken: 'test', createdAt: 0 });
+      const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 10000, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
+      for (let i = 0; i < 51; i++) await insertFixture(ctx, 'appointments', { serviceId, staffId, start: i, end: i + 1, blockedUntil: i + 1, guestName: 'Guest', guestPhone: '123', bookingId, source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 10000, currency: 'THB', confirmationCode: `SPA${i}`, accessToken: 'test', createdAt: 0 });
     });
     await expect(admin.mutation(api.adminBookings.deleteBooking, { bookingId })).rejects.toThrow('more than 50 service appointments');
     expect(await t.run(ctx => ctx.db.get(bookingId))).not.toBeNull();
@@ -421,7 +414,7 @@ describe("date blocks", () => {
   it('rejects a batch over 1,500 villa nights before writing blocks', async () => {
     const { t, admin } = await setup();
     const villas = [await propertyIdOf(t)];
-    for (let i = 0; i < 4; i++) villas.push(await addVilla(t, `villa-${i}`, 5000));
+    for (let i = 0; i < 4; i++) villas.push(await addVilla(t, `villa-${i}`, 500000));
     await expect(admin.mutation(api.adminBookings.addDateBlocks, { propertyIds: villas, start: isoInDays(30), end: isoInDays(331), reason: 'Maintenance' })).rejects.toThrow('fewer villas or a shorter range');
     expect(await t.run(ctx => ctx.db.query('dateBlocks').collect())).toEqual([]);
   });
@@ -545,7 +538,7 @@ describe("block dates across villas", () => {
   it("blocks every free villa and reports conflicts per villa", async () => {
     const { t, admin } = await setup();
     const pool = await propertyIdOf(t);
-    const garden = await addVilla(t, "garden-villa", 5000);
+    const garden = await addVilla(t, "garden-villa", 500000);
     await admin.mutation(api.adminBookings.createBooking, { ...stay, confirmed: true });
 
     const results = await admin.mutation(api.adminBookings.addDateBlocks, { propertyIds: [pool, garden], start: checkIn, end: checkOut, reason: " Festival " });
@@ -588,14 +581,14 @@ describe("historical admin bookings", () => {
     const booking = await t.run(ctx => ctx.db.get(bookingId));
     expect(booking).toMatchObject({
       source: "admin", checkIn: isoInDays(from), checkOut: isoInDays(to), nights: to - from,
-      subtotal: (to - from) * 10000, total: (to - from) * 8500,
+      subtotal: (to - from) * 1000000, total: (to - from) * 850000,
       status: confirmed ? "confirmed" : "pending", paymentStatus: "pending",
     });
     // Entering a stay that already started is a correction: the guest is not emailed unless asked
     // (see booking-corrections.test.ts for notifyGuest: true).
     expect(Boolean(booking?.confirmationEmailsQueuedAt)).toBe(false);
     expect(booking?.guestEmailsOff).toBe(true);
-    const order = await t.run(ctx => ctx.db.query("bills")
+    const order = await t.run(ctx => ctx.db.query("orders")
       .withIndex("by_bookingId_and_status", q => q.eq("bookingId", bookingId).eq("status", "draft"))
       .unique());
     expect(order).toMatchObject({ bookingId, createdBy: adminEmail, hasItems: false, itemCount: 0 });
@@ -615,7 +608,7 @@ describe("historical admin bookings", () => {
     const edit = { bookingId, propertyId, guestName: stay.guestName, guestPhone: stay.guestPhone, guests: 2 };
     await admin.mutation(api.adminBookings.editBooking, { ...edit, checkIn: isoInDays(-11), checkOut: isoInDays(-7) });
     expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({
-      status: "completed", paymentStatus: "paid", amountPaid: 25500, nights: 4, total: 34000,
+      status: "completed", paymentStatus: "paid", amountPaid: 2550000, nights: 4, total: 3400000,
     });
     expect(await bookedDates(t)).toBe(4);
     await admin.mutation(api.adminBookings.editBooking, { ...edit, checkIn: isoInDays(-2), checkOut: isoInDays(2) });
@@ -701,24 +694,6 @@ describe("historical admin bookings", () => {
     await expect(t.query(api.availability.getAdminBlockedDates, window)).rejects.toThrow();
     await expect(admin.query(api.availability.getAdminBlockedDates, { ...window, endDate: "2027-02-01" })).rejects.toThrow("366 days");
   });
-
-  it("finds legacy national phone contacts when the country input emits E.164", async () => {
-    const { t, admin } = await setup();
-    const bookingId = await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone: "0812345678" });
-    await t.run(async ctx => {
-      await ctx.db.patch(bookingId, { guestPhoneDigits: undefined });
-      const booking = (await ctx.db.get(bookingId))!;
-      // Put this pre-index national contact outside the recent-booking fallback.
-      const { _id, _creationTime, ...fields } = booking;
-      void _id; void _creationTime;
-      for (let index = 0; index < 1001; index++) {
-        await ctx.db.insert("bookings", { ...fields, guestPhone: "+12025550123" });
-      }
-    });
-    expect(await admin.query(api.adminBookings.findGuests, { phone: "+66812345678" })).toEqual([
-      expect.objectContaining({ guestPhone: "0812345678", guestName: stay.guestName }),
-    ]);
-  });
 });
 
 
@@ -732,7 +707,7 @@ describe("international booking phone compatibility", () => {
     // Never infer a country or use partial matches when authorizing chat access.
     await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone: "0812345678" });
     await admin.mutation(api.adminBookings.createBooking, { ...stay, guestPhone: "+44812345678" });
-    const sessionId = await t.run(ctx => ctx.db.insert("chatSessions", {
+    const sessionId = await t.run(ctx => ctx.db.insert("conversations", {
       channel: "whatsapp", visitorId: "whatsapp:66812345678", visitorPhone: "66812345678", createdAt: Date.now(),
     }));
     const found = await t.query(internal.bookings.listChatGuestBookings, { sessionId });

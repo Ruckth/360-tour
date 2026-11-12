@@ -53,10 +53,10 @@ export async function POST(request: Request) {
   let delivered = false;
   try {
     const reply = await client.mutation(api.adminReply.claim, {
-      sessionId: sessionId as Id<"chatSessions">,
+      sessionId: sessionId as Id<"conversations">,
       requestId,
       content,
-      ...(typeof replyToMessageId === 'string' ? { replyToMessageId: replyToMessageId as Id<'chatMessages'> } : {}),
+      ...(typeof replyToMessageId === 'string' ? { replyToMessageId: replyToMessageId as Id<'messages'> } : {}),
     });
     if (reply.state === "sent") return Response.json({ ok: true, channel: reply.channel });
     if (reply.state !== "new") {

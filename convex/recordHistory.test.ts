@@ -18,7 +18,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protect
     email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: 1, updatedAt: 1, updatedByEmail: 'admin@example.com'
   }));
   for (const entityType of ['marketingAffiliate', 'marketingCampaign', 'marketingSpend', 'marketingLink', 'coupon']) {
-    const values = { status: 'active', amount: 500, contactEmail: 'private@example.com', notes: 'private notes', note: 'private spend note', terms: 'private contact terms', nested: [{ guestName: 'private guest', confirmationCode: 'private code', campaign: 'November' }] };
+    const values = { status: 'active', amount: 50000, contactEmail: 'private@example.com', notes: 'private notes', note: 'private spend note', terms: 'private contact terms', nested: [{ guestName: 'private guest', confirmationCode: 'private code', campaign: 'November' }] };
     await t.run(async ctx => {
       for (let i = 0; i < 3; i++) await ctx.db.insert('recordChanges', {
         entityType, entityId: 'one', kind: 'updated', actor: 'private-actor@example.com', reason: 'private reason',
@@ -33,7 +33,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protect
         const result: FunctionReturnType<typeof api.recordHistory.list> = await reader.query(api.recordHistory.list, { entityType, ...(entityId ? { entityId } : {}), paginationOpts: { numItems: 2, cursor } });
         seen += result.page.length;
         for (const row of result.page) {
-          expect(row.before).toMatchObject({ status: 'active', amount: 500, nested: [{ campaign: 'November' }] });
+          expect(row.before).toMatchObject({ status: 'active', amount: 50000, nested: [{ campaign: 'November' }] });
           if (full) expect(row).toEqual(stored.find(s => s._id === row._id));
           else expect(JSON.stringify(row)).not.toContain('private');
         }

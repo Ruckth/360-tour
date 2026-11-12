@@ -117,16 +117,16 @@ describe('settings.channelHealth', () => {
 		await t.run(async (ctx) => {
 			const base = { eventType: 'message' as const, processingStartedAt: now };
 			const line = (status: 'replied' | 'failed' | 'received', createdAt: number, extra = {}) =>
-				ctx.db.insert('lineWebhookEvents', { ...base, eventKey: `${status}-${createdAt}`, status, createdAt, updatedAt: createdAt, ...extra });
+				ctx.db.insert('channelEvents', { channel: 'line', ...base, eventKey: `${status}-${createdAt}`, status, createdAt, updatedAt: createdAt, ...extra });
 			await line('replied', now - 3 * DAY, { processedAt: now - 3 * DAY + 500 });
 			await line('failed', now - 2 * 3_600_000, { error: 'LINE 500' });
 			await line('failed', now - 3 * DAY, { error: 'older' });
 			await line('failed', now - 10 * DAY, { error: 'too old' });
 			await line('received', now - 60_000);
 			const propertyId = await ctx.db.insert('properties', {
-				slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB',
+				slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB',
 				maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [],
-				directDiscountPercent: 10, status: 'active'
+				directDiscountPercent: 1000, status: 'active'
 			});
 			await ctx.db.insert('icalSources', {
 				propertyId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics', lastSyncedAt: now - 1000, lastSyncError: 'Feed returned 404'
@@ -167,12 +167,12 @@ describe('setup checklist', () => {
 		const now = Date.now();
 		await t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', {
-				slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB',
+				slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB',
 				maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: ['https://example.com/a.webp'], amenities: [], tourRoomIds: [],
 				directDiscountPercent: 0, status: 'active'
 			});
 			await ctx.db.insert('icalSources', { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics', lastSyncedAt: now });
-			await ctx.db.insert('lineWebhookEvents', {
+			await ctx.db.insert('channelEvents', { channel: 'line',
 				eventKey: 'e1', eventType: 'message', status: 'replied', createdAt: now, updatedAt: now, processingStartedAt: now
 			});
 		});
@@ -213,9 +213,9 @@ describe('settings in the AI prompt', () => {
 		});
 		await t.run(async (ctx) => {
 			await ctx.db.insert('properties', {
-				slug: 'villa', name: 'Pool Villa', tagline: 'Pool', description: '', pricePerNight: 100, currency: 'THB',
+				slug: 'villa', name: 'Pool Villa', tagline: 'Pool', description: '', pricePerNight: 10000, currency: 'THB',
 				maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [],
-				directDiscountPercent: 12, status: 'active'
+				directDiscountPercent: 1200, status: 'active'
 			});
 		});
 		// Web chat routes straight to the concierge (no retired question-bank matching).
@@ -228,7 +228,7 @@ describe('settings in the AI prompt', () => {
 			});
 		}));
 		const sessionId = await t.run(async (ctx) =>
-			await ctx.db.insert('chatSessions', { guestTokenHash: fixtureGuestTokenHash, channel: 'web', visitorId: 'v1', lastSeenAt: Date.now(), createdAt: Date.now() })
+			await ctx.db.insert('conversations', { guestTokenHash: fixtureGuestTokenHash, channel: 'web', visitorId: 'v1', lastSeenAt: Date.now(), createdAt: Date.now() })
 		);
 
 		await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Can I check live availability?' });
@@ -264,7 +264,7 @@ describe('settings in emails', () => {
 		}));
 		const booking = {
 			guestName: 'Guest', guestEmail: 'guest@example.com', propertyName: 'Pool Villa', checkIn: '2026-10-01',
-			checkOut: '2026-10-03', nights: 2, guests: 2, total: 200, currency: 'THB'
+			checkOut: '2026-10-03', nights: 2, guests: 2, total: 20000, currency: 'THB'
 		};
 
 		await t.action(internal.emails.sendOwnerNotification, { ...booking, guestPhone: '123' });

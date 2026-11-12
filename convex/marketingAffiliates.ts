@@ -43,7 +43,7 @@ async function creditRow(
   fullDetail: boolean,
 ): Promise<CreditRow> {
   const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
-  const order = row.billId ? await ctx.db.get(row.billId) : null;
+  const order = row.orderId ? await ctx.db.get(row.orderId) : null;
   const partner = row.affiliateId ? await ctx.db.get(row.affiliateId) : null;
   const candidates = fullDetail ? row.snapshot.candidates : row.snapshot.candidates.map(withoutPartnerPersonalData);
   return {
@@ -52,7 +52,6 @@ async function creditRow(
     label: !fullDetail ? "Guest" :
       booking?.guestName ??
       order?.customerSnapshot?.name ??
-      order?.guestName ??
       "Walk-in",
     ref:
       (!fullDetail && booking ? "Booking" : booking?.confirmationCode) ??
@@ -405,7 +404,7 @@ export const refreshCredit = mutation({
     if (!row) throw new ConvexError("Credit not found");
     await syncAffiliateCredit(
       ctx,
-      row.bookingId ? { bookingId: row.bookingId } : { billId: row.billId! },
+      row.bookingId ? { bookingId: row.bookingId } : { orderId: row.orderId! },
       actor.email,
     );
     return null;

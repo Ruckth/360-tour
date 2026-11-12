@@ -12,7 +12,7 @@ import { ReceiptView } from "@/components/checkout/ReceiptView";
 let root: Root;
 const SOMCHAI = "fxcust000002" as CustomerId;
 const THAI_90 = "fxsvc000002" as Id<"services">;
-const SOMCHAI_APPOINTMENT = "fxappt000002" as Id<"serviceAppointments">;
+const SOMCHAI_APPOINTMENT = "fxappt000002" as Id<"appointments">;
 const tick = (ms = 200) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>("button")];
 const button = (text: string) => buttons().find((b) => b.textContent?.trim() === text);
@@ -37,7 +37,7 @@ async function paidMassage() {
   const pending = async <T,>(promise: Promise<T>) => { await tick(); return promise; };
   const { orderId } = await pending(actions.addItem({ item: { kind: "service", serviceId: THAI_90 } }));
   await pending(actions.linkCustomer({ orderId, customerId: SOMCHAI }));
-  await pending(actions.settleOrder({ orderId, idempotencyKey: "paid-massage-01", expectedDue: 1600, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "cash", amount: 1600 }] }));
+  await pending(actions.settleOrder({ orderId, idempotencyKey: "paid-massage-01", expectedDue: 160000, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "cash", amount: 160000 }] }));
   const provider = { backend: backend as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>;
   await act(async () => root.render(createElement(CheckoutBackendProvider, provider, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
   return { backend, orderId };
@@ -78,7 +78,7 @@ it("pays an unscheduled service, links it to the guest's appointment later and u
   expect(panel().textContent).toContain("Scheduling");
   expect(panel().textContent).not.toContain("to link to an appointment");
   expect(document.body.textContent).toContain("Row linked after payment · #1");
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: true, price: 1600 });
+  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: true, price: 160000 });
   expect(printed()).toBe(issued);
 
   await click("Unlink…");
@@ -87,7 +87,7 @@ it("pays an unscheduled service, links it to the guest's appointment later and u
   await tick();
   expect(panel().textContent).toContain("No appointment");
   expect(document.body.textContent).toContain("Link undone · #2");
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 1600 });
+  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 160000 });
   expect(printed()).toBe(issued);
 });
 

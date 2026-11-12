@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from "convex/shared/money";
+
 import { useState, type ReactNode } from "react";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
@@ -39,7 +41,7 @@ export type AffiliateActions = {
 };
 const money = (amount: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "THB" }).format(
-    amount,
+    satangToBaht(amount),
   );
 const fieldClass =
   "min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";

@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { accessForIdentity, cashierRules } from './staffAccess';
 import { orderLines } from './orderLines';
 import { orderLineLinks } from './lineLinks';
-import { orderRefunds } from './billRefunds';
+import { orderRefunds } from './orderRefunds';
 import { resortTodayIso } from './dates';
 
 /** Stable serialization includes optional fields, revisions, coupons and source records. */
@@ -23,7 +23,7 @@ export async function requesterFingerprint(ctx: ReadCtx, email: string, tokenIde
   return { role: access.role, fingerprint: canonical({ role: access.role, grant }) };
 }
 /** Extra targets matter too: paid-link targets and amended customer revisions are checked before execution. */
-export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'bills'>, payload: Doc<'staffApprovalRequests'>['payload']) {
+export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payload: Doc<'staffApprovalRequests'>['payload']) {
   const order = await ctx.db.get(orderId);
   const lines = await orderLines(ctx, orderId);
   const links = await orderLineLinks(ctx, orderId);
@@ -52,7 +52,6 @@ export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'bills'>, paylo
 export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffApprovalRequests'>): Promise<Doc<'staffApprovalRequests'>['status']> {
   if (request.status !== 'pending') return request.status;
   if (Date.now() >= request.expiresAt) return 'expired';
-  if (request.payload.kind === 'refund' && 'amount' in request.payload) return 'stale';
   const [rules, requester] = await Promise.all([
     cashierRules(ctx), requesterFingerprint(ctx, request.requesterEmail, request.requesterTokenIdentifier),
   ]);
@@ -60,7 +59,7 @@ export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffAp
   if (await orderFingerprint(ctx, request.orderId, request.payload) !== request.orderFingerprint) return 'stale';
   return 'pending';
 }
-export async function assertNoPendingApprovals(ctx: MutationCtx, orderId: Id<'bills'>) {
+export async function assertNoPendingApprovals(ctx: MutationCtx, orderId: Id<'orders'>) {
   const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', orderId).eq('status', 'pending')).take(201);
   if (requests.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');
   for (const request of requests) {

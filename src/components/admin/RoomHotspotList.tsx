@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { HOTSPOT_RADIUS, SPHERE_RADIUS } from "@/lib/tour-geometry";
 import { NATIVE_SELECT, SaveBar, useSaver } from "./property-form";
 
-type Room = Doc<"rooms">;
+type Room = Doc<"tourScenes">;
 type Draft = { id?: string; label: string; targetRoomSlug: string; position: [string, string, string] };
 
 const AXES = ["x", "y", "z"] as const;

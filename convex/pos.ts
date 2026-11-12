@@ -1,4 +1,4 @@
-import { assertNoPosRefunds, assertLineHasNoPosRefunds, billRefundView, executeBillRefund, isWalkInLine, orderRefunds, orderRefundTotal, refundState } from './lib/billRefunds';
+import { assertNoPosRefunds, assertLineHasNoPosRefunds, orderRefundView, executeOrderRefund, isWalkInLine, orderRefunds, orderRefundTotal, refundState } from './lib/orderRefunds';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from './lib/affiliateCredits';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
@@ -10,7 +10,7 @@ import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomer
 import { requireAdmin } from './lib/adminAuth';
 import { requireStaff, requireCashierAction, assertCashierDiscount, canReadCheckoutOrder, manualReduction, type StaffActor } from './lib/staffAccess';
 import { assertNoPendingApprovals } from './lib/staffApprovalState';
-import { approvalPayloadView, billRefundFields, lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
+import { orderRefundFields, lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
 import type { Infer } from 'convex/values';
 import { STALE_APPOINTMENT, recordAppointmentChange } from './lib/appointmentChanges';
 import { appointmentMoney } from './lib/appointmentFinance';
@@ -18,20 +18,20 @@ import {
 	MAX_QTY,
 	MERGES_QTY,
 	NOTE_MAX,
-	assertBillSize,
+	assertOrderSize,
 	assertDiscount,
 	assertPrice,
 	assertPriceOverride,
 	assertTenders,
-	MAX_BILL_REFUNDS,
-	billTotals,
+	MAX_ORDER_REFUNDS,
+	orderTotals,
 	bookingBalance,
 	bookingChargeTotal,
 	formatReceiptNumber,
 	lineNet,
 	orderTitle,
-	round2
-} from './lib/billMath';
+	roundMoney
+} from './lib/orderMath';
 import {
 	RECEIPT_COUNTER,
 	activeOrderFor,
@@ -44,7 +44,7 @@ import {
 	ordersForSource,
 	type OrderSource
 } from './lib/orderLinks';
-import { appointmentLookupFields, resortLocalParts } from './lib/serviceSlots';
+import { resortLocalParts } from './lib/serviceSlots';
 import { evaluateOrderCoupon, posCouponMessage, type OrderPromotionView, type PosCouponProblem, type OrderCouponResult } from './lib/posCoupons';
 import { couponVersion, consumeOrderCoupon, syncOrderCouponRedemption } from './lib/couponRedemptions';
 import { normalizeCouponCode } from './lib/offers';
@@ -55,7 +55,7 @@ import { appendRecordHistory } from './lib/recordHistory';
 import { MAX_STAY_ROWS, orderStayPayment, stayPaymentReversalPatch } from './lib/stayCorrections';
 import { MAX_LINES, orderLines } from './lib/orderLines';
 import { activeLineLink, activeSourceLink, orderLineLinks } from './lib/lineLinks';
-import { changeSchedule, scheduleFromStartAt } from './lib/serviceSchedule';
+import { changeSchedule } from './lib/serviceSchedule';
 import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage, orderPaymentRecord, type FeeKind } from './lib/orderLifecycle';
 
 /**
@@ -64,7 +64,7 @@ import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, feePriceBlocke
  * device) until settleOrder pays it in one transaction: payments, the receipt number and the
  * charged bookings and appointments are written together, or not at all.
  *
- * Orders live in the `bills` table (and their rows in `billLines`) so ids, payments and audit
+ * Orders live in the `orders` table (and their rows in `orderLines`) so ids, payments and audit
  * history from before orders had numbers stay valid. See lib/orderLinks.ts for how orders relate
  * to bookings and appointments, and customers.ts for the optional customer link.
  */
@@ -74,7 +74,7 @@ const FREQUENT_COUNT = 8;
 const ORDERS_PAGE_MAX = 50;
 const ATTACH_SCAN = 20;
 /** Unpaid appointments from before the lookup fields that Add booking still matches directly. */
-const LEGACY_LOOKUP_SCAN = 500;
+const PAYABLE_LOOKUP_SCAN = 500;
 const CURRENCY = 'THB';
 
 const discountValidator = lineDiscountValidator;
@@ -88,17 +88,17 @@ const itemValidator = v.union(
 	v.object({ kind: v.literal('room'), propertyId: v.id('properties') }),
 	v.object({ kind: v.literal('extra'), name: v.string(), price: v.number() })
 );
-const sourceArgs = { bookingId: v.optional(v.id('bookings')), appointmentId: v.optional(v.id('serviceAppointments')) };
+const sourceArgs = { bookingId: v.optional(v.id('bookings')), appointmentId: v.optional(v.id('appointments')) };
 
 type ReadCtx = QueryCtx | MutationCtx;
-type Order = Doc<'bills'>;
-type Line = Doc<'billLines'>;
-type LineFields = Omit<Line, '_id' | '_creationTime' | 'billId' | 'createdAt'>;
-type JoinTable = 'bookings' | 'properties' | 'serviceAppointments' | 'services';
+type Order = Doc<'orders'>;
+type Line = Doc<'orderLines'>;
+type LineFields = Omit<Line, '_id' | '_creationTime' | 'orderId' | 'createdAt' | 'catalogUnitPrice'> & { catalogUnitPrice?: number };
+type JoinTable = 'bookings' | 'properties' | 'appointments' | 'services';
 /** Source joins as plain reads: what every mutation uses, so nothing read before a write is reused after it. */
 function directReads(ctx: ReadCtx) {
 	const get = <T extends JoinTable>(table: T) => (id: Id<T>) => ctx.db.get(table, id);
-	return { booking: get('bookings'), property: get('properties'), appointment: get('serviceAppointments'), service: get('services') };
+	return { booking: get('bookings'), property: get('properties'), appointment: get('appointments'), service: get('services') };
 }
 type OrderReads = ReturnType<typeof directReads>;
 /** Query-only: one getOrder invocation shares each join's promise, including missing docs. */
@@ -126,31 +126,26 @@ function assertBaht(currency: string, what: string) {
 	if (currency !== CURRENCY) throw new ConvexError(`${what} is priced in ${currency}. Checkout takes ${CURRENCY} only.`);
 }
 
-function oneSource(args: { bookingId?: Id<'bookings'>; appointmentId?: Id<'serviceAppointments'> }): OrderSource {
+function oneSource(args: { bookingId?: Id<'bookings'>; appointmentId?: Id<'appointments'> }): OrderSource {
 	if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new ConvexError('Choose one booking or appointment');
 	return args.bookingId ? { bookingId: args.bookingId } : { appointmentId: args.appointmentId! };
 }
 
 /** The order to change, created on first use. Paid and void orders never change. */
-async function editableOrder(ctx: MutationCtx, orderId: Id<'bills'> | undefined, actor: string): Promise<Order> {
+async function editableOrder(ctx: MutationCtx, orderId: Id<'orders'> | undefined, actor: string): Promise<Order> {
 	if (!orderId) return await insertOrder(ctx, actor);
 	const order = await ctx.db.get(orderId);
 	if (!order) throw new ConvexError('Order not found');
 	if (order.status === 'paid') throw new ConvexError('This order is already paid');
 	if (order.status === 'void') throw new ConvexError('This order was voided');
 	if (order.status === 'discarded') throw new ConvexError(DISCARDED_ORDER);
-	// Legacy held orders become ordinary unpaid drafts when touched.
-	if (order.status === 'held') {
-		await ctx.db.patch(order._id, { status: 'draft' });
-		return { ...order, status: 'draft' };
-	}
 	return order;
 }
 
-async function editableLine(ctx: MutationCtx, lineId: Id<'billLines'>, actor: string) {
+async function editableLine(ctx: MutationCtx, lineId: Id<'orderLines'>, actor: string) {
 	const line = await ctx.db.get(lineId);
 	if (!line) throw new ConvexError('Item not found');
-	const order = await editableOrder(ctx, line.billId, actor);
+	const order = await editableOrder(ctx, line.orderId, actor);
 	return { line, order };
 }
 
@@ -190,7 +185,7 @@ async function writeCouponShares(ctx: MutationCtx, lines: Line[], result: OrderC
 }
 
 /** Keeps the order's item count, total and due in step with its lines, and marks it changed. */
-async function refreshOrder(ctx: MutationCtx, orderId: Id<'bills'>) {
+async function refreshOrder(ctx: MutationCtx, orderId: Id<'orders'>) {
 	const [order, lines] = await Promise.all([ctx.db.get(orderId), orderLines(ctx, orderId)]);
 	if (!order || !isOpenOrder(order)) throw new Error('Only an unpaid order can be refreshed');
 	if (order.promotion) {
@@ -200,8 +195,8 @@ async function refreshOrder(ctx: MutationCtx, orderId: Id<'bills'>) {
 		const code = (await ctx.db.get(order.promotion.couponId))?.code ?? order.promotion.code;
 		await ctx.db.patch(orderId, { promotion: { ...order.promotion, code, discount: result.ok ? result.discount : 0, problem: result.ok ? undefined : result.problem } });
 	}
-	const totals = billTotals(lines);
-	assertBillSize(totals);
+	const totals = orderTotals(lines);
+	assertOrderSize(totals);
 	// An explicit booking-owned order keeps its identity when emptied. A link acquired only
 	// by attaching a row lasts as long as at least one row still belongs to that source.
 	let releaseSource = order?.implicitSourceLink === true;
@@ -225,7 +220,7 @@ async function refreshOrder(ctx: MutationCtx, orderId: Id<'bills'>) {
 	});
 }
 
-async function assertRoom(ctx: MutationCtx, orderId: Id<'bills'>) {
+async function assertRoom(ctx: MutationCtx, orderId: Id<'orders'>) {
 	if ((await orderLines(ctx, orderId)).length >= MAX_LINES) throw new ConvexError(`An order holds at most ${MAX_LINES} items`);
 }
 
@@ -252,9 +247,9 @@ function lineSnapshot(line: LineFields | Line) {
 /**
  * Ordinary order edits (rows added, changed, removed, cleared) in the shared history
  * (recordChanges, entity type `order`), in the same transaction as the edit. Money events
- * (payment, void, price overrides, source updates) stay in billAudit and billCorrections.
+ * (payment, void, price overrides, source updates) stay in orderAudit and orderCorrections.
  */
-async function logOrder(ctx: MutationCtx, orderId: Id<'bills'>, actor: string, kind: string, change: { before?: unknown; after?: unknown; reason?: string }) {
+async function logOrder(ctx: MutationCtx, orderId: Id<'orders'>, actor: string, kind: string, change: { before?: unknown; after?: unknown; reason?: string }) {
 	await appendRecordHistory(ctx, {
 		entityType: 'order', entityId: orderId, actor, kind,
 		...(change.reason ? { reason: change.reason } : {}),
@@ -263,7 +258,7 @@ async function logOrder(ctx: MutationCtx, orderId: Id<'bills'>, actor: string, k
 	});
 }
 
-function appointmentAttachable(appointment: Doc<'serviceAppointments'>) {
+function appointmentAttachable(appointment: Doc<'appointments'>) {
 	return appointment.paymentStatus === 'unpaid' && appointment.status !== 'cancelled' && appointment.status !== 'no_show';
 }
 
@@ -271,11 +266,7 @@ function bookingCheckoutBlock(booking: Doc<'bookings'>) {
 	return booking.paymentStatus !== 'paid' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now() ? ONLINE_CHECKOUT : null;
 }
 
-/**
- * Why a stay can't be charged at all, or null. A live stay a provider refund marked refunded with
- * explicit amounts (bookings.ts isDocumentedLiveRefund) stays open: it can still collect what it
- * owes beyond the waived provider charge. A legacy refunded flag or failed payment needs a reopen.
- */
+
 function bookingClosedReason(booking: Doc<'bookings'>) {
 	if (booking.status === 'cancelled') return 'This booking was cancelled';
 	if (booking.paymentStatus === 'failed') return 'This booking’s payment failed; reopen it first';
@@ -297,7 +288,7 @@ async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>, reads: OrderR
 		kind: 'booking' as const,
 		bookingId: booking._id,
 		name: `Stay · ${property?.name ?? 'Villa'}`,
-		detail: `${booking.checkIn} → ${booking.checkOut} · ${booking.nights} ${booking.nights === 1 ? 'night' : 'nights'}${booking.confirmationCode ? ` · ${booking.confirmationCode}` : ''}${booking.providerRefundWaived ? ` · ${booking.providerRefundWaived} ${booking.currency} refunded charge waived` : ''}`,
+		detail: `${booking.checkIn} → ${booking.checkOut} · ${booking.nights} ${booking.nights === 1 ? 'night' : 'nights'}${booking.confirmationCode ? ` · ${booking.confirmationCode}` : ''}${booking.providerRefundWaived ? ` · ${booking.providerRefundWaived / 100} ${booking.currency} refunded charge waived` : ''}`,
 		unitPrice: bookingChargeTotal(booking),
 		// Booking overrides are authorized by operations (Owner/Manager); checkout starts at that agreed charge.
 		catalogUnitPrice: bookingChargeTotal(booking),
@@ -307,7 +298,7 @@ async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>, reads: OrderR
 	};
 }
 
-async function appointmentLine(ctx: ReadCtx, appointment: Doc<'serviceAppointments'>) {
+async function appointmentLine(ctx: ReadCtx, appointment: Doc<'appointments'>) {
 	const service = await ctx.db.get(appointment.serviceId);
 	const { date, time } = resortLocalParts(appointment.start);
 	return {
@@ -361,7 +352,7 @@ async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = directR
 	if (line.feeAppointmentId && line.fee) {
 		const appointment = await reads.appointment(line.feeAppointmentId);
 		if (!appointment) return { kind: 'gone', message: 'The appointment this fee is for no longer exists. Remove the fee from the order.' };
-		const blocked = feeBlocker(appointment, line.fee.kind) ?? feePriceBlocker(line.unitPrice, appointment) ?? otherFeeMessage((await liveFees(ctx, appointment._id, line.billId))[0]);
+		const blocked = feeBlocker(appointment, line.fee.kind) ?? feePriceBlocker(line.unitPrice, appointment) ?? otherFeeMessage((await liveFees(ctx, appointment._id, line.orderId))[0]);
 		if (blocked) return { kind: 'settled', message: `${blocked} Remove the fee from the order.` };
 	}
 	return null;
@@ -376,7 +367,7 @@ const isSourceRow = (line: Line) => Boolean(line.bookingId || line.appointmentId
  * stays the booking's (for later extras), and this one still lists the booking because it charges
  * it (see orderSourceRefs).
  */
-async function linkFirstSource(ctx: MutationCtx, order: Order, source: OrderSource, appointment?: Doc<'serviceAppointments'>) {
+async function linkFirstSource(ctx: MutationCtx, order: Order, source: OrderSource, appointment?: Doc<'appointments'>) {
 	if (order.bookingId || order.appointmentId) return;
 	const bookingId = 'bookingId' in source ? source.bookingId : appointment?.bookingId;
 	const link: OrderSource = bookingId ? { bookingId } : source;
@@ -389,7 +380,7 @@ async function linkFirstSource(ctx: MutationCtx, order: Order, source: OrderSour
 async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, actor: StaffActor) {
 	await assertRoom(ctx, order._id);
 	let line: LineFields;
-	let appointment: Doc<'serviceAppointments'> | undefined;
+	let appointment: Doc<'appointments'> | undefined;
 	const other = await openOrderCharging(ctx, source);
 	const what = 'bookingId' in source ? 'This booking' : 'This appointment';
 	if (other) throw new ConvexError(other._id === order._id ? `${what} is already on this order` : `${what} is already on ${orderTitle(other.orderNumber)}`);
@@ -410,7 +401,7 @@ async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, act
 	}
 	// Only this new source line is subject to the cashier ceiling; approved existing rows stay usable.
 	await assertCashierDiscount(ctx, actor, line);
-	const lineId = await ctx.db.insert('billLines', { billId: order._id, ...line, createdAt: Date.now() });
+	const lineId = await ctx.db.insert('orderLines', { orderId: order._id, ...line, catalogUnitPrice: line.catalogUnitPrice ?? line.unitPrice, createdAt: Date.now() });
 	await linkFirstSource(ctx, order, source, appointment);
 	await refreshOrder(ctx, order._id);
 	await logOrder(ctx, order._id, actor.email, 'source_attached', { after: { ...lineSnapshot(line), lineId } });
@@ -423,7 +414,7 @@ async function lastPaidOrder(ctx: ReadCtx, source: OrderSource) {
 
 /**
  * A booking an order is for, as checkout, the orders list and the receipt show it. `linked` is
- * true for the order's own booking (`bills.bookingId` / `appointmentId`) and false for one it
+ * true for the order's own booking (`orders.bookingId` / `appointmentId`) and false for one it
  * only charges on a row.
  */
 type SourceRef = {
@@ -447,7 +438,7 @@ async function stayRef(ctx: ReadCtx, bookingId: Id<'bookings'>, linked: boolean,
 	};
 }
 
-async function appointmentRef(ctx: ReadCtx, appointmentId: Id<'serviceAppointments'>, linked: boolean, found?: Doc<'serviceAppointments'> | null, reads: OrderReads = directReads(ctx)): Promise<SourceRef> {
+async function appointmentRef(ctx: ReadCtx, appointmentId: Id<'appointments'>, linked: boolean, found?: Doc<'appointments'> | null, reads: OrderReads = directReads(ctx)): Promise<SourceRef> {
 	const appointment = found === undefined ? await reads.appointment(appointmentId) : found;
 	if (!appointment) return { kind: 'appointment', id: appointmentId, reference: 'Deleted appointment', guestName: undefined, guestPhone: undefined, guestEmail: undefined, name: 'Appointment', linked };
 	const service = await reads.service(appointment.serviceId);
@@ -459,7 +450,7 @@ async function appointmentRef(ctx: ReadCtx, appointmentId: Id<'serviceAppointmen
 
 /**
  * The bookings an order is for, from what is actually linked and charged, never guessed:
- * 1. its own booking (`bills.bookingId` or `appointmentId`), if it has one;
+ * 1. its own booking (`orders.bookingId` or `appointmentId`), if it has one;
  * 2. then each other stay charged on its rows, in row order;
  * 3. then each charged appointment, unless its stay is already listed (it is part of that booking).
  * The first is what checkout shows as the order's booking. A sale that charges a stay whose own
@@ -469,7 +460,7 @@ async function appointmentRef(ctx: ReadCtx, appointmentId: Id<'serviceAppointmen
 async function orderSourceRefs(ctx: ReadCtx, order: Order, lines: Array<Pick<Line, 'bookingId' | 'appointmentId'>>, reads: OrderReads = directReads(ctx)): Promise<SourceRef[]> {
 	const refs: SourceRef[] = [];
 	const stays = new Set<Id<'bookings'>>();
-	const appointments = new Set<Id<'serviceAppointments'>>();
+	const appointments = new Set<Id<'appointments'>>();
 	if (order.bookingId) {
 		stays.add(order.bookingId);
 		refs.push(await stayRef(ctx, order.bookingId, true, reads));
@@ -493,30 +484,26 @@ async function orderSourceRefs(ctx: ReadCtx, order: Order, lines: Array<Pick<Lin
 }
 
 /** An order's stay and appointment rows, without reading its other rows. */
-async function sourceRows(ctx: ReadCtx, orderId: Id<'bills'>) {
+async function sourceRows(ctx: ReadCtx, orderId: Id<'orders'>) {
 	const [stays, appointments] = await Promise.all([
-		ctx.db.query('billLines').withIndex('by_billId_and_kind', (q) => q.eq('billId', orderId).eq('kind', 'booking')).take(MAX_LINES),
-		ctx.db.query('billLines').withIndex('by_billId_and_kind', (q) => q.eq('billId', orderId).eq('kind', 'appointment')).take(MAX_LINES)
+		ctx.db.query('orderLines').withIndex('by_orderId_and_kind', (q) => q.eq('orderId', orderId).eq('kind', 'booking')).take(MAX_LINES),
+		ctx.db.query('orderLines').withIndex('by_orderId_and_kind', (q) => q.eq('orderId', orderId).eq('kind', 'appointment')).take(MAX_LINES)
 	]);
 	return [...stays, ...appointments].sort((a, b) => a._creationTime - b._creationTime);
 }
 
-/** Who the order is for, as listed: the linked customer, else the name on its receipt or legacy record. */
+
 async function customerName(ctx: ReadCtx, order: Order) {
 	if (order.amendedCustomer !== undefined) return order.amendedCustomer?.name;
 	if (order.customerSnapshot) return order.customerSnapshot.name;
 	if (order.customerId) return (await ctx.db.get(order.customerId))?.name ?? 'Deleted customer';
-	return order.guestName;
+	return undefined;
 }
 
-/**
- * What remains to pay: 0 once paid or voided. A row saved before `due` existed (until
- * migrations:backfillOrders reaches it) is worked out from its rows, so a deposit already paid on
- * a stay is not listed as owed again.
- */
+
 async function remaining(ctx: ReadCtx, order: Order) {
 	if (!isOpenOrder(order)) return 0;
-	return order.due ?? billTotals(await orderLines(ctx, order._id)).due;
+	return order.due;
 }
 
 /** A villa's first image, its photo in the catalog; undefined when it has none. */
@@ -552,7 +539,7 @@ async function catalogItems(ctx: QueryCtx) {
 }
 
 async function catalogRanking(ctx: QueryCtx) {
-	const recent = await ctx.db.query('billLines').order('desc').take(FREQUENT_SCAN);
+	const recent = await ctx.db.query('orderLines').order('desc').take(FREQUENT_SCAN);
 	// Count rows, not quantities. Stable sort preserves newest-first encounter order on ties.
 	const counts = new Map<string, number>();
 	for (const line of recent) {
@@ -595,25 +582,25 @@ export const getOrder = query({
 	args: { orderId: v.string() },
 	handler: async (ctx, args) => {
 		const actor = await requireStaff(ctx, 'checkout');
-		const orderId = ctx.db.normalizeId('bills', args.orderId);
+		const orderId = ctx.db.normalizeId('orders', args.orderId);
 		if (!orderId) return null;
 		const order = await ctx.db.get(orderId);
 		if (!order || !canReadCheckoutOrder(actor, order)) return null;
 		const open = isOpenOrder(order);
 		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds, links, posRefunds] = await Promise.all([
 			orderLines(ctx, order._id),
-			ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(10),
-			ctx.db.query('billAudit').withIndex('by_billId_and_at', (q) => q.eq('billId', order._id)).order('desc').take(50),
+			ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(10),
+			ctx.db.query('orderAudit').withIndex('by_orderId_and_at', (q) => q.eq('orderId', order._id)).order('desc').take(50),
 			order.customerId ? ctx.db.get(order.customerId) : null,
 			order.parentOrderId ? ctx.db.get(order.parentOrderId) : null,
-			ctx.db.query('bookingRefunds').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(MAX_STAY_ROWS),
-			ctx.db.query('billCorrections').withIndex('by_billId_and_sequence', (q) => q.eq('billId', order._id)).order('desc').take(20),
-			ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).order('desc').take(MAX_STAY_ROWS),
+			ctx.db.query('bookingRefunds').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(MAX_STAY_ROWS),
+			ctx.db.query('orderCorrections').withIndex('by_orderId_and_sequence', (q) => q.eq('orderId', order._id)).order('desc').take(20),
+			ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', order._id)).order('desc').take(MAX_STAY_ROWS),
 			isOpenOrder(order) ? [] : orderLineLinks(ctx, order._id),
 			order.status === 'paid' || order.status === 'void' ? orderRefunds(ctx, order._id, true) : []
 		]);
-		const refundHistoryTruncated = posRefunds.length > MAX_BILL_REFUNDS;
-		const refundedByLine = new Map<Id<'billLines'>, number>();
+		const refundHistoryTruncated = posRefunds.length > MAX_ORDER_REFUNDS;
+		const refundedByLine = new Map<Id<'orderLines'>, number>();
 		for (const refund of posRefunds) refundedByLine.set(refund.lineId, (refundedByLine.get(refund.lineId) ?? 0) + refund.amount);
 		const refundedAmountSatang = posRefunds.reduce((sum, row) => sum + row.amount, 0);
 		const reads = orderReads(ctx);
@@ -643,8 +630,8 @@ export const getOrder = query({
 			// Optional at the type boundary so existing offline checkout adapters remain compatible.
 			const refundAmounts: { refundedAmountSatang?: number; remainingRefundableSatang?: number } = {
 				refundedAmountSatang: refundedByLine.get(line._id) ?? 0,
-				remainingRefundableSatang: !refundHistoryTruncated && posRefunds.length < MAX_BILL_REFUNDS && order.status === 'paid' && order.paidAt !== undefined && isWalkInLine(line) && !links.some(link => link.lineId === line._id && link.status === 'active')
-					? Math.max(0, Math.round(lineNet(line) * 100) - (refundedByLine.get(line._id) ?? 0)) : 0,
+				remainingRefundableSatang: !refundHistoryTruncated && posRefunds.length < MAX_ORDER_REFUNDS && order.status === 'paid' && order.paidAt !== undefined && isWalkInLine(line) && !links.some(link => link.lineId === line._id && link.status === 'active')
+					? Math.max(0, lineNet(line) - (refundedByLine.get(line._id) ?? 0)) : 0,
 			};
 			rows.push({
 				...line,
@@ -659,10 +646,10 @@ export const getOrder = query({
 				stayCoupon: stay?.promotion && !stay.priceOverride ? { code: stay.promotion.code, discount: stay.promotion.discount } : null
 			});
 		}
-		const refundSummary: { posRefunds?: ReturnType<typeof billRefundView>[]; refundedAmountSatang?: number; fullyRefunded?: boolean; refundHistoryTruncated?: boolean } = {
+		const refundSummary: { posRefunds?: ReturnType<typeof orderRefundView>[]; refundedAmountSatang?: number; fullyRefunded?: boolean; refundHistoryTruncated?: boolean } = {
 			refundHistoryTruncated,
-			posRefunds: posRefunds.slice(-50).reverse().map(billRefundView), refundedAmountSatang,
-			fullyRefunded: !refundHistoryTruncated && order.status === 'paid' && refundedAmountSatang > 0 && refundedAmountSatang === Math.round(billTotals(lines).total * 100),
+			posRefunds: posRefunds.slice(-50).reverse().map(orderRefundView), refundedAmountSatang,
+			fullyRefunded: !refundHistoryTruncated && order.status === 'paid' && refundedAmountSatang > 0 && refundedAmountSatang === orderTotals(lines).total,
 		};
 		const promotion: OrderPromotionView | null = order.promotion ? {
 			code: order.promotion.code, couponVersion: order.promotion.couponVersion, discount: order.promotion.discount,
@@ -676,7 +663,6 @@ export const getOrder = query({
 			/** Who the receipt names: frozen at payment, never the live profile. */
 			receiptCustomer: order.customerSnapshot ?? null,
 			/** A name copied onto an order before customers existed. Shown, never turned into a customer. */
-			legacyGuest: !order.customerId && order.guestName ? { name: order.guestName, phone: order.guestPhone, email: order.guestEmail } : null,
 			/** The order's booking as shown in its header: its own, else the first it charges (see orderSourceRefs). */
 			source: sources[0] ?? null,
 			/** Every booking the order is for, its own first. */
@@ -689,7 +675,7 @@ export const getOrder = query({
 			/** As recorded when the receipt was issued; never changed (see `paymentRecord` for corrections). */
 			payments,
 			audit,
-			totals: billTotals(lines),
+			totals: orderTotals(lines),
 			/**
 			 * The payment as it stands after corrections (pos.amendOrderPayment), for the receipt screen.
 			 * `correctionRevision` is what a correction must send back.
@@ -745,11 +731,11 @@ export const listOrders = query({
 		await requireAdmin(ctx);
 		const numItems = Math.min(Math.max(args.paginationOpts.numItems, 1), ORDERS_PAGE_MAX);
 		const page = await ctx.db
-			.query('bills')
+			.query('orders')
 			.withIndex('by_hasItems_and_status_and_updatedAt', (q) => {
 				const withItems = q.eq('hasItems', true);
-				// Unpaid is draft plus legacy held (until migrations:backfillOrders): held rows list first, then drafts.
-				return args.filter === 'unpaid' ? withItems.gte('status', 'draft').lte('status', 'held') : withItems.eq('status', args.filter);
+
+				return args.filter === 'unpaid' ? withItems.eq('status', 'draft') : withItems.eq('status', args.filter);
 			})
 			.order('desc')
 			.paginate({ ...args.paginationOpts, numItems });
@@ -788,7 +774,7 @@ export const findOrderByNumber = query({
 	handler: async (ctx, args) => {
 		const actor = await requireStaff(ctx, 'checkout');
 		if (!Number.isSafeInteger(args.orderNumber) || args.orderNumber < 1) return null;
-		const order = await ctx.db.query('bills').withIndex('by_orderNumber', (q) => q.eq('orderNumber', args.orderNumber)).first();
+		const order = await ctx.db.query('orders').withIndex('by_orderNumber', (q) => q.eq('orderNumber', args.orderNumber)).first();
 		return order && canReadCheckoutOrder(actor, order) ? order._id : null;
 	}
 });
@@ -849,16 +835,16 @@ export const ordersForBooking = query({
 				receiptNumber: order.receiptNumber,
 				updatedAt: order.updatedAt,
 				/** Refunds recorded on this stay against money this order took. The receipt itself is unchanged. */
-				refunded: round2(refunds.filter((refund) => refund.billId === order._id).reduce((sum, refund) => sum + refund.amount, 0)),
+				refunded: roundMoney(refunds.filter((refund) => refund.orderId === order._id).reduce((sum, refund) => sum + refund.amount, 0)),
 				corrected: (order.correctionRevision ?? 0) > 0,
 				voidUnreceived: order.voidUnreceived ?? false
 			});
 		}
 		return {
-			balance: { total, paid: round2(paid), owed: Math.max(round2(owed), 0), refunded, credit },
+			balance: { total, paid: roundMoney(paid), owed: Math.max(roundMoney(owed), 0), refunded, credit },
 			/** Recorded refunds on the stay, newest first (none for appointments here; see adminServices). */
 			refunds: refunds.slice(0, 10).map((refund) => ({
-				_id: refund._id, amount: refund.amount, method: refund.method, reason: refund.reason, effectiveAt: refund.effectiveAt, billId: refund.billId ?? null
+				_id: refund._id, amount: refund.amount, method: refund.method, reason: refund.reason, effectiveAt: refund.effectiveAt, orderId: refund.orderId ?? null
 			})),
 			activeOrder: active ? { _id: active._id, title: orderTitle(active.orderNumber), total: active.total, due: await remaining(ctx, active) } : null,
 			orders: history,
@@ -870,15 +856,8 @@ export const ordersForBooking = query({
 	}
 });
 
-/** Unpaid appointments saved before guestPhoneDigits/guestEmailNormalized existed. Empty once backfilled. */
-function legacyUnpaidAppointments(ctx: ReadCtx) {
-	return ctx.db
-		.query('serviceAppointments')
-		.withIndex('by_guestPhoneDigits_and_paymentStatus', (q) => q.eq('guestPhoneDigits', undefined).eq('paymentStatus', 'unpaid'));
-}
-
 /** Contacts searched by both the results and their completeness indicator. */
-async function attachContacts(ctx: ReadCtx, args: { orderId?: Id<'bills'>; query?: string }) {
+async function attachContacts(ctx: ReadCtx, args: { orderId?: Id<'orders'>; query?: string }) {
 	const order = args.orderId ? await ctx.db.get(args.orderId) : null;
 	const customer = order?.customerId ? await ctx.db.get(order.customerId) : null;
 	const phones = new Set<string>();
@@ -904,7 +883,7 @@ async function payableBookingMatches(query: AsyncIterable<Doc<'bookings'>>) {
 	const rows: Doc<'bookings'>[] = [];
 	let scanned = 0;
 	for await (const booking of query) {
-		if (++scanned > LEGACY_LOOKUP_SCAN) return { rows, complete: false };
+		if (++scanned > PAYABLE_LOOKUP_SCAN) return { rows, complete: false };
 		if (bookingPayable(booking)) rows.push(booking);
 		if (rows.length >= ATTACH_SCAN) return { rows, complete: true };
 	}
@@ -929,14 +908,11 @@ async function contactBookings(ctx: ReadCtx, contacts: Awaited<ReturnType<typeof
 
 /** Whether this contact lookup reached its result limit/exhausted its bounded scans. */
 export const attachLookupStatus = query({
-	args: { orderId: v.optional(v.id('bills')), query: v.optional(v.string()) },
+	args: { orderId: v.optional(v.id('orders')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		await requireStaff(ctx, 'checkout');
-		const [waiting, bookings] = await Promise.all([
-			legacyUnpaidAppointments(ctx).take(LEGACY_LOOKUP_SCAN + 1),
-			contactBookings(ctx, await attachContacts(ctx, args))
-		]);
-		return { complete: waiting.length <= LEGACY_LOOKUP_SCAN && bookings.complete, ...(!bookings.complete ? { bookingsIncomplete: true } : {}) };
+		const bookings = await contactBookings(ctx, await attachContacts(ctx, args));
+		return { complete: bookings.complete, ...(!bookings.complete ? { bookingsIncomplete: true } : {}) };
 	}
 });
 
@@ -947,7 +923,7 @@ export const attachLookupStatus = query({
  * formatting, email in any case, or guest name). Nothing is added automatically.
  */
 export const listAttachable = query({
-	args: { orderId: v.optional(v.id('bills')), query: v.optional(v.string()) },
+	args: { orderId: v.optional(v.id('orders')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		await requireStaff(ctx, 'checkout');
 		const { bookings, appointments } = await findSources(ctx, args);
@@ -998,12 +974,12 @@ export const listAttachable = query({
  * listAttachable): the order's own booking, its customer's contacts and `query`. Unfiltered: callers
  * decide which can be charged or linked.
  */
-async function findSources(ctx: ReadCtx, args: { orderId?: Id<'bills'>; query?: string }) {
+async function findSources(ctx: ReadCtx, args: { orderId?: Id<'orders'>; query?: string }) {
 	const order = args.orderId ? await ctx.db.get(args.orderId) : null;
 	const bookings = new Map<Id<'bookings'>, Doc<'bookings'>>();
-	const appointments = new Map<Id<'serviceAppointments'>, Doc<'serviceAppointments'>>();
+	const appointments = new Map<Id<'appointments'>, Doc<'appointments'>>();
 	const addBookings = (rows: Doc<'bookings'>[]) => rows.forEach((row) => bookings.set(row._id, row));
-	const addAppointments = (rows: Doc<'serviceAppointments'>[]) => rows.forEach((row) => appointments.set(row._id, row));
+	const addAppointments = (rows: Doc<'appointments'>[]) => rows.forEach((row) => appointments.set(row._id, row));
 
 	if (order?.bookingId) {
 		const booking = await ctx.db.get(order.bookingId);
@@ -1013,7 +989,7 @@ async function findSources(ctx: ReadCtx, args: { orderId?: Id<'bills'>; query?: 
 		const appointment = await ctx.db.get(order.appointmentId);
 		if (appointment) addAppointments([appointment]);
 	}
-	const searches: Array<Promise<Doc<'bookings'>[] | Doc<'serviceAppointments'>[]>> = [];
+	const searches: Array<Promise<Doc<'bookings'>[] | Doc<'appointments'>[]>> = [];
 	const contacts = await attachContacts(ctx, args);
 	const { phones, emails, text } = contacts;
 	addBookings((await contactBookings(ctx, contacts)).rows);
@@ -1021,33 +997,20 @@ async function findSources(ctx: ReadCtx, args: { orderId?: Id<'bills'>; query?: 
 		const code = text.toUpperCase();
 		searches.push(
 			ctx.db.query('bookings').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
-			ctx.db.query('serviceAppointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
+			ctx.db.query('appointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', code)).take(5),
 			ctx.db.query('bookings').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN),
-			ctx.db.query('serviceAppointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN)
+			ctx.db.query('appointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(ATTACH_SCAN)
 		);
 	}
 	for (const digits of phones) {
 		searches.push(
 			// Only unpaid appointments can be added, so the read is limited to those, not to the latest few.
-			ctx.db.query('serviceAppointments').withIndex('by_guestPhoneDigits_and_paymentStatus', (q) => q.eq('guestPhoneDigits', digits).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
+			ctx.db.query('appointments').withIndex('by_guestPhoneDigits_and_paymentStatus', (q) => q.eq('guestPhoneDigits', digits).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
 		);
 	}
 	for (const email of emails) {
 		searches.push(
-			ctx.db.query('serviceAppointments').withIndex('by_guestEmailNormalized_and_paymentStatus', (q) => q.eq('guestEmailNormalized', email).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
-		);
-	}
-	if (phones.size || emails.size) {
-		// Appointments saved before the lookup fields existed (until
-		// migrations:backfillAppointmentGuestLookup) are matched here; attachLookupStatus says
-		// when there are more than this reads.
-		searches.push(
-			legacyUnpaidAppointments(ctx).take(LEGACY_LOOKUP_SCAN).then((rows) =>
-				rows.filter((row) => {
-					const lookup = appointmentLookupFields(row);
-					return phones.has(lookup.guestPhoneDigits) || (lookup.guestEmailNormalized !== undefined && emails.has(lookup.guestEmailNormalized));
-				})
-			)
+			ctx.db.query('appointments').withIndex('by_guestEmailNormalized_and_paymentStatus', (q) => q.eq('guestEmailNormalized', email).eq('paymentStatus', 'unpaid')).take(ATTACH_SCAN)
 		);
 	}
 	for (const rows of await Promise.all(searches)) {
@@ -1058,7 +1021,7 @@ async function findSources(ctx: ReadCtx, args: { orderId?: Id<'bills'>; query?: 
 	}
 	// A stay's appointments come with it (they usually go on the stay's order).
 	for (const booking of [...bookings.values()].slice(0, 10)) {
-		addAppointments(await ctx.db.query('serviceAppointments').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).take(ATTACH_SCAN));
+		addAppointments(await ctx.db.query('appointments').withIndex('by_booking', (q) => q.eq('bookingId', booking._id)).take(ATTACH_SCAN));
 	}
 	return { bookings, appointments };
 }
@@ -1123,7 +1086,7 @@ export const openOrderForLink = mutation({
 		const admin = await requireStaff(ctx, 'checkout');
 		if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new ConvexError('Choose one booking or appointment');
 		const bookingId = args.bookingId ? ctx.db.normalizeId('bookings', args.bookingId) : null;
-		const appointmentId = args.appointmentId ? ctx.db.normalizeId('serviceAppointments', args.appointmentId) : null;
+		const appointmentId = args.appointmentId ? ctx.db.normalizeId('appointments', args.appointmentId) : null;
 		if (args.bookingId && !bookingId) throw new ConvexError('Booking not found. Start a new order or choose one from Orders.');
 		if (args.appointmentId && !appointmentId) throw new ConvexError('Appointment not found. Start a new order or choose one from Orders.');
 		const source = oneSource({ bookingId: bookingId ?? undefined, appointmentId: appointmentId ?? undefined });
@@ -1131,7 +1094,7 @@ export const openOrderForLink = mutation({
 	}
 });
 
-const addItemArgs = v.object({ orderId: v.optional(v.id('bills')), item: itemValidator });
+const addItemArgs = v.object({ orderId: v.optional(v.id('orders')), item: itemValidator });
 export const addItem = mutation({
  args: addItemArgs.fields,
  handler: async (ctx, args) => executeAddItem(ctx, args, await requireStaff(ctx, 'checkout')),
@@ -1157,7 +1120,7 @@ export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addIte
 			const name = cleanText(item.name, 'Item name', 80);
 			if (!name) throw new ConvexError('Name the item');
 			assertPrice(item.price);
-			line = { kind: 'extra', name, unitPrice: round2(item.price), currency: CURRENCY, qty: 1 };
+			line = { kind: 'extra', name, unitPrice: roundMoney(item.price), currency: CURRENCY, qty: 1 };
 		}
 
 		// Nights and extras stack into one row unless that row has its own price or discount.
@@ -1174,7 +1137,7 @@ export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addIte
 			}
 		}
 		await assertRoom(ctx, order._id);
-		const lineId = await ctx.db.insert('billLines', { billId: order._id, ...line, createdAt: Date.now() });
+		const lineId = await ctx.db.insert('orderLines', { orderId: order._id, ...line, catalogUnitPrice: line.catalogUnitPrice ?? line.unitPrice, createdAt: Date.now() });
 		await refreshOrder(ctx, order._id);
 		await logOrder(ctx, order._id, admin.email, 'line_added', { after: { ...lineSnapshot(line), lineId } });
 		return { orderId: order._id, lineId };
@@ -1182,7 +1145,7 @@ export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addIte
 
 
 /** Adds a stay or appointment to the order (a new order if none is given). */
-const attachArgs = v.object({ orderId: v.optional(v.id('bills')), ...sourceArgs });
+const attachArgs = v.object({ orderId: v.optional(v.id('orders')), ...sourceArgs });
 export const attach = mutation({ args: attachArgs.fields, handler: async (ctx, args) => executeAttach(ctx, args, await requireStaff(ctx, 'checkout')) });
 export async function executeAttach(ctx: MutationCtx, args: Infer<typeof attachArgs>, admin: StaffActor) {
  const source = oneSource(args);
@@ -1192,18 +1155,10 @@ export async function executeAttach(ctx: MutationCtx, args: Infer<typeof attachA
 }
 
 
-/**
- * Therapist (null = any), service date and time, quantity and discount (null = none) for one row.
- * `serviceDate` ("YYYY-MM-DD") and `serviceTime` ("HH:MM", resort time) are independent and
- * optional: null or '' clears one, and a cleared part is unset, never "now". Changing either moves
- * a legacy row off `startAt`, keeping its other part. `startAt` (null = now) is the legacy form,
- * kept for older clients; it replaces the row's date and time.
- * The quantity moves by `qtyChange` (kept within 1–99), so quick taps on two devices add up.
- */
+
 const updateLineArgs = v.object({
-		lineId: v.id('billLines'),
+		lineId: v.id('orderLines'),
 		staffId: v.optional(v.union(v.id('staff'), v.null())),
-		startAt: v.optional(v.union(v.number(), v.null())),
 		serviceDate: v.optional(v.union(v.string(), v.null())),
 		serviceTime: v.optional(v.union(v.string(), v.null())),
 		qtyChange: v.optional(v.number()),
@@ -1229,16 +1184,9 @@ export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof upd
 			patch.staffId = args.staffId ?? undefined;
 		}
 		const scheduling = args.serviceDate !== undefined || args.serviceTime !== undefined;
-		if (scheduling && args.startAt !== undefined) throw new ConvexError('Set the service date and time, or a start time, not both');
-		if (args.startAt !== undefined) {
-			if (line.kind !== 'service') throw new ConvexError('Only service rows take a start time here');
-			if (args.startAt !== null && !Number.isSafeInteger(args.startAt)) throw new ConvexError('Invalid start time');
-			patch.startAt = args.startAt ?? undefined;
-			patch.schedule = undefined;
-		}
 		if (scheduling) {
 			if (line.kind !== 'service') throw new ConvexError('Only service rows take a date and time here');
-			const current = line.schedule ?? (line.startAt !== undefined ? scheduleFromStartAt(line.startAt) : {});
+			const current = line.schedule ?? {};
 			const next = changeSchedule(current, { date: args.serviceDate, time: args.serviceTime });
 			if ('problem' in next) throw new ConvexError(next.problem);
 			patch.schedule = next.schedule;
@@ -1263,8 +1211,8 @@ export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof upd
 }
 
 
-/** One-off price for a row. Setting a price needs a note; every change is kept in billAudit. */
-const overrideLinePriceArgs = v.object({ lineId: v.id('billLines'), price: v.union(v.number(), v.null()), note: v.string() });
+/** One-off price for a row. Setting a price needs a note; every change is kept in orderAudit. */
+const overrideLinePriceArgs = v.object({ lineId: v.id('orderLines'), price: v.union(v.number(), v.null()), note: v.string() });
 export const overrideLinePrice = mutation({
  args: overrideLinePriceArgs.fields,
  handler: async (ctx, args) => executeOverrideLinePrice(ctx, args, await requireStaff(ctx, 'checkout')),
@@ -1275,7 +1223,7 @@ export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typ
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
 		if (line.kind === 'booking' && args.price !== null) throw new ConvexError(ATTACHED_PRICE);
 		if (line.fee && args.price !== null) throw new ConvexError(FEE_FIXED);
-		await assertCashierDiscount(ctx, admin, { ...line, priceOverride: args.price === null ? undefined : { price: round2(args.price) } });
+		await assertCashierDiscount(ctx, admin, { ...line, priceOverride: args.price === null ? undefined : { price: roundMoney(args.price) } });
 		const fromPrice = line.priceOverride?.price ?? line.unitPrice;
 		let note: string | undefined;
 		if (args.price === null) {
@@ -1284,18 +1232,18 @@ export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typ
 			await ctx.db.patch(line._id, { priceOverride: undefined });
 		} else {
 			note = assertPriceOverride(args.price, args.note);
-			await ctx.db.patch(line._id, { priceOverride: { price: round2(args.price), note, by: admin.email, at: Date.now() } });
+			await ctx.db.patch(line._id, { priceOverride: { price: roundMoney(args.price), note, by: admin.email, at: Date.now() } });
 		}
-		await ctx.db.insert('billAudit', {
-			billId: order._id, lineId: line._id, at: Date.now(), actor: admin.email, kind: 'price_override',
-			fromPrice, toPrice: args.price === null ? line.unitPrice : round2(args.price), note
+		await ctx.db.insert('orderAudit', {
+			orderId: order._id, lineId: line._id, at: Date.now(), actor: admin.email, kind: 'price_override',
+			fromPrice, toPrice: args.price === null ? line.unitPrice : roundMoney(args.price), note
 		});
 		await refreshOrder(ctx, order._id);
 }
 
 
 export const removeLine = mutation({
-	args: { lineId: v.id('billLines') },
+	args: { lineId: v.id('orderLines') },
 	handler: async (ctx, args) => {
 		const admin = await requireStaff(ctx, 'checkout');
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
@@ -1305,7 +1253,7 @@ export const removeLine = mutation({
 		if (line.fee && line.feeAppointmentId) {
 			await appendRecordHistory(ctx, {
 				entityType: 'appointment', entityId: line.feeAppointmentId, actor: admin.email, kind: 'fee_removed',
-				before: { feeKind: line.fee.kind, amount: line.unitPrice, billId: order._id }
+				before: { feeKind: line.fee.kind, amount: line.unitPrice, orderId: order._id }
 			});
 		}
 	}
@@ -1315,13 +1263,13 @@ export const removeLine = mutation({
  * Marketing release 2b. Applies one coupon to an unpaid order, replacing any coupon already on it.
  * `code` is typed or read from a pasted link (lib/posCoupons parseCouponInput); `slug` is a scanned
  * short link, resolved here to its active coupon. The order's current coupon version is frozen on
- * `bills.promotion`; the split lands on billLines.couponDiscount and the revision changes, so any
+ * `orders.promotion`; the split lands on orderLines.couponDiscount and the revision changes, so any
  * payment reviewed before has to be reviewed again. Nothing is held: settleOrder consumes the use.
  * When it can't apply, throws ConvexError { code: 'coupon_unavailable', message, problem:
  * PosCouponProblem } and writes nothing. Applying the code already on the order re-checks it.
  */
 export const applyOrderCoupon = mutation({
-	args: { orderId: v.id('bills'), code: v.optional(v.string()), slug: v.optional(v.string()) },
+	args: { orderId: v.id('orders'), code: v.optional(v.string()), slug: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ code: string; discount: number; revision: number }> => {
 		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
@@ -1353,7 +1301,7 @@ export const applyOrderCoupon = mutation({
 
 /** Removes the order's coupon and every row's share of it. A no-op when the order has none. */
 export const removeOrderCoupon = mutation({
-	args: { orderId: v.id('bills') },
+	args: { orderId: v.id('orders') },
 	handler: async (ctx, args): Promise<{ revision: number }> => {
 		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
@@ -1372,7 +1320,7 @@ export const removeOrderCoupon = mutation({
  * so staff review any new total before paying. Use applyOrderCoupon to adopt the current version.
  */
 export const recheckOrderCoupon = mutation({
-	args: { orderId: v.id('bills') },
+	args: { orderId: v.id('orders') },
 	handler: async (ctx, args): Promise<{ revision: number; discount: number; problem: PosCouponProblem | null }> => {
 		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
@@ -1389,7 +1337,7 @@ export const recheckOrderCoupon = mutation({
  * cancelled elsewhere meanwhile. The order's revision changes, so any payment begun on the old
  * row has to be reviewed again.
  */
-const updateSourceLineArgs = v.object({ lineId: v.id('billLines') });
+const updateSourceLineArgs = v.object({ lineId: v.id('orderLines') });
 export const updateSourceLine = mutation({
  args: updateSourceLineArgs.fields,
  handler: async (ctx, args) => executeUpdateSourceLine(ctx, args, await requireStaff(ctx, 'checkout')),
@@ -1406,7 +1354,7 @@ export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<type
 		const at = Date.now();
 		if (issue.kind === 'settled' || issue.kind === 'gone') {
 			await ctx.db.delete(line._id);
-			await ctx.db.insert('billAudit', { billId: order._id, lineId: line._id, at, actor: admin.email, kind: 'source_removed', fromPrice: line.unitPrice, note: `${line.name}: ${issue.message}` });
+			await ctx.db.insert('orderAudit', { orderId: order._id, lineId: line._id, at, actor: admin.email, kind: 'source_removed', fromPrice: line.unitPrice, note: `${line.name}: ${issue.message}` });
 			await refreshOrder(ctx, order._id);
 			return { result: 'removed' as const };
 		}
@@ -1424,7 +1372,7 @@ export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<type
 		await assertCashierDiscount(ctx, admin, { ...line, ...fresh });
 		// A deposit that is gone (e.g. a refunded online payment) is cleared, not kept from the old row.
 		await ctx.db.patch(line._id, { ...fresh, deposit: fresh.deposit });
-		await ctx.db.insert('billAudit', { billId: order._id, lineId: line._id, at, actor: admin.email, kind: 'source_updated', fromPrice: line.unitPrice, toPrice: fresh.unitPrice, note: fresh.detail });
+		await ctx.db.insert('orderAudit', { orderId: order._id, lineId: line._id, at, actor: admin.email, kind: 'source_updated', fromPrice: line.unitPrice, toPrice: fresh.unitPrice, note: fresh.detail });
 		await refreshOrder(ctx, order._id);
 		return { result: 'updated' as const };
 }
@@ -1436,7 +1384,7 @@ export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<type
  * reviewed before the change must be reviewed again.
  */
 export const linkCustomer = mutation({
-	args: { orderId: v.optional(v.id('bills')), customerId: v.id('customers') },
+	args: { orderId: v.optional(v.id('orders')), customerId: v.id('customers') },
 	handler: async (ctx, args) => {
 		const admin = await requireStaff(ctx, 'checkout');
 		// Refuses missing, archived and merged-away profiles (customers.ts contract); never redirects a merged id.
@@ -1445,20 +1393,20 @@ export const linkCustomer = mutation({
 		if (order.customerId === customer._id) return { orderId: order._id };
 		const now = Date.now();
 		await ctx.db.patch(order._id, { customerId: customer._id, revision: order.revision + 1, updatedAt: now });
-		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'customer_linked', customerId: customer._id, note: customer.name });
+		await ctx.db.insert('orderAudit', { orderId: order._id, at: now, actor: admin.email, kind: 'customer_linked', customerId: customer._id, note: customer.name });
 		return { orderId: order._id };
 	}
 });
 
 export const unlinkCustomer = mutation({
-	args: { orderId: v.id('bills') },
+	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
 		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.customerId) return { orderId: order._id };
 		const now = Date.now();
 		await ctx.db.patch(order._id, { customerId: undefined, revision: order.revision + 1, updatedAt: now });
-		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'customer_unlinked', customerId: order.customerId });
+		await ctx.db.insert('orderAudit', { orderId: order._id, at: now, actor: admin.email, kind: 'customer_unlinked', customerId: order.customerId });
 		return { orderId: order._id };
 	}
 });
@@ -1469,7 +1417,7 @@ export const unlinkCustomer = mutation({
  * another device is not disturbed.
  */
 export const saveOrder = mutation({
-	args: { orderId: v.id('bills') },
+	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
 		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
@@ -1480,14 +1428,14 @@ export const saveOrder = mutation({
 
 /** Removes every row. The number, explicit source ownership, customer and audit trail stay. */
 export const clearOrder = mutation({
-	args: { orderId: v.id('bills') },
+	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
 		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		const lines = await orderLines(ctx, order._id);
 		for (const line of lines) await ctx.db.delete(line._id);
 		await ctx.db.patch(order._id, { promotion: undefined });
-		await ctx.db.insert('billAudit', { billId: order._id, at: Date.now(), actor: admin.email, kind: 'cleared' });
+		await ctx.db.insert('orderAudit', { orderId: order._id, at: Date.now(), actor: admin.email, kind: 'cleared' });
 		await refreshOrder(ctx, order._id);
 		// The removed rows, so the history shows what was cleared (restoring them is the discard/restore task).
 		if (lines.length) await logOrder(ctx, order._id, admin.email, 'cleared', { before: { lines: lines.map(lineSnapshot) } });
@@ -1510,7 +1458,7 @@ export const clearOrder = mutation({
  */
 export const settleOrder = mutation({
 	args: {
-		orderId: v.id('bills'), idempotencyKey: v.string(), expectedDue: v.number(), expectedRevision: v.number(), tenders: v.array(tenderValidator),
+		orderId: v.id('orders'), idempotencyKey: v.string(), expectedDue: v.number(), expectedRevision: v.number(), tenders: v.array(tenderValidator),
 		effectiveAt: v.optional(v.number()),
 		notifyGuest: v.optional(v.boolean()),
 		expectedCustomerRevision: v.optional(v.number())
@@ -1535,11 +1483,11 @@ export const settleOrder = mutation({
 			if (!result.ok) orderCouponUnavailable(result.problem);
 			const shares = new Map(result.allocation.map(share => [share.lineId, share.discount]));
 			if (result.discount !== order.promotion.discount || lines.some(line => (line.couponDiscount ?? 0) !== (shares.get(line._id) ?? 0))) {
-				throw new ConvexError({ code: 'coupon_changed', message: `The coupon now saves ฿${result.discount.toLocaleString('en-US', { maximumFractionDigits: 2 })}. Check the coupon again before taking payment.`, discount: result.discount });
+				throw new ConvexError({ code: 'coupon_changed', message: `The coupon now saves ฿${(result.discount / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}. Check the coupon again before taking payment.`, discount: result.discount });
 			}
 		}
-		const totals = billTotals(lines);
-		if (totals.due !== round2(args.expectedDue) || order.revision !== args.expectedRevision) throw new ConvexError('The order changed. Check the total and pay again.');
+		const totals = orderTotals(lines);
+		if (totals.due !== roundMoney(args.expectedDue) || order.revision !== args.expectedRevision) throw new ConvexError('The order changed. Check the total and pay again.');
 		assertTenders(args.tenders, totals.due);
 		const customer = order.customerId ? await ctx.db.get(order.customerId) : null;
 		if (order.customerId) {
@@ -1559,7 +1507,7 @@ export const settleOrder = mutation({
 			if (line.bookingId) {
 				// Charged at the booked price, so what the stay still owed is what this order collected for it.
 				if (line.discount || line.priceOverride) throw new ConvexError(ATTACHED_PRICE);
-				await markBookingPaid(ctx, line.bookingId, 'pos', { actor: admin.email, effectiveAt, billId: order._id, notifyGuest: args.notifyGuest });
+				await markBookingPaid(ctx, line.bookingId, 'pos', { actor: admin.email, effectiveAt, orderId: order._id, notifyGuest: args.notifyGuest });
 			}
 			if (line.appointmentId) {
 				const appointment = (await ctx.db.get(line.appointmentId))!;
@@ -1574,29 +1522,29 @@ export const settleOrder = mutation({
 			await ctx.db.patch(line._id, { staffName: person?.name ?? 'Former staff member' });
 		}
 		for (const tender of args.tenders) {
-			await ctx.db.insert('billPayments', { billId: order._id, ...tender, idempotencyKey: key, createdBy: admin.email, createdAt: now, effectiveAt });
+			await ctx.db.insert('orderPayments', { orderId: order._id, ...tender, idempotencyKey: key, createdBy: admin.email, createdAt: now, effectiveAt });
 		}
 		const receiptNumber = await nextCounter(ctx, RECEIPT_COUNTER);
 		const linkedBooking = order.bookingId ? await ctx.db.get(order.bookingId) : null;
 		const affiliateProperty = linkedBooking ? await ctx.db.get(linkedBooking.propertyId) : null;
-		const affiliateSnapshot = await captureAffiliateSnapshot(ctx, {linkId: order.promotion?.viaLinkId, couponId: order.promotion?.couponId, propertySlug: affiliateProperty?.slug, guestEmail: customer?.email ?? order.guestEmail, staff: true});
+		const affiliateSnapshot = await captureAffiliateSnapshot(ctx, {linkId: order.promotion?.viaLinkId, couponId: order.promotion?.couponId, propertySlug: affiliateProperty?.slug, guestEmail: customer?.email, staff: true});
 		// The receipt names who it was issued to as they were then; later profile edits don't change it.
 		const customerSnapshot = customer
 			? { name: customer.name, phone: customer.phone, email: customer.email }
-			: order.guestName ? { name: order.guestName, phone: order.guestPhone, email: order.guestEmail } : undefined;
+			: undefined;
 		await ctx.db.patch(order._id, {
 			status: 'paid', affiliateSnapshot, receiptNumber, settleKey: key, total: totals.total, due: 0, customerSnapshot, paidAt: now, paidBy: admin.email, updatedAt: now,
 			paymentEffectiveAt: effectiveAt, ...(customer ? { customerRevisionAtPayment: customer.revision ?? 0 } : {})
 		});
-		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
-		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'paid', toPrice: totals.due });
+		await syncAffiliateCredit(ctx, {orderId: order._id}, admin.email);
+		await ctx.db.insert('orderAudit', { orderId: order._id, at: now, actor: admin.email, kind: 'paid', toPrice: totals.due });
 		// A fee is noted on its appointment's history; the appointment itself (status, payment) is unchanged.
 		for (const line of lines) {
 			if (!line.fee || !line.feeAppointmentId) continue;
 			await appendRecordHistory(ctx, {
 				entityType: 'appointment', entityId: line.feeAppointmentId, actor: admin.email, kind: 'fee_charged', effectiveAt,
 				...(line.fee.reason ? { reason: line.fee.reason } : {}),
-				after: { feeKind: line.fee.kind, amount: lineNet(line), currency: line.currency, billId: order._id, receiptNumber }
+				after: { feeKind: line.fee.kind, amount: lineNet(line), currency: line.currency, orderId: order._id, receiptNumber }
 			});
 		}
 		return { receiptNumber, replayed: false };
@@ -1605,8 +1553,8 @@ export const settleOrder = mutation({
 
 /** Record a walk-in line return in satang; money is handed back outside the app. */
 export const refundLine = mutation({
- args: { orderId: v.id('bills'), reason: v.string(), ...billRefundFields },
- handler: async (ctx, args) => executeBillRefund(ctx, args, await requireStaff(ctx, 'checkout')),
+ args: { orderId: v.id('orders'), reason: v.string(), ...orderRefundFields },
+ handler: async (ctx, args) => executeOrderRefund(ctx, args, await requireStaff(ctx, 'checkout')),
 });
 
 /**
@@ -1615,7 +1563,7 @@ export const refundLine = mutation({
  * a refund on them if it is returned). For a payment recorded by mistake when no money changed
  * hands, use voidUnreceivedOrder instead.
  */
-const voidOrderArgs = v.object({ orderId: v.id('bills'), reason: v.string() });
+const voidOrderArgs = v.object({ orderId: v.id('orders'), reason: v.string() });
 export const voidOrder = mutation({
  args: voidOrderArgs.fields,
  handler: async (ctx, args) => executeVoidOrder(ctx, args, await requireStaff(ctx, 'checkout')),
@@ -1626,33 +1574,33 @@ export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof void
 		const reason = cleanText(args.reason, 'Reason', NOTE_MAX);
 		if (!reason) throw new ConvexError('Give a reason for the void');
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		await assertNoPosRefunds(ctx, order._id);
 		const now = Date.now();
 		await syncOrderCouponRedemption(ctx, order._id, 'reversed');
 		await ctx.db.patch(order._id, { status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, updatedAt: now });
-		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
-		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'void', note: reason });
+		await syncAffiliateCredit(ctx, {orderId: order._id}, admin.email);
+		await ctx.db.insert('orderAudit', { orderId: order._id, at: now, actor: admin.email, kind: 'void', note: reason });
 		// Stays charged at checkout or linked later; their payments are kept.
 		const stays = [...(await sourceRows(ctx, order._id)), ...(await orderLineLinks(ctx, order._id, 'active'))].flatMap((row) => (row.bookingId ? [row.bookingId] : []));
 		for (const bookingId of new Set(stays)) {
 			if (await ctx.db.get(bookingId)) {
 				await appendBookingHistory(ctx, bookingId, {
 					actor: admin.email, kind: 'order_voided', reason,
-					after: { billId: order._id, receiptNumber: order.receiptNumber ?? null, paymentKept: true }
+					after: { orderId: order._id, receiptNumber: order.receiptNumber ?? null, paymentKept: true }
 				});
 			}
 		}
 }
 
 
-const correctionArgs = { orderId: v.id('bills'), expectedCorrectionRevision: v.number(), idempotencyKey: v.string(), reason: v.string() };
+const correctionArgs = { orderId: v.id('orders'), expectedCorrectionRevision: v.number(), idempotencyKey: v.string(), reason: v.string() };
 
-async function correctionReplay(ctx: MutationCtx, orderId: Id<'bills'>, idempotencyKey: string, kind: Doc<'billCorrections'>['kind']) {
+async function correctionReplay(ctx: MutationCtx, orderId: Id<'orders'>, idempotencyKey: string, kind: Doc<'orderCorrections'>['kind']) {
 	const key = attemptKey(idempotencyKey);
-	const existing = await ctx.db.query('billCorrections').withIndex('by_idempotencyKey', (q) => q.eq('idempotencyKey', key)).first();
-	if (existing && (existing.billId !== orderId || existing.kind !== kind)) throw new ConvexError('This correction attempt was already used for something else. Start again.');
+	const existing = await ctx.db.query('orderCorrections').withIndex('by_idempotencyKey', (q) => q.eq('idempotencyKey', key)).first();
+	if (existing && (existing.orderId !== orderId || existing.kind !== kind)) throw new ConvexError('This correction attempt was already used for something else. Start again.');
 	return { key, existing };
 }
 
@@ -1660,14 +1608,14 @@ function assertCorrectionRevision(order: Order, expected: number) {
 	if (expected !== (order.correctionRevision ?? 0)) throw new ConvexError('This receipt was corrected since you opened it. Review it and try again.');
 }
 
-const cleanTender = (tender: { method: Doc<'billPayments'>['method']; amount: number; received?: number }) => ({
+const cleanTender = (tender: { method: Doc<'orderPayments'>['method']; amount: number; received?: number }) => ({
 	method: tender.method, amount: tender.amount, ...(tender.received !== undefined ? { received: tender.received } : {})
 });
 
 /**
  * Corrects a paid order's payment record: how it was paid (tenders, same total), the business date
  * it was received, or who the receipt is for. The issued receipt, its number, its original payments
- * and `customerSnapshot` are never changed; the correction is a billCorrections row with before and
+ * and `customerSnapshot` are never changed; the correction is a orderCorrections row with before and
  * after, and getOrder returns both. Deposits paid online are not tenders and can't be touched here.
  * A new effective date also moves the stays' payment records and appointments' `paidAt`.
  */
@@ -1688,15 +1636,15 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'amended');
 		if (existing) return { sequence: existing.sequence, replayed: true };
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s payment can be corrected.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the correction')!;
-		const payments = await ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).take(10);
-		const paidTotal = round2(payments.reduce((sum, payment) => sum + payment.amount, 0));
+		const payments = await ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(10);
+		const paidTotal = roundMoney(payments.reduce((sum, payment) => sum + payment.amount, 0));
 		const now = Date.now();
 		const patch: Partial<Order> = {};
-		const correction: Partial<Doc<'billCorrections'>> = {};
+		const correction: Partial<Doc<'orderCorrections'>> = {};
 
 		if (args.tenders) {
 			if (paidTotal === 0) throw new ConvexError('Nothing was paid on this order, so there are no tenders to correct.');
@@ -1713,7 +1661,7 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		let newEffective: number | undefined;
 		if (args.effectiveAt !== undefined) {
 			const at = effectiveTime(args.effectiveAt, now);
-			const firstRefund = await ctx.db.query('billRefunds').withIndex('by_orderId_and_businessDate', q => q.eq('orderId', order._id)).first();
+			const firstRefund = await ctx.db.query('orderRefunds').withIndex('by_orderId_and_businessDate', q => q.eq('orderId', order._id)).first();
 			if (firstRefund && resortTodayIso(at) > firstRefund.businessDate)
 				throw new ConvexError({ code: 'PAYMENT_DATE_AFTER_REFUND', message: 'Payment business date cannot be later than the earliest POS refund.', earliestRefundBusinessDate: firstRefund.businessDate });
 			if (at !== previousEffective) {
@@ -1725,7 +1673,7 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		}
 		if (args.customer) {
 			const before = order.amendedCustomer !== undefined ? order.amendedCustomer : (order.customerSnapshot ?? null);
-			let after: Doc<'bills'>['amendedCustomer'] = null;
+			let after: Doc<'orders'>['amendedCustomer'] = null;
 			if (args.customer.customerId) {
 				const customer = assertCustomerCanLink(await ctx.db.get(args.customer.customerId));
 				assertCustomerReviewed(customer, args.customer.expectedCustomerRevision);
@@ -1742,7 +1690,7 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		if (!Object.keys(patch).length) throw new ConvexError('Nothing changed.');
 
 		const sequence = (order.correctionRevision ?? 0) + 1;
-		await ctx.db.insert('billCorrections', { billId: order._id, sequence, kind: 'amended', reason, actor: admin.email, recordedAt: now, idempotencyKey: key, ...correction });
+		await ctx.db.insert('orderCorrections', { orderId: order._id, sequence, kind: 'amended', reason, actor: admin.email, recordedAt: now, idempotencyKey: key, ...correction });
 		await ctx.db.patch(order._id, { ...patch, correctionRevision: sequence });
 
 		// Both checkout sources and later links follow the same correction rules.
@@ -1758,7 +1706,7 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 				if (!booking) continue;
 				const payment = link?.bookingPaymentId ? await ctx.db.get(link.bookingPaymentId) : await orderStayPayment(ctx, order._id, booking._id);
 				const details = {
-					billId: order._id, sequence, tendersChanged: Boolean(patch.amendedTenders), customerChanged: 'amendedCustomer' in patch,
+					orderId: order._id, sequence, tendersChanged: Boolean(patch.amendedTenders), customerChanged: 'amendedCustomer' in patch,
 					...(link ? { linkId: link._id } : {})
 				};
 				if (newEffective !== undefined && payment?.status === 'recorded') {
@@ -1782,8 +1730,8 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 }
 
 
-const LEGACY_UNPROVEN = (name: string) =>
-	`This order was paid before stay payments were itemised, so the app can't prove how much of it was for ${name}. Correct its tenders instead, or record a refund on the booking if money was returned.`;
+const MISSING_PAYMENT_EVIDENCE = (name: string) =>
+	`This order has no recorded stay payment proving what it took for ${name}. Correct its tenders instead, or record a refund on the booking if money was returned.`;
 
 /**
  * Voids a paid order whose payment was recorded by mistake: no money was ever received. Unlike
@@ -1804,17 +1752,17 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'void_unreceived');
 		if (existing) return { replayed: true };
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		await assertNoPosRefunds(ctx, order._id);
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason')!;
 
 		// Prove every reversal before writing anything.
-		if (await ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).first())
+		if (await ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', order._id)).first())
 			throw new ConvexError('Part of this order was refunded, so money was received.');
 		const stays: Array<{ booking: Doc<'bookings'>; payment: Doc<'bookingPayments'> }> = [];
-		const appointments: Array<{ appointment: Doc<'serviceAppointments'>; line: Line }> = [];
+		const appointments: Array<{ appointment: Doc<'appointments'>; line: Line }> = [];
 		for (const row of await sourceRows(ctx, order._id)) {
 			if (row.bookingId) {
 				const booking = await ctx.db.get(row.bookingId);
@@ -1822,11 +1770,11 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 				// Reopening a balance under a live online checkout would make its completion unrecordable.
 				assertNoLiveCheckout(booking);
 				const payment = await orderStayPayment(ctx, order._id, booking._id);
-				if (!payment) throw new ConvexError(LEGACY_UNPROVEN(row.name));
+				if (!payment) throw new ConvexError(MISSING_PAYMENT_EVIDENCE(row.name));
 				if (payment.status !== 'recorded') throw new ConvexError(`${row.name}: this payment was already reversed.`);
 				if (payment.refunded > 0) throw new ConvexError(`Part of what this order took for ${row.name} was refunded, so money was received.`);
 				const money = stayMoney(booking);
-				if (round2(money.gross - payment.amount) < money.refunded) throw new ConvexError(`Refunds on ${row.name} would exceed what is left paid.`);
+				if (roundMoney(money.gross - payment.amount) < money.refunded) throw new ConvexError(`Refunds on ${row.name} would exceed what is left paid.`);
 				stays.push({ booking, payment });
 			}
 			if (row.appointmentId) {
@@ -1841,7 +1789,7 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 			}
 		}
 		// Rows linked after payment applied this order's money too; each is reversed exactly, or nothing is.
-		const linked: Array<{ link: Doc<'billLineLinks'>; reverse: Awaited<ReturnType<typeof linkReversal>> }> = [];
+		const linked: Array<{ link: Doc<'orderLineLinks'>; reverse: Awaited<ReturnType<typeof linkReversal>> }> = [];
 		for (const link of await orderLineLinks(ctx, order._id, 'active')) {
 			const line = await ctx.db.get(link.lineId);
 			linked.push({ link, reverse: await linkReversal(ctx, link, line?.name ?? 'A linked row') });
@@ -1853,15 +1801,15 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 		await ctx.db.patch(order._id, {
 			status: 'void', voidedAt: now, voidedBy: admin.email, voidReason: reason, voidUnreceived: true, correctionRevision: sequence, updatedAt: now
 		});
-		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
-		await ctx.db.insert('billCorrections', { billId: order._id, sequence, kind: 'void_unreceived', reason, actor: admin.email, recordedAt: now, idempotencyKey: key });
-		await ctx.db.insert('billAudit', { billId: order._id, at: now, actor: admin.email, kind: 'void', note: `Recorded in error, no money received: ${reason}` });
+		await syncAffiliateCredit(ctx, {orderId: order._id}, admin.email);
+		await ctx.db.insert('orderCorrections', { orderId: order._id, sequence, kind: 'void_unreceived', reason, actor: admin.email, recordedAt: now, idempotencyKey: key });
+		await ctx.db.insert('orderAudit', { orderId: order._id, at: now, actor: admin.email, kind: 'void', note: `Recorded in error, no money received: ${reason}` });
 		for (const { booking, payment } of stays) {
 			await ctx.db.patch(payment._id, { status: 'cancelled', cancelledAt: now, cancelledBy: admin.email, cancelReason: reason });
 			const money = stayMoney(booking);
-			const gross = round2(money.gross - payment.amount);
+			const gross = roundMoney(money.gross - payment.amount);
 			await writeBooking(ctx, booking, await stayPaymentReversalPatch(ctx, booking, gross),
-				{ actor: admin.email, kind: 'payment_cancelled', reason, details: { paymentId: payment._id, billId: order._id, amount: payment.amount } });
+				{ actor: admin.email, kind: 'payment_cancelled', reason, details: { paymentId: payment._id, orderId: order._id, amount: payment.amount } });
 		}
 		for (const { appointment, line } of appointments) {
 			await recordAppointmentChange(ctx, appointment, { paymentStatus: 'unpaid', price: line.unitPrice, amountPaid: 0, amountRefunded: 0, paidAt: undefined, paidBy: undefined }, {
@@ -1878,7 +1826,7 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 
 /** An order's history of ordinary edits (rows added, changed, removed, cleared), newest first. */
 export const orderHistory = query({
-	args: { orderId: v.id('bills'), paginationOpts: paginationOptsValidator },
+	args: { orderId: v.id('orders'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		const actor = await requireStaff(ctx, 'checkout');
 		if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, await ctx.db.get(args.orderId))) throw new ConvexError('Order not found');
@@ -1896,17 +1844,17 @@ export const orderHistory = query({
 // Discarding and restoring unpaid orders
 // ---------------------------------------------------------------------------------------------
 
-const lifecycleArgs = { orderId: v.id('bills'), expectedRevision: v.number(), idempotencyKey: v.string() };
+const lifecycleArgs = { orderId: v.id('orders'), expectedRevision: v.number(), idempotencyKey: v.string() };
 
 /** Who, when and why an order was discarded, as the lists and the order screen show it. */
 type RestoreConflict = {
 	kind: 'charged_elsewhere' | 'changed' | 'settled' | 'gone' | 'online' | 'link_shared' | 'customer';
 	/** Blocking conflicts stop a restore unless `removeConflictingRows` takes those rows off. */
 	blocking: boolean;
-	lineId: Id<'billLines'> | null;
+	lineId: Id<'orderLines'> | null;
 	name: string;
 	message: string;
-	order: { _id: Id<'bills'>; title: string } | null;
+	order: { _id: Id<'orders'>; title: string } | null;
 };
 
 /**
@@ -1993,7 +1941,7 @@ export const discardOrder = mutation({
 		const reason = cleanReason(args.reason, 'Reason', false);
 		const lines = await orderLines(ctx, order._id);
 		if (!lines.length) throw new ConvexError('This order has no items, so it isn’t listed and there is nothing to discard.');
-		if (await ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).first()) {
+		if (await ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).first()) {
 			throw new ConvexError('This order has payments recorded, so it can’t be discarded.');
 		}
 		const now = Date.now();
@@ -2015,7 +1963,7 @@ export const discardOrder = mutation({
 
 /** What restoring a discarded order would meet (see restoreConflicts). Read-only. */
 export const restoreCheck = query({
-	args: { orderId: v.id('bills') },
+	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
 		await requireStaff(ctx, 'checkout');
 		const order = await ctx.db.get(args.orderId);
@@ -2105,8 +2053,8 @@ export const addAppointmentFee = mutation({
 	args: {
 		expectedRevision: v.optional(v.number()),
 		idempotencyKey: v.optional(v.string()),
-		orderId: v.optional(v.id('bills')),
-		appointmentId: v.id('serviceAppointments'),
+		orderId: v.optional(v.id('orders')),
+		appointmentId: v.id('appointments'),
 		kind: v.union(v.literal('no_show'), v.literal('late_cancellation')),
 		amount: v.number(),
 		reason: v.optional(v.string())
@@ -2155,13 +2103,13 @@ export const addAppointmentFee = mutation({
 			fee: { kind, ...(reason ? { reason } : {}), by: admin.email, at: now },
 			feeAppointmentId: appointment._id
 		};
-		const lineId = await ctx.db.insert('billLines', { billId: order._id, ...line, createdAt: now });
+		const lineId = await ctx.db.insert('orderLines', { orderId: order._id, ...line, catalogUnitPrice: line.catalogUnitPrice ?? line.unitPrice, createdAt: now });
 		await refreshOrder(ctx, order._id);
 		await logOrder(ctx, order._id, admin.email, 'fee_added', { reason, after: { ...lineSnapshot(line), lineId } });
 		await appendRecordHistory(ctx, {
 			entityType: 'appointment', entityId: appointment._id, actor: admin.email, kind: 'fee_added',
 			...(reason ? { reason } : {}),
-			after: { feeKind: kind, amount: args.amount, currency: CURRENCY, billId: order._id, appointmentStatus: appointment.status, paymentStatus: appointment.paymentStatus }
+			after: { feeKind: kind, amount: args.amount, currency: CURRENCY, orderId: order._id, appointmentStatus: appointment.status, paymentStatus: appointment.paymentStatus }
 		});
 		if (key) await ctx.db.insert('appointmentFeeAttempts', { key, actor: admin.email, fingerprint, orderId: order._id, lineId });
 		return { orderId: order._id, lineId, replayed: false };
@@ -2170,13 +2118,13 @@ export const addAppointmentFee = mutation({
 
 /** Fee rows for an appointment (any order state), newest first, for its detail sheet. */
 export const appointmentFees = query({
-	args: { appointmentId: v.id('serviceAppointments') },
+	args: { appointmentId: v.id('appointments') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
-		const rows = await ctx.db.query('billLines').withIndex('by_feeAppointmentId', (q) => q.eq('feeAppointmentId', args.appointmentId)).order('desc').take(20);
+		const rows = await ctx.db.query('orderLines').withIndex('by_feeAppointmentId', (q) => q.eq('feeAppointmentId', args.appointmentId)).order('desc').take(20);
 		const fees = [];
 		for (const line of rows) {
-			const order = await ctx.db.get(line.billId);
+			const order = await ctx.db.get(line.orderId);
 			if (!order || !line.fee) continue;
 			fees.push({
 				lineId: line._id, kind: line.fee.kind, amount: lineNet(line), currency: line.currency, reason: line.fee.reason ?? null, by: line.fee.by, at: line.fee.at,
@@ -2196,7 +2144,7 @@ const LINK_TARGET: Partial<Record<Line['kind'], 'appointment' | 'booking'>> = { 
 
 /** The paid row to link, or why it can't be. */
 function linkableRow(order: Order, line: Line | null) {
-	if (!line || line.billId !== order._id) throw new ConvexError('Item not found on this order');
+	if (!line || line.orderId !== order._id) throw new ConvexError('Item not found on this order');
 	const target = LINK_TARGET[line.kind];
 	if (!target || line.fee) throw new ConvexError('Only a paid service or room row can be linked to an appointment or stay');
 	const amount = lineNet(line);
@@ -2205,7 +2153,7 @@ function linkableRow(order: Order, line: Line | null) {
 }
 
 /** Why this appointment can't take this paid service row, or null. Nothing is written. */
-async function appointmentLinkProblem(ctx: ReadCtx, line: Line, appointment: Doc<'serviceAppointments'>) {
+async function appointmentLinkProblem(ctx: ReadCtx, line: Line, appointment: Doc<'appointments'>) {
 	if (!appointmentAttachable(appointment)) return 'This appointment is already paid, cancelled or a no-show.';
 	if (appointment.serviceId !== line.serviceId) return 'This is a different service. Only an appointment for the same service can take this payment.';
 	if (appointment.currency !== CURRENCY) return `This appointment is priced in ${appointment.currency}.`;
@@ -2229,7 +2177,7 @@ async function bookingLinkProblem(ctx: ReadCtx, order: Order, line: Line, bookin
 	if ((await sourceRows(ctx, order._id)).some((row) => row.bookingId === booking._id)) return 'This order already paid for this stay at checkout.';
 	const { owed } = bookingBalance(booking);
 	if (owed <= 0) return 'Nothing is left to pay on this stay.';
-	if (amount > owed) return `This stay owes ${owed.toLocaleString('en-US')} ${booking.currency}, less than this row's ${amount.toLocaleString('en-US')}. Correct the stay's price first, or link a smaller charge.`;
+	if (amount > owed) return `This stay owes ${(owed / 100).toLocaleString('en-US')} ${booking.currency}, less than this row's ${(amount / 100).toLocaleString('en-US')}. Correct the stay's price first, or link a smaller charge.`;
 	if (amount < owed && booking.paymentStatus !== 'pending' && booking.paymentStatus !== 'paid') return 'This stay can only be paid in full here. Reopen it first.';
 	return null;
 }
@@ -2240,14 +2188,14 @@ async function bookingLinkProblem(ctx: ReadCtx, order: Order, line: Line, bookin
  * can't take this row, or null. Read-only; linkPaidLine checks everything again.
  */
 export const linkCandidates = query({
-	args: { orderId: v.id('bills'), lineId: v.id('billLines'), query: v.optional(v.string()) },
+	args: { orderId: v.id('orders'), lineId: v.id('orderLines'), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const actor = await requireStaff(ctx, 'checkout');
 		await requireCashierAction(ctx, actor, 'paymentFix');
 		const order = await ctx.db.get(args.orderId);
 		if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
 		const line = await ctx.db.get(args.lineId);
-		if (!order || order.status !== 'paid' || !line || line.billId !== order._id || !LINK_TARGET[line.kind] || line.fee) return null;
+		if (!order || order.status !== 'paid' || !line || line.orderId !== order._id || !LINK_TARGET[line.kind] || line.fee) return null;
 		const amount = lineNet(line);
 		const { bookings, appointments } = await findSources(ctx, { orderId: order._id, query: args.query });
 		const rows: Array<{
@@ -2285,10 +2233,10 @@ export const linkCandidates = query({
 /**
  * Applies a paid service row to its appointment, or a paid room row to its stay, after payment.
  * No money moves and the issued receipt, its rows, tenders, total and issue date never change: the
- * link is a billLineLinks row and a numbered `linked` correction. The target is recorded as paid by
+ * link is a orderLineLinks row and a numbered `linked` correction. The target is recorded as paid by
  * this order exactly as checkout would have done: the appointment becomes paid at what the row was
  * charged (its price before is kept for an unlink); the stay gets a `pos` payment row for the
- * row's amount with this order's `billId` (part of what it owes is allowed, more is refused). The
+ * row's amount with this order's `orderId` (part of what it owes is allowed, more is refused). The
  * money's date is the order's payment date.
  *
  * Refused, with nothing written, unless the order is paid, the row is a service (or room) row with
@@ -2298,8 +2246,8 @@ export const linkCandidates = query({
  */
 const linkPaidLineArgs = v.object({
 		...correctionArgs,
-		lineId: v.id('billLines'),
-		appointmentId: v.optional(v.id('serviceAppointments')),
+		lineId: v.id('orderLines'),
+		appointmentId: v.optional(v.id('appointments')),
 		bookingId: v.optional(v.id('bookings')),
 		expectedTargetRevision: v.number(),
 		notifyGuest: v.optional(v.boolean())
@@ -2319,7 +2267,7 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 			return { sequence: existing.sequence, linkId: existing.linkId!, replayed: true };
 		}
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s rows can be linked.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the link')!;
@@ -2331,9 +2279,9 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 		const sequence = (order.correctionRevision ?? 0) + 1;
 		const title = orderTitle(order.orderNumber);
 		const note = `Paid on ${title}${order.receiptNumber !== undefined ? ` (receipt ${formatReceiptNumber(order.receiptNumber)})` : ''}, linked later: ${reason}`;
-		let link: Omit<Doc<'billLineLinks'>, '_id' | '_creationTime'>;
+		let link: Omit<Doc<'orderLineLinks'>, '_id' | '_creationTime'>;
 		const base = {
-			billId: order._id, lineId: line._id, amount, currency: line.currency, status: 'active' as const, effectiveAt,
+			orderId: order._id, lineId: line._id, amount, currency: line.currency, status: 'active' as const, effectiveAt,
 			reason, linkedAt: now, linkedBy: admin.email, sequence
 		};
 		if ('appointmentId' in source) {
@@ -2355,7 +2303,7 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 			const problem = await bookingLinkProblem(ctx, order, line, booking, amount);
 			if (problem) throw new ConvexError(problem);
 			const { paymentId } = await recordStayPayment(ctx, booking._id, {
-				origin: 'pos', method: 'order', actor: admin.email, legacyMethod: 'pos', effectiveAt, billId: order._id, amount, note, notifyGuest: args.notifyGuest
+				origin: 'pos', method: 'order', actor: admin.email, paymentLabel: 'pos', effectiveAt, orderId: order._id, amount, note, notifyGuest: args.notifyGuest
 			});
 			if (!paymentId) throw new ConvexError('Nothing is left to pay on this stay.');
 			link = {
@@ -2363,13 +2311,13 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 				...(booking.paidAt !== undefined ? { bookingPaidAtBefore: booking.paidAt } : {})
 			};
 		}
-		const linkId = await ctx.db.insert('billLineLinks', link);
-		await ctx.db.insert('billCorrections', {
-			billId: order._id, sequence, kind: 'linked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
+		const linkId = await ctx.db.insert('orderLineLinks', link);
+		await ctx.db.insert('orderCorrections', {
+			orderId: order._id, sequence, kind: 'linked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
 			lineId: line._id, linkId, amount, ...('appointmentId' in source ? { appointmentId: source.appointmentId } : { bookingId: source.bookingId })
 		});
 		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
-		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
+		await syncAffiliateCredit(ctx, {orderId: order._id}, admin.email);
 		return { sequence, linkId, replayed: false };
 }
 
@@ -2380,7 +2328,7 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
  * link is cancelled and its payment status restored. Refused if any of that money was refunded or
  * the target changed since (repaid, repriced, refunded, or under an online checkout).
  */
-async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: string, options: { paymentUnlinked?: boolean } = {}) {
+async function linkReversal(ctx: MutationCtx, link: Doc<'orderLineLinks'>, name: string, options: { paymentUnlinked?: boolean } = {}) {
 	if (link.appointmentId) {
 		const appointment = await ctx.db.get(link.appointmentId);
 		if (!appointment) throw new ConvexError(`${name}: the appointment was deleted, so its payment can't be reversed.`);
@@ -2400,7 +2348,7 @@ async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: 
 	if (!payment || payment.status !== 'recorded') throw new ConvexError(`${name}: the stay's payment from this link was already reversed.`);
 	if (payment.refunded > 0) throw new ConvexError(`${name}: part of what this link paid on the stay was refunded, so it can't be unlinked.`);
 	const money = stayMoney(booking);
-	const gross = round2(money.gross - payment.amount);
+	const gross = roundMoney(money.gross - payment.amount);
 	if (gross < money.refunded) throw new ConvexError(`${name}: refunds on the stay would exceed what is left paid.`);
 	const reversal = await stayPaymentReversalPatch(ctx, booking, gross);
 	// A stay that was pending before the link (a deposit, say) goes back to pending, not "paid",
@@ -2412,7 +2360,7 @@ async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: 
 		: reversal;
 	return async (actor: string, reason: string) => {
 		await ctx.db.patch(payment._id, { status: 'cancelled', cancelledAt: Date.now(), cancelledBy: actor, cancelReason: reason });
-		await writeBooking(ctx, booking, patch, { actor, kind: 'payment_cancelled', reason, details: { paymentId: payment._id, billId: link.billId, amount: payment.amount, linkId: link._id } }, options);
+		await writeBooking(ctx, booking, patch, { actor, kind: 'payment_cancelled', reason, details: { paymentId: payment._id, orderId: link.orderId, amount: payment.amount, linkId: link._id } }, options);
 	};
 }
 
@@ -2421,7 +2369,7 @@ async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: 
  * and keeps the link as `unlinked`, with an `unlinked` correction. The receipt never changes; the
  * row can be linked again. Refused, writing nothing, if the reversal can't be proved.
  */
-const unlinkPaidLineArgs = v.object({ ...correctionArgs, linkId: v.id('billLineLinks') });
+const unlinkPaidLineArgs = v.object({ ...correctionArgs, linkId: v.id('orderLineLinks') });
 export const unlinkPaidLine = mutation({
  args: unlinkPaidLineArgs.fields,
  handler: async (ctx, args) => executeUnlinkPaidLine(ctx, args, await requireStaff(ctx, 'checkout')),
@@ -2435,12 +2383,12 @@ export async function executeUnlinkPaidLine(ctx: MutationCtx, args: Infer<typeof
 			return { sequence: existing.sequence, replayed: true };
 		}
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s links can be undone.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the unlink')!;
 		const link = await ctx.db.get(args.linkId);
-		if (!link || link.billId !== order._id) throw new ConvexError('Link not found on this order');
+		if (!link || link.orderId !== order._id) throw new ConvexError('Link not found on this order');
 		if (link.status !== 'active') throw new ConvexError('This link was already undone.');
 		const line = await ctx.db.get(link.lineId);
 		const reverse = await linkReversal(ctx, link, line?.name ?? 'This row', { paymentUnlinked: true });
@@ -2448,12 +2396,12 @@ export async function executeUnlinkPaidLine(ctx: MutationCtx, args: Infer<typeof
 		const sequence = (order.correctionRevision ?? 0) + 1;
 		await reverse(admin.email, `Unlinked from ${orderTitle(order.orderNumber)}: ${reason}`);
 		await ctx.db.patch(link._id, { status: 'unlinked', unlinkedAt: now, unlinkedBy: admin.email, unlinkReason: reason, unlinkSequence: sequence });
-		await ctx.db.insert('billCorrections', {
-			billId: order._id, sequence, kind: 'unlinked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
+		await ctx.db.insert('orderCorrections', {
+			orderId: order._id, sequence, kind: 'unlinked', reason, actor: admin.email, recordedAt: now, idempotencyKey: key,
 			lineId: link.lineId, linkId: link._id, amount: link.amount, ...(link.appointmentId ? { appointmentId: link.appointmentId } : { bookingId: link.bookingId })
 		});
 		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
-		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email, 'payment_unlinked');
+		await syncAffiliateCredit(ctx, {orderId: order._id}, admin.email, 'payment_unlinked');
 		return { sequence, replayed: false };
 }
 
@@ -2469,12 +2417,12 @@ export const createOrder = mutation({ args: {}, handler: async ctx => {
 export async function previewStaffApproval(ctx: MutationCtx, order: Order, payload: ApprovalPayload) {
  if (payload.kind === 'refund') {
   const state = await refundState(ctx, { ...payload, amount: payload.amountSatang, orderId: order._id });
-  const totalBefore = round2(billTotals(await orderLines(ctx, order._id)).total - state.refunds.reduce((sum, row) => sum + row.amount, 0) / 100);
-  return { totalBefore, totalAfter: round2(totalBefore - payload.amountSatang / 100), amount: payload.amountSatang / 100 };
+  const totalBefore = roundMoney(orderTotals(await orderLines(ctx, order._id)).total - state.refunds.reduce((sum, row) => sum + row.amount, 0));
+  return { totalBefore, totalAfter: roundMoney(totalBefore - payload.amountSatang), amount: payload.amountSatang };
  }
  const lines = await orderLines(ctx, order._id);
  let proposed: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }> = lines.map(line => ({ ...line }));
- const totalBefore = billTotals(lines).total;
+ const totalBefore = orderTotals(lines).total;
  let amount = 0;
  let percent: number | undefined;
  if (payload.kind === 'discount' || payload.kind === 'customPrice') {
@@ -2493,7 +2441,7 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
      if (line.kind === 'booking') throw new ConvexError(ATTACHED_PRICE);
      if (line.fee) throw new ConvexError(FEE_FIXED);
      const note = assertPriceOverride(payload.price, payload.note);
-     next.priceOverride = { price: round2(payload.price), note, by: '', at: Date.now() };
+     next.priceOverride = { price: roundMoney(payload.price), note, by: '', at: Date.now() };
     } else next.priceOverride = undefined;
    } else {
     if (!isSourceRow(line) || line.fee) throw new ConvexError('Only a booking or appointment row can be repriced');
@@ -2503,7 +2451,7 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
     next = { ...line, ...fresh };
    }
    const reduction = manualReduction(next);
-   amount = reduction.reductionSatang / 100;
+   amount = reduction.reductionSatang;
    percent = reduction.percent;
    proposed = proposed.map(row => row._id === line._id ? next : row);
   } else if (payload.kind === 'customPrice' && payload.action === 'addCustomItem') {
@@ -2511,14 +2459,14 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
    const name = cleanText(payload.name, 'Item name', 80);
    if (!name) throw new ConvexError('Name the item');
    await assertRoom(ctx, order._id);
-   proposed.push({ _id: 'proposed', kind: 'extra', unitPrice: round2(payload.price), qty: 1 });
-   amount = round2(payload.price);
+   proposed.push({ _id: 'proposed', kind: 'extra', unitPrice: roundMoney(payload.price), qty: 1 });
+   amount = roundMoney(payload.price);
   } else if (payload.kind === 'customPrice' && payload.action === 'attachSource') {
    const source = oneSource(payload);
    const fresh = 'bookingId' in source ? await bookingLine(ctx, await requireBooking(ctx, source.bookingId)) : await appointmentLine(ctx, await requireAppointment(ctx, source.appointmentId));
    proposed.push({ ...fresh, _id: 'proposed' });
    const reduction = manualReduction(fresh);
-   amount = reduction.reductionSatang / 100;
+   amount = reduction.reductionSatang;
    percent = reduction.percent;
   }
   if (order.promotion) {
@@ -2527,8 +2475,8 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
    const shares = new Map(quote.allocation.map(row => [row.lineId, row.discount]));
    proposed = proposed.map(row => ({ ...row, couponDiscount: shares.get(row._id) }));
   }
-  const totals = billTotals(proposed);
-  assertBillSize(totals);
+  const totals = orderTotals(proposed);
+  assertOrderSize(totals);
   return { totalBefore, totalAfter: totals.total, amount, ...(percent !== undefined ? { percent } : {}) };
  }
  if (order.status !== 'paid') throw new ConvexError('Only a paid order can be corrected');
@@ -2536,7 +2484,7 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
   if (payload.action === 'linkPaidLine') amount = linkableRow(order, await ctx.db.get(payload.lineId)).amount;
   if (payload.action === 'unlinkPaidLine') {
    const link = await ctx.db.get(payload.linkId);
-   if (!link || link.billId !== order._id || link.status !== 'active') throw new ConvexError('Link not found on this order');
+   if (!link || link.orderId !== order._id || link.status !== 'active') throw new ConvexError('Link not found on this order');
    amount = link.amount;
   }
  }
@@ -2548,7 +2496,7 @@ async function requireBooking(ctx: ReadCtx, id: Id<'bookings'>) {
  if (!row) throw new ConvexError('Booking not found');
  return row;
 }
-async function requireAppointment(ctx: ReadCtx, id: Id<'serviceAppointments'>) {
+async function requireAppointment(ctx: ReadCtx, id: Id<'appointments'>) {
  const row = await ctx.db.get(id);
  if (!row) throw new ConvexError('Appointment not found');
  return row;
@@ -2556,12 +2504,12 @@ async function requireAppointment(ctx: ReadCtx, id: Id<'serviceAppointments'>) {
 
 /** Internal TypeScript helper, not a Convex endpoint; approval identity is server-derived. */
 export async function executeStaffApproval(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, actor: StaffActor) {
- const payload = approvalPayloadView(request.payload, request.reason);
+ const payload = request.payload;
  const order = await ctx.db.get(request.orderId);
  if (!order) throw new ConvexError('Order not found');
  const correction = { orderId: order._id, reason: request.reason, expectedCorrectionRevision: order.correctionRevision ?? 0, idempotencyKey: `approval:${request._id}` };
  switch (payload.kind) {
-  case 'refund': return await executeBillRefund(ctx, { ...payload, amount: payload.amountSatang, orderId: order._id }, actor);
+  case 'refund': return await executeOrderRefund(ctx, { ...payload, amount: payload.amountSatang, orderId: order._id }, actor);
   case 'discount': return await executeUpdateLine(ctx, { lineId: payload.lineId, discount: payload.discount }, actor);
   case 'customPrice':
    switch (payload.action) {

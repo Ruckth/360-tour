@@ -1,9 +1,8 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { isLegacyManualPaymentCandidate, legacyManualPayment } from './appointmentFinance';
-import { lineNet, round2, orderTitle } from './billMath';
-import { stayMoney, unitemisedStayMoney } from './bookingMoney';
+import { roundMoney, orderTitle } from './orderMath';
+import { stayMoney } from './bookingMoney';
 import { ATTRIBUTION_MODEL, touchFromLink } from './marketingAttribution';
 import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, type ReportBasis, type ReportData, type ReportMoneyEvent, type ReportSale, type ReportTouch } from './marketingReport';
 import { orderPaymentRecord } from './orderLifecycle';
@@ -14,7 +13,7 @@ import { resortLocalParts } from './serviceSlots';
 export const reportSpend = (row: Doc<'marketingSpend'>) => ({ id: row._id, campaignId: row.campaignId, amount: row.amount, from: row.from, to: row.to, ...(row.note !== undefined ? { note: row.note } : {}) });
 const dayOf = (at: number) => resortLocalParts(at).date;
 const touch = ({ linkId, campaignId, slug, campaignName, source, medium, entry }: ReportTouch): ReportTouch => ({ linkId, campaignId, slug, campaignName, source, medium, entry });
-const sum = <T>(rows: T[], amount: (row: T) => number) => round2(rows.reduce((total, row) => total + amount(row), 0));
+const sum = <T>(rows: T[], amount: (row: T) => number) => roundMoney(rows.reduce((total, row) => total + amount(row), 0));
 
 /**
  * Reads in this order so a busy range still answers: names, spend and sessions first; then the money
@@ -118,34 +117,34 @@ export async function readMarketingReport(
 
 	// ------------------------------------------------------------ money read by date, one range each
 	/** Receipt tenders are written with createdAt = the order's paidAt, so orders paid in the range need no per-order read. */
-	let tendersByBill = new Map<Id<'bills'>, Doc<'billPayments'>[]>();
+	let tendersByBill = new Map<Id<'orders'>, Doc<'orderPayments'>[]>();
 	/** POS stay payments carry the order's business date (amendOrderPayment moves both together). */
 	let stayRowsInRange: Doc<'bookingPayments'>[] = [];
-	let stayPosByBill = new Map<Id<'bills'>, Doc<'bookingPayments'>[]>();
+	let stayPosByBill = new Map<Id<'orders'>, Doc<'bookingPayments'>[]>();
 	/**
 	 * Refunds typed in from the range start on (a day earlier, for clock skew), whatever date they carry.
 	 * A date can't be in the future, so this holds every refund dated in the range, and every refund of
 	 * an order paid in it: an order is paid before it is refunded. Only an order whose payment date was
 	 * corrected later can have older refunds; order() reads those one by one.
 	 */
-	let posRefundsFromStart: Doc<'billRefunds'>[] = [];
-	let posRefundsByBill = new Map<Id<'bills'>, Doc<'billRefunds'>[]>();
+	let posRefundsFromStart: Doc<'orderRefunds'>[] = [];
+	let posRefundsByBill = new Map<Id<'orders'>, Doc<'orderRefunds'>[]>();
 	let apptRefundsFromStart: Doc<'appointmentRefunds'>[] = [];
-	let receiptRefundsByBill = new Map<Id<'bills'>, Doc<'appointmentRefunds'>[]>();
+	let receiptRefundsByBill = new Map<Id<'orders'>, Doc<'appointmentRefunds'>[]>();
 	let stayRefundsFromStart: Doc<'bookingRefunds'>[] = [];
 	/** A stay refund against a receipt with no stay payment row returns an old order's stay money. */
-	let oldOrderRefundsByBill = new Map<Id<'bills'>, Doc<'bookingRefunds'>[]>();
+	let oldOrderRefundsByBill = new Map<Id<'orders'>, Doc<'bookingRefunds'>[]>();
 	async function readMoneyByDate() {
-		posRefundsFromStart = await rows(ctx.db.query('billRefunds').withIndex('by_businessDate', q => q.gte('businessDate', from)));
+		posRefundsFromStart = await rows(ctx.db.query('orderRefunds').withIndex('by_businessDate', q => q.gte('businessDate', from)));
 		posRefundsByBill = group(posRefundsFromStart, r => r.orderId);
-		tendersByBill = group(await rows(ctx.db.query('billPayments').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end))), p => p.billId);
+		tendersByBill = group(await rows(ctx.db.query('orderPayments').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end))), p => p.orderId);
 		stayRowsInRange = await rows(ctx.db.query('bookingPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)));
-		stayPosByBill = group(stayRowsInRange.filter(p => p.origin === 'pos'), p => p.billId);
+		stayPosByBill = group(stayRowsInRange.filter(p => p.origin === 'pos'), p => p.orderId);
 		const recordedFrom = start - 86_400_000;
 		apptRefundsFromStart = await rows(ctx.db.query('appointmentRefunds').withIndex('by_recordedAt', q => q.gte('recordedAt', recordedFrom)));
-		receiptRefundsByBill = group(apptRefundsFromStart, r => r.billId);
+		receiptRefundsByBill = group(apptRefundsFromStart, r => r.orderId);
 		stayRefundsFromStart = await rows(ctx.db.query('bookingRefunds').withIndex('by_recordedAt', q => q.gte('recordedAt', recordedFrom)));
-		oldOrderRefundsByBill = group(stayRefundsFromStart.filter(r => !r.paymentId), r => r.billId);
+		oldOrderRefundsByBill = group(stayRefundsFromStart.filter(r => !r.paymentId), r => r.orderId);
 	}
 
 	// ------------------------------------------------------------ sales
@@ -194,25 +193,10 @@ export async function readMarketingReport(
 		const payments = await rows(ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', id)));
 		const allRefunds = await rows(ctx.db.query('bookingRefunds').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', id)));
 		const recorded = payments.filter(p => p.status === 'recorded');
-		// An order that charged the stay before stay payments were itemised has no payment row; its money
-		// is inside the unitemised amount. That money and its refunds stay on the order, so both come off the stay.
-		const oldOrder = async (billId: Id<'bills'>) => {
-			const bill = await get(billId);
-			return !!bill && isSettledOrder(bill) && !bill.voidUnreceived && !payments.some(p => p.billId === billId);
-		};
-		let legacy = unitemisedStayMoney(money.gross, payments);
-		// Legacy order-owned stay money still proves a paid stay, without becoming stay revenue twice.
-		if (recorded.some(payment => payment.amount > 0) || legacy > 0) await rememberConversion(booking);
-		if (legacy > 0) {
-			for (const line of await rows(ctx.db.query('billLines').withIndex('by_bookingId', q => q.eq('bookingId', id)))) {
-				if (await oldOrder(line.billId)) legacy = Math.max(round2(legacy - (lineNet(line) - (line.deposit ?? 0))), 0);
-			}
-		}
-		const refunds: Doc<'bookingRefunds'>[] = [];
-		for (const refund of allRefunds) if (refund.paymentId || !refund.billId || !await oldOrder(refund.billId)) refunds.push(refund);
-		if (!recorded.length && legacy <= 0) return null;
-		const dates = recorded.map(p => p.effectiveAt);
-		if (legacy > 0 && booking.paidAt !== undefined) dates.push(booking.paidAt);
+  if (recorded.some(payment => payment.amount > 0)) await rememberConversion(booking);
+  const refunds = allRefunds;
+  if (!recorded.length) return null;
+  const dates = recorded.map(p => p.effectiveAt);
 		const paidDay = dates.length ? dayOf(Math.min(...dates)) : undefined;
 		const channel: ReportSale['channel'] = booking.source === 'admin' ? 'admin' : booking.source && booking.source !== 'web' ? 'messaging' : booking.chatSessionId ? 'web_chat' : 'web';
 		const attribution = booking.marketingAttribution;
@@ -225,16 +209,14 @@ export async function readMarketingReport(
 			...(session ? { session } : {}),
 			customPrice: !!booking.priceOverride,
 			coupon: await coupon(booking.promotion), createdDay: dayOf(booking.createdAt), paidDay, paid: true,
-			collected: round2(sum(recorded, p => p.amount) + legacy),
-			refunded: money.legacyRefund ? money.refunded : sum(refunds, r => r.amount), discount: booking.priceOverride ? 0 : booking.promotion?.discount ?? 0
+			collected: sum(recorded, p => p.amount),
+			refunded: sum(refunds, r => r.amount), discount: booking.priceOverride ? 0 : booking.promotion?.discount ?? 0
 		};
 		const events: ReportMoneyEvent[] = recorded.map(p => ({ saleId: id, kind: 'payment', day: dayOf(p.effectiveAt), amount: p.amount }));
 		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
-		if (legacy > 0 && booking.paidAt !== undefined) events.push({ saleId: id, kind: 'payment', day: dayOf(booking.paidAt), amount: legacy });
-		if (money.legacyRefund && !refunds.length && booking.refundedAt !== undefined) events.push({ saleId: id, kind: 'refund', day: dayOf(booking.refundedAt), amount: money.refunded });
 		return include(sale, events);
 	}
-	async function order(id: Id<'bills'>) {
+	async function order(id: Id<'orders'>) {
 		if (completed.has(id)) return completed.get(id);
 		const bill = await get(id);
 		completed.set(id, null);
@@ -242,19 +224,19 @@ export async function readMarketingReport(
 		const at = bill.paymentEffectiveAt ?? bill.paidAt;
 		if (at === undefined) return null;
 		// Outside the batched windows (a corrected or historical date) fall back to one read each.
-		const tenders = bill.amendedTenders ? [] : inWindow(bill.paidAt) ? (tendersByBill.get(id) ?? []) : await rows(ctx.db.query('billPayments').withIndex('by_billId', q => q.eq('billId', id)));
-		const stayRows = inWindow(at) ? (stayPosByBill.get(id) ?? []) : await rows(ctx.db.query('bookingPayments').withIndex('by_billId', q => q.eq('billId', id)));
+		const tenders = bill.amendedTenders ? [] : inWindow(bill.paidAt) ? (tendersByBill.get(id) ?? []) : await rows(ctx.db.query('orderPayments').withIndex('by_orderId', q => q.eq('orderId', id)));
+		const stayRows = inWindow(at) ? (stayPosByBill.get(id) ?? []) : await rows(ctx.db.query('bookingPayments').withIndex('by_orderId', q => q.eq('orderId', id)));
 		const batched = at >= start && (bill.paymentEffectiveAt === undefined || bill.paymentEffectiveAt <= (bill.paidAt ?? at));
-		const receiptRefunds = batched ? (receiptRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', id)));
+		const receiptRefunds = batched ? (receiptRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
 		// An old order that kept its stay money (no stay payment row) also takes the refunds of that money.
-		const stayRefunds = stayRows.length ? [] : batched ? (oldOrderRefundsByBill.get(id) ?? []) : (await rows(ctx.db.query('bookingRefunds').withIndex('by_billId', q => q.eq('billId', id)))).filter(r => !r.paymentId);
+		const stayRefunds = stayRows.length ? [] : batched ? (oldOrderRefundsByBill.get(id) ?? []) : (await rows(ctx.db.query('bookingRefunds').withIndex('by_orderId', q => q.eq('orderId', id)))).filter(r => !r.paymentId);
 		const refunds = [...receiptRefunds, ...stayRefunds];
 		const record = orderPaymentRecord(bill, tenders);
 		// The stay part of the order is on the stay (its POS payment row), so the order keeps only its own money.
-		const collected = round2(sum(record.tenders, p => p.amount) - sum(stayRows.filter(p => p.status === 'recorded' && p.origin === 'pos'), p => p.amount));
-		// A legacy forward payment-date correction can precede refunds; fall back for those.
-		const posRefunds = batched ? (posRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('billRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
-		const refunded = round2(sum(refunds, r => r.amount) + sum(posRefunds, r => r.amount / 100));
+		const collected = roundMoney(sum(record.tenders, p => p.amount) - sum(stayRows.filter(p => p.status === 'recorded' && p.origin === 'pos'), p => p.amount));
+
+		const posRefunds = batched ? (posRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('orderRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
+		const refunded = roundMoney(sum(refunds, r => r.amount) + sum(posRefunds, r => r.amount));
 		const discount = bill.promotion?.discount ?? 0;
 		if (collected === 0 && refunded === 0 && discount === 0) return null;
 		// The order's own stay, or the stay it charged when that stay already had another open order.
@@ -266,42 +248,21 @@ export async function readMarketingReport(
 		const sale: ReportSale = { kind: 'order', id, label: record.customer?.name ?? 'Walk-in', ref: orderTitle(bill.orderNumber), ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'pos', bucket: link && campaign ? 'tracked' : 'staff', ...(link && campaign ? { evidence: 'scanned', last: touch(touchFromLink(link, campaign)) } : {}), coupon: await coupon(bill.promotion), createdDay: day, ...(collected > 0 ? { paidDay: day } : {}), settlementDay: day, paid: true, collected, refunded, discount };
 		const events: ReportMoneyEvent[] = collected ? [{ saleId: id, kind: 'payment', day, amount: collected }] : [];
 		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
-		events.push(...posRefunds.map(r => ({ saleId: id, kind: 'refund' as const, day: r.businessDate, amount: r.amount / 100 })));
+		events.push(...posRefunds.map(r => ({ saleId: id, kind: 'refund' as const, day: r.businessDate, amount: r.amount })));
 		return include(sale, events);
 	}
-	async function appointment(id: Id<'serviceAppointments'>) {
+	async function appointment(id: Id<'appointments'>) {
 		if (completed.has(id)) return completed.get(id);
 		const appt = await get(id);
 		completed.set(id, null);
 		if (!appt || nonThb(appt)) return null;
-		// Keep all rows: a cancelled payment must also prevent a legacy fallback.
+
 		const allPayments = await rows(ctx.db.query('appointmentPayments').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
 		const payments: { amount: number; effectiveAt: number }[] = allPayments.filter(p => p.status === 'recorded');
-		if (!allPayments.length && !isLegacyManualPaymentCandidate(appt)) return null;
-		const refunds = await rows(ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
-		if (!allPayments.length) {
-			// Mirror the finance correction evidence, with every read charged to this report's budget.
-			const charges = await rows(ctx.db.query('billLines').withIndex('by_appointmentId', q => q.eq('appointmentId', id)));
-			const links = await rows(ctx.db.query('billLineLinks').withIndex('by_appointmentId_and_status', q => q.eq('appointmentId', id).eq('status', 'active')));
-			const orders = [];
-			for (const charge of [...charges, ...links]) {
-				const bill = await get(charge.billId);
-				if (bill && isSettledOrder(bill) && !bill.voidUnreceived) orders.push(bill);
-			}
-			const legacy = await legacyManualPayment(ctx, appt, { payments: allPayments, refunds, orders },
-				async () => {
-					const history: Doc<'appointmentChanges'>[] = [];
-					for await (const change of scan(ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', id)))) {
-						history.push(change);
-						if (history.length > 200) break;
-					}
-					return history;
-				});
-			if (legacy) payments.push({ amount: appt.price, effectiveAt: legacy.at });
-		}
+  const refunds = await rows(ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
 		if (!payments.length) return null;
 		const ownRefunds = [];
-		for (const refund of refunds) if (!refund.billId || !await order(refund.billId)) ownRefunds.push(refund);
+		for (const refund of refunds) if (!refund.orderId || !await order(refund.orderId)) ownRefunds.push(refund);
 		const service = appt.serviceNameSnapshot ? null : await get(appt.serviceId);
 		// A stay's appointment paid at the desk is never part of the stay's money, so it is its own sale.
 		const booking = appt.bookingId ? await get(appt.bookingId) : null;
@@ -318,25 +279,20 @@ export async function readMarketingReport(
 			for (const row of stayRefundsFromStart) {
 				if (!inWindow(row.effectiveAt)) continue;
 				await stay(row.bookingId);
-				if (row.billId && !row.paymentId) await order(row.billId);
+				if (row.orderId && !row.paymentId) await order(row.orderId);
 			}
 			// Older money has no payment/refund row. Its business dates are on the stay.
 			for await (const row of scan(ctx.db.query('bookings').withIndex('by_paidAt', q => q.gte('paidAt', start).lt('paidAt', end)))) { cache.set(row._id, row); await stay(row._id); }
 			for await (const row of scan(ctx.db.query('bookings').withIndex('by_refundedAt', q => q.gte('refundedAt', start).lt('refundedAt', end)))) { cache.set(row._id, row); await stay(row._id); }
 		}
 		for (const status of ['paid', 'void'] as const) {
-			for await (const row of scan(ctx.db.query('bills').withIndex('by_status_and_paidAt', q => q.eq('status', status).gte('paidAt', start).lt('paidAt', end)))) { cache.set(row._id, row); await order(row._id); }
+			for await (const row of scan(ctx.db.query('orders').withIndex('by_status_and_paidAt', q => q.eq('status', status).gte('paidAt', start).lt('paidAt', end)))) { cache.set(row._id, row); await order(row._id); }
 		}
-		for await (const row of scan(ctx.db.query('bills').withIndex('by_paymentEffectiveAt', q => q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end)))) { cache.set(row._id, row); await order(row._id); }
-		// Historical Mark paid has no payment row or paidAt; the proven change supplies its date.
-		for await (const row of scan(ctx.db.query('appointmentChanges').withIndex('by_kind_and_at', q => q.eq('kind', 'payment').gte('at', start).lt('at', end)))) {
-			const appt = await get(row.appointmentId);
-			if (appt && isLegacyManualPaymentCandidate(appt)) await appointment(appt._id);
-		}
+		for await (const row of scan(ctx.db.query('orders').withIndex('by_paymentEffectiveAt', q => q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end)))) { cache.set(row._id, row); await order(row._id); }
 		for await (const row of scan(ctx.db.query('appointmentPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)))) if (row.status === 'recorded') await appointment(row.appointmentId);
 		if (basis === 'cash') for (const row of apptRefundsFromStart) {
 			if (!inWindow(row.effectiveAt)) continue;
-			if (!row.billId || !await order(row.billId)) await appointment(row.appointmentId);
+			if (!row.orderId || !await order(row.orderId)) await appointment(row.appointmentId);
 		}
 	}
 
@@ -345,7 +301,7 @@ export async function readMarketingReport(
 			cache.set(booking._id, booking);
 			await stay(booking._id);
 		}
-		// Read only legacy bookings, rather than one booking range per non-converting raw visit.
+
 		for await (const booking of scan(ctx.db.query('bookings').withIndex('by_marketingAttribution_session_startedAt_and_sessionId', q => q.eq('marketingAttribution.session.startedAt', undefined).gt('marketingAttribution.sessionId', undefined)))) {
 			const sessionId = booking.marketingAttribution?.sessionId;
 			if (!sessionId || convertedIds.has(sessionId)) continue;

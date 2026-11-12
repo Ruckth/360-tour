@@ -13,7 +13,7 @@ Implemented on `feat/staff-roles-backend`, with audit fixes on `feat/staff-roles
 
 Capability flags are `checkout`, `approve`, `operations`, `manageTeam`, `settings`, `bookings`, `services`, `customers`, `orders`, `chats`, `properties`, `roster`, `reports`. `myAccess` adds `marketing`, resolved through existing marketing access. `settings` denotes owner settings management; Managers can still call existing settings read queries. Cashier receipts/order recall use checkout permission while the general Orders sidebar/list remains an operations area.
 
-New tables: `staffGrants`, singleton `cashierRules`, `staffApprovalRequests`. The staff-roles base added optional `billLines.catalogUnitPrice` to an existing table. Package 2.1 adds optional `cashierRules.refund`, the `refund` approval kind, optional rules fingerprints, `billRefunds` and refund audit events; existing documents remain valid without migration. Grant revisions prevent a role change and reversal in the same millisecond from reviving a request.
+New tables: `staffGrants`, singleton `cashierRules`, `staffApprovalRequests`. The staff-roles base added optional `orderLines.catalogUnitPrice` to an existing table. Package 2.1 adds optional `cashierRules.refund`, the `refund` approval kind, optional rules fingerprints, `orderRefunds` and refund audit events; existing documents remain valid without migration. Grant revisions prevent a role change and reversal in the same millisecond from reviving a request.
 
 ## UI API
 
@@ -61,7 +61,7 @@ Invites last 14 days, matching marketing policy. `setGrant` changes a claimed ro
 { kind: 'customPrice', action:'overrideLinePrice', lineId, price:number|null, note:string }
 { kind: 'customPrice', action:'addCustomItem', name:string, price:number }
 { kind: 'customPrice', action:'updateSourceLine', lineId }
-{ kind: 'customPrice', action:'attachSource', bookingId?:Id<'bookings'>, appointmentId?:Id<'serviceAppointments'> }
+{ kind: 'customPrice', action:'attachSource', bookingId?:Id<'bookings'>, appointmentId?:Id<'appointments'> }
 { kind: 'voidPaidSale' }
 { kind: 'refund', lineId, amountSatang, currency, method, idempotencyKey, reason } // amountSatang in integer satang
 { kind: 'paymentFix', action:'amendOrderPayment', tenders?:Tender[], effectiveAt?:number,
@@ -115,13 +115,13 @@ Every endpoint in this table checks `checkout` (Owner, Manager, Cashier), except
 | `pos` | `amendOrderPayment`, `linkPaidLine`, `unlinkPaidLine`, `voidUnreceivedOrder` | `paymentFix` rule, correction revisions/idempotency/proof checks retained |
 | `customers` | `browseCustomers`, `searchCustomers`, `checkoutCustomer`, `createCustomer` | Cashiers: active search only, at least two characters; no archive browsing; contact cards only; create rejects nonempty notes. No profile edits/history/merge privileges |
 | `displays` | `createPairLink`, `approveCode`, `takeDisplay`, `showOrder`, `renewDriverLease`, `listDisplays`, `revoke` | Existing pairing secrets, driver/lease and display checks remain |
-| `orderHistoryPages` | `corrections`, `audit`, `bookingRefunds`, `appointmentRefunds`, `billRefunds` | Order-specific receipt histories, page size 1–50; cashier order date restriction applies; no refund writes |
+| `orderHistoryPages` | `corrections`, `audit`, `bookingRefunds`, `appointmentRefunds`, `orderRefunds` | Order-specific receipt histories, page size 1–50; cashier order date restriction applies; no refund writes |
 | `staffApprovals` | `create`, `forOrder` | Create is Cashier only; immutable exact payload; cashier order date restriction applies to both; link/unlink requests require paymentFix=cashier |
 | `staffApprovals` | `cancel` | Authenticated original requester identity; no staff capability required after revocation |
 | `staffAccess` | `myAccess`, `claimInvite` | Access query permits signed out; claim requires matching unexpired unclaimed invite |
 | `marketingReport` | `noteCouponRefusal` | POS surface accepts `checkout`; admin-booking surface requires `operations`; public booking surface and rate limits unchanged; unauthorized diagnostics are discarded |
 
-For Cashiers, `pos.getOrder` and `pos.findOrderByNumber` return `null` for orders outside active unpaid checkout (`draft`/legacy `held`) or settlements (`paid`/`void`) on the current resort business date. Settlement date uses `resortTodayIso(paymentEffectiveAt ?? paidAt)` and is compared to `resortTodayIso()` (Asia/Bangkok); a void does not reset it. Missing settlement timestamps and discarded orders are hidden. `orderHistoryPages.*`, `pos.orderHistory`, `staffApprovals.forOrder` / `create`, and permitted `linkCandidates` enforce the same boundary with `Order not found`, identically for absent and inaccessible orders. Authorization runs before order joins/history reads. Owners/Managers retain their prior read access.
+For Cashiers, `pos.getOrder` and `pos.findOrderByNumber` return `null` for orders outside active unpaid checkout (`draft`/legacy `held`) or settlements (`paid`/`void`) on the current resort business date. Settlement date uses `resortTodayIso(paymentEffectiveAt ?? paidAt)` and is compared to `resortTodayIso()` (Asia/Bangkok); a void does not reset it. Missing settlement timestamps and discarded orders are hidden. `orderHistoryPages.*`, `pos.orderHistory`, `staffApprovals.forOrder` / `create`, and permitted `linkCandidates` enforce the same boundary with `Order not found`, identically for absent and inaccessible orders. Authorization runs before order joins/history reads. Owners/Managers retain their prior read access. Paid receipt writes (`voidOrder`, `amendOrderPayment`, `voidUnreceivedOrder`, `linkPaidLine`, `unlinkPaidLine`, and `refundLine`) enforce the same current-business-date visibility before applying changes. A cashier cannot make a hidden historical receipt visible by changing its payment date; Managers and Owners retain historical correction access.
 
 Cashiers receive minimal customer cards rather than private notes or unrelated guest histories. `getCustomer`, all customer editing/archive/merge/history endpoints, general order lists, booking/appointment admin and penalty-fee creation stay operations-only. The UI must use `customers.checkoutCustomer` and skip the old full CustomerDetails workflow for cashiers; display pairing stays fully usable from checkout.
 
@@ -185,9 +185,9 @@ Existing refund endpoints:
 | `pos.refundLine` | Record a walk-in line return in integer satang | Checkout visibility; follows `refund` rule or manager approval |
 | `payments.recordRefund` | Authoritative provider refund reconciliation | Internal only, unchanged |
 | `payments.linkRecordedStripeRefund` | Allocate an already recorded provider refund | Owner/Manager only; booking finance management |
-| `orderHistoryPages.bookingRefunds`, `appointmentRefunds`, `billRefunds`, `pos.getOrder` | Receipt-linked refund reads | Checkout allowed within the cashier order date boundary; no recording privilege |
+| `orderHistoryPages.bookingRefunds`, `appointmentRefunds`, `orderRefunds`, `pos.getOrder` | Receipt-linked refund reads | Checkout allowed within the cashier order date boundary; no recording privilege |
 
-Package 2.1 adds `pos.refundLine({orderId,lineId,amount,currency,method,reason,idempotencyKey})` → `{refund:RefundView,replayed}`. Owner/Manager execute directly; Cashier follows `refund` (`manager` by default). `NEEDS_APPROVAL` routes to an immutable `refund` payload; manager approval executes in the same transaction as request resolution. Refund amounts and line summaries are integer satang; existing report, credit, tender and source-refund amounts remain major units. `getOrder` adds per-line refunded/remaining values, POS refund summaries and a derived fully-refunded flag. `billAudit` and order history receive return entries. Full pagination is `orderHistoryPages.billRefunds`.
+Package 2.1 adds `pos.refundLine({orderId,lineId,amount,currency,method,reason,idempotencyKey})` → `{refund:RefundView,replayed}`. Owner/Manager execute directly; Cashier follows `refund` (`manager` by default). `NEEDS_APPROVAL` routes to an immutable `refund` payload; manager approval executes in the same transaction as request resolution. Refund amounts and line summaries are integer satang; existing report, credit, tender and source-refund amounts remain major units. `getOrder` adds per-line refunded/remaining values, POS refund summaries and a derived fully-refunded flag. `billAudit` and order history receive return entries. Full pagination is `orderHistoryPages.orderRefunds`.
 
 See [POS partial refunds API](pos-partial-refunds-api.md) for shapes, typed errors and boundaries. Only settled walk-in lines qualify; source-owned/allocated rows use source finance controls. Fully returned orders stay paid and retain consumed coupons. Both void modes are refused after a POS refund; refunded lines cannot later be allocated. Reports date returns on the server's Bangkok business date; affiliate credit sync is atomic. Existing booking/payment corrections outside checkout remain operations-only regardless of POS refund/paymentFix rules.
 

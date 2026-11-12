@@ -7,7 +7,7 @@ import { appendRecordHistory } from './lib/recordHistory';
 import { allowedImageUrl, IMAGE_HOSTS } from './lib/imageUrls';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
-const MAX_NIGHTLY_RATE = 10_000_000;
+const MAX_NIGHTLY_RATE = 1_000_000_000;
 
 export type PublicProperty = NonNullable<ReturnType<typeof toPublic>>;
 
@@ -70,7 +70,7 @@ export const getRooms = query({
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
 		return await ctx.db
-			.query('rooms')
+			.query('tourScenes')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.take(50);
 	}
@@ -83,7 +83,7 @@ export const getTourRooms = query({
 		const property = await ctx.db.query('properties')
 			.withIndex('by_slug', (q) => q.eq('slug', args.slug)).unique();
 		if (!property || property.status !== 'active') return null;
-		const rooms = await ctx.db.query('rooms')
+		const rooms = await ctx.db.query('tourScenes')
 			.withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(50);
 		const rank = (slug: string) => {
 			const index = property.tourRoomIds.indexOf(slug);
@@ -134,11 +134,11 @@ export const upsertOtaRate = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
-		if (!Number.isFinite(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
+		if (!Number.isSafeInteger(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
 			throw new Error('Nightly rate must be a positive amount');
 		}
 		const fields = {
-			nightlyRate: Math.round(args.nightlyRate),
+			nightlyRate: args.nightlyRate,
 			url: args.url?.trim() ? publicHttpsUrl(args.url.trim()) : undefined,
 			updatedAt: Date.now()
 		};
@@ -187,7 +187,7 @@ export const getSocialProof = query({
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return null;
 		return await ctx.db
-			.query('socialProof')
+			.query('reviewStats')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.first();
 	}
@@ -201,27 +201,6 @@ export const getReviews = query({
 			.query('reviews')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.take(100);
-	}
-});
-
-export const getRecentBookings = query({
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
-		return await ctx.db
-			.query('recentBookingDisplay')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.take(50);
-	}
-});
-
-export const getAllRecentBookings = query({
-	args: {},
-	handler: async (ctx) => {
-		const bookings = await ctx.db.query('recentBookingDisplay').take(100);
-		const visible = await Promise.all(bookings.map(async booking =>
-			(await ctx.db.get(booking.propertyId))?.status === 'active' ? booking : null));
-		return visible.filter(booking => booking !== null);
 	}
 });
 
@@ -247,7 +226,7 @@ export function required(value: string, label: string): string {
 }
 
 export function amount(value: number, label: string, { integer = false, min = 0, max = Infinity } = {}): number {
-	if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
+	if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isSafeInteger(value))) {
 		const range = max === Infinity ? `at least ${min}` : `between ${min} and ${max}`;
 		throw new Error(`${label} must be ${integer ? 'a whole number ' : ''}${range}`);
 	}
@@ -287,7 +266,7 @@ export const adminGet = query({
 		await requireAdmin(ctx);
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) return null;
-		const rooms = await ctx.db.query('rooms').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).take(50);
+		const rooms = await ctx.db.query('tourScenes').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).take(50);
 		return { property, rooms };
 	}
 });
@@ -318,7 +297,7 @@ export const update = mutation({
 		if (args.name !== undefined) changes.name = required(args.name, 'Name');
 		if (args.tagline !== undefined) changes.tagline = args.tagline.trim();
 		if (args.description !== undefined) changes.description = args.description.trim();
-		if (args.pricePerNight !== undefined) changes.pricePerNight = amount(args.pricePerNight, 'Price per night');
+		if (args.pricePerNight !== undefined) changes.pricePerNight = amount(args.pricePerNight, 'Price per night', { integer: true });
 		if (args.currency !== undefined) {
 			changes.currency = args.currency.trim().toUpperCase();
 			if (!/^[A-Z]{3}$/.test(changes.currency)) throw new Error('Currency must be a 3-letter code');
@@ -330,7 +309,7 @@ export const update = mutation({
 		if (args.amenities !== undefined) changes.amenities = textList(args.amenities, 'Amenities', 100);
 		if (args.images !== undefined) changes.images = textList(args.images, 'Images', 30).map(imageUrl);
 		if (args.directDiscountPercent !== undefined) {
-			changes.directDiscountPercent = amount(args.directDiscountPercent, 'Direct discount', { max: 100 });
+			changes.directDiscountPercent = amount(args.directDiscountPercent, 'Direct discount', { integer: true, max: 10000 });
 		}
 		if (args.status !== undefined) changes.status = args.status;
 		if (contentChanged(existing, changes)) changes.contentEditedAt = Date.now();
@@ -339,7 +318,7 @@ export const update = mutation({
 });
 
 export const updateRoom = mutation({
-	args: { roomId: v.id('rooms'), name: v.optional(v.string()), imagePath: v.optional(v.string()) },
+	args: { roomId: v.id('tourScenes'), name: v.optional(v.string()), imagePath: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const history = configurationWriter(ctx, admin.email);

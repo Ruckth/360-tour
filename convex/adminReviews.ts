@@ -1,10 +1,10 @@
 import { mutation, query } from './_generated/server';
 import { v, type Infer } from 'convex/values';
 import { requireAdmin } from './lib/adminAuth';
-import { recomputeSocialProof } from './lib/socialProof';
+import { recomputeSocialProof } from './lib/reviewStats';
 import { amount, imageUrl, required } from './properties';
 
-// Real guest reviews, entered by the admin. Every change rebuilds the villa's socialProof row.
+// Real guest reviews, entered by the admin. Every change rebuilds the villa's reviewStats row.
 
 const reviewInput = v.object({
 	authorName: v.string(),
@@ -51,7 +51,7 @@ export const list = query({
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.take(500);
 		const summary = await ctx.db
-			.query('socialProof')
+			.query('reviewStats')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.first();
 		return {

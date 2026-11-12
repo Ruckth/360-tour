@@ -58,7 +58,7 @@ import {
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
 import { cn } from "@/lib/utils";
 
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 type EventData =
   | { kind: "appointment"; appointment: Appointment }
   /** The appointment's turnaround; it moves with the appointment and only its end resizes. */
@@ -180,7 +180,7 @@ function StaffCalendar() {
   // Cancelled appointments are kept but stay out of the working grid unless asked for.
   const [showCancelled, setShowCancelled] = useState(false);
   const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [selectedId, setSelectedId] = useState<Id<"serviceAppointments"> | null>(null);
+  const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>(null);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
   const [editingTimeOff, setEditingTimeOff] = useState<Doc<"staffTimeOff"> | null>(null);
   const [error, setError] = useState("");

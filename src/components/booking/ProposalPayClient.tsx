@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { useCouponCopy } from "./coupon-copy";
 import { captureForBooking } from "@/lib/marketing/capture";
 import { api } from "convex/_generated/api";
@@ -131,7 +133,7 @@ export function ProposalPayClient({ token }: { token: string }) {
               <dd>{summary.guests}</dd>
               <dt>{t("total")}</dt>
               <dd>
-                {summary.currency} {summary.total.toLocaleString(locale)}
+                {summary.currency} {satangToBaht(summary.total).toLocaleString(locale)}
               </dd>
             </dl>
             {summary.coupon ? (

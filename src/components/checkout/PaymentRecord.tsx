@@ -1,5 +1,9 @@
 "use client";
 
+import { parseMoneyInput } from '@/lib/money-input';
+
+import { satangToBaht } from 'convex/shared/money';
+
 import { ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
@@ -16,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { TENDER_METHODS, type TenderMethod } from "convex/lib/billMath";
+import { TENDER_METHODS, type TenderMethod } from "convex/lib/orderMath";
 import {
   newAttemptKey,
   useCheckoutBackend,
@@ -262,8 +266,8 @@ function PaymentEditor({
   const [tenders, setTenders] = useState(() =>
     view.paymentRecord.tenders.map((t) => ({
       ...t,
-      amountInput: String(t.amount),
-      receivedInput: t.received === undefined ? "" : String(t.received),
+      amountInput: String(satangToBaht(t.amount)),
+      receivedInput: t.received === undefined ? "" : String(satangToBaht(t.received)),
     })),
   );
   const [payer, setPayer] = useState<Customer | null | undefined>(undefined);
@@ -304,9 +308,9 @@ function PaymentEditor({
                 ? {
                     tenders: tenders.map((t) => ({
                       method: t.method,
-                      amount: Number(t.amountInput),
+                      amount: parseMoneyInput(t.amountInput),
                       ...(t.method === "cash" && t.receivedInput
-                        ? { received: Number(t.receivedInput) }
+                        ? { received: parseMoneyInput(t.receivedInput) }
                         : {}),
                     })),
                   }

@@ -1,3 +1,4 @@
+import { bahtToSatang, percentToBasisPoints } from '../shared/money';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 
@@ -90,7 +91,7 @@ const PROPERTIES = [
 export async function seedProperties(ctx: MutationCtx): Promise<PropertyMap> {
 	const ids: Partial<PropertyMap> = {};
 	for (const property of PROPERTIES) {
-		const id = await ctx.db.insert('properties', property);
+		const id = await ctx.db.insert('properties', { ...property, pricePerNight: bahtToSatang(property.pricePerNight), directDiscountPercent: percentToBasisPoints(property.directDiscountPercent) });
 		ids[property.slug as keyof PropertyMap] = id;
 	}
 	return ids as PropertyMap;

@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
@@ -28,7 +29,7 @@ async function setup() {
       name: "Villa",
       tagline: "",
       description: "",
-      pricePerNight: 1000,
+      pricePerNight: 100000,
       currency: "THB",
       maxGuests: 4,
       bedrooms: 1,
@@ -62,10 +63,10 @@ async function setup() {
   const coupon = async (
     affiliateId: Id<"marketingAffiliates">,
     scope: "accommodation" | "services" = "accommodation",
-    amount = 100,
+    amount = 10000,
   ) => {
     const { couponId } = await admin.mutation(api.marketing.saveCoupon, {
-      code: `${scope === "services" ? "SPA" : "STAY"}${amount}`,
+      code: `${scope === "services" ? "SPA" : "STAY"}${amount / 100}`,
       benefit: { kind: "fixed", amount },
       scope,
     });
@@ -154,7 +155,7 @@ async function lateLinkSale() {
     category: "Spa",
     durationMin: 60,
     bufferMin: 0,
-    price: 1000,
+    price: 100000,
     currency: "THB",
     staffIds: [staffId],
   });
@@ -171,7 +172,7 @@ async function lateLinkSale() {
   });
   await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: "SPA100" });
   const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
-  expect(view.totals.due).toBe(2900);
+  expect(view.totals.due).toBe(290000);
   await s.admin.mutation(api.pos.settleOrder, {
     orderId,
     idempotencyKey: "late-link-payment",
@@ -216,7 +217,7 @@ async function lateLinkSale() {
       notifyGuest: false,
     });
   };
-  const unlink = async (linkId: Id<"billLineLinks">) =>
+  const unlink = async (linkId: Id<"orderLineLinks">) =>
     s.admin.mutation(api.pos.unlinkPaidLine, {
       orderId,
       linkId,
@@ -246,7 +247,7 @@ it.each(["pending", "approved"] as const)(
     if (state === "approved") await s.approve((await s.orderCredit())._id);
     expect(await s.orderCredit()).toMatchObject({
       state,
-      eligibleNet: 2900,
+      eligibleNet: 290000,
       affiliateId: s.anna,
     });
 
@@ -254,42 +255,42 @@ it.each(["pending", "approved"] as const)(
     const order = await s.orderCredit();
     const booking = await s.bookingCredit();
     const money = await s.t.run((ctx) =>
-      creditMoney(ctx, { billId: s.orderId }),
+      creditMoney(ctx, { orderId: s.orderId }),
     );
     expect(order).toMatchObject({
       state,
       eligibleNet: money.net,
       approvedNet: state === "approved" ? money.net : 0,
     });
-    expect(money.net).toBe(900);
+    expect(money.net).toBe(90000);
     expect(booking).toMatchObject({
       state: "pending",
       eligible: true,
-      eligibleNet: 2000,
+      eligibleNet: 200000,
       affiliateId: s.bob,
     });
-    expect(order.eligibleNet + booking.eligibleNet).toBe(2900);
+    expect(order.eligibleNet + booking.eligibleNet).toBe(290000);
     if (state === "approved") {
       await s.approve(booking._id);
       expect(
         (await s.orderCredit()).approvedNet +
           (await s.bookingCredit()).approvedNet,
-      ).toBe(2900);
+      ).toBe(290000);
     }
 
     await s.unlink(linkId);
     const restored = await s.orderCredit();
     const restoredMoney = await s.t.run((ctx) =>
-      creditMoney(ctx, { billId: s.orderId }),
+      creditMoney(ctx, { orderId: s.orderId }),
     );
-    expect(restoredMoney.net).toBe(2900);
+    expect(restoredMoney.net).toBe(290000);
     expect(restored).toMatchObject({
       state,
       eligibleNet: restoredMoney.net,
       approvedNet: state === "approved" ? restoredMoney.net : 0,
     });
     expect(restored.eligibleNet + (await s.bookingCredit()).eligibleNet).toBe(
-      2900,
+      290000,
     );
   },
 );
@@ -329,7 +330,7 @@ it("requires a fresh review after unlinking an approved booking credit and allow
   expect(await s.bookingCredit()).toMatchObject({
     state: "pending",
     eligible: true,
-    eligibleNet: 2000,
+    eligibleNet: 200000,
     approvedNet: 0,
   });
   await expect(
@@ -343,7 +344,7 @@ it("requires a fresh review after unlinking an approved booking credit and allow
   await s.approve(pending._id);
   expect(await s.bookingCredit()).toMatchObject({
     state: "approved",
-    approvedNet: 2000,
+    approvedNet: 200000,
   });
   const history = (await s.admin.query(api.marketingAffiliates.getCredit, {
     creditId: pending._id,
@@ -422,26 +423,26 @@ it("reopens an approved order credit for review when an unlink returns money aft
   await s.t.run(async (ctx) => {
     const now = Date.now();
     const service = (await ctx.db.query("services").first())!;
-    const appointmentId = await ctx.db.insert("serviceAppointments", {
+    const appointmentId = await insertFixture(ctx, "appointments", {
       serviceId: service._id, staffId: service.staffIds[0], start: now, end: now + 3_600_000,
       blockedUntil: now + 3_600_000, guestName: "Walk-in", guestPhone: "", source: "admin",
-      status: "completed", paymentStatus: "paid", price: 1000, currency: "THB", confirmationCode: "APPT-1", accessToken: "appt-token", createdAt: now,
+      status: "completed", paymentStatus: "paid", price: 100000, currency: "THB", confirmationCode: "APPT-1", accessToken: "appt-token", createdAt: now,
     } as never);
     await ctx.db.insert("appointmentRefunds", {
-      appointmentId, amount: 900, currency: "THB", method: "cash",
+      appointmentId, amount: 90000, currency: "THB", method: "cash",
       reason: "Service refunded", effectiveAt: now, recordedAt: now, recordedBy: "admin@example.com",
-      idempotencyKey: "service-refund", billId: s.orderId, netBefore: 900, netAfter: 0,
+      idempotencyKey: "service-refund", orderId: s.orderId, netBefore: 90000, netAfter: 0,
     });
-    await syncAffiliateCredit(ctx, { billId: s.orderId }, "admin@example.com");
+    await syncAffiliateCredit(ctx, { orderId: s.orderId }, "admin@example.com");
   });
   expect(await s.orderCredit()).toMatchObject({ state: "reversed", approvedNet: 0 });
 
   await s.unlink(linkId);
   const reopened = await s.orderCredit();
-  expect(reopened).toMatchObject({ state: "pending", eligible: true, eligibleNet: 2000, approvedNet: 0 });
+  expect(reopened).toMatchObject({ state: "pending", eligible: true, eligibleNet: 200000, approvedNet: 0 });
   expect(reopened.reason).toBeUndefined();
   await s.approve(reopened._id);
-  expect(await s.orderCredit()).toMatchObject({ state: "approved", approvedNet: 2000 });
+  expect(await s.orderCredit()).toMatchObject({ state: "approved", approvedNet: 200000 });
 });
 
 it("claims email invitations explicitly, binds canonical identity and prevents escalation or forged identity args", async () => {
@@ -524,7 +525,7 @@ it("restricts marketer to draft edits, protects budgets/status/active data and o
     name: "Edited",
   });
   await expect(
-    writer.mutation(api.marketing.saveCampaign, { ...fields, budget: 1 }),
+    writer.mutation(api.marketing.saveCampaign, { ...fields, budget: 100 }),
   ).rejects.toThrow("budgets");
   await expect(
     writer.mutation(api.marketing.setCampaignStatus, {
@@ -545,7 +546,7 @@ it("restricts marketer to draft edits, protects budgets/status/active data and o
       name: "Villa",
       slug: "villa",
       status: "active",
-      pricePerNight: 1000,
+      pricePerNight: 100000,
       currency: "THB",
     },
   ]);
@@ -615,7 +616,7 @@ it("freezes link/coupon conflict and self-referral candidates, requires explicit
   expect(row).toMatchObject({
     affiliateId: bob,
     state: "approved",
-    approvedNet: 1900,
+    approvedNet: 190000,
   });
   await s.admin.mutation(api.marketingAffiliates.assignCoupon, {
     affiliateId: bob,
@@ -630,7 +631,7 @@ it("freezes link/coupon conflict and self-referral candidates, requires explicit
       affiliateId: anna,
       candidates: [{ affiliateId: anna }, { affiliateId: bob }],
     },
-    approvedNet: 1900,
+    approvedNet: 190000,
   });
   const detail = await s.admin.query(api.marketingAffiliates.getCredit, {
     creditId: row._id,
@@ -651,7 +652,7 @@ it("supports coupon-only claims, retries once and updates approved net on partia
   let row = await s.credit();
   expect(row).toMatchObject({
     affiliateId: anna,
-    approvedNet: 1900,
+    approvedNet: 190000,
     candidates: [{ origin: "coupon" }],
   });
   await s.pay(bookingId);
@@ -685,14 +686,14 @@ it("supports coupon-only claims, retries once and updates approved net on partia
       idempotencyKey: key,
     });
   };
-  await refund(400, "partial-refund-key");
+  await refund(40000, "partial-refund-key");
   row = await s.credit();
   expect(row).toMatchObject({
     state: "approved",
-    approvedNet: 1500,
-    eligibleNet: 1500,
+    approvedNet: 150000,
+    eligibleNet: 150000,
   });
-  await refund(1500, "full-refund-key");
+  await refund(150000, "full-refund-key");
   row = await s.credit();
   expect(row).toMatchObject({
     state: "reversed",
@@ -792,7 +793,7 @@ it("enforces read/finance roles on public APIs and validates stale revisions and
 it("freezes POS settlement and excludes stay money from order credit, then reverses a no-money void", async () => {
   const s = await setup();
   const anna = await s.partner();
-  const couponId = await s.coupon(anna, "services", 100);
+  const couponId = await s.coupon(anna, "services", 10000);
   const staffId = await s.admin.mutation(api.adminServices.createStaff, {
     name: "Therapist",
     role: "Therapist",
@@ -811,7 +812,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
     category: "Spa",
     durationMin: 60,
     bufferMin: 0,
-    price: 1000,
+    price: 100000,
     currency: "THB",
     staffIds: [staffId],
   });
@@ -837,15 +838,15 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
   const rows = (await s.admin.query(api.marketingAffiliates.listCredits, {}))
     .rows;
   expect(rows).toHaveLength(2);
-  expect(rows.find((c) => c.billId === orderId)).toMatchObject({
-    eligibleNet: 900,
+  expect(rows.find((c) => c.orderId === orderId)).toMatchObject({
+    eligibleNet: 90000,
     flags: ["staff_order"],
     candidates: [{ couponId }],
   });
   expect(rows.find((c) => c.bookingId === bookingId)).toMatchObject({
-    eligibleNet: 2000,
+    eligibleNet: 200000,
   });
-  const orderCredit = rows.find((c) => c.billId === orderId)!;
+  const orderCredit = rows.find((c) => c.orderId === orderId)!;
   await s.admin.mutation(api.marketingAffiliates.reviewCredit, {
     creditId: orderCredit._id,
     decision: "approved",
@@ -873,7 +874,7 @@ it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon e
     name: "Budgeted",
     source: "partner",
     medium: "affiliate",
-    budget: 500,
+    budget: 50000,
   });
   await s.admin.mutation(api.marketingAccess.setGrant, {
     email: "writer@example.com",
@@ -890,7 +891,7 @@ it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon e
     source: "partner",
     medium: "affiliate",
   });
-  expect((await s.t.run((ctx) => ctx.db.get(s.campaignId)))?.budget).toBe(500);
+  expect((await s.t.run((ctx) => ctx.db.get(s.campaignId)))?.budget).toBe(50000);
   const args = {
     slug: "writer",
     name: "Draft",
@@ -913,7 +914,7 @@ it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon e
   ).rejects.toThrow("drafts only");
   const rules = {
     code: "WRITER",
-    benefit: { kind: "fixed" as const, amount: 100 },
+    benefit: { kind: "fixed" as const, amount: 10000 },
     scope: "services" as const,
   };
   const { couponId } = await writer.mutation(api.marketing.saveCoupon, rules);
@@ -1007,7 +1008,7 @@ it("rejects out-of-scope and expired candidates, archived approvals and unseen m
   const { bookingId } = await t.book({ slug: "r/anna" });
   await t.pay(bookingId);
   row = await t.credit();
-  await t.t.run((ctx) => ctx.db.patch(bookingId, { amountPaid: 1500 }));
+  await t.t.run((ctx) => ctx.db.patch(bookingId, { amountPaid: 150000 }));
   await expect(t.approve()).rejects.toThrow("Sale changed");
   await t.admin.mutation(api.marketingAffiliates.refreshCredit, {
     creditId: row._id,
@@ -1022,7 +1023,7 @@ it("does not infer any historical affiliate credit when an older sale is paid", 
   const s = await setup();
   await s.partner();
   const bookingId = await s.t.run((ctx) =>
-    ctx.db.insert("bookings", {
+    insertFixture(ctx, "bookings", {
       propertyId: s.propertyId,
       guestName: "Legacy",
       guestPhone: "+66811112222",
@@ -1030,9 +1031,9 @@ it("does not infer any historical affiliate credit when an older sale is paid", 
       checkOut: "2026-11-12",
       guests: 2,
       nights: 2,
-      subtotal: 2000,
+      subtotal: 200000,
       discountAmount: 0,
-      total: 2000,
+      total: 200000,
       currency: "THB",
       paymentStatus: "pending",
       status: "confirmed",
@@ -1047,7 +1048,7 @@ it("does not infer any historical affiliate credit when an older sale is paid", 
 it("keeps zero-cash coupon-covered service orders as zero-net reporting credit without payouts", async () => {
   const s = await setup();
   const anna = await s.partner();
-  await s.coupon(anna, "services", 1000);
+  await s.coupon(anna, "services", 100000);
   const staffId = await s.admin.mutation(api.adminServices.createStaff, {
     name: "Therapist",
     role: "Therapist",
@@ -1066,7 +1067,7 @@ it("keeps zero-cash coupon-covered service orders as zero-net reporting credit w
     category: "Spa",
     durationMin: 60,
     bufferMin: 0,
-    price: 1000,
+    price: 100000,
     currency: "THB",
     staffIds: [staffId],
   });
@@ -1086,7 +1087,7 @@ it("keeps zero-cash coupon-covered service orders as zero-net reporting credit w
     tenders: [],
   });
   expect(await s.credit()).toMatchObject({
-    billId: orderId,
+    orderId: orderId,
     eligible: true,
     eligibleNet: 0,
   });
@@ -1100,7 +1101,7 @@ it("keeps deposits pending for review until the booking is fully paid", async ()
   const { bookingId } = await s.book({ slug: "r/anna" });
   const original = await s.credit();
   await s.t.run((ctx) =>
-    ctx.db.patch(bookingId, { amountPaid: 500, paymentStatus: "pending" }),
+    ctx.db.patch(bookingId, { amountPaid: 50000, paymentStatus: "pending" }),
   );
   await s.admin.mutation(api.marketingAffiliates.refreshCredit, {
     creditId: original._id,
@@ -1108,7 +1109,7 @@ it("keeps deposits pending for review until the booking is fully paid", async ()
   expect(await s.credit()).toMatchObject({
     state: "pending",
     eligible: false,
-    eligibleNet: 500,
+    eligibleNet: 50000,
     approvedNet: 0,
   });
   await expect(s.approve()).rejects.toThrow("settled");
@@ -1116,12 +1117,12 @@ it("keeps deposits pending for review until the booking is fully paid", async ()
   expect(await s.credit()).toMatchObject({
     state: "pending",
     eligible: true,
-    eligibleNet: 2000,
+    eligibleNet: 200000,
   });
   await s.approve();
   expect(await s.credit()).toMatchObject({
     state: "approved",
-    approvedNet: 2000,
+    approvedNet: 200000,
   });
 });
 
