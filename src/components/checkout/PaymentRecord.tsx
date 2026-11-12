@@ -3,6 +3,7 @@
 import { ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
+import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +16,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { errorText } from "@/lib/staff-bookings";
 import { TENDER_METHODS, type TenderMethod } from "convex/lib/billMath";
 import {
   newAttemptKey,
@@ -25,6 +25,9 @@ import {
   type OrderView,
 } from "./backend";
 import { amountInput, correctionTitle, TENDER_LABELS } from "./checkout-ui";
+import { useSendApproval } from "./ApprovalRequest";
+import { needsApproval } from "./staff-approvals";
+import { checkoutErrorText, hasLineRefunds } from "./refunds";
 
 import { historyTime } from "./OrderHistory";
 import { paymentDateInput, paymentDateValue } from "./payment-time";
@@ -83,9 +86,12 @@ export function PaymentRecord({ view }: { view: OrderView }) {
           <Button variant="outline" onClick={() => setEditing("amend")}>
             Correct payment recording
           </Button>
-          <Button variant="ghost" onClick={() => setEditing("unreceived")}>
-            No money was received…
-          </Button>
+          {/* Refused after a line refund: money was received. */}
+          {hasLineRefunds(view) ? null : (
+            <Button variant="ghost" onClick={() => setEditing("unreceived")}>
+              No money was received…
+            </Button>
+          )}
         </div>
       ) : null}
       {editing ? (
@@ -186,7 +192,8 @@ export function PaymentRecord({ view }: { view: OrderView }) {
             </li>
           ))}
         </ol>
-        {record.correctionRevision > view.corrections.length ? (
+        {/* getOrder returns the latest 20. Refunds also advance correctionRevision, so it can't count amendments. */}
+        {view.corrections.length >= 20 && record.correctionRevision > view.corrections.length ? (
           <p className="text-xs text-muted-foreground">
             Showing the latest {view.corrections.length} amendments. Earlier
             amendments are available in Browse all financial history below.
@@ -242,6 +249,11 @@ function PaymentEditor({
   onClose: () => void;
 }) {
   const actions = useCheckoutBackend().useActions();
+  const access = useStaffAccess();
+  const send = useSendApproval();
+  // A cashier whose rules keep payment fixes for managers sends this as a request instead.
+  const [refused, setRefused] = useState(false);
+  const ask = access.role === "cashier" && (refused || access.cashierRules.paymentFix === "manager");
   const [reviewedRecord] = useState(view.paymentRecord);
   const [revision] = useState(view.paymentRecord.correctionRevision);
   const [date, setDate] = useState(() =>
@@ -310,11 +322,28 @@ function PaymentEditor({
             }
           : {}),
       };
-      setAttempted(true);
+      if (!ask) setAttempted(true);
     }
     lock.current = true;
     setSaving(true);
     setError("");
+    if (ask) {
+      // The request carries the exact change; the server adds the revision and attempt key.
+      const { effectiveAt, tenders: corrected, customer } = attempt.current;
+      attempt.current = null;
+      const failed = await send(
+        view.order._id,
+        mode === "amend"
+          ? { kind: "paymentFix", action: "amendOrderPayment", ...(effectiveAt !== undefined ? { effectiveAt } : {}), ...(corrected ? { tenders: corrected } : {}), ...(customer ? { customer } : {}) }
+          : { kind: "paymentFix", action: "voidUnreceivedOrder" },
+        reason.trim(),
+      );
+      lock.current = false;
+      setSaving(false);
+      if (failed) setError(failed);
+      else onClose();
+      return;
+    }
     try {
       if (mode === "amend") await actions.amendOrderPayment(attempt.current);
       else {
@@ -329,8 +358,16 @@ function PaymentEditor({
       }
       onClose();
     } catch (err) {
+      if (access.role === "cashier" && needsApproval(err)) {
+        // Nothing was written; the same form becomes a request.
+        attempt.current = null;
+        setAttempted(false);
+        setRefused(true);
+        setError("This needs a manager. Send it as a request.");
+        return;
+      }
       setError(
-        errorText(
+        checkoutErrorText(
           err,
           "Couldn't save the correction. Retry this attempt or close and review the latest recording.",
         ),
@@ -517,7 +554,9 @@ function PaymentEditor({
           }
         >
           {saving ? <Spinner /> : null}
-          {attempted
+          {ask
+            ? "Send request"
+            : attempted
             ? "Retry correction"
             : mode === "amend"
               ? "Save recording correction"

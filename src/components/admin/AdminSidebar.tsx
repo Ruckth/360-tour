@@ -9,6 +9,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OPEN_ADMIN_SEARCH, RailTiles } from "@/components/admin/AdminNav";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
+import { ApprovalCountBadge } from "@/components/admin/ApprovalCountBadge";
+import { useAdminNav } from "@/components/admin/staff-access";
 import {
   Sidebar,
   SidebarContent,
@@ -60,7 +62,8 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   // Sub-pages are hidden in icon mode, so the section icon carries the highlight there.
   const iconMode = state === "collapsed" && !isMobile;
   const searching = query.trim() !== "";
-  const results = searchAdminNav(query);
+  const nav = useAdminNav();
+  const results = searchAdminNav(query, nav);
   const firstHit = results[0]?.children?.[0]?.href ?? results[0]?.href;
 
   const close = () => {
@@ -171,6 +174,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                       <Link href={href} aria-current={highlighted ? "page" : undefined} onClick={close}>
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
+                        {href === "/admin/checkout" ? <ApprovalCountBadge className="ml-auto" /> : null}
                       </Link>
                     </SidebarMenuButton>
                     {children?.length && !searching ? (

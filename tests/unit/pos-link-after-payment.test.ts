@@ -24,7 +24,12 @@ const type = (selector: string, value: string) => act(async () => {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 });
 const panel = () => document.querySelector<HTMLElement>('section[aria-label="After payment"]')!;
-const printed = () => document.querySelector<HTMLElement>('article[aria-label="Receipt"]')!.textContent;
+// What prints: screen-only controls on the receipt (a line's Refund) are left out.
+const printed = () => {
+  const paper = document.querySelector<HTMLElement>('article[aria-label="Receipt"]')!.cloneNode(true) as HTMLElement;
+  paper.querySelectorAll("[data-screen-only]").forEach((node) => node.remove());
+  return paper.textContent;
+};
 
 async function paidMassage() {
   const backend = createFixtureBackend();

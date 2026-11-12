@@ -2,8 +2,9 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { CalendarDays, ChevronRight, Link2, ListOrdered, Plus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
-import { useDeferredValue, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
+import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,8 @@ export function OrderStrip({
   displayControl?: ReactNode;
 }) {
   const actions = useCheckoutBackend().useActions();
+  // Cashiers can't list orders (an operations area); they open one by its number.
+  const cashier = useStaffAccess().role === "cashier";
   const [panel, setPanel] = useState<Panel>(null);
   const [ordersPending, setOrdersPending] = useState(false);
   const [customerPending, setCustomerPending] = useState(false);
@@ -170,9 +173,9 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription>Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device.</DialogDescription>
+              <DialogDescription>{cashier ? "Open an unpaid order or one of today’s receipts by its number." : "Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device."}</DialogDescription>
             </DialogHeader>
-            {panel === "orders" ? <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : null}
+            {panel === "orders" ? (cashier ? <OrderLookup onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
         </Dialog>
         <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
@@ -220,6 +223,8 @@ function CustomerPicker({
   const typed = query.trim();
   const current = view?.customer ?? null;
   const source = view?.source ?? null;
+  // Cashiers get contact cards only: no profiles, history or archive (customers.checkoutCustomer).
+  const cashier = useStaffAccess().role === "cashier";
 
   async function pick(customerId: CustomerId) {
     if (linking) return;
@@ -252,7 +257,7 @@ function CustomerPicker({
       {current ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
           <CustomerLabel customer={current} />
-          <Button variant="outline" size="sm" onClick={() => setProfileId(current._id)}>View / edit</Button>
+          {cashier ? null : <Button variant="outline" size="sm" onClick={() => setProfileId(current._id)}>View / edit</Button>}
           <Button variant="outline" size="sm" onClick={onUnlink}>
             <X aria-hidden className="size-3.5" /> Remove
           </Button>
@@ -273,12 +278,12 @@ function CustomerPicker({
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search customers" aria-label="Search customers" className="pl-9" autoFocus />
       </div>
-      <Button variant="ghost" className="justify-self-start" onClick={() => setArchived(!archived)}>{archived ? "Show active customers" : "Show archived customers"}</Button>
+      {cashier ? null : <Button variant="ghost" className="justify-self-start" onClick={() => setArchived(!archived)}>{archived ? "Show active customers" : "Show archived customers"}</Button>}
       {archived ? <p className="text-sm text-muted-foreground">Archived profiles stay linked to existing orders. Open a profile to restore it.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {/* A failed search stays in this dialog with a retry; the order on screen is untouched. */}
       <InlineErrorBoundary resetKey={`${deferred.trim()}:${archived}`} message={SEARCH_FAILED}>
-        <CustomerResults query={deferred} archived={archived} currentId={current?._id} disabled={linking} onPick={pick} onOpen={setProfileId} />
+        <CustomerResults query={deferred} archived={archived} currentId={current?._id} disabled={linking} onPick={pick} onOpen={cashier ? undefined : setProfileId} />
       </InlineErrorBoundary>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => setForm(fromQuery())}>
@@ -294,7 +299,7 @@ function CustomerPicker({
   );
 }
 
-function CustomerResults({ query, archived, currentId, disabled, onPick, onOpen }: { query: string; archived: boolean; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void; onOpen: (id: CustomerId) => void }) {
+function CustomerResults({ query, archived, currentId, disabled, onPick, onOpen }: { query: string; archived: boolean; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void; onOpen?: (id: CustomerId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useCustomerPage(query, archived);
   const typed = query.trim();
   return (
@@ -310,10 +315,10 @@ function CustomerResults({ query, archived, currentId, disabled, onPick, onOpen 
           >
             <CustomerLabel customer={customer} />
           </button>
-          <Button variant="outline" size="sm" disabled={disabled} onClick={() => onOpen(customer._id)} aria-label={`View or edit ${customer.name}`}>Details</Button>
+          {onOpen ? <Button variant="outline" size="sm" disabled={disabled} onClick={() => onOpen(customer._id)} aria-label={`View or edit ${customer.name}`}>Details</Button> : null}
         </li>
       ))}
-      {status === "Exhausted" && results.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{typed.length >= 2 ? `No customer matches “${typed}”.` : `No ${archived ? "archived" : "active"} customers.`}</li> : null}
+      {status === "Exhausted" && results.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{typed.length >= 2 ? `No customer matches “${typed}”.` : onOpen ? `No ${archived ? "archived" : "active"} customers.` : "Type a name, phone or email."}</li> : null}
     </ul>
     {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(20)}>Load more customers</Button> : null}</>
   );
@@ -526,6 +531,36 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
   );
 }
 
+/** A cashier's way back to an order: its number. Older receipts read as not available. */
+export function OrderLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
+  const [text, setText] = useState("");
+  const [number, setNumber] = useState<number | null>(null);
+  const found = useCheckoutBackend().useFindOrder(number);
+  const opened = useRef<number | null>(null);
+  useEffect(() => {
+    if (number === null || !found || opened.current === number) return;
+    opened.current = number;
+    onOpen(found);
+  }, [number, found, onOpen]);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const value = Number(text.replace(/\D/g, ""));
+    opened.current = null;
+    setNumber(Number.isSafeInteger(value) && value > 0 ? value : null);
+  }
+  return (
+    <form onSubmit={submit} className="grid gap-3">
+      <Label htmlFor="order-lookup">Order number</Label>
+      <div className="flex gap-2">
+        <Input id="order-lookup" inputMode="numeric" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. 1043" autoFocus />
+        <Button type="submit" disabled={!text.replace(/\D/g, "")}>Open</Button>
+      </div>
+      {number !== null && found === undefined ? <Spinner label="Finding order" /> : null}
+      {number !== null && found === null ? <p role="status" className="text-sm text-muted-foreground">Not available.</p> : null}
+    </form>
+  );
+}
+
 const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
   { value: "unpaid", label: "Unpaid", empty: "No unpaid orders. Save & close keeps an order here until it is paid." },
   { value: "paid", label: "Paid", empty: "No paid orders yet." },
@@ -590,6 +625,7 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                   <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                     {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                   </span>
+                  {row.refundedAmountSatang ? <span className="block text-xs text-muted-foreground tabular-nums">Refunded {formatMoney(row.refundedAmountSatang / 100, row.currency)}</span> : null}
                 </span>
                 {/* The row itself opens the order. */}
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />

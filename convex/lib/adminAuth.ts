@@ -1,3 +1,4 @@
+import { requireStaff } from './staffAccess';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
 
 export function adminEmails() {
@@ -9,16 +10,13 @@ export function adminEmails() {
 	);
 }
 
+/** Desk/operations access; marketing keeps its own permission checks. */
 export async function requireAdmin(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<{ email: string }> {
-	const identity = await ctx.auth.getUserIdentity();
-	if (!identity?.email) {
-		throw new Error('Not authenticated');
-	}
-
-	const allowed = adminEmails();
-	if (!allowed.has(identity.email.toLowerCase())) {
-		throw new Error('Not authorized');
-	}
-
-	return { email: identity.email };
+ const access = await requireStaff(ctx, 'operations');
+ // Preserve the original actor spelling for existing owner audit trails.
+ const identity = await ctx.auth.getUserIdentity();
+ return { email: identity?.email ?? access.email };
+}
+export async function requireOwner(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<{ email: string }> {
+ return await requireStaff(ctx, 'manageTeam');
 }

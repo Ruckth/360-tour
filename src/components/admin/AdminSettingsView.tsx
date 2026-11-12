@@ -12,9 +12,10 @@ import {
 import { format } from "date-fns";
 import { Check, RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,9 +25,11 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { ConfigurationHistoryRecords, HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
-import { ADMIN_SETTINGS_TABS, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
+import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
 import { SetupChecklistCard } from "./SetupChecklist";
 import { StatusBadge } from "./StatusBadge";
+import { useStaffAccess } from "./staff-access";
+import { TeamSettings } from "./TeamSettings";
 import { sourceLabel } from "./labels";
 import { TONES, statusMeta, type StatusMeta } from "./status-tones";
 import { useChannelConfig, type ChannelConfig } from "./useChannelConfig";
@@ -45,9 +48,19 @@ function PanelSpinner({ label }: { label: string }) {
 export function AdminSettingsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const access = useStaffAccess();
+  // Managers read settings; only owners change them or see Team. Others see them as before.
+  const readOnly = access.role === "manager" || access.role === "cashier";
+  const tabs = TABS.filter(({ id }) => id !== "team" || !readOnly);
   // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
-  const tab: Tab = TABS.find(({ id }) => id === searchParams.get("tab"))?.id ?? "business";
+  const requested = adminSettingsTab(searchParams.get("tab"));
+  const tab: Tab = tabs.some(({ id }) => id === requested) ? requested : "business";
   const setTab = (next: Tab) => router.replace(adminSettingsTabPath(next), { scroll: false });
+  const legacyTab = searchParams.get("tab") === "admins";
+  // Old ?tab=admins links open Team under its own address.
+  useEffect(() => {
+    if (legacyTab) router.replace(adminSettingsTabPath("team"), { scroll: false });
+  }, [legacyTab, router]);
   const settings = useQuery(api.settings.get, {});
 
   return (
@@ -55,7 +68,7 @@ export function AdminSettingsView() {
       <SetupChecklistCard />
       <SegmentedTabs
         id="settings"
-        tabs={TABS.map(({ id, label }) => ({ value: id, label }))}
+        tabs={tabs.map(({ id, label }) => ({ value: id, label }))}
         value={tab}
         onValueChange={setTab}
         label="Settings sections"
@@ -64,18 +77,18 @@ export function AdminSettingsView() {
       <div {...tabPanelProps("settings", tab)} className="grid gap-4">
         {tab === "channels" ? (
           <ChannelsPanel />
-        ) : tab === "admins" ? (
-          <AdminsPanel />
+        ) : tab === "team" ? (
+          <TeamSettings />
         ) : settings === undefined ? (
           <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
-          <SettingsForm key={tab} section="business" settings={settings} />
+          <SettingsForm key={tab} section="business" settings={settings} readOnly={readOnly} />
         ) : tab === "bookingRules" ? (
-          <SettingsForm key={tab} section="bookingRules" settings={settings} />
+          <SettingsForm key={tab} section="bookingRules" settings={settings} readOnly={readOnly} />
         ) : tab === "ai" ? (
-          <SettingsForm key={tab} section="ai" settings={settings} />
+          <SettingsForm key={tab} section="ai" settings={settings} readOnly={readOnly} />
         ) : (
-          <SettingsForm key={tab} section="email" settings={settings} />
+          <SettingsForm key={tab} section="email" settings={settings} readOnly={readOnly} />
         )}
       </div>
       <HistoryDisclosure label="Deleted villa history"><ConfigurationHistoryRecords /></HistoryDisclosure>
@@ -213,7 +226,7 @@ function toInput(section: Section, values: Record<string, string>): SettingsInpu
   return { [section]: values };
 }
 
-function SettingsForm({ section, settings }: { section: Section; settings: EffectiveSettings & { revision: number } }) {
+function SettingsForm({ section, settings, readOnly = false }: { section: Section; settings: EffectiveSettings & { revision: number }; readOnly?: boolean }) {
   const config = SECTIONS[section];
   const pending = useRef(false);
   const update = useMutation(api.settings.update);
@@ -233,7 +246,7 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current) return;
+    if (pending.current || readOnly) return;
     setSubmitted(true);
     if (Object.keys(errors).length) {
       setState({ saving: false, saved: false, error: "Fix the highlighted fields and save again." });
@@ -274,7 +287,8 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
   return (
     <Panel title={config.title} description={config.description}>
       <form onSubmit={submit} noValidate className="grid gap-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        {/* Read-only for managers: the fields show the settings, and nothing can be saved. */}
+        <fieldset disabled={readOnly} className="grid min-w-0 gap-4 sm:grid-cols-2">
           {config.fields(settings).map((field) => {
             const id = `settings-${section}-${field.name}`;
             const error = errorFor(field.name);
@@ -311,7 +325,7 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
                     onBlur={common.onBlur}
                     aria-invalid={Boolean(error)}
                     aria-describedby={describedBy}
-                    disabled={state.saving}
+                    disabled={state.saving || readOnly}
                     allowEmpty
                   />
                 ) : (
@@ -335,7 +349,7 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
               </div>
             );
           })}
-        </div>
+        </fieldset>
 
         {state.error ? (
           <Alert variant="destructive">
@@ -344,10 +358,17 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-          <Button type="submit" disabled={state.saving}>
-            {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
-            Save {config.title.toLowerCase()}
-          </Button>
+          {readOnly ? (
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+              Read only
+              <InfoTip label="Why read only">Only owners can change settings.</InfoTip>
+            </span>
+          ) : (
+            <Button type="submit" disabled={state.saving}>
+              {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
+              Save {config.title.toLowerCase()}
+            </Button>
+          )}
           <span role="status" className="text-sm text-muted-foreground">
             {state.saved ? (
               <span className={cn("inline-flex items-center gap-1", TONES.success.text)}>
@@ -364,7 +385,7 @@ function SettingsForm({ section, settings }: { section: Section; settings: Effec
       </form>
       {settings.revision > revision ? <p className="mt-3 text-sm text-muted-foreground">Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></p> : null}
       {dirty ? <p className="mt-4 text-xs text-muted-foreground">Save your draft before applying an earlier configuration.</p> : null}
-      <div className="mt-4"><RecordHistoryPanel entityType="settings" entityId="default" onRestore={applyHistory} disabled={state.saving || dirty || settings.revision > revision} /></div>
+      <div className="mt-4"><RecordHistoryPanel entityType="settings" entityId="default" onRestore={readOnly ? undefined : applyHistory} disabled={state.saving || dirty || settings.revision > revision} /></div>
     </Panel>
   );
 }
@@ -472,28 +493,6 @@ function ChannelsPanel() {
         )}
       </Panel>
     </>
-  );
-}
-
-function AdminsPanel() {
-  const admins = useQuery(api.settings.admins, {});
-  return (
-    <Panel title="Admins" description="People who can sign in to this dashboard.">
-      {admins === undefined ? (
-        <PanelSpinner label="Loading admins" />
-      ) : (
-        <ul className="divide-y divide-border">
-          {admins.map((email) => (
-            <li key={email} className="py-2 text-sm text-foreground first:pt-0">
-              {email}
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="mt-4 text-xs text-muted-foreground">
-        Change in the Convex <code>ADMIN_EMAILS</code> environment variable (comma-separated).
-      </p>
-    </Panel>
   );
 }
 

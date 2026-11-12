@@ -2,7 +2,7 @@ import type { Infer } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { affiliateSnapshot } from "./affiliateTypes";
-import { bookingBalance, round2 } from "./billMath";
+import { MAX_BILL_REFUNDS, bookingBalance, round2 } from "./billMath";
 import { resortTodayIso } from "./dates";
 import { orderPaymentRecord } from "./orderLifecycle";
 import { adminEmails } from "./adminAuth";
@@ -159,7 +159,7 @@ export async function creditMoney(
     row.voidUnreceived
   )
     return { eligible: false, net: 0 };
-  const [tenders, stays, refunds] = await Promise.all([
+  const [tenders, stays, refunds, posRefunds] = await Promise.all([
     ctx.db
       .query("billPayments")
       .withIndex("by_billId", (q) => q.eq("billId", row._id))
@@ -172,8 +172,9 @@ export async function creditMoney(
       .query("appointmentRefunds")
       .withIndex("by_billId", (q) => q.eq("billId", row._id))
       .take(LIMIT + 1),
+    ctx.db.query("billRefunds").withIndex("by_orderId", q => q.eq("orderId", row._id)).take(MAX_BILL_REFUNDS + 1),
   ]);
-  if ([tenders, stays, refunds].some((r) => r.length > LIMIT))
+  if ([tenders, stays, refunds].some((r) => r.length > LIMIT) || posRefunds.length > MAX_BILL_REFUNDS)
     throw new Error("Sale history exceeds the credit review limit");
   const gross = round2(
     orderPaymentRecord(row, tenders).tenders.reduce((s, p) => s + p.amount, 0) -
@@ -181,7 +182,7 @@ export async function creditMoney(
         .filter((p) => p.status === "recorded" && p.origin === "pos")
         .reduce((s, p) => s + p.amount, 0),
   );
-  const refunded = refunds.reduce((s, r) => s + r.amount, 0);
+  const refunded = refunds.reduce((s, r) => s + r.amount, 0) + posRefunds.reduce((s, r) => s + r.amount, 0) / 100;
   const net = Math.max(round2(gross - refunded), 0);
   // Zero-cash coupon service orders remain reporting activity; full refunds do not.
   const eligible =

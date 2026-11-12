@@ -10,6 +10,7 @@ import { InlineErrorBoundary } from "./ErrorBoundary";
 import { historyTime } from "./OrderHistory";
 import { TENDER_LABELS, correctionTitle } from "./checkout-ui";
 import { HistoryDetails } from "./HistoryDetails";
+import { refundMethodName, satangMoney } from "./refunds";
 
 /** These are separate ledgers with independent native cursors, never a merged/capped array. */
 export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
@@ -20,6 +21,7 @@ export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: O
       <Ledger title="All receipt activity"><Audit orderId={orderId} /></Ledger>
       <Ledger title="All stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger>
+      <Ledger title="All line refunds"><LineRefunds orderId={orderId} view={view} /></Ledger>
     </div>
   </HistoryDetails>;
 }
@@ -73,4 +75,15 @@ function RefundBalances({ view, rows, complete, kind }: { view?: OrderView; rows
     const issued = view.order.state === "paid" || (view.order.state === "void" && !view.paymentRecord.voidUnreceived);
     return <p key={id}><span className="font-medium">{view.sources.find(s => s.id === id)?.reference ?? id}</span> · {complete ? "Refunded" : "Refunds shown"} {formatMoney(sum.amount, sum.currency)}{complete && issued && lines.length ? ` · Received on this receipt ${formatMoney(gross, sum.currency)} · Net retained ${formatMoney(round2(gross - sum.amount), sum.currency)}` : ""}</p>;
   })}{!complete ? <p>Load older refunds to see complete per-source net balances.</p> : null}</div>;
+}
+
+/** POS line refunds (orderHistoryPages.billRefunds): amounts in satang, dated by the Bangkok business day. */
+function LineRefunds({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
+  const page = useCheckoutBackend().useBillRefundHistory(orderId);
+  return <Page page={page} label="line refunds" render={row => <>
+    <p className="font-medium">Refunded · {satangMoney(row.amount, row.currency)} · {refundMethodName(row.method)}</p>
+    <p>{view?.lines.find(line => line._id === row.lineId)?.name ?? "Receipt line"}</p>
+    <p>{row.reason}</p>
+    <p>Recorded {historyTime(row.createdAt)} by {row.createdByEmail}</p>
+  </>} />;
 }

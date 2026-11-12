@@ -1,17 +1,23 @@
 "use client";
 
 import { SignInButton, useUser } from "@clerk/nextjs";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "convex/_generated/api";
 import { Shield } from "lucide-react";
-import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import { adminAccessRedirect, type StaffAccessView } from "@/components/admin/admin-access";
 import { adminNavItem } from "@/components/admin/admin-routes";
+import { ROLE_LABELS, StaffAccessProvider, useStaffAccess } from "@/components/admin/staff-access";
+import { CheckoutHeaderStaff } from "@/components/checkout/CheckoutHeaderStaff";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
+import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
 /** Auth gates, sidebar and header for every `/admin/*` page. Pages render only once the admin is connected. */
@@ -88,11 +94,100 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  return <AdminFrame userEmail={user.primaryEmailAddress?.emailAddress}>{children}</AdminFrame>;
+  return <AdminAccessGate userEmail={user.primaryEmailAddress?.emailAddress}>{children}</AdminAccessGate>;
+}
+
+function GateCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="grid min-h-dvh place-items-center px-5">
+      <section className="w-full max-w-md border border-border bg-card p-6 shadow-xl">
+        <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
+        <h1 className="font-serif text-3xl font-semibold">{title}</h1>
+        <div className="mt-3 grid gap-4 text-sm leading-6 text-muted-foreground">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+/** Loads the person's staff access once, lets an invited person activate it, then shows the admin. */
+function AdminAccessGate({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
+  const access = useQuery(api.staffAccess.myAccess, {});
+  const [pendingCount, setPendingCount] = useState(0);
+  if (access === undefined) {
+    return (
+      <div className="grid min-h-dvh place-items-center">
+        <Spinner label="Checking access" className="size-6" />
+      </div>
+    );
+  }
+  if (!access.role && access.pendingInvitation) return <ClaimInvitation access={access} />;
+  return (
+    <StaffAccessProvider access={access} pendingApprovals={access.capabilities.approve ? pendingCount : 0}>
+      {access.capabilities.approve ? <QuietBoundary><PendingApprovalsCount onCount={setPendingCount} /></QuietBoundary> : null}
+      <AdminFrame userEmail={userEmail}>{children}</AdminFrame>
+    </StaffAccessProvider>
+  );
+}
+
+/** Only feeds the badge count, so a failed approvals query never takes down the admin. */
+function PendingApprovalsCount({ onCount }: { onCount: (count: number) => void }) {
+  const count = useQuery(api.staffApprovals.pending, {})?.count ?? 0;
+  useEffect(() => onCount(count), [count, onCount]);
+  return null;
+}
+
+/** Renders nothing on error: the badge simply shows no count. */
+class QuietBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/** As Marketing invitations: the invited account activates its own access, explicitly. */
+function ClaimInvitation({ access }: { access: StaffAccessView }) {
+  const claim = useMutation(api.staffAccess.claimInvite);
+  const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState("");
+  const role = access.pendingInvitation ? ROLE_LABELS[access.pendingInvitation.role] : "";
+  return (
+    <GateCard title="Activate your access">
+      <p>{access.email} is invited as {role}.</p>
+      {error ? <p role="alert" className="text-destructive">{error}</p> : null}
+      <Button
+        className="w-full"
+        disabled={claiming}
+        onClick={async () => {
+          setClaiming(true);
+          setError("");
+          try {
+            await claim({});
+          } catch (cause) {
+            setError(errorText(cause, "Couldn’t activate the invitation. Try again."));
+          } finally {
+            setClaiming(false);
+          }
+        }}
+      >
+        {claiming ? "Activating…" : "Activate access"}
+      </Button>
+    </GateCard>
+  );
 }
 
 function AdminFrame({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
   const pathname = usePathname();
+  const tab = useSearchParams().get("tab");
+  const router = useRouter();
+  const access = useStaffAccess();
+  // A cashier on another admin page goes to checkout; a manager on Team goes to Settings.
+  const redirect = adminAccessRedirect(pathname, tab, access);
+  useEffect(() => {
+    if (redirect) router.replace(redirect);
+  }, [redirect, router]);
   // The chat inbox and checkout fill the viewport and scroll their panes; other views scroll the page.
   const checkout = pathname.startsWith("/admin/checkout");
   const fitsViewport = pathname.startsWith("/admin/chats") || checkout;
@@ -120,14 +215,23 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
       <SidebarInset className="min-h-0 min-w-0">
         <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 pt-[env(safe-area-inset-top)] sm:px-6">
           <SidebarTrigger className="-ml-1 hidden xl:inline-flex" />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="admin-eyebrow">Concierge operations</p>
             <h1 className="truncate font-serif text-2xl font-semibold tracking-tight text-foreground">
               {adminNavItem(pathname)?.label ?? "Admin"}
             </h1>
           </div>
+          {checkoutFlow ? <CheckoutHeaderStaff /> : null}
         </header>
-        <ConfirmProvider>{children}</ConfirmProvider>
+        <ConfirmProvider>
+          {redirect ? (
+            <div className="grid flex-1 place-items-center p-10">
+              <Spinner label="Loading" className="size-6" />
+            </div>
+          ) : (
+            children
+          )}
+        </ConfirmProvider>
         <AdminTabBar />
       </SidebarInset>
     </SidebarProvider>

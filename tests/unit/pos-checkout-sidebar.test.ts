@@ -20,7 +20,7 @@ vi.mock('@/lib/react/convex', () => ({
   useOptionalConvex: () => ({}),
   useOptionalConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }),
 }));
-vi.mock('convex/react', () => ({ useQuery: () => ({ businessName: 'Audit resort' }) }));
+vi.mock('convex/react', async () => (await import('./admin-shell-convex')).shellConvex({ role: 'owner' }));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),

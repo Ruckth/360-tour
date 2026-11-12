@@ -2,6 +2,7 @@
 
 import type { ComponentProps } from "react";
 import { DialogContent } from "@/components/ui/dialog";
+import { escapeClosesInfoTipFirst } from "@/components/ui/info-tip";
 import { SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { TOUCH_TARGETS } from "./checkout-ui";
@@ -12,10 +13,16 @@ import { TOUCH_TARGETS } from "./checkout-ui";
  * come from the app theme on <html>, like the rest of admin.
  */
 
-export function CheckoutDialogContent({ className, ...props }: ComponentProps<typeof DialogContent>) {
-  return <DialogContent className={cn(className, TOUCH_TARGETS)} {...props} />;
+// Escape closes an open ⓘ tip first, then the layer.
+const escape = (own?: (event: KeyboardEvent) => void) => (event: KeyboardEvent) => {
+  escapeClosesInfoTipFirst(event);
+  if (!event.defaultPrevented) own?.(event);
+};
+
+export function CheckoutDialogContent({ className, onEscapeKeyDown, ...props }: ComponentProps<typeof DialogContent>) {
+  return <DialogContent className={cn(className, TOUCH_TARGETS)} onEscapeKeyDown={escape(onEscapeKeyDown)} {...props} />;
 }
 
-export function CheckoutSheetContent({ className, ...props }: ComponentProps<typeof SheetContent>) {
-  return <SheetContent className={cn(className, TOUCH_TARGETS)} {...props} />;
+export function CheckoutSheetContent({ className, onEscapeKeyDown, ...props }: ComponentProps<typeof SheetContent>) {
+  return <SheetContent className={cn(className, TOUCH_TARGETS)} onEscapeKeyDown={escape(onEscapeKeyDown)} {...props} />;
 }
