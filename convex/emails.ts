@@ -1,11 +1,11 @@
 // HTML emails use Resend's fetch API and can run in the default Convex runtime.
-import { action, internalAction, type ActionCtx } from './auth/model';
+import { internalAction, type ActionCtx, adminAction } from './auth/model';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { Resend } from 'resend';
 import type { EffectiveSettings } from './lib/siteSettings';
-import { requireAdmin } from './lib/adminAuth';
+
 
 function escapeHtml(value: string) {
 	return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
@@ -331,10 +331,10 @@ export const sendStaffAlert = internalAction({
 });
 
 /** Setup checklist: sends a short test email to the owner notification address (or the signed-in admin). */
-export const sendTestEmail = action({
+export const sendTestEmail = adminAction({
 	args: {},
 	handler: async (ctx): Promise<{ ok: boolean; to: string; message: string }> => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const settings = await loadSettings(ctx);
 		const to = ownerNotificationEmail(settings) || admin.email;
 		const apiKey = process.env.RESEND_API_KEY;

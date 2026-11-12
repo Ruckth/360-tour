@@ -1,7 +1,6 @@
-import { mutation, query, type QueryCtx } from './auth/model';
+import { type QueryCtx, adminQuery, adminMutation } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
 import { uploadProblem } from './lib/imageUploads';
 import { MAX_SLUG_LENGTH, SLUG_PATTERN, slugify } from './lib/slug';
 import { configurationWriter, logOtaRate } from './lib/configurationHistory';
@@ -90,10 +89,9 @@ async function getRoom(ctx: QueryCtx, roomId: Id<'tourScenes'>) {
  * Villa editor data: rooms in tour order, whether the slug is locked and whether it can be deleted.
  * Takes the raw id from the URL, so a mistyped link shows "not found" instead of a validation error.
  */
-export const get = query({
+export const get = adminQuery({
 	args: { propertyId: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const propertyId = ctx.db.normalizeId('properties', args.propertyId);
 		const property = propertyId ? await ctx.db.get(propertyId) : null;
 		if (!property) return null;
@@ -112,10 +110,10 @@ export const get = query({
 	}
 });
 
-export const create = mutation({
+export const create = adminMutation({
 	args: { name: v.string(), slug: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const name = required(args.name, 'Name');
 		const slug = await pickSlug(args.slug, name, 'villa', 'Slug', (s) => propertySlugTaken(ctx, s));
@@ -145,10 +143,10 @@ export const create = mutation({
  * keep theirs and every hotspot still points at the matching copied room. Bookings, calendars, reviews and the
  * iCal export token are not copied.
  */
-export const duplicate = mutation({
+export const duplicate = adminMutation({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const source = await getProperty(ctx, args.propertyId);
 		const name = `${source.name} (copy)`;
@@ -202,10 +200,10 @@ export const duplicate = mutation({
 	}
 });
 
-export const setSlug = mutation({
+export const setSlug = adminMutation({
 	args: { propertyId: v.id('properties'), slug: v.string() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const slug = validSlug(args.slug, 'Slug');
@@ -219,10 +217,10 @@ export const setSlug = mutation({
 	}
 });
 
-export const setStatus = mutation({
+export const setStatus = adminMutation({
 	args: { propertyId: v.id('properties'), status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived')) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		if (args.status === 'active' && property.pricePerNight <= 0) {
@@ -232,10 +230,10 @@ export const setStatus = mutation({
 	}
 });
 
-export const deleteDraft = mutation({
+export const deleteDraft = adminMutation({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const blocker = await deleteBlocker(ctx, property);
@@ -273,18 +271,16 @@ export const deleteDraft = mutation({
 // Uploads: the browser POSTs the file to `generateUploadUrl`, then `saveUploadedImage` checks it and returns
 // a public URL that is stored like any other image URL (in `images` or `rooms.imagePath`).
 
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = adminMutation({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
 		return await ctx.storage.generateUploadUrl();
 	}
 });
 
-export const saveUploadedImage = mutation({
+export const saveUploadedImage = adminMutation({
 	args: { storageId: v.id('_storage'), kind: v.union(v.literal('photo'), v.literal('panorama')) },
 	handler: async (ctx, args): Promise<{ url: string } | { error: string }> => {
-		await requireAdmin(ctx);
 		const file = await ctx.db.system.get(args.storageId);
 		if (!file) throw new Error('Upload not found');
 		const problem = uploadProblem(args.kind, file.contentType, file.size);
@@ -301,10 +297,10 @@ export const saveUploadedImage = mutation({
 
 // 360 rooms. `properties.tourRoomIds` holds room slugs in tour order; hotspots point at room slugs.
 
-export const createRoom = mutation({
+export const createRoom = adminMutation({
 	args: { propertyId: v.id('properties'), name: v.string(), slug: v.optional(v.string()), imagePath: v.string() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const name = required(args.name, 'Room name');
@@ -319,10 +315,10 @@ export const createRoom = mutation({
 	}
 });
 
-export const deleteRoom = mutation({
+export const deleteRoom = adminMutation({
 	args: { roomId: v.id('tourScenes') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const room = await getRoom(ctx, args.roomId);
 		const property = await getProperty(ctx, room.propertyId);
@@ -340,10 +336,10 @@ export const deleteRoom = mutation({
 });
 
 /** `roomSlugs` must list every room of the villa once, in the new tour order. */
-export const reorderRooms = mutation({
+export const reorderRooms = adminMutation({
 	args: { propertyId: v.id('properties'), roomSlugs: v.array(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const slugs = new Set((await propertyRooms(ctx, property._id)).map((room) => room.slug));
@@ -355,7 +351,7 @@ export const reorderRooms = mutation({
 	}
 });
 
-export const setHotspots = mutation({
+export const setHotspots = adminMutation({
 	args: {
 		roomId: v.id('tourScenes'),
 		hotspots: v.array(
@@ -363,7 +359,7 @@ export const setHotspots = mutation({
 		)
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const room = await getRoom(ctx, args.roomId);
 		if (args.hotspots.length > MAX_HOTSPOTS) throw new Error(`A room can have at most ${MAX_HOTSPOTS} hotspots`);

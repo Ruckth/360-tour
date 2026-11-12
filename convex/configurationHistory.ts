@@ -1,13 +1,12 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { query } from './auth/model';
-import { requireAdmin } from './lib/adminAuth';
+import { adminQuery } from './auth/model';
+
 
 /** Discover deleted villas, or rooms (including removed ones) from their retained villa id. */
-export const records = query({
+export const records = adminQuery({
 	args: { propertyId: v.optional(v.id('properties')), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		if (
 			!Number.isInteger(args.paginationOpts.numItems) ||
 			args.paginationOpts.numItems < 1 ||

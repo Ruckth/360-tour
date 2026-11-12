@@ -2,7 +2,7 @@ import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 // Marketing release 1: campaigns, short links, QR entry and the coupon catalog.
 // CONTRACT — names, args and return types are fixed so the admin UI and backend can be built in parallel.
 import { ConvexError, v, type ObjectType } from 'convex/values';
-import { mutation, query, type QueryCtx, type MutationCtx } from './auth/model';
+import { type QueryCtx, type MutationCtx, marketingQuery, marketingMutation, publicQuery, publicMutation } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
 import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from './lib/offers';
 import { orderTitle, formatReceiptNumber } from './lib/orderMath';
@@ -197,10 +197,10 @@ async function quote(ctx: QueryCtx, args: QuoteArgs, adminTest: boolean): Promis
 
 // ---------- Admin queries ----------
 
-export const listCampaigns = query({
+export const listCampaigns = marketingQuery({
+  permission: 'view',
 	args: { status: v.optional(campaignStatus) },
 	handler: async (ctx, args): Promise<CampaignRow[]> => {
-		await requireMarketingPermission(ctx, 'view');
 		const campaigns = await ctx.db.query('marketingCampaigns').withIndex('by_status', q => args.status ? q.eq('status', args.status) : q).take(500);
 		return Promise.all(campaigns.map(async campaign => {
 			const links = await ctx.db.query('marketingLinks').withIndex('by_campaign', q => q.eq('campaignId', campaign._id)).take(500);
@@ -210,10 +210,10 @@ export const listCampaigns = query({
 	}
 });
 
-export const listLinks = query({
+export const listLinks = marketingQuery({
+  permission: 'view',
 	args: { campaignId: v.optional(v.id('marketingCampaigns')), status: v.optional(publishStatus) },
 	handler: async (ctx, args): Promise<LinkRow[]> => {
-		await requireMarketingPermission(ctx, 'view');
 		const links = args.campaignId
 			? await ctx.db.query('marketingLinks').withIndex('by_campaign', q => {
 				const index = q.eq('campaignId', args.campaignId!);
@@ -224,19 +224,20 @@ export const listLinks = query({
 	}
 });
 
-export const listCoupons = query({
+export const listCoupons = marketingQuery({
+  permission: 'view',
 	args: { status: v.optional(publishStatus) },
 	handler: async (ctx, args): Promise<CouponRow[]> => {
-		await requireMarketingPermission(ctx, 'view');
 		const coupons = await ctx.db.query('coupons').withIndex('by_status', q => args.status ? q.eq('status', args.status) : q).take(500);
 		return Promise.all(coupons.map(coupon => enrichCoupon(ctx, coupon)));
 	}
 });
 
-export const getCoupon = query({
+export const getCoupon = marketingQuery({
+  permission: 'view',
 	args: { couponId: v.string() },
 	handler: async (ctx, args): Promise<CouponDetail | null> => {
-		const access = await requireMarketingPermission(ctx, 'view');
+		const access = ctx.marketing;
 		const fullDetail = canReadMarketingPersonalData(access);
 		const couponId = ctx.db.normalizeId('coupons', args.couponId);
 		if (!couponId) return null;
@@ -262,26 +263,27 @@ export const getCoupon = query({
 	}
 });
 
-export const checkSlug = query({
+export const checkSlug = marketingQuery({
+  permission: 'view',
 	args: { slug: v.string(), linkId: v.optional(v.id('marketingLinks')) },
 	handler: async (ctx, args): Promise<SlugCheck> => {
-		await requireMarketingPermission(ctx, 'view');
 		return slugCheck(ctx, args.slug, args.linkId);
 	}
 });
 
 /** Admin "test a quote": same engine as the guest, ignores draft/paused status so drafts can be tested. */
-export const testQuote = query({
+export const testQuote = marketingQuery({
+  permission: 'view',
 	args: quoteArgs,
 	handler: async (ctx, args): Promise<OfferResult> => {
-		await requireMarketingPermission(ctx, 'view');
 		return quote(ctx, args, true);
 	}
 });
 
 // ---------- Admin mutations ----------
 
-export const saveCampaign = mutation({
+export const saveCampaign = marketingMutation({
+  permission: 'draft',
 	args: {
 		campaignId: v.optional(v.id('marketingCampaigns')),
 		name: v.string(),
@@ -293,7 +295,7 @@ export const saveCampaign = mutation({
 		notes: v.optional(v.string())
 	},
 	handler: async (ctx, args): Promise<Id<'marketingCampaigns'>> => {
-		const admin = await requireMarketingPermission(ctx, 'draft');
+		const admin = ctx.marketing;
 		const { campaignId, ...fields } = args;
 		if (admin.role === 'marketer' && fields.budget !== undefined) throw new Error('Marketers cannot set budgets');
 		if (!fields.name.trim() || !fields.source.trim() || !fields.medium.trim()) throw new ConvexError({ code: 'missing_campaign_fields', message: 'Name, source and medium are required. Fill in all three fields.' });
@@ -318,10 +320,11 @@ const campaignTransitions: Record<Doc<'marketingCampaigns'>['status'], Doc<'mark
 	draft: ['active'], active: ['paused', 'ended'], paused: ['active', 'ended'], ended: ['archived'], archived: ['ended']
 };
 
-export const setCampaignStatus = mutation({
+export const setCampaignStatus = marketingMutation({
+  permission: 'publish',
 	args: { campaignId: v.id('marketingCampaigns'), status: campaignStatus },
 	handler: async (ctx, args): Promise<null> => {
-		const admin = await requireMarketingPermission(ctx, 'publish');
+		const admin = ctx.marketing;
 		const campaign = await getOrThrow(ctx, 'marketingCampaigns', args.campaignId);
 		if (args.status !== campaign.status && !campaignTransitions[campaign.status].includes(args.status)) {
 			throw new ConvexError({ code: 'invalid_transition', message: 'This campaign status change is unavailable. Use the next action in the campaign lifecycle.' });
@@ -332,7 +335,8 @@ export const setCampaignStatus = mutation({
 	}
 });
 
-export const saveLink = mutation({
+export const saveLink = marketingMutation({
+  permission: 'draft',
 	args: {
 		linkId: v.optional(v.id('marketingLinks')),
 		slug: v.string(),
@@ -346,7 +350,7 @@ export const saveLink = mutation({
 		entry: v.union(v.literal('link'), v.literal('qr'))
 	},
 	handler: async (ctx, args): Promise<Id<'marketingLinks'>> => {
-		const admin = await requireMarketingPermission(ctx, 'draft');
+		const admin = ctx.marketing;
 		const { linkId, ...fields } = args;
 		if (fields.affiliateId) { await requireMarketingPermission(ctx, 'partners'); const affiliate = await ctx.db.get(fields.affiliateId); if (!affiliate || affiliate.status === 'archived') throw new Error('Partner unavailable'); }
 		const checked = await slugCheck(ctx, args.slug, linkId);
@@ -373,10 +377,11 @@ export const saveLink = mutation({
 	}
 });
 
-export const setLinkStatus = mutation({
+export const setLinkStatus = marketingMutation({
+  permission: 'publish',
 	args: { linkId: v.id('marketingLinks'), status: publishStatus },
 	handler: async (ctx, args): Promise<null> => {
-		const admin = await requireMarketingPermission(ctx, 'publish');
+		const admin = ctx.marketing;
 		const link = await getOrThrow(ctx, 'marketingLinks', args.linkId);
 		if (link.affiliateId) { const partner = await ctx.db.get(link.affiliateId); if (link.slug.startsWith('r/')) throw new Error('Change canonical link status from Partners'); if (args.status === 'active' && partner?.status !== 'active') throw new Error('Activate the partner first'); }
 		if (args.status === 'draft' && link.status !== 'draft') {
@@ -390,10 +395,11 @@ export const setLinkStatus = mutation({
 });
 
 /** Creates the coupon, or writes a new immutable version when any rule changes. Code is fixed after the first redemption. */
-export const saveCoupon = mutation({
+export const saveCoupon = marketingMutation({
+  permission: 'draft',
 	args: { couponId: v.optional(v.id('coupons')), code: v.string(), campaignId: v.optional(v.id('marketingCampaigns')), ...couponRules },
 	handler: async (ctx, args): Promise<{ couponId: Id<'coupons'>; version: number }> => {
-		const admin = await requireMarketingPermission(ctx, 'draft');
+		const admin = ctx.marketing;
 		const { couponId, code: rawCode, campaignId, ...rules } = args;
 		const code = normalizeCouponCode(rawCode);
 		if (!/^[A-Z0-9-]{3,32}$/.test(code)) throw new ConvexError({ code: 'invalid_coupon_code', message: 'Invalid coupon code. Use 3 to 32 letters, numbers or hyphens.' });
@@ -430,10 +436,11 @@ export const saveCoupon = mutation({
 	}
 });
 
-export const setCouponStatus = mutation({
+export const setCouponStatus = marketingMutation({
+  permission: 'publish',
 	args: { couponId: v.id('coupons'), status: publishStatus },
 	handler: async (ctx, args): Promise<null> => {
-		const admin = await requireMarketingPermission(ctx, 'publish');
+		const admin = ctx.marketing;
 		const coupon = await getOrThrow(ctx, 'coupons', args.couponId);
 		if (coupon.status === 'archived' && args.status !== 'archived') {
 			throw new ConvexError({ code: 'invalid_transition', message: 'Archived coupons cannot change status. Create a new coupon instead.' });
@@ -447,7 +454,8 @@ export const setCouponStatus = mutation({
 // ---------- Public ----------
 
 /** Short-link resolver used by the `/<slug>` route. Returns null for unknown slugs. */
-export const resolveLink = query({
+export const resolveLink = publicQuery({
+  reason: "Anonymous campaign landing link with live-status and privacy projection checks.",
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<ResolvedLink | null> => {
 		const link = await ctx.db.query('marketingLinks').withIndex('by_slug', q => q.eq('slug', args.slug)).unique();
@@ -479,7 +487,8 @@ export const resolveLink = query({
 });
 
 /** Stores a raw open and counts active human opens. One per-link rate budget bounds both; excess requests are dropped. */
-export const recordOpen = mutation({
+export const recordOpen = publicMutation({
+  reason: "Anonymous campaign opening telemetry; validated link and rate limits.",
 	args: { slug: v.string(), bot: v.boolean() },
 	handler: async (ctx, args): Promise<null> => {
 		const link = await ctx.db.query('marketingLinks').withIndex('by_slug', q => q.eq('slug', args.slug)).unique();
@@ -505,7 +514,8 @@ export const recordOpen = mutation({
  * Rate limited per visitor key and globally; over the limit it returns the key with `sessionId: null`
  * (never throws for that).
  */
-export const startSession = mutation({
+export const startSession = publicMutation({
+  reason: "Anonymous consent-based attribution session; validated capture and rate limits.",
 	args: { visitorKey: v.optional(v.string()), slug: v.optional(v.string()), landingPath: v.string(), referrerHost: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
 		const visitorKey = isVisitorKey(args.visitorKey) ? args.visitorKey : newVisitorKey();
@@ -542,7 +552,8 @@ export const startSession = mutation({
 });
 
 /** Guest quote preview. Reserves nothing. */
-export const previewCoupon = query({
+export const previewCoupon = publicQuery({
+  reason: "Anonymous booking coupon quote; live offer rules and safe projection.",
 	args: quoteArgs,
 	handler: async (ctx, args): Promise<OfferResult> => {
 		return quote(ctx, args, false);
@@ -550,4 +561,5 @@ export const previewCoupon = query({
 });
 
 /** Minimal marketing catalog for scoped roles. */
-export const catalog = query({args:{},handler:async ctx=>{await requireMarketingPermission(ctx,'view');return (await ctx.db.query('properties').take(500)).map(({_id,name,slug,status,pricePerNight,currency,maxGuests,directDiscountPercent})=>({_id,name,slug,status,pricePerNight,currency,maxGuests,directDiscountPercent}));}});
+export const catalog = marketingQuery({
+  permission: 'view',args:{},handler:async ctx=>{return (await ctx.db.query('properties').take(500)).map(({_id,name,slug,status,pricePerNight,currency,maxGuests,directDiscountPercent})=>({_id,name,slug,status,pricePerNight,currency,maxGuests,directDiscountPercent}));}});

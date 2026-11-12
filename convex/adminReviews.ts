@@ -1,6 +1,5 @@
-import { mutation, query } from './auth/model';
+import { adminQuery, adminMutation } from './auth/model';
 import { v, type Infer } from 'convex/values';
-import { requireAdmin } from './lib/adminAuth';
 import { recomputeSocialProof } from './lib/reviewStats';
 import { amount, imageUrl, required } from './properties';
 
@@ -42,10 +41,9 @@ function clean(args: Infer<typeof reviewInput>) {
 	};
 }
 
-export const list = query({
+export const list = adminQuery({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const reviews = await ctx.db
 			.query('reviews')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -61,10 +59,9 @@ export const list = query({
 	}
 });
 
-export const create = mutation({
+export const create = adminMutation({
 	args: { propertyId: v.id('properties'), ...reviewInput.fields },
 	handler: async (ctx, { propertyId, ...fields }) => {
-		await requireAdmin(ctx);
 		if (!(await ctx.db.get(propertyId))) throw new Error('Property not found');
 		const reviewId = await ctx.db.insert('reviews', { propertyId, authorAvatarUrl: '', ...clean(fields) });
 		await recomputeSocialProof(ctx, propertyId);
@@ -72,10 +69,9 @@ export const create = mutation({
 	}
 });
 
-export const update = mutation({
+export const update = adminMutation({
 	args: { reviewId: v.id('reviews'), ...reviewInput.fields },
 	handler: async (ctx, { reviewId, ...fields }) => {
-		await requireAdmin(ctx);
 		const review = await ctx.db.get(reviewId);
 		if (!review) throw new Error('Review not found');
 		await ctx.db.patch(reviewId, clean(fields));
@@ -83,10 +79,9 @@ export const update = mutation({
 	}
 });
 
-export const remove = mutation({
+export const remove = adminMutation({
 	args: { reviewId: v.id('reviews') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const review = await ctx.db.get(args.reviewId);
 		if (!review) return;
 		await ctx.db.delete(review._id);

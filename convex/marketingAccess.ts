@@ -1,23 +1,19 @@
 import { ConvexError, v } from "convex/values";
-import { query, mutation } from "./auth/model";
+import { publicQuery, authenticatedMutation, marketingQuery, marketingMutation } from './auth/model';
 import { marketingRole } from "./lib/affiliateTypes";
-import {
-  marketingAccess,
-  marketingInvitationExpiry,
-  marketingInvitationExpired,
-  requireMarketingPermission,
-} from "./lib/marketingAccess";
+import { marketingAccess, marketingInvitationExpiry, marketingInvitationExpired } from "./lib/marketingAccess";
 import { appendRecordHistory } from "./lib/recordHistory";
 import { MARKETING_INVITATION_TTL_MS } from "./lib/marketingPolicy";
 import { adminEmails } from "./lib/adminAuth";
-export const current = query({
+export const current = publicQuery({
+  reason: "Sign-in bootstrap returns caller access or anonymous capabilities.",
   args: {},
   handler: (ctx) => marketingAccess(ctx),
 });
-export const claimInvite = mutation({
+export const claimInvite = authenticatedMutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const identity = ctx.identity;
     const email = identity?.email?.trim().toLowerCase();
     if (!identity || !email) throw new Error("Not authenticated");
     const existing = await ctx.db
@@ -48,10 +44,10 @@ export const claimInvite = mutation({
     return null;
   },
 });
-export const listGrants = query({
+export const listGrants = marketingQuery({
+  permission: "manageAccess",
   args: {},
   handler: async (ctx) => {
-    await requireMarketingPermission(ctx, "manageAccess");
     const grants = await ctx.db.query("marketingGrants").take(500);
     const now = Date.now();
     return grants.map(grant => ({
@@ -61,10 +57,11 @@ export const listGrants = query({
     }));
   },
 });
-export const setGrant = mutation({
+export const setGrant = marketingMutation({
+  permission: "manageAccess",
   args: { email: v.string(), role: v.union(marketingRole, v.null()) },
   handler: async (ctx, args) => {
-    const actor = await requireMarketingPermission(ctx, "manageAccess");
+    const actor = ctx.marketing;
     const email = args.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
       throw new Error("Enter a valid email");

@@ -1,9 +1,8 @@
 import { paginationOptsValidator } from 'convex/server';
-import { mutation, query, type MutationCtx } from './auth/model';
+import { type MutationCtx, publicMutation, adminQuery, adminMutation } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { assertValidEmail, normalizeEmail } from './lib/validation';
-import { requireAdmin } from './lib/adminAuth';
 import { enforceRateLimit } from './lib/rateLimit';
 
 const leadSource = v.union(
@@ -39,7 +38,8 @@ export async function recordLead(
 	});
 }
 
-export const save = mutation({
+export const save = publicMutation({
+  reason: "Anonymous contact capture with validated email and rate limits.",
 	args: {
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
@@ -65,10 +65,9 @@ export const save = mutation({
 	}
 });
 
-export const list = query({
+export const list = adminQuery({
 	args: { paginationOpts: paginationOptsValidator, source: v.optional(leadSource) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const { source } = args;
 		const leads = source
 			? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
@@ -78,10 +77,9 @@ export const list = query({
 });
 
 /** Every lead for the source filter (newest first, capped) for the CSV export. */
-export const exportRows = query({
+export const exportRows = adminQuery({
 	args: { source: v.optional(leadSource) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const { source } = args;
 		const leads = source
 			? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
@@ -91,10 +89,9 @@ export const exportRows = query({
 	}
 });
 
-export const remove = mutation({
+export const remove = adminMutation({
 	args: { leadId: v.id('leads') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		if (await ctx.db.get(args.leadId)) await ctx.db.delete(args.leadId);
 		return null;
 	}

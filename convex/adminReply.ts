@@ -1,8 +1,7 @@
-import { mutation } from './auth/model';
+import { adminMutation } from './auth/model';
 import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import { patchSessionAfterMessages } from './lib/adminChatMetadata';
-import { requireAdmin } from './lib/adminAuth';
 import { getChannelReplyWindow } from './lib/channelReplyWindow';
 import { assertNoPendingStaffSend, answerAccepted, latestGuestId, sendFailed } from './lib/inboxLifecycle';
 
@@ -21,7 +20,7 @@ function recipientForSession(session: {
   return session.visitorContactHandle?.trim() || fromVisitorId?.trim();
 }
 
-export const claim = mutation({
+export const claim = adminMutation({
   args: {
     sessionId: v.id('conversations'),
     requestId: v.string(),
@@ -29,7 +28,7 @@ export const claim = mutation({
     replyToMessageId: v.optional(v.id('messages')),
   },
   handler: async (ctx, args) => {
-    const { email } = await requireAdmin(ctx);
+    const { email } = ctx.admin;
     const requestId = args.requestId.trim();
     const content = args.content.trim();
     if (!requestId || requestId.length > 100) throw new Error('Invalid reply request');
@@ -84,10 +83,9 @@ export const claim = mutation({
   },
 });
 
-export const complete = mutation({
+export const complete = adminMutation({
   args: { requestId: v.string() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     const attempt = await ctx.db
       .query('adminReplyAttempts')
       .withIndex('by_requestId', (q) => q.eq('requestId', args.requestId))
@@ -117,10 +115,9 @@ export const complete = mutation({
   },
 });
 
-export const fail = mutation({
+export const fail = adminMutation({
   args: { requestId: v.string(), error: v.string() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     const attempt = await ctx.db
       .query('adminReplyAttempts')
       .withIndex('by_requestId', (q) => q.eq('requestId', args.requestId))

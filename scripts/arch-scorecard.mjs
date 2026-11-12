@@ -8,6 +8,7 @@
 //
 // Test-name gates match the exact titles below, so name the tests exactly this way.
 import { execSync } from 'node:child_process';
+import { inspectConvexAccess } from './lib/convex-access.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
@@ -51,12 +52,11 @@ const RETIRED_TABLES = ['tenants', 'chatAnswers', 'chatQuestions', 'chatSuggeste
 const OLD_NAMES = ['bills', 'billLines', 'billPayments', 'billCorrections', 'billAudit', 'billCounters', 'billLineLinks', 'billRefunds', 'serviceAppointments', 'rooms', 'chatSessions', 'chatMessages', 'socialProof', 'lineWebhookEvents', 'facebookWebhookEvents', 'instagramWebhookEvents', 'whatsappWebhookEvents'];
 
 // Public functions registered with a raw builder outside convex/auth/.
-const RAW_PUBLIC = /export\s+const\s+\w+\s*=\s*(query|mutation|action)\s*\(/g;
-const rawPublic = convexProd.filter((p) => !rel(p).startsWith('convex/auth/'));
+const rawPublicViolations = convexProd.flatMap(p => inspectConvexAccess(rel(p), read(p)).violations);
 
 // No-login builders must declare `returns:` before `handler`.
 function missingReturns() {
-	const re = /export\s+const\s+(\w+)\s*=\s*(publicQuery|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(\s*\{/g;
+	const re = /export\s+const\s+(\w+)\s*=\s*(publicQuery|publicMutation|publicAction|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(\s*\{/g;
 	const missing = [];
 	for (const p of convexProd) {
 		const text = read(p);
@@ -140,7 +140,7 @@ const PHASE2_TESTS = ['ignores a duplicate webhook delivery', 'takes over a stal
 add('phase2-tests', 2, 'Required messaging reliability tests present', PHASE2_TESTS.filter(hasTest).length, PHASE2_TESTS.length, PHASE2_TESTS.filter((t) => !hasTest(t)).map((t) => `missing test: ${t}`));
 add('global-rate-row', 2, 'Uses of the single chat:global rate-limit key', count(convexProd, /['"`]chat:global['"`]/g), 0);
 
-add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth', count(rawPublic, RAW_PUBLIC), 0);
+add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth', rawPublicViolations.length, 0, rawPublicViolations);
 add('as-never', 3, '`as never` casts in app code (excluding reui)', count([...srcFiles, ...convexProd].filter((p) => !isTest(p)), /as never/g), 0);
 add('src-imports-convex-lib', 3, 'src imports of convex/lib', count(srcFiles, /from\s+['"][^'"]*convex\/lib\//g), 0, filesMatching(srcFiles, /from\s+['"][^'"]*convex\/lib\//));
 add('convex-imports-src', 3, 'convex imports of src', count(convexProd, /from\s+['"][^'"]*\/src\//g), 0, filesMatching(convexProd, /from\s+['"][^'"]*\/src\//));
@@ -159,7 +159,7 @@ add('phase4-tests', 4, 'Required read-budget test present', hasTest('lists the i
 const byId = Object.fromEntries(m.map((x) => [x.id, x]));
 const vacuous = (id, why) => { if (byId[id].ok && why) { byId[id].ok = false; byId[id].detail = [why]; } };
 vacuous('cross-domain', byId['domain-folders'].value < DOMAINS.length && 'domain folders do not exist yet');
-vacuous('no-login-without-returns', count(convexProd, /=\s*(publicQuery|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(/g) === 0 && 'no no-login builders in use yet');
+vacuous('no-login-without-returns', count(convexProd, /=\s*(publicQuery|publicMutation|publicAction|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(/g) === 0 && 'no no-login builders in use yet');
 
 // ---------- report ----------
 const due = phaseArg === null ? m : m.filter((x) => x.phase <= phaseArg);

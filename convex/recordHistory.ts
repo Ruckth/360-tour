@@ -1,11 +1,11 @@
 import { requireMarketingPermission } from './lib/marketingAccess';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { query } from './auth/model';
+import { authenticatedQuery } from './auth/model';
 import { requireOwner, requireAdmin } from './lib/adminAuth';
 import { canReadMarketingPersonalData, redactMarketingHistoryValue } from './lib/marketingPrivacy';
 
-export const list = query({
+export const list = authenticatedQuery({
  args: { entityType: v.string(), entityId: v.optional(v.string()), paginationOpts: paginationOptsValidator },
  handler: async (ctx, args) => {
   const marketing = ['marketingCampaign','marketingLink','coupon','marketingSpend','marketingAffiliate'].includes(args.entityType);

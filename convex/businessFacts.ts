@@ -1,8 +1,8 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { internalQuery, mutation, query, type MutationCtx } from './auth/model';
+import { internalQuery, type MutationCtx, adminQuery, adminMutation } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
+
 
 const status = v.union(v.literal('draft'), v.literal('approved'), v.literal('archived'));
 
@@ -32,10 +32,9 @@ function text(value: string, label: string, limit: number) {
 	return clean;
 }
 
-export const adminList = query({
+export const adminList = adminQuery({
 	args: { paginationOpts: paginationOptsValidator, status: v.optional(status) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const rows = args.status
 			? ctx.db.query('businessFacts').withIndex('by_status_and_updatedAt', q => q.eq('status', args.status!))
 			: ctx.db.query('businessFacts');
@@ -43,7 +42,7 @@ export const adminList = query({
 	}
 });
 
-export const adminSave = mutation({
+export const adminSave = adminMutation({
 	args: {
 		factId: v.optional(v.id('businessFacts')),
 		expectedRevision: v.optional(v.number()),
@@ -52,7 +51,7 @@ export const adminSave = mutation({
 		unknownQuestionId: v.optional(v.id('chatUnknownQuestions'))
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const existing = args.factId ? await ctx.db.get(args.factId) : null;
 		if (args.factId && !existing) throw new Error('Fact not found');
 		if (existing && args.expectedRevision !== existing.revision) throw new Error('This fact changed. Reload before saving.');
@@ -117,10 +116,10 @@ export const search = internalQuery({
 });
 
 /** Change a fact's status with a revision check, bumping the revision so stale editors are rejected. */
-export const adminSetStatus = mutation({
+export const adminSetStatus = adminMutation({
 	args: { factId: v.id('businessFacts'), status, expectedRevision: v.number() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const existing = await ctx.db.get(args.factId);
 		if (!existing) throw new Error('Fact not found');
 		if (args.expectedRevision !== existing.revision) throw new Error('This fact changed. Reload before saving.');
@@ -140,14 +139,13 @@ export const adminSetStatus = mutation({
  * property-scoped fact may only resolve unknowns reported for that property; a global fact may
  * resolve any. Bounded per call so each batch can be verified before the next.
  */
-export const adminResolveUnknownGroups = mutation({
+export const adminResolveUnknownGroups = adminMutation({
 	args: {
 		normalizedQuestions: v.array(v.string()),
 		factId: v.optional(v.id('businessFacts')),
 		structuredSource: v.optional(structuredSourceValidator)
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		if ((args.factId === undefined) === (args.structuredSource === undefined)) {
 			throw new Error('Provide exactly one of a fact or a structured source');
 		}
@@ -202,10 +200,9 @@ export const adminResolveUnknownGroups = mutation({
 });
 
 /** Active properties (id/slug/name) for the fact editor's property picker. */
-export const adminPropertyOptions = query({
+export const adminPropertyOptions = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
 		const properties = await ctx.db
 			.query('properties')
 			.withIndex('by_status', q => q.eq('status', 'active'))

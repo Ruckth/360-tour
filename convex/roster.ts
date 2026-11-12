@@ -1,9 +1,8 @@
 import { v } from 'convex/values';
-import { internalMutation, mutation, query } from './auth/model';
+import { internalMutation, adminQuery, adminMutation } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { internal } from './_generated/api';
-import { requireAdmin } from './lib/adminAuth';
 import {
 	APPOINTMENT_LOOKBACK,
 	TIME_OFF_LOOKBACK,
@@ -280,10 +279,9 @@ async function setCells(
 	return { ok: true as const, batchId, changed: changes.length, warnings, skipped: conflicts };
 }
 
-export const getWeek = query({
+export const getWeek = adminQuery({
 	args: { weekStart: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		assertWeekStart(args.weekStart);
 		const dates = Array.from({ length: 7 }, (_, i) => addDays(args.weekStart, i));
 		const first = dates[0];
@@ -324,10 +322,10 @@ export const getWeek = query({
 });
 
 /** Sets shifts and breaks on the selected cells. No shifts = off. Refused if it would orphan appointments. */
-export const applyCells = mutation({
+export const applyCells = adminMutation({
 	args: { cells: v.array(cellValidator), shifts: v.array(shiftValidator), breaks: v.array(breakValidator), note: v.optional(v.string()), skipConflicts: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const plan = normalizePlan(args);
 		const count = args.cells.length === 1 ? '1 cell' : `${args.cells.length} cells`;
 		const label = plan.shifts.length ? `Set ${plan.shifts.map((s) => `${s.start}–${s.end}`).join(', ')} on ${count}` : `Set ${count} to off`;
@@ -336,10 +334,10 @@ export const applyCells = mutation({
 });
 
 /** Removes overrides so the cells follow the weekly pattern again. */
-export const resetCells = mutation({
+export const resetCells = adminMutation({
 	args: { cells: v.array(cellValidator), skipConflicts: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const count = args.cells.length === 1 ? '1 cell' : `${args.cells.length} cells`;
 		return await setCells(ctx, admin.email, `Reset ${count} to default`, args.cells, null, args.skipConflicts);
 	}
@@ -400,7 +398,7 @@ async function planCopy(ctx: ReadCtx, sourceWeekStart: string, fromWeek: number,
 }
 
 /** Copies a week's schedule onto the next 1–52 weeks. `dryRun` returns the preview only. */
-export const copyWeek = mutation({
+export const copyWeek = adminMutation({
 	args: {
 		sourceWeekStart: v.string(),
 		weeks: v.number(),
@@ -408,7 +406,7 @@ export const copyWeek = mutation({
 		dryRun: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		await assertRosterIdle(ctx);
 		assertWeekStart(args.sourceWeekStart);
 		if (!Number.isInteger(args.weeks) || args.weeks < 1 || args.weeks > MAX_WEEKS) throw new Error(`Weeks must be 1–${MAX_WEEKS}`);
@@ -495,10 +493,10 @@ async function upcomingOverrideDates(ctx: ReadCtx, staffId: Id<'staff'>) {
 }
 
 /** Rewrites each person's weekly pattern from this week's schedule; the week's overrides become redundant and are removed. */
-export const makeDefault = mutation({
+export const makeDefault = adminMutation({
 	args: { weekStart: v.string() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		await assertRosterIdle(ctx);
 		assertWeekStart(args.weekStart);
 		const dates = Array.from({ length: 7 }, (_, i) => addDays(args.weekStart, i));
@@ -540,10 +538,10 @@ export const makeDefault = mutation({
 });
 
 /** Reverts the latest bulk action, unless that would now orphan appointments booked since. */
-export const undo = mutation({
+export const undo = adminMutation({
 	args: { batchId: v.id('rosterBatches') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const batch = await ctx.db.get(args.batchId);
 		if (!batch) throw new Error('Nothing to undo');
 		const latest = await ctx.db.query('rosterBatches').order('desc').first();
@@ -746,10 +744,9 @@ async function planBreakChange(ctx: ReadCtx, input: BreakChange) {
 }
 
 /** Conflicts are checked across upcoming bookings; affected and exempt dates are previewed for four weeks. Never throws for bad input. */
-export const previewBreakChange = query({
+export const previewBreakChange = adminQuery({
 	args: breakChangeArgs,
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		try {
 			const change = await planBreakChange(ctx, args);
 			return { problem: null, conflicts: change.conflicts, keptDates: change.keptDates, affectedDates: change.affectedDates, previewThrough: change.previewThrough };
@@ -760,10 +757,10 @@ export const previewBreakChange = query({
 });
 
 /** Saves a confirmed break edit. Day edits are a roster override; weekly edits keep each date override in force. Both can be undone in Roster. */
-export const editBreak = mutation({
+export const editBreak = adminMutation({
 	args: breakChangeArgs,
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		await assertRosterIdle(ctx);
 		const change = await planBreakChange(ctx, args);
 		if (change.conflicts.length) return { ok: false as const, conflicts: change.conflicts };

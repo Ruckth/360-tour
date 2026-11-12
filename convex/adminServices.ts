@@ -2,11 +2,10 @@ import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
 import { initializeWeeklyPattern, writeWeeklyPattern } from './lib/rosterHistory';
 import { appendRecordHistory } from './lib/recordHistory';
-import { action, internalMutation, mutation, query } from './auth/model';
+import { internalMutation, adminQuery, adminAction, adminMutation } from './auth/model';
 import { internal } from './_generated/api';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
 import { avatarUploadProblem } from './lib/imageUploads';
 import { attachPhotoUpload, deleteStoredFile, deleteUnreferencedPhoto, pendingAvatarUpload } from './lib/adminPhotos';
 import {
@@ -48,7 +47,6 @@ import {
 	recordAppointmentChange,
 	recordRebooked
 } from './lib/appointmentChanges';
-
 import { appointmentFinancials, recordAppointmentPayment, recordAppointmentRefund, correctAppointmentPayment } from './lib/appointmentFinance';
 import { manualPaymentMethod, refundMethod } from './lib/financeValidators';
 
@@ -164,10 +162,9 @@ async function assertTimeOffFits(ctx: MutationCtx, staffId: Id<'staff'>, start: 
 	if ((await timeOffConflicts(ctx, staffId, start, end)).length) throw new Error('Reassign or cancel the appointments during this time off first');
 }
 
-export const listStaff = query({
+export const listStaff = adminQuery({
 	args: { includeArchived: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const rows = args.includeArchived
 			? await ctx.db.query('staff').take(201)
 			: await ctx.db.query('staff').withIndex('by_status', q => q.eq('status', 'active')).take(201);
@@ -195,10 +192,9 @@ export const registerStaffAvatarUpload = internalMutation({
 	}
 });
 
-export const uploadStaffAvatar = action({
+export const uploadStaffAvatar = adminAction({
 	args: { bytes: v.bytes(), contentType: v.string() },
 	handler: async (ctx, args): Promise<Id<'_storage'>> => {
-		await requireAdmin(ctx);
 		const problem = avatarUploadProblem(args.contentType, args.bytes.byteLength);
 		if (problem) throw new Error(problem);
 		const storageId = await ctx.storage.store(new Blob([args.bytes], { type: args.contentType }));
@@ -213,10 +209,9 @@ export const uploadStaffAvatar = action({
 });
 
 /** Drops an upload whose save failed or was cancelled. Does nothing once the photo is attached. */
-export const discardStaffAvatarUpload = mutation({
+export const discardStaffAvatarUpload = adminMutation({
 	args: { storageId: v.id('_storage') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const pending = await pendingAvatarUpload(ctx, args.storageId);
 		if (!pending) return null;
 		await ctx.db.delete(pending._id);
@@ -225,10 +220,10 @@ export const discardStaffAvatarUpload = mutation({
 	}
 });
 
-export const createStaff = mutation({
+export const createStaff = adminMutation({
 	args: { name: v.string(), role: v.string(), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.id('_storage')), color: v.string(), workingHours: v.array(hour), breaks: v.array(rest) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		if (args.avatarStorageId !== undefined && args.avatarUrl !== undefined) throw new Error('Send either a photo upload or a photo URL');
 		validateHours(args.workingHours);
 		validateHours(args.breaks);
@@ -244,11 +239,11 @@ export const createStaff = mutation({
 	}
 });
 
-export const updateStaff = mutation({
+export const updateStaff = adminMutation({
 	// `avatarStorageId`: an uploaded photo to attach, or null to remove the photo. `avatarUrl` sets an external URL.
 	args: { staffId: v.id('staff'), name: v.optional(v.string()), role: v.optional(v.string()), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.union(v.id('_storage'), v.null())), color: v.optional(v.string()), status: v.optional(staffStatus), workingHours: v.optional(v.array(hour)), breaks: v.optional(v.array(rest)) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
 		const { staffId, avatarStorageId, avatarUrl, ...changes } = args;
@@ -307,10 +302,10 @@ export const updateStaff = mutation({
 	}
 });
 
-export const archiveStaff = mutation({
+export const archiveStaff = adminMutation({
 	args: { staffId: v.id('staff') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
 		const result = await archiveStaffRecord(ctx, staff, admin.email);
@@ -320,20 +315,18 @@ export const archiveStaff = mutation({
 });
 
 /** Shown before archiving a staff member or service. */
-export const countUpcomingAppointments = query({
+export const countUpcomingAppointments = adminQuery({
 	args: { staffId: v.optional(v.id('staff')), serviceId: v.optional(v.id('services')) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		if (args.staffId) return await countUpcoming(ctx, { staffId: args.staffId });
 		if (args.serviceId) return await countUpcoming(ctx, { serviceId: args.serviceId });
 		throw new Error('Choose a staff member or service');
 	}
 });
 
-export const listServices = query({
+export const listServices = adminQuery({
 	args: { includeArchived: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const rows = args.includeArchived
 			? await ctx.db.query('services').take(201)
 			: await ctx.db.query('services').withIndex('by_status', q => q.eq('status', 'active')).take(201);
@@ -342,10 +335,10 @@ export const listServices = query({
 	}
 });
 
-export const createService = mutation({
+export const createService = adminMutation({
 	args: { slug: v.string(), name: v.string(), description: v.string(), category: v.string(), durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string(), staffIds: v.array(v.id('staff')), imageStorageId: v.optional(v.id('_storage')) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const slug = required(args.slug, 'Slug').toLowerCase();
 		if (await ctx.db.query('services').withIndex('by_slug', (q) => q.eq('slug', slug)).first()) throw new Error('Service slug already exists');
 		validateService(args);
@@ -362,12 +355,12 @@ export const createService = mutation({
 	}
 });
 
-export const updateService = mutation({
+export const updateService = adminMutation({
 	args: { serviceId: v.id('services'), slug: v.optional(v.string()), name: v.optional(v.string()), description: v.optional(v.string()), category: v.optional(v.string()), durationMin: v.optional(v.number()), bufferMin: v.optional(v.number()), price: v.optional(v.number()), currency: v.optional(v.string()), staffIds: v.optional(v.array(v.id('staff'))), status: v.optional(serviceStatus),
 		// An uploaded photo to attach, or null to remove the photo. Omitted keeps the current one.
 		imageStorageId: v.optional(v.union(v.id('_storage'), v.null())) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const service = await ctx.db.get(args.serviceId);
 		if (!service) throw new Error('Service not found');
 		const { serviceId, imageStorageId, ...changes } = args;
@@ -398,10 +391,10 @@ export const updateService = mutation({
 });
 
 /** Upcoming appointments stay booked; the count is returned so the UI can say so. */
-export const archiveService = mutation({
+export const archiveService = adminMutation({
 	args: { serviceId: v.id('services') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const service = await ctx.db.get(args.serviceId);
 		if (!service) throw new Error('Service not found');
 		const upcomingAppointments = await countUpcoming(ctx, { serviceId: args.serviceId });
@@ -412,10 +405,10 @@ export const archiveService = mutation({
 });
 
 /** Saves the services × staff matrix in one go. Refuses if an active service would be left with no one. */
-export const setServiceStaffMatrix = mutation({
+export const setServiceStaffMatrix = adminMutation({
 	args: { assignments: v.array(v.object({ serviceId: v.id('services'), staffIds: v.array(v.id('staff')) })) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		if (args.assignments.length > 200) throw new Error('Save at most 200 services at once');
 		if (new Set(args.assignments.map((row) => row.serviceId)).size !== args.assignments.length) throw new Error('Each service can appear only once');
 		const staffCache = new Map<Id<'staff'>, Doc<'staff'> | null>();
@@ -449,10 +442,9 @@ export const setServiceStaffMatrix = mutation({
 });
 
 /** Time off that hasn't ended yet, soonest first. */
-export const listTimeOff = query({
+export const listTimeOff = adminQuery({
 	args: { staffId: v.id('staff') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const now = Date.now();
 		const rows: Doc<'staffTimeOff'>[] = [];
 		for await (const row of boundedIntegrityRows(ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
@@ -469,10 +461,10 @@ export const listTimeOff = query({
  * Adds the same time off for one or more staff. People with booked appointments in the way
  * are skipped and reported with those appointments; everyone else is saved.
  */
-export const addTimeOff = mutation({
+export const addTimeOff = adminMutation({
 	args: { staffId: v.optional(v.id('staff')), staffIds: v.optional(v.array(v.id('staff'))), start: v.number(), end: v.number(), label: v.string() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const staffIds = [...new Set([...(args.staffId ? [args.staffId] : []), ...(args.staffIds ?? [])])];
 		if (!staffIds.length) throw new Error('Choose at least one staff member');
 		if (staffIds.length > 200) throw new Error('Choose at most 200 staff members');
@@ -493,10 +485,10 @@ export const addTimeOff = mutation({
 	}
 });
 
-export const updateTimeOff = mutation({
+export const updateTimeOff = adminMutation({
 	args: { timeOffId: v.id('staffTimeOff'), start: v.number(), end: v.number(), label: v.string(), expected: v.optional(v.object({ start: v.number(), end: v.number(), label: v.string() })) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const row = await ctx.db.get(args.timeOffId);
 		if (!row) throw new Error('Time off not found');
 		if (args.expected && (row.start !== args.expected.start || row.end !== args.expected.end || row.label !== args.expected.label)) throw new Error('This time off changed since you opened it. Review the latest details and try again.');
@@ -507,10 +499,10 @@ export const updateTimeOff = mutation({
 	}
 });
 
-export const removeTimeOff = mutation({
+export const removeTimeOff = adminMutation({
 	args: { timeOffId: v.id('staffTimeOff') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const row = await ctx.db.get(args.timeOffId);
 		if (!row) throw new Error('Time off not found');
 		await ctx.db.delete(args.timeOffId);
@@ -525,10 +517,9 @@ type ScheduleBlock = { staffId: Id<'staff'>; start: number; end: number; label: 
 	| { kind: 'time_off'; timeOff: Doc<'staffTimeOff'> }
 );
 
-export const listSchedule = query({
+export const listSchedule = adminQuery({
 	args: { from: v.number(), to: v.number(), staffIds: v.optional(v.array(v.id('staff'))) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		if (!Number.isSafeInteger(args.from) || !Number.isSafeInteger(args.to) || args.to <= args.from || args.to - args.from > 14 * DAY) throw new Error('Schedule range must be at most 14 days');
 		const selected = args.staffIds ? new Set(args.staffIds) : undefined;
 		const inRange: Doc<'appointments'>[] = [];
@@ -592,10 +583,9 @@ export const listSchedule = query({
  * Open times, each with `autoStaffId`: who `createAppointment` picks when no staff is given
  * (least appointments that day, then by name), so the dialog can preview the assignment.
  */
-export const findOpenSlots = query({
+export const findOpenSlots = adminQuery({
 	args: { serviceId: v.id('services'), date: v.string(), staffId: v.optional(v.id('staff')) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const service = await ctx.db.get(args.serviceId);
 		let slots;
 		if (service && args.staffId && args.date <= resortLocalParts(Date.now()).date) {
@@ -626,22 +616,21 @@ export const findOpenSlots = query({
 
 
 /** The original booking reference for rebooked appointments, including ones outside the visible calendar dates. */
-export const getAppointmentReference = query({
+export const getAppointmentReference = adminQuery({
 	args: { appointmentId: v.id('appointments') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		return (await ctx.db.get(args.appointmentId))?.confirmationCode ?? null;
 	}
 });
 
-export const createAppointment = mutation({
+export const createAppointment = adminMutation({
 	args: {
 		serviceId: v.id('services'), start: v.number(), staffId: v.optional(v.id('staff')), guestName: v.string(), guestPhone: v.string(),
 		guestEmail: v.optional(v.string()), bookingId: v.optional(v.id('bookings')), chatSessionId: v.optional(v.id('conversations')),
 		rebookedFromId: v.optional(v.id('appointments')), historicalReason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const original = args.rebookedFromId ? await ctx.db.get(args.rebookedFromId) : null;
 		if (args.rebookedFromId && (!original || !canBookAgain(original))) throw new Error('Only cancelled or no-show appointments can be booked again');
 		const created = await createAppointmentRecord(ctx, { ...args, source: 'admin', actor: admin.email }, { kind: 'admin_historical', reason: args.historicalReason });
@@ -673,10 +662,9 @@ async function adminStarts(ctx: QueryCtx | MutationCtx, people: Doc<'staff'>[], 
 	return slots.sort((a, b) => a.start - b.start);
 }
 
-export const previewAppointmentTime = query({
+export const previewAppointmentTime = adminQuery({
 	args: { serviceId: v.id('services'), staffId: v.id('staff'), start: v.number(), appointmentId: v.optional(v.id('appointments')) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		try { assertAppointmentStart(args.start, { kind: 'admin_historical' }); }
 		catch (error) { return { warnings: [], needsReason: false, problem: error instanceof Error ? error.message : 'Choose a valid service time' }; }
 		const service = await ctx.db.get(args.serviceId);
@@ -695,10 +683,10 @@ export const previewAppointmentTime = query({
 });
 
 /** Deliberate correction, separate from the frictionless forward operational buttons. */
-export const correctAppointmentStatus = mutation({
+export const correctAppointmentStatus = adminMutation({
 	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), status: v.union(v.literal('booked'), v.literal('arrived'), v.literal('in_service'), v.literal('completed'), v.literal('cancelled'), v.literal('no_show')), reason: v.optional(v.string()), effectiveAt: v.number() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
 		if (appointment.status === args.status) throw new Error('Choose a different status');
@@ -730,10 +718,9 @@ export const correctAppointmentStatus = mutation({
 	}
 });
 
-export const listAppointmentHistoryPage = query({
+export const listAppointmentHistoryPage = adminQuery({
 	args: { appointmentId: v.id('appointments'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		assertPageSize(args.paginationOpts.numItems);
 		return await ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', args.appointmentId)).order('desc').paginate(args.paginationOpts);
 	}
@@ -744,10 +731,9 @@ function assertPageSize(size: number) {
 }
 
 /** start-based range, [from,to); past/all include ended records. Consumers must follow the cursor. */
-export const listTimeOffPage = query({
+export const listTimeOffPage = adminQuery({
 	args: { staffId: v.id('staff'), range: v.union(v.literal('upcoming'), v.literal('past'), v.literal('all')), from: v.optional(v.number()), to: v.optional(v.number()), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		assertPageSize(args.paginationOpts.numItems);
 		if ((args.from !== undefined && !Number.isSafeInteger(args.from)) || (args.to !== undefined && !Number.isSafeInteger(args.to)) || (args.from !== undefined && args.to !== undefined && args.to <= args.from)) throw new Error('Invalid time-off range');
 		const result = await ctx.db.query('staffTimeOff').withIndex('by_staff_start', q => {
@@ -760,10 +746,9 @@ export const listTimeOffPage = query({
 });
 
 /** Open start times for moving this appointment, keeping its length and turnaround; it doesn't block itself. */
-export const rescheduleOptions = query({
+export const rescheduleOptions = adminQuery({
 	args: { appointmentId: v.id('appointments'), date: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		const service = await ctx.db.get(appointment.serviceId);
 		const historicalDate = args.date <= resortLocalParts(Date.now()).date;
@@ -779,10 +764,10 @@ export const rescheduleOptions = query({
  * Corrects an appointment's time/staff in any status. Financial terms stay as booked.
  * Past roster gaps are logged; historical overlaps need a reason; current/future occupancy is strict.
  */
-export const rescheduleAppointment = mutation({
+export const rescheduleAppointment = adminMutation({
 	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), start: v.number(), staffId: v.id('staff'), historicalReason: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
 		if (!canCorrectAppointmentTime(appointment, Date.now())) throw new Error('This appointment cannot be rescheduled');
@@ -810,10 +795,10 @@ export const rescheduleAppointment = mutation({
 });
 
 /** This appointment's turnaround only; the service default is untouched. */
-export const updateAppointmentTurnaround = mutation({
+export const updateAppointmentTurnaround = adminMutation({
 	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), turnaroundMin: v.number() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
 		if (!canEditTurnaround(appointment)) throw new Error('Turnaround can only change while the appointment is booked, arrived or in service');
@@ -838,10 +823,10 @@ const transitions: Record<Doc<'appointments'>['status'], Doc<'appointments'>['st
 	completed: [], cancelled: [], no_show: []
 };
 
-export const updateAppointmentStatus = mutation({
+export const updateAppointmentStatus = adminMutation({
 	args: { appointmentId: v.id('appointments'), status: appointmentStatus, expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		if (args.expectedRevision !== undefined) assertFresh(appointment, args.expectedRevision);
 		if (!transitions[appointment.status].includes(args.status)) throw new Error('Invalid appointment status transition');
@@ -850,26 +835,25 @@ export const updateAppointmentStatus = mutation({
 	}
 });
 
-export const markAppointmentPaid = mutation({
+export const markAppointmentPaid = adminMutation({
  args: { appointmentId: v.id('appointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), method: v.optional(manualPaymentMethod), idempotencyKey: v.optional(v.string()) },
  handler: async (ctx, args) => {
-  const admin = await requireAdmin(ctx);
+  const admin = ctx.admin;
   return await recordAppointmentPayment(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
  }
 });
 
-export const getAppointmentFinancials = query({
+export const getAppointmentFinancials = adminQuery({
  args: { appointmentId: v.id('appointments') },
  handler: async (ctx, args) => {
-  await requireAdmin(ctx);
   return await appointmentFinancials(ctx, await loadAppointment(ctx, args.appointmentId));
  }
 });
 
-export const correctAppointmentPaymentEntry = mutation({
+export const correctAppointmentPaymentEntry = adminMutation({
  args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), paymentId: v.id('appointmentPayments'), idempotencyKey: v.string(), action: v.union(v.literal('amend'), v.literal('cancel')), reason: v.string(), method: v.optional(manualPaymentMethod), effectiveAt: v.optional(v.number()) },
  handler: async (ctx, args) => {
-  const admin = await requireAdmin(ctx);
+  const admin = ctx.admin;
   return await correctAppointmentPayment(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
  }
 });
@@ -898,14 +882,14 @@ async function serviceChange(ctx: MutationCtx, appointment: Doc<'appointments'>,
 }
 
 /** Guest details, notes and optionally the service, validated together and saved in one write. */
-export const updateAppointmentDetails = mutation({
+export const updateAppointmentDetails = adminMutation({
 	args: {
 		appointmentId: v.id('appointments'), expectedRevision: v.number(), guestName: v.string(), guestPhone: v.string(),
 		guestEmail: v.optional(v.string()), notes: v.optional(v.string()), serviceId: v.optional(v.id('services')),
 		expectedService: v.optional(v.object({ durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string() }))
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
 		const details = guestDetails(args, { requireContact: appointment.source !== 'admin' || Boolean(appointment.chatSessionId) });
@@ -916,19 +900,19 @@ export const updateAppointmentDetails = mutation({
 });
 
 /** Records a refund given at the desk; no money moves through the app. */
-export const refundAppointment = mutation({
+export const refundAppointment = adminMutation({
  args: { appointmentId: v.id('appointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), amount: v.optional(v.number()), currency: v.optional(v.string()), method: v.optional(refundMethod), reason: v.optional(v.string()), idempotencyKey: v.optional(v.string()), paymentId: v.optional(v.id('appointmentPayments')), orderId: v.optional(v.id('orders')) },
  handler: async (ctx, args) => {
-  const admin = await requireAdmin(ctx);
+  const admin = ctx.admin;
   return await recordAppointmentRefund(ctx, await loadAppointment(ctx, args.appointmentId), args, admin.email);
  }
 });
 
 /** Keeps the record and its payment state; frees the staff member's time. */
-export const cancelAppointment = mutation({
+export const cancelAppointment = adminMutation({
 	args: { appointmentId: v.id('appointments'), expectedRevision: v.number(), reason: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const appointment = await loadAppointment(ctx, args.appointmentId);
 		assertFresh(appointment, args.expectedRevision);
 		if (appointment.status !== 'booked' && appointment.status !== 'arrived') throw new Error('Appointment cannot be cancelled');
@@ -937,10 +921,9 @@ export const cancelAppointment = mutation({
 });
 
 /** Newest first, at most HISTORY_LIMIT entries. */
-export const listAppointmentHistory = query({
+export const listAppointmentHistory = adminQuery({
 	args: { appointmentId: v.id('appointments') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		return await appointmentHistory(ctx, args.appointmentId);
 	}
 });

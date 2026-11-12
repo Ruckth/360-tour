@@ -1,10 +1,9 @@
-import { maintenancePaused } from './auth/model';
+import { maintenancePaused, staffMutation, publicMutation, deviceQuery, deviceMutation, staffQuery } from './auth/model';
 import { ConvexError, v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalMutation, mutation, query } from './auth/model';
+import { internalMutation } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { requireStaff } from './lib/staffAccess';
 import { PAIR_CODE_LENGTH, normalizePairCode, randomPairCode, randomSecret, sha256 } from './lib/displayTokens';
 import { DRIVER_LEASE_MS } from './lib/displayLease';
 import { displayOrderState, type DisplayOrderState } from './lib/displayView';
@@ -165,10 +164,11 @@ async function handOver(ctx: MutationCtx, till: Doc<'tills'>, driverId: string |
  * Admin: a one-time link secret. Only its hash is stored, so this is the only time it can be read.
  * Making a link cancels any earlier one still outstanding.
  */
-export const createPairLink = mutation({
+export const createPairLink = staffMutation({
+  capability: 'checkout',
 	args: { clientId: v.string() },
 	handler: async (ctx, args) => {
-		const { email } = await requireStaff(ctx, 'checkout');
+		const { email } = ctx.staff;
 		const driverId = checkClientId(args.clientId);
 		const till = await ensureDefaultTill(ctx);
 		const generation = (till.pairGeneration ?? 0) + 1;
@@ -188,7 +188,8 @@ export const createPairLink = mutation({
  * generations existed never are). `previousToken` is the display's code token, whose row is
  * deleted on a successful claim if it is still pending (as in startPairing; an active row is never touched).
  */
-export const claimLink = mutation({
+export const claimLink = publicMutation({
+  reason: "One-use expiring pairing link; generation, replay and rate-limit checks stay in the handler.",
 	args: { secret: v.string(), deviceName: v.optional(v.string()), previousToken: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ ok: true; token: string } | { ok: false; code: 'LINK_INVALID' }> => {
 		const now = Date.now();
@@ -215,7 +216,8 @@ export const claimLink = mutation({
  * `previousToken` is the display's last token. If staff approved it meanwhile, it is kept
  * (`status: 'active'`); if still pending, its row is replaced, so refreshes leave no orphans.
  */
-export const startPairing = mutation({
+export const startPairing = publicMutation({
+  reason: "Anonymous pairing bootstrap; rate limited, no order data returned.",
 	args: { deviceName: v.optional(v.string()), previousToken: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ status: 'active' } | { status: 'pending'; token: string; code: string; expiresAt: number }> => {
 		const previous = args.previousToken ? await displayByToken(ctx, args.previousToken) : null;
@@ -241,10 +243,10 @@ export const startPairing = mutation({
 });
 
 /** Admin: activate the display showing this code, driven by this browser. Only admins can try codes, so they can't be brute-forced. */
-export const approveCode = mutation({
+export const approveCode = staffMutation({
+  capability: 'checkout',
 	args: { code: v.string(), clientId: v.string() },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		const driverId = checkClientId(args.clientId);
 		const code = normalizePairCode(args.code);
 		if (code.length !== PAIR_CODE_LENGTH) throw displayError('INVALID_CODE', `Enter the ${PAIR_CODE_LENGTH}-character code shown on the display`);
@@ -263,10 +265,10 @@ export const approveCode = mutation({
 });
 
 /** Admin: this tab takes the display over from another checkout, showing its own order (`orderId`) straight away. */
-export const takeDisplay = mutation({
+export const takeDisplay = staffMutation({
+  capability: 'checkout',
 	args: { clientId: v.string(), orderId: v.union(v.string(), v.null()) },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		await handOver(ctx, await ensureDefaultTill(ctx), checkClientId(args.clientId), orderIdFrom(ctx, args.orderId));
 		return null;
 	}
@@ -279,10 +281,10 @@ export const takeDisplay = mutation({
  * screen idles only once nobody touches it. A publish without a lease (a checkout loaded before
  * leases) is shown for one lease, as if never renewed.
  */
-export const showOrder = mutation({
+export const showOrder = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.union(v.string(), v.null()), clientId: v.string(), leaseId: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		const till = await getDefaultTill(ctx);
 		if (!till?.driverId || till.driverId !== args.clientId) return { shown: false };
 		const orderId = orderIdFrom(ctx, args.orderId);
@@ -300,10 +302,10 @@ export const showOrder = mutation({
  * `renewed: false` once another tab drives, a newer lease holds the till, or this lease was
  * released or published nothing (a new sale), so a late renewal never brings an order back.
  */
-export const renewDriverLease = mutation({
+export const renewDriverLease = staffMutation({
+  capability: 'checkout',
 	args: { clientId: v.string(), leaseId: v.string(), orderId: v.union(v.string(), v.null()) },
 	handler: async (ctx, args): Promise<{ renewed: boolean }> => {
-		await requireStaff(ctx, 'checkout');
 		const leaseId = checkLeaseId(args.leaseId);
 		const till = await getDefaultTill(ctx);
 		const orderId = orderIdFrom(ctx, args.orderId);
@@ -322,7 +324,8 @@ export const renewDriverLease = mutation({
  * only clear, and only with this tab's id and lease, so an earlier mount's cleanup never clears a
  * newer publish or another tab's take-over.
  */
-export const releaseDisplay = mutation({
+export const releaseDisplay = publicMutation({
+  reason: "Sign-out cleanup capability; matching driver and lease may only clear the display.",
 	args: { clientId: v.string(), leaseId: v.string() },
 	handler: async (ctx, args) => {
 		if (args.leaseId.length > CLIENT_ID_MAX) return null;
@@ -350,10 +353,10 @@ export const expireLease = internalMutation({
 });
 
 /** Public: what the display shows. Read-only, and returns only the customer-facing projection. */
-export const current = query({
+export const current = deviceQuery({
 	args: { token: v.string() },
-	handler: async (ctx, args): Promise<DisplayState> => {
-		const display = await displayByToken(ctx, args.token);
+	handler: async (ctx): Promise<DisplayState> => {
+		const display = ctx.device;
 		if (!display || display.status === 'revoked') return { state: 'unpaired' };
 		if (display.status === 'pending') {
 			return display.pairCode && (display.pairCodeExpiresAt ?? 0) > Date.now() ? { state: 'pending', code: display.pairCode } : { state: 'unpaired' };
@@ -363,10 +366,10 @@ export const current = query({
 });
 
 /** Public: every 30s from an active display. Writes only `displayPresence`. */
-export const heartbeat = mutation({
+export const heartbeat = deviceMutation({
 	args: { token: v.string() },
-	handler: async (ctx, args) => {
-		const display = await displayByToken(ctx, args.token);
+	handler: async (ctx) => {
+		const display = ctx.device;
 		if (display?.status !== 'active') return null;
 		const presence = await presenceOf(ctx, display._id);
 		if (presence) await ctx.db.patch(presence._id, { lastSeenAt: Date.now() });
@@ -376,10 +379,10 @@ export const heartbeat = mutation({
 });
 
 /** Admin: the paired displays, and whether this tab (`clientId`), another checkout or none drives them. */
-export const listDisplays = query({
+export const listDisplays = staffQuery({
+  capability: 'checkout',
 	args: { clientId: v.string() },
 	handler: async (ctx, args): Promise<{ displays: Array<{ _id: Id<'displays'>; name: string; pairedAt: number; lastSeenAt: number | null }>; driver: DisplayDriver }> => {
-		await requireStaff(ctx, 'checkout');
 		const till = await getDefaultTill(ctx);
 		if (!till) return { displays: [], driver: 'none' };
 		const active = await activeDisplays(ctx, till._id).take(20);
@@ -395,10 +398,10 @@ export const listDisplays = query({
 });
 
 /** Admin: disconnect a display, cancelling any pairing link still outstanding. With none left, no checkout drives the display and no order is shown. */
-export const revoke = mutation({
+export const revoke = staffMutation({
+  capability: 'checkout',
 	args: { displayId: v.id('displays') },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		const display = await ctx.db.get(args.displayId);
 		if (!display || display.status === 'revoked') return null;
 		await ctx.db.patch(display._id, { status: 'revoked', revokedAt: Date.now(), pairCode: undefined, pairCodeExpiresAt: undefined });
