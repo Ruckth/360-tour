@@ -27,7 +27,10 @@ export const line: ChannelAdapter = {
       const response = await transport('https://api.line.me/v2/bot/message/reply', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ replyToken: event.replyToken, messages }), signal: AbortSignal.timeout(15_000) });
       if (response.ok) return { state: 'sent', status: response.status };
       const body = await response.text();
-      // Invalid/used tokens and network failures do not prove non-delivery. Only explicit expiry permits push.
+      // LINE documents "Invalid reply token" for BOTH expiry and reuse. That response
+      // cannot safely authorize a push. Keep explicit-expiry handling defensive only;
+      // it is not a documented promise that the live API distinguishes expiration.
+      // https://developers.line.biz/en/reference/messaging-api/nojs/#error-messages
       if (response.status === 400 && /(?:reply token[^\n]*expired|expired[^\n]*reply token)/i.test(body) && event.recipient) {
         return await providerRequest('https://api.line.me/v2/bot/message/push', token, { to: event.recipient, messages }, transport);
       }

@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { adapters } from './channels';
 import { inboundValidator, socialChannel, type SocialChannel } from './channels/adapter';
 import { buildAdminSearchText } from '../lib/adminChatMetadata';
-import { currentClaim, recordGuest } from './model';
+import { currentClaim, recordGuest, scheduleNext } from './model';
 import { consumeChatAdmission } from '../lib/chatAdmission';
 
 /** One transaction accepts the entire signed delivery, deduplicates and schedules BEFORE HTTP 200. */
@@ -80,5 +80,22 @@ export const admit = internalMutation({
       await consumeChatAdmission(ctx, event.sessionId);
       await ctx.db.patch(event._id, { admittedAt: Date.now() });
     }
+  },
+});
+
+/** Called only after admit rolls back a rate-limit refusal; never consumes a retry. */
+export const rejectAdmission = internalMutation({
+  args: { eventId: v.id('channelEvents'), claimToken: v.string() },
+  handler: async (ctx, args) => {
+    const event = await currentClaim(ctx, args.eventId, args.claimToken);
+    const error = 'Chat admission rate limit reached. This message was not processed; later messages can resume when capacity returns.';
+    await ctx.db.patch(event._id, { status: 'failed', error, processedAt: Date.now(), updatedAt: Date.now(), claimToken: undefined, leaseExpiresAt: undefined });
+    const session = event.sessionId ? await ctx.db.get(event.sessionId) : null;
+    if (session && session.latestGuestMessageId === event.userMessageId && session.inboxReason === 'answering') {
+      // Surface the unanswered message and retire its answer timeout without setting
+      // aiPaused. A later guest message can be answered normally after the window resets.
+      await ctx.db.patch(session._id, { inboxState: 'needs_staff', inboxReason: 'send_failed', inboxSendError: error });
+    }
+    await scheduleNext(ctx, event.sessionId);
   },
 });

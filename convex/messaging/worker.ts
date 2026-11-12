@@ -13,13 +13,22 @@ import { answerAccepted } from '../lib/inboxLifecycle';
 import { patchSessionAfterMessages } from '../lib/adminChatMetadata';
 import type { ConciergeReply } from '../chatAi';
 import type { ReplyCard } from '../lib/replyCards';
+import { isRateLimitError } from '@convex-dev/rate-limiter';
 
 export const claim = internalMutation({
   args: { eventId: v.id('channelEvents'), token: v.string() },
   handler: async (ctx, { eventId, token }) => {
     if (maintenancePaused()) return null;
     const event = await ctx.db.get(eventId);
-    if (!event || !event.sessionId || !['received', 'processing'].includes(event.status)) return null;
+    if (!event || !['received', 'processing'].includes(event.status)) return null;
+    // The old request-bound pipeline did not persist replay-safe tool results or reply tokens.
+    // Preserve its evidence, but never regenerate an unfinished pre-cutover turn.
+    if (event.arrivedAt === undefined) {
+      await ctx.db.patch(event._id, { status: 'failed', error: 'Unfinished pre-Phase 2 event; review prior booking effects and delivery before replying.', processedAt: Date.now(), updatedAt: Date.now(), claimToken: undefined, leaseExpiresAt: undefined });
+      await scheduleNext(ctx, event.sessionId);
+      return null;
+    }
+    if (!event.sessionId) return null;
     if ((await nextEvent(ctx, event.sessionId))?._id !== event._id) return null;
     if (event.status === 'processing' && (event.leaseExpiresAt ?? 0) > Date.now()) return null;
     if (event.deliveryStartedAt !== undefined) {
@@ -172,7 +181,17 @@ export const run = internalAction({
         }
       }
       if (!event.responseText) {
-        if (event.channel !== 'web') await ctx.runMutation(internal.messaging.ingress.admit, { eventId, claimToken });
+        if (event.channel !== 'web') {
+          try {
+            await ctx.runMutation(internal.messaging.ingress.admit, { eventId, claimToken });
+          } catch (error) {
+            if (!isRateLimitError(error)) throw error;
+            // admit's failed transaction rolls back BOTH counters. A budget refusal is
+            // terminal for this message, not uncertain delivery or a reason to pause AI.
+            await ctx.runMutation(internal.messaging.ingress.rejectAdmission, { eventId, claimToken });
+            return;
+          }
+        }
         const result: ConciergeReply = await runTurnHandler(ctx, { eventId, claimToken });
         if (!await ctx.runMutation(internal.messaging.worker.prepareDispatch, { eventId, claimToken, text: result.response, model: result.model, outcome: result.outcome, ...(result.card ? { cardJson: JSON.stringify(result.card) } : {}) })) return;
         event.responseText = result.response;
