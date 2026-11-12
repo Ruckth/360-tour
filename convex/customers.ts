@@ -5,6 +5,7 @@ import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
+import { requireStaff } from './lib/staffAccess';
 import { orderTitle } from './lib/billMath';
 import { orderState } from './lib/orderLinks';
 import { assertValidEmail } from './lib/validation';
@@ -90,7 +91,8 @@ function customerValues(customer: { name: string; phone?: string; email?: string
 export const browseCustomers = query({
 	args: { query: v.string(), archived: v.boolean(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const access = await requireStaff(ctx, 'checkout');
+		if (access.role === 'cashier' && (args.archived || args.query.trim().length < 2)) return { page: [], isDone: true, continueCursor: '' };
 		pageSize(args.paginationOpts.numItems);
 		const raw = args.query.trim();
 		if (raw.length > 200) throw new ConvexError('Search must be at most 200 characters');
@@ -113,7 +115,7 @@ export const browseCustomers = query({
 export const searchCustomers = query({
 	args: { query: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const raw = args.query.trim();
 		if (raw.length < 2) return [];
 		const digits = raw.replace(/\D/g, '');
@@ -183,7 +185,8 @@ export const customerHistory = query({
 export const createCustomer = mutation({
 	args: customerInput,
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
+		if (admin.role === 'cashier' && args.notes?.trim()) throw new Error('Not authorized');
 		const now = Date.now();
 		const profile = cleanCustomer(args);
 		const id = await ctx.db.insert('customers', { ...profile, revision: 0, createdBy: admin.email, createdAt: now, updatedAt: now });
@@ -311,3 +314,10 @@ export async function mergeCustomerRecords(ctx: MutationCtx, args: {
 }
 
 export const mergeCustomers = mutation({ args: mergeInput, handler: mergeCustomerRecords });
+
+/** Minimal identity card for the checkout picker; no notes, histories or unrelated orders. */
+export const checkoutCustomer = query({ args: { customerId: v.id('customers') }, handler: async (ctx, args) => {
+ await requireStaff(ctx, 'checkout');
+ const customer = await ctx.db.get(args.customerId);
+ return customer ? customerCard(customer) : null;
+} });

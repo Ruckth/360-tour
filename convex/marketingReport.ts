@@ -3,7 +3,7 @@ import { mutation, query } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from './lib/marketingReport';
 import { requireMarketingPermission } from './lib/marketingAccess';
-import { requireAdmin } from './lib/adminAuth';
+import { requireStaff } from './lib/staffAccess';
 import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 import { readMarketingReport, reportSpend } from './lib/marketingReportRead';
 import { appendRecordHistory } from './lib/recordHistory';
@@ -98,7 +98,7 @@ export const noteCouponRefusal = mutation({
 	args: { code: v.string(), problem: couponRefusalProblemValidator, surface: couponRefusalSurfaceValidator },
 	handler: async (ctx, args): Promise<null> => {
 		if (args.surface !== 'booking') {
-			try { await requireAdmin(ctx); } catch { return null; }
+			try { await requireStaff(ctx, args.surface === 'pos' ? 'checkout' : 'operations'); } catch { return null; }
 		}
 		const code = normalizeCouponCode(args.code);
 		if (!code || code.length > 100) return null;

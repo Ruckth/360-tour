@@ -1,11 +1,11 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
-import { requireAdmin } from './lib/adminAuth';
+import { requireStaff } from './lib/staffAccess';
 
 const args = { orderId: v.id('bills'), paginationOpts: paginationOptsValidator };
 async function authorize(ctx: QueryCtx, numItems: number) {
-  await requireAdmin(ctx);
+  await requireStaff(ctx, 'checkout');
   if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new Error('Page size must be 1–50');
 }
 /** Independent cursors preserve each ledger's ordering and original documents. */

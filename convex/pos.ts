@@ -7,6 +7,10 @@ import type { Doc, Id } from './_generated/dataModel';
 import { isDocumentedLiveRefund, markBookingPaid, recordStayPayment } from './bookings';
 import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomerReviewed, customerCard } from './customers';
 import { requireAdmin } from './lib/adminAuth';
+import { requireStaff, requireCashierAction, assertCashierDiscount, manualReduction, type StaffActor } from './lib/staffAccess';
+import { assertNoPendingApprovals } from './lib/staffApprovalState';
+import { lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
+import type { Infer } from 'convex/values';
 import { STALE_APPOINTMENT, recordAppointmentChange } from './lib/appointmentChanges';
 import { appointmentMoney } from './lib/appointmentFinance';
 import {
@@ -71,7 +75,7 @@ const ATTACH_SCAN = 20;
 const LEGACY_LOOKUP_SCAN = 500;
 const CURRENCY = 'THB';
 
-const discountValidator = v.object({ type: v.union(v.literal('amount'), v.literal('percent')), value: v.number() });
+const discountValidator = lineDiscountValidator;
 const tenderValidator = v.object({
 	method: v.union(v.literal('cash'), v.literal('promptpay'), v.literal('card'), v.literal('transfer')),
 	amount: v.number(),
@@ -157,7 +161,7 @@ function orderCouponUnavailable(problem: PosCouponProblem, couponCode?: string):
  * reserve nothing. The usage limit and budget always come from the current version: they are how
  * a marketer stops a promotion, so lowering them stops open orders too.
  */
-async function quoteOrderCoupon(ctx: ReadCtx, lines: Line[], couponId: Id<'coupons'>, version: number): Promise<OrderCouponResult> {
+async function quoteOrderCoupon(ctx: ReadCtx, lines: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }>, couponId: Id<'coupons'>, version: number): Promise<OrderCouponResult> {
 	const coupon = await ctx.db.get(couponId);
 	if (!coupon) return { ok: false, problem: { code: 'not_found' } };
 	const rules = await couponVersion(ctx, couponId, version);
@@ -293,6 +297,7 @@ async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>, reads: OrderR
 		name: `Stay · ${property?.name ?? 'Villa'}`,
 		detail: `${booking.checkIn} → ${booking.checkOut} · ${booking.nights} ${booking.nights === 1 ? 'night' : 'nights'}${booking.confirmationCode ? ` · ${booking.confirmationCode}` : ''}${booking.providerRefundWaived ? ` · ${booking.providerRefundWaived} ${booking.currency} refunded charge waived` : ''}`,
 		unitPrice: bookingChargeTotal(booking),
+		catalogUnitPrice: booking.priceOverride ? Math.max(0, round2(booking.priceOverride.quotedTotal - (booking.providerRefundWaived ?? 0))) : bookingChargeTotal(booking),
 		currency: booking.currency,
 		qty: 1,
 		...(paid > 0 ? { deposit: paid } : {})
@@ -309,6 +314,7 @@ async function appointmentLine(ctx: ReadCtx, appointment: Doc<'serviceAppointmen
 		name: service?.name ?? 'Appointment',
 		detail: `${date} ${time} · ${appointment.confirmationCode}`,
 		unitPrice: appointment.price,
+		catalogUnitPrice: service?.price ?? appointment.price,
 		currency: appointment.currency,
 		qty: 1,
 		staffId: appointment.staffId,
@@ -555,7 +561,7 @@ async function catalogRanking(ctx: QueryCtx) {
 export const stableCatalog = query({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		return catalogItems(ctx);
 	}
 });
@@ -563,7 +569,7 @@ export const stableCatalog = query({
 export const recentCatalogRanking = query({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		return catalogRanking(ctx);
 	}
 });
@@ -572,7 +578,7 @@ export const recentCatalogRanking = query({
 export const catalog = query({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const [items, frequent] = await Promise.all([catalogItems(ctx), catalogRanking(ctx)]);
 		return { ...items, frequent };
 	}
@@ -583,7 +589,7 @@ export const getOrder = query({
 	// rather than failing argument validation before checkout can render its recovery controls.
 	args: { orderId: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const orderId = ctx.db.normalizeId('bills', args.orderId);
 		if (!orderId) return null;
 		const order = await ctx.db.get(orderId);
@@ -755,7 +761,7 @@ export const listOrders = query({
 export const findOrderByNumber = query({
 	args: { orderNumber: v.number() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		if (!Number.isSafeInteger(args.orderNumber) || args.orderNumber < 1) return null;
 		const order = await ctx.db.query('bills').withIndex('by_orderNumber', (q) => q.eq('orderNumber', args.orderNumber)).first();
 		return order?._id ?? null;
@@ -900,7 +906,7 @@ async function contactBookings(ctx: ReadCtx, contacts: Awaited<ReturnType<typeof
 export const attachLookupStatus = query({
 	args: { orderId: v.optional(v.id('bills')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const [waiting, bookings] = await Promise.all([
 			legacyUnpaidAppointments(ctx).take(LEGACY_LOOKUP_SCAN + 1),
 			contactBookings(ctx, await attachContacts(ctx, args))
@@ -918,7 +924,7 @@ export const attachLookupStatus = query({
 export const listAttachable = query({
 	args: { orderId: v.optional(v.id('bills')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const { bookings, appointments } = await findSources(ctx, args);
 		const onOrder = async (source: OrderSource) => {
 			const other = await openOrderCharging(ctx, source);
@@ -1080,8 +1086,10 @@ async function openSourceOrder(ctx: MutationCtx, source: OrderSource, actor: str
 export const openOrderFor = mutation({
 	args: sourceArgs,
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
-		return await openSourceOrder(ctx, oneSource(args), admin.email);
+		const admin = await requireStaff(ctx, 'checkout');
+		const result = await openSourceOrder(ctx, oneSource(args), admin.email);
+  for (const line of await orderLines(ctx, result.orderId)) await assertCashierDiscount(ctx, admin, line);
+  return result;
 	}
 });
 
@@ -1089,21 +1097,27 @@ export const openOrderFor = mutation({
 export const openOrderForLink = mutation({
 	args: { bookingId: v.optional(v.string()), appointmentId: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new ConvexError('Choose one booking or appointment');
 		const bookingId = args.bookingId ? ctx.db.normalizeId('bookings', args.bookingId) : null;
 		const appointmentId = args.appointmentId ? ctx.db.normalizeId('serviceAppointments', args.appointmentId) : null;
 		if (args.bookingId && !bookingId) throw new ConvexError('Booking not found. Start a new order or choose one from Orders.');
 		if (args.appointmentId && !appointmentId) throw new ConvexError('Appointment not found. Start a new order or choose one from Orders.');
 		const source = oneSource({ bookingId: bookingId ?? undefined, appointmentId: appointmentId ?? undefined });
-		return await openSourceOrder(ctx, source, admin.email);
+		const result = await openSourceOrder(ctx, source, admin.email);
+  for (const line of await orderLines(ctx, result.orderId)) await assertCashierDiscount(ctx, admin, line);
+  return result;
 	}
 });
 
+const addItemArgs = v.object({ orderId: v.optional(v.id('bills')), item: itemValidator });
 export const addItem = mutation({
-	args: { orderId: v.optional(v.id('bills')), item: itemValidator },
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+ args: addItemArgs.fields,
+ handler: async (ctx, args) => executeAddItem(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addItemArgs>, admin: StaffActor) {
+ if (args.item.kind === 'extra') await requireCashierAction(ctx, admin, 'customPrice');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		const { item } = args;
 		let line: LineFields;
@@ -1143,20 +1157,22 @@ export const addItem = mutation({
 		await refreshOrder(ctx, order._id);
 		await logOrder(ctx, order._id, admin.email, 'line_added', { after: { ...lineSnapshot(line), lineId } });
 		return { orderId: order._id, lineId };
-	}
-});
+}
+
 
 /** Adds a stay or appointment to the order (a new order if none is given). */
-export const attach = mutation({
-	args: { orderId: v.optional(v.id('bills')), ...sourceArgs },
-	handler: async (ctx, { orderId, ...target }) => {
-		const admin = await requireAdmin(ctx);
-		const source = oneSource(target);
-		const order = await editableOrder(ctx, orderId, admin.email);
-		await attachTo(ctx, order, source, admin.email);
-		return { orderId: order._id };
-	}
-});
+const attachArgs = v.object({ orderId: v.optional(v.id('bills')), ...sourceArgs });
+export const attach = mutation({ args: attachArgs.fields, handler: async (ctx, args) => executeAttach(ctx, args, await requireStaff(ctx, 'checkout')) });
+export async function executeAttach(ctx: MutationCtx, args: Infer<typeof attachArgs>, admin: StaffActor) {
+ const source = oneSource(args);
+ const order = await editableOrder(ctx, args.orderId, admin.email);
+ await attachTo(ctx, order, source, admin.email);
+ for (const line of await orderLines(ctx, order._id)) {
+  if (('bookingId' in source && line.bookingId === source.bookingId) || ('appointmentId' in source && line.appointmentId === source.appointmentId)) await assertCashierDiscount(ctx, admin, line);
+ }
+ return { orderId: order._id };
+}
+
 
 /**
  * Therapist (null = any), service date and time, quantity and discount (null = none) for one row.
@@ -1166,8 +1182,7 @@ export const attach = mutation({
  * kept for older clients; it replaces the row's date and time.
  * The quantity moves by `qtyChange` (kept within 1–99), so quick taps on two devices add up.
  */
-export const updateLine = mutation({
-	args: {
+const updateLineArgs = v.object({
 		lineId: v.id('billLines'),
 		staffId: v.optional(v.union(v.id('staff'), v.null())),
 		startAt: v.optional(v.union(v.number(), v.null())),
@@ -1175,9 +1190,13 @@ export const updateLine = mutation({
 		serviceTime: v.optional(v.union(v.string(), v.null())),
 		qtyChange: v.optional(v.number()),
 		discount: v.optional(v.union(discountValidator, v.null()))
-	},
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+	});
+export const updateLine = mutation({
+ args: updateLineArgs.fields,
+ handler: async (ctx, args) => executeUpdateLine(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof updateLineArgs>, admin: StaffActor) {
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
 		if (line.fee && (args.qtyChange !== undefined || args.discount)) throw new ConvexError(FEE_FIXED);
 		const patch: Partial<Line> = {};
@@ -1217,22 +1236,28 @@ export const updateLine = mutation({
 			if (args.discount) assertDiscount(args.discount);
 			patch.discount = args.discount && args.discount.value > 0 ? args.discount : undefined;
 		}
+		if (args.discount !== undefined || args.qtyChange !== undefined) await assertCashierDiscount(ctx, admin, { ...line, ...patch });
 		await ctx.db.patch(line._id, patch);
 		await refreshOrder(ctx, order._id);
 		const before = lineSnapshot(line);
 		const after = lineSnapshot({ ...line, ...patch });
 		if (JSON.stringify(before) !== JSON.stringify(after)) await logOrder(ctx, order._id, admin.email, 'line_updated', { before, after });
-	}
-});
+}
+
 
 /** One-off price for a row. Setting a price needs a note; every change is kept in billAudit. */
+const overrideLinePriceArgs = v.object({ lineId: v.id('billLines'), price: v.union(v.number(), v.null()), note: v.string() });
 export const overrideLinePrice = mutation({
-	args: { lineId: v.id('billLines'), price: v.union(v.number(), v.null()), note: v.string() },
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+ args: overrideLinePriceArgs.fields,
+ handler: async (ctx, args) => executeOverrideLinePrice(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typeof overrideLinePriceArgs>, admin: StaffActor) {
+ await requireCashierAction(ctx, admin, 'customPrice');
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
 		if (line.kind === 'booking' && args.price !== null) throw new ConvexError(ATTACHED_PRICE);
 		if (line.fee && args.price !== null) throw new ConvexError(FEE_FIXED);
+		await assertCashierDiscount(ctx, admin, { ...line, priceOverride: args.price === null ? undefined : { price: round2(args.price) } });
 		const fromPrice = line.priceOverride?.price ?? line.unitPrice;
 		let note: string | undefined;
 		if (args.price === null) {
@@ -1248,13 +1273,13 @@ export const overrideLinePrice = mutation({
 			fromPrice, toPrice: args.price === null ? line.unitPrice : round2(args.price), note
 		});
 		await refreshOrder(ctx, order._id);
-	}
-});
+}
+
 
 export const removeLine = mutation({
 	args: { lineId: v.id('billLines') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
 		await ctx.db.delete(line._id);
 		await refreshOrder(ctx, order._id);
@@ -1280,7 +1305,7 @@ export const removeLine = mutation({
 export const applyOrderCoupon = mutation({
 	args: { orderId: v.id('bills'), code: v.optional(v.string()), slug: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ code: string; discount: number; revision: number }> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if ((args.code !== undefined) === (args.slug !== undefined)) throw new ConvexError('Choose one coupon code or link');
 		let coupon: Doc<'coupons'> | null;
@@ -1312,7 +1337,7 @@ export const applyOrderCoupon = mutation({
 export const removeOrderCoupon = mutation({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args): Promise<{ revision: number }> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.promotion) return { revision: order.revision };
 		await ctx.db.patch(order._id, { promotion: undefined });
@@ -1331,7 +1356,7 @@ export const removeOrderCoupon = mutation({
 export const recheckOrderCoupon = mutation({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args): Promise<{ revision: number; discount: number; problem: PosCouponProblem | null }> => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.promotion) throw new ConvexError('This order has no coupon');
 		await refreshOrder(ctx, order._id);
@@ -1346,10 +1371,13 @@ export const recheckOrderCoupon = mutation({
  * cancelled elsewhere meanwhile. The order's revision changes, so any payment begun on the old
  * row has to be reviewed again.
  */
+const updateSourceLineArgs = v.object({ lineId: v.id('billLines') });
 export const updateSourceLine = mutation({
-	args: { lineId: v.id('billLines') },
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+ args: updateSourceLineArgs.fields,
+ handler: async (ctx, args) => executeUpdateSourceLine(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<typeof updateSourceLineArgs>, admin: StaffActor) {
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
 		if (!isSourceRow(line)) throw new ConvexError('Only booking, appointment and fee rows follow their source');
 		const issue = await sourceIssue(ctx, line);
@@ -1374,13 +1402,15 @@ export const updateSourceLine = mutation({
 			assertBaht(appointment.currency, 'This appointment');
 			fresh = await appointmentLine(ctx, appointment);
 		}
+		if (fresh.unitPrice !== line.unitPrice) await requireCashierAction(ctx, admin, 'customPrice');
+		await assertCashierDiscount(ctx, admin, { ...line, ...fresh });
 		// A deposit that is gone (e.g. a refunded online payment) is cleared, not kept from the old row.
 		await ctx.db.patch(line._id, { ...fresh, deposit: fresh.deposit });
 		await ctx.db.insert('billAudit', { billId: order._id, lineId: line._id, at, actor: admin.email, kind: 'source_updated', fromPrice: line.unitPrice, toPrice: fresh.unitPrice, note: fresh.detail });
 		await refreshOrder(ctx, order._id);
 		return { result: 'updated' as const };
-	}
-});
+}
+
 
 /**
  * Links a customer to the order (a new order if none is given). The booking's guest is left as
@@ -1390,7 +1420,7 @@ export const updateSourceLine = mutation({
 export const linkCustomer = mutation({
 	args: { orderId: v.optional(v.id('bills')), customerId: v.id('customers') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		// Refuses missing, archived and merged-away profiles (customers.ts contract); never redirects a merged id.
 		const customer = assertCustomerCanLink(await ctx.db.get(args.customerId));
 		const order = await editableOrder(ctx, args.orderId, admin.email);
@@ -1405,7 +1435,7 @@ export const linkCustomer = mutation({
 export const unlinkCustomer = mutation({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.customerId) return { orderId: order._id };
 		const now = Date.now();
@@ -1423,7 +1453,7 @@ export const unlinkCustomer = mutation({
 export const saveOrder = mutation({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.hasItems) throw new ConvexError('Add an item before saving the order');
 		await ctx.db.patch(order._id, { updatedAt: Date.now() });
@@ -1434,7 +1464,7 @@ export const saveOrder = mutation({
 export const clearOrder = mutation({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		const lines = await orderLines(ctx, order._id);
 		for (const line of lines) await ctx.db.delete(line._id);
@@ -1468,7 +1498,7 @@ export const settleOrder = mutation({
 		expectedCustomerRevision: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const key = args.idempotencyKey.trim();
 		if (key.length < 8 || key.length > 100) throw new ConvexError('Invalid payment attempt');
 		const order = await ctx.db.get(args.orderId);
@@ -1477,6 +1507,7 @@ export const settleOrder = mutation({
 			if (order.settleKey === key && order.receiptNumber !== undefined) return { receiptNumber: order.receiptNumber, replayed: true };
 			throw new ConvexError(order.status === 'void' ? 'This order was voided' : order.status === 'discarded' ? DISCARDED_ORDER : 'This order is already paid');
 		}
+		await assertNoPendingApprovals(ctx, order._id);
 		const lines = await orderLines(ctx, order._id);
 		if (!lines.length) throw new ConvexError('Add an item first');
 		if (order.promotion) {
@@ -1560,10 +1591,14 @@ export const settleOrder = mutation({
  * a refund on them if it is returned). For a payment recorded by mistake when no money changed
  * hands, use voidUnreceivedOrder instead.
  */
+const voidOrderArgs = v.object({ orderId: v.id('bills'), reason: v.string() });
 export const voidOrder = mutation({
-	args: { orderId: v.id('bills'), reason: v.string() },
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+ args: voidOrderArgs.fields,
+ handler: async (ctx, args) => executeVoidOrder(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof voidOrderArgs>, admin: StaffActor) {
+ await requireCashierAction(ctx, admin, 'voidPaidSale');
 		const reason = cleanText(args.reason, 'Reason', NOTE_MAX);
 		if (!reason) throw new ConvexError('Give a reason for the void');
 		const order = await ctx.db.get(args.orderId);
@@ -1584,8 +1619,8 @@ export const voidOrder = mutation({
 				});
 			}
 		}
-	}
-});
+}
+
 
 const correctionArgs = { orderId: v.id('bills'), expectedCorrectionRevision: v.number(), idempotencyKey: v.string(), reason: v.string() };
 
@@ -1611,16 +1646,20 @@ const cleanTender = (tender: { method: Doc<'billPayments'>['method']; amount: nu
  * after, and getOrder returns both. Deposits paid online are not tenders and can't be touched here.
  * A new effective date also moves the stays' payment records and appointments' `paidAt`.
  */
-export const amendOrderPayment = mutation({
-	args: {
+const amendOrderPaymentArgs = v.object({
 		...correctionArgs,
 		tenders: v.optional(v.array(correctedTender)),
 		effectiveAt: v.optional(v.number()),
 		/** The corrected payer, with the profile revision staff reviewed; null = no named customer. */
 		customer: v.optional(v.object({ customerId: v.union(v.null(), v.id('customers')), expectedCustomerRevision: v.optional(v.number()) }))
-	},
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+	});
+export const amendOrderPayment = mutation({
+ args: amendOrderPaymentArgs.fields,
+ handler: async (ctx, args) => executeAmendOrderPayment(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typeof amendOrderPaymentArgs>, admin: StaffActor) {
+ await requireCashierAction(ctx, admin, 'paymentFix');
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'amended');
 		if (existing) return { sequence: existing.sequence, replayed: true };
 		const order = await ctx.db.get(args.orderId);
@@ -1712,8 +1751,8 @@ export const amendOrderPayment = mutation({
 			}
 		}
 		return { sequence, replayed: false };
-	}
-});
+}
+
 
 const LEGACY_UNPROVEN = (name: string) =>
 	`This order was paid before stay payments were itemised, so the app can't prove how much of it was for ${name}. Correct its tenders instead, or record a refund on the booking if money was returned.`;
@@ -1726,10 +1765,14 @@ const LEGACY_UNPROVEN = (name: string) =>
  * a stay paid before payments were itemised, money already refunded, or an appointment changed
  * since. The receipt number is never reused.
  */
+const voidUnreceivedOrderArgs = v.object(correctionArgs);
 export const voidUnreceivedOrder = mutation({
-	args: correctionArgs,
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+ args: voidUnreceivedOrderArgs.fields,
+ handler: async (ctx, args) => executeVoidUnreceivedOrder(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<typeof voidUnreceivedOrderArgs>, admin: StaffActor) {
+ await requireCashierAction(ctx, admin, 'paymentFix');
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'void_unreceived');
 		if (existing) return { replayed: true };
 		const order = await ctx.db.get(args.orderId);
@@ -1801,14 +1844,14 @@ export const voidUnreceivedOrder = mutation({
 			await ctx.db.patch(link._id, { status: 'unlinked', unlinkedAt: now, unlinkedBy: admin.email, unlinkReason: `Order voided as recorded in error: ${reason}`, unlinkSequence: sequence });
 		}
 		return { replayed: false };
-	}
-});
+}
+
 
 /** An order's history of ordinary edits (rows added, changed, removed, cleared), newest first. */
 export const orderHistory = query({
 	args: { orderId: v.id('bills'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const { numItems } = args.paginationOpts;
 		if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new ConvexError('Page size must be 1–50');
 		return await ctx.db
@@ -1906,7 +1949,7 @@ const discardedInfo = (order: Order) => ({ at: order.discardedAt ?? order.update
 export const discardOrder = mutation({
 	args: { ...lifecycleArgs, reason: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new ConvexError('Order not found');
@@ -1944,7 +1987,7 @@ export const discardOrder = mutation({
 export const restoreCheck = query({
 	args: { orderId: v.id('bills') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const order = await ctx.db.get(args.orderId);
 		if (!order) return null;
 		if (order.status !== 'discarded') return { discarded: null, revision: order.revision, conflicts: [], blocking: 0, rowsLeft: 0 };
@@ -1973,7 +2016,7 @@ export const restoreCheck = query({
 export const restoreOrder = mutation({
 	args: { ...lifecycleArgs, removeConflictingRows: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new ConvexError('Order not found');
@@ -2169,7 +2212,7 @@ async function bookingLinkProblem(ctx: ReadCtx, order: Order, line: Line, bookin
 export const linkCandidates = query({
 	args: { orderId: v.id('bills'), lineId: v.id('billLines'), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const order = await ctx.db.get(args.orderId);
 		const line = await ctx.db.get(args.lineId);
 		if (!order || order.status !== 'paid' || !line || line.billId !== order._id || !LINK_TARGET[line.kind] || line.fee) return null;
@@ -2221,17 +2264,21 @@ export const linkCandidates = query({
  * active link, is on no open order and is still at `expectedTargetRevision`. `expectedCorrectionRevision`
  * is the order's correction revision staff reviewed. Retrying `idempotencyKey` returns the first result.
  */
-export const linkPaidLine = mutation({
-	args: {
+const linkPaidLineArgs = v.object({
 		...correctionArgs,
 		lineId: v.id('billLines'),
 		appointmentId: v.optional(v.id('serviceAppointments')),
 		bookingId: v.optional(v.id('bookings')),
 		expectedTargetRevision: v.number(),
 		notifyGuest: v.optional(v.boolean())
-	},
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+	});
+export const linkPaidLine = mutation({
+ args: linkPaidLineArgs.fields,
+ handler: async (ctx, args) => executeLinkPaidLine(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof linkPaidLineArgs>, admin: StaffActor) {
+ await requireCashierAction(ctx, admin, 'paymentFix');
 		const source = oneSource(args);
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'linked');
 		if (existing) {
@@ -2291,8 +2338,8 @@ export const linkPaidLine = mutation({
 		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
 		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email);
 		return { sequence, linkId, replayed: false };
-	}
-});
+}
+
 
 /**
  * Proves an active link can be undone exactly, writing nothing, and returns the reversal to run:
@@ -2341,10 +2388,14 @@ async function linkReversal(ctx: MutationCtx, link: Doc<'billLineLinks'>, name: 
  * and keeps the link as `unlinked`, with an `unlinked` correction. The receipt never changes; the
  * row can be linked again. Refused, writing nothing, if the reversal can't be proved.
  */
+const unlinkPaidLineArgs = v.object({ ...correctionArgs, linkId: v.id('billLineLinks') });
 export const unlinkPaidLine = mutation({
-	args: { ...correctionArgs, linkId: v.id('billLineLinks') },
-	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+ args: unlinkPaidLineArgs.fields,
+ handler: async (ctx, args) => executeUnlinkPaidLine(ctx, args, await requireStaff(ctx, 'checkout')),
+});
+/** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
+export async function executeUnlinkPaidLine(ctx: MutationCtx, args: Infer<typeof unlinkPaidLineArgs>, admin: StaffActor) {
+ await requireCashierAction(ctx, admin, 'paymentFix');
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'unlinked');
 		if (existing) {
 			if (existing.linkId !== args.linkId) throw new ConvexError('This unlink attempt was already used for something else. Start again.');
@@ -2371,5 +2422,122 @@ export const unlinkPaidLine = mutation({
 		await ctx.db.patch(order._id, { correctionRevision: sequence, updatedAt: now });
 		await syncAffiliateCredit(ctx, {billId: order._id}, admin.email, 'payment_unlinked');
 		return { sequence, replayed: false };
-	}
-});
+}
+
+
+/** Allocate an empty order when the first item needs approval. No charge is created. */
+export const createOrder = mutation({ args: {}, handler: async ctx => {
+ const actor = await requireStaff(ctx, 'checkout');
+ const order = await insertOrder(ctx, actor.email);
+ return { orderId: order._id };
+} });
+
+/** Read-only proposal for the approval card. Execution still runs every original validation. */
+export async function previewStaffApproval(ctx: MutationCtx, order: Order, payload: ApprovalPayload) {
+ const lines = await orderLines(ctx, order._id);
+ let proposed: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }> = lines.map(line => ({ ...line }));
+ const totalBefore = billTotals(lines).total;
+ let amount = 0;
+ let percent: number | undefined;
+ if (payload.kind === 'discount' || payload.kind === 'customPrice') {
+  if (!isOpenOrder(order)) throw new ConvexError('Only an unpaid order can be changed');
+  if ('lineId' in payload) {
+   const line = lines.find(row => row._id === payload.lineId);
+   if (!line) throw new ConvexError('Item not found on this order');
+   let next: Line = { ...line };
+   if (payload.kind === 'discount') {
+    if (line.fee) throw new ConvexError(FEE_FIXED);
+    if (line.kind === 'booking') throw new ConvexError(ATTACHED_PRICE);
+    assertDiscount(payload.discount);
+    next.discount = payload.discount;
+   } else if (payload.action === 'overrideLinePrice') {
+    if (payload.price !== null) {
+     if (line.kind === 'booking') throw new ConvexError(ATTACHED_PRICE);
+     if (line.fee) throw new ConvexError(FEE_FIXED);
+     const note = assertPriceOverride(payload.price, payload.note);
+     next.priceOverride = { price: round2(payload.price), note, by: '', at: Date.now() };
+    } else next.priceOverride = undefined;
+   } else {
+    if (!isSourceRow(line) || line.fee) throw new ConvexError('Only a booking or appointment row can be repriced');
+    const issue = await sourceIssue(ctx, line);
+    if (issue?.kind !== 'changed') throw new ConvexError('This source has no price update to approve');
+    const fresh = line.bookingId ? await bookingLine(ctx, (await ctx.db.get(line.bookingId))!) : await appointmentLine(ctx, (await ctx.db.get(line.appointmentId!))!);
+    next = { ...line, ...fresh };
+   }
+   const reduction = manualReduction(next);
+   amount = reduction.reductionSatang / 100;
+   percent = reduction.percent;
+   proposed = proposed.map(row => row._id === line._id ? next : row);
+  } else if (payload.kind === 'customPrice' && payload.action === 'addCustomItem') {
+   assertPrice(payload.price);
+   const name = cleanText(payload.name, 'Item name', 80);
+   if (!name) throw new ConvexError('Name the item');
+   await assertRoom(ctx, order._id);
+   proposed.push({ _id: 'proposed', kind: 'extra', unitPrice: round2(payload.price), qty: 1 });
+   amount = round2(payload.price);
+  } else if (payload.kind === 'customPrice' && payload.action === 'attachSource') {
+   const source = oneSource(payload);
+   const fresh = 'bookingId' in source ? await bookingLine(ctx, await requireBooking(ctx, source.bookingId)) : await appointmentLine(ctx, await requireAppointment(ctx, source.appointmentId));
+   proposed.push({ ...fresh, _id: 'proposed' });
+   const reduction = manualReduction(fresh);
+   amount = reduction.reductionSatang / 100;
+   percent = reduction.percent;
+  }
+  if (order.promotion) {
+   const quote = await quoteOrderCoupon(ctx, proposed, order.promotion.couponId, order.promotion.couponVersion);
+   if (!quote.ok) orderCouponUnavailable(quote.problem);
+   const shares = new Map(quote.allocation.map(row => [row.lineId, row.discount]));
+   proposed = proposed.map(row => ({ ...row, couponDiscount: shares.get(row._id) }));
+  }
+  const totals = billTotals(proposed);
+  assertBillSize(totals);
+  return { totalBefore, totalAfter: totals.total, amount, ...(percent !== undefined ? { percent } : {}) };
+ }
+ if (order.status !== 'paid') throw new ConvexError('Only a paid order can be corrected');
+ if (payload.kind === 'paymentFix') {
+  if (payload.action === 'linkPaidLine') amount = linkableRow(order, await ctx.db.get(payload.lineId)).amount;
+  if (payload.action === 'unlinkPaidLine') {
+   const link = await ctx.db.get(payload.linkId);
+   if (!link || link.billId !== order._id || link.status !== 'active') throw new ConvexError('Link not found on this order');
+   amount = link.amount;
+  }
+ }
+ return { totalBefore, totalAfter: payload.kind === 'paymentFix' && payload.action === 'voidUnreceivedOrder' ? 0 : totalBefore, amount: amount || totalBefore };
+}
+
+async function requireBooking(ctx: ReadCtx, id: Id<'bookings'>) {
+ const row = await ctx.db.get(id);
+ if (!row) throw new ConvexError('Booking not found');
+ return row;
+}
+async function requireAppointment(ctx: ReadCtx, id: Id<'serviceAppointments'>) {
+ const row = await ctx.db.get(id);
+ if (!row) throw new ConvexError('Appointment not found');
+ return row;
+}
+
+/** Internal TypeScript helper, not a Convex endpoint; approval identity is server-derived. */
+export async function executeStaffApproval(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, actor: StaffActor) {
+ const payload = request.payload;
+ const order = await ctx.db.get(request.orderId);
+ if (!order) throw new ConvexError('Order not found');
+ const correction = { orderId: order._id, reason: request.reason, expectedCorrectionRevision: order.correctionRevision ?? 0, idempotencyKey: `approval:${request._id}` };
+ switch (payload.kind) {
+  case 'discount': return await executeUpdateLine(ctx, { lineId: payload.lineId, discount: payload.discount }, actor);
+  case 'customPrice':
+   switch (payload.action) {
+    case 'overrideLinePrice': return await executeOverrideLinePrice(ctx, payload, actor);
+    case 'updateSourceLine': return await executeUpdateSourceLine(ctx, payload, actor);
+    case 'addCustomItem': return await executeAddItem(ctx, { orderId: order._id, item: { kind: 'extra', name: payload.name, price: payload.price } }, actor);
+    case 'attachSource': return await executeAttach(ctx, { orderId: order._id, bookingId: payload.bookingId, appointmentId: payload.appointmentId }, actor);
+   }
+  case 'voidPaidSale': return await executeVoidOrder(ctx, { orderId: order._id, reason: request.reason }, actor);
+  case 'paymentFix':
+   switch (payload.action) {
+    case 'amendOrderPayment': return await executeAmendOrderPayment(ctx, { ...correction, ...payload }, actor);
+    case 'voidUnreceivedOrder': return await executeVoidUnreceivedOrder(ctx, correction, actor);
+    case 'linkPaidLine': return await executeLinkPaidLine(ctx, { ...correction, ...payload }, actor);
+    case 'unlinkPaidLine': return await executeUnlinkPaidLine(ctx, { ...correction, ...payload }, actor);
+   }
+ }
+}
