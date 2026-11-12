@@ -19,7 +19,9 @@ const [properties, settings] = await Promise.all([run('catalog/properties:list',
 const pool = properties.find(property => property.slug === 'pool-villa');
 if (!pool) throw new Error('Pool Villa must be active for this dataset');
 const subtotal = pool.pricePerNight * 3;
-const total = subtotal - Math.round(subtotal * pool.directDiscountPercent / 100);
+// Stored prices are satang and discounts are basis points; responses show baht.
+const total = (subtotal - Math.round(subtotal * pool.directDiscountPercent / 10_000)) / 100;
+const forcedModel = 'openai/gpt-6-luna';
 const timeCheck = response => response.includes(settings.checkInTime) && response.includes(settings.checkOutTime);
 const priceCheck = response => (response.match(/\b\d[\d,]*(?:\.\d+)?\b/g) ?? []).some(amount => Number(amount.replace(/,/g, '')) === total) && /THB|฿/.test(response);
 const cases = [
@@ -34,13 +36,13 @@ const cases = [
 	{ id: 'quote-th', channel: 'web', prompt: 'คำนวณราคาพูลวิลล่า 3 คืน 2 คนเมื่อจองตรง ขอราคารวมเป็น THB ครับ', model: 'openai/gpt-6-luna', check: priceCheck },
 	{ id: 'quote-ko', channel: 'web', prompt: 'Pool Villa를 2명이 3박 직접 예약할 때 총 가격을 THB로 계산해 주세요.', model: 'openai/gpt-6-luna', check: priceCheck }
 ];
-const report = { startedAt: new Date().toISOString(), deployment, modelOverride: false, repetitions, dataset: 'critical-read-only-v1', expected: { checkIn: settings.checkInTime, checkOut: settings.checkOutTime, poolThreeNightTotal: total }, results: [] };
+const report = { startedAt: new Date().toISOString(), deployment, modelOverride: true, forcedModel, routingCoverage: false, repetitions, dataset: 'critical-read-only-v1', expected: { checkIn: settings.checkInTime, checkOut: settings.checkOutTime, poolThreeNightTotal: total }, results: [] };
 for (let repeat = 1; repeat <= repetitions; repeat++) {
 	for (const scenario of cases) {
 		const sessionId = await run('chatEval:createSession', { channel: scenario.channel, visitorName: 'Accuracy eval' });
 		const started = Date.now();
 		try {
-			const reply = await run('chatEval:comparisonTurn', { sessionId, userMessage: scenario.prompt, model: 'openai/gpt-6-luna' });
+			const reply = await run('chatEval:comparisonTurn', { sessionId, userMessage: scenario.prompt, model: forcedModel });
 			report.results.push({ id: scenario.id, repeat, sessionId, prompt: scenario.prompt, latencyMs: Date.now() - started, ...reply, passed: reply.model === scenario.model && scenario.check(reply.response) });
 		} catch (error) {
 			report.results.push({ id: scenario.id, repeat, sessionId, prompt: scenario.prompt, passed: false, error: error.message });

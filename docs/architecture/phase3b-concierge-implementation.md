@@ -76,7 +76,7 @@ All moved source files are below 1,000 lines; the largest moved file is **knowle
 
 `scripts/move-concierge-domain.mjs` is the explicit one-shot codemod and repeatable `--check` audit against the exact fixed base. It redistributes original declarations/case bodies, rewrites imports and `api`/`internal`/raw RPC/CLI references, updates the current 295-entry access inventory and all frontend/test/fixture/eval callers, and rejects removed paths and endpoint exports through the model. HTTP, crons and schedulers contain no direct target of a renamed concierge registration, and their transitive messaging/bookings/service references retain their paths. Historical plans and old evidence retain their original names. Negative security assertions for the already removed `chatAi:generateReply` are intentional.
 
-The old accuracy-eval script still referenced already removed `chatAi:respond` / `chatAi:generateReply` actions at the fixed base. The codemod replaces those dead calls with the existing internal `chatEval:comparisonTurn`, explicitly selecting the same default Luna model; it adds no runtime endpoint. That script was not run against any external deployment.
+The old accuracy-eval script still referenced already removed `chatAi:respond` / `chatAi:generateReply` actions at the fixed base. The codemod replaces those dead calls with the existing internal `chatEval:comparisonTurn`, explicitly selecting the same default Luna model; it adds no runtime endpoint. Its report explicitly records the forced-model override and `routingCoverage: false`: scenario model checks verify policy/forced-model outcomes, not complexity-based routing. The expected THB quote uses stored SATANG/BPS exactly once at the output boundary. That script was not run against any external deployment.
 
 ```sh
 PATH=/opt/homebrew/opt/node@22/bin:$PATH node scripts/move-concierge-domain.mjs --check > output/phase3b-concierge/move-audit.json
@@ -149,3 +149,7 @@ No queued jobs were rewritten or manufactured locally. No shared queue was read,
 5. Root verifies frontend/knowledge/chat behavior, restores traffic/recovery jobs and records exact live operations. Coordinate frontend/backend rollback and queued-job disposition under the same gate. Preserve durable claims/results, proposal state, alert timestamps and integer money; this move requires no data reset.
 
 No root review, live acceptance, merge or completed ownership closure beyond the concierge scope is claimed.
+
+## Parent review
+
+Standards, spec and independent audits found no runtime defects at `e195258`. The independent audit identified an inaccurate accuracy-eval override label; the report now records the forced model and excludes routing coverage. The parent also corrected that legacy script’s expected quote from stored satang/basis points to displayed baht. These evaluation fixes do not change the production turn engine. Syntax and fixed-base contract/dependency checks pass; no live eval was run. New Preview logs for `e195258` identify dedicated `hidden-squid-316`, excluding shared production/development. Live concierge acceptance and cutover remain pending.
