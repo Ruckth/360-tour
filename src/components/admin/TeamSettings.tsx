@@ -346,7 +346,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
       {state.error ? <p role="alert" className="pt-2 text-sm text-destructive">{state.error}</p> : null}
       <div className="flex flex-wrap items-center justify-end gap-3 pt-3">
         <span role="status" className="text-sm text-muted-foreground">
-          {state.notice ? state.notice : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : rules.revision > revision ? "Changed on another device." : ""}
+          {state.notice ? state.notice : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : rules.revision > revision ? <>Changed on another device. <Button type="button" variant="link" className="h-auto p-0" onClick={() => { setRevision(rules.revision); setDraft(draftOf(rules)); }}>Load latest</Button></> : ""}
         </span>
         <Button type="submit" disabled={state.saving || Boolean(problem)}>
           {state.saving ? <Spinner label="Saving" className="text-current" /> : null}

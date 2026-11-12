@@ -29,6 +29,7 @@ import "@/app.css";
  *   path=/admin/...              the route the navigation highlights
  *   scenario=spa                 checkout: a ฿1,200 Thai massage on a new order
  *   scenario=pending             checkout for a manager: two cashier requests waiting
+ *   scenario=discounted          checkout: the spa line already carries a 15% discount (as after approval)
  *   scenario=paid                checkout: the spa order paid by cash, on its receipt
  *   limit=N                      the cashier discount limit (10 by default)
  *   serverLimit=N                the limit the fixture server enforces, when it differs from the UI's
@@ -71,6 +72,12 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
       await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 1200, idempotencyKey: "browser-staff-paid", tenders: [{ method: "cash", amount: 1200 }] });
       return { orderId, receipt: true };
     }
+    return { orderId, receipt: false };
+  }
+  if (scenario === "discounted") {
+    // Set as a manager-approved discount would leave it (use serverLimit=100 so the fixture accepts it).
+    const { orderId, lineId } = await actions.addItem({ item: service(1) });
+    await actions.updateLine({ lineId, discount: { type: "percent", value: 15 } });
     return { orderId, receipt: false };
   }
   if (scenario === "pending") {

@@ -15,6 +15,7 @@ import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { useLoadablePhoto } from "./CheckoutPhoto";
 import { OrderPanel } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
+import { errorText } from "@/lib/staff-bookings";
 import { needsApproval } from "./staff-approvals";
 import { useOrderWrites } from "./useOrderWrites";
 
@@ -77,7 +78,15 @@ export function CheckoutView({
   async function requestItem(item: { name: string; price: number }, reason: string) {
     let failed: string | null = null;
     await run(async (id) => {
-      const target = id ?? (await actions.createOrder({})).orderId;
+      let target = id;
+      if (!target) {
+        try {
+          target = (await actions.createOrder({})).orderId;
+        } catch (err) {
+          failed = errorText(err, "Couldn’t start an order. Try again.");
+          return null;
+        }
+      }
       failed = await send(target, { kind: "customPrice", action: "addCustomItem", name: item.name, price: item.price }, reason);
       return { orderId: target };
     }, () => { if (!failed) setAskItem(null); });

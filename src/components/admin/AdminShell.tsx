@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -112,7 +112,7 @@ function GateCard({ title, children }: { title: string; children: ReactNode }) {
 /** Loads the person's staff access once, lets an invited person activate it, then shows the admin. */
 function AdminAccessGate({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
   const access = useQuery(api.staffAccess.myAccess, {});
-  const pending = useQuery(api.staffApprovals.pending, access?.capabilities.approve ? {} : "skip");
+  const [pendingCount, setPendingCount] = useState(0);
   if (access === undefined) {
     return (
       <div className="grid min-h-dvh place-items-center">
@@ -122,10 +122,29 @@ function AdminAccessGate({ userEmail, children }: { userEmail?: string; children
   }
   if (!access.role && access.pendingInvitation) return <ClaimInvitation access={access} />;
   return (
-    <StaffAccessProvider access={access} pendingApprovals={pending?.count ?? 0}>
+    <StaffAccessProvider access={access} pendingApprovals={access.capabilities.approve ? pendingCount : 0}>
+      {access.capabilities.approve ? <QuietBoundary><PendingApprovalsCount onCount={setPendingCount} /></QuietBoundary> : null}
       <AdminFrame userEmail={userEmail}>{children}</AdminFrame>
     </StaffAccessProvider>
   );
+}
+
+/** Only feeds the badge count, so a failed approvals query never takes down the admin. */
+function PendingApprovalsCount({ onCount }: { onCount: (count: number) => void }) {
+  const count = useQuery(api.staffApprovals.pending, {})?.count ?? 0;
+  useEffect(() => onCount(count), [count, onCount]);
+  return null;
+}
+
+/** Renders nothing on error: the badge simply shows no count. */
+class QuietBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
 /** As Marketing invitations: the invited account activates its own access, explicitly. */

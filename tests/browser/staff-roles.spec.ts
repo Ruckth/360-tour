@@ -51,6 +51,18 @@ test.describe("cashier checkout", () => {
     await expect(order.getByRole("button", { name: "Cash", exact: true })).toBeEnabled();
   });
 
+  test("a discount already on the line is not treated as a new over-limit request", async ({ page }) => {
+    await open(page, "?role=cashier&scenario=discounted&serverLimit=100");
+    const order = orderPanel(page);
+    await order.getByRole("button", { name: /^Thai massage 60/ }).click();
+    await expect(order.getByRole("textbox", { name: "Discount" })).toHaveValue("15");
+    await expect(order.getByTestId("discount-limit-hint")).toHaveCount(0);
+    await expect(order.getByRole("button", { name: "Ask manager", exact: true })).toHaveCount(0);
+    // Changing it is a new request again.
+    await order.getByRole("textbox", { name: "Discount" }).fill("16");
+    await expect(order.getByTestId("discount-limit-hint")).toHaveText("฿192 is over your 10% limit.");
+  });
+
   test("the server's NEEDS_APPROVAL opens the same request form", async ({ page }) => {
     // The UI thinks 10%; the server enforces 5%.
     await open(page, "?role=cashier&scenario=spa&serverLimit=5");

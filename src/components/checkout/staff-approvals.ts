@@ -73,11 +73,6 @@ export function needsApproval(err: unknown): NeedsApproval | null {
   return data as NeedsApproval;
 }
 
-/** settleOrder's refusal while a request on the order is unresolved. */
-export function isPendingApproval(err: unknown) {
-  const data = err && typeof err === "object" && "data" in err ? (err as { data?: unknown }).data : undefined;
-  return Boolean(data && typeof data === "object" && (data as { code?: unknown }).code === "PENDING_APPROVAL");
-}
 
 /** "฿120 discount", "custom price", "void", "payment fix": what a request asks for, as one phrase. */
 export function approvalWhat(request: Pick<ApprovalView, "payload" | "amount">) {
