@@ -1626,7 +1626,7 @@ export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof void
 		const reason = cleanText(args.reason, 'Reason', NOTE_MAX);
 		if (!reason) throw new ConvexError('Give a reason for the void');
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		await assertNoPosRefunds(ctx, order._id);
 		const now = Date.now();
@@ -1688,7 +1688,7 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'amended');
 		if (existing) return { sequence: existing.sequence, replayed: true };
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s payment can be corrected.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the correction')!;
@@ -1804,7 +1804,7 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'void_unreceived');
 		if (existing) return { replayed: true };
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		await assertNoPosRefunds(ctx, order._id);
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
@@ -2319,7 +2319,7 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 			return { sequence: existing.sequence, linkId: existing.linkId!, replayed: true };
 		}
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s rows can be linked.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the link')!;
@@ -2435,7 +2435,7 @@ export async function executeUnlinkPaidLine(ctx: MutationCtx, args: Infer<typeof
 			return { sequence: existing.sequence, replayed: true };
 		}
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s links can be undone.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the unlink')!;

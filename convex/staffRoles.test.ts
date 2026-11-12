@@ -526,6 +526,41 @@ describe('staff-role audit regressions', () => {
     for (const query of historyQueries) await expect(s.cashier.query(query, { orderId: missing, paginationOpts })).rejects.toThrow('Order not found');
   });
 
+  it.each([
+    Date.parse('2026-11-11T16:59:59.999Z'),
+    Date.parse('2026-11-12T17:00:00Z'),
+  ])('rejects cashier paid-receipt writes outside the current business date (%s)', async effectiveAt => {
+    const s = await setup();
+    await s.rules({ paymentFix: 'cashier', voidPaidSale: 'cashier' });
+    const bookingId = await s.booking();
+    const { orderId, lineId } = await s.cashier.mutation(api.pos.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
+    await s.pay(orderId);
+    const linked = await s.owner.mutation(api.pos.linkPaidLine, {
+      orderId, lineId, bookingId, expectedTargetRevision: 0, expectedCorrectionRevision: 0,
+      idempotencyKey: 'owner-link-before-date-change', reason: 'Receipt for stay',
+    });
+    await s.t.run(ctx => ctx.db.patch(orderId, {
+      paymentEffectiveAt: effectiveAt,
+      customerSnapshot: { name: 'Historical private payer' },
+    }));
+    const before = await s.t.run(ctx => ctx.db.get(orderId));
+    expect(await s.cashier.query(api.pos.getOrder, { orderId })).toBeNull();
+    const correction = { orderId, expectedCorrectionRevision: 1, reason: 'Cashier attempt' };
+    const attempts = [
+      () => s.cashier.mutation(api.pos.voidOrder, { orderId, reason: correction.reason }),
+      () => s.cashier.mutation(api.pos.amendOrderPayment, { ...correction, idempotencyKey: 'hidden-amend', effectiveAt: now }),
+      () => s.cashier.mutation(api.pos.voidUnreceivedOrder, { ...correction, idempotencyKey: 'hidden-unreceived' }),
+      () => s.cashier.mutation(api.pos.linkPaidLine, { ...correction, lineId, bookingId, expectedTargetRevision: 0, idempotencyKey: 'hidden-link' }),
+      () => s.cashier.mutation(api.pos.unlinkPaidLine, { ...correction, linkId: linked.linkId, idempotencyKey: 'hidden-unlink' }),
+    ];
+    for (const attempt of attempts) await expect(attempt()).rejects.toThrow('Order not found');
+    expect(await s.t.run(ctx => ctx.db.get(orderId))).toEqual(before);
+    expect(await s.cashier.query(api.pos.getOrder, { orderId })).toBeNull();
+    // A manager can still correct the historical receipt and deliberately make it visible today.
+    await s.manager.mutation(api.pos.amendOrderPayment, { ...correction, idempotencyKey: 'manager-amend-hidden', effectiveAt: now });
+    expect((await s.cashier.query(api.pos.getOrder, { orderId }))?.receiptCustomer?.name).toBe('Historical private payer');
+  });
+
   it('keeps paid-link discovery and link requests behind the paymentFix rule', async () => {
     const s = await setup();
     const bookingId = await s.booking();
