@@ -6,17 +6,16 @@ export const staffRole = v.union(v.literal('manager'), v.literal('cashier'));
 export const actionPermission = v.union(v.literal('manager'), v.literal('cashier'));
 export const cashierRulesFields = {
   discountLimitPercent: v.number(),
-  refund: actionPermission,
   voidPaidSale: actionPermission,
   customPrice: actionPermission,
   paymentFix: actionPermission,
 };
 export const cashierRulesValidator = v.object(cashierRulesFields);
 export type CashierRules = Infer<typeof cashierRulesValidator> & { revision: number };
-export type CashierAction = 'refund' | 'voidPaidSale' | 'customPrice' | 'paymentFix';
+export type CashierAction = 'voidPaidSale' | 'customPrice' | 'paymentFix';
 export const DEFAULT_CASHIER_RULES: CashierRules = {
   revision: 0, discountLimitPercent: 10,
-  refund: 'manager', voidPaidSale: 'manager', customPrice: 'manager', paymentFix: 'manager',
+  voidPaidSale: 'manager', customPrice: 'manager', paymentFix: 'manager',
 };
 export const STAFF_INVITATION_TTL_MS = 14 * 86_400_000;
 export const APPROVAL_TTL_MS = 5 * 60_000;

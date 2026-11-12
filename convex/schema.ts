@@ -22,6 +22,7 @@ export default defineSchema({
   email: v.string(), role: staffRole, tokenIdentifier: v.optional(v.string()), revision: v.optional(v.number()),
   inviteExpiresAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(), updatedByEmail: v.string()
  }).index('by_email', ['email']).index('by_tokenIdentifier', ['tokenIdentifier']),
+ // Refund permissions arrive with POS partial refunds; this unreleased table only has implemented action rules.
  cashierRules: defineTable({ key: v.literal('default'), ...cashierRulesFields, revision: v.number(), updatedAt: v.number(), updatedByEmail: v.string() }).index('by_key', ['key']),
  staffApprovalRequests: defineTable({
   orderId: v.id('bills'), lineId: v.optional(v.id('billLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix')),

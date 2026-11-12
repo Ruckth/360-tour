@@ -92,8 +92,8 @@ export const updateCashierRules = mutation({ args: { expectedRevision: v.number(
   if (args.expectedRevision !== before.revision) throw new ConvexError({ code: 'STALE_RULES', message: 'Cashier rules changed. Reload and try again.' });
   const limit = args.discountLimitPercent;
   if (!Number.isFinite(limit) || limit < 0 || limit > 100 || Math.abs(Math.round(limit * 100) - limit * 100) > 1e-8) throw new ConvexError('Use 0–100%, up to two decimals.');
-  const { discountLimitPercent, refund, voidPaidSale, customPrice, paymentFix } = args;
-  const rules = { discountLimitPercent, refund, voidPaidSale, customPrice, paymentFix };
+  const { discountLimitPercent, voidPaidSale, customPrice, paymentFix } = args;
+  const rules = { discountLimitPercent, voidPaidSale, customPrice, paymentFix };
   const fields = { ...rules, revision: before.revision + 1, updatedAt: Date.now(), updatedByEmail: actor.email };
   const row = await ctx.db.query('cashierRules').withIndex('by_key', q => q.eq('key', 'default')).unique();
   const id = row ? row._id : await ctx.db.insert('cashierRules', { key: 'default', ...fields });

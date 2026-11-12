@@ -11,7 +11,7 @@ export const list = query({
   const marketing = ['marketingCampaign','marketingLink','coupon','marketingSpend','marketingAffiliate'].includes(args.entityType);
   let fullDetail = true;
   if (marketing) fullDetail = canReadMarketingPersonalData(await requireMarketingPermission(ctx, 'view'));
-  else if (['settings', 'staffGrant', 'cashierRules', 'marketingGrant'].includes(args.entityType)) await requireOwner(ctx);
+  else if (['staffGrant', 'cashierRules', 'marketingGrant'].includes(args.entityType)) await requireOwner(ctx);
   else await requireAdmin(ctx);
   if (!Number.isInteger(args.paginationOpts.numItems) || args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 100) throw new Error('Page size must be 1–100');
   const entityId = args.entityId;

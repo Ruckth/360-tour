@@ -310,7 +310,7 @@ export const setupChecklist = query({
 export const admins = query({
 	args: {},
 	handler: async (ctx) => {
-		await requireOwner(ctx);
+		await requireAdmin(ctx);
 		return [...adminEmails()].sort();
 	}
 });

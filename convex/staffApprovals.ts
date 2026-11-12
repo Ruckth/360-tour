@@ -3,7 +3,7 @@ import { internalMutation, mutation, query, type MutationCtx } from './_generate
 import type { Doc } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { approvalPayload, APPROVAL_TTL_MS } from './lib/staffTypes';
-import { cashierRules, requireStaff } from './lib/staffAccess';
+import { canReadCheckoutOrder, cashierRules, requireCashierAction, requireStaff } from './lib/staffAccess';
 import { effectiveRequestStatus, orderFingerprint, requesterFingerprint } from './lib/staffApprovalState';
 import { appendRecordHistory } from './lib/recordHistory';
 import { executeStaffApproval, previewStaffApproval } from './pos';
@@ -33,9 +33,10 @@ async function resolve(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, 
 export const create = mutation({ args: { orderId: v.id('bills'), payload: approvalPayload, reason: v.string() }, handler: async (ctx, args) => {
   const actor = await requireStaff(ctx, 'checkout');
   if (actor.role !== 'cashier') throw new ConvexError('Only cashiers request manager approval.');
+  if (args.payload.kind === 'paymentFix' && ['linkPaidLine', 'unlinkPaidLine'].includes(args.payload.action)) await requireCashierAction(ctx, actor, 'paymentFix');
   const reason = cleanReason(args.reason);
   const order = await ctx.db.get(args.orderId);
-  if (!order) throw new ConvexError('Order not found');
+  if (!order || !canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
   const pending = await ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', order._id).eq('status', 'pending')).take(201);
   if (pending.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');
   for (const request of pending) {
@@ -100,7 +101,8 @@ export const reject = mutation({ args: { requestId: v.id('staffApprovalRequests'
 } });
 
 export const forOrder = query({ args: { orderId: v.id('bills') }, handler: async (ctx, args) => {
-  await requireStaff(ctx, 'checkout');
+  const actor = await requireStaff(ctx, 'checkout');
+  if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, await ctx.db.get(args.orderId))) throw new ConvexError('Order not found');
   const [recent, pending] = await Promise.all([
     ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_createdAt', q => q.eq('orderId', args.orderId)).order('desc').take(50),
     ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', args.orderId).eq('status', 'pending')).take(201),

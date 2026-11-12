@@ -5,6 +5,8 @@ import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { adminEmails } from './adminAuth';
 import { DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS, type CashierAction, type CashierRules } from './staffTypes';
+import { resortTodayIso } from './dates';
+import { isOpenOrder, isSettledOrder } from './orderLinks';
 import { lineCouponBase, round2, type PricedLine } from './billMath';
 
 export type StaffRole = 'owner' | 'manager' | 'cashier' | null;
@@ -57,17 +59,17 @@ export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capa
 export async function cashierRules(ctx: QueryCtx | MutationCtx): Promise<CashierRules> {
   const row = await ctx.db.query('cashierRules').withIndex('by_key', q => q.eq('key', 'default')).unique();
   if (!row) return { ...DEFAULT_CASHIER_RULES };
-  const { revision, discountLimitPercent, refund, voidPaidSale, customPrice, paymentFix } = row;
-  return { revision, discountLimitPercent, refund, voidPaidSale, customPrice, paymentFix };
+  const { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix } = row;
+  return { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix };
 }
 export async function requireCashierAction(ctx: QueryCtx | MutationCtx, actor: StaffActor, action: CashierAction) {
   if (actor.role === 'cashier' && (await cashierRules(ctx))[action] !== 'cashier')
     throw new ConvexError({ code: 'NEEDS_APPROVAL', kind: action, message: 'Ask a manager to approve this action.' });
 }
 
-/** Catalog snapshot × current quantity; the coupon is deliberately excluded. Whole satang throughout. */
+/** Baseline (at least the line price) × current quantity; the coupon is deliberately excluded. Whole satang throughout. */
 export function manualReduction(line: PricedLine & { catalogUnitPrice?: number }) {
-  const subtotalSatang = Math.round(round2((line.catalogUnitPrice ?? line.unitPrice) * line.qty) * 100);
+  const subtotalSatang = Math.round(round2(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty) * 100);
   const reductionSatang = Math.max(0, subtotalSatang - Math.round(lineCouponBase(line) * 100));
   return { subtotalSatang, reductionSatang, percent: subtotalSatang ? reductionSatang * 100 / subtotalSatang : 0 };
 }
@@ -80,4 +82,13 @@ export async function assertCashierDiscount(ctx: QueryCtx | MutationCtx, actor: 
     code: 'NEEDS_APPROVAL', kind: 'discount', message: 'This manual discount needs manager approval.',
     ...reduction, amount: reduction.reductionSatang / 100, limitSatang, discountLimitPercent: rules.discountLimitPercent,
   });
+}
+
+/** Cashier recall is limited to active checkout and receipts on today's resort business date. */
+export function canReadCheckoutOrder(actor: StaffActor, order: Doc<'bills'> | null) {
+  if (!order) return false;
+  if (actor.role !== 'cashier') return true;
+  if (isOpenOrder(order)) return true;
+  const settledAt = order.paymentEffectiveAt ?? order.paidAt;
+  return isSettledOrder(order) && settledAt !== undefined && resortTodayIso(settledAt) === resortTodayIso();
 }
