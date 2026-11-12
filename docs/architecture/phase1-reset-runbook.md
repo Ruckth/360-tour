@@ -64,7 +64,7 @@ pnpm exec convex run seed:seedAll '{"scenario":"demo-resort"}' --codegen disable
 
 The scenario refuses every nonempty database, preventing a partial repair or second seed. Its response includes per-table counts and test access tokens: treat that output as private. Expected key counts: properties 3, tourScenes 5, reviews 7, reviewStats 3, staff 5, services 6, appointments 4, bookings 2, bookingPayments 1, orders 3, orderLines 1, conversations 1, messages 1. `empty` creates no records; `busy-weekend` creates six stays and 12 blocked nights in addition to the demo catalog/inbox.
 
-Run `pnpm verify`, booking component tests and smoke tests. On the newly seeded backend, sign in as owner and cashier; verify the cashier cannot read yesterday's/future receipts. Complete a booking and a POS settlement (including a satang amount and percentage discount), apply/refund a coupon sale, review missing information, and send a web/social chat. Check Stripe unit_amount equals stored total, with no further ×100. Check refunded totals and affiliate credits remain integer satang.
+Run `pnpm verify`, booking component tests and smoke tests. On the newly seeded backend, sign in through the configured owner allowlist and invite a cashier through Team (the reset clears role grants); verify the cashier cannot read yesterday's/future receipts. Complete a booking and a POS settlement (including a satang amount and percentage discount), apply/refund a coupon sale, review missing information, and send a web/social chat. Check Stripe unit_amount equals stored total, with no further ×100. Check refunded totals and affiliate credits remain integer satang.
 
 ## 5. Restore traffic and observe
 
