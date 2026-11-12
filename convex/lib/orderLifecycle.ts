@@ -7,7 +7,7 @@ import { isOpenOrder } from './orderLinks';
 
 /**
  * Rules for the order lifecycle beyond paying: discarding and restoring unpaid orders, and
- * no-show / late-cancellation fee rows. The mutations live in convex/pos.ts.
+ * no-show / late-cancellation fee rows. The mutations live in convex/pos/.
  */
 
 type ReadCtx = QueryCtx | MutationCtx;

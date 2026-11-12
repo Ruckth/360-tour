@@ -1,7 +1,7 @@
 import { newAttemptKey } from "@/components/checkout/backend";
 
 /**
- * Each checkout tab has its own id, the identity convex/displays.ts uses to decide which tab drives
+ * Each checkout tab has its own id, the identity convex/pos/displays.ts uses to decide which tab drives
  * the customer display. It lives in sessionStorage, so a reload of that tab keeps it (and stays the
  * driver) while a new tab gets a new one. A duplicated tab copies sessionStorage, so each tab also
  * holds a Web Lock named after its id for its lifetime: the lock is granted to one live tab only

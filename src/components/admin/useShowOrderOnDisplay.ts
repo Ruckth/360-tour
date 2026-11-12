@@ -15,7 +15,7 @@ import { useDisplayDriver } from "./useDisplayDriver";
  * booking link still opening), so nothing is sent. Returns the last failure, for the checkout's
  * banner, and a retry.
  *
- * Each mount publishes under a lease of its own (see convex/displays.ts). It renews the lease while
+ * Each mount publishes under a lease of its own (see convex/pos/displays.ts). It renews the lease while
  * an order is shown and releases it on unmount (another admin page, sign-out), which clears the
  * guest's screen. A crashed or closed tab simply stops renewing and the server clears it. Cleanup
  * names its own lease, so StrictMode's remount, or a newer mount, is never cleared by an older one.

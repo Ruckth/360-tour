@@ -94,7 +94,7 @@ type BookingRefs = Pick<OrderView, "source"> & Partial<Pick<OrderView, "sources"
 
 /**
  * The receipt's booking line: every booking the order is for, its own first (see
- * orderSourceRefs in convex/pos.ts), e.g. "Booking: CONF-A" or "Bookings: CONF-A, SVC-7". Null for none.
+ * orderSourceRefs in convex/pos/private/orderModel.ts), e.g. "Booking: CONF-A" or "Bookings: CONF-A, SVC-7". Null for none.
  */
 export function receiptBookings(view: BookingRefs) {
   const refs = view.sources?.length ? view.sources : view.source ? [view.source] : [];

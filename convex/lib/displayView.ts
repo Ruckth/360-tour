@@ -77,7 +77,7 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 	const { businessName } = await getEffectiveSettings(ctx);
 	const order = till?.orderId ? await ctx.db.get(till.orderId) : null;
 	if (!order || !(isOpenOrder(order) || order.status === 'paid')) return { state: 'idle', businessName };
-	// An open order is shown only under its checkout's live lease (convex/displays.ts), checked here
+	// An open order is shown only under its checkout's live lease (convex/pos/displays.ts), checked here
 	// too, not only by the scheduled expiry. Orders published before leases have none.
 	if (order.status !== 'paid' && !(till && (await holdsLiveLease(ctx, till)))) return { state: 'idle', businessName };
 	const lines = await orderLines(ctx, order._id);

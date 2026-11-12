@@ -11,7 +11,7 @@ const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: (
 /** Cashiers may only search active customers by at least two characters (customers.browseCustomers). */
 const cashierCannotBrowse = (query: string, archived: boolean) => archived || query.trim().length < 2;
 
-/** The live checkout: Convex queries and mutations from convex/pos.ts and convex/customers.ts. */
+/** The live checkout: Convex queries and mutations from convex/pos/ and convex/pos/customers.ts. */
 export const convexCheckoutBackend: CheckoutBackend = {
   useRestoreCheck: (orderId) => useQuery(api.pos.orders.restoreCheck, { orderId }),
   useAppointmentFees: (appointmentId) => useQuery(api.pos.orders.appointmentFees, { appointmentId }),

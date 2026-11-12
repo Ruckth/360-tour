@@ -18,7 +18,7 @@ export const posTables = {
 
 
 	/**
-	 * An order (convex/pos.ts): the persistent commercial record with a permanent order number,
+	 * An order (convex/pos/): the persistent commercial record with a permanent order number,
 	 * its items, payments and receipt. The table keeps its original name so existing ids, payments
 	 * and audit rows stay valid. An order may link to a booking or appointment and, separately,
 	 * to a reusable customer; it may also have neither.

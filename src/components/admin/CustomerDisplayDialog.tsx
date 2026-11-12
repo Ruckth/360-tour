@@ -34,7 +34,7 @@ type Display = { _id: Id<"displays">; name: string; lastSeenAt: number | null };
 
 const isOnline = (display: Display, now: number) => display.lastSeenAt !== null && now - display.lastSeenAt < ONLINE_MS;
 
-/** convex/displays.ts throws ConvexError({ code, message }) for pairing problems; anything else is a plain Error. */
+/** convex/pos/displays.ts throws ConvexError({ code, message }) for pairing problems; anything else is a plain Error. */
 function displayErrorText(error: unknown, fallback: string) {
   if (error instanceof ConvexError && typeof error.data?.message === "string") return error.data.message as string;
   return errorText(error, fallback);
@@ -147,7 +147,7 @@ function TakeOver({ clientId, orderId }: { clientId: string; orderId: string | n
 
 /**
  * A link only when staff ask for one: opening the dialog to check status, take over or disconnect
- * puts no QR on screen. Making a new link cancels the last one (convex/displays.ts).
+ * puts no QR on screen. Making a new link cancels the last one (convex/pos/displays.ts).
  */
 function usePairLink(clientId: string) {
   const createPairLink = useMutation(api.pos.displays.createPairLink);
