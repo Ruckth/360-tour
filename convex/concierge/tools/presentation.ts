@@ -1,8 +1,8 @@
 import type { FunctionReturnType } from 'convex/server';
-import type { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
-import { satangToBaht } from '../shared/money';
-import { resortLocalParts } from './serviceSlots';
+import type { internal } from '../../_generated/api';
+import type { Doc } from '../../_generated/dataModel';
+import { resortLocalParts } from '../../lib/serviceSlots';
+import { satangToBaht } from '../../shared/money';
 
 type MutationResults = {
   prepare_booking: FunctionReturnType<typeof internal.bookings.bookings.prepareChatBooking>;
@@ -11,6 +11,7 @@ type MutationResults = {
   confirm_service_booking: FunctionReturnType<typeof internal.services.serviceBookings.confirmChatServiceBooking>;
   cancel_booking: FunctionReturnType<typeof internal.bookings.bookings.cancelChatBooking> | FunctionReturnType<typeof internal.services.serviceBookings.cancelChatServiceBooking>;
 };
+
 export type MutationToolResult = { [Name in keyof MutationResults]: { name: Name; result: MutationResults[Name] } }[keyof MutationResults];
 
 export function bookingPaymentUrl(siteUrl: string | undefined, bookingId: string, accessToken: string) {

@@ -1,5 +1,5 @@
 import { cardText, type ReplyCard, type ReplyCardAction, type ReplyCardItem } from '../../lib/replyCards';
-import type { LineQuickReplyItem } from '../../concierge/copy';
+import type { LineQuickReplyItem } from '../../concierge/model';
 
 export function richCardsEnabled(channel: 'line' | 'whatsapp'): boolean {
   return (process.env.MESSAGING_RICH_CARDS ?? '').split(',').map(value => value.trim()).includes(channel);

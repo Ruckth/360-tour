@@ -122,7 +122,7 @@ function FactForm({
   }, [chatSlug, properties]);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
-  const save = useMutation(api.businessFacts.adminSave);
+  const save = useMutation(api.concierge.businessFacts.adminSave);
 
   const editing = target.fact ?? null;
   const fromUnknown = target.fromUnknown ?? null;

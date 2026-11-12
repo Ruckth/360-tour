@@ -1,7 +1,7 @@
 import type { TestConvexForDataModel } from 'convex-test';
 import type { DataModel, Id } from '../_generated/dataModel';
 import { api, internal } from '../_generated/api';
-import { generateConciergeReply, withReplyOutcome, type GenerateConciergeReplyArgs } from '../chatAi';
+import { generateConciergeReply, withReplyOutcome, type GenerateConciergeReplyArgs } from '../concierge/model';
 /** Existing pure generation suites exercise the same helper now called by internal runTurn. */
 export async function generateTestReply(t: TestConvexForDataModel<DataModel>, args: GenerateConciergeReplyArgs) {
   const session = await t.query(internal.chat.getSessionInternal, { sessionId: args.sessionId });

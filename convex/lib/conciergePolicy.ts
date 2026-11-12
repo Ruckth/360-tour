@@ -1,1 +1,0 @@
-export { replyLocale, requiresLiveFacts, isCheckTimeQuestion, checkTimeReply, capabilityReply, isGuestConfirmation, isCancellationPolicyQuestion, cancellationPolicyReply, isCancellationRequest, toolFailureReply, committedReply, proposalReply, bookingStatusReply, hasTransactionCompletionClaim } from '../concierge/copy';

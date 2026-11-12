@@ -5,7 +5,7 @@ import { convexTest } from "convex-test";
 import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
-import { getResortRealityDisclosure, resortTodayLine } from "./chatAi";
+import { getResortRealityDisclosure, resortTodayLine } from "./concierge/model";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -227,7 +227,7 @@ describe("retired question-bank routing", () => {
       const sessionId = await createWebSession(t);
 
       const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "Is helicopter transfer included?" });
-      const unknownRows = await adminTest(t).query(api.chatKnowledge.adminListUnknownQuestions, {
+      const unknownRows = await adminTest(t).query(api.concierge.knowledge.adminListUnknownQuestions, {
         status: "new", paginationOpts: { numItems: 10, cursor: null },
       });
 

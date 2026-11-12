@@ -7,9 +7,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { makeFunctionReference } from 'convex/server';
 import { api } from './_generated/api';
 import * as chat from './chat';
-import * as chatAi from './chatAi';
+import * as concierge from './concierge/model';
 import * as chatEval from './chatEval';
-import { recordUnknownQuestion } from './chatKnowledge';
+import { recordUnknownQuestion } from './concierge/knowledge';
 import { asAdmin, createHarness, fixedClock, guestSession } from './testing/harness';
 import { hashGuestToken } from './lib/guestToken';
 
@@ -38,7 +38,7 @@ it('rejects assistant messages from the browser', async () => {
 	expect(chat.addAssistantMessageWithSuggestions.isInternal).toBe(true);
 	expect(chatEval.writeMessage.isInternal).toBe(true);
 	expect(recordUnknownQuestion.isInternal).toBe(true);
-	expect(chatAi.getGuardrailReply).not.toHaveProperty('isPublic');
+	expect(concierge.getGuardrailReply).not.toHaveProperty('isPublic');
 	await expect(t.action(makeFunctionReference<'action'>('chatAi:generateReply'), {})).rejects.toThrow();
 	await expect(t.mutation(api.chat.sendMessage, { ...forged, clientMessageId: crypto.randomUUID() } as never)).rejects.toThrow();
 	expect(await t.query(api.chat.getMessages, guest)).toEqual([]);

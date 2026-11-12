@@ -11,7 +11,7 @@ import { adapters } from './channels';
 import type { SendResult } from './channels/adapter';
 import { answerAccepted } from '../lib/inboxLifecycle';
 import { patchSessionAfterMessages } from '../lib/adminChatMetadata';
-import type { ConciergeReply } from '../chatAi';
+import type { ConciergeReply } from '../concierge/model';
 import type { ReplyCard } from '../lib/replyCards';
 import { isRateLimitError } from '@convex-dev/rate-limiter';
 

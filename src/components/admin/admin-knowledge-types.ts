@@ -20,7 +20,7 @@ export type AdminUnknownQuestion = {
   pageUrl?: string;
   status: UnknownQuestionStatus;
   adminNotified: boolean;
-  /** How a handled report was resolved (set by businessFacts.adminResolveUnknownGroups / adminSave). */
+  /** How a handled report was resolved (set by concierge.businessFacts.adminResolveUnknownGroups / adminSave). */
   resolvedFactTitle?: string;
   resolvedSource?: string;
   createdAt: number;

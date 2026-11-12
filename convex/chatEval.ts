@@ -2,7 +2,7 @@ import { internalAction, internalMutation } from './_generated/server';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
-import { generateConciergeReply, type GenerateConciergeReplyArgs } from './chatAi';
+import { generateConciergeReply, type GenerateConciergeReplyArgs } from './concierge/model';
 
 // Eval-only helpers for the AI booking eval (scripts/ai-booking-eval.ts). Internal: CLI/admin only.
 

@@ -1,6 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
 import type { EffectiveSettings } from '../lib/siteSettings';
-import type { ChatMessage } from '../lib/chatLlm';
+import type { ChatMessage } from './llm';
 import { resortLocalParts } from '../lib/serviceSlots';
 function normalizeSiteUrl(siteUrl?: string) {
 	const trimmed = siteUrl?.trim().replace(/\/+$/, '');
