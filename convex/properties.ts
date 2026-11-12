@@ -9,15 +9,32 @@ import { allowedImageUrl, IMAGE_HOSTS } from './lib/imageUrls';
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
 const MAX_NIGHTLY_RATE = 10_000_000;
 
-export type PublicProperty = Omit<Doc<'properties'>, 'icalExportToken' | 'tenantId'>;
+export type PublicProperty = NonNullable<ReturnType<typeof toPublic>>;
 
 /** Public queries never expose the private iCal export token or tenant link. */
-function toPublic(property: Doc<'properties'> | null): PublicProperty | null {
+function toPublic(property: Doc<'properties'> | null) {
 	if (!property || property.status !== 'active') return null;
-	const rest: Partial<Doc<'properties'>> = { ...property };
-	delete rest.icalExportToken;
-	delete rest.tenantId;
-	return rest as PublicProperty;
+	return {
+		_id: property._id,
+		_creationTime: property._creationTime,
+		slug: property.slug,
+		name: property.name,
+		tagline: property.tagline,
+		description: property.description,
+		pricePerNight: property.pricePerNight,
+		currency: property.currency,
+		maxGuests: property.maxGuests,
+		bedrooms: property.bedrooms,
+		bathrooms: property.bathrooms,
+		area: property.area,
+		images: property.images,
+		amenities: property.amenities,
+		tourRoomIds: property.tourRoomIds,
+		directDiscountPercent: property.directDiscountPercent,
+		translations: property.translations,
+		contentEditedAt: property.contentEditedAt,
+		status: property.status,
+	};
 }
 
 export const list = query({
@@ -51,6 +68,7 @@ export const getById = query({
 export const getRooms = query({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
+		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
 		return await ctx.db
 			.query('rooms')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -167,6 +185,7 @@ function publicHttpsUrl(value: string): string {
 export const getSocialProof = query({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
+		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return null;
 		return await ctx.db
 			.query('socialProof')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -177,6 +196,7 @@ export const getSocialProof = query({
 export const getReviews = query({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
+		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
 		return await ctx.db
 			.query('reviews')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -187,6 +207,7 @@ export const getReviews = query({
 export const getRecentBookings = query({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
+		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
 		return await ctx.db
 			.query('recentBookingDisplay')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -197,13 +218,17 @@ export const getRecentBookings = query({
 export const getAllRecentBookings = query({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db.query('recentBookingDisplay').take(100);
+		const bookings = await ctx.db.query('recentBookingDisplay').take(100);
+		const visible = await Promise.all(bookings.map(async booking =>
+			(await ctx.db.get(booking.propertyId))?.status === 'active' ? booking : null));
+		return visible.filter(booking => booking !== null);
 	}
 });
 
 export const getTourSnippets = query({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
+		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
 		return await ctx.db
 			.query('tourSnippets')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
