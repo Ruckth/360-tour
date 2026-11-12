@@ -27,7 +27,7 @@ export const billRefundFields = {
   lineId: v.id('billLines'), amount: v.number(), currency: v.string(), method: storedRefundMethod, idempotencyKey: v.string(),
 };
 
-/** Payloads are immutable. orderId/reason and correction idempotency keys come from the request. */
+/** Payloads are immutable. Order IDs, non-refund reasons and correction keys come from the request. */
 export const approvalPayload = v.union(
   v.object({ kind: v.literal('refund'), lineId: v.id('billLines'), amountSatang: v.number(), currency: v.string(), method: storedRefundMethod, idempotencyKey: v.string(), reason: v.string() }),
   v.object({ kind: v.literal('discount'), lineId: v.id('billLines'), discount: lineDiscountValidator }),

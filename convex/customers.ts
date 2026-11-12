@@ -153,15 +153,18 @@ export const getCustomer = query({
 			mergeEnabled: CUSTOMER_POS_INTEGRATION_ENABLED,
             mergeProgress: await ctx.db.query('customerMergeJobs').withIndex('by_sourceId', q => q.eq('sourceId', customer._id)).unique(),
 			ordersHasMore: orders.length > 10,
-			orders: orders.slice(0, 10).map((order) => ({
-				_id: order._id,
-				title: orderTitle(order.orderNumber),
-				state: orderState(order),
-				total: Math.max(0, round2(order.total - (refundedByOrder.get(order._id) ?? 0) / 100)),
-				refundedAmountSatang: refundedByOrder.get(order._id),
-				currency: order.currency,
-				updatedAt: order.updatedAt
-			}))
+			orders: orders.slice(0, 10).map((order) => {
+				const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: refundedByOrder.get(order._id) };
+				return {
+					_id: order._id,
+					title: orderTitle(order.orderNumber),
+					state: orderState(order),
+					total: Math.max(0, round2(order.total - (refundedByOrder.get(order._id) ?? 0) / 100)),
+					...refundAmounts,
+					currency: order.currency,
+					updatedAt: order.updatedAt
+				};
+			})
 		};
 	}
 });
@@ -175,7 +178,8 @@ export const listCustomerOrders = query({
 		const page = [];
 		for (const order of result.page) {
 			const refundedAmountSatang = await orderRefundTotal(ctx, order._id);
-			page.push({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, round2(order.total - refundedAmountSatang / 100)), refundedAmountSatang, currency: order.currency });
+			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang };
+			page.push({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, round2(order.total - refundedAmountSatang / 100)), ...refundAmounts, currency: order.currency });
 		}
 		return { ...result, page };
 	}

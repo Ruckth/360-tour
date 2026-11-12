@@ -254,11 +254,15 @@ describe('report attribution and limits', () => {
 			}
 			return ids;
 		});
+		vi.setSystemTime(now + 2 * day);
 		const args = { from: '2026-08-10', to: '2026-11-09', basis: 'cash' as const };
 		const beforeBudget = new ReadBudget();
 		const before = await s.t.run(ctx => readMarketingReport(ctx, args, beforeBudget));
 		await s.t.run(async ctx => {
-			for (const { orderId, lineId } of orders) await ctx.db.insert('billRefunds', { orderId, lineId, amount: 100, currency: 'THB', method: 'cash', reason: 'Return', idempotencyKey: `refund-${orderId}`, businessDate: '2026-11-10', createdAt: now + day, createdBy: email, createdByEmail: email });
+			for (const { orderId, lineId } of orders) {
+				await ctx.db.insert('billRefunds', { orderId, lineId, amount: 100, currency: 'THB', method: 'cash', reason: 'Return', idempotencyKey: `refund-${orderId}`, businessDate: '2026-11-10', createdAt: now + day, createdBy: email, createdByEmail: email });
+				await ctx.db.patch(orderId, { correctionRevision: 1 });
+			}
 		});
 		const afterBudget = new ReadBudget();
 		const after = await s.t.run(ctx => readMarketingReport(ctx, args, afterBudget));
