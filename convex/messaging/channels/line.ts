@@ -1,5 +1,5 @@
 import { array, eventDigest, number, object, providerRequest, string, verifyHmac, type ChannelAdapter, type InboundEvent } from './adapter';
-import { buildLineQuickReplyItems, parseLineLocaleFromPostback, questionFromLinePostback } from '../../concierge/copy';
+import { buildLineQuickReplyItems, parseLineLocaleFromPostback, questionFromLinePostback } from '../../concierge/model';
 import { lineReplyMessages, richCardsEnabled, richReplyFallback } from './richMessages';
 
 export const line: ChannelAdapter = {

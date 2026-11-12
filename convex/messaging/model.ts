@@ -39,3 +39,6 @@ export async function reconcile(ctx: MutationCtx, event: Doc<'channelEvents'>, r
   }
   await scheduleNext(ctx, event.sessionId);
 }
+
+// Staff alert implementation remains in the mixed messaging module until closure.
+export { queueStaffAlert } from '../chatKnowledge';

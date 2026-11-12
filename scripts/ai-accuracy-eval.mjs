@@ -40,9 +40,7 @@ for (let repeat = 1; repeat <= repetitions; repeat++) {
 		const sessionId = await run('chatEval:createSession', { channel: scenario.channel, visitorName: 'Accuracy eval' });
 		const started = Date.now();
 		try {
-			const reply = scenario.channel === 'web'
-				? await run('chatAi:respond', { sessionId, userMessage: scenario.prompt })
-				: await run('chatAi:generateReply', { sessionId, userMessage: scenario.prompt });
+			const reply = await run('chatEval:comparisonTurn', { sessionId, userMessage: scenario.prompt, model: 'openai/gpt-6-luna' });
 			report.results.push({ id: scenario.id, repeat, sessionId, prompt: scenario.prompt, latencyMs: Date.now() - started, ...reply, passed: reply.model === scenario.model && scenario.check(reply.response) });
 		} catch (error) {
 			report.results.push({ id: scenario.id, repeat, sessionId, prompt: scenario.prompt, passed: false, error: error.message });

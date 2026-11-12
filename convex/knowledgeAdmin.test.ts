@@ -39,26 +39,26 @@ describe("unknown-question review stays available", () => {
     const { t, admin } = setup();
     const sessionId = await createSession(t);
     for (const question of ["Is there parking?", "Can I park a bus?", "Do you have a gym?"]) {
-      await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: question });
+      await t.mutation(internal.concierge.knowledge.recordUnknownQuestion, { sessionId, userQuestion: question });
     }
 
-    const page = await admin.query(api.chatKnowledge.adminListUnknownQuestions, { status: "new", paginationOpts: firstPage(2) });
+    const page = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "new", paginationOpts: firstPage(2) });
     expect(page.page).toHaveLength(2);
     expect(page.isDone).toBe(false);
-    const rest = await admin.query(api.chatKnowledge.adminListUnknownQuestions, {
+    const rest = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, {
       status: "new",
       paginationOpts: { numItems: 2, cursor: page.continueCursor },
     });
     expect(rest.page.map((row) => row.userQuestion)).toEqual(["Is there parking?"]);
 
-    const gym = await admin.query(api.chatKnowledge.adminListUnknownQuestions, { status: "new", search: "gym", paginationOpts: firstPage() });
+    const gym = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "new", search: "gym", paginationOpts: firstPage() });
     expect(gym.page.map((row) => row.userQuestion)).toEqual(["Do you have a gym?"]);
     expect(gym.page[0]?.sessionId).toBe(sessionId);
 
-    await admin.mutation(api.chatKnowledge.adminIgnoreUnknown, { unknownQuestionId: gym.page[0]!._id });
-    const newGym = await admin.query(api.chatKnowledge.adminListUnknownQuestions, { status: "new", search: "gym", paginationOpts: firstPage() });
+    await admin.mutation(api.concierge.knowledge.adminIgnoreUnknown, { unknownQuestionId: gym.page[0]!._id });
+    const newGym = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "new", search: "gym", paginationOpts: firstPage() });
     expect(newGym.page).toEqual([]);
-    const ignoredGym = await admin.query(api.chatKnowledge.adminListUnknownQuestions, { status: "ignored", search: "gym", paginationOpts: firstPage() });
+    const ignoredGym = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "ignored", search: "gym", paginationOpts: firstPage() });
     expect(ignoredGym.page).toHaveLength(1);
   });
 });
@@ -79,29 +79,29 @@ describe("grouped unknown questions", () => {
       }
     });
     const args = { normalizedQuestions: keys };
-    const first = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, args);
+    const first = await admin.mutation(api.concierge.knowledge.adminIgnoreUnknownGroups, args);
     expect(first).toMatchObject({ ignored: 100, remaining: 100, hasMore: true, remainingIsLowerBound: true });
     expect(first.unknownQuestionIds).toHaveLength(100);
-    await expect(admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, {
+    await expect(admin.mutation(api.concierge.knowledge.adminReopenUnknownGroups, {
       unknownQuestionIds: [...first.unknownQuestionIds, first.unknownQuestionIds[0]],
     })).rejects.toThrow("Reopen 100 or fewer report IDs");
     // Validation does not partially apply an oversized Undo, even when the extra ID is a duplicate.
     const untouched = await t.run(async (ctx) => Promise.all(first.unknownQuestionIds.map(id => ctx.db.get(id))));
     expect(untouched.every(row => row?.status === "ignored")).toBe(true);
 
-    const second = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, args);
+    const second = await admin.mutation(api.concierge.knowledge.adminIgnoreUnknownGroups, args);
     expect(second).toMatchObject({ ignored: 100, remaining: 100, hasMore: true, remainingIsLowerBound: false });
-    const last = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, args);
+    const last = await admin.mutation(api.concierge.knowledge.adminIgnoreUnknownGroups, args);
     expect(last).toMatchObject({ ignored: 100, remaining: 0, hasMore: false, remainingIsLowerBound: false });
 
     // Combining explicit Undo IDs with whole groups still shares one budget and never double-counts.
-    const reopened = await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, {
+    const reopened = await admin.mutation(api.concierge.knowledge.adminReopenUnknownGroups, {
       ...args, unknownQuestionIds: [first.unknownQuestionIds[0]],
     });
     expect(reopened).toEqual({ reopened: 100, remaining: 100, hasMore: true, remainingIsLowerBound: true });
-    expect(await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, args))
+    expect(await admin.mutation(api.concierge.knowledge.adminReopenUnknownGroups, args))
       .toEqual({ reopened: 100, remaining: 100, hasMore: true, remainingIsLowerBound: false });
-    expect(await admin.mutation(api.chatKnowledge.adminReopenUnknownGroups, args))
+    expect(await admin.mutation(api.concierge.knowledge.adminReopenUnknownGroups, args))
       .toEqual({ reopened: 100, remaining: 0, hasMore: false, remainingIsLowerBound: false });
   });
 });

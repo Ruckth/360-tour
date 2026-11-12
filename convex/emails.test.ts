@@ -71,7 +71,7 @@ it('throttles staff alerts for a session to one per 30 minutes', async () => {
 	const first = await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt);
 	expect(first).toBeTruthy();
 	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'Please connect me to someone' });
-	await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: 'What is the answer?' });
+	await t.mutation(internal.concierge.knowledge.recordUnknownQuestion, { sessionId, userQuestion: 'What is the answer?' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBe(first);
 	const stale = Date.now() - 31 * 60 * 1000;
 	await t.run(async ctx => await ctx.db.patch(sessionId, { lastStaffAlertAt: stale }));

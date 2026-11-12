@@ -1,9 +1,9 @@
 import { internalAction, internalQuery, maintenancePaused, type ActionCtx } from '../auth/model';
 import { internal } from '../_generated/api';
 import { v } from 'convex/values';
-import { generateConciergeReply, withReplyOutcome, type ConciergeReply } from '../chatAi';
+import { generateConciergeReply, withReplyOutcome, type ConciergeReply } from './generation';
 import { committedReply, proposalReply, toolFailureReply } from './copy';
-import { presentStoredToolResult, storedProposalIsCurrent } from '../lib/chatToolPresentation';
+import { presentStoredToolResult, storedProposalIsCurrent } from './tools/presentation';
 import { localizedGreetingReply, detectReplyLocale, parseLineLocaleFromPostback } from './copy';
 
 export const load = internalQuery({

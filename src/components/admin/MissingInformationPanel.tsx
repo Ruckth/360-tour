@@ -70,19 +70,19 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
   const [rowResolution, setRowResolution] = useState<Record<string, string>>({});
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
 
-  const result = useQuery(api.chatKnowledge.adminListUnknownGroups, { status, search: search || undefined }) as
+  const result = useQuery(api.concierge.knowledge.adminListUnknownGroups, { status, search: search || undefined }) as
     | { groups: AdminUnknownGroup[]; truncated: boolean }
     | undefined;
   // Approved facts are the pool for the "link a fact" picker; paginated so the picker stays bounded.
   const approvedFacts = usePaginatedQuery(
-    api.businessFacts.adminList,
+    api.concierge.businessFacts.adminList,
     { status: "approved" },
     { initialNumItems: 100 },
   );
   const facts = approvedFacts.results as AdminBusinessFact[];
-  const resolveGroups = useMutation(api.businessFacts.adminResolveUnknownGroups);
-  const ignoreGroups = useMutation(api.chatKnowledge.adminIgnoreUnknownGroups);
-  const reopenGroups = useMutation(api.chatKnowledge.adminReopenUnknownGroups);
+  const resolveGroups = useMutation(api.concierge.businessFacts.adminResolveUnknownGroups);
+  const ignoreGroups = useMutation(api.concierge.knowledge.adminIgnoreUnknownGroups);
+  const reopenGroups = useMutation(api.concierge.knowledge.adminReopenUnknownGroups);
   const undo = useUndoNotice();
   const [leftover, setLeftover] = useState<{ remaining: number; remainingIsLowerBound: boolean; rerun: () => void } | null>(null);
 

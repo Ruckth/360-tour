@@ -46,10 +46,10 @@ async function setup() {
   const fact = (
     body: string,
     overrides: Partial<
-      Parameters<typeof admin.mutation<typeof api.businessFacts.adminSave>>[1]
+      Parameters<typeof admin.mutation<typeof api.concierge.businessFacts.adminSave>>[1]
     > = {},
   ) =>
-    admin.mutation(api.businessFacts.adminSave, {
+    admin.mutation(api.concierge.businessFacts.adminSave, {
       title: "Breakfast",
       body,
       searchText: "breakfast included meal morning",
@@ -71,19 +71,19 @@ describe("business fact evidence", () => {
       status: "approved" as const,
     };
     await expect(
-      t.mutation(api.businessFacts.adminSave, input),
+      t.mutation(api.concierge.businessFacts.adminSave, input),
     ).rejects.toThrow("Not authenticated");
     await expect(
-      admin.mutation(api.businessFacts.adminSave, { ...input, source: "" }),
+      admin.mutation(api.concierge.businessFacts.adminSave, { ...input, source: "" }),
     ).rejects.toThrow("Source");
     const id = await fact("Included.");
-    await admin.mutation(api.businessFacts.adminSave, {
+    await admin.mutation(api.concierge.businessFacts.adminSave, {
       ...input,
       factId: id,
       expectedRevision: 1,
     });
     await expect(
-      admin.mutation(api.businessFacts.adminSave, {
+      admin.mutation(api.concierge.businessFacts.adminSave, {
         ...input,
         factId: id,
         expectedRevision: 1,
@@ -97,7 +97,7 @@ describe("business fact evidence", () => {
     await fact("Garden breakfast.", { propertyId: garden });
     await fact("Draft breakfast.", { status: "draft" });
     await fact("Archived breakfast.", { status: "archived" });
-    const result = await t.query(internal.businessFacts.search, {
+    const result = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
     });
@@ -107,7 +107,7 @@ describe("business fact evidence", () => {
       revision: 1,
       source: "Owner-confirmed policy",
     });
-    const named = await t.query(internal.businessFacts.search, {
+    const named = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
       propertySlug: "garden-villa",
@@ -135,7 +135,7 @@ describe("business fact evidence", () => {
     });
     expect(
       (
-        await t.query(internal.businessFacts.search, {
+        await t.query(internal.concierge.businessFacts.search, {
           sessionId,
           query: "breakfast",
         })
@@ -145,7 +145,7 @@ describe("business fact evidence", () => {
   it("returns current revisions, rejects invalid scope/paused sessions, and bounds evidence", async () => {
     const { t, admin, pool, sessionId, fact } = await setup();
     const id = await fact("Old policy.");
-    await admin.mutation(api.businessFacts.adminSave, {
+    await admin.mutation(api.concierge.businessFacts.adminSave, {
       factId: id,
       expectedRevision: 1,
       title: "Breakfast",
@@ -154,7 +154,7 @@ describe("business fact evidence", () => {
       source: "Updated owner policy",
       status: "approved",
     });
-    const result = await t.query(internal.businessFacts.search, {
+    const result = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
     });
@@ -164,7 +164,7 @@ describe("business fact evidence", () => {
         title: `Breakfast ${i}`,
         propertyId: pool,
       });
-    const bounded = await t.query(internal.businessFacts.search, {
+    const bounded = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
     });
@@ -176,7 +176,7 @@ describe("business fact evidence", () => {
       ),
     ).toBeLessThanOrEqual(8000);
     await expect(
-      t.query(internal.businessFacts.search, {
+      t.query(internal.concierge.businessFacts.search, {
         sessionId,
         query: "breakfast",
         propertySlug: "unknown-villa",
@@ -184,7 +184,7 @@ describe("business fact evidence", () => {
     ).rejects.toThrow("Unknown active property");
     await t.run((ctx) => ctx.db.patch(sessionId, { aiPaused: true }));
     await expect(
-      t.query(internal.businessFacts.search, { sessionId, query: "breakfast" }),
+      t.query(internal.concierge.businessFacts.search, { sessionId, query: "breakfast" }),
     ).rejects.toThrow("active AI session");
   });
   it.each([

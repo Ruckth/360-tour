@@ -1,3 +1,5 @@
+
+
 /**
  * Pure turn-metrics helpers for the concierge.
  *
@@ -118,6 +120,7 @@ export function addPromptChars(metrics: TurnMetrics, chars: number): void {
 const SAFE_NAME = /[^a-zA-Z0-9_./:-]/g;
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
 // 7+ consecutive digits (optionally grouped by spaces/dashes/dots/parens): phone-like runs.
 const PHONE_RE = /\+?\d(?:[\d\s().-]{5,}\d)/g;
 

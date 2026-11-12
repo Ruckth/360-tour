@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { callAI, classifyComplexity, type ChatMessage } from './lib/chatLlm';
-import { runConciergeTurn } from './lib/conciergeTurn';
+import { callAI, classifyComplexity, type ChatMessage } from './concierge/llm';
+import { runConciergeTurn } from './concierge/turn';
 
 afterEach(() => vi.unstubAllGlobals());
 

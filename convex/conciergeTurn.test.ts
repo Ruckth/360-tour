@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest';
-import { runConciergeTurn } from './lib/conciergeTurn';
-import { BOOKING_TOOLS, TOOLS } from './lib/chatTools';
-import type { LlmResponse } from './lib/chatLlm';
+import { runConciergeTurn } from './concierge/turn';
+import { BOOKING_TOOLS, TOOLS } from './concierge/model';
+import type { LlmResponse } from './concierge/llm';
 
 const call = (name: string, finishReason = 'tool_calls'): LlmResponse => ({ content: null, finishReason, tool_calls: [{ id: 'call', type: 'function', function: { name, arguments: '{}' } }] });
 
