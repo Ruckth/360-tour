@@ -142,7 +142,7 @@ it('recovers a real committed booking without replaying the model or booking mut
   await t.mutation(internal.messaging.ingress.accept, { channel: 'whatsapp', events: [{ eventKey: 'prepare', eventType: 'message', recipient: '66912345678', messageText: 'Book a villa', eventTimestamp: Date.now() }] });
   const prep = (await t.run(ctx => ctx.db.query('channelEvents').take(10)))[0];
   await t.mutation(internal.messaging.worker.claim, { eventId: prep._id, token: 'prepare-claim' });
-  const proposal = await t.mutation(internal.bookings.prepareChatBooking, { sessionId: prep.sessionId!, propertySlug: property.slug, checkIn: '2027-02-01', checkOut: '2027-02-03', guests: 2, guestName: 'Test Guest', durableTool: { eventId: prep._id, claimToken: 'prepare-claim', key: 'prepare_booking', name: 'prepare_booking' } });
+  const proposal = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId: prep.sessionId!, propertySlug: property.slug, checkIn: '2027-02-01', checkOut: '2027-02-03', guests: 2, guestName: 'Test Guest', durableTool: { eventId: prep._id, claimToken: 'prepare-claim', key: 'prepare_booking', name: 'prepare_booking' } });
   expect(proposal.total).toBeGreaterThan(0);
   await t.mutation(internal.messaging.worker.prepareDispatch, { eventId: prep._id, claimToken: 'prepare-claim', text: 'Reply yes to confirm', model: 'test' });
   await t.mutation(internal.messaging.worker.commitTurn, { eventId: prep._id, claimToken: 'prepare-claim' });
@@ -150,7 +150,7 @@ it('recovers a real committed booking without replaying the model or booking mut
   await t.mutation(internal.messaging.ingress.accept, { channel: 'whatsapp', events: [{ eventKey: 'confirm', eventType: 'message', recipient: '66912345678', messageText: 'yes', eventTimestamp: Date.now() }] });
   const confirmation = (await t.run(ctx => ctx.db.query('channelEvents').take(10))).find(row => row.eventKey === 'confirm')!;
   await t.mutation(internal.messaging.worker.claim, { eventId: confirmation._id, token: 'confirm-claim' });
-  const committed = await t.mutation(internal.bookings.confirmChatBooking, { sessionId: confirmation.sessionId!, durableTool: { eventId: confirmation._id, claimToken: 'confirm-claim', key: 'confirm_booking', name: 'confirm_booking' } });
+  const committed = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId: confirmation.sessionId!, durableTool: { eventId: confirmation._id, claimToken: 'confirm-claim', key: 'confirm_booking', name: 'confirm_booking' } });
   expect('bookingId' in committed).toBe(true);
   const before = await t.run(ctx => ctx.db.query('bookings').take(10));
   vi.setSystemTime(Date.now() + LEASE_MS + 1);

@@ -49,7 +49,7 @@ http.route({
         return new Response('Incomplete checkout', { status: 400 });
       }
       try {
-        const result = await ctx.runMutation(internal.payments.completeCheckout, {
+        const result = await ctx.runMutation(internal.bookings.payments.stripe.completeCheckout, {
           bookingId: session.client_reference_id,
           sessionId: session.id,
           amountTotal: session.amount_total!,
@@ -65,7 +65,7 @@ http.route({
       const session = event.data?.object;
       if (!session?.id || !session.client_reference_id) return new Response('Incomplete checkout', { status: 400 });
       try {
-        await ctx.runMutation(internal.payments.expireCheckout, {
+        await ctx.runMutation(internal.bookings.payments.stripe.expireCheckout, {
           bookingId: session.client_reference_id,
           sessionId: session.id,
         });
@@ -79,7 +79,7 @@ http.route({
         return new Response('Incomplete refund', { status: 400 });
       }
       try {
-        const result = await ctx.runMutation(internal.payments.recordRefund, {
+        const result = await ctx.runMutation(internal.bookings.payments.stripe.recordRefund, {
           paymentIntentId: charge.payment_intent, chargeId: charge.id, eventId: event.id, eventCreated: event.created, currency: charge.currency, refunds: (charge.refunds?.data ?? []).flatMap(r => r.id && r.amount !== undefined && r.currency ? [{ id: r.id, amount: r.amount, currency: r.currency, ...(r.status ? { status: r.status } : {}) }] : []),
           amount: charge.amount!,
           amountRefunded: charge.amount_refunded!,
@@ -100,7 +100,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const token = new URL(request.url).searchParams.get('token');
     if (!token) return new Response('Not found', { status: 404 });
-    const data = await ctx.runQuery(internal.ical.getExport, { token });
+    const data = await ctx.runQuery(internal.bookings.calendar.ical.getExport, { token });
     if (!data) return new Response('Not found', { status: 404 });
     const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Spin and Stay//Booking Calendar//EN', 'CALSCALE:GREGORIAN'];
     for (const booking of data.bookings) {

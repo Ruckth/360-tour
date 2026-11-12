@@ -213,7 +213,7 @@ async function retryLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, ki
 
 async function sendLifecycleEmail(ctx: ActionCtx, bookingId: Id<'bookings'>, kind: LifecycleKind, attempt = 0) {
 	const details: { guestName: string; guestEmail: string; propertyName: string; checkIn: string; checkOut: string; guests: number; total: number; currency: string } | null =
-		await ctx.runQuery(internal.bookings.getLifecycleEmailDetails, { bookingId, kind });
+		await ctx.runQuery(internal.bookings.bookings.getLifecycleEmailDetails, { bookingId, kind });
 	if (!details) return { sent: false, reason: 'booking_not_eligible' };
 	const apiKey = process.env.RESEND_API_KEY;
 	const from = process.env.EMAIL_FROM;

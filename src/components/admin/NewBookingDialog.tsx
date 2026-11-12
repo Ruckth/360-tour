@@ -60,7 +60,7 @@ export function NewBookingDialog({
   onBlockInstead: (target: { propertyId: string; start: string; end: string }) => void;
 }) {
   const reportRefusal = useCouponRefusalReporter(useConvex(), "admin_booking");
-  const createBooking = useMutation(api.adminBookings.createBooking);
+  const createBooking = useMutation(api.bookings.commands.createBooking.createBooking);
   const [creationKey] = useState(() => newAttemptKey("booking"));
   const pending = useRef(false);
   // A prefilled archived villa is kept only for a past stay (the calendar filtered to that villa).
@@ -131,7 +131,7 @@ export function NewBookingDialog({
   const email = useDebounced(guest.email.trim());
   const searchable = phone.replace(/\D/g, "").length >= 4 || email.length >= 3;
   const suggestions =
-    useQuery(api.adminBookings.findGuests, searchable ? { phone, email } : "skip")?.filter(
+    useQuery(api.bookings.admin.findGuests, searchable ? { phone, email } : "skip")?.filter(
       (s) => `${s.guestPhone}|${s.guestEmail ?? ""}` !== pickedGuest,
     ) ?? [];
 

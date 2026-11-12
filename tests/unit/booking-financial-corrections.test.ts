@@ -12,8 +12,8 @@ import { CancelStayDialog, ReopenBookingDialog } from "@/components/admin/Bookin
 import { BookingHistory } from "@/components/admin/BookingHistory";
 import { BookingSheet, EditBookingDialog } from "@/components/admin/BookingSheet";
 
-type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
-type Financials = NonNullable<FunctionReturnType<typeof api.adminBookings.bookingFinancials>>;
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
+type Financials = NonNullable<FunctionReturnType<typeof api.bookings.admin.bookingFinancials>>;
 
 const mutations = vi.hoisted(() => ({
   updateBooking: vi.fn(), resendBookingEmails: vi.fn(), deleteBooking: vi.fn(), updateNotes: vi.fn(),

@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { AdminBooking } from "convex/adminBookings";
+import type { AdminBooking } from "convex/bookings/model";
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -114,7 +114,7 @@ export function AdminBookingsView() {
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
   const [moving, setMoving] = useState<Move | null>(null);
 
-  const data = useQuery(api.adminBookings.listForAdmin, range);
+  const data = useQuery(api.bookings.admin.listForAdmin, range);
   const profile = useQuery(api.settings.publicProfile, {});
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
@@ -399,8 +399,8 @@ export function MoveBookingDialog({
   onOpenBooking: (bookingId: Id<"bookings">) => void;
 }) {
   const { booking, propertyId, checkIn, checkOut } = move;
-  const editBooking = useMutation(api.adminBookings.editBooking);
-  const detail = useQuery(api.adminBookings.getForAdmin, { bookingId: booking._id });
+  const editBooking = useMutation(api.bookings.commands.editBooking.editBooking);
+  const detail = useQuery(api.bookings.admin.getForAdmin, { bookingId: booking._id });
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -533,7 +533,7 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
     return () => clearTimeout(id);
   }, [text]);
   const active = query.length >= 2 && text.trim().length >= 2;
-  const results = useQuery(api.adminBookings.searchBookings, active ? { query } : "skip");
+  const results = useQuery(api.bookings.admin.searchBookings, active ? { query } : "skip");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
 
   return (

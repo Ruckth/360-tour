@@ -1,16 +1,16 @@
-import { bookingHoldExpiresAt } from './lib/siteSettings';
 import { v } from 'convex/values';
-import { appendRecordHistory } from './lib/recordHistory';
-import { internalMutation, type MutationCtx, publicAction, adminMutation } from './auth/model';
-import { internal } from './_generated/api';
-import { isDocumentedLiveRefund, recordStayPayment } from './bookings';
-import { assertBookingRevision, stayMoney, writeBooking } from './lib/bookingMoney';
-import { roundMoney } from './lib/orderMath';
-import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
+import { internal } from '../../_generated/api';
+import { adminMutation, internalMutation, type MutationCtx, publicAction } from '../../auth/model';
+import { blockBookingDates, releaseBookingDates } from '../../lib/availabilityWrites';
+import { assertBookingRevision, stayMoney, writeBooking } from '../../lib/bookingMoney';
+import { roundMoney } from '../../lib/orderMath';
+import { appendRecordHistory } from '../../lib/recordHistory';
+import { bookingHoldExpiresAt } from '../../lib/siteSettings';
+import { isDocumentedLiveRefund, recordStayPayment } from '../model';
 
 const CHECKOUT_LIFETIME_SECONDS = 60 * 60;
 
-type Booking = import('./_generated/dataModel').Doc<'bookings'>;
+type Booking = import('../../_generated/dataModel').Doc<'bookings'>;
 
 /** Returned provider money is waived, never silently presented for collection again. */
 function checkoutBalance(booking: Booking) {
@@ -116,7 +116,7 @@ export const saveCheckoutSession = internalMutation({
       stripeCheckoutExpiresAt: args.expiresAt,
       checkoutRequest: undefined,
     });
-    await ctx.scheduler.runAt(args.expiresAt, internal.payments.expireCheckout, {
+    await ctx.scheduler.runAt(args.expiresAt, internal.bookings.payments.stripe.expireCheckout, {
       bookingId: args.bookingId,
       sessionId: args.sessionId,
     });
@@ -158,7 +158,7 @@ export const createCheckout = publicAction({
     if (!key || !siteUrl || !/^https:\/\//.test(siteUrl) && !/^http:\/\/localhost(?::\d+)?$/.test(siteUrl)) {
       throw new Error('Payments are not configured');
     }
-    const { checkoutUrl, request } = await ctx.runMutation(internal.payments.beginCheckout, { ...args, siteUrl });
+    const { checkoutUrl, request } = await ctx.runMutation(internal.bookings.payments.stripe.beginCheckout, { ...args, siteUrl });
     if (checkoutUrl) return { url: checkoutUrl };
     if (!request) throw new Error('Could not start checkout');
     const amount = request.total;
@@ -198,7 +198,7 @@ export const createCheckout = publicAction({
     if (!response.ok || !session.id || !session.url || !session.expires_at) {
       throw new Error(session.error?.message ?? 'Could not start checkout');
     }
-    await ctx.runMutation(internal.payments.saveCheckoutSession, {
+    await ctx.runMutation(internal.bookings.payments.stripe.saveCheckoutSession, {
       ...args,
       sessionId: session.id,
       url: session.url,

@@ -83,7 +83,7 @@ async function setup() {
   const book = (
     options: { slug?: string; couponCode?: string; email?: string } = {},
   ) =>
-    t.mutation(api.bookings.create, {
+    t.mutation(api.bookings.bookings.create, {
       propertySlug: "villa",
       guestName: "Guest",
       guestEmail: options.email ?? "guest@example.com",
@@ -100,7 +100,7 @@ async function setup() {
   };
   const pay = async (bookingId: Id<"bookings">) => {
     const booking = (await t.run((ctx) => ctx.db.get(bookingId)))!;
-    return admin.mutation(api.adminBookings.recordPayment, {
+    return admin.mutation(api.bookings.commands.recordPayment.recordPayment, {
       bookingId,
       expectedRevision: booking.revision ?? 0,
       expectedAmount: booking.total - (booking.amountPaid ?? 0),
@@ -397,7 +397,7 @@ it("does not reopen a genuinely cancelled booking credit when its paid room row 
   const { linkId } = await s.link();
   await s.approve((await s.bookingCredit())._id);
   const booking = (await s.t.run((ctx) => ctx.db.get(s.bookingId)))!;
-  await s.admin.mutation(api.adminBookings.cancelStay, {
+  await s.admin.mutation(api.bookings.commands.cancelStay.cancelStay, {
     bookingId: s.bookingId,
     expectedRevision: booking.revision ?? 0,
     reason: "Guest cancelled the stay",
@@ -660,7 +660,7 @@ it("supports coupon-only claims, retries once and updates approved net on partia
     (await s.admin.query(api.marketingAffiliates.listCredits, {})).rows,
   ).toHaveLength(1);
   const beforeEdit = (await s.t.run((ctx) => ctx.db.get(bookingId)))!;
-  await s.admin.mutation(api.adminBookings.editBooking, {
+  await s.admin.mutation(api.bookings.commands.editBooking.editBooking, {
     bookingId,
     propertyId: s.propertyId,
     checkIn: beforeEdit.checkIn,
@@ -676,7 +676,7 @@ it("supports coupon-only claims, retries once and updates approved net on partia
   });
   const refund = async (amount: number, key: string) => {
     const booking = (await s.t.run((ctx) => ctx.db.get(bookingId)))!;
-    await s.admin.mutation(api.adminBookings.recordRefund, {
+    await s.admin.mutation(api.bookings.commands.recordRefund.recordRefund, {
       bookingId,
       expectedRevision: booking.revision ?? 0,
       amount,
@@ -961,7 +961,7 @@ it("uses the last eligible affiliate touch independently of the last acquisition
       startedAt: Date.now() - 1000,
     });
   });
-  const { bookingId } = await s.t.mutation(api.bookings.create, {
+  const { bookingId } = await s.t.mutation(api.bookings.bookings.create, {
     propertySlug: "villa",
     guestName: "Guest",
     guestEmail: "guest@example.com",
@@ -1152,11 +1152,11 @@ it.each(["create", "confirmProposal"] as const)("freezes recorded vs claimed evi
     };
     const marketing = { slug: "r/anna", visitorKey };
     const result = path === "create"
-      ? await s.t.mutation(api.bookings.create, { ...stay, marketing })
+      ? await s.t.mutation(api.bookings.bookings.create, { ...stay, marketing })
       : await (async () => {
         const { sessionId } = await s.t.mutation(api.chat.createSession, { channel: "web" });
-        const { confirmToken } = await s.t.mutation(internal.bookings.prepareChatBooking, { sessionId, propertySlug: stay.propertySlug, guestName: stay.guestName, guestPhone: stay.guestPhone, checkIn: stay.checkIn, checkOut: stay.checkOut, guests: stay.guests });
-        const result = await s.t.mutation(api.bookings.confirmProposal, { token: confirmToken, marketing });
+        const { confirmToken } = await s.t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, propertySlug: stay.propertySlug, guestName: stay.guestName, guestPhone: stay.guestPhone, checkIn: stay.checkIn, checkOut: stay.checkOut, guests: stay.guests });
+        const result = await s.t.mutation(api.bookings.bookings.confirmProposal, { token: confirmToken, marketing });
         if (result.needsReview) throw new Error("Expected a confirmed booking");
         return result;
       })();

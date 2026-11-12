@@ -158,7 +158,7 @@ describe('booking relationship', () => {
 	it('shows a stay added to a standalone sale even though the stay already has its own empty order, which stays the stay\'s', async () => {
 		const { t, admin, serviceId, order, settle, extra } = await setup();
 		// Created like any admin booking: it gets its own empty order straight away.
-		const stay = await admin.mutation(api.adminBookings.createBooking, {
+		const stay = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
 			propertySlug: 'villa', guestName: 'Mara', guestPhone: '+66 89 111 2222', checkIn: '2026-10-10', checkOut: '2026-10-12', guests: 2
 		});
 		const { confirmationCode } = (await t.run((ctx) => ctx.db.get(stay)))!;
@@ -227,7 +227,7 @@ describe('booking relationship', () => {
 
 	it('lists every booking an order charges, its own first, without listing a stay\'s appointment twice', async () => {
 		const { admin, bookingId, appointment, order, extra } = await setup();
-		const stay = await admin.mutation(api.adminBookings.createBooking, {
+		const stay = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
 			propertySlug: 'villa', guestName: 'Mara', guestPhone: '+66 89 111 2222', checkIn: '2026-10-10', checkOut: '2026-10-12', guests: 2
 		});
 		const maraTreatment = await appointment({ bookingId: stay, confirmationCode: 'SVC-MARA' });
@@ -551,7 +551,7 @@ describe('source changes', () => {
 		const id = await appointment();
 		await admin.mutation(api.pos.openOrderFor, { bookingId });
 		await admin.mutation(api.pos.openOrderFor, { appointmentId: id });
-		await expect(admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' })).rejects.toThrow('on Order #1, which is still open');
+		await expect(admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'markPaid' })).rejects.toThrow('on Order #1, which is still open');
 		await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id })).rejects.toThrow('on Order #2, which is still open');
 	});
 
@@ -562,13 +562,13 @@ describe('source changes', () => {
 			subtotal: 10000, discountAmount: 0, total: 10000, currency: 'THB', paymentStatus: 'pending', status: 'pending', source: 'admin', createdAt: Date.now()
 		}));
 		await admin.mutation(api.pos.openOrderFor, { bookingId: pending });
-		await expect(admin.mutation(api.adminBookings.deleteBooking, { bookingId: pending })).rejects.toThrow('has an order');
-		expect(await admin.mutation(api.adminBookings.deleteBookings, { bookingIds: [pending] })).toMatchObject({ deleted: 0, skipped: [{ reason: expect.stringContaining('has an order') }] });
+		await expect(admin.mutation(api.bookings.commands.deleteBooking.deleteBooking, { bookingId: pending })).rejects.toThrow('has an order');
+		expect(await admin.mutation(api.bookings.commands.deleteBookings.deleteBookings, { bookingIds: [pending] })).toMatchObject({ deleted: 0, skipped: [{ reason: expect.stringContaining('has an order') }] });
 	});
 
 	it('creates every new stay and appointment with its order, which a test booking can still be deleted with', async () => {
 		const { t, admin, serviceId, order } = await setup();
-		const bookingId = await admin.mutation(api.adminBookings.createBooking, {
+		const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
 			propertySlug: 'villa', guestName: 'Mia', guestPhone: '0811111111', checkIn: '2026-12-01', checkOut: '2026-12-03', guests: 2
 		});
 		const created = await admin.query(api.pos.ordersForBooking, { bookingId });
@@ -587,10 +587,10 @@ describe('source changes', () => {
 		expect(await admin.mutation(api.pos.openOrderFor, { bookingId })).toEqual({ orderId });
 		expect((await order(orderId)).lines.map((line) => line.kind)).toEqual(['booking']);
 
-		const test = await admin.mutation(api.adminBookings.createBooking, {
+		const test = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
 			propertySlug: 'villa', guestName: 'Test', guestPhone: '0800000000', checkIn: '2026-12-10', checkOut: '2026-12-11', guests: 1
 		});
-		await admin.mutation(api.adminBookings.deleteBooking, { bookingId: test });
+		await admin.mutation(api.bookings.commands.deleteBooking.deleteBooking, { bookingId: test });
 		expect(await t.run((ctx) => ctx.db.query('orders').collect())).toHaveLength(2);
 	});
 
@@ -604,7 +604,7 @@ describe('source changes', () => {
 
 	it('records the full total when a deposited stay is marked paid outside checkout', async () => {
 		const { t, admin, bookingId } = await setup();
-		await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' });
+		await admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'markPaid' });
 		expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'paid', amountPaid: 3000000 });
 		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.balance.owed).toBe(0);
 	});
@@ -960,7 +960,7 @@ describe('access', () => {
 		await admin.mutation(api.pos.linkCustomer, { orderId, customerId: bob });
 		expect((await order(orderId)).customer?.name).toBe('Bob Secret');
 		await t.run((ctx) => ctx.db.patch(bookingId, { accessToken: 'guest-token-anna' }));
-		const publicView = await t.query(api.bookings.getById, { id: bookingId, accessToken: 'guest-token-anna' });
+		const publicView = await t.query(api.bookings.bookings.getById, { id: bookingId, accessToken: 'guest-token-anna' });
 		expect(publicView).toMatchObject({ confirmationCode: 'CONF-ANNA' });
 		expect(JSON.stringify(publicView)).not.toMatch(/Bob Secret|0811110000|customer/i);
 	});

@@ -141,7 +141,7 @@ it('rejects suggestion tracking without a valid guest token', async () => {
 
 it('retires the public booking-flow and AI-pause server bridges', async () => {
  const t = createHarness(convexTest);
- for (const path of ['bookings:isChatBookingFlowActive','chat:isAiPausedForServer']) {
+ for (const path of ['bookings/bookings:isChatBookingFlowActive','chat:isAiPausedForServer']) {
    await expect(t.query(makeFunctionReference<'query'>(path), {})).rejects.toThrow();
  }
 });

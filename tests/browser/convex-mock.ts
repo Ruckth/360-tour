@@ -83,22 +83,22 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
     discardedOrders: [],
     refunds: [],
   };
-  if (name === "adminBookings:bookingFinancials") return {
+  if (name === "bookings/admin:bookingFinancials") return {
     revision: 0, money, payments: [], refunds: [],
     hasStripePayment: false, complete: true,
   };
-  if (name === "adminBookings:findGuests" && params.has("returning")) return [{
+  if (name === "bookings/admin:findGuests" && params.has("returning")) return [{
     guestName: "Returning Guest", guestPhone: params.get("phone") ?? "0812345678",
     guestEmail: "returning@example.com", stays: 2, lastCheckIn: "2025-01-30",
   }];
-  if (name === "adminBookings:quoteBookingEdit") {
+  if (name === "bookings/admin:quoteBookingEdit") {
     // The stay's stored price, or 7,000 a night once its dates change.
     const { checkIn, checkOut } = args as { checkIn: string; checkOut: string };
     if (checkIn === "2025-01-30" && checkOut === "2025-02-03") return { subtotal: 3400000, discountAmount: 510000, total: 2890000, currency: "THB", promotion: null, couponRemoved: false, repriced: false };
     const total = 700000 * Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000);
     return { subtotal: total, discountAmount: 0, total, currency: "THB", promotion: null, couponRemoved: false, repriced: true };
   }
-  if (name === "adminBookings:getForAdmin") return {
+  if (name === "bookings/admin:getForAdmin") return {
     _id: "booking-id", createdAt: 1738231200000, propertyId: "pool-id", guestName: "Historical Guest", guestPhone: "0812345678",
     checkIn: "2025-01-30", checkOut: "2025-02-03", guests: 2, nights: 4,
     subtotal: 3400000, discountAmount: 510000, total: 2890000, currency: "THB",

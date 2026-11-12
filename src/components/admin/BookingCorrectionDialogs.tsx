@@ -15,7 +15,7 @@ import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefund
 import { formatMoney, STATUS_LABELS } from "./labels";
 import { REFUND_METHODS, newAttemptKey, parseAmount, type RefundMethod } from "./admin-bookings-shared";
 
-type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
 const hotelLabels: Record<string, string> = STATUS_LABELS.hotelBooking;
 
 /**
@@ -23,11 +23,11 @@ const hotelLabels: Record<string, string> = STATUS_LABELS.hotelBooking;
  * here, in the same save. The guest email choice is explicit and defaults to no for past stays.
  */
 export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail; onClose: () => void }) {
-  const cancelStay = useMutation(api.adminBookings.cancelStay);
+  const cancelStay = useMutation(api.bookings.commands.cancelStay.cancelStay);
   const { money } = booking;
   const [reviewed] = useState(() => ({ revision: booking.revision, key: newAttemptKey("cancel-refund") }));
   const [choice, setChoice] = useState<"keep" | "refund">("keep");
-  const data = useQuery(api.adminBookings.bookingFinancials, choice === "refund" ? { bookingId: booking._id } : "skip");
+  const data = useQuery(api.bookings.admin.bookingFinancials, choice === "refund" ? { bookingId: booking._id } : "skip");
   const sources = data ? bookingRefundSources(data) : [];
   const [target, setTarget] = useState<string | null>(null);
   const selected = target ?? sources[0]?.value ?? "";
@@ -117,7 +117,7 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
  * still holding money comes back paid and confirmed. The nights are checked again on save.
  */
 export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDetail; onClose: () => void }) {
-  const reopen = useMutation(api.adminBookings.reopenBooking);
+  const reopen = useMutation(api.bookings.commands.reopenBooking.reopenBooking);
   const [revision] = useState(booking.revision);
   const paid = booking.money.net > 0;
   const pendingAllowed = !paid && booking.source === "admin";

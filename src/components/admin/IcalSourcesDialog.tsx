@@ -64,10 +64,10 @@ export function IcalSourcesPanel({ propertyId }: { propertyId: Id<'properties'> 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const confirm = useConfirm();
-  const sources = useQuery(api.ical.listSources, { propertyId });
-  const token = useQuery(api.ical.getExportToken, { propertyId });
-  const addSource = useMutation(api.ical.addSource);
-  const rotateToken = useMutation(api.ical.rotateExportToken);
+  const sources = useQuery(api.bookings.calendar.ical.listSources, { propertyId });
+  const token = useQuery(api.bookings.calendar.ical.getExportToken, { propertyId });
+  const addSource = useMutation(api.bookings.calendar.ical.addSource);
+  const rotateToken = useMutation(api.bookings.calendar.ical.rotateExportToken);
   const site = process.env.NEXT_PUBLIC_CONVEX_SITE_URL || process.env.NEXT_PUBLIC_CONVEX_URL?.replace(/\.convex\.cloud$/, '.convex.site');
   const exportUrl = token && site ? `${site}/ical/export?token=${encodeURIComponent(token)}` : '';
 
@@ -109,9 +109,9 @@ export function IcalSourcesPanel({ propertyId }: { propertyId: Id<'properties'> 
 }
 
 function SourceRow({ source }: { source: Doc<'icalSources'> }) {
-  const updateSource = useMutation(api.ical.updateSource);
-  const removeSource = useMutation(api.ical.removeSource);
-  const syncSource = useAction(api.ical.syncSource);
+  const updateSource = useMutation(api.bookings.calendar.ical.updateSource);
+  const removeSource = useMutation(api.bookings.calendar.ical.removeSource);
+  const syncSource = useAction(api.bookings.calendar.ical.syncSource);
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [platform, setPlatform] = useState<Platform>(source.platform as Platform);

@@ -17,7 +17,7 @@ import { formatPickerDate } from "@/lib/dates/format";
 import { useOptionalConvex } from "@/lib/react/convex";
 
 type Summary = NonNullable<
-  FunctionReturnType<typeof api.bookings.getConfirmProposal>
+  FunctionReturnType<typeof api.bookings.bookings.getConfirmProposal>
 >;
 
 export function ProposalPayClient({ token }: { token: string }) {
@@ -45,7 +45,7 @@ export function ProposalPayClient({ token }: { token: string }) {
       try {
         if (!convex) throw new Error("unavailable");
         // Read only: unfurlers, reloads and opening the page never create a booking.
-        const result = await convex.query(api.bookings.getConfirmProposal, {
+        const result = await convex.query(api.bookings.bookings.getConfirmProposal, {
           token,
         });
         if (!active) return;
@@ -69,7 +69,7 @@ export function ProposalPayClient({ token }: { token: string }) {
     setLoading(true);
     setError("");
     try {
-      const booking = await convex.mutation(api.bookings.confirmProposal, {
+      const booking = await convex.mutation(api.bookings.bookings.confirmProposal, {
         token: activeToken,
         marketing: captureForBooking() ?? {},
       });
@@ -84,7 +84,7 @@ export function ProposalPayClient({ token }: { token: string }) {
         window.history.replaceState(null, "", url);
         return;
       }
-      const checkout = await convex.action(api.payments.createCheckout, {
+      const checkout = await convex.action(api.bookings.payments.stripe.createCheckout, {
         bookingId: booking.bookingId,
         accessToken: booking.accessToken,
       });

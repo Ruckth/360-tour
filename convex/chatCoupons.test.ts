@@ -21,12 +21,12 @@ async function setup(channel: 'web' | 'whatsapp' = 'web') {
 }
 it('quotes the guest coupon through the offer engine without stacking, and confirms exactly once', async () => {
   const { t, sessionId, couponId } = await setup();
-  const quote = await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'guest20' });
+  const quote = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'guest20' });
   expect(quote).toMatchObject({ total: 1600000, discountAmount: 400000, coupon: { code: 'GUEST20', status: 'applied', discount: 400000, version: 1 } });
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toEqual([]);
-  const first = await t.mutation(api.bookings.confirmProposal, { token: quote.confirmToken });
+  const first = await t.mutation(api.bookings.bookings.confirmProposal, { token: quote.confirmToken });
   if (first.needsReview) throw new Error('Expected confirmation');
-  const again = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+  const again = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
   expect(again).toMatchObject({ bookingId: first.bookingId, alreadyConfirmed: true, total: 1600000 });
   expect(await t.run(ctx => ctx.db.get(couponId))).toMatchObject({ held: 1, heldDiscount: 400000, used: 0 });
   expect(await t.run(ctx => ctx.db.query('couponRedemptions').collect())).toHaveLength(1);
@@ -34,11 +34,11 @@ it('quotes the guest coupon through the offer engine without stacking, and confi
 it('rejects a model-invented code even when it exists in the catalog', async () => {
   const { t, sessionId } = await setup();
   await t.run(async ctx => { for (const row of await ctx.db.query('messages').collect()) await ctx.db.delete(row._id); });
-  await expect(t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
+  await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
 });
 it.each(['expired', 'full', 'version', 'price', 'budget'] as const)('returns a new quote for review when %s changes before yes, creating nothing', async change => {
   const { t, sessionId, couponId, versionId, propertyId } = await setup('whatsapp');
-  const quote = await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
+  const quote = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
   await t.run(async ctx => {
     if (change === 'expired') await ctx.db.patch(versionId, { bookTo: '2026-01-01' });
     if (change === 'full') { await ctx.db.patch(versionId, { usageLimit: 1 }); await ctx.db.patch(couponId, { used: 1 }); }
@@ -49,23 +49,23 @@ it.each(['expired', 'full', 'version', 'price', 'budget'] as const)('returns a n
       await ctx.db.patch(couponId, { currentVersion: 2 });
     }
   });
-  const changed = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+  const changed = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
   expect(changed).toMatchObject({ needsReview: true });
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toEqual([]);
   expect(await t.run(ctx => ctx.db.query('couponRedemptions').collect())).toEqual([]);
-  await expect(t.mutation(api.bookings.confirmProposal, { token: quote.confirmToken })).rejects.toThrow('expired');
+  await expect(t.mutation(api.bookings.bookings.confirmProposal, { token: quote.confirmToken })).rejects.toThrow('expired');
   if (!changed.needsReview) throw new Error('Expected review');
-  const confirmed = await t.mutation(api.bookings.confirmProposal, { token: changed.quote.confirmToken });
+  const confirmed = await t.mutation(api.bookings.bookings.confirmProposal, { token: changed.quote.confirmToken });
   expect(confirmed).toMatchObject({ total: change === 'price' ? 1920000 : change === 'version' ? 1500000 : change === 'budget' ? 1650000 : 1700000 });
 });
 it('shows unknown and weaker codes as refused or direct-price proposals', async () => {
   const { t, sessionId, versionId } = await setup();
   await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'coupon UNKNOWN' });
-  const missing = await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'UNKNOWN' });
+  const missing = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'UNKNOWN' });
   expect(missing).toMatchObject({ total: 1700000, coupon: { status: 'invalid', problem: { code: 'not_found' } } });
   await t.run(ctx => ctx.db.patch(versionId, { benefit: { kind: 'percent', percent: 1000 } }));
   await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Use coupon GUEST20 instead' });
-  const weaker = await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
+  const weaker = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
   expect(weaker).toMatchObject({ total: 1700000, coupon: { status: 'coupon_worse', discount: 200000 } });
 });
 
@@ -111,10 +111,10 @@ it('the last coupon slot cannot be held by a second reviewed quote', async () =>
   await t.run(ctx => ctx.db.patch(versionId, { usageLimit: 1 }));
   const { sessionId: secondSessionId } = await t.mutation(api.chat.createSession, { channel: 'web' });
   await t.mutation(internal.chat.acceptGuestMessage, { sessionId: secondSessionId, content: 'coupon GUEST20' });
-  await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
-  await t.mutation(internal.bookings.prepareChatBooking, { sessionId: secondSessionId, ...stay, checkIn: '2027-01-20', checkOut: '2027-01-22', couponCode: 'GUEST20' });
-  await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
-  const second = await t.mutation(internal.bookings.confirmChatBooking, { sessionId: secondSessionId });
+  await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
+  await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId: secondSessionId, ...stay, checkIn: '2027-01-20', checkOut: '2027-01-22', couponCode: 'GUEST20' });
+  await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
+  const second = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId: secondSessionId });
   expect(second).toMatchObject({ needsReview: true, quote: { total: 1700000, coupon: { status: 'invalid', problem: { code: 'sold_out' } } } });
   expect(await t.run(ctx => ctx.db.get(couponId))).toMatchObject({ held: 1 });
   expect(await t.run(ctx => ctx.db.query('couponRedemptions').collect())).toHaveLength(1);
@@ -131,24 +131,24 @@ it('does not deliver a model-invented coupon offer without a verified tool resul
 });
 it('a confirmed proposal reads the booking saving after staff corrections and hides it for a custom price', async () => {
   const { t, sessionId } = await setup();
-  const quote = await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
-  const confirmed = await t.mutation(api.bookings.confirmProposal, { token: quote.confirmToken });
+  const quote = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
+  const confirmed = await t.mutation(api.bookings.bookings.confirmProposal, { token: quote.confirmToken });
   if (confirmed.needsReview) throw new Error('Expected confirmation');
   await t.run(async ctx => {
     const booking = await ctx.db.get(confirmed.bookingId);
     await ctx.db.patch(confirmed.bookingId, { total: 1650000, discountAmount: 350000, promotion: { ...booking!.promotion!, discount: 350000 } });
   });
-  expect(await t.query(api.bookings.getConfirmProposal, { token: quote.confirmToken })).toMatchObject({ total: 1650000, coupon: { discount: 350000 } });
+  expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: quote.confirmToken })).toMatchObject({ total: 1650000, coupon: { discount: 350000 } });
   await t.run(ctx => ctx.db.patch(confirmed.bookingId, { priceOverride: { total: 1600000, quotedTotal: 1650000, reason: 'Agreed price', by: 'staff@example.com', at: Date.now() }, total: 1600000 }));
-  expect(await t.query(api.bookings.getConfirmProposal, { token: quote.confirmToken })).not.toHaveProperty('coupon');
-  expect(await t.mutation(internal.bookings.confirmChatBooking, { sessionId })).not.toHaveProperty('coupon');
+  expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: quote.confirmToken })).not.toHaveProperty('coupon');
+  expect(await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId })).not.toHaveProperty('coupon');
 });
 it('a fully covered stay cannot create an unpaid online booking or coupon hold', async () => {
   const { t, sessionId, versionId, couponId } = await setup();
   await t.run(ctx => ctx.db.patch(versionId, { benefit: { kind: 'percent', percent: 10000 } }));
-  const quote = await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
+  const quote = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
   expect(quote.total).toBe(0);
-  await expect(t.mutation(api.bookings.confirmProposal, { token: quote.confirmToken })).rejects.toThrow('covers the whole stay');
+  await expect(t.mutation(api.bookings.bookings.confirmProposal, { token: quote.confirmToken })).rejects.toThrow('covers the whole stay');
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toEqual([]);
   expect(await t.run(ctx => ctx.db.query('couponRedemptions').collect())).toEqual([]);
   expect((await t.run(ctx => ctx.db.get(couponId)))?.held ?? 0).toBe(0);
@@ -175,31 +175,31 @@ it('does not accept CODE as guest evidence from a coupon-code question', async (
     for (const row of await ctx.db.query('messages').collect()) await ctx.db.delete(row._id);
     await ctx.db.insert('messages', { sessionId, role: 'user', content: 'Do you have a coupon code?', timestamp: Date.now() });
   });
-  await expect(t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'CODE' })).rejects.toThrow('supplied');
+  await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'CODE' })).rejects.toThrow('supplied');
 });
 it('rejects a withdrawn or replaced guest code instead of reusing historical evidence', async () => {
   const { t, sessionId } = await setup();
   await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Remove the coupon' });
-  await expect(t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
+  await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
   await t.run(async ctx => {
     const couponId = await ctx.db.insert('coupons', { code: 'GUEST30', status: 'active', currentVersion: 1, used: 0, discountGranted: 0, createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'staff@example.com' });
     await ctx.db.insert('couponVersions', { couponId, version: 1, benefit: { kind: 'percent', percent: 3000 }, scope: 'accommodation', createdAt: Date.now(), createdByEmail: 'staff@example.com' });
   });
   await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Please use coupon GUEST30 instead' });
-  await expect(t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
-  expect(await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST30' })).toMatchObject({ total: 1400000, coupon: { code: 'GUEST30' } });
+  await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
+  expect(await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST30' })).toMatchObject({ total: 1400000, coupon: { code: 'GUEST30' } });
 });
 
 it('replaces an outstanding coupon proposal after withdrawal before creating anything', async () => {
   const { t, sessionId } = await setup();
-  const original = await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
+  const original = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
   await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Remove the coupon' });
-  const changed = await t.mutation(api.bookings.confirmProposal, { token: original.confirmToken });
+  const changed = await t.mutation(api.bookings.bookings.confirmProposal, { token: original.confirmToken });
   expect(changed).toMatchObject({ needsReview: true, quote: { total: 1700000 } });
   if (!changed.needsReview) throw new Error('Expected review');
   expect(changed.quote).not.toHaveProperty('coupon');
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toEqual([]);
-  const confirmed = await t.mutation(api.bookings.confirmProposal, { token: changed.quote.confirmToken });
+  const confirmed = await t.mutation(api.bookings.bookings.confirmProposal, { token: changed.quote.confirmToken });
   expect(confirmed).toMatchObject({ total: 1700000 });
   expect(await t.run(ctx => ctx.db.query('couponRedemptions').collect())).toEqual([]);
 });

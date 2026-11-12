@@ -9,7 +9,7 @@ import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 
 const state = vi.hoisted(() => ({ update: vi.fn() }));
 vi.mock('convex/react', () => ({
-  useMutation: (ref: FunctionReference<'mutation'>) => getFunctionName(ref) === 'adminBookings:updateDateBlock' ? state.update : vi.fn(),
+  useMutation: (ref: FunctionReference<'mutation'>) => getFunctionName(ref) === 'bookings/calendar/updateDateBlock:updateDateBlock' ? state.update : vi.fn(),
   useQuery: () => [],
   usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore: vi.fn() }),
 }));

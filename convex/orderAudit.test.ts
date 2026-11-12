@@ -217,7 +217,7 @@ describe('Independent order audit: booking/source integrity', () => {
     expect(await admin.mutation(api.pos.openOrderFor, { appointmentId })).toEqual({ orderId });
     expect((await view(orderId)).totals.due).toBe(2120000);
     await expect(admin.mutation(api.pos.attach, { bookingId })).rejects.toThrow('already on');
-    await expect(admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' })).rejects.toThrow('still open');
+    await expect(admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'markPaid' })).rejects.toThrow('still open');
     await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId })).rejects.toThrow('still open');
   });
 
@@ -280,7 +280,7 @@ describe('Independent order audit: booking/source integrity', () => {
 
   it('REGRESSION COVERAGE: shared stay creation establishes an order before first checkout', async () => {
     const { t, admin } = await setup();
-    const bookingId = await admin.mutation(api.adminBookings.createBooking, {
+    const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
       propertySlug: 'order-audit-villa', guestName: 'New guest', guestPhone: '0812222222', checkIn: '2026-12-01', checkOut: '2026-12-03', guests: 2
     });
     expect((await admin.query(api.pos.ordersForBooking, { bookingId })).activeOrder).not.toBeNull();
@@ -297,10 +297,10 @@ describe('Independent order audit: booking/source integrity', () => {
 
   it.each(['manual', 'stripe'] as const)('REGRESSION COVERAGE: %s full settlement of a deposited stay records the full paid amount', async method => {
     const { t, admin, bookingId } = await setup();
-    if (method === 'manual') await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' });
+    if (method === 'manual') await admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'markPaid' });
     else {
       await t.run(ctx => ctx.db.patch(bookingId, { stripeCheckoutSessionId: 'cs_order_audit', stripeCheckoutAmount: 2000000 }));
-      await t.mutation(api.payments.completeCheckout, { bookingId, sessionId: 'cs_order_audit', amountTotal: 2000000, currency: 'thb', paymentIntentId: 'pi_order_audit' });
+      await t.mutation(api.bookings.payments.stripe.completeCheckout, { bookingId, sessionId: 'cs_order_audit', amountTotal: 2000000, currency: 'thb', paymentIntentId: 'pi_order_audit' });
     }
     expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'paid', amountPaid: 3000000 });
     expect((await admin.query(api.pos.ordersForBooking, { bookingId })).balance.owed).toBe(0);
@@ -363,7 +363,7 @@ describe('Independent order audit: authorization', () => {
     const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Private corporate payer', email: 'private-payer@example.com', notes: 'Private notes' });
     const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
     await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
-    const data = await t.query(api.bookings.getById, { id: bookingId, accessToken: 'order-audit-token' });
+    const data = await t.query(api.bookings.bookings.getById, { id: bookingId, accessToken: 'order-audit-token' });
     expect(data._id).toBe(bookingId);
     expect(data.customerId).toBeUndefined();
     expect(data.customerSnapshot).toBeUndefined();

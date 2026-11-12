@@ -36,7 +36,7 @@ async function setup() {
   await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
   const start = (capture: MarketingCapture = {}) => t.mutation(api.marketing.startSession, { landingPath: '/booking', ...capture });
   const booking = async (marketing?: MarketingCapture) => {
-    const { bookingId } = await t.mutation(api.bookings.create, { ...stay, guestEmail: 'mia@example.com', marketing });
+    const { bookingId } = await t.mutation(api.bookings.bookings.create, { ...stay, guestEmail: 'mia@example.com', marketing });
     return (await t.run(ctx => ctx.db.get(bookingId)))!;
   };
   const session = (startedAt: number, linked = true) => t.run(ctx => ctx.db.insert('marketingSessions', {
@@ -188,8 +188,8 @@ describe('web chat capture', () => {
     await s.session(now - day);
     const { sessionId } = await s.t.mutation(api.chat.createSession, { channel: 'web', marketing: { visitorKey, slug: ' f1 ' } });
     expect((await s.t.run(ctx => ctx.db.get(sessionId)))?.marketingCapture).toEqual({ visitorKey, slug: 'f1' });
-    await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
-    const result = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    await s.t.mutation(internal.bookings.bookings.prepareChatBooking, { ...stay, sessionId });
+    const result = await s.t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
     if (result.needsReview) throw new Error("Expected a confirmed booking");
     expect((await s.t.run(ctx => ctx.db.get(result.bookingId)))?.marketingAttribution).toMatchObject({ evidence: 'tracked', last: { slug: 'f1' } });
   });
@@ -220,8 +220,8 @@ describe('web chat capture', () => {
     expect(await capture(stale)).toEqual({ slug: 'f1' });
     await say(stale, 'user', {});
     expect(await capture(stale)).toBeUndefined();
-    await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId: stale });
-    const unattributed = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId: stale });
+    await s.t.mutation(internal.bookings.bookings.prepareChatBooking, { ...stay, sessionId: stale });
+    const unattributed = await s.t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId: stale });
     if (unattributed.needsReview) throw new Error("Expected a confirmed booking");
     expect(await s.t.run(ctx => ctx.db.get(unattributed.bookingId))).not.toHaveProperty('marketingAttribution');
     // Consent given after the chat started; assistant messages never change it.
@@ -235,8 +235,8 @@ describe('web chat capture', () => {
     const s = await setup();
     await s.session(now - day);
     const { sessionId } = await s.t.mutation(api.chat.createSession, { channel: 'web', marketing: { visitorKey } });
-    const { confirmToken } = await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
-    const result = await s.t.mutation(api.bookings.confirmProposal, { token: confirmToken, marketing: {} });
+    const { confirmToken } = await s.t.mutation(internal.bookings.bookings.prepareChatBooking, { ...stay, sessionId });
+    const result = await s.t.mutation(api.bookings.bookings.confirmProposal, { token: confirmToken, marketing: {} });
     if (result.needsReview) throw new Error("Expected a confirmed booking");
     expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).not.toHaveProperty('marketingAttribution');
   });
@@ -244,8 +244,8 @@ describe('web chat capture', () => {
   it('does not attribute a messaging booking even if a legacy session has a capture', async () => {
     const s = await setup();
     const sessionId = await s.t.run(ctx => ctx.db.insert('conversations', { channel: 'whatsapp', visitorPhone: '66811112222', marketingCapture: { slug: 'f1' }, createdAt: now }));
-    await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
-    const result = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    await s.t.mutation(internal.bookings.bookings.prepareChatBooking, { ...stay, sessionId });
+    const result = await s.t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
     if (result.needsReview) throw new Error("Expected a confirmed booking");
     expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).not.toHaveProperty('marketingAttribution');
   });

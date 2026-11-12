@@ -22,7 +22,7 @@ async function setup(now: string) {
       bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: "active",
     });
   });
-  const book = (checkIn: string, checkOut: string) => t.mutation(api.bookings.create, {
+  const book = (checkIn: string, checkOut: string) => t.mutation(api.bookings.bookings.create, {
     propertySlug: "villa", guestName: "Guest", guestEmail: "guest@example.com", guestPhone: "+66911111111", checkIn, checkOut, guests: 2,
   });
   return { t, book, admin: t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin" }) };
@@ -47,7 +47,7 @@ describe("public booking uses the resort day (Asia/Bangkok)", () => {
 
   it("keeps historical admin entry", async () => {
     const { admin } = await setup("2030-01-10T18:00:00Z");
-    await expect(admin.mutation(api.adminBookings.createBooking, {
+    await expect(admin.mutation(api.bookings.commands.createBooking.createBooking, {
       propertySlug: "villa", guestName: "Past", guestPhone: "66911111111", checkIn: "2030-01-01", checkOut: "2030-01-03", guests: 2,
     })).resolves.toBeTruthy();
   });

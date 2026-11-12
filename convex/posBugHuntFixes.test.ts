@@ -22,7 +22,7 @@ async function setup() {
 	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Audit Villa', slug: 'audit-villa' });
 	await admin.mutation(api.catalog.properties.update, { propertyId, pricePerNight: 100000, status: 'active' });
 	const view = (orderId: Id<'orders'>) => admin.query(api.pos.getOrder, { orderId }).then((order) => order!);
-	const booking = () => admin.mutation(api.adminBookings.createBooking, {
+	const booking = () => admin.mutation(api.bookings.commands.createBooking.createBooking, {
 		propertySlug: 'audit-villa', guestName: 'Guest X', guestPhone: '+66 81 234 5678', guestEmail: 'regular@example.com',
 		checkIn: '2026-12-01', checkOut: '2026-12-02', guests: 1, confirmed: true, notifyGuest: false,
 	});

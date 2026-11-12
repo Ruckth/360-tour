@@ -61,7 +61,7 @@ afterEach(async () => {
 it("only reads the proposal on opening and shows its summary, policy and hold", async () => {
   await render();
   expect(getFunctionName(client.query.mock.calls[0][0])).toBe(
-    "bookings:getConfirmProposal",
+    "bookings/bookings:getConfirmProposal",
   );
   expect(client.query.mock.calls[0][1]).toEqual({ token: "signed-proposal" });
   expect(client.mutation).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ it("a double click confirms once and goes straight into Stripe checkout", async 
   });
   expect(client.mutation).toHaveBeenCalledTimes(1);
   expect(getFunctionName(client.mutation.mock.calls[0][0])).toBe(
-    "bookings:confirmProposal",
+    "bookings/bookings:confirmProposal",
   );
   expect(client.action.mock.calls[0][1]).toEqual({
     bookingId: "booking",

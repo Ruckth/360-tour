@@ -1,20 +1,17 @@
-import { type QueryCtx, publicQuery, adminQuery } from './auth/model';
 import { v } from 'convex/values';
-import type { Id } from './_generated/dataModel';
-import { assertValidIsoDate } from './lib/validation';
-import { nightsBetween, stayDates } from './lib/dates';
-import { readBudget, ReadBudgetExceeded } from './lib/readBudget';
-import {
-	blocksNewBookings,
-	findBlockingNight,
-	findOverlappingBookings,
-	MAX_ROWS_PER_NIGHT
-} from './lib/stayOverlap';
+import type { Id } from '../../_generated/dataModel';
+import { type QueryCtx, adminQuery, publicQuery } from '../../auth/model';
+import { nightsBetween, stayDates } from '../../lib/dates';
+import { readBudget, ReadBudgetExceeded } from '../../lib/readBudget';
+import { blocksNewBookings, findBlockingNight, findOverlappingBookings, MAX_ROWS_PER_NIGHT } from '../../lib/stayOverlap';
+import { assertValidIsoDate } from '../../lib/validation';
 
 /** Longest date window one read may cover: today plus a year (366 dates). */
 export const MAX_RANGE_DAYS = 366;
+
 /** Most villas one multi-villa read may name. */
 export const MAX_PROPERTY_IDS = 100;
+
 /** Villa-dates one multi-villa read may cover, e.g. 100 villas × 31 nights. */
 export const MAX_PROPERTY_DAYS = 3100;
 
@@ -102,7 +99,6 @@ export const getBlockedDates = publicQuery({
 		return await blockedDates(ctx, args.propertyId, args.startDate, args.endDate, days);
 	}
 });
-
 
 export const getAdminBlockedDates = adminQuery({
 	args: {

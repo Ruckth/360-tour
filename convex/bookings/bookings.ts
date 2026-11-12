@@ -1,37 +1,26 @@
-import { durableToolValidator, durableTurnValidator, currentClaim, withDurableTool } from './messaging/model';
-import { startDurablePreparation } from './messaging/claims';
-import { satangToBaht } from './shared/money';
-import { activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity, type ChatCouponSnapshot } from './lib/chatCoupon';
-import { normalizeCouponCode } from './lib/offers';
-import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from './lib/marketingAttribution';
-import { bookingsByPhone } from './lib/bookingPhone';
-import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
-import { internalMutation, internalQuery, publicQuery, publicMutation, adminQuery } from './auth/model';
-import type { MutationCtx, QueryCtx } from './_generated/server';
-import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
-import { nightsBetween } from './lib/dates';
-import {
-	assertPositiveInt,
-	assertValidEmail,
-	assertValidIsoDate
-} from './lib/validation';
-import { calculateDirectQuote } from './lib/pricing';
-import { demoCode, signProposal, verifyProposal } from './lib/codes';
-import { randomSecret } from './lib/displayTokens';
-import { bookingHoldExpiresAt, getEffectiveSettings } from './lib/siteSettings';
-import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
-import { requireAdmin } from './lib/adminAuth';
-import { internal } from './_generated/api';
-import { enforceRateLimit } from './lib/rateLimit';
-import {
-	createBookingRecord,
-	loadProperty,
-	type BookingSource
-} from './lib/bookingWrites';
-import { roundMoney } from './lib/orderMath';
-import { effectiveTime, resolveNotify, stayMoney, writeBooking } from './lib/bookingMoney';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { adminQuery, internalMutation, internalQuery, publicMutation, publicQuery } from '../auth/model';
+import { requireAdmin } from '../lib/adminAuth';
+import { releaseBookingDates } from '../lib/availabilityWrites';
+import { stayMoney, writeBooking } from '../lib/bookingMoney';
+import { bookingsByPhone } from '../lib/bookingPhone';
+import { createBookingRecord, loadProperty, type BookingSource } from '../lib/bookingWrites';
+import { activeGuestCoupon, assertGuestSuppliedCoupon, couponSnapshotIdentity, quoteChatStay, type ChatCouponSnapshot } from '../lib/chatCoupon';
+import { assertChatWriteAllowed, assertSameProposal } from '../lib/chatWriteGuard';
+import { demoCode, signProposal, verifyProposal } from '../lib/codes';
+import { nightsBetween } from '../lib/dates';
+import { randomSecret } from '../lib/displayTokens';
+import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from '../lib/marketingAttribution';
+import { normalizeCouponCode } from '../lib/offers';
+import { calculateDirectQuote } from '../lib/pricing';
+import { enforceRateLimit } from '../lib/rateLimit';
+import { bookingHoldExpiresAt, getEffectiveSettings } from '../lib/siteSettings';
+import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from '../lib/validation';
+import { currentClaim, durableToolValidator, durableTurnValidator, startDurablePreparation, withDurableTool } from '../messaging/model';
+import { markBookingPaid, queueCancellationEmail } from './model';
 
 function assertBookingAccess(
 	booking: Doc<'bookings'>,
@@ -94,12 +83,6 @@ export const quoteStay = publicQuery({
 	}
 });
 
-function assertNotCancelled(booking: Doc<'bookings'>): void {
-	if (booking.status === 'cancelled') {
-		throw new Error('This booking was cancelled.');
-	}
-}
-
 export const create = publicMutation({
   reason: "Anonymous booking form; validated contact details and booking rate limits.",
 	args: {
@@ -123,158 +106,6 @@ export const create = publicMutation({
 		return await createBookingRecord(ctx, { ...args, source: 'web' });
 	}
 });
-
-
-export function isDocumentedLiveRefund(booking: Doc<'bookings'>) {
-	return booking.status !== 'cancelled' && booking.paymentStatus === 'refunded' &&
-		booking.amountPaid !== undefined && booking.amountRefunded !== undefined &&
-		roundMoney(booking.amountRefunded) === roundMoney(booking.amountPaid);
-}
-
-export type StayPaymentInput = {
-	origin: 'manual' | 'pos' | 'online';
-	method: Doc<'bookingPayments'>['method'];
-	/** Admin email, or `system:<provider>`. */
-	actor: string;
-
-	paymentLabel: string;
-	/** Business date the money was received; defaults to now. */
-	effectiveAt?: number;
-	orderId?: Id<'orders'>;
-	idempotencyKey?: string;
-	note?: string;
-	/** Undefined: default (online always; staff paths per lib/bookingMoney resolveNotify). */
-	notifyGuest?: boolean;
-	/** The amount staff reviewed; refused if the stay now owes something else. */
-	expectedAmount?: number;
-	/**
-	 * Records only this part of what the stay owes (a paid order row linked later, pos.linkPaidLine).
-	 * Refused above the balance. A part payment keeps the stay's payment status (pending stays pending).
-	 */
-	amount?: number;
-};
-
-/**
- * Records money received for everything the stay still owes (or `input.amount` of it), confirms it and holds its nights, in
- * the caller's transaction. Writes a bookingPayments row, adds it to the gross `amountPaid` (so
- * earlier deposits and recorded refunds stay counted) and appends the booking history. A stay that
- * owes nothing is left alone and returns `paymentId: null`.
- */
-export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'bookings'>, input: StayPaymentInput) {
-	const booking = await ctx.db.get(bookingId);
-	if (!booking) {
-		throw new Error('Booking not found');
-	}
-	assertNotCancelled(booking);
-	if (booking.paymentStatus === 'failed' || (booking.paymentStatus === 'refunded' && !isDocumentedLiveRefund(booking))) {
-		throw new Error('Reopen this booking before recording a payment on it.');
-	}
-	if (input.origin !== 'online' && (booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) {
-		throw new Error('An active Stripe checkout must expire before changing this booking manually.');
-	}
-	const money = stayMoney(booking);
-	if (input.expectedAmount !== undefined && roundMoney(input.expectedAmount) !== money.owed) {
-		throw new Error(`This stay now owes ${satangToBaht(money.owed)}, not ${satangToBaht(roundMoney(input.expectedAmount))}. Review the balance and try again.`);
-	}
-	if (money.owed <= 0) return { booking, paymentId: null };
-	const amount = input.amount ?? money.owed;
-	if (input.amount !== undefined) {
-		if (!Number.isFinite(amount) || amount <= 0 || roundMoney(amount) !== amount) throw new Error('The amount must be more than zero, in whole satang.');
-		if (amount > money.owed) throw new Error(`This stay owes ${satangToBaht(money.owed)}, less than ${satangToBaht(amount)}.`);
-		// `refunded` counts all money as returned and `failed` needs a reopen, so a part payment needs a live status.
-		if (amount < money.owed && booking.paymentStatus !== 'pending' && booking.paymentStatus !== 'paid') {
-			throw new Error('Record what the stay owes in full, or reopen it first.');
-		}
-	}
-	const full = amount === money.owed;
-	// Validates (no overlapping confirmed booking, no other hold or block) and holds the nights in
-	// this transaction; a conflict throws before anything is marked paid.
-	await blockBookingDates(ctx, booking, bookingId);
-
-	const now = Date.now();
-	const effectiveAt = effectiveTime(input.effectiveAt, now);
-	const paymentId = await ctx.db.insert('bookingPayments', {
-		bookingId, origin: input.origin, amount, currency: booking.currency, method: input.method,
-		...(input.orderId ? { orderId: input.orderId } : {}),
-		effectiveAt, recordedAt: now, recordedBy: input.actor,
-		...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
-		...(input.note ? { note: input.note } : {}),
-		refunded: 0, status: 'recorded'
-	});
-	const bookingIdText = bookingId as string;
-	const updated = await writeBooking(ctx, booking, {
-		paymentStatus: full ? 'paid' : booking.paymentStatus,
-		status: 'confirmed',
-		// The first payment's business date; a later balance payment keeps it. A part payment leaves it.
-		paidAt: !full ? booking.paidAt : booking.paymentStatus === 'paid' ? (booking.paidAt ?? effectiveAt) : effectiveAt,
-		// Paid in full: a deposit taken earlier is part of the total, not on top of it.
-		amountPaid: roundMoney(money.gross + amount),
-		paymentMethod: booking.paymentMethod ?? input.paymentLabel,
-		confirmationCode: booking.confirmationCode ?? demoCode('CONF', bookingIdText),
-		invoiceNumber: booking.invoiceNumber ?? demoCode('INV', bookingIdText),
-		receiptNumber: booking.receiptNumber ?? demoCode('REC', bookingIdText)
-	}, {
-		actor: input.actor, kind: 'payment_recorded', effectiveAt,
-		...(input.note ? { reason: input.note } : {}),
-		details: {
-			paymentId, origin: input.origin, method: input.method, amount, ...(input.orderId ? { orderId: input.orderId } : {})
-		}
-	});
-
-	// The guest started an online payment themselves, so it is always confirmed to them.
-	const notify = input.origin === 'online' ? (input.notifyGuest ?? true) : resolveNotify(input.notifyGuest, booking);
-	if (notify) await queueBookingEmails(ctx, booking);
-	return { booking: updated, paymentId };
-}
-
-
-export async function markBookingPaid(ctx: MutationCtx, bookingId: Id<'bookings'>, paymentMethod: string, options: Partial<Omit<StayPaymentInput, 'paymentLabel'>> = {}) {
-	const origin = options.origin ?? (paymentMethod === 'admin' ? 'manual' : paymentMethod === 'pos' ? 'pos' : 'online');
-	if (origin === 'online') {
-		const booking = await ctx.db.get(bookingId);
-		if (booking?.paymentStatus === 'paid') return booking;
-	}
-	const method = options.method ?? (origin === 'manual' ? 'unrecorded' : origin === 'pos' ? 'order' : paymentMethod === 'stripe' ? 'stripe' : 'provider');
-	const { booking } = await recordStayPayment(ctx, bookingId, {
-		...options, origin, method, actor: options.actor ?? `system:${paymentMethod}`, paymentLabel: paymentMethod
-	});
-	return booking;
-}
-
-export async function queueBookingEmails(ctx: MutationCtx, booking: Doc<'bookings'>, force = false) {
-	const bookingId = booking._id;
-	if (force || !booking.confirmationEmailsQueuedAt) {
-		const property = await ctx.db.get(booking.propertyId);
-		const details = {
-			guestName: booking.guestName,
-			propertyName: property?.name ?? 'Your stay',
-			checkIn: booking.checkIn,
-			checkOut: booking.checkOut,
-			nights: booking.nights,
-			guests: booking.guests,
-			total: booking.total,
-			currency: booking.currency
-		};
-		await ctx.db.patch(bookingId, { confirmationEmailsQueuedAt: Date.now() });
-		if (booking.guestEmail) {
-			await ctx.scheduler.runAfter(0, internal.emails.sendBookingConfirmation, {
-				...details,
-				guestEmail: booking.guestEmail
-			});
-		}
-		await ctx.scheduler.runAfter(0, internal.emails.sendOwnerNotification, {
-			...details,
-			guestEmail: booking.guestEmail ?? '',
-			guestPhone: booking.guestPhone
-		});
-	}
-}
-
-export async function queueCancellationEmail(ctx: MutationCtx, booking: Doc<'bookings'>) {
-	if (booking.status === 'cancelled' || booking.cancellationEmailQueuedAt || !booking.guestEmail?.trim()) return;
-	await ctx.db.patch(booking._id, { cancellationEmailQueuedAt: Date.now() });
-	await ctx.scheduler.runAfter(0, internal.emails.sendCancellation, { bookingId: booking._id });
-}
 
 export const getLifecycleEmailDetails = internalQuery({
 	args: {

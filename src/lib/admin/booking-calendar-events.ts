@@ -1,6 +1,6 @@
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
-import type { AdminBooking } from "convex/adminBookings";
+import type { AdminBooking } from "convex/bookings/model";
 import { format } from "date-fns";
 import { addDaysIso } from "@/lib/booking/dates";
 import type { CalendarEvent } from "@/components/reui/event-calendar/event-calendar-types";
@@ -18,7 +18,7 @@ import {
  * dependency on the vendored calendar's internals beyond its `CalendarEvent` shape.
  */
 
-type ListData = FunctionReturnType<typeof api.adminBookings.listForAdmin>;
+type ListData = FunctionReturnType<typeof api.bookings.admin.listForAdmin>;
 
 /** What a hotel-calendar chip carries, so clicks and drags can tell bookings from blocks apart. */
 export type HotelEventData =

@@ -57,7 +57,7 @@ async function listBookings(t: ReturnType<typeof convexTest>) {
 describe("AI chat booking", () => {
   it.each([-30, -2])("rejects historical and ongoing check-ins during preparation (%i days)", async (days) => {
     const { t, sessionId } = await setup();
-    await expect(t.mutation(internal.bookings.prepareChatBooking, {
+    await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, {
       sessionId, ...stay, checkIn: isoInDays(days), checkOut: isoInDays(days + 4),
     })).rejects.toThrow("in the past");
     expect(await listBookings(t)).toEqual([]);
@@ -65,39 +65,39 @@ describe("AI chat booking", () => {
 
   it("revalidates past dates at chat confirmation", async () => {
     const { t, sessionId } = await setup();
-    await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+    await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
     await t.run(async ctx => {
       const session = await ctx.db.get(sessionId);
       await ctx.db.patch(sessionId, {
         pendingBookingQuote: { ...session!.pendingBookingQuote!, checkIn: isoInDays(-2), checkOut: isoInDays(1) },
       });
     });
-    await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow("in the past");
+    await expect(t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId })).rejects.toThrow("in the past");
     expect(await listBookings(t)).toEqual([]);
   });
 
   it("rejects an inactive property when preparing or confirming a chat booking", async () => {
     const { t, sessionId, propertyId } = await setup();
     await t.run(ctx => ctx.db.patch(propertyId, { status: "draft" }));
-    await expect(t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay }))
+    await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay }))
       .rejects.toThrow("Property is not available for booking");
     await t.run(ctx => ctx.db.patch(propertyId, { status: "active" }));
-    await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+    await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
     await t.run(ctx => ctx.db.patch(propertyId, { status: "archived" }));
-    await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId }))
+    await expect(t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId }))
       .rejects.toThrow("Property is not available for booking");
   });
   it("rejects confirm_booking without a prepared quote", async () => {
     const { t, sessionId } = await setup();
     await expect(
-      t.mutation(internal.bookings.confirmChatBooking, { sessionId }),
+      t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId }),
     ).rejects.toThrow("No prepared booking");
     expect(await listBookings(t)).toHaveLength(0);
   });
 
   it("rejects a stale quote", async () => {
     const { t, sessionId } = await setup();
-    await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+    await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
     await t.run(async (ctx) => {
       const session = await ctx.db.get(sessionId);
       await ctx.db.patch(sessionId, {
@@ -106,7 +106,7 @@ describe("AI chat booking", () => {
     });
 
     await expect(
-      t.mutation(internal.bookings.confirmChatBooking, { sessionId }),
+      t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId }),
     ).rejects.toThrow("expired");
     expect(await listBookings(t)).toHaveLength(0);
   });
@@ -133,17 +133,17 @@ describe("AI chat booking", () => {
     });
 
     await expect(
-      t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay }),
+      t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay }),
     ).rejects.toThrow("no longer available");
   });
 
   it("confirms once even if the guest says yes twice", async () => {
     const { t, sessionId } = await setup();
-    await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+    await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 
-    const first = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    const first = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
     if (first.needsReview) throw new Error("Expected a confirmed booking");
-    const second = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    const second = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
     if (second.needsReview) throw new Error("Expected a confirmed booking");
 
     expect(second.bookingId).toBe(first.bookingId);
@@ -161,12 +161,12 @@ describe("AI chat booking", () => {
 
   it("takes the WhatsApp phone from the session, not from model arguments", async () => {
     const { t, sessionId } = await setup("whatsapp");
-    const summary = await t.mutation(internal.bookings.prepareChatBooking, {
+    const summary = await t.mutation(internal.bookings.bookings.prepareChatBooking, {
       sessionId,
       ...stay,
       guestPhone: "+1 555 000 0000",
     });
-    await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+    await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
 
     expect(summary.guestPhone).toBe("66956823432");
     expect((await listBookings(t))[0].guestPhone).toBe("66956823432");
@@ -175,10 +175,10 @@ describe("AI chat booking", () => {
   it("requires a phone number on channels without a verified one", async () => {
     const { t, sessionId } = await setup("facebook");
     await expect(
-      t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay }),
+      t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay }),
     ).rejects.toThrow("phone number");
 
-    const summary = await t.mutation(internal.bookings.prepareChatBooking, {
+    const summary = await t.mutation(internal.bookings.bookings.prepareChatBooking, {
       sessionId,
       ...stay,
       guestPhone: "0812345678",
@@ -342,12 +342,12 @@ describe("AI chat booking through generateReply", () => {
 });
 
 async function bookViaChat(t: ReturnType<typeof convexTest>, sessionId: Id<"conversations">, guestPhone?: string) {
-  await t.mutation(internal.bookings.prepareChatBooking, {
+  await t.mutation(internal.bookings.bookings.prepareChatBooking, {
     sessionId,
     ...stay,
     ...(guestPhone ? { guestPhone } : {}),
   });
-  const confirmed = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+  const confirmed = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
   if (confirmed.needsReview) throw new Error("Expected a confirmed booking");
   return confirmed;
 }
@@ -380,7 +380,7 @@ describe("get_my_bookings / cancel_booking", () => {
       }
     });
 
-    const bookings = await t.query(internal.bookings.listChatGuestBookings, { sessionId });
+    const bookings = await t.query(internal.bookings.bookings.listChatGuestBookings, { sessionId });
 
     expect(bookings).toHaveLength(2);
     expect(bookings.map((b) => b.reference)).toContain(booked.confirmationCode);
@@ -394,9 +394,9 @@ describe("get_my_bookings / cancel_booking", () => {
       ctx.db.insert("conversations", { channel: "facebook", visitorId: "facebook:other", createdAt: Date.now() }),
     );
 
-    expect(await t.query(internal.bookings.listChatGuestBookings, { sessionId: otherSession })).toHaveLength(0);
+    expect(await t.query(internal.bookings.bookings.listChatGuestBookings, { sessionId: otherSession })).toHaveLength(0);
     await expect(
-      t.mutation(internal.bookings.cancelChatBooking, {
+      t.mutation(internal.bookings.bookings.cancelChatBooking, {
         sessionId: otherSession,
         reference: (await listBookings(t))[0].confirmationCode!,
         turnStartedAt: Date.now(),
@@ -414,17 +414,17 @@ describe("get_my_bookings / cancel_booking", () => {
     });
     const turn1 = Date.now();
 
-    const first = await t.mutation(internal.bookings.cancelChatBooking, {
+    const first = await t.mutation(internal.bookings.bookings.cancelChatBooking, {
       sessionId, reference: confirmationCode.toLowerCase(), turnStartedAt: turn1,
     });
-    const sameTurn = await t.mutation(internal.bookings.cancelChatBooking, {
+    const sameTurn = await t.mutation(internal.bookings.bookings.cancelChatBooking, {
       sessionId, reference: confirmationCode, turnStartedAt: turn1,
     });
     expect(first.state).toBe("needs_confirmation");
     expect(sameTurn.state).toBe("needs_confirmation");
     expect((await listBookings(t))[0].status).toBe("pending");
 
-    const later = await t.mutation(internal.bookings.cancelChatBooking, {
+    const later = await t.mutation(internal.bookings.bookings.cancelChatBooking, {
       sessionId, reference: confirmationCode, turnStartedAt: Date.now() + 1,
     });
     expect(later.state).toBe("cancelled");
@@ -432,17 +432,17 @@ describe("get_my_bookings / cancel_booking", () => {
     expect(await t.run(async ctx => (await ctx.db.query("availability").collect()).filter(row => row.bookingId === bookingId))).toEqual([]);
 
     await expect(
-      t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId }),
+      t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId }),
     ).rejects.toThrow("cancelled");
   });
 
   it("refuses to cancel paid bookings in chat", async () => {
     const { t, sessionId } = await setup("whatsapp");
     const { confirmationCode, bookingId } = await bookViaChat(t, sessionId);
-    await t.mutation(internal.bookings.markPaidFromTrustedWebhook, { bookingId });
+    await t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
 
     await expect(
-      t.mutation(internal.bookings.cancelChatBooking, {
+      t.mutation(internal.bookings.bookings.cancelChatBooking, {
         sessionId, reference: confirmationCode, turnStartedAt: Date.now(),
       }),
     ).rejects.toThrow("cancelled by the host");

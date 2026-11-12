@@ -35,11 +35,11 @@ it('charges Stripe the stored satang amount', async () => {
     return new Response(JSON.stringify({ id: 'cs_satang', url: 'https://checkout.stripe.com/satang', expires_at: Math.floor(Date.now() / 1000) + 3600 }));
   });
   vi.stubGlobal('fetch', call);
-  await t.action(api.payments.createCheckout, stay);
+  await t.action(api.bookings.payments.stripe.createCheckout, stay);
   expect(call).toHaveBeenCalledTimes(1);
   const args = { bookingId: stay.bookingId, sessionId: 'cs_satang', amountTotal: booking.total, currency: 'thb', paymentIntentId: 'pi_satang' };
-  await t.mutation(internal.payments.completeCheckout, args);
-  await t.mutation(internal.payments.completeCheckout, args);
+  await t.mutation(internal.bookings.payments.stripe.completeCheckout, args);
+  await t.mutation(internal.bookings.payments.stripe.completeCheckout, args);
   expect(await t.run(ctx => ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', stay.bookingId)).take(10))).toMatchObject([{ amount: booking.total }]);
 });
 

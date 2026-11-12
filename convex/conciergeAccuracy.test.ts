@@ -77,7 +77,7 @@ describe('tool inputs and honest outcomes', () => {
 
 	it('blocks a model confirmation without explicit guest consent', async () => {
 		const { t, sessionId, stay } = await setup();
-		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'confirm_booking', '{}', 'tool_calls'), modelReply('Booked!')]);
 		const result = await generateTestReply(t, { sessionId, userMessage: 'How many bedrooms does it have?' });
 		expect(result.model).toBe('tool_fallback');
@@ -86,11 +86,11 @@ describe('tool inputs and honest outcomes', () => {
 
 	it('invalidates an old proposal when a replacement preparation is malformed', async () => {
 		const { t, sessionId, stay } = await setup();
-		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'prepare_booking', '{broken', 'tool_calls'), modelReply('Please clarify the new dates.')]);
 		await generateTestReply(t, { sessionId, userMessage: 'Change the dates of my draft.' });
 		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
-		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
+		await expect(t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
 	});
 
 	it.each([
@@ -100,7 +100,7 @@ describe('tool inputs and honest outcomes', () => {
 		{ model: 'openai/gpt-6.1-sol', truncated: true }
 	])('rejects the $model batch while invalidating the replaced draft (truncated: $truncated)', async ({ model, truncated }) => {
 		const { t, sessionId, stay } = await setup();
-		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		vi.stubEnv('AI_API_KEY', 'test-key');
 		vi.stubEnv('AI_SIMPLE_MODEL', model);
 		const calls = [
@@ -117,14 +117,14 @@ describe('tool inputs and honest outcomes', () => {
 		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
+		await expect(t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
 	});
 
 	it('does not treat a refusal to cancel as consent when cancellation is already pending', async () => {
-		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
-		const booked = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
+		const booked = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
 		if (booked.needsReview) throw new Error("Expected a confirmed booking");
-		await t.mutation(internal.bookings.cancelChatBooking, { sessionId, reference: booked.confirmationCode, turnStartedAt: Date.now() });
+		await t.mutation(internal.bookings.bookings.cancelChatBooking, { sessionId, reference: booked.confirmationCode, turnStartedAt: Date.now() });
 		modelSequence([modelReply(null, 'cancel_booking', JSON.stringify({ reference: booked.confirmationCode }), 'tool_calls'), modelReply('Booking cancelled.')]);
 		const reply = await generateTestReply(t, { sessionId, userMessage: "Don't cancel my booking." });
 		expect(reply.model).toBe('tool_fallback'); expect((await t.run(ctx => ctx.db.get(booked.bookingId)))?.status).toBe('pending');
@@ -132,7 +132,7 @@ describe('tool inputs and honest outcomes', () => {
 
 	it('renders the committed price even if a later model reply would invent another total', async () => {
 		const { t, sessionId, stay } = await setup();
-		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'confirm_booking', '{}', 'tool_calls'), modelReply('Booked for THB 1.')]);
 		const result = await generateTestReply(t, { sessionId, userMessage: 'yes' });
 		const rows = await t.run(ctx => ctx.db.query('bookings').take(10));
@@ -148,7 +148,7 @@ describe('tool inputs and honest outcomes', () => {
 	});
 
 	it('enforces staff takeover inside a write when it happens during model generation', async () => {
-		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		vi.stubEnv('AI_API_KEY', 'test-key'); let calls = 0;
 		vi.stubGlobal('fetch', vi.fn(async () => {
 			if (++calls === 1) { await t.run(ctx => ctx.db.patch(sessionId, { aiPaused: true })); return modelReply(null, 'confirm_booking', '{}', 'tool_calls'); }
@@ -160,24 +160,24 @@ describe('tool inputs and honest outcomes', () => {
 
 	it('requires a new confirmation when the live villa price changes after preparation', async () => {
 		const { t, sessionId, propertyId, stay } = await setup();
-		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 900000 }));
-		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).resolves.toMatchObject({ needsReview: true });
+		await expect(t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId })).resolves.toMatchObject({ needsReview: true });
 		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
 
 	it('prevents writes after the deadline', async () => {
 		const { t, sessionId, stay } = await setup();
-		await expect(t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, deadlineAt: Date.now() - 1 })).rejects.toThrow('deadline exceeded');
+		await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, deadlineAt: Date.now() - 1 })).rejects.toThrow('deadline exceeded');
 		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
 	});
 
 	it('does not present a cancelled booking as a fresh confirmation', async () => {
-		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
-		const booked = await t.mutation(internal.bookings.confirmChatBooking, { sessionId });
+		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
+		const booked = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
 		if (booked.needsReview) throw new Error("Expected a confirmed booking");
 		await t.run(ctx => ctx.db.patch(booked.bookingId, { status: 'cancelled' }));
-		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('cancelled');
+		await expect(t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('cancelled');
 	});
 });
 
@@ -186,11 +186,11 @@ describe('review accuracy regressions', () => {
 
 	it('a delayed yes cannot commit a replacement proposal from another turn', async () => {
 		const { t, sessionId, stay } = await setup();
-		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		vi.stubEnv('AI_API_KEY', 'test-key'); let calls = 0;
 		vi.stubGlobal('fetch', vi.fn(async () => {
 			if (++calls === 1) {
-				await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, guests: 3 });
+				await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, guests: 3 });
 				return modelReply(null, 'confirm_booking', '{}', 'tool_calls');
 			}
 			return modelReply('Your booking is confirmed.');
@@ -200,7 +200,7 @@ describe('review accuracy regressions', () => {
 	});
 
 	it('an amended yes does not confirm the previous guest count', async () => {
-		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'confirm_booking', '{}', 'tool_calls'), modelReply('Your booking is confirmed.')]);
 		const reply = await generateTestReply(t, { sessionId, userMessage: 'Yes, for 3 guests.' });
 		expect(reply.model).toBe('tool_fallback'); expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
@@ -209,11 +209,11 @@ describe('review accuracy regressions', () => {
 
 
 it('recovers the same committed booking for a second yes using the original proposal snapshot', async () => {
-	const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
+	const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 	const expectedProposal = proposalIdentity((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote);
-	const first = await t.mutation(internal.bookings.confirmChatBooking, { sessionId, expectedProposal });
+	const first = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId, expectedProposal });
 	if (first.needsReview) throw new Error("Expected a confirmed booking");
-	const repeated = await t.mutation(internal.bookings.confirmChatBooking, { sessionId, expectedProposal });
+	const repeated = await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId, expectedProposal });
 	if (repeated.needsReview) throw new Error("Expected a confirmed booking");
 	expect(repeated.confirmationCode).toBe(first.confirmationCode); expect(repeated.alreadyConfirmed).toBe(true); expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(1);
 });

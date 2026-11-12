@@ -12,18 +12,18 @@ async function setup(deposit = 0) {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
-  const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
+  const { bookingId, accessToken } = await t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   if (deposit) await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: deposit, paymentStatus: 'paid' }));
-  const begin = () => t.mutation(internal.payments.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
+  const begin = () => t.mutation(internal.bookings.payments.stripe.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
   const start = async () => {
     const { request } = await begin();
     if (!request) throw new Error('No request');
-    await t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken, sessionId: 'cs_checkout', url: 'https://checkout.stripe.com/test', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
+    await t.mutation(internal.bookings.payments.stripe.saveCheckoutSession, { bookingId, accessToken, sessionId: 'cs_checkout', url: 'https://checkout.stripe.com/test', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
     return request;
   };
-  const complete = (amountTotal = 20000 - deposit) => t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: 'cs_checkout', paymentIntentId: 'pi_checkout', amountTotal, currency: 'thb' });
+  const complete = (amountTotal = 20000 - deposit) => t.mutation(internal.bookings.payments.stripe.completeCheckout, { bookingId, sessionId: 'cs_checkout', paymentIntentId: 'pi_checkout', amountTotal, currency: 'thb' });
   const read = () => t.run(ctx => ctx.db.get(bookingId));
-  const refund = (amountRefunded: number, eventId = `evt_${amountRefunded}`) => t.mutation(internal.payments.recordRefund, { paymentIntentId: 'pi_checkout', chargeId: 'ch_checkout', eventId, eventCreated: now / 1000 - 60, currency: 'thb', amount: 20000 - deposit, amountRefunded, refunds: [] });
+  const refund = (amountRefunded: number, eventId = `evt_${amountRefunded}`) => t.mutation(internal.bookings.payments.stripe.recordRefund, { paymentIntentId: 'pi_checkout', chargeId: 'ch_checkout', eventId, eventCreated: now / 1000 - 60, currency: 'thb', amount: 20000 - deposit, amountRefunded, refunds: [] });
   return { t, admin, bookingId, accessToken, begin, start, complete, read, refund };
 }
 it.each([0,5000,15000])('charges and records only actual remaining provider money with prior deposit %s, with safe replay', async deposit => {
@@ -57,9 +57,9 @@ it('rejects stale saved balance, changed completion balance, bad currency/nonfin
   await start();
   await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 7500 }));
   await expect(complete()).rejects.toThrow('amount mismatch');
-  await expect(t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: 'cs_old', paymentIntentId: 'pi_old', amountTotal: 15000, currency: 'thb' })).rejects.toThrow('session mismatch');
-  await expect(t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: 'cs_checkout', paymentIntentId: 'pi_checkout', amountTotal: NaN, currency: 'thb' })).rejects.toThrow('amount mismatch');
-  await expect(t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: 'cs_checkout', paymentIntentId: 'pi_checkout', amountTotal: 12500, currency: 'usd' })).rejects.toThrow('amount mismatch');
+  await expect(t.mutation(internal.bookings.payments.stripe.completeCheckout, { bookingId, sessionId: 'cs_old', paymentIntentId: 'pi_old', amountTotal: 15000, currency: 'thb' })).rejects.toThrow('session mismatch');
+  await expect(t.mutation(internal.bookings.payments.stripe.completeCheckout, { bookingId, sessionId: 'cs_checkout', paymentIntentId: 'pi_checkout', amountTotal: NaN, currency: 'thb' })).rejects.toThrow('amount mismatch');
+  await expect(t.mutation(internal.bookings.payments.stripe.completeCheckout, { bookingId, sessionId: 'cs_checkout', paymentIntentId: 'pi_checkout', amountTotal: 12500, currency: 'usd' })).rejects.toThrow('amount mismatch');
   expect((await read())!.amountPaid).toBe(7500);
 });
 it('handles partial/full cumulative refunds and duplicate/out-of-order events atomically without cancelling the real stay', async () => {
@@ -92,20 +92,20 @@ it('requires explicit provider evidence for manual Stripe refunds and reconciles
   const { t, admin, bookingId, start, complete, refund, read } = await setup(); await start(); await complete();
   await t.run(ctx => ctx.db.patch(bookingId, { status: 'cancelled' }));
   const revision = (await read())!.revision!;
-  const { refundId } = await admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: revision, amount: 5000, currency: 'THB', method: 'stripe', reason: 'Refunded in dashboard', idempotencyKey: 'manual-stripe-refund' });
+  const { refundId } = await admin.mutation(api.bookings.commands.recordRefund.recordRefund, { bookingId, expectedRevision: revision, amount: 5000, currency: 'THB', method: 'stripe', reason: 'Refunded in dashboard', idempotencyKey: 'manual-stripe-refund' });
   await expect(refund(5000)).rejects.toThrow('Link manually recorded');
   expect((await read())!.amountRefunded).toBe(5000);
   const link = { bookingId, refundId, expectedRevision: (await read())!.revision!, chargeId: 'ch_checkout', providerRefundId: 're_actual' };
-  await expect(t.mutation(api.payments.linkRecordedStripeRefund, link)).rejects.toThrow('authenticated');
-  await expect(admin.mutation(api.payments.linkRecordedStripeRefund, { ...link, expectedRevision: revision })).rejects.toThrow('changed');
-  await admin.mutation(api.payments.linkRecordedStripeRefund, link);
+  await expect(t.mutation(api.bookings.payments.stripe.linkRecordedStripeRefund, link)).rejects.toThrow('authenticated');
+  await expect(admin.mutation(api.bookings.payments.stripe.linkRecordedStripeRefund, { ...link, expectedRevision: revision })).rejects.toThrow('changed');
+  await admin.mutation(api.bookings.payments.stripe.linkRecordedStripeRefund, link);
   // A lost response can retry the same evidence with its original reviewed revision.
   const afterLink = await t.run(ctx => ctx.db.get(bookingId));
-  await admin.mutation(api.payments.linkRecordedStripeRefund, link);
+  await admin.mutation(api.bookings.payments.stripe.linkRecordedStripeRefund, link);
   expect((await t.run(ctx => ctx.db.get(bookingId)))?.revision).toBe(afterLink?.revision);
   await expect(refund(5000)).rejects.toThrow('lacks the linked');
-  await expect(t.mutation(internal.payments.recordRefund, { paymentIntentId: 'pi_checkout', chargeId: 'ch_checkout', eventId: 'evt_wrong_evidence', eventCreated: now / 1000, currency: 'thb', amount: 20000, amountRefunded: 5000, refunds: [{ id: 're_actual', amount: 2500, currency: 'thb', status: 'succeeded' }] })).rejects.toThrow('differs from actual');
-  await t.mutation(internal.payments.recordRefund, { paymentIntentId: 'pi_checkout', chargeId: 'ch_checkout', eventId: 'evt_actual', eventCreated: now / 1000, currency: 'thb', amount: 20000, amountRefunded: 5000, refunds: [{ id: 're_actual', amount: 5000, currency: 'thb', status: 'succeeded' }] });
+  await expect(t.mutation(internal.bookings.payments.stripe.recordRefund, { paymentIntentId: 'pi_checkout', chargeId: 'ch_checkout', eventId: 'evt_wrong_evidence', eventCreated: now / 1000, currency: 'thb', amount: 20000, amountRefunded: 5000, refunds: [{ id: 're_actual', amount: 2500, currency: 'thb', status: 'succeeded' }] })).rejects.toThrow('differs from actual');
+  await t.mutation(internal.bookings.payments.stripe.recordRefund, { paymentIntentId: 'pi_checkout', chargeId: 'ch_checkout', eventId: 'evt_actual', eventCreated: now / 1000, currency: 'thb', amount: 20000, amountRefunded: 5000, refunds: [{ id: 're_actual', amount: 5000, currency: 'thb', status: 'succeeded' }] });
   expect((await read())!.amountRefunded).toBe(5000);
   await refund(10000);
   expect((await read())!.amountRefunded).toBe(10000);
@@ -115,9 +115,9 @@ it('expires checkout and pending bookings with revision/history, protecting live
   const { t, bookingId, start, read } = await setup(); const request = await start();
   vi.setSystemTime(request.expiresAt + 1);
   const revision = (await read())!.revision ?? 0;
-  await t.mutation(internal.payments.expireCheckout, { bookingId, sessionId: 'cs_old' });
+  await t.mutation(internal.bookings.payments.stripe.expireCheckout, { bookingId, sessionId: 'cs_old' });
   expect((await read())!.revision ?? 0).toBe(revision);
-  await t.mutation(internal.payments.expireCheckout, { bookingId, sessionId: 'cs_checkout' });
+  await t.mutation(internal.bookings.payments.stripe.expireCheckout, { bookingId, sessionId: 'cs_checkout' });
   expect(await read()).toMatchObject({ status: 'cancelled', paymentStatus: 'failed', revision: revision + 1 });
   const history = await t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'booking').eq('entityId', bookingId)).take(20));
   expect(history.some(r => r.kind === 'checkout_expired')).toBe(true);
@@ -139,7 +139,7 @@ it('preserves a non-provider deposit after a full provider refund and refuses la
   const { admin, bookingId, start, complete, refund, read } = await setup(5000);
   await start(); await complete(); await refund(15000);
   expect(await read()).toMatchObject({ amountPaid: 20000, amountRefunded: 15000, providerRefundWaived: 15000, paymentStatus: 'paid', status: 'confirmed' });
-  await expect(admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: (await read())!.revision!, amount: 100, currency: 'THB', method: 'stripe', reason: 'Duplicate dashboard refund', idempotencyKey: 'duplicate-stripe-001' })).rejects.toThrow('reconciled automatically');
+  await expect(admin.mutation(api.bookings.commands.recordRefund.recordRefund, { bookingId, expectedRevision: (await read())!.revision!, amount: 100, currency: 'THB', method: 'stripe', reason: 'Duplicate dashboard refund', idempotencyKey: 'duplicate-stripe-001' })).rejects.toThrow('reconciled automatically');
 });
 it('expires pending bookings with an atomic system history and revision', async () => {
   const { t, bookingId, read } = await setup();
@@ -154,7 +154,7 @@ it('supplies the real refund date when a cancelled stay becomes fully refunded a
   await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 30000, status: 'cancelled' }));
   // Known itemised money must name its source; the 100 above it is older unitemised money.
   const paymentId = (await t.run(ctx => ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', bookingId)).first()))!._id;
-  await admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: (await read())!.revision!, amount: 20000, currency: 'THB', method: 'cash', reason: 'Actual returned money', effectiveAt: now - 10000, paymentId, idempotencyKey: 'refund-before-reversal' });
+  await admin.mutation(api.bookings.commands.recordRefund.recordRefund, { bookingId, expectedRevision: (await read())!.revision!, amount: 20000, currency: 'THB', method: 'cash', reason: 'Actual returned money', effectiveAt: now - 10000, paymentId, idempotencyKey: 'refund-before-reversal' });
   const patch = await t.run(async ctx => stayPaymentReversalPatch(ctx, (await ctx.db.get(bookingId))!, 20000));
   expect(patch).toMatchObject({ amountPaid: 20000, paymentStatus: 'refunded', refundedAt: now - 10000 });
   expect(patch).not.toHaveProperty('status');

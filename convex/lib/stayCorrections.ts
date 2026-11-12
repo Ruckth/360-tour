@@ -1,7 +1,7 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { queueCancellationEmail } from '../bookings';
+import { queueCancellationEmail } from '../bookings/model';
 import { releaseBookingDates } from './availabilityWrites';
 import { lineNet, orderTitle, roundMoney } from './orderMath';
 import {

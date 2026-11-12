@@ -94,7 +94,7 @@ describe('discarding unpaid orders', () => {
 		expect(entry).toMatchObject({ kind: 'discarded', actor: 'admin@example.com', reason: 'Duplicate of order 2', after: { status: 'discarded' } });
 		expect(entry.before).toMatchObject({ status: 'draft', bookingId, customerId, total: 3030000, lines: [expect.objectContaining({ kind: 'booking', bookingId }), expect.objectContaining({ name: 'Water', unitPrice: 30000 })] });
 		// The stay itself is untouched: still confirmed and owing.
-		expect(await admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ status: 'confirmed', paymentStatus: 'pending' });
+		expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ status: 'confirmed', paymentStatus: 'pending' });
 		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))).toMatchObject({ activeOrder: null, orders: [], discardedOrders: [{ _id: orderId, discardReason: 'Duplicate of order 2' }] });
 	});
 
@@ -179,21 +179,21 @@ describe('discarding unpaid orders', () => {
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
 		await discard(orderId);
 		// A pending test booking whose order was discarded still can't be hard-deleted: the order keeps its row.
-		const testBooking = await admin.mutation(api.adminBookings.createBooking, {
+		const testBooking = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
 			propertySlug: 'villa', guestName: 'Test', guestPhone: '+66 81 234 5678', checkIn: '2026-11-10', checkOut: '2026-11-12', guests: 2, notifyGuest: false
 		});
 		const { orderId: testOrder } = await admin.mutation(api.pos.openOrderFor, { bookingId: testBooking });
 		await discard(testOrder);
-		await expect(admin.mutation(api.adminBookings.deleteBooking, { bookingId: testBooking })).rejects.toThrow('has an order');
+		await expect(admin.mutation(api.bookings.commands.deleteBooking.deleteBooking, { bookingId: testBooking })).rejects.toThrow('has an order');
 		// Staff can charge the stay on a new order meanwhile.
 		const reopened = await admin.mutation(api.pos.openOrderFor, { bookingId });
 		expect(reopened.orderId).not.toBe(orderId);
 		expect((await order(reopened.orderId)).lines.filter((line) => line.bookingId === bookingId)).toHaveLength(1);
-		await expect(admin.mutation(api.adminBookings.recordPayment, {
+		await expect(admin.mutation(api.bookings.commands.recordPayment.recordPayment, {
 			bookingId, expectedRevision: 0, expectedAmount: 2000000, method: 'cash', idempotencyKey: 'desk-pay-0001'
 		})).rejects.toThrow('still open');
 		await settle({ orderId: reopened.orderId });
-		expect(await admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ paymentStatus: 'paid' });
+		expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ paymentStatus: 'paid' });
 	});
 });
 
@@ -278,8 +278,8 @@ describe('restoring discarded orders', () => {
 		const staleRow = (await order(orderId)).lines[0];
 		await discard(orderId);
 		// The stay is edited while the order is discarded: the source keeps its new terms.
-		const booking = (await admin.query(api.adminBookings.getForAdmin, { bookingId }))!;
-		await admin.mutation(api.adminBookings.editBooking, {
+		const booking = (await admin.query(api.bookings.admin.getForAdmin, { bookingId }))!;
+		await admin.mutation(api.bookings.commands.editBooking.editBooking, {
 			bookingId, expectedRevision: booking.revision, propertyId: booking.propertyId, checkIn: '2026-10-01', checkOut: '2026-10-05',
 			guests: 2, guestName: 'Anna', guestPhone: booking.guestPhone, notifyGuest: false
 		});
@@ -287,11 +287,11 @@ describe('restoring discarded orders', () => {
 		expect(result.warnings).toEqual([expect.objectContaining({ kind: 'changed', name: 'Stay · Pool Villa' })]);
 		const view = await order(orderId);
 		expect(view.lines[0]).toMatchObject({ _id: staleRow._id, unitPrice: 3000000, detail: staleRow.detail, sourceIssue: { kind: 'changed' } });
-		expect(await admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ checkOut: '2026-10-05', total: 4000000 });
+		expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ checkOut: '2026-10-05', total: 4000000 });
 		await expect(settle({ orderId })).rejects.toThrow('changed since it was added');
 		await admin.mutation(api.pos.updateSourceLine, { lineId: staleRow._id });
 		await settle({ orderId });
-		expect(await admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ paymentStatus: 'paid', amountPaid: 4000000 });
+		expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ paymentStatus: 'paid', amountPaid: 4000000 });
 
 		// Paid elsewhere while discarded: the restored row is flagged and refused, then removed.
 		const second = await setup();
@@ -438,15 +438,15 @@ describe('payment reversal on a cancelled stay', () => {
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
 		await settle({ orderId });
 		vi.advanceTimersByTime(3_600_000);
-		const booking = (await admin.query(api.adminBookings.getForAdmin, { bookingId }))!;
+		const booking = (await admin.query(api.bookings.admin.getForAdmin, { bookingId }))!;
 		const refundAt = Date.now() - 60_000;
-		await admin.mutation(api.adminBookings.cancelStay, {
+		await admin.mutation(api.bookings.commands.cancelStay.cancelStay, {
 			bookingId, expectedRevision: booking.revision, reason: 'Guest left', notifyGuest: false,
 			refund: { amount: 1000000, currency: 'THB', method: 'cash', reason: 'Deposit returned', idempotencyKey: 'refund-0001', effectiveAt: refundAt, paymentId: depositId }
 		});
 		vi.advanceTimersByTime(3_600_000);
 		await admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-unreceived-1', reason: 'Card never went through' });
-		expect(await admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ status: 'cancelled', paymentStatus: 'refunded', refundedAt: refundAt });
+		expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ status: 'cancelled', paymentStatus: 'refunded', refundedAt: refundAt });
 	});
 
 	it('keeps a confirmed stay confirmed when its mistaken payment is reversed', async () => {
@@ -455,7 +455,7 @@ describe('payment reversal on a cancelled stay', () => {
 		await settle({ orderId });
 		await admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-unreceived-2', reason: 'Entered twice' });
 		// The online deposit stays; the stay keeps its status (and nights) and owes the balance again.
-		expect(await admin.query(api.adminBookings.getForAdmin, { bookingId })).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', amountPaid: 1000000, money: { owed: 2000000 } });
+		expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', amountPaid: 1000000, money: { owed: 2000000 } });
 	});
 });
 

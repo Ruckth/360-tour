@@ -8,7 +8,7 @@ import { seedTourSnippets } from '../seeds/tourSnippets';
 import { seedStaffServicesData } from '../seeds/staffServices';
 import { recomputeSocialProof } from '../catalog/model';
 import { createBookingRecord } from '../lib/bookingWrites';
-import { recordStayPayment } from '../bookings';
+import { recordStayPayment } from '../bookings/model';
 import { blockBookingDates } from '../lib/availabilityWrites';
 import { writeBooking } from '../lib/bookingMoney';
 import { insertOrder } from '../lib/orderLinks';

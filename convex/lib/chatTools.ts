@@ -364,7 +364,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const checkOut = String(fnArgs.checkOut);
 
 			const nights = assertStayDates(checkIn, checkOut);
-			const available = await ctx.runQuery(api.availability.isAvailable, {
+			const available = await ctx.runQuery(api.bookings.calendar.availability.isAvailable, {
 				propertyId: property._id,
 				checkIn,
 				checkOut
@@ -457,7 +457,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 
 
     case 'preview_coupon': {
-      const quote = await ctx.runQuery(internal.bookings.previewChatCoupon, {
+      const quote = await ctx.runQuery(internal.bookings.bookings.previewChatCoupon, {
         sessionId: toolContext.sessionId, couponCode: String(fnArgs.couponCode), propertySlug: String(fnArgs.propertySlug),
         checkIn: String(fnArgs.checkIn), checkOut: String(fnArgs.checkOut), ...(typeof fnArgs.guests === 'number' ? { guests: fnArgs.guests } : {})
       });
@@ -465,7 +465,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
       return humanToolResult({ ...quote, bookingUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/booking?${params}` });
     }
 		case 'prepare_booking': {
-			const summary = await ctx.runMutation(internal.bookings.prepareChatBooking, {
+			const summary = await ctx.runMutation(internal.bookings.bookings.prepareChatBooking, {
 				sessionId: toolContext.sessionId,
 				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
@@ -481,7 +481,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		}
 
 		case 'confirm_booking': {
-			const booking = await ctx.runMutation(internal.bookings.confirmChatBooking, {
+			const booking = await ctx.runMutation(internal.bookings.bookings.confirmChatBooking, {
 				sessionId: toolContext.sessionId,
 				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				expectedProposal: toolContext.bookingProposal ?? '',
@@ -491,7 +491,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		}
 
 		case 'get_my_bookings': {
-			const bookings = await ctx.runQuery(internal.bookings.listChatGuestBookings, {
+			const bookings = await ctx.runQuery(internal.bookings.bookings.listChatGuestBookings, {
 				sessionId: toolContext.sessionId
 			});
 			const services = await ctx.runQuery(internal.serviceBookings.listChatGuestServiceBookings, {
@@ -509,7 +509,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'cancel_booking': {
 			const reference = String(fnArgs.reference ?? '');
 			const result = await ctx.runMutation(reference.trim().toUpperCase().startsWith('SVC-')
-				? internal.serviceBookings.cancelChatServiceBooking : internal.bookings.cancelChatBooking, {
+				? internal.serviceBookings.cancelChatServiceBooking : internal.bookings.bookings.cancelChatBooking, {
 				sessionId: toolContext.sessionId,
 				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				reference,
