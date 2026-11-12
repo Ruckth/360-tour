@@ -101,8 +101,6 @@ const gitignore = existsSync(join(ROOT, '.gitignore')) ? read(join(ROOT, '.gitig
 // ---------- metrics: [id, phase due, description, measured value, target, how measured] ----------
 const m = [];
 const add = (id, phase, label, value, target, detail = []) => m.push({ id, phase, label, value, target, ok: typeof target === 'function' ? target(value) : value === target, detail });
-const eq = (t) => (v) => v === t;
-const atMost = (t) => (v) => v <= t;
 
 add('clean-tree', -1, 'Modified tracked files on the working tree', dirtyTracked(), 0);
 
