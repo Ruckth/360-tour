@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Prepare a disposable OLD-schema source copy for a paused cutover. Never contacts a backend. */
-import { execFileSync } from 'node:child_process';
+import { inspectSchema, schemaSourceReader } from './lib/convex-schema.mjs';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 const args = process.argv.slice(2);
@@ -10,8 +10,11 @@ if (!destination) throw new Error('Usage: node scripts/architecture-maintenance.
 const target = resolve(destination);
 const root = resolve(new URL('..', import.meta.url).pathname);
 if (target === root || existsSync(join(target, '.git'))) throw new Error('Use a disposable source archive, never a working checkout');
-const expected = execFileSync('git', ['show', `${value('--old-ref', '72a657f')}:convex/schema.ts`], { cwd: root, encoding: 'utf8' });
-if (readFileSync(join(target, 'convex/schema.ts'), 'utf8') !== expected) throw new Error('The disposable schema does not match the reviewed old revision');
+const expected = inspectSchema(schemaSourceReader(root, value('--old-ref', '72a657f')));
+const actual = inspectSchema(schemaSourceReader(target));
+for (const path of new Set([...Object.keys(expected.sources), ...Object.keys(actual.sources)])) {
+  if (actual.sources[path] !== expected.sources[path]) throw new Error(`The disposable schema does not match the reviewed old revision: ${path}`);
+}
 const gate = join(target, 'convex/auth/model.ts');
 mkdirSync(dirname(gate), { recursive: true });
 writeFileSync(gate, readFileSync(join(root, 'convex/auth/model.ts')));

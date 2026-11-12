@@ -16,6 +16,8 @@ pnpm exec vitest run convex/phase1Architecture.test.ts convex/moneyCutover.test.
 
 The program generates two empty snapshot ZIPs, an exact OLD schema/table manifest, and a temporary internal scheduler helper. It does not execute Convex or contact any backend. Review both ZIPs with `unzip -l`. The root ZIP has all 91 old table directories; the rollback ZIP `empty-new-root.zip` has all 74 new table directories, and `reset-new.ts` supplies the new-schema scheduler helper; the component ZIP has the migrations component's `migrations` table. Select a newer old revision if the reviewed dependency schema changed before cutover; regenerate and inspect the count and schema hash.
 
+Since the Phase 3b schema split, the preparation script follows the actual `defineSchema` assembly for both historical monoliths and domain modules. It also writes `old-schema-sources/` and `new-schema-sources/` with repository-relative paths and per-file SHA-256 hashes in `manifest.schemaSources`. Keep these complete source graphs with the artifacts; the top-level `old-schema.ts` / `new-schema.ts` copies alone do not contain imported table definitions or validators. The maintenance preparation script verifies all reachable schema sources against the selected revision before writing its gate. These are offline preparation checks, not authorization to perform another reset.
+
 Record the old application commit, the new application commit, selected deployment, Vercel deployment URLs, database export path/checksum, provider-webhook settings and cron names. There are eight cron jobs in the integrated old revision (the plan's seven was stale).
 
 ## 2. Quiesce the OLD deployment

@@ -9,6 +9,7 @@
 // Test-name gates match the exact titles below, so name the tests exactly this way.
 import { execSync } from 'node:child_process';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
+import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
@@ -46,7 +47,8 @@ const count = (files, re) => files.reduce((n, p) => n + (read(p).match(re) ?? []
 const filesMatching = (files, re) => files.filter((p) => re.test(read(p))).map(rel);
 
 // ---------- measurements ----------
-const tableNames = convexProd.flatMap((p) => [...read(p).matchAll(/^\s*([A-Za-z]+):\s*defineTable\(/gm)].map((m) => m[1]));
+const schema = inspectSchema(schemaSourceReader(ROOT));
+const tableNames = schema.tables.map(table => table.name);
 
 const RETIRED_TABLES = ['tenants', 'chatAnswers', 'chatQuestions', 'chatSuggestedQuestions', 'curatedChatQuestions', 'curatedChatQuestionVariants', 'chatQuestionInteractions', 'chatKnowledgeScopes', 'chatAnswerPropertyScopes', 'chatTopics', 'chatAnswerTopics', 'pricing', 'propertyKnowledge', 'recentBookingDisplay'];
 const OLD_NAMES = ['bills', 'billLines', 'billPayments', 'billCorrections', 'billAudit', 'billCounters', 'billLineLinks', 'billRefunds', 'serviceAppointments', 'rooms', 'chatSessions', 'chatMessages', 'socialProof', 'lineWebhookEvents', 'facebookWebhookEvents', 'instagramWebhookEvents', 'whatsappWebhookEvents'];
@@ -69,7 +71,7 @@ function missingReturns() {
 }
 
 // Cross-domain imports that bypass <domain>/model.ts.
-const DOMAINS = ['auth', 'catalog', 'bookings', 'services', 'pos', 'marketing', 'messaging', 'concierge', 'settings'];
+const DOMAINS = SCHEMA_DOMAINS;
 function crossDomainViolations() {
 	const out = [];
 	for (const p of convexProd) {
@@ -123,7 +125,7 @@ add('static-dir', 0, 'Duplicate static/ directory exists (1 = yes)', existsSync(
 add('ignored-scratch', 0, 'Scratch dirs not in .gitignore (output, tmp, graphify-out)', ['output', 'tmp', 'graphify-out'].filter((d) => !new RegExp(`^/?${d}/?$`, 'm').test(gitignore)).length, 0);
 add('test-harness', 0, 'Shared Convex test harness exists (1 = yes)', existsSync(join(ROOT, 'convex/testing/harness.ts')) ? 1 : 0, 1);
 
-add('tables', 1, 'Convex tables (91 integrated − 14 retired − 3 merged)', tableNames.length, 74);
+add('tables', 1, 'Convex tables (91 integrated − 14 retired − 3 merged)', tableNames.length, 74, schema.tables.map(table => `${table.name} → ${table.source}`));
 add('channel-events-table', 1, 'Unified channelEvents table exists (1 = yes)', tableNames.includes('channelEvents') ? 1 : 0, 1);
 add('retired-tables', 1, 'Retired tables still in the schema', RETIRED_TABLES.filter((t) => tableNames.includes(t)).length, 0, RETIRED_TABLES.filter((t) => tableNames.includes(t)));
 add('old-table-names', 1, 'Tables still using pre-rename names', OLD_NAMES.filter((t) => tableNames.includes(t)).length, 0, OLD_NAMES.filter((t) => tableNames.includes(t)));
@@ -145,7 +147,7 @@ add('as-never', 3, '`as never` casts in app code (excluding reui)', count([...sr
 add('src-imports-convex-lib', 3, 'src imports of convex/lib', count(srcFiles, /from\s+['"][^'"]*convex\/lib\//g), 0, filesMatching(srcFiles, /from\s+['"][^'"]*convex\/lib\//));
 add('convex-imports-src', 3, 'convex imports of src', count(convexProd, /from\s+['"][^'"]*\/src\//g), 0, filesMatching(convexProd, /from\s+['"][^'"]*\/src\//));
 add('cross-domain', 3, 'Cross-domain imports that bypass model.ts', crossDomainViolations().length, 0, crossDomainViolations().slice(0, 20));
-add('domain-folders', 3, 'Domain folders present in convex/', DOMAINS.filter((d) => existsSync(join(ROOT, `convex/${d}`))).length, DOMAINS.length);
+add('domain-folders', 3, 'Domain folders owning assembled schema tables', DOMAINS.filter(d => schema.tables.some(table => table.source.startsWith(`convex/${d}/`))).length, DOMAINS.length, DOMAINS.map(d => `${d}: ${schema.tables.filter(table => table.source.startsWith(`convex/${d}/`)).length} tables`));
 add('demo-mode', 3, 'Files using demo mode (useOptionalConvex, dev:demo, bookingId=demo)', filesMatching([...srcFiles, ...testFiles], /useOptionalConvex|bookingId=demo/).length + (/"dev:demo"/.test(read(join(ROOT, 'package.json'))) ? 1 : 0), 0);
 add('ci-placeholder-backend', 3, 'CI steps using a placeholder Convex URL', (ciText.match(/example\.convex\.cloud|placeholder/g) ?? []).length, 0);
 add('architecture-doc', 3, 'ARCHITECTURE.md with a feature recipe (1 = yes)', existsSync(join(ROOT, 'ARCHITECTURE.md')) && /recipe/i.test(read(join(ROOT, 'ARCHITECTURE.md'))) ? 1 : 0, 1);
