@@ -10,7 +10,7 @@ import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomer
 import { requireAdmin } from './lib/adminAuth';
 import { requireStaff, requireCashierAction, assertCashierDiscount, canReadCheckoutOrder, manualReduction, type StaffActor } from './lib/staffAccess';
 import { assertNoPendingApprovals } from './lib/staffApprovalState';
-import { billRefundFields, lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
+import { approvalPayloadView, billRefundFields, lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
 import type { Infer } from 'convex/values';
 import { STALE_APPOINTMENT, recordAppointmentChange } from './lib/appointmentChanges';
 import { appointmentMoney } from './lib/appointmentFinance';
@@ -2463,9 +2463,9 @@ export const createOrder = mutation({ args: {}, handler: async ctx => {
 /** Read-only proposal for the approval card. Execution still runs every original validation. */
 export async function previewStaffApproval(ctx: MutationCtx, order: Order, payload: ApprovalPayload) {
  if (payload.kind === 'refund') {
-  const state = await refundState(ctx, { ...payload, orderId: order._id, reason: 'Approval preview' });
+  const state = await refundState(ctx, { ...payload, amount: payload.amountSatang, orderId: order._id });
   const totalBefore = round2(billTotals(await orderLines(ctx, order._id)).total - state.refunds.reduce((sum, row) => sum + row.amount, 0) / 100);
-  return { totalBefore, totalAfter: round2(totalBefore - payload.amount / 100), amount: payload.amount / 100 };
+  return { totalBefore, totalAfter: round2(totalBefore - payload.amountSatang / 100), amount: payload.amountSatang / 100 };
  }
  const lines = await orderLines(ctx, order._id);
  let proposed: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }> = lines.map(line => ({ ...line }));
@@ -2551,12 +2551,12 @@ async function requireAppointment(ctx: ReadCtx, id: Id<'serviceAppointments'>) {
 
 /** Internal TypeScript helper, not a Convex endpoint; approval identity is server-derived. */
 export async function executeStaffApproval(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, actor: StaffActor) {
- const payload = request.payload;
+ const payload = approvalPayloadView(request.payload, request.reason);
  const order = await ctx.db.get(request.orderId);
  if (!order) throw new ConvexError('Order not found');
  const correction = { orderId: order._id, reason: request.reason, expectedCorrectionRevision: order.correctionRevision ?? 0, idempotencyKey: `approval:${request._id}` };
  switch (payload.kind) {
-  case 'refund': return await executeBillRefund(ctx, { ...payload, orderId: order._id, reason: request.reason }, actor);
+  case 'refund': return await executeBillRefund(ctx, { ...payload, amount: payload.amountSatang, orderId: order._id }, actor);
   case 'discount': return await executeUpdateLine(ctx, { lineId: payload.lineId, discount: payload.discount }, actor);
   case 'customPrice':
    switch (payload.action) {

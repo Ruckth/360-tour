@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { internal } from './_generated/api';
-import { approvalPayload, APPROVAL_TTL_MS } from './lib/staffTypes';
+import { approvalPayload, approvalPayloadView, APPROVAL_TTL_MS } from './lib/staffTypes';
 import { canReadCheckoutOrder, cashierRules, requireCashierAction, requireStaff } from './lib/staffAccess';
 import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from './lib/staffApprovalState';
 import { appendRecordHistory } from './lib/recordHistory';
@@ -17,7 +17,7 @@ function cleanReason(reason: string) {
 function requestView(request: Doc<'staffApprovalRequests'>, status: Doc<'staffApprovalRequests'>['status']) {
   return {
     _id: request._id, _creationTime: request._creationTime,
-    orderId: request.orderId, lineId: request.lineId, kind: request.kind, payload: request.payload,
+    orderId: request.orderId, lineId: request.lineId, kind: request.kind, payload: approvalPayloadView(request.payload, request.reason),
     reason: request.reason, requesterEmail: request.requesterEmail, approverEmail: request.approverEmail,
     orderRevision: request.orderRevision, rulesRevision: request.rulesRevision, status,
     createdAt: request.createdAt, expiresAt: request.expiresAt, resolvedAt: request.resolvedAt,

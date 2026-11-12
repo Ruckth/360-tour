@@ -52,6 +52,7 @@ export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'bills'>, paylo
 export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffApprovalRequests'>): Promise<Doc<'staffApprovalRequests'>['status']> {
   if (request.status !== 'pending') return request.status;
   if (Date.now() >= request.expiresAt) return 'expired';
+  if (request.payload.kind === 'refund' && 'amount' in request.payload) return 'stale';
   const [rules, requester] = await Promise.all([
     cashierRules(ctx), requesterFingerprint(ctx, request.requesterEmail, request.requesterTokenIdentifier),
   ]);

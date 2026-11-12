@@ -1,4 +1,4 @@
-import { staffRole, cashierRulesFields, approvalPayload, approvalStatus } from './lib/staffTypes';
+import { staffRole, cashierRulesFields, storedApprovalPayload, approvalStatus } from './lib/staffTypes';
 import { affiliateState, creditState, affiliateSnapshot, marketingRole } from './lib/affiliateTypes';
 import { chatCouponValidator } from './lib/chatCoupon';
 import { defineSchema, defineTable } from 'convex/server';
@@ -25,7 +25,7 @@ export default defineSchema({
  cashierRules: defineTable({ key: v.literal('default'), ...cashierRulesFields, revision: v.number(), updatedAt: v.number(), updatedByEmail: v.string() }).index('by_key', ['key']),
  staffApprovalRequests: defineTable({
   orderId: v.id('bills'), lineId: v.optional(v.id('billLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund')),
-  payload: approvalPayload, reason: v.string(), requesterEmail: v.string(), requesterTokenIdentifier: v.string(),
+  payload: storedApprovalPayload, reason: v.string(), requesterEmail: v.string(), requesterTokenIdentifier: v.string(),
   requesterAccessFingerprint: v.string(), orderFingerprint: v.string(), orderRevision: v.number(), rulesRevision: v.number(), rulesFingerprint: v.optional(v.string()),
   status: approvalStatus, createdAt: v.number(), expiresAt: v.number(), resolvedAt: v.optional(v.number()),
   approverEmail: v.optional(v.string()), approverTokenIdentifier: v.optional(v.string()), resolutionReason: v.optional(v.string()),

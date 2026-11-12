@@ -29,7 +29,7 @@ export const billRefundFields = {
 
 /** Payloads are immutable. orderId/reason and correction idempotency keys come from the request. */
 export const approvalPayload = v.union(
-  v.object({ kind: v.literal('refund'), ...billRefundFields }),
+  v.object({ kind: v.literal('refund'), lineId: v.id('billLines'), amountSatang: v.number(), currency: v.string(), method: storedRefundMethod, idempotencyKey: v.string(), reason: v.string() }),
   v.object({ kind: v.literal('discount'), lineId: v.id('billLines'), discount: lineDiscountValidator }),
   v.object({ kind: v.literal('customPrice'), action: v.literal('overrideLinePrice'), lineId: v.id('billLines'), price: v.union(v.number(), v.null()), note: v.string() }),
   v.object({ kind: v.literal('customPrice'), action: v.literal('addCustomItem'), name: v.string(), price: v.number() }),
@@ -43,3 +43,13 @@ export const approvalPayload = v.union(
 );
 export type ApprovalPayload = Infer<typeof approvalPayload>;
 export const approvalStatus = v.union(v.literal('pending'), v.literal('applied'), v.literal('rejected'), v.literal('cancelled'), v.literal('expired'), v.literal('stale'));
+
+/** Retain the pre-fix stored shape so existing documents remain valid; new requests use approvalPayload. */
+export const storedApprovalPayload = v.union(approvalPayload, v.object({ kind: v.literal('refund'), ...billRefundFields }));
+export function approvalPayloadView(payload: Infer<typeof storedApprovalPayload>, reason: string): ApprovalPayload {
+  if (payload.kind === 'refund' && 'amount' in payload) {
+    const { amount, ...fields } = payload;
+    return { ...fields, amountSatang: amount, reason };
+  }
+  return payload;
+}

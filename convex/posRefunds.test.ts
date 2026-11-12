@@ -50,8 +50,8 @@ async function setup() {
     return owner.mutation(api.staffAccess.updateCashierRules, { expectedRevision: revision, ...fields, ...patch });
   };
   const request = (input: ReturnType<typeof args>) => {
-    const { orderId, reason, ...payload } = input;
-    return cashier.mutation(api.staffApprovals.create, { orderId, reason, payload: { kind: 'refund', ...payload } });
+    const { orderId, amount, ...payload } = input;
+    return cashier.mutation(api.staffApprovals.create, { orderId, reason: 'Please approve this return', payload: { kind: 'refund', amountSatang: amount, ...payload } });
   };
   const appointment = () => t.run(async ctx => {
     const staffId = await ctx.db.insert('staff', { name: 'Therapist', role: 'Therapist', color: '#abc', workingHours: [], breaks: [], status: 'active', createdAt: now, updatedAt: now });
@@ -316,6 +316,7 @@ describe('POS refund staff approvals', () => {
     const args = s.args(orderId, lineId);
     await expect(s.cashier.mutation(api.pos.refundLine, args)).rejects.toMatchObject(error('NEEDS_APPROVAL'));
     const request = await s.request(args);
+    expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0]).toMatchObject({ payload: { amountSatang: 25000, reason: args.reason }, amount: 250 });
     expect(request).toMatchObject({ amount: 250, totalBefore: 1000, totalAfter: 750, expiresAt: now + APPROVAL_TTL_MS });
     expect(await s.records(orderId)).toHaveLength(0);
     expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'applied', replayed: false });

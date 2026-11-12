@@ -63,7 +63,7 @@ Invites last 14 days, matching marketing policy. `setGrant` changes a claimed ro
 { kind: 'customPrice', action:'updateSourceLine', lineId }
 { kind: 'customPrice', action:'attachSource', bookingId?:Id<'bookings'>, appointmentId?:Id<'serviceAppointments'> }
 { kind: 'voidPaidSale' }
-{ kind: 'refund', lineId, amount, currency, method, idempotencyKey } // amount in integer satang
+{ kind: 'refund', lineId, amountSatang, currency, method, idempotencyKey, reason } // amountSatang in integer satang
 { kind: 'paymentFix', action:'amendOrderPayment', tenders?:Tender[], effectiveAt?:number,
   customer?:{customerId:Id<'customers'>|null,expectedCustomerRevision?:number} }
 { kind: 'paymentFix', action:'voidUnreceivedOrder' }
