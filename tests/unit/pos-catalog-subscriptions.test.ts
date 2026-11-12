@@ -23,29 +23,29 @@ beforeEach(() => { state.values = {}; state.calls.mockClear(); vi.stubGlobal('IS
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 it('waits for both reactive queries and composes live ranking and catalog edits without defaulting unresolved ranking', async () => {
   await render(); expect(current).toBeUndefined();
-  state.values['pos:stableCatalog'] = items;
+  state.values['pos/catalog:stableCatalog'] = items;
   await render(); expect(current).toBeUndefined();
-  state.values['pos:recentCatalogRanking'] = [];
+  state.values['pos/catalog:recentCatalogRanking'] = [];
   await render(); expect(current).toEqual({ ...items, frequent: [] });
   const loaded = current;
   await render(); expect(current).toBe(loaded);
-  state.values['pos:recentCatalogRanking'] = ['extra:Tea'];
+  state.values['pos/catalog:recentCatalogRanking'] = ['extra:Tea'];
   await render(); expect(current?.frequent).toEqual(['extra:Tea']);
   expect(current?.services).toBe(items.services);
   const services = [{ _id: 's', name: 'Edited', price: 20000, imageUrl: '/new.jpg' }];
-  state.values['pos:stableCatalog'] = { ...items, services };
+  state.values['pos/catalog:stableCatalog'] = { ...items, services };
   await render(); expect(current?.services).toBe(services);
   expect(current?.frequent).toEqual(['extra:Tea']);
-  expect(new Set(state.calls.mock.calls.map(c => c[0]))).toEqual(new Set(['pos:stableCatalog', 'pos:recentCatalogRanking']));
+  expect(new Set(state.calls.mock.calls.map(c => c[0]))).toEqual(new Set(['pos/catalog:stableCatalog', 'pos/catalog:recentCatalogRanking']));
 });
 it('also waits when ranking resolves before catalog', async () => {
-  state.values['pos:recentCatalogRanking'] = ['extra:Tea'];
+  state.values['pos/catalog:recentCatalogRanking'] = ['extra:Tea'];
   await render(); expect(current).toBeUndefined();
-  state.values['pos:stableCatalog'] = items;
+  state.values['pos/catalog:stableCatalog'] = items;
   await render(); expect(current?.frequent).toEqual(['extra:Tea']);
 });
-it.each(['pos:stableCatalog', 'pos:recentCatalogRanking'])('propagates errors from %s to checkout error handling', async name => {
+it.each(['pos/catalog:stableCatalog', 'pos/catalog:recentCatalogRanking'])('propagates errors from %s to checkout error handling', async name => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  state.values = { 'pos:stableCatalog': items, 'pos:recentCatalogRanking': [], [name]: new Error('Offline') };
+  state.values = { 'pos/catalog:stableCatalog': items, 'pos/catalog:recentCatalogRanking': [], [name]: new Error('Offline') };
   await render(); expect(document.body.textContent).toContain('Catalog error');
 });

@@ -31,7 +31,7 @@ import type { ApprovalRequest, Attachable, Catalog, CheckoutActions, CheckoutBac
 /**
  * In-memory checkout for the dev preview (/dev/checkout-preview): sample catalog, customers, a
  * stay with a Stripe deposit and its order, an appointment, and a saved unpaid order. Mirrors the
- * rules in convex/pos.ts closely enough to click through every flow; it is not a second source
+ * rules in convex/pos/ closely enough to click through every flow; it is not a second source
  * of truth.
  */
 
@@ -73,7 +73,7 @@ const CATALOG: Catalog = {
   services: SERVICES.map(([name, category, durationMin, price, staff, description, imageUrl], i) => ({
     _id: serviceId(i + 1), name, category, description, durationMin, price: price * 100, currency: "THB", staffIds: staff.map(staffId), imageUrl,
   })),
-  // As convex/pos.ts: a villa's first image. The suite has none yet.
+  // As convex/pos/private/orderModel.ts: a villa's first image. The suite has none yet.
   rooms: ([
     ["Lagoon Pool Villa", "Private pool on the lagoon", 12000, 6, "/pool-villa-veranda-view.webp"],
     ["Garden Villa", "Two bedrooms in the garden", 8500, 4, "/garden-image.webp"],
@@ -260,7 +260,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     state.lines = state.lines.map((line) => (line._id === lineId ? { ...line, ...patch } : line));
   };
   const stayPromotion = (line: Line) => (line.kind === "booking" ? state.bookings.find((b) => b.id === line.bookingId)?.promotion ?? null : null);
-  /** Prices the order's coupon with the shared engine and its live counters, as pos.ts does on every change. */
+  /** Prices the order's coupon with the shared engine and its live counters, as pos/private/orderModel.ts does on every change. */
   const quoteCoupon = (orderId: Id<"orders">, coupon: FixtureCoupon) => {
     const lines = linesOf(orderId);
     return evaluateOrderCoupon({
@@ -422,7 +422,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     if (chargePrice(item) !== line.unitPrice || item.deposit !== (line.deposit ?? 0) || ("id" in item ? bookingDetail(item) !== line.detail : item.staffId !== line.staffId || item.serviceId !== line.serviceId || item.start !== line.startAt)) return { kind: "changed", message: "The booked price changed. Update this row before payment." };
     return null;
   };
-  /** As appointmentLinkProblem / bookingLinkProblem in convex/pos.ts: why this source can't take this paid row, or null. */
+  /** As appointmentLinkProblem / bookingLinkProblem in convex/pos/private/paidLinkModel.ts: why this source can't take this paid row, or null. */
   const linkProblem = (order: Order, line: Line, item: FixtureBooking | FixtureAppointment): string | null => {
     if (line.fee || (line.kind !== "service" && line.kind !== "room")) return "Only a paid service or room row can be linked to an appointment or stay";
     if (lineNet(line) <= 0) return "Nothing was charged for this row, so there is no payment to apply";
@@ -448,7 +448,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     if (lineNet(line) > owed) return `This stay owes ${(owed / 100).toLocaleString("en-US")} THB, less than this row's ${(lineNet(line) / 100).toLocaleString("en-US")}. Correct the stay's price first, or link a smaller charge.`;
     return null;
   };
-  /** As linkReversal in convex/pos.ts: undoes exactly what the link applied, or refuses. */
+  /** As linkReversal in convex/pos/private/paidLinkModel.ts: undoes exactly what the link applied, or refuses. */
   const reverseLink = (link: Doc<"orderLineLinks">, reason: string, sequence: number) => {
     const item = sourceOf(link);
     if (!item) throw new Error("The linked booking no longer exists, so its payment can't be reversed.");
@@ -1217,7 +1217,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const a = state.appointments.find((x) => x.appointmentId === appointmentId);
     return a ? { kind: "appointment", id: a.appointmentId, reference: a.reference, guestName: a.guest.name, guestPhone: a.guest.phone, guestEmail: a.guest.email, name: a.name, linked } : null;
   };
-  /** Same rule as orderSourceRefs in convex/pos.ts: the order's own booking, then charged stays, then charged appointments not part of a listed stay. */
+  /** Same rule as orderSourceRefs in convex/pos/private/orderModel.ts: the order's own booking, then charged stays, then charged appointments not part of a listed stay. */
   const sourceRefs = (order: Order): SourceRef[] => {
     const refs: SourceRef[] = [];
     const stays = new Set<string>();
@@ -1308,7 +1308,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       refunds: [...allRefunds().filter(r => r.orderId === orderId && r.sourceType === "booking").slice(0, 100), ...allRefunds().filter(r => r.orderId === orderId && r.sourceType === "appointment").toReversed().slice(0, 100)].sort((a,b) => b.recordedAt - a.recordedAt).map(({ orderId, ...refund }) => { void orderId; return refund; }),
     };
   };
-  /** As linePhoto in convex/pos.ts: the service's, room's or booked villa's photo, looked up, never stored. */
+  /** As linePhoto in convex/pos/private/orderModel.ts: the service's, room's or booked villa's photo, looked up, never stored. */
   const linePhoto = (line: Line) => {
     if (line.serviceId) return CATALOG.services.find((s) => s._id === line.serviceId)?.imageUrl;
     const property = line.propertyId ?? state.bookings.find((b) => b.id === line.bookingId)?.propertyId;
@@ -1329,7 +1329,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const digits = text.replace(/\D/g, "");
     return guest.name.toLowerCase().includes(text.toLowerCase()) || (digits.length >= 4 && (guest.phone ?? "").replace(/\D/g, "").includes(digits));
   };
-  /** Exact phone digits or case-insensitive email, as convex/pos.ts listAttachable matches contacts. */
+  /** Exact phone digits or case-insensitive email, as convex/pos/sourceReads.ts listAttachable matches contacts. */
   const sameContact = (guest: Guest, contact: { phoneDigits?: string; emailNormalized?: string }) =>
     (Boolean(contact.phoneDigits) && (guest.phone ?? "").replace(/\D/g, "") === contact.phoneDigits) ||
     (Boolean(contact.emailNormalized) && (guest.email ?? "").trim().toLowerCase() === contact.emailNormalized);

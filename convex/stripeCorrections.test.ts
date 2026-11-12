@@ -42,14 +42,14 @@ it.each([0,5000,15000])('charges and records only actual remaining provider mone
 it('keeps provider refunds waived and charges only a later stay extension at POS with a real deposit', async () => {
   const { t, admin, bookingId, start, complete, refund, read } = await setup(5000);
   await start(); await complete(); await refund(10000);
-  expect((await admin.query(api.pos.ordersForBooking, { bookingId }))!.balance).toMatchObject({ total: 20000, paid: 10000, refunded: 10000, owed: 0 });
+  expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId }))!.balance).toMatchObject({ total: 20000, paid: 10000, refunded: 10000, owed: 0 });
   await t.run(ctx => ctx.db.patch(bookingId, { total: 25000 }));
-  const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-  const view = (await admin.query(api.pos.getOrder, { orderId }))!;
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
   expect(view.totals).toMatchObject({ total: 15000, deposit: 10000, due: 5000 });
-  await admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: 'extension-after-refund', expectedRevision: view.order.revision!, expectedDue: 5000, tenders: [{ method: 'cash', amount: 5000 }] });
+  await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: 'extension-after-refund', expectedRevision: view.order.revision!, expectedDue: 5000, tenders: [{ method: 'cash', amount: 5000 }] });
   expect(await read()).toMatchObject({ amountPaid: 25000, amountRefunded: 10000, providerRefundWaived: 10000 });
-  expect((await admin.query(api.pos.ordersForBooking, { bookingId }))!.balance).toMatchObject({ paid: 15000, refunded: 10000, owed: 0 });
+  expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId }))!.balance).toMatchObject({ paid: 15000, refunded: 10000, owed: 0 });
 });
 
 it('rejects stale saved balance, changed completion balance, bad currency/nonfinite amounts and a superseded session', async () => {

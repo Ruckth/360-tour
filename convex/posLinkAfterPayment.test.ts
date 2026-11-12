@@ -49,18 +49,18 @@ async function setup() {
 			...overrides
 		}));
 	};
-	const order = (orderId: Id<'orders'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
+	const order = (orderId: Id<'orders'>) => admin.query(api.pos.orders.getOrder, { orderId }).then((view) => view!);
 	const pay = async (orderId: Id<'orders'>) => {
 		const view = await order(orderId);
-		return admin.mutation(api.pos.settleOrder, {
+		return admin.mutation(api.pos.commands.settleOrder.settleOrder, {
 			orderId, idempotencyKey: `pay-${orderId}`, expectedDue: view.totals.due, expectedRevision: view.order.revision,
 			tenders: [{ method: 'cash', amount: view.totals.due }]
 		});
 	};
 	/** A paid order with one service (or room) row, its schedule left blank. */
 	const paidRow = async (item: { kind: 'service'; serviceId: Id<'services'> } | { kind: 'room'; propertyId: Id<'properties'> }, nights = 1) => {
-		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item });
-		for (let n = 1; n < nights; n++) await admin.mutation(api.pos.addItem, { orderId, item });
+		const { orderId, lineId } = await admin.mutation(api.pos.commands.addItem.addItem, { item });
+		for (let n = 1; n < nights; n++) await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item });
 		await pay(orderId);
 		return { orderId, lineId };
 	};
@@ -70,14 +70,14 @@ async function setup() {
 	const link = async (orderId: Id<'orders'>, lineId: Id<'orderLines'>, target: { appointmentId: Id<'appointments'> } | { bookingId: Id<'bookings'> }, extra: Partial<{ key: string; correction: number; revision: number }> = {}) => {
 		const view = await order(orderId);
 		const revision = extra.revision ?? ('appointmentId' in target ? (await getAppointment(target.appointmentId)).revision ?? 0 : (await getBooking(target.bookingId)).revision ?? 0);
-		return admin.mutation(api.pos.linkPaidLine, {
+		return admin.mutation(api.pos.commands.linkPaidLine.linkPaidLine, {
 			orderId, lineId, ...target, expectedTargetRevision: revision, expectedCorrectionRevision: extra.correction ?? view.paymentRecord.correctionRevision,
 			idempotencyKey: extra.key ?? `link-attempt-${++attempt}`, reason: 'Booked the prepaid service'
 		});
 	};
 	const unlink = async (orderId: Id<'orders'>, linkId: Id<'orderLineLinks'>, key = `unlink-attempt-${++attempt}`) => {
 		const view = await order(orderId);
-		return admin.mutation(api.pos.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: view.paymentRecord.correctionRevision, idempotencyKey: key, reason: 'Linked the wrong one' });
+		return admin.mutation(api.pos.commands.unlinkPaidLine.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: view.paymentRecord.correctionRevision, idempotencyKey: key, reason: 'Linked the wrong one' });
 	};
 	/** What the receipt shows; linking must never change any of it. */
 	const receipt = async (orderId: Id<'orders'>) => {
@@ -95,33 +95,33 @@ async function setup() {
 describe('optional service date and time', () => {
 	it('starts new service rows unscheduled, sets and clears date and time independently, and pays with both blank', async () => {
 		const { admin, massage, order, pay } = await setup();
-		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: massage } });
+		const { orderId, lineId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId: massage } });
 		const row = async () => (await order(orderId)).lines[0];
 		expect((await row()).schedule).toEqual({});
 		expect((await row()).startAt).toBeUndefined();
 
-		await admin.mutation(api.pos.updateLine, { lineId, serviceDate: '2026-12-03' });
+		await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceDate: '2026-12-03' });
 		expect((await row()).schedule).toEqual({ date: '2026-12-03' });
-		await admin.mutation(api.pos.updateLine, { lineId, serviceTime: '14:30' });
+		await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceTime: '14:30' });
 		expect((await row()).schedule).toEqual({ date: '2026-12-03', time: '14:30' });
-		await admin.mutation(api.pos.updateLine, { lineId, serviceDate: null });
+		await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceDate: null });
 		expect((await row()).schedule).toEqual({ time: '14:30' });
-		await admin.mutation(api.pos.updateLine, { lineId, serviceTime: '' });
+		await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceTime: '' });
 		expect((await row()).schedule).toEqual({});
 
-		await expect(admin.mutation(api.pos.updateLine, { lineId, serviceDate: '2026-02-30' })).rejects.toThrow(/YYYY-MM-DD/);
-		await expect(admin.mutation(api.pos.updateLine, { lineId, serviceTime: '24:00' })).rejects.toThrow(/HH:MM/);
+		await expect(admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceDate: '2026-02-30' })).rejects.toThrow(/YYYY-MM-DD/);
+		await expect(admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceTime: '24:00' })).rejects.toThrow(/HH:MM/);
 		expect((await row()).schedule).toEqual({});
 
 		// A known day with no time is a complete answer: payment needs neither part.
-		await admin.mutation(api.pos.updateLine, { lineId, serviceDate: '2026-12-03' });
+		await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceDate: '2026-12-03' });
 		const { receiptNumber } = await pay(orderId);
 		const paid = await order(orderId);
 		expect(paid.order.status).toBe('paid');
 		expect(receiptNumber).toBeGreaterThan(0);
 		expect(paid.lines[0].schedule).toEqual({ date: '2026-12-03' });
 		expect(paid.lines[0].startAt).toBeUndefined();
-		await expect(admin.mutation(api.pos.updateLine, { lineId, serviceTime: '10:00' })).rejects.toThrow(/already paid/);
+		await expect(admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, serviceTime: '10:00' })).rejects.toThrow(/already paid/);
 	});
 });
 
@@ -144,14 +144,14 @@ describe('linking a paid service row to an appointment', () => {
 		expect(view.corrections[0]).toMatchObject({ kind: 'linked', sequence: 1, lineId, appointmentId, amount: 120000 });
 		expect(view.links).toEqual([expect.objectContaining({ lineId, kind: 'appointment', status: 'active', amount: 120000, target: expect.objectContaining({ reference: 'SVC-EVE' }) })]);
 
-		const sheet = await admin.query(api.pos.ordersForBooking, { appointmentId });
+		const sheet = await admin.query(api.pos.orders.ordersForBooking, { appointmentId });
 		expect(sheet?.orders.map((row) => row._id)).toContain(orderId);
 		expect(sheet?.balance.owed).toBe(0);
 		// The receipt owns the money: it is refundable from that receipt, and not payable again.
 		const financials = await admin.query(api.services.admin.getAppointmentFinancials, { appointmentId });
 		expect(financials.orders).toEqual([expect.objectContaining({ orderId: orderId, charged: 120000, refundable: 120000 })]);
 		await expect(admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId })).rejects.toThrow(/unpaid/);
-		await expect(admin.mutation(api.pos.attach, { appointmentId })).rejects.toThrow(/nothing left to pay/);
+		await expect(admin.mutation(api.pos.commands.attach.attach, { appointmentId })).rejects.toThrow(/nothing left to pay/);
 	});
 
 	it('refuses other services, open orders, already-linked targets, wrong row kinds, stale revisions and reused keys, writing nothing', async () => {
@@ -161,7 +161,7 @@ describe('linking a paid service row to an appointment', () => {
 		await expect(link(orderId, lineId, { appointmentId: otherService })).rejects.toThrow(/different service/);
 
 		const onOpenOrder = await appointment({ confirmationCode: 'SVC-OPEN' });
-		const open = await admin.mutation(api.pos.attach, { appointmentId: onOpenOrder });
+		const open = await admin.mutation(api.pos.commands.attach.attach, { appointmentId: onOpenOrder });
 		await expect(link(orderId, lineId, { appointmentId: onOpenOrder })).rejects.toThrow(new RegExp(`${(await order(open.orderId)).order.title}.*still open`));
 
 		await expect(link(orderId, lineId, { bookingId: await stay() })).rejects.toThrow(/appointment, not a stay/);
@@ -185,7 +185,7 @@ describe('linking a paid service row to an appointment', () => {
 		await expect(link(second.orderId, second.lineId, { appointmentId: target })).rejects.toThrow(/already paid/);
 
 		// Only paid orders.
-		const unpaid = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId: massage } });
+		const unpaid = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId: massage } });
 		await expect(link(unpaid.orderId, unpaid.lineId, { appointmentId: await appointment({ confirmationCode: 'SVC-3' }) })).rejects.toThrow(/Only a paid order/);
 	});
 
@@ -194,7 +194,7 @@ describe('linking a paid service row to an appointment', () => {
 		const { orderId, lineId } = await paidRow({ kind: 'service', serviceId: massage });
 		const good = await appointment({ guestName: 'Eve Candidate' });
 		const other = await appointment({ guestName: 'Eve Candidate', serviceId: scrub, confirmationCode: 'SVC-SCRUB' });
-		const rows = await admin.query(api.pos.linkCandidates, { orderId, lineId, query: 'Eve Candidate' });
+		const rows = await admin.query(api.pos.sourceReads.linkCandidates, { orderId, lineId, query: 'Eve Candidate' });
 		expect(rows?.[0]).toMatchObject({ id: good, problem: null, kind: 'appointment' });
 		expect(rows?.find((row) => row.id === other)?.problem).toMatch(/different service/);
 	});
@@ -223,7 +223,7 @@ describe('linking a paid service row to an appointment', () => {
 			appointmentId, expectedRevision: appt.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Shorter session', idempotencyKey: 'refund-0001', orderId: orderId
 		});
 		await expect(unlink(orderId, relinked.linkId)).rejects.toThrow(/refunded/);
-		await expect(admin.mutation(api.pos.voidUnreceivedOrder, {
+		await expect(admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, {
 			orderId, expectedCorrectionRevision: (await order(orderId)).paymentRecord.correctionRevision, idempotencyKey: 'void-unreceived-1', reason: 'Mistake'
 		})).rejects.toThrow(/refunded/);
 		expect((await getAppointment(appointmentId)).paymentStatus).toBe('paid');
@@ -242,7 +242,7 @@ describe('linking a paid room row to a stay', () => {
 		const financials = await admin.query(api.bookings.admin.bookingFinancials, { bookingId });
 		expect(financials?.payments[0]).toMatchObject({ origin: 'pos', amount: 2000000, status: 'recorded', order: expect.objectContaining({ _id: orderId }) });
 		expect(await receipt(orderId)).toEqual(before);
-		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.orders.map((row) => row._id)).toContain(orderId);
+		expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId }))?.orders.map((row) => row._id)).toContain(orderId);
 
 		// One night paid on another order: part of a stay's balance; the stay stays pending.
 		const partStay = await stay({ confirmationCode: 'CONF-PART', guestName: 'Part', checkIn: '2027-01-01', checkOut: '2027-01-04' });
@@ -279,7 +279,7 @@ describe('linking a paid room row to a stay', () => {
 		const bookingId = await stay();
 		const { orderId, lineId } = await paidRow({ kind: 'room', propertyId: villa });
 		await expect(link(orderId, lineId, { bookingId }, { revision: 9 })).rejects.toThrow(/changed since you opened it/);
-		await admin.mutation(api.pos.attach, { bookingId });
+		await admin.mutation(api.pos.commands.attach.attach, { bookingId });
 		await expect(link(orderId, lineId, { bookingId })).rejects.toThrow(/still open/);
 	});
 
@@ -338,7 +338,7 @@ describe('order corrections understand links', () => {
 			}
 		});
 		await link(current.orderId, current.lineId, { appointmentId });
-		const sheet = await admin.query(api.pos.ordersForBooking, { appointmentId });
+		const sheet = await admin.query(api.pos.orders.ordersForBooking, { appointmentId });
 		expect(sheet?.orders[0]._id).toBe(current.orderId);
 		expect(sheet?.orders.map((row) => row._id)).toContain(previous.orderId);
 	});
@@ -369,19 +369,19 @@ describe('order corrections understand links', () => {
 		const bookingId = await stay();
 		const { orderId, lineId } = await paidRow({ kind: 'service', serviceId: massage });
 		await link(orderId, lineId, { appointmentId });
-		const { lineId: roomLine } = await admin.mutation(api.pos.addItem, { item: { kind: 'room', propertyId: villa } }).then(async ({ orderId: roomOrder, lineId }) => {
-			await admin.mutation(api.pos.addItem, { orderId: roomOrder, item: { kind: 'room', propertyId: villa } });
+		const { lineId: roomLine } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'room', propertyId: villa } }).then(async ({ orderId: roomOrder, lineId }) => {
+			await admin.mutation(api.pos.commands.addItem.addItem, { orderId: roomOrder, item: { kind: 'room', propertyId: villa } });
 			const view = await order(roomOrder);
-			await admin.mutation(api.pos.settleOrder, { orderId: roomOrder, idempotencyKey: `pay-${roomOrder}`, expectedDue: view.totals.due, expectedRevision: view.order.revision, tenders: [{ method: 'cash', amount: view.totals.due }] });
+			await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId: roomOrder, idempotencyKey: `pay-${roomOrder}`, expectedDue: view.totals.due, expectedRevision: view.order.revision, tenders: [{ method: 'cash', amount: view.totals.due }] });
 			await link(roomOrder, lineId, { bookingId });
-			await admin.mutation(api.pos.voidOrder, { orderId: roomOrder, reason: 'Wrong receipt printed' });
+			await admin.mutation(api.pos.commands.voidOrder.voidOrder, { orderId: roomOrder, reason: 'Wrong receipt printed' });
 			return { lineId };
 		});
 		void roomLine;
 		// Plain void: money was received, so the stay stays paid.
 		expect((await getBooking(bookingId)).paymentStatus).toBe('paid');
 
-		await admin.mutation(api.pos.voidUnreceivedOrder, {
+		await admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, {
 			orderId, expectedCorrectionRevision: (await order(orderId)).paymentRecord.correctionRevision, idempotencyKey: 'void-unreceived-2', reason: 'Card declined after all'
 		});
 		expect(await getAppointment(appointmentId)).toMatchObject({ paymentStatus: 'unpaid', price: 130000, amountPaid: 0 });
@@ -389,7 +389,7 @@ describe('order corrections understand links', () => {
 		expect(view.order.status).toBe('void');
 		expect(view.links[0]).toMatchObject({ status: 'unlinked' });
 		// The appointment is free to be linked or charged again.
-		await admin.mutation(api.pos.attach, { appointmentId });
+		await admin.mutation(api.pos.commands.attach.attach, { appointmentId });
 	});
 
 	it('moves the linked payments when the order’s received date is corrected', async () => {
@@ -403,7 +403,7 @@ describe('order corrections understand links', () => {
 
 		const earlier = Date.now() - 3 * 86_400_000;
 		for (const id of [orderId, room.orderId]) {
-			await admin.mutation(api.pos.amendOrderPayment, {
+			await admin.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, {
 				orderId: id, expectedCorrectionRevision: (await order(id)).paymentRecord.correctionRevision, idempotencyKey: `amend-${id}`, reason: 'Paid on Monday', effectiveAt: earlier
 			});
 		}

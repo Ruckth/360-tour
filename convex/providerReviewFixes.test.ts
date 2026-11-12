@@ -37,14 +37,14 @@ async function setup() {
     await setTotal(total);
   };
   const settleAtPos = async (due: number, idempotencyKey: string) => {
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-    const view = (await admin.query(api.pos.getOrder, { orderId }))!;
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
     expect(view.totals.due).toBe(due);
-    await admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey, expectedRevision: view.order.revision!, expectedDue: due, tenders: [{ method: 'cash', amount: due }] });
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey, expectedRevision: view.order.revision!, expectedDue: due, tenders: [{ method: 'cash', amount: due }] });
     return orderId;
   };
   const payments = () => t.run(ctx => ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', bookingId)).take(20));
-  const balance = async () => (await admin.query(api.pos.ordersForBooking, { bookingId }))!.balance;
+  const balance = async () => (await admin.query(api.pos.orders.ordersForBooking, { bookingId }))!.balance;
   const heldNights = () => t.run(async ctx => (await ctx.db.query('availability').take(50)).filter(r => r.bookingId === bookingId && r.status === 'booked').length);
   /** Every row a provider or POS correction could write. */
   const snapshot = () => t.run(async ctx => ({
@@ -93,7 +93,7 @@ it('Kiro C1: a POS unreceived reversal is refused atomically while the guest has
   expect((await s.start('cs_extension')).total).toBe(5000);
 
   const before = await s.snapshot();
-  await expect(s.admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-under-checkout', reason: 'Card never went through' })).rejects.toThrow('Stripe checkout open');
+  await expect(s.admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-under-checkout', reason: 'Card never went through' })).rejects.toThrow('Stripe checkout open');
   expect(await s.snapshot()).toEqual(before);
 
   // The guest's payment still records against the balance it was opened for.
@@ -108,7 +108,7 @@ it('Kiro C1: the same reversal goes ahead once the checkout has expired', async 
   await s.setTotal(25000);
   const request = await s.start('cs_extension');
   vi.setSystemTime(request.expiresAt + 1);
-  await s.admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-after-expiry', reason: 'Card never went through' });
+  await s.admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-after-expiry', reason: 'Card never went through' });
   expect(await s.read()).toMatchObject({ status: 'confirmed', paymentStatus: 'pending' });
   expect(await s.balance()).toMatchObject({ paid: 0, owed: 25000 });
 });

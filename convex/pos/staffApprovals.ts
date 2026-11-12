@@ -1,18 +1,19 @@
 import { ConvexError, v } from 'convex/values';
-import { internalMutation, type MutationCtx, staffMutation, authenticatedMutation, staffQuery } from './auth/model';
-import type { Doc } from './_generated/dataModel';
-import { internal } from './_generated/api';
-import { approvalPayload, APPROVAL_TTL_MS } from './lib/staffTypes';
-import { canReadCheckoutOrder, cashierRules, requireCashierAction } from './lib/staffAccess';
-import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from './lib/staffApprovalState';
-import { appendRecordHistory } from './lib/recordHistory';
-import { executeStaffApproval, previewStaffApproval } from './pos';
+import { internal } from '../_generated/api';
+import type { Doc } from '../_generated/dataModel';
+import { authenticatedMutation, internalMutation, type MutationCtx, staffMutation, staffQuery } from '../auth/model';
+import { appendRecordHistory } from '../lib/recordHistory';
+import { canReadCheckoutOrder, cashierRules, requireCashierAction } from '../lib/staffAccess';
+import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from '../lib/staffApprovalState';
+import { APPROVAL_TTL_MS, approvalPayload } from '../lib/staffTypes';
+import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 
 function cleanReason(reason: string) {
   const value = reason.trim();
   if (!value || value.length > 500) throw new ConvexError('Give a reason of 1–500 characters.');
   return value;
 }
+
 /** Identity tokens and raw fingerprints never leave the backend. */
 function requestView(request: Doc<'staffApprovalRequests'>, status: Doc<'staffApprovalRequests'>['status']) {
   return {
@@ -25,11 +26,13 @@ function requestView(request: Doc<'staffApprovalRequests'>, status: Doc<'staffAp
     totalBefore: request.totalBefore, totalAfter: request.totalAfter,
   };
 }
+
 async function resolve(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, status: Doc<'staffApprovalRequests'>['status'], actor: string, reason?: string) {
   await ctx.db.patch(request._id, { status, resolvedAt: Date.now(), ...(reason ? { resolutionReason: reason } : {}) });
   await appendRecordHistory(ctx, { entityType: 'staffApproval', entityId: request.orderId, actor, kind: status, reason: reason ?? request.reason,
     after: { requestId: request._id, kind: request.kind, requesterEmail: request.requesterEmail, payload: request.payload } });
 }
+
 export const create = staffMutation({
   capability: 'checkout', args: { orderId: v.id('orders'), payload: approvalPayload, reason: v.string() }, handler: async (ctx, args) => {
   const actor = ctx.staff;
@@ -57,7 +60,7 @@ export const create = staffMutation({
   });
   await appendRecordHistory(ctx, { entityType: 'staffApproval', entityId: order._id, actor: actor.email, kind: 'requested', reason,
     after: { requestId, payload: args.payload, ...preview } });
-  await ctx.scheduler.runAfter(APPROVAL_TTL_MS, internal.staffApprovals.expire, { requestId });
+  await ctx.scheduler.runAfter(APPROVAL_TTL_MS, internal.pos.staffApprovals.expire, { requestId });
   return { requestId, status: 'pending' as const, expiresAt: createdAt + APPROVAL_TTL_MS, ...preview };
 } });
 
@@ -91,6 +94,7 @@ export const cancel = authenticatedMutation({ args: { requestId: v.id('staffAppr
   await resolve(ctx, request, next, identity.email ?? request.requesterEmail);
   return { status: next };
 } });
+
 export const reject = staffMutation({
   capability: 'approve', args: { requestId: v.id('staffApprovalRequests'), reason: v.optional(v.string()) }, handler: async (ctx, args) => {
   const actor = ctx.staff;
@@ -115,6 +119,7 @@ export const forOrder = staffQuery({
   const requests = [...new Map([...pending, ...recent].map(request => [request._id, request])).values()];
   return await Promise.all(requests.sort((a, b) => b.createdAt - a.createdAt).map(async request => requestView(request, await effectiveRequestStatus(ctx, request))));
 } });
+
 export const pending = staffQuery({
   capability: 'approve', args: {}, handler: async ctx => {
   const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_status_and_createdAt', q => q.eq('status', 'pending')).take(501);
@@ -126,6 +131,7 @@ export const pending = staffQuery({
   const list = views.filter(row => row !== null);
   return { count: list.length, list };
 } });
+
 export const expire = internalMutation({ args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, args) => {
   const request = await ctx.db.get(args.requestId);
   if (!request || request.status !== 'pending') return null;

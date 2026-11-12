@@ -13,7 +13,7 @@ describe('checkout application errors through the installed Convex client', () =
       status: 'error', errorMessage: '[Request ID: request-123] Server Error', errorData,
     }), { status: 560, headers: { 'Content-Type': 'application/json' } }));
     const client = new ConvexHttpClient('https://audit.convex.cloud', { fetch: transport, logger: false });
-    const failure: unknown = await client.mutation(api.customers.createCustomer, { name: '' }).catch((error: unknown) => error);
+    const failure: unknown = await client.mutation(api.pos.customers.createCustomer, { name: '' }).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(ConvexError);
     expect(errorText(failure, 'Could not save')).toBe(typeof errorData === 'string' ? errorData : errorData.message);
     expect(transport).toHaveBeenCalledOnce();

@@ -23,7 +23,7 @@ vi.mock('convex/react', () => ({
     if (args === 'skip') return undefined;
     const name = getFunctionName(ref);
     if (name === 'staffAccess:myAccess') return state.access;
-    if (name === 'staffApprovals:pending') return { count: state.pending, list: [] };
+    if (name === 'pos/staffApprovals:pending') return { count: state.pending, list: [] };
     return { businessName: 'Audit resort' };
   },
   useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'staffAccess:claimInvite' ? state.claim : async () => null),

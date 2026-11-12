@@ -6,12 +6,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import schema from './schema';
 import { api } from './_generated/api';
 const modules = import.meta.glob('./**/*.ts');
-const readers = api.orderHistoryPages;
+const readers = api.pos.orderHistoryPages;
 afterEach(() => vi.unstubAllEnvs());
 it('authenticates every financial stream and rejects oversized or invalid pages', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com' });
-  const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
+  const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
   for (const reader of Object.values(readers)) {
     const args = { orderId, paginationOpts: { numItems: 20, cursor: null } };
     await expect(t.query(reader, args)).rejects.toThrow('Not authenticated');
@@ -23,8 +23,8 @@ it('authenticates every financial stream and rejects oversized or invalid pages'
 it('pages past the getOrder 20/50 windows in all five independent ledgers without cross-order leakage', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com' });
-  const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
-  const { orderId: other } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Other', price: 1000 } });
+  const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
+  const { orderId: other } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Other', price: 1000 } });
   await t.run(async ctx => {
     const staffId = await ctx.db.insert('staff', { name: 'Nok', role: 'Therapist', color: '#abc', status: 'active', workingHours: [], breaks: [], createdAt: 1, updatedAt: 1 });
     const serviceId = await ctx.db.insert('services', { slug: 'massage', name: 'Massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 10000, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 1, updatedAt: 1 });
@@ -39,7 +39,7 @@ it('pages past the getOrder 20/50 windows in all five independent ledgers withou
       const refund = { orderId: receiptOrderId, amount: 100, currency: 'THB', method: 'cash' as const, reason: `Refund ${i}`, effectiveAt: i, recordedAt: i, recordedBy: 'admin@example.com', idempotencyKey: `${receiptOrderId}-${i}`, netBefore: 100 - i, netAfter: 99 - i };
       await ctx.db.insert('bookingRefunds', { ...refund, bookingId, context: 'credit' });
       await ctx.db.insert('appointmentRefunds', { ...refund, appointmentId });
-      await ctx.db.insert('orderRefunds', { orderId: receiptOrderId, lineId: line._id, amount: 100, currency: 'THB', method: 'cash', reason: `Return ${i}`, idempotencyKey: `pos:${receiptOrderId}:${i}`, createdBy: 'admin', createdByEmail: 'admin@example.com', createdAt: i, businessDate: '2026-11-12' });
+      await ctx.db.insert('orderRefunds', { orderId: receiptOrderId, lineId: line._id, amount: 100, currency: 'THB', method: 'cash', reason: `Return ${i}`, idempotencyKey: `pos/orders:${receiptOrderId}:${i}`, createdBy: 'admin', createdByEmail: 'admin@example.com', createdAt: i, businessDate: '2026-11-12' });
       }
     }
   });
@@ -55,6 +55,6 @@ it('pages past the getOrder 20/50 windows in all five independent ledgers withou
     }
     expect(new Set(seen).size).toBe(61);
   }
-  const view = await admin.query(api.pos.getOrder, { orderId });
+  const view = await admin.query(api.pos.orders.getOrder, { orderId });
   expect(view!.corrections).toHaveLength(20); expect(view!.audit).toHaveLength(50);
 });

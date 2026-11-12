@@ -34,10 +34,10 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
     });
     return { propertyId, bookingId };
   });
-  const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-  await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'room', propertyId } });
-  for (let i = 0; i < 3; i++) await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
-  const read = () => admin.query(api.pos.getOrder, { orderId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'room', propertyId } });
+  for (let i = 0; i < 3; i++) await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId } });
+  const read = () => admin.query(api.pos.orders.getOrder, { orderId });
   const stored = () => t.run(async ctx => ({
     order: await ctx.db.get(orderId),
     lines: await ctx.db.query('orderLines').collect(),
@@ -60,6 +60,6 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
   await t.run(ctx => ctx.db.delete(bookingId));
   expect((await read())?.lines).toHaveLength(5);
   expect(await stored()).toEqual(before);
-  await expect(t.query(api.pos.catalog, {})).rejects.toThrow();
-  await expect(t.query(api.pos.getOrder, { orderId })).rejects.toThrow();
+  await expect(t.query(api.pos.catalog.catalog, {})).rejects.toThrow();
+  await expect(t.query(api.pos.orders.getOrder, { orderId })).rejects.toThrow();
 });

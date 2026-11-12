@@ -37,11 +37,11 @@ async function setup() {
     slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100000, currency: 'THB', maxGuests: 4,
     bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active',
   }));
-  const sale = () => owner.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-  const view = async (orderId: Id<'orders'>) => (await owner.query(api.pos.getOrder, { orderId }))!;
+  const sale = () => owner.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
+  const view = async (orderId: Id<'orders'>) => (await owner.query(api.pos.orders.getOrder, { orderId }))!;
   const pay = async (orderId: Id<'orders'>, effectiveAt = now) => {
     const current = await view(orderId);
-    return owner.mutation(api.pos.settleOrder, { orderId, idempotencyKey: `pay:${orderId}`, expectedDue: current.totals.due,
+    return owner.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: `pay:${orderId}`, expectedDue: current.totals.due,
       expectedRevision: current.order.revision, tenders: [{ method: 'cash', amount: current.totals.due }], effectiveAt });
   };
   const args = (orderId: Id<'orders'>, lineId: Id<'orderLines'>, amount = 25000, idempotencyKey = 'refund-attempt-1') =>
@@ -52,7 +52,7 @@ async function setup() {
   };
   const request = (input: ReturnType<typeof args>) => {
     const { orderId, amount, ...payload } = input;
-    return cashier.mutation(api.staffApprovals.create, { orderId, reason: 'Please approve this return', payload: { kind: 'refund', amountSatang: amount, ...payload } });
+    return cashier.mutation(api.pos.staffApprovals.create, { orderId, reason: 'Please approve this return', payload: { kind: 'refund', amountSatang: amount, ...payload } });
   };
   const appointment = () => t.run(async ctx => {
     const staffId = await ctx.db.insert('staff', { name: 'Therapist', role: 'Therapist', color: '#abc', workingHours: [], breaks: [], status: 'active', createdAt: now, updatedAt: now });
@@ -76,19 +76,19 @@ describe('POS line refunds', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
     const issued = await s.view(orderId);
-    const first = await s.manager.mutation(api.pos.refundLine, s.args(orderId, lineId));
+    const first = await s.manager.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId));
     expect(first).toMatchObject({ replayed: false, refund: { amount: 25000, reason: 'Shorter service', businessDate: '2026-11-12', createdByEmail: 'manager@example.com' } });
     expect(first.refund).not.toHaveProperty('createdBy');
     expect((await s.records(orderId))[0].createdBy).toBe('issuer|manager');
     expect((await s.view(orderId)).lines[0]).toMatchObject({ refundedAmountSatang: 25000, remainingRefundableSatang: 75000 });
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 75001, 'too-much-attempt'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 75000, 'remaining-attempt'));
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 75001, 'too-much-attempt'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 75000, 'remaining-attempt'));
     const view = await s.view(orderId);
     expect(view).toMatchObject({ fullyRefunded: true, refundedAmountSatang: 100000, order: { status: 'paid', receiptNumber: issued.order.receiptNumber } });
     expect(view.lines[0]).toMatchObject({ refundedAmountSatang: 100000, remainingRefundableSatang: 0, net: 100000 });
     expect(view.payments).toEqual(issued.payments);
     expect(view.totals).toEqual(issued.totals);
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 1, 'one-more-attempt'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 1, 'one-more-attempt'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
   });
 
   it('invalidates an already-open correction after a refund, without bumping again on replay', async () => {
@@ -97,10 +97,10 @@ describe('POS line refunds', () => {
     await s.pay(orderId);
     const before = await s.view(orderId);
     const args = s.args(orderId, lineId);
-    await s.owner.mutation(api.pos.refundLine, args);
-    await s.owner.mutation(api.pos.refundLine, args);
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, args);
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, args);
     expect((await s.view(orderId)).paymentRecord.correctionRevision).toBe(before.paymentRecord.correctionRevision + 1);
-    await expect(s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: before.paymentRecord.correctionRevision, reason: 'Correct date', effectiveAt: now - day, idempotencyKey: 'stale-correction' })).rejects.toThrow('since you opened it');
+    await expect(s.owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: before.paymentRecord.correctionRevision, reason: 'Correct date', effectiveAt: now - day, idempotencyKey: 'stale-correction' })).rejects.toThrow('since you opened it');
   });
 
   it.each(['direct', 'approval'] as const)('rejects payment dates after the earliest refund through %s', async route => {
@@ -108,23 +108,23 @@ describe('POS line refunds', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId, Date.parse('2026-11-01T03:00:00Z'));
     vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-03T03:00:00Z'));
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId));
     vi.mocked(Date.now).mockReturnValue(now);
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 100, 'later-refund'));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 100, 'later-refund'));
     // A legacy forward correction makes this receipt visible to today's cashier.
     if (route === 'approval') await s.t.run(ctx => ctx.db.patch(orderId, { paymentEffectiveAt: now }));
     const badDate = Date.parse('2026-11-05T03:00:00Z');
     if (route === 'direct') {
-      await expect(s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 2, reason: 'Correct date', effectiveAt: badDate, idempotencyKey: 'invalid-payment-date' })).rejects.toMatchObject(error('PAYMENT_DATE_AFTER_REFUND'));
+      await expect(s.owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: 2, reason: 'Correct date', effectiveAt: badDate, idempotencyKey: 'invalid-payment-date' })).rejects.toMatchObject(error('PAYMENT_DATE_AFTER_REFUND'));
     } else {
-      const request = await s.cashier.mutation(api.staffApprovals.create, { orderId, reason: 'Correct date', payload: { kind: 'paymentFix', action: 'amendOrderPayment', effectiveAt: badDate } });
-      await expect(s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).rejects.toMatchObject(error('PAYMENT_DATE_AFTER_REFUND'));
+      const request = await s.cashier.mutation(api.pos.staffApprovals.create, { orderId, reason: 'Correct date', payload: { kind: 'paymentFix', action: 'amendOrderPayment', effectiveAt: badDate } });
+      await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toMatchObject(error('PAYMENT_DATE_AFTER_REFUND'));
       expect(await s.t.run(ctx => ctx.db.get(request.requestId))).toMatchObject({ status: 'pending' });
-      await s.cashier.mutation(api.staffApprovals.cancel, { requestId: request.requestId });
+      await s.cashier.mutation(api.pos.staffApprovals.cancel, { requestId: request.requestId });
     }
     // Same Bangkok day is valid even after the refund's time, as is moving earlier.
     for (const [i, effectiveAt] of [Date.parse('2026-11-03T16:30:00Z'), Date.parse('2026-10-31T03:00:00Z')].entries()) {
-      await s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 2 + i, reason: 'Correct date', effectiveAt, idempotencyKey: `earlier-payment-${i}` });
+      await s.owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: 2 + i, reason: 'Correct date', effectiveAt, idempotencyKey: `earlier-payment-${i}` });
     }
     expect((await s.view(orderId)).paymentRecord.effectiveAt).toBe(Date.parse('2026-10-31T03:00:00Z'));
   });
@@ -135,7 +135,7 @@ describe('POS line refunds', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId, now - 10 * day);
     vi.mocked(Date.now).mockReturnValue(now);
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId));
     const report = await s.owner.query(api.marketingReport.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' });
     expect(report.truncated).toBe(false);
     expect(report.sales).toMatchObject([{ id: orderId, collected: 100000, refunded: 25000 }]);
@@ -156,24 +156,24 @@ describe('POS line refunds', () => {
     expect(view.posRefunds).toHaveLength(50);
     expect(view.posRefunds![0].idempotencyKey).toBe(`history-limit-${count - 1}`);
     expect(view.order.status).toBe('paid');
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 1, 'over-history-limit'))).rejects.toMatchObject(error('REFUND_HISTORY_LIMIT'));
-    const page = await s.owner.query(api.orderHistoryPages.orderRefunds, { orderId, paginationOpts: { cursor: null, numItems: 50 } });
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 1, 'over-history-limit'))).rejects.toMatchObject(error('REFUND_HISTORY_LIMIT'));
+    const page = await s.owner.query(api.pos.orderHistoryPages.orderRefunds, { orderId, paginationOpts: { cursor: null, numItems: 50 } });
     expect(page.page).toHaveLength(50);
     expect(page.isDone).toBe(false);
   });
 
   it('subtracts POS refunds from customer money and exposes satang totals on order rows', async () => {
     const s = await setup();
-    const customerId = await s.owner.mutation(api.customers.createCustomer, { name: 'Guest' });
+    const customerId = await s.owner.mutation(api.pos.customers.createCustomer, { name: 'Guest' });
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
-    await s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'assign-customer', reason: 'Receipt payer', customer: { customerId, expectedCustomerRevision: 0 } });
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 25001));
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 10000, 'second-return'));
+    await s.owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'assign-customer', reason: 'Receipt payer', customer: { customerId, expectedCustomerRevision: 0 } });
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 25001));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 10000, 'second-return'));
     const paginationOpts = { cursor: null, numItems: 10 };
-    expect((await s.owner.query(api.customers.getCustomer, { customerId }))!.orders).toMatchObject([{ total: 64999, refundedAmountSatang: 35001 }]);
-    expect((await s.owner.query(api.customers.listCustomerOrders, { customerId, paginationOpts })).page).toMatchObject([{ total: 64999, refundedAmountSatang: 35001 }]);
-    expect((await s.owner.query(api.pos.listOrders, { filter: 'paid', paginationOpts })).page).toMatchObject([{ total: 100000, refundedAmountSatang: 35001 }]);
+    expect((await s.owner.query(api.pos.customers.getCustomer, { customerId }))!.orders).toMatchObject([{ total: 64999, refundedAmountSatang: 35001 }]);
+    expect((await s.owner.query(api.pos.customers.listCustomerOrders, { customerId, paginationOpts })).page).toMatchObject([{ total: 64999, refundedAmountSatang: 35001 }]);
+    expect((await s.owner.query(api.pos.orders.listOrders, { filter: 'paid', paginationOpts })).page).toMatchObject([{ total: 100000, refundedAmountSatang: 35001 }]);
   });
 
   it.each([150000, 200000])('keeps a mixed-order coupon of %s from spending a stay deposit on walk-in lines', async amount => {
@@ -181,12 +181,12 @@ describe('POS line refunds', () => {
     const bookingId = await s.booking();
     await s.t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 90000, paymentStatus: 'paid' }));
     const appointmentId = await s.appointment();
-    const { orderId } = await s.owner.mutation(api.pos.openOrderFor, { bookingId });
-    await s.owner.mutation(api.pos.attach, { orderId, appointmentId });
-    const { lineId } = await s.owner.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
+    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    await s.owner.mutation(api.pos.commands.attach.attach, { orderId, appointmentId });
+    const { lineId } = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
     const { couponId } = await s.owner.mutation(api.marketing.saveCoupon, { code: 'MIXED', scope: 'services', benefit: { kind: 'fixed', amount } });
     await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-    await s.owner.mutation(api.pos.applyOrderCoupon, { orderId, code: 'MIXED' });
+    await s.owner.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'MIXED' });
     const issued = await s.view(orderId);
     const stay = issued.lines.find(line => line.bookingId === bookingId)!;
     const appointment = issued.lines.find(line => line.appointmentId === appointmentId)!;
@@ -200,28 +200,28 @@ describe('POS line refunds', () => {
     const cap = walkIn.net;
     const tenders = (await s.view(orderId)).payments.reduce((sum, tender) => sum + tender.amount, 0);
     expect(cap).toBeLessThanOrEqual(tenders);
-    if (cap) await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, cap));
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 1, 'after-mixed-cap'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
+    if (cap) await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, cap));
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 1, 'after-mixed-cap'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
   });
 
   it('uses the issued coupon allocation after manual discount, preserving consumed redemption on full refund', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
-    const second = await s.owner.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
-    await s.owner.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 10000 } });
+    const second = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
+    await s.owner.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 10000 } });
     const { couponId } = await s.owner.mutation(api.marketing.saveCoupon, { code: 'SPA33', scope: 'services', benefit: { kind: 'fixed', amount: 33333 } });
     await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-    await s.owner.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA33' });
+    await s.owner.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'SPA33' });
     await s.pay(orderId);
     const issued = await s.view(orderId);
     const line = issued.lines.find(row => row._id === lineId)!;
     expect(line.couponDiscount).toBeGreaterThan(0);
     expect(line.net).toBeLessThan(90000);
     const cap = line.net;
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, cap + 1))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, cap));
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, cap + 1))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, cap));
     expect((await s.view(orderId)).fullyRefunded).toBe(false);
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, second.lineId, issued.lines.find(row => row._id === second.lineId)!.net, 'second-line-refund'));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, second.lineId, issued.lines.find(row => row._id === second.lineId)!.net, 'second-line-refund'));
     expect((await s.view(orderId)).fullyRefunded).toBe(true);
     expect(await s.t.run(ctx => ctx.db.get(issued.order.promotion!.redemptionId!))).toMatchObject({ state: 'consumed' });
     expect((await s.view(orderId)).promotion).toEqual(issued.promotion);
@@ -232,14 +232,14 @@ describe('POS line refunds', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
     const args = s.args(orderId, lineId);
-    const first = await s.owner.mutation(api.pos.refundLine, args);
+    const first = await s.owner.mutation(api.pos.commands.refundLine.refundLine, args);
     const snapshot = await s.view(orderId);
-    const history = await s.owner.query(api.pos.orderHistory, { orderId, paginationOpts: { cursor: null, numItems: 50 } });
-    expect(await s.owner.mutation(api.pos.refundLine, args)).toEqual({ ...first, replayed: true });
+    const history = await s.owner.query(api.pos.orders.orderHistory, { orderId, paginationOpts: { cursor: null, numItems: 50 } });
+    expect(await s.owner.mutation(api.pos.commands.refundLine.refundLine, args)).toEqual({ ...first, replayed: true });
     expect(await s.view(orderId)).toEqual(snapshot);
-    expect(await s.owner.query(api.pos.orderHistory, { orderId, paginationOpts: { cursor: null, numItems: 50 } })).toEqual(history);
+    expect(await s.owner.query(api.pos.orders.orderHistory, { orderId, paginationOpts: { cursor: null, numItems: 50 } })).toEqual(history);
     for (const patch of [{ amount: 1 }, { method: 'card' as const }, { reason: 'Different reason' }, { currency: 'USD' }])
-      await expect(s.owner.mutation(api.pos.refundLine, { ...args, ...patch })).rejects.toMatchObject(error('IDEMPOTENCY_CONFLICT'));
+      await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, { ...args, ...patch })).rejects.toMatchObject(error('IDEMPOTENCY_CONFLICT'));
     expect(await s.records(orderId)).toHaveLength(1);
   });
 
@@ -248,13 +248,13 @@ describe('POS line refunds', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
     const results = await Promise.allSettled([
-      s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 60000, 'concurrent-one')),
-      s.manager.mutation(api.pos.refundLine, s.args(orderId, lineId, 60000, 'concurrent-two')),
+      s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 60000, 'concurrent-one')),
+      s.manager.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 60000, 'concurrent-two')),
     ]);
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.find(r => r.status === 'rejected')).toMatchObject({ reason: error('REFUND_EXCEEDS_REMAINING') });
     const args = s.args(orderId, lineId, 40000, 'same-key-concurrent');
-    const replays = await Promise.all([s.owner.mutation(api.pos.refundLine, args), s.owner.mutation(api.pos.refundLine, args)]);
+    const replays = await Promise.all([s.owner.mutation(api.pos.commands.refundLine.refundLine, args), s.owner.mutation(api.pos.commands.refundLine.refundLine, args)]);
     expect(replays.map(r => r.replayed).sort()).toEqual([false, true]);
     expect((await s.records(orderId)).reduce((n, r) => n + r.amount, 0)).toBe(100000);
   });
@@ -263,7 +263,7 @@ describe('POS line refunds', () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, amount))).rejects.toMatchObject(error('INVALID_REFUND_AMOUNT'));
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, amount))).rejects.toMatchObject(error('INVALID_REFUND_AMOUNT'));
     expect(await s.records(orderId)).toHaveLength(0);
   });
 
@@ -276,43 +276,43 @@ describe('POS line refunds', () => {
       [{ reason: '   ' }, 'INVALID_REFUND_REASON'], [{ reason: 'a'.repeat(501) }, 'INVALID_REFUND_REASON'],
       [{ idempotencyKey: 'short' }, 'INVALID_IDEMPOTENCY_KEY'], [{ currency: 'USD' }, 'REFUND_CURRENCY_MISMATCH'],
       [{ lineId: other.lineId }, 'LINE_NOT_REFUNDABLE'],
-    ] as const) await expect(s.owner.mutation(api.pos.refundLine, { ...s.args(orderId, lineId), ...patch })).rejects.toMatchObject(error(code));
+    ] as const) await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, { ...s.args(orderId, lineId), ...patch })).rejects.toMatchObject(error(code));
     expect(await s.records(orderId)).toHaveLength(0);
   });
 
   it('refuses unpaid and void orders; neither void mode can follow a partial refund', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('ORDER_NOT_PAID'));
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('ORDER_NOT_PAID'));
     await s.pay(orderId);
-    await s.owner.mutation(api.pos.voidOrder, { orderId, reason: 'Wrong sale' });
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('ORDER_NOT_PAID'));
+    await s.owner.mutation(api.pos.commands.voidOrder.voidOrder, { orderId, reason: 'Wrong sale' });
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('ORDER_NOT_PAID'));
     const next = await s.sale();
     await s.pay(next.orderId);
-    await s.owner.mutation(api.pos.refundLine, s.args(next.orderId, next.lineId));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(next.orderId, next.lineId));
     const before = await s.view(next.orderId);
-    await expect(s.owner.mutation(api.pos.voidOrder, { orderId: next.orderId, reason: 'Wrong sale' })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
-    await expect(s.owner.mutation(api.pos.voidUnreceivedOrder, { orderId: next.orderId, reason: 'No money', idempotencyKey: 'void-attempt', expectedCorrectionRevision: before.paymentRecord.correctionRevision })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
+    await expect(s.owner.mutation(api.pos.commands.voidOrder.voidOrder, { orderId: next.orderId, reason: 'Wrong sale' })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
+    await expect(s.owner.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { orderId: next.orderId, reason: 'No money', idempotencyKey: 'void-attempt', expectedCorrectionRevision: before.paymentRecord.correctionRevision })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
     expect(await s.view(next.orderId)).toEqual(before);
   });
 
   it.each(['booking', 'appointment'] as const)('refuses attached %s lines', async kind => {
     const s = await setup();
     const source = kind === 'booking' ? { bookingId: await s.booking() } : { appointmentId: await s.appointment() };
-    const { orderId } = await s.owner.mutation(api.pos.openOrderFor, source);
+    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderFor.openOrderFor, source);
     const lineId = (await s.view(orderId)).lines[0]._id;
     await s.pay(orderId);
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('LINE_NOT_REFUNDABLE'));
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('LINE_NOT_REFUNDABLE'));
   });
 
   it('returns a standalone POS appointment fee without changing the appointment', async () => {
     const s = await setup();
     const appointmentId = await s.appointment();
     await s.t.run(ctx => ctx.db.patch(appointmentId, { status: 'no_show' }));
-    const { orderId } = await s.owner.mutation(api.pos.addAppointmentFee, { appointmentId, kind: 'no_show', amount: 10000, reason: 'Missed service' });
+    const { orderId } = await s.owner.mutation(api.pos.commands.addAppointmentFee.addAppointmentFee, { appointmentId, kind: 'no_show', amount: 10000, reason: 'Missed service' });
     const lineId = (await s.view(orderId)).lines[0]._id;
     await s.pay(orderId);
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 10000));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 10000));
     expect((await s.view(orderId)).fullyRefunded).toBe(true);
     expect(await s.t.run(ctx => ctx.db.get(appointmentId))).toMatchObject({ status: 'no_show', paymentStatus: 'unpaid' });
   });
@@ -323,20 +323,20 @@ describe('POS line refunds', () => {
     await s.pay(orderId);
     const appointmentId = await s.appointment();
     const linkArgs = { orderId, lineId, appointmentId, expectedTargetRevision: 0, expectedCorrectionRevision: 0, idempotencyKey: 'link-attempt', reason: 'Assign to guest' };
-    const link = await s.owner.mutation(api.pos.linkPaidLine, linkArgs);
-    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('LINE_NOT_REFUNDABLE'));
-    await s.owner.mutation(api.pos.unlinkPaidLine, { orderId, linkId: link.linkId, expectedCorrectionRevision: 1, idempotencyKey: 'unlink-attempt', reason: 'Wrong guest' });
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId));
-    await expect(s.owner.mutation(api.pos.linkPaidLine, { ...linkArgs, expectedCorrectionRevision: 3, idempotencyKey: 'relink-attempt' })).rejects.toMatchObject(error('LINE_HAS_REFUNDS'));
+    const link = await s.owner.mutation(api.pos.commands.linkPaidLine.linkPaidLine, linkArgs);
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('LINE_NOT_REFUNDABLE'));
+    await s.owner.mutation(api.pos.commands.unlinkPaidLine.unlinkPaidLine, { orderId, linkId: link.linkId, expectedCorrectionRevision: 1, idempotencyKey: 'unlink-attempt', reason: 'Wrong guest' });
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId));
+    await expect(s.owner.mutation(api.pos.commands.linkPaidLine.linkPaidLine, { ...linkArgs, expectedCorrectionRevision: 3, idempotencyKey: 'relink-attempt' })).rejects.toMatchObject(error('LINE_HAS_REFUNDS'));
   });
 
   it('keeps stay money on the stay while refunding only a walk-in line on a mixed receipt', async () => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.owner.mutation(api.pos.openOrderFor, { bookingId });
-    const { lineId } = await s.owner.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
+    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { lineId } = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
     await s.pay(orderId);
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 20000));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 20000));
     const report = await s.owner.query(api.marketingReport.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' });
     expect(report.sales.find(sale => sale.id === bookingId)).toMatchObject({ collected: 100000, refunded: 0 });
     expect(report.sales.find(sale => sale.id === orderId)).toMatchObject({ collected: 100000, refunded: 20000 });
@@ -344,7 +344,7 @@ describe('POS line refunds', () => {
     expect(await s.t.run(ctx => creditMoney(ctx, { orderId: orderId }))).toEqual({ eligible: true, net: 80000 });
     expect((await s.view(orderId)).fullyRefunded).toBe(false);
     const before = report.events;
-    await expect(s.owner.mutation(api.pos.voidOrder, { orderId, reason: 'Wrong order' })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
+    await expect(s.owner.mutation(api.pos.commands.voidOrder.voidOrder, { orderId, reason: 'Wrong order' })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
     expect((await s.owner.query(api.marketingReport.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' })).events).toEqual(before);
   });
 
@@ -357,10 +357,10 @@ describe('POS line refunds', () => {
     await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     await s.owner.mutation(api.marketingAffiliates.assignCoupon, { affiliateId, couponId });
     const { orderId, lineId } = await s.sale();
-    await s.owner.mutation(api.pos.applyOrderCoupon, { orderId, code: 'PARTNER100' });
+    await s.owner.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'PARTNER100' });
     await s.pay(orderId, now - day);
     vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-12T18:30:00Z')); // November 13 in Bangkok.
-    await s.manager.mutation(api.pos.refundLine, s.args(orderId, lineId, 10000));
+    await s.manager.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 10000));
     expect(await s.t.run(ctx => creditMoney(ctx, { orderId: orderId }))).toEqual({ eligible: true, net: 80000 });
     const credit = await s.t.run(ctx => ctx.db.query('affiliateCredits').withIndex('by_sourceKey', q => q.eq('sourceKey', `order:${orderId}`)).unique());
     expect(credit).toMatchObject({ eligibleNet: 80000, eligible: true });
@@ -370,16 +370,16 @@ describe('POS line refunds', () => {
     expect((await report('2026-11-13')).events).toEqual([{ saleId: orderId, kind: 'refund', day: '2026-11-13', amount: 10000 }]);
     expect((await report('2026-11-11', 'cohort')).sales).toMatchObject([{ id: orderId, collected: 90000, refunded: 10000 }]);
     const pageArgs = { orderId, paginationOpts: { cursor: null, numItems: 1 } };
-    const history = await s.owner.query(api.pos.orderHistory, pageArgs);
+    const history = await s.owner.query(api.pos.orders.orderHistory, pageArgs);
     expect(history.page).toMatchObject([{ kind: 'refund', actor: 'manager@example.com', after: { amount: 10000, businessDate: '2026-11-13' } }]);
-    expect((await s.owner.query(api.orderHistoryPages.audit, pageArgs)).page).toMatchObject([{ kind: 'refund', fromPrice: 90000, toPrice: 80000 }]);
-    const page = await s.owner.query(api.orderHistoryPages.orderRefunds, pageArgs);
+    expect((await s.owner.query(api.pos.orderHistoryPages.audit, pageArgs)).page).toMatchObject([{ kind: 'refund', fromPrice: 90000, toPrice: 80000 }]);
+    const page = await s.owner.query(api.pos.orderHistoryPages.orderRefunds, pageArgs);
     expect(page.page).toMatchObject([{ amount: 10000, businessDate: '2026-11-13' }]);
     expect(page.page[0]).not.toHaveProperty('createdBy');
-    await s.manager.mutation(api.pos.refundLine, s.args(orderId, lineId, 80000, 'full-return-attempt'));
+    await s.manager.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 80000, 'full-return-attempt'));
     expect(await s.t.run(ctx => creditMoney(ctx, { orderId: orderId }))).toEqual({ eligible: false, net: 0 });
     expect((await report('2026-11-13')).events.reduce((sum, e) => sum + e.amount, 0)).toBe(90000);
-    const secondPage = await s.owner.query(api.orderHistoryPages.orderRefunds, { ...pageArgs, paginationOpts: { numItems: 1, cursor: (await s.owner.query(api.orderHistoryPages.orderRefunds, pageArgs)).continueCursor } });
+    const secondPage = await s.owner.query(api.pos.orderHistoryPages.orderRefunds, { ...pageArgs, paginationOpts: { numItems: 1, cursor: (await s.owner.query(api.pos.orderHistoryPages.orderRefunds, pageArgs)).continueCursor } });
     expect(secondPage.page).toHaveLength(1);
   });
 });
@@ -390,19 +390,19 @@ describe('POS refund staff approvals', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
     const args = s.args(orderId, lineId);
-    await expect(s.cashier.mutation(api.pos.refundLine, args)).rejects.toMatchObject(error('NEEDS_APPROVAL'));
+    await expect(s.cashier.mutation(api.pos.commands.refundLine.refundLine, args)).rejects.toMatchObject(error('NEEDS_APPROVAL'));
     const request = await s.request(args);
-    expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0]).toMatchObject({ payload: { amountSatang: 25000, reason: args.reason }, amount: 25000 });
+    expect((await s.cashier.query(api.pos.staffApprovals.forOrder, { orderId }))[0]).toMatchObject({ payload: { amountSatang: 25000, reason: args.reason }, amount: 25000 });
     expect(request).toMatchObject({ amount: 25000, totalBefore: 100000, totalAfter: 75000, expiresAt: now + APPROVAL_TTL_MS });
     expect(await s.records(orderId)).toHaveLength(0);
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'applied', replayed: false });
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'applied', replayed: true });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'applied', replayed: false });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'applied', replayed: true });
     expect(await s.records(orderId)).toHaveLength(1);
     expect((await s.records(orderId))[0]).toMatchObject({ createdBy: 'issuer|manager', createdByEmail: 'manager@example.com' });
     // The original client key survives approval, so a lost response can safely be retried.
-    expect(await s.cashier.mutation(api.pos.refundLine, args)).toMatchObject({ replayed: true });
+    expect(await s.cashier.mutation(api.pos.commands.refundLine.refundLine, args)).toMatchObject({ replayed: true });
     await s.rules({ refund: 'cashier' });
-    await s.cashier.mutation(api.pos.refundLine, s.args(orderId, lineId, 10000, 'cashier-return-attempt'));
+    await s.cashier.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 10000, 'cashier-return-attempt'));
     expect((await s.records(orderId))[1].createdBy).toBe('issuer|cashier');
   });
 
@@ -412,11 +412,11 @@ describe('POS refund staff approvals', () => {
     await s.pay(orderId);
     const request = await s.request(s.args(orderId, lineId));
     if (change === 'rule') { await s.rules({ refund: 'cashier' }); await s.rules({ refund: 'manager' }); }
-    if (change === 'refund') await s.manager.mutation(api.pos.refundLine, s.args(orderId, lineId, 1, 'other-refund-attempt'));
+    if (change === 'refund') await s.manager.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 1, 'other-refund-attempt'));
     if (change === 'line') await s.t.run(ctx => ctx.db.patch(lineId, { couponDiscount: 100 }));
-    if (change === 'order') await s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'amend-attempt', reason: 'Correct date', effectiveAt: now - day });
+    if (change === 'order') await s.owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'amend-attempt', reason: 'Correct date', effectiveAt: now - day });
     if (change === 'requester') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: null });
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'stale', replayed: false });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'stale', replayed: false });
     expect(await s.records(orderId)).toHaveLength(change === 'refund' ? 1 : 0);
   });
 
@@ -424,10 +424,10 @@ describe('POS refund staff approvals', () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 1));
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 1));
     const request = await s.request(s.args(orderId, lineId, 100));
     const before = await s.view(orderId);
-    await expect(s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).rejects.toMatchObject(error('IDEMPOTENCY_CONFLICT'));
+    await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toMatchObject(error('IDEMPOTENCY_CONFLICT'));
     expect(await s.view(orderId)).toEqual(before);
     expect(await s.t.run(ctx => ctx.db.get(request.requestId))).toMatchObject({ status: 'pending' });
     expect(await s.records(orderId)).toHaveLength(1);
@@ -439,11 +439,11 @@ describe('POS refund staff approvals', () => {
     await s.pay(orderId);
     const request = await s.request(s.args(orderId, lineId));
     await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
-    await expect(s.cashier.mutation(api.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('own request');
+    await expect(s.cashier.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('own request');
     await s.owner.mutation(api.staffAccess.setGrant, { email: 'manager@example.com', role: null });
-    await expect(s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('Not authorized');
+    await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('Not authorized');
     vi.mocked(Date.now).mockReturnValue(now + APPROVAL_TTL_MS);
-    expect(await s.owner.mutation(api.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'expired', replayed: false });
+    expect(await s.owner.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'expired', replayed: false });
     expect(await s.records(orderId)).toHaveLength(0);
   });
 
@@ -452,11 +452,11 @@ describe('POS refund staff approvals', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId, now - day);
     await s.rules({ refund: 'cashier' });
-    expect(await s.cashier.query(api.pos.getOrder, { orderId })).toBeNull();
-    await expect(s.cashier.mutation(api.pos.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('ORDER_NOT_FOUND'));
+    expect(await s.cashier.query(api.pos.orders.getOrder, { orderId })).toBeNull();
+    await expect(s.cashier.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('ORDER_NOT_FOUND'));
     await expect(s.request(s.args(orderId, lineId))).rejects.toThrow('Order not found');
-    await expect(s.cashier.query(api.orderHistoryPages.orderRefunds, { orderId, paginationOpts: { cursor: null, numItems: 20 } })).rejects.toThrow('Order not found');
-    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId));
+    await expect(s.cashier.query(api.pos.orderHistoryPages.orderRefunds, { orderId, paginationOpts: { cursor: null, numItems: 20 } })).rejects.toThrow('Order not found');
+    await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId));
     expect(await s.records(orderId)).toHaveLength(1);
   });
 });

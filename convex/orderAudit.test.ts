@@ -51,7 +51,7 @@ async function setup() {
     });
     return { propertyId, bookingId, appointmentId };
   });
-  const view = async (orderId: Id<'orders'>) => (await admin.query(api.pos.getOrder, { orderId }))!;
+  const view = async (orderId: Id<'orders'>) => (await admin.query(api.pos.orders.getOrder, { orderId }))!;
   const review = async (orderId: Id<'orders'>, key = 'audit-attempt-0001') => {
     const data = await view(orderId);
     // The customer revision is part of what the cashier reviewed (customers.ts assertCustomerReviewed).
@@ -60,7 +60,7 @@ async function setup() {
       ...(customerRevision !== undefined ? { expectedCustomerRevision: customerRevision } : {}),
       tenders: data.totals.due ? [{ method: 'card' as const, amount: data.totals.due }] : [] };
   };
-  const extra = () => admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Audit water', price: 9000 } });
+  const extra = () => admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Audit water', price: 9000 } });
   return { t, admin, staffId, serviceId, propertyId, bookingId, appointmentId, view, review, extra };
 }
 
@@ -72,12 +72,12 @@ describe('Independent order audit: identity, customer and settlement', () => {
     expect(initial.order).toMatchObject({ orderNumber: 1, state: 'unpaid', due: 9000 });
     expect(initial.customer).toBeNull();
     expect(initial.source).toBeNull();
-    await admin.mutation(api.pos.saveOrder, { orderId });
+    await admin.mutation(api.pos.commands.saveOrder.saveOrder, { orderId });
     expect((await view(orderId)).order.revision).toBe(initial.order.revision);
     vi.setSystemTime(new Date('2026-10-30T03:00:00Z'));
     const args = await review(orderId);
-    expect(await admin.mutation(api.pos.settleOrder, args)).toMatchObject({ replayed: false });
-    expect(await admin.mutation(api.pos.settleOrder, args)).toMatchObject({ replayed: true });
+    expect(await admin.mutation(api.pos.commands.settleOrder.settleOrder, args)).toMatchObject({ replayed: false });
+    expect(await admin.mutation(api.pos.commands.settleOrder.settleOrder, args)).toMatchObject({ replayed: true });
     const paid = await view(orderId);
     expect(paid.order).toMatchObject({ orderNumber: 1, state: 'paid', due: 0 });
     expect(paid.receiptCustomer).toBeNull();
@@ -92,47 +92,47 @@ describe('Independent order audit: identity, customer and settlement', () => {
     const sales = await Promise.all(Array.from({ length: 5 }, extra));
     const numbers = await Promise.all(sales.map(async ({ orderId }) => (await view(orderId)).order.orderNumber));
     expect(new Set(numbers).size).toBe(5);
-    const opened = await Promise.all(Array.from({ length: 5 }, () => admin.mutation(api.pos.openOrderFor, { bookingId })));
+    const opened = await Promise.all(Array.from({ length: 5 }, () => admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId })));
     expect(new Set(opened.map(row => row.orderId)).size).toBe(1);
     expect((await view(opened[0].orderId)).lines.filter((line: Doc<'orderLines'>) => line.bookingId === bookingId)).toHaveLength(1);
   });
 
   it('keeps same-name customers separate and supports one payer on multiple orders without changing the guest', async () => {
     const { t, admin, bookingId, extra, view, review } = await setup();
-    const c1 = await admin.mutation(api.customers.createCustomer, { name: 'Same name', phone: '0811111111' });
-    const c2 = await admin.mutation(api.customers.createCustomer, { name: 'Same name', phone: '0822222222' });
+    const c1 = await admin.mutation(api.pos.customers.createCustomer, { name: 'Same name', phone: '0811111111' });
+    const c2 = await admin.mutation(api.pos.customers.createCustomer, { name: 'Same name', phone: '0822222222' });
     expect(c1).not.toBe(c2);
-    expect(await admin.query(api.customers.searchCustomers, { query: 'Same' })).toHaveLength(2);
-    expect(await admin.query(api.customers.searchCustomers, { query: '0811111111' })).toMatchObject([{ _id: c1 }]);
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
+    expect(await admin.query(api.pos.customers.searchCustomers, { query: 'Same' })).toHaveLength(2);
+    expect(await admin.query(api.pos.customers.searchCustomers, { query: '0811111111' })).toMatchObject([{ _id: c1 }]);
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     const other = await extra();
     const stale = await review(orderId);
-    await admin.mutation(api.pos.linkCustomer, { orderId, customerId: c1 });
-    await admin.mutation(api.pos.linkCustomer, { orderId: other.orderId, customerId: c1 });
-    await expect(admin.mutation(api.pos.settleOrder, stale)).rejects.toThrow('changed');
-    expect((await admin.query(api.customers.getCustomer, { customerId: c1 })).orders).toHaveLength(2);
+    await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId: c1 });
+    await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId: other.orderId, customerId: c1 });
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, stale)).rejects.toThrow('changed');
+    expect((await admin.query(api.pos.customers.getCustomer, { customerId: c1 })).orders).toHaveLength(2);
     expect((await t.run(ctx => ctx.db.get(bookingId)))?.guestName).toBe('Booking guest');
     const number = (await view(orderId)).order.orderNumber;
     const linkedReview = await review(orderId);
-    await admin.mutation(api.pos.unlinkCustomer, { orderId });
-    await expect(admin.mutation(api.pos.settleOrder, linkedReview)).rejects.toThrow('changed');
+    await admin.mutation(api.pos.commands.unlinkCustomer.unlinkCustomer, { orderId });
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, linkedReview)).rejects.toThrow('changed');
     expect((await view(orderId)).order.orderNumber).toBe(number);
     await t.run(ctx => ctx.db.delete(c2));
-    await expect(admin.mutation(api.pos.linkCustomer, { orderId, customerId: c2 })).rejects.toThrow('Customer not found');
+    await expect(admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId: c2 })).rejects.toThrow('Customer not found');
   });
 
   it('freezes paid customer/items/tenders and preserves void history', async () => {
     const { admin, extra, view, review } = await setup();
-    const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Original payer', phone: '0811111111' });
+    const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Original payer', phone: '0811111111' });
     const { orderId, lineId } = await extra();
-    await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
-    await admin.mutation(api.pos.settleOrder, await review(orderId));
+    await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, await review(orderId));
     const paid = await view(orderId);
-    await admin.mutation(api.customers.updateCustomer, { customerId, name: 'New payer name', phone: '0999999999' });
+    await admin.mutation(api.pos.customers.updateCustomer, { customerId, name: 'New payer name', phone: '0999999999' });
     expect((await view(orderId)).receiptCustomer).toEqual({ name: 'Original payer', phone: '0811111111' });
-    await expect(admin.mutation(api.pos.updateLine, { lineId, qtyChange: 1 })).rejects.toThrow('already paid');
-    await expect(admin.mutation(api.pos.unlinkCustomer, { orderId })).rejects.toThrow('already paid');
-    await admin.mutation(api.pos.voidOrder, { orderId, reason: 'Audit void' });
+    await expect(admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, qtyChange: 1 })).rejects.toThrow('already paid');
+    await expect(admin.mutation(api.pos.commands.unlinkCustomer.unlinkCustomer, { orderId })).rejects.toThrow('already paid');
+    await admin.mutation(api.pos.commands.voidOrder.voidOrder, { orderId, reason: 'Audit void' });
     const voided = await view(orderId);
     expect(voided.lines).toEqual(paid.lines.map((line: Doc<'orderLines'>) => ({ ...line, remainingRefundableSatang: 0 })));
     expect(voided.payments).toEqual(paid.payments);
@@ -143,19 +143,19 @@ describe('Independent order audit: identity, customer and settlement', () => {
 
   it('REGRESSION COVERAGE: rejects a payment reviewed before the linked profile details changed', async () => {
     const { admin, extra, review } = await setup();
-    const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Reviewed payer' });
+    const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Reviewed payer' });
     const { orderId } = await extra();
-    await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
+    await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
     const reviewed = await review(orderId);
-    await admin.mutation(api.customers.updateCustomer, { customerId, name: 'Different payer details' });
-    await expect(admin.mutation(api.pos.settleOrder, reviewed)).rejects.toThrow(/changed|review/i);
+    await admin.mutation(api.pos.customers.updateCustomer, { customerId, name: 'Different payer details' });
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, reviewed)).rejects.toThrow(/changed|review/i);
   });
 
   it('REGRESSION COVERAGE: a paid receipt keeps the therapist name it was issued with', async () => {
     const { admin, serviceId, staffId, view, review } = await setup();
-    const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-    await admin.mutation(api.pos.updateLine, { lineId, staffId });
-    await admin.mutation(api.pos.settleOrder, await review(orderId));
+    const { orderId, lineId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
+    await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId, staffId });
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, await review(orderId));
     const before = await view(orderId);
     expect(before.lines[0].staffName).toBe('Audit therapist');
     await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, name: 'Renamed therapist' });
@@ -164,14 +164,14 @@ describe('Independent order audit: identity, customer and settlement', () => {
 
   it('lists deposited stay balances, paid and void statuses correctly', async () => {
     const { admin, bookingId, extra, view, review } = await setup();
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     expect((await view(orderId)).totals).toMatchObject({ total: 3000000, deposit: 1000000, due: 2000000 });
-    const list = (filter: string) => admin.query(api.pos.listOrders, { filter, paginationOpts: { numItems: 50, cursor: null } });
+    const list = (filter: string) => admin.query(api.pos.orders.listOrders, { filter, paginationOpts: { numItems: 50, cursor: null } });
     expect((await list('unpaid')).page).toMatchObject([{ _id: orderId, due: 2000000 }]);
     const standalone = await extra();
-    await admin.mutation(api.pos.settleOrder, await review(standalone.orderId));
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, await review(standalone.orderId));
     expect((await list('paid')).page).toMatchObject([{ _id: standalone.orderId, due: 0 }]);
-    await admin.mutation(api.pos.voidOrder, { orderId: standalone.orderId, reason: 'Audit void' });
+    await admin.mutation(api.pos.commands.voidOrder.voidOrder, { orderId: standalone.orderId, reason: 'Audit void' });
     expect((await list('paid')).page).toHaveLength(0);
     expect((await list('void')).page).toMatchObject([{ _id: standalone.orderId, due: 0 }]);
   });
@@ -180,20 +180,20 @@ describe('Independent order audit: identity, customer and settlement', () => {
     const { admin, extra, review, view } = await setup();
     const { orderId } = await extra();
     const args = await review(orderId);
-    await expect(admin.mutation(api.pos.settleOrder, { ...args, expectedDue: 9100 })).rejects.toThrow('changed');
-    await expect(admin.mutation(api.pos.settleOrder, { ...args, tenders: [{ method: 'card', amount: 4000 }] })).rejects.toThrow();
-    await admin.mutation(api.pos.settleOrder, { ...args, tenders: [{ method: 'cash', amount: 4000, received: 10000 }, { method: 'promptpay', amount: 5000 }] });
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, { ...args, expectedDue: 9100 })).rejects.toThrow('changed');
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, { ...args, tenders: [{ method: 'card', amount: 4000 }] })).rejects.toThrow();
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, { ...args, tenders: [{ method: 'cash', amount: 4000, received: 10000 }, { method: 'promptpay', amount: 5000 }] });
     expect((await view(orderId)).payments).toHaveLength(2);
-    const free = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Complimentary', price: 0 } });
-    await expect(admin.mutation(api.pos.settleOrder, await review(free.orderId))).resolves.toMatchObject({ replayed: false });
+    const free = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Complimentary', price: 0 } });
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, await review(free.orderId))).resolves.toMatchObject({ replayed: false });
   });
 });
 
 describe('Independent order audit: booking/source integrity', () => {
   it('REGRESSION COVERAGE: opening appointment before stay still charges the unpaid stay exactly once', async () => {
     const { admin, bookingId, appointmentId, view } = await setup();
-    const appointmentOrder = await admin.mutation(api.pos.openOrderFor, { appointmentId });
-    const stayOrder = await admin.mutation(api.pos.openOrderFor, { bookingId });
+    const appointmentOrder = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+    const stayOrder = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     expect(stayOrder.orderId).toBe(appointmentOrder.orderId);
     const data = await view(stayOrder.orderId);
     expect(data.lines.filter((line: Doc<'orderLines'>) => line.appointmentId === appointmentId)).toHaveLength(1);
@@ -203,20 +203,20 @@ describe('Independent order audit: booking/source integrity', () => {
 
   it.each(['clear', 'remove'] as const)('REGRESSION COVERAGE: reopening a stay after %s restores its unpaid source charge', async operation => {
     const { admin, bookingId, view } = await setup();
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-    if (operation === 'clear') await admin.mutation(api.pos.clearOrder, { orderId });
-    else await admin.mutation(api.pos.removeLine, { lineId: (await view(orderId)).lines[0]._id });
-    expect((await admin.mutation(api.pos.openOrderFor, { bookingId })).orderId).toBe(orderId);
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    if (operation === 'clear') await admin.mutation(api.pos.commands.clearOrder.clearOrder, { orderId });
+    else await admin.mutation(api.pos.commands.removeLine.removeLine, { lineId: (await view(orderId)).lines[0]._id });
+    expect((await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId })).orderId).toBe(orderId);
     expect((await view(orderId)).lines.filter((line: Doc<'orderLines'>) => line.bookingId === bookingId)).toHaveLength(1);
   });
 
   it('reuses stay-first order for its appointment and prevents competing allocation/manual payments', async () => {
     const { admin, bookingId, appointmentId, view } = await setup();
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-    expect(await admin.mutation(api.pos.openOrderFor, { appointmentId })).toEqual({ orderId });
-    expect(await admin.mutation(api.pos.openOrderFor, { appointmentId })).toEqual({ orderId });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    expect(await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId })).toEqual({ orderId });
+    expect(await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId })).toEqual({ orderId });
     expect((await view(orderId)).totals.due).toBe(2120000);
-    await expect(admin.mutation(api.pos.attach, { bookingId })).rejects.toThrow('already on');
+    await expect(admin.mutation(api.pos.commands.attach.attach, { bookingId })).rejects.toThrow('already on');
     await expect(admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId, action: 'markPaid' })).rejects.toThrow('still open');
     await expect(admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId })).rejects.toThrow('still open');
   });
@@ -229,50 +229,50 @@ describe('Independent order audit: booking/source integrity', () => {
     ['online checkout', { stripeCheckoutExpiresAt: 1793332800000 + 86400000 }]
   ] as const)('rejects stale stay settlement after %s', async (_label, patch) => {
     const { t, admin, bookingId, view, review } = await setup();
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     const args = await review(orderId);
     await t.run(ctx => ctx.db.patch(bookingId, patch));
     expect((await view(orderId)).lines[0].sourceIssue).not.toBeNull();
-    await expect(admin.mutation(api.pos.settleOrder, args)).rejects.toThrow();
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, args)).rejects.toThrow();
     expect((await view(orderId)).payments).toHaveLength(0);
     expect((await view(orderId)).order.status).toBe('draft');
   });
 
   it('updates a changed deposit once, rejects the old revision and settles only the new balance', async () => {
     const { t, admin, bookingId, view, review } = await setup();
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     const stale = await review(orderId);
     await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 1500000 }));
-    await admin.mutation(api.pos.updateSourceLine, { lineId: (await view(orderId)).lines[0]._id });
+    await admin.mutation(api.pos.commands.updateSourceLine.updateSourceLine, { lineId: (await view(orderId)).lines[0]._id });
     expect((await view(orderId)).totals.due).toBe(1500000);
-    await expect(admin.mutation(api.pos.settleOrder, stale)).rejects.toThrow('changed');
-    await admin.mutation(api.pos.settleOrder, await review(orderId));
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, stale)).rejects.toThrow('changed');
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, await review(orderId));
     expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'paid', amountPaid: 3000000 });
   });
 
   it.each(['price', 'start', 'cancelled', 'paid'] as const)('detects a changed appointment %s', async change => {
     const { t, admin, appointmentId, review, view } = await setup();
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { appointmentId });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
     const stale = await review(orderId);
     await t.run(async ctx => {
       const a = (await ctx.db.get(appointmentId))!;
       await ctx.db.patch(appointmentId, change === 'price' ? { price: 130000 } : change === 'start' ? { start: a.start + 3600000 } : change === 'cancelled' ? { status: 'cancelled' } : { paymentStatus: 'paid' });
     });
     expect((await view(orderId)).lines[0].sourceIssue).not.toBeNull();
-    await expect(admin.mutation(api.pos.settleOrder, stale)).rejects.toThrow();
+    await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, stale)).rejects.toThrow();
   });
 
   it('uses a linked additional order for an extended paid stay without rewriting the original receipt', async () => {
     const { t, admin, bookingId, view, review } = await setup();
-    const original = await admin.mutation(api.pos.openOrderFor, { bookingId });
-    await admin.mutation(api.pos.settleOrder, await review(original.orderId));
+    const original = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, await review(original.orderId));
     const before = await view(original.orderId);
     await t.run(ctx => ctx.db.patch(bookingId, { total: 4000000, nights: 4, checkOut: '2026-11-05' }));
-    const later = await admin.mutation(api.pos.openOrderFor, { bookingId });
+    const later = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     expect(later.orderId).not.toBe(original.orderId);
     expect((await view(later.orderId)).order.parentOrderId).toBe(original.orderId);
     expect((await view(later.orderId)).totals).toMatchObject({ total: 4000000, deposit: 3000000, due: 1000000 });
-    await admin.mutation(api.pos.settleOrder, await review(later.orderId, 'audit-attempt-0002'));
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, await review(later.orderId, 'audit-attempt-0002'));
     expect((await view(original.orderId)).order).toEqual(before.order);
     expect((await view(original.orderId)).lines).toEqual(before.lines);
     expect((await view(original.orderId)).payments).toEqual(before.payments);
@@ -283,7 +283,7 @@ describe('Independent order audit: booking/source integrity', () => {
     const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
       propertySlug: 'order-audit-villa', guestName: 'New guest', guestPhone: '0812222222', checkIn: '2026-12-01', checkOut: '2026-12-03', guests: 2
     });
-    expect((await admin.query(api.pos.ordersForBooking, { bookingId })).activeOrder).not.toBeNull();
+    expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId })).activeOrder).not.toBeNull();
     expect(await t.run(ctx => ctx.db.query('orders').take(10))).toHaveLength(1);
   });
 
@@ -292,7 +292,7 @@ describe('Independent order audit: booking/source integrity', () => {
     const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, {
       serviceId, staffId, start: localDateTimeUtc('2026-11-03', '10:00'), guestName: '', guestPhone: ''
     });
-    expect((await admin.query(api.pos.ordersForBooking, { appointmentId })).activeOrder).not.toBeNull();
+    expect((await admin.query(api.pos.orders.ordersForBooking, { appointmentId })).activeOrder).not.toBeNull();
   });
 
   it.each(['manual', 'stripe'] as const)('REGRESSION COVERAGE: %s full settlement of a deposited stay records the full paid amount', async method => {
@@ -303,7 +303,7 @@ describe('Independent order audit: booking/source integrity', () => {
       await t.mutation(api.bookings.payments.stripe.completeCheckout, { bookingId, sessionId: 'cs_order_audit', amountTotal: 2000000, currency: 'thb', paymentIntentId: 'pi_order_audit' });
     }
     expect(await t.run(ctx => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'paid', amountPaid: 3000000 });
-    expect((await admin.query(api.pos.ordersForBooking, { bookingId })).balance.owed).toBe(0);
+    expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId })).balance.owed).toBe(0);
   });
 });
 
@@ -313,7 +313,7 @@ describe('Independent order audit: legacy backfill', () => {
     const { t, admin } = await setup();
     const orderId = await t.run(ctx => insertFixture(ctx, 'orders', { status: 'draft', currency: 'THB', itemCount: 1,
       total: 9000, hasItems: true, revision: 1, createdBy: 'legacy', createdAt: 1, updatedAt: 1 }));
-    const result = await admin.query(api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 50, cursor: null } });
+    const result = await admin.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 50, cursor: null } });
     expect(result.page.map((row: { _id: Id<'orders'> }) => row._id)).toContain(orderId);
   });
 
@@ -332,7 +332,7 @@ describe('Independent order audit: legacy backfill', () => {
     const seen = new Set<Id<'orders'>>();
     let cursor: string | null = null;
     for (let i = 0; i < 10; i++) {
-      const result: { page: Array<{ _id: Id<'orders'> }>; isDone: boolean; continueCursor: string } = await admin.query(api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 50, cursor } });
+      const result: { page: Array<{ _id: Id<'orders'> }>; isDone: boolean; continueCursor: string } = await admin.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 50, cursor } });
       for (const row of result.page) seen.add(row._id);
       if (result.isDone) break;
       cursor = result.continueCursor;
@@ -352,7 +352,7 @@ describe('Independent order audit: legacy backfill', () => {
       }
     });
     const newOrder = await extra();
-    await expect(admin.mutation(api.pos.attach, { orderId: newOrder.orderId, appointmentId })).rejects.toThrow('already on');
+    await expect(admin.mutation(api.pos.commands.attach.attach, { orderId: newOrder.orderId, appointmentId })).rejects.toThrow('already on');
     expect((await view(newOrder.orderId)).lines).toHaveLength(1);
   });
 });
@@ -360,9 +360,9 @@ describe('Independent order audit: legacy backfill', () => {
 describe('Independent order audit: authorization', () => {
   it('public booking response does not expose the payer profile or order history', async () => {
     const { t, admin, bookingId } = await setup();
-    const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Private corporate payer', email: 'private-payer@example.com', notes: 'Private notes' });
-    const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-    await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
+    const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Private corporate payer', email: 'private-payer@example.com', notes: 'Private notes' });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
     const data = await t.query(api.bookings.bookings.getById, { id: bookingId, accessToken: 'order-audit-token' });
     expect(data._id).toBe(bookingId);
     expect(data.customerId).toBeUndefined();
@@ -375,20 +375,20 @@ describe('Independent order audit: authorization', () => {
   it('rejects anonymous/non-admin access to every new POS and customer endpoint', async () => {
     const { t, admin, extra, bookingId } = await setup();
     const { orderId, lineId } = await extra();
-    const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Private payer' });
+    const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Private payer' });
     const queries = [
-      [api.pos.catalog, {}], [api.pos.getOrder, { orderId }], [api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 10, cursor: null } }],
-      [api.pos.findOrderByNumber, { orderNumber: 1 }], [api.pos.ordersForBooking, { bookingId }], [api.pos.listAttachable, { orderId }],
-      [api.customers.searchCustomers, { query: 'Private' }], [api.customers.getCustomer, { customerId }]
+      [api.pos.catalog.catalog, {}], [api.pos.orders.getOrder, { orderId }], [api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 10, cursor: null } }],
+      [api.pos.orders.findOrderByNumber, { orderNumber: 1 }], [api.pos.orders.ordersForBooking, { bookingId }], [api.pos.sourceReads.listAttachable, { orderId }],
+      [api.pos.customers.searchCustomers, { query: 'Private' }], [api.pos.customers.getCustomer, { customerId }]
     ] as const;
     const mutations = [
-      [api.pos.openOrderFor, { bookingId }], [api.pos.addItem, { item: { kind: 'extra', name: 'Unauthorized', price: 100 } }],
-      [api.pos.attach, { orderId, bookingId }], [api.pos.updateLine, { lineId, qtyChange: 1 }],
-      [api.pos.overrideLinePrice, { lineId, price: 100, note: 'Unauthorized' }], [api.pos.removeLine, { lineId }], [api.pos.updateSourceLine, { lineId }],
-      [api.pos.linkCustomer, { orderId, customerId }], [api.pos.unlinkCustomer, { orderId }], [api.pos.saveOrder, { orderId }], [api.pos.clearOrder, { orderId }],
-      [api.pos.settleOrder, { orderId, idempotencyKey: 'unauthorized-key', expectedDue: 9000, expectedRevision: 1, tenders: [{ method: 'card', amount: 9000 }] }],
-      [api.pos.voidOrder, { orderId, reason: 'Unauthorized' }], [api.customers.createCustomer, { name: 'Unauthorized' }],
-      [api.customers.updateCustomer, { customerId, name: 'Unauthorized' }]
+      [api.pos.commands.openOrderFor.openOrderFor, { bookingId }], [api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Unauthorized', price: 100 } }],
+      [api.pos.commands.attach.attach, { orderId, bookingId }], [api.pos.commands.updateLine.updateLine, { lineId, qtyChange: 1 }],
+      [api.pos.commands.overrideLinePrice.overrideLinePrice, { lineId, price: 100, note: 'Unauthorized' }], [api.pos.commands.removeLine.removeLine, { lineId }], [api.pos.commands.updateSourceLine.updateSourceLine, { lineId }],
+      [api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId }], [api.pos.commands.unlinkCustomer.unlinkCustomer, { orderId }], [api.pos.commands.saveOrder.saveOrder, { orderId }], [api.pos.commands.clearOrder.clearOrder, { orderId }],
+      [api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: 'unauthorized-key', expectedDue: 9000, expectedRevision: 1, tenders: [{ method: 'card', amount: 9000 }] }],
+      [api.pos.commands.voidOrder.voidOrder, { orderId, reason: 'Unauthorized' }], [api.pos.customers.createCustomer, { name: 'Unauthorized' }],
+      [api.pos.customers.updateCustomer, { customerId, name: 'Unauthorized' }]
     ] as const;
     for (const client of [t, t.withIdentity({ email: 'not-admin@example.com', tokenIdentifier: 'outsider' })]) {
       for (const [ref, args] of queries) await expect(client.query(ref, args)).rejects.toThrow(/Not authenticated|Not authorized/);

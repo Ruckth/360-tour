@@ -159,21 +159,21 @@ async function lateLinkSale() {
     currency: "THB",
     staffIds: [staffId],
   });
-  const { orderId, lineId } = await s.admin.mutation(api.pos.addItem, {
+  const { orderId, lineId } = await s.admin.mutation(api.pos.commands.addItem.addItem, {
     item: { kind: "room", propertyId: s.propertyId },
   });
-  await s.admin.mutation(api.pos.addItem, {
+  await s.admin.mutation(api.pos.commands.addItem.addItem, {
     orderId,
     item: { kind: "room", propertyId: s.propertyId },
   });
-  await s.admin.mutation(api.pos.addItem, {
+  await s.admin.mutation(api.pos.commands.addItem.addItem, {
     orderId,
     item: { kind: "service", serviceId },
   });
-  await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: "SPA100" });
-  const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
+  await s.admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: "SPA100" });
+  const view = (await s.admin.query(api.pos.orders.getOrder, { orderId }))!;
   expect(view.totals.due).toBe(290000);
-  await s.admin.mutation(api.pos.settleOrder, {
+  await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, {
     orderId,
     idempotencyKey: "late-link-payment",
     expectedDue: view.totals.due,
@@ -202,11 +202,11 @@ async function lateLinkSale() {
   };
   let attempt = 0;
   const correctionRevision = async () =>
-    (await s.admin.query(api.pos.getOrder, { orderId }))!.paymentRecord
+    (await s.admin.query(api.pos.orders.getOrder, { orderId }))!.paymentRecord
       .correctionRevision;
   const link = async () => {
     const booking = (await s.t.run((ctx) => ctx.db.get(bookingId)))!;
-    return s.admin.mutation(api.pos.linkPaidLine, {
+    return s.admin.mutation(api.pos.commands.linkPaidLine.linkPaidLine, {
       orderId,
       lineId,
       bookingId,
@@ -218,7 +218,7 @@ async function lateLinkSale() {
     });
   };
   const unlink = async (linkId: Id<"orderLineLinks">) =>
-    s.admin.mutation(api.pos.unlinkPaidLine, {
+    s.admin.mutation(api.pos.commands.unlinkPaidLine.unlinkPaidLine, {
       orderId,
       linkId,
       expectedCorrectionRevision: await correctionRevision(),
@@ -364,7 +364,7 @@ it("still reverses an approved late-linked booking credit when its order is void
   await s.approve((await s.orderCredit())._id);
   await s.link();
   await s.approve((await s.bookingCredit())._id);
-  await s.admin.mutation(api.pos.voidUnreceivedOrder, {
+  await s.admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, {
     orderId: s.orderId,
     expectedCorrectionRevision: await s.correctionRevision(),
     idempotencyKey: "late-linked-void",
@@ -817,15 +817,15 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
     staffIds: [staffId],
   });
   const { bookingId } = await s.book({ slug: "r/anna" });
-  const { orderId } = await s.admin.mutation(api.pos.openOrderFor, {
+  const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, {
     bookingId,
   });
-  await s.admin.mutation(api.pos.addItem, {
+  await s.admin.mutation(api.pos.commands.addItem.addItem, {
     orderId,
     item: { kind: "service", serviceId },
   });
-  await s.admin.mutation(api.pos.applyOrderCoupon, { orderId, code: "SPA100" });
-  const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
+  await s.admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: "SPA100" });
+  const view = (await s.admin.query(api.pos.orders.getOrder, { orderId }))!;
   const args = {
     orderId,
     idempotencyKey: "pos-payment-key",
@@ -833,8 +833,8 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
     expectedDue: view.totals.due,
     tenders: [{ method: "cash" as const, amount: view.totals.due }],
   };
-  await s.admin.mutation(api.pos.settleOrder, args);
-  await s.admin.mutation(api.pos.settleOrder, args);
+  await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, args);
+  await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, args);
   const rows = (await s.admin.query(api.marketingAffiliates.listCredits, {}))
     .rows;
   expect(rows).toHaveLength(2);
@@ -853,7 +853,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
     reason: "Verified staff referral",
     expectedRevision: orderCredit.revision,
   });
-  await s.admin.mutation(api.pos.voidUnreceivedOrder, {
+  await s.admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, {
     orderId,
     expectedCorrectionRevision: 0,
     idempotencyKey: "pos-void-key",
@@ -1071,15 +1071,15 @@ it("keeps zero-cash coupon-covered service orders as zero-net reporting credit w
     currency: "THB",
     staffIds: [staffId],
   });
-  const { orderId } = await s.admin.mutation(api.pos.addItem, {
+  const { orderId } = await s.admin.mutation(api.pos.commands.addItem.addItem, {
     item: { kind: "service", serviceId },
   });
-  await s.admin.mutation(api.pos.applyOrderCoupon, {
+  await s.admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, {
     orderId,
     code: "SPA1000",
   });
-  const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
-  await s.admin.mutation(api.pos.settleOrder, {
+  const view = (await s.admin.query(api.pos.orders.getOrder, { orderId }))!;
+  await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, {
     orderId,
     idempotencyKey: "zero-cash-order",
     expectedRevision: view.order.revision,

@@ -71,7 +71,7 @@ async function wait(ms: number) {
   await t.finishInProgressScheduledFunctions();
   await settle();
 }
-const current = () => t.query(api.displays.current, { token });
+const current = () => t.query(api.pos.displays.current, { token });
 const render = async (element: Parameters<Root["render"]>[0]) => {
   await act(async () => root.render(element));
   await settle();
@@ -91,13 +91,13 @@ beforeEach(async () => {
   backend.call = (ref, args) => admin.mutation(ref, args as never);
   backend.calls = [];
   backend.mutations.clear();
-  const { secret } = await admin.mutation(api.displays.createPairLink, { clientId: HERE });
-  const claim = await t.mutation(api.displays.claimLink, { secret });
+  const { secret } = await admin.mutation(api.pos.displays.createPairLink, { clientId: HERE });
+  const claim = await t.mutation(api.pos.displays.claimLink, { secret });
   if (!claim.ok) throw new Error("pairing failed");
   token = claim.token;
-  const customerId = await admin.mutation(api.customers.createCustomer, { name: "Anna Lee" });
-  ({ orderId } = await admin.mutation(api.pos.addItem, { item: { kind: "extra", name: "Massage", price: 120000 } }));
-  await admin.mutation(api.pos.linkCustomer, { orderId: orderId as never, customerId });
+  const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: "Anna Lee" });
+  ({ orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: "extra", name: "Massage", price: 120000 } }));
+  await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId: orderId as never, customerId });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => {
@@ -123,15 +123,15 @@ it("survives StrictMode's mount, cleanup and remount, and keeps the order up whi
   const activeAt = shown.state === "order" ? shown.activeAt : 0;
   // StrictMode's first lease was released, and never the one now on screen.
   const leases = (name: string) => backend.calls.filter((call) => call.name === name).map((call) => call.args.leaseId);
-  const published = leases("displays:showOrder").at(-1);
+  const published = leases("pos/displays:showOrder").at(-1);
   expect(published).toEqual(expect.any(String));
-  expect(leases("displays:releaseDisplay")).toHaveLength(1);
-  expect(leases("displays:releaseDisplay")).not.toContain(published);
+  expect(leases("pos/displays:releaseDisplay")).toHaveLength(1);
+  expect(leases("pos/displays:releaseDisplay")).not.toContain(published);
 
   for (let i = 0; i < 5; i++) await wait(MINUTE);
   // Renewals keep the order shown but are not customer activity: the 30-minute idle still counts from the publish.
   expect(await current()).toMatchObject({ state: "order", activeAt });
-  expect(new Set(leases("displays:renewDriverLease"))).toEqual(new Set([published]));
+  expect(new Set(leases("pos/displays:renewDriverLease"))).toEqual(new Set([published]));
 
   await unmount();
   expect(await current()).toMatchObject({ state: "idle" });

@@ -11,9 +11,9 @@ type Pending = { status: "pending"; token: string; code: string; expiresAt: numb
 const pendingCode = (token: string, expiresAt = Date.now() + 600_000): Pending => ({ status: "pending", token, code: "ABC234", expiresAt });
 
 const mutations = vi.hoisted(() => ({
-  "displays:claimLink": vi.fn<(args: object) => Promise<{ ok: true; token: string } | { ok: false; code: "LINK_INVALID" }>>(),
-  "displays:startPairing": vi.fn<(args: object) => Promise<Pending | { status: "active" }>>(),
-  "displays:heartbeat": vi.fn(async () => null),
+  "pos/displays:claimLink": vi.fn<(args: object) => Promise<{ ok: true; token: string } | { ok: false; code: "LINK_INVALID" }>>(),
+  "pos/displays:startPairing": vi.fn<(args: object) => Promise<Pending | { status: "active" }>>(),
+  "pos/displays:heartbeat": vi.fn(async () => null),
 }));
 
 vi.mock("convex/react", () => ({
@@ -36,8 +36,8 @@ function later<T>() {
 }
 
 let root: Root;
-const claims = () => mutations["displays:claimLink"].mock.calls;
-const codeRequests = () => mutations["displays:startPairing"].mock.calls;
+const claims = () => mutations["pos/displays:claimLink"].mock.calls;
+const codeRequests = () => mutations["pos/displays:startPairing"].mock.calls;
 const storedToken = () => window.localStorage.getItem("display-token");
 const open = (hash: string) =>
   act(async () => {
@@ -55,8 +55,8 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
   for (const mutation of Object.values(mutations)) mutation.mockReset();
-  mutations["displays:claimLink"].mockResolvedValue({ ok: true, token: "device-token" });
-  mutations["displays:startPairing"].mockImplementation(async () => pendingCode("pending-token"));
+  mutations["pos/displays:claimLink"].mockResolvedValue({ ok: true, token: "device-token" });
+  mutations["pos/displays:startPairing"].mockImplementation(async () => pendingCode("pending-token"));
   window.localStorage.clear();
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
@@ -89,10 +89,10 @@ describe("customer display pairing links", () => {
 
 describe("customer display pairing sequence", () => {
   it("keeps a claimed token when the code expires while the claim is in flight", async () => {
-    mutations["displays:startPairing"].mockImplementationOnce(async () => pendingCode("pending-old", Date.now() + 1_000));
+    mutations["pos/displays:startPairing"].mockImplementationOnce(async () => pendingCode("pending-old", Date.now() + 1_000));
     await open("");
     const claim = later<{ ok: true; token: string }>();
-    mutations["displays:claimLink"].mockReturnValueOnce(claim.promise);
+    mutations["pos/displays:claimLink"].mockReturnValueOnce(claim.promise);
     await navigate("#pair=secret");
     // The code's expiry passes mid-claim: no new code is requested.
     await wait(2_000);
@@ -104,10 +104,10 @@ describe("customer display pairing sequence", () => {
   });
 
   it("ignores a code refresh that was in flight when a claim started", async () => {
-    mutations["displays:startPairing"].mockImplementationOnce(async () => pendingCode("pending-old", Date.now() + 1_000));
+    mutations["pos/displays:startPairing"].mockImplementationOnce(async () => pendingCode("pending-old", Date.now() + 1_000));
     await open("");
     const refresh = later<Pending>();
-    mutations["displays:startPairing"].mockReturnValueOnce(refresh.promise);
+    mutations["pos/displays:startPairing"].mockReturnValueOnce(refresh.promise);
     await wait(1_500);
     expect(codeRequests()).toHaveLength(2);
     await navigate("#pair=secret");
@@ -118,7 +118,7 @@ describe("customer display pairing sequence", () => {
   it("keeps a valid link's token when a used link arrives before it is claimed", async () => {
     await open("");
     const first = later<{ ok: true; token: string }>();
-    mutations["displays:claimLink"].mockReturnValueOnce(first.promise).mockResolvedValueOnce({ ok: false, code: "LINK_INVALID" });
+    mutations["pos/displays:claimLink"].mockReturnValueOnce(first.promise).mockResolvedValueOnce({ ok: false, code: "LINK_INVALID" });
     await navigate("#pair=valid-a");
     await navigate("#pair=expired-b");
     expect(window.location.hash).toBe("");
@@ -133,10 +133,10 @@ describe("customer display pairing sequence", () => {
   });
 
   it("resumes code pairing only once a claim fails", async () => {
-    mutations["displays:startPairing"].mockImplementationOnce(async () => pendingCode("pending-old", Date.now() + 1_000));
+    mutations["pos/displays:startPairing"].mockImplementationOnce(async () => pendingCode("pending-old", Date.now() + 1_000));
     await open("");
     const claim = later<{ ok: false; code: "LINK_INVALID" }>();
-    mutations["displays:claimLink"].mockReturnValueOnce(claim.promise);
+    mutations["pos/displays:claimLink"].mockReturnValueOnce(claim.promise);
     await navigate("#pair=used-secret");
     await wait(2_000);
     expect(codeRequests()).toHaveLength(1);

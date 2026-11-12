@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { DisplayDriver } from "convex/displays";
+import type { DisplayDriver } from "convex/pos/model";
 import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { formatDistanceStrict } from "date-fns";
@@ -34,7 +34,7 @@ type Display = { _id: Id<"displays">; name: string; lastSeenAt: number | null };
 
 const isOnline = (display: Display, now: number) => display.lastSeenAt !== null && now - display.lastSeenAt < ONLINE_MS;
 
-/** convex/displays.ts throws ConvexError({ code, message }) for pairing problems; anything else is a plain Error. */
+/** convex/pos/displays.ts throws ConvexError({ code, message }) for pairing problems; anything else is a plain Error. */
 function displayErrorText(error: unknown, fallback: string) {
   if (error instanceof ConvexError && typeof error.data?.message === "string") return error.data.message as string;
   return errorText(error, fallback);
@@ -115,7 +115,7 @@ function PairingPanel({ clientId, orderId, displays, driver, now }: { clientId: 
 
 /** Another checkout tab drives the display: an explicit take-over, which shows this tab's order in the same step. */
 function TakeOver({ clientId, orderId }: { clientId: string; orderId: string | null | undefined }) {
-  const takeDisplay = useMutation(api.displays.takeDisplay);
+  const takeDisplay = useMutation(api.pos.displays.takeDisplay);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -147,10 +147,10 @@ function TakeOver({ clientId, orderId }: { clientId: string; orderId: string | n
 
 /**
  * A link only when staff ask for one: opening the dialog to check status, take over or disconnect
- * puts no QR on screen. Making a new link cancels the last one (convex/displays.ts).
+ * puts no QR on screen. Making a new link cancels the last one (convex/pos/displays.ts).
  */
 function usePairLink(clientId: string) {
-  const createPairLink = useMutation(api.displays.createPairLink);
+  const createPairLink = useMutation(api.pos.displays.createPairLink);
   const [link, setLink] = useState<PairLink | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -255,7 +255,7 @@ function SendLink({ link, error: createError, loading, create }: ReturnType<type
 }
 
 function EnterCode({ clientId, onPaired }: { clientId: string; onPaired: () => void }) {
-  const approveCode = useMutation(api.displays.approveCode);
+  const approveCode = useMutation(api.pos.displays.approveCode);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [paired, setPaired] = useState<string | null>(null);
@@ -329,7 +329,7 @@ function EnterCode({ clientId, onPaired }: { clientId: string; onPaired: () => v
  * as "This computer" and disconnected like any other). Pairing it disconnects the previous display.
  */
 function ThisComputer({ clientId }: { clientId: string }) {
-  const createPairLink = useMutation(api.displays.createPairLink);
+  const createPairLink = useMutation(api.pos.displays.createPairLink);
   const [error, setError] = useState<string | null>(null);
 
   async function open() {
@@ -368,7 +368,7 @@ function ThisComputer({ clientId }: { clientId: string }) {
 }
 
 function DisplayList({ displays, now }: { displays: Display[]; now: number }) {
-  const revoke = useMutation(api.displays.revoke);
+  const revoke = useMutation(api.pos.displays.revoke);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 

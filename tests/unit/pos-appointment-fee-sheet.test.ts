@@ -12,11 +12,11 @@ vi.mock('@/components/admin/AppointmentHistory', () => ({ AppointmentHistory: ()
 vi.mock('convex/react', () => ({
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
     if (args === 'skip') return undefined;
-    if (getFunctionName(ref) === 'pos:appointmentFees') return [];
-    if (getFunctionName(ref) === 'pos:ordersForBooking') return { balance: { total: 1600, paid: 0, owed: 0, refunded: 0, credit: 0 }, activeOrder: null, orders: [], discardedOrders: [] };
+    if (getFunctionName(ref) === 'pos/orders:appointmentFees') return [];
+    if (getFunctionName(ref) === 'pos/orders:ordersForBooking') return { balance: { total: 1600, paid: 0, owed: 0, refunded: 0, credit: 0 }, activeOrder: null, orders: [], discardedOrders: [] };
     return undefined;
   },
-  useMutation: (ref: Parameters<typeof getFunctionName>[0]) => getFunctionName(ref) === 'pos:addAppointmentFee' ? mocks.fee : vi.fn(),
+  useMutation: (ref: Parameters<typeof getFunctionName>[0]) => getFunctionName(ref) === 'pos/commands/addAppointmentFee:addAppointmentFee' ? mocks.fee : vi.fn(),
   usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore: vi.fn() }),
 }));
 it('mounts the real fee control beside financials and blocks sheet Close, Escape and appointment actions while adding', async () => {

@@ -131,7 +131,7 @@ function AdminAccessGate({ userEmail, children }: { userEmail?: string; children
 
 /** Only feeds the badge count, so a failed approvals query never takes down the admin. */
 function PendingApprovalsCount({ onCount }: { onCount: (count: number) => void }) {
-  const count = useQuery(api.staffApprovals.pending, {})?.count ?? 0;
+  const count = useQuery(api.pos.staffApprovals.pending, {})?.count ?? 0;
   useEffect(() => onCount(count), [count, onCount]);
   return null;
 }

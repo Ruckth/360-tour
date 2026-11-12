@@ -15,16 +15,16 @@ import { useDisplayDriver } from "./useDisplayDriver";
  * booking link still opening), so nothing is sent. Returns the last failure, for the checkout's
  * banner, and a retry.
  *
- * Each mount publishes under a lease of its own (see convex/displays.ts). It renews the lease while
+ * Each mount publishes under a lease of its own (see convex/pos/displays.ts). It renews the lease while
  * an order is shown and releases it on unmount (another admin page, sign-out), which clears the
  * guest's screen. A crashed or closed tab simply stops renewing and the server clears it. Cleanup
  * names its own lease, so StrictMode's remount, or a newer mount, is never cleared by an older one.
  */
 export function useShowOrderOnDisplay(orderId: string | null | undefined) {
   const { clientId, driver, displays } = useDisplayDriver();
-  const showOrder = useMutation(api.displays.showOrder);
-  const renewLease = useMutation(api.displays.renewDriverLease);
-  const releaseDisplay = useMutation(api.displays.releaseDisplay);
+  const showOrder = useMutation(api.pos.displays.showOrder);
+  const renewLease = useMutation(api.pos.displays.renewDriverLease);
+  const releaseDisplay = useMutation(api.pos.displays.releaseDisplay);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Set before the effects below run, in the same commit (effects run in order).

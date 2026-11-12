@@ -33,10 +33,10 @@ async function setup() {
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
-	const link = (clientId = HERE) => admin.mutation(api.displays.createPairLink, { clientId });
-	const claim = (secret: string, deviceName?: string) => t.mutation(api.displays.claimLink, { secret, deviceName });
+	const link = (clientId = HERE) => admin.mutation(api.pos.displays.createPairLink, { clientId });
+	const claim = (secret: string, deviceName?: string) => t.mutation(api.pos.displays.claimLink, { secret, deviceName });
 	const pairByLink = async (clientId = HERE) => tokenOf(await claim((await link(clientId)).secret));
-	const list = (clientId = HERE) => admin.query(api.displays.listDisplays, { clientId });
+	const list = (clientId = HERE) => admin.query(api.pos.displays.listDisplays, { clientId });
 	const till = () => t.run(async (ctx) => (await ctx.db.query('tills').first())!);
 	/** Lets time pass with no client writes at all; only what the server scheduled runs. */
 	const wait = async (ms: number) => {
@@ -44,8 +44,8 @@ async function setup() {
 		await t.finishInProgressScheduledFunctions();
 	};
 	const order = async (name: string, customer?: string) => {
-		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name, price: 120000 } });
-		if (customer) await admin.mutation(api.pos.linkCustomer, { orderId, customerId: await admin.mutation(api.customers.createCustomer, { name: customer }) });
+		const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name, price: 120000 } });
+		if (customer) await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId: await admin.mutation(api.pos.customers.createCustomer, { name: customer }) });
 		return orderId;
 	};
 	return { t, admin, stranger, link, claim, pairByLink, list, till, wait, order };
@@ -65,19 +65,19 @@ describe('H1-03: the display shows an open order only while its checkout is live
 		const context = await setup();
 		const { t, admin, pairByLink, order } = context;
 		const token = await pairByLink();
-		const current = () => t.query(api.displays.current, { token });
+		const current = () => t.query(api.pos.displays.current, { token });
 		const orderId = await order('Massage', 'Anna Lee');
-		const show = (leaseId: string, id: string | null = orderId, clientId = HERE) => admin.mutation(api.displays.showOrder, { orderId: id, clientId, leaseId });
-		const renew = (leaseId: string, id: string | null = orderId, clientId = HERE) => admin.mutation(api.displays.renewDriverLease, { clientId, leaseId, orderId: id });
+		const show = (leaseId: string, id: string | null = orderId, clientId = HERE) => admin.mutation(api.pos.displays.showOrder, { orderId: id, clientId, leaseId });
+		const renew = (leaseId: string, id: string | null = orderId, clientId = HERE) => admin.mutation(api.pos.displays.renewDriverLease, { clientId, leaseId, orderId: id });
 		// No identity: a checkout that signs out still clears its order on the way out.
-		const release = (leaseId: string, clientId = HERE) => t.mutation(api.displays.releaseDisplay, { clientId, leaseId });
+		const release = (leaseId: string, clientId = HERE) => t.mutation(api.pos.displays.releaseDisplay, { clientId, leaseId });
 		return { ...context, token, current, orderId, show, renew, release };
 	}
 
 	it('hides an order once its checkout stops checking in, with no other write (crash, closed tab)', async () => {
 		const { admin, current, orderId, till, wait } = await driving();
 		// Published the way the current checkout does, then the tab is gone: no release, no renewal.
-		await admin.mutation(api.displays.showOrder, { orderId, clientId: HERE });
+		await admin.mutation(api.pos.displays.showOrder, { orderId, clientId: HERE });
 		expect(await current()).toMatchObject({ state: 'order', customerFirstName: 'Anna' });
 		await wait(MINUTE);
 		expect(await current()).toMatchObject({ state: 'order' });
@@ -85,7 +85,7 @@ describe('H1-03: the display shows an open order only while its checkout is live
 		expect(await current()).toEqual(IDLE);
 		// The server cleared it itself, so a display's live subscription is told, not just a fresh read.
 		expect((await till()).orderId).toBeUndefined();
-		expect((await admin.query(api.displays.listDisplays, { clientId: HERE })).driver).toBe('here');
+		expect((await admin.query(api.pos.displays.listDisplays, { clientId: HERE })).driver).toBe('here');
 	});
 
 	it('clears the order when the checkout leaves, but only under the lease that published it', async () => {
@@ -149,8 +149,8 @@ describe('H1-03: the display shows an open order only while its checkout is live
 		const { admin, current, order, show, renew, release, wait } = await driving();
 		await show(LEASE_A);
 		const bob = await order('Juice', 'Bob Smith');
-		await admin.mutation(api.displays.takeDisplay, { clientId: OTHER, orderId: bob });
-		await admin.mutation(api.displays.showOrder, { orderId: bob, clientId: OTHER, leaseId: LEASE_B });
+		await admin.mutation(api.pos.displays.takeDisplay, { clientId: OTHER, orderId: bob });
+		await admin.mutation(api.pos.displays.showOrder, { orderId: bob, clientId: OTHER, leaseId: LEASE_B });
 		expect(await renew(LEASE_A)).toEqual({ renewed: false });
 		await release(LEASE_A);
 		expect(await current()).toMatchObject({ state: 'order', customerFirstName: 'Bob' });
@@ -162,7 +162,7 @@ describe('H1-03: the display shows an open order only while its checkout is live
 
 	it('hides a taken-over order if the new driver never publishes under its own lease', async () => {
 		const { admin, current, orderId, wait } = await driving();
-		await admin.mutation(api.displays.takeDisplay, { clientId: OTHER, orderId });
+		await admin.mutation(api.pos.displays.takeDisplay, { clientId: OTHER, orderId });
 		expect(await current()).toMatchObject({ state: 'order' });
 		await wait(2 * MINUTE);
 		expect(await current()).toEqual(IDLE);
@@ -171,8 +171,8 @@ describe('H1-03: the display shows an open order only while its checkout is live
 	it('keeps the thank-you after payment when the checkout moves on to the receipt or its lease ends', async () => {
 		const { admin, current, orderId, show, release, wait } = await driving();
 		await show(LEASE_A);
-		const { order, totals, customer } = (await admin.query(api.pos.getOrder, { orderId }))!;
-		await admin.mutation(api.pos.settleOrder, {
+		const { order, totals, customer } = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
+		await admin.mutation(api.pos.commands.settleOrder.settleOrder, {
 			orderId, expectedRevision: order.revision, expectedDue: totals.due, idempotencyKey: 'lease-paid-0001', tenders: [{ method: 'cash', amount: totals.due }],
 			...(customer && 'revision' in customer && typeof customer.revision === 'number' ? { expectedCustomerRevision: customer.revision } : {})
 		});
@@ -187,7 +187,7 @@ describe('H1-03: the display shows an open order only while its checkout is live
 
 	it('hides an expired order from a fresh read even before the scheduled expiry has run', async () => {
 		const { admin, current, orderId } = await driving();
-		await admin.mutation(api.displays.showOrder, { orderId, clientId: HERE });
+		await admin.mutation(api.pos.displays.showOrder, { orderId, clientId: HERE });
 		const publishedAt = Date.now();
 		// The clock moves on, but no timer fires: nothing is written.
 		vi.setSystemTime(publishedAt + 30 * MINUTE - 1);
@@ -204,9 +204,9 @@ describe('H1-03: the display shows an open order only while its checkout is live
 	it('renews only for an admin; release needs only the tab and lease ids', async () => {
 		const { t, stranger, current, show } = await driving();
 		await show(LEASE_A);
-		await expect(t.mutation(api.displays.renewDriverLease, { clientId: HERE, leaseId: LEASE_A, orderId: null })).rejects.toThrow('Not authenticated');
-		await expect(stranger.mutation(api.displays.renewDriverLease, { clientId: HERE, leaseId: LEASE_A, orderId: null })).rejects.toThrow('Not authorized');
-		expect(await stranger.mutation(api.displays.releaseDisplay, { clientId: HERE, leaseId: 'x'.repeat(200) })).toBeNull();
+		await expect(t.mutation(api.pos.displays.renewDriverLease, { clientId: HERE, leaseId: LEASE_A, orderId: null })).rejects.toThrow('Not authenticated');
+		await expect(stranger.mutation(api.pos.displays.renewDriverLease, { clientId: HERE, leaseId: LEASE_A, orderId: null })).rejects.toThrow('Not authorized');
+		expect(await stranger.mutation(api.pos.displays.releaseDisplay, { clientId: HERE, leaseId: 'x'.repeat(200) })).toBeNull();
 		expect(await current()).toMatchObject({ state: 'order' });
 	});
 });
@@ -224,16 +224,16 @@ describe('H1-07: only the newest link works, and only until a display pairs or i
 		const { admin, link, claim, pairByLink, list } = await setup();
 		await pairByLink();
 		const stale = await link();
-		await admin.mutation(api.displays.revoke, { displayId: (await list()).displays[0]._id });
+		await admin.mutation(api.pos.displays.revoke, { displayId: (await list()).displays[0]._id });
 		expect(await claim(stale.secret)).toEqual(LINK_INVALID);
 	});
 
 	it('cancels an outstanding link when a display pairs by code or by another tab\'s link', async () => {
 		const { t, admin, link, claim } = await setup();
 		const stale = await link();
-		const pending = await t.mutation(api.displays.startPairing, {});
+		const pending = await t.mutation(api.pos.displays.startPairing, {});
 		if (pending.status !== 'pending') throw new Error('expected a code');
-		await admin.mutation(api.displays.approveCode, { code: pending.code, clientId: HERE });
+		await admin.mutation(api.pos.displays.approveCode, { code: pending.code, clientId: HERE });
 		expect(await claim(stale.secret)).toEqual(LINK_INVALID);
 
 		// Two links outstanding at once (a twin of the newest, as any number could be before this fix): pairing with one cancels the other.
@@ -263,13 +263,13 @@ describe('H1-07: only the newest link works, and only until a display pairs or i
 		const { t, admin, link, claim, pairByLink, list, order } = await setup();
 		await pairByLink();
 		const stale = await link();
-		await admin.mutation(api.displays.revoke, { displayId: (await list()).displays[0]._id });
+		await admin.mutation(api.pos.displays.revoke, { displayId: (await list()).displays[0]._id });
 		const replacement = await pairByLink();
 		expect(await claim(stale.secret, 'Scanner phone')).toEqual(LINK_INVALID);
 		expect(await list()).toMatchObject({ driver: 'here', displays: [{ name: 'Customer display' }] });
 		const anna = await order('Massage', 'Anna Lee');
-		await admin.mutation(api.displays.showOrder, { clientId: HERE, orderId: anna });
-		expect(await t.query(api.displays.current, { token: replacement })).toMatchObject({ state: 'order', customerFirstName: 'Anna' });
+		await admin.mutation(api.pos.displays.showOrder, { clientId: HERE, orderId: anna });
+		expect(await t.query(api.pos.displays.current, { token: replacement })).toMatchObject({ state: 'order', customerFirstName: 'Anna' });
 	});
 });
 
