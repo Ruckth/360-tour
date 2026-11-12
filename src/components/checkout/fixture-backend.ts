@@ -21,9 +21,11 @@ import { effectiveTime } from "convex/lib/bookingMoney";
 import { normalizeCouponCode, type CouponRules } from "convex/lib/offers";
 import { evaluateOrderCoupon, posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import { ConvexError } from "convex/values";
+import { DEFAULT_CASHIER_RULES, APPROVAL_TTL_MS, type ApprovalPayload, type CashierAction, type CashierRules } from "convex/lib/staffTypes";
+import { discountLimitSatang, manualReductionSatang } from "./staff-approvals";
 import { formatMoney } from "@/components/admin/labels";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import type { Attachable, Catalog, CheckoutActions, CheckoutBackend, Customer, FinancialRows, FinancialStream, LinkCandidate, RestoreReview, OrderFilter, OrderRow, OrderView } from "./backend";
+import type { ApprovalRequest, Attachable, Catalog, CheckoutActions, CheckoutBackend, Customer, FinancialRows, FinancialStream, LineRefund, LinkCandidate, RestoreReview, OrderFilter, OrderRow, OrderView } from "./backend";
 
 /**
  * In-memory checkout for the dev preview (/dev/checkout-preview): sample catalog, customers, a
@@ -166,6 +168,8 @@ function createState() {
     corrections: [] as Doc<"billCorrections">[],
     links: [] as Doc<"billLineLinks">[],
     refunds: [] as (OrderView["refunds"][number] & { billId: Id<"bills"> })[],
+    /** POS line refunds (billRefunds), in satang. */
+    posRefunds: [] as Doc<"billRefunds">[],
     mergeJobs: [] as Doc<"customerMergeJobs">[],
     sourcePayments: new Map<Id<"bills">, { bookingId?: Id<"bookings">; appointmentId?: Id<"serviceAppointments">; amount: number; effectiveAt: number; originalPrice: number }[]>(),
     counters: new Map([["order", 1042], ["receipt", 141]]),
@@ -178,8 +182,48 @@ function createState() {
   };
 }
 
-export function createFixtureBackend(options: { bookings?: Partial<FixtureBooking>[]; appointments?: Partial<FixtureAppointment>[]; appointmentRefunds?: Doc<"appointmentRefunds">[]; financialHistory?: Partial<{ [K in FinancialStream]: FinancialRows[K][] }>; recordedRefunds?: (OrderView["refunds"][number] & { billId: Id<"bills"> })[] } = {}): CheckoutBackend & { setAppointmentSnapshot: (id: Id<"serviceAppointments">, patch: Partial<FixtureAppointment>) => void; setBookingSnapshot: (id: Id<"bookings">, patch: Partial<FixtureBooking>) => void; setCouponSnapshot: (code: string, patch: Partial<CouponRules>) => void; appointmentSnapshot: (id: Id<"serviceAppointments">) => FixtureAppointment | undefined } {
+/** Who the preview is signed in as. A cashier gets the server's limits and approval requests. */
+export type FixtureStaff = { role: "owner" | "manager" | "cashier"; email: string; rules?: CashierRules };
+type SeededApproval = { orderId: Id<"bills">; payload: ApprovalPayload; reason: string; requesterEmail: string; createdAt?: number };
+
+type RefundArgs = Parameters<CheckoutActions["refundLine"]>[0];
+
+export function createFixtureBackend(options: { bookings?: Partial<FixtureBooking>[]; appointments?: Partial<FixtureAppointment>[]; appointmentRefunds?: Doc<"appointmentRefunds">[]; financialHistory?: Partial<{ [K in FinancialStream]: FinancialRows[K][] }>; recordedRefunds?: (OrderView["refunds"][number] & { billId: Id<"bills"> })[]; staff?: FixtureStaff } = {}): CheckoutBackend & {
+  setAppointmentSnapshot: (id: Id<"serviceAppointments">, patch: Partial<FixtureAppointment>) => void; setBookingSnapshot: (id: Id<"bookings">, patch: Partial<FixtureBooking>) => void; setCouponSnapshot: (code: string, patch: Partial<CouponRules>) => void; appointmentSnapshot: (id: Id<"serviceAppointments">) => FixtureAppointment | undefined; seedApproval: (request: SeededApproval) => Promise<Id<"staffApprovalRequests">>;
+  /** Signs another person in on the same data, as a second till would (fixture only). */
+  setStaff: (next: FixtureStaff) => void;
+  /** Every pos.refundLine call, in order, as sent. */
+  refundAttempts: () => RefundArgs[];
+  /** The next refund is recorded but its answer is lost, as on a dropped connection. */
+  loseNextRefundResponse: () => void;
+  /** Another till refunds the newest paid order's line now; this page hears of it only with its next write. */
+  refundFromAnotherTill: (lineName: string, satang: number) => void;
+} {
   let state = createState();
+  let staff: FixtureStaff = options.staff ?? { role: "owner", email: ACTOR };
+  let rules = staff.rules ?? DEFAULT_CASHIER_RULES;
+  let cashier = staff.role === "cashier";
+  const refundAttempts: RefundArgs[] = [];
+  let loseRefundResponse = false;
+  /** As requireCashierAction: an action the rules keep for managers. */
+  const cashierAction = (action: CashierAction) => {
+    if (cashier && rules[action] !== "cashier") throw new ConvexError({ code: "NEEDS_APPROVAL", kind: action, message: "Ask a manager to approve this action." });
+  };
+  /** As assertCashierDiscount, on the line as it would be after the change. */
+  const cashierDiscount = (line: Line, kind: "discount" | "customPrice" = "discount") => {
+    if (!cashier) return;
+    const { subtotalSatang, reductionSatang } = manualReductionSatang(line);
+    const limitSatang = discountLimitSatang(subtotalSatang, rules.discountLimitPercent);
+    if (reductionSatang > limitSatang) throw new ConvexError({ code: "NEEDS_APPROVAL", kind, message: "This manual discount needs manager approval.", subtotalSatang, reductionSatang, limitSatang, amount: reductionSatang / 100, discountLimitPercent: rules.discountLimitPercent });
+  };
+  const requests: ApprovalRequest[] = [];
+  /** As effectiveRequestStatus: past its deadline it expired; any change to the order or the cashier rules made it stale. */
+  const requestStatus = (request: ApprovalRequest): ApprovalRequest["status"] => {
+    if (request.status !== "pending") return request.status;
+    if (Date.now() >= request.expiresAt) return "expired";
+    return state.orders.get(request.orderId)?.revision === request.orderRevision && request.rulesRevision === rules.revision ? "pending" : "stale";
+  };
+  const effective = (request: ApprovalRequest) => ({ ...request, status: requestStatus(request) });
   const feeAttempts = new Map<string, { fingerprint: string; orderId: Id<"bills">; lineId: Id<"billLines"> }>();
   state.refunds = [...new Map([
     ...(options.recordedRefunds ?? []),
@@ -332,7 +376,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       setTimeout(() => {
         const saved = {
           ...state, sourcePayments: new Map([...state.sourcePayments].map(([key, rows]) => [key, rows.map(row => ({ ...row }))])), orders: new Map(state.orders), lines: [...state.lines], counters: new Map(state.counters),
-          orderHistory: [...state.orderHistory], corrections: [...state.corrections], links: state.links.map((l) => ({ ...l })), refunds: [...state.refunds], mergeJobs: [...state.mergeJobs], customers: [...state.customers], customerHistory: [...state.customerHistory], payments: [...state.payments], audit: [...state.audit],
+          orderHistory: [...state.orderHistory], corrections: [...state.corrections], links: state.links.map((l) => ({ ...l })), refunds: [...state.refunds], posRefunds: [...state.posRefunds], mergeJobs: [...state.mergeJobs], customers: [...state.customers], customerHistory: [...state.customerHistory], payments: [...state.payments], audit: [...state.audit],
           bookings: state.bookings.map((b) => ({ ...b })), appointments: state.appointments.map((a) => ({ ...a })),
           coupons: state.coupons.map((c) => ({ ...c, rules: { ...c.rules } })),
         };
@@ -454,7 +498,67 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const blocking = conflicts.filter(c => c.blocking).length;
     return { discarded: discardedInfo(o)!, revision: o.revision, conflicts, blocking, rowsLeft: lines.length - blocking };
   };
-  const actions: CheckoutActions = {
+  /** As convex/lib/billRefunds.ts: typed refusals in satang. */
+  const refundFail = (code: string, message: string, extra: Record<string, unknown> = {}): never => { throw new ConvexError({ code, message, ...extra }); };
+  const posRefundsOf = (orderId: Id<"bills">) => state.posRefunds.filter((r) => r.orderId === orderId);
+  const refundedOn = (lineId: Id<"billLines">) => state.posRefunds.filter((r) => r.lineId === lineId).reduce((n, r) => n + r.amount, 0);
+  const walkIn = (line: Line) => !line.bookingId && !line.appointmentId && line.kind !== "booking" && line.kind !== "appointment" && !state.links.some((l) => l.lineId === line._id && l.status === "active");
+  const remainingOn = (order: Order, line: Line) => (order.status === "paid" && order.paidAt !== undefined && !order.voidUnreceived && walkIn(line) ? Math.max(0, Math.round(lineNet(line) * 100) - refundedOn(line._id)) : 0);
+  const refundView = (row: Doc<"billRefunds">): LineRefund => ({
+    _id: row._id, _creationTime: row._creationTime, orderId: row.orderId, lineId: row.lineId, amount: row.amount, currency: row.currency, method: row.method,
+    reason: row.reason, idempotencyKey: row.idempotencyKey, createdAt: row.createdAt, createdByEmail: row.createdByEmail, businessDate: row.businessDate,
+  });
+  /** As refundState: the order, the line and its remaining satang, or a typed refusal. */
+  const refundCheck = (orderId: Id<"bills">, lineId: Id<"billLines">, currency: string, amount: number, reason: string) => {
+    if (!Number.isSafeInteger(amount) || amount <= 0) refundFail("INVALID_REFUND_AMOUNT", "Refund must be a positive integer in satang.");
+    if (!reason.trim() || reason.trim().length > 500) refundFail("INVALID_REFUND_REASON", "Give a refund reason of 1–500 characters.");
+    const order = state.orders.get(orderId);
+    if (!order || order.status !== "paid" || order.paidAt === undefined || order.voidUnreceived) return refundFail("ORDER_NOT_PAID", "Only a paid, settled order can be refunded.");
+    const line = state.lines.find((l) => l._id === lineId);
+    if (!line || line.billId !== order._id || !walkIn(line)) return refundFail("LINE_NOT_REFUNDABLE", "Use the stay or appointment refund flow for attached lines; choose a walk-in line on this order.");
+    if (currency !== line.currency || currency !== order.currency) refundFail("REFUND_CURRENCY_MISMATCH", `Refund currency must be ${order.currency}.`);
+    const remaining = remainingOn(order, line);
+    if (amount > remaining) refundFail("REFUND_EXCEEDS_REMAINING", `At most ${remaining} satang remains refundable.`, { remaining });
+    return { order, line, remaining };
+  };
+  /** As executeBillRefund: replay by key, the refund rule, the cap, then one ledger row. */
+  const executeRefund = (args: RefundArgs) => {
+    const reason = args.reason.trim();
+    const key = args.idempotencyKey.trim();
+    if (!Number.isSafeInteger(args.amount) || args.amount <= 0) refundFail("INVALID_REFUND_AMOUNT", "Refund must be a positive integer in satang.");
+    if (!reason || reason.length > 500) refundFail("INVALID_REFUND_REASON", "Give a refund reason of 1–500 characters.");
+    if (key.length < 8 || key.length > 100) refundFail("INVALID_IDEMPOTENCY_KEY", "Use an attempt key of 8–100 characters.");
+    if (!cashierCanRead(state.orders.get(args.orderId))) refundFail("ORDER_NOT_FOUND", "Order not found.");
+    const existing = state.posRefunds.find((r) => r.idempotencyKey === key);
+    if (existing) {
+      if (existing.orderId !== args.orderId || existing.lineId !== args.lineId || existing.amount !== args.amount || existing.currency !== args.currency || existing.method !== args.method || existing.reason !== reason)
+        refundFail("IDEMPOTENCY_CONFLICT", "This refund key was already used for different details.");
+      return { refund: refundView(existing), replayed: true };
+    }
+    cashierAction("refund");
+    const { order, line, remaining } = refundCheck(args.orderId, args.lineId, args.currency, args.amount, reason);
+    const now = Date.now();
+    const row: Doc<"billRefunds"> = {
+      _id: nextId("refund"), _creationTime: now, orderId: order._id, lineId: line._id, amount: args.amount, currency: args.currency, method: args.method,
+      reason, idempotencyKey: key, createdBy: staff.email, createdByEmail: staff.email, createdAt: now, businessDate: businessDayOf(now),
+    };
+    state.posRefunds.push(row);
+    patchOrder(order._id, { revision: order.revision + 1, correctionRevision: (order.correctionRevision ?? 0) + 1, updatedAt: now });
+    audit({ billId: order._id, lineId: line._id, kind: "refund", note: `${line.name}: ${args.amount / 100} ${args.currency} returned (${args.method}). ${reason}`, fromPrice: remaining / 100, toPrice: (remaining - args.amount) / 100 });
+    orderEvent(order._id, "refund", undefined, { refundId: row._id, lineId: line._id, amount: args.amount, currency: args.currency, method: args.method, businessDate: row.businessDate }, reason);
+    return { refund: refundView(row), replayed: false };
+  };
+  const posActions: Omit<CheckoutActions, "createOrder" | "createApproval" | "approveApproval" | "rejectApproval" | "cancelApproval"> = {
+    refundLine: async (args) => {
+      refundAttempts.push({ ...args });
+      const result = await later(() => executeRefund(args));
+      if (loseRefundResponse) {
+        // Recorded, but the answer never arrives.
+        loseRefundResponse = false;
+        throw new Error("Connection lost. Try again.");
+      }
+      return result;
+    },
     discardOrder: (args) => later(() => {
       const o = state.orders.get(args.orderId); if (!o) throw new Error("Order not found");
       if (o.status === "discarded" && o.lifecycleKey === args.idempotencyKey) return { replayed: true };
@@ -527,6 +631,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         const room = CATALOG.rooms.find((r) => r._id === item.propertyId)!;
         line = { kind: "room", propertyId: room._id, name: room.name, detail: "per night", unitPrice: room.price, currency: "THB", qty: 1 };
       } else {
+        cashierAction("customPrice");
         if (!item.name.trim()) throw new Error("Name the item");
         assertPrice(item.price);
         line = { kind: "extra", name: item.name.trim(), unitPrice: round2(item.price), currency: "THB", qty: 1 };
@@ -575,6 +680,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         if (discount) assertDiscount(discount);
         patch.discount = discount && discount.value > 0 ? discount : undefined;
       }
+      if (discount !== undefined || qtyChange !== undefined) cashierDiscount({ ...line, ...patch, discount: "discount" in patch ? patch.discount : line.discount });
       if (JSON.stringify(lineSnapshot(line)) !== JSON.stringify(lineSnapshot({ ...line, ...patch }))) orderEvent(order._id, "line_updated", lineSnapshot(line), lineSnapshot({ ...line, ...patch }));
       patchLine(line._id, patch);
       refresh(order._id);
@@ -584,6 +690,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const { line, order } = editableLine(lineId);
       if (line.fee) throw new Error("Remove and add the fee again to change its amount.");
       if (line.kind === "booking" && price !== null) throw new Error(ATTACHED_PRICE);
+      cashierAction("customPrice");
+      cashierDiscount({ ...line, priceOverride: price === null ? undefined : { price: round2(price), note, by: ACTOR, at: 0 } }, "customPrice");
       const fromPrice = line.priceOverride?.price ?? line.unitPrice;
       if (price === null) {
         if (!line.priceOverride) return null;
@@ -754,6 +862,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         if (order.status === "discarded") throw new Error("This order was discarded. Restore it before paying.");
         throw new Error(order.status === "void" ? "This order was voided" : "This order is already paid");
       }
+      const blocking = requests.find((request) => request.orderId === orderId && requestStatus(request) === "pending");
+      if (blocking) throw new ConvexError({ code: "PENDING_APPROVAL", message: "A manager approval is pending for this order.", requestId: blocking._id });
       const lines = linesOf(orderId);
       if (!lines.length) throw new Error("Add an item first");
       // As settleOrder: the coupon is checked afresh (never a stored problem) before the total, with its
@@ -803,6 +913,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       return { receiptNumber, replayed: false };
     }),
     amendOrderPayment: (args) => later(() => {
+      cashierAction("paymentFix");
       const replay = correctionReplay(args.orderId, args.idempotencyKey, "amended");
       if (replay) return { sequence: replay.sequence, replayed: true };
       const order = correctionOrder(args.orderId, args.expectedCorrectionRevision);
@@ -820,6 +931,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       }
       if (args.effectiveAt !== undefined) {
         const at = checkedEffective(args.effectiveAt);
+        const earliest = posRefundsOf(order._id).map((r) => r.businessDate).sort()[0];
+        if (earliest && businessDayOf(at) > earliest) refundFail("PAYMENT_DATE_AFTER_REFUND", "The payment date can't be later than the first refund.", { earliestRefundBusinessDate: earliest });
         const before = order.paymentEffectiveAt ?? order.paidAt!;
         if (at !== before) { patch.paymentEffectiveAt = at; change.effectiveAtBefore = before; change.effectiveAtAfter = at; }
       }
@@ -843,6 +956,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       return { sequence, replayed: false };
     }),
     linkPaidLine: (args) => later(() => {
+      cashierAction("paymentFix");
       const target = args.appointmentId ? { appointmentId: args.appointmentId } : args.bookingId ? { bookingId: args.bookingId } : null;
       if (!target || (args.appointmentId && args.bookingId)) throw new Error("Choose one booking or appointment");
       const replay = correctionReplay(args.orderId, args.idempotencyKey, "linked");
@@ -857,6 +971,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const line = state.lines.find(l => l._id === args.lineId && l.billId === order._id);
       if (!line) throw new Error("Item not found on this order");
       if (state.links.some(l => l.lineId === line._id && l.status === "active")) throw new Error("This row is already linked. Unlink it first.");
+      if (refundedOn(line._id)) refundFail("LINE_HAS_REFUNDS", "A refunded line cannot be allocated to a stay or appointment.");
       const item = sourceOf(target);
       if (!item) throw new Error("Booking not found");
       if ((("appointmentId" in item ? item.revision : undefined) ?? 0) !== args.expectedTargetRevision) throw new Error("This changed since you opened it. Review the latest details and try again.");
@@ -879,6 +994,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       return { sequence, linkId: link._id, replayed: false };
     }),
     unlinkPaidLine: (args) => later(() => {
+      cashierAction("paymentFix");
       const replay = correctionReplay(args.orderId, args.idempotencyKey, "unlinked");
       if (replay) {
         if (replay.linkId !== args.linkId) throw new Error("This unlink attempt was already used for something else. Start again.");
@@ -898,9 +1014,11 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       return { sequence, replayed: false };
     }),
     voidUnreceivedOrder: (args) => later(() => {
+      cashierAction("paymentFix");
       if (correctionReplay(args.orderId, args.idempotencyKey, "void_unreceived")) return { replayed: true };
       const order = correctionOrder(args.orderId, args.expectedCorrectionRevision);
       const reason = checkedReason(args.reason);
+      if (posRefundsOf(order._id).length) refundFail("ORDER_HAS_REFUNDS", "This order has recorded refunds and cannot be voided.");
       if (state.refunds.some(r => r.billId === order._id && r.amount > 0) || (options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).some(r => r.billId === order._id || linesOf(order._id).some(l => l.appointmentId === r.appointmentId))) throw new Error("Money was refunded, so money was received.");
       for (const line of linesOf(order._id)) {
         const source = sourceOf(line);
@@ -924,14 +1042,133 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       return { replayed: false };
     }),
     voidOrder: ({ orderId, reason }) => later(() => {
+      cashierAction("voidPaidSale");
       const order = state.orders.get(orderId);
       if (!reason.trim()) throw new Error("Give a reason for the void");
       if (order?.status !== "paid") throw new Error("Only a paid order can be voided");
+      if (posRefundsOf(orderId).length) refundFail("ORDER_HAS_REFUNDS", "This order has recorded refunds and cannot be voided.");
       patchOrder(orderId, { status: "void", voidedAt: Date.now(), voidedBy: ACTOR, voidReason: reason.trim(), updatedAt: Date.now() });
       audit({ billId: orderId, kind: "void", note: reason.trim() });
       return null;
     }),
   };
+
+  /** As previewStaffApproval, without coupon re-splitting: the amount and the total before and after. */
+  const previewRequest = (orderId: Id<"bills">, payload: ApprovalPayload) => {
+    const order = state.orders.get(orderId);
+    if (!order) throw new ConvexError("Order not found");
+    const lines = linesOf(orderId);
+    const totalBefore = billTotals(lines).total;
+    if (payload.kind === "discount" || (payload.kind === "customPrice" && payload.action === "overrideLinePrice")) {
+      if (!isOpen(order)) throw new ConvexError("Only an unpaid order can be changed");
+      const line = lines.find((row) => row._id === payload.lineId);
+      if (!line) throw new ConvexError("Item not found on this order");
+      const next: Line = payload.kind === "discount"
+        ? { ...line, discount: payload.discount }
+        : { ...line, priceOverride: payload.price === null ? undefined : { price: round2(payload.price), note: payload.note, by: "", at: 0 } };
+      const { subtotalSatang, reductionSatang } = manualReductionSatang(next);
+      const after = billTotals(lines.map((row) => (row._id === line._id ? next : row))).total;
+      return { totalBefore, totalAfter: after, amount: reductionSatang / 100, percent: subtotalSatang ? (reductionSatang * 100) / subtotalSatang : 0 };
+    }
+    if (payload.kind === "customPrice" && payload.action === "addCustomItem") {
+      if (!isOpen(order)) throw new ConvexError("Only an unpaid order can be changed");
+      assertPrice(payload.price);
+      return { totalBefore, totalAfter: round2(totalBefore + payload.price), amount: round2(payload.price) };
+    }
+    if (payload.kind === "customPrice") throw new ConvexError("The preview doesn't model this request.");
+    if (payload.kind === "refund") {
+      // Net received: the receipt's charge less its line refunds, before and after this one.
+      refundCheck(orderId, payload.lineId, payload.currency, payload.amountSatang, payload.reason);
+      const before = (Math.round(totalBefore * 100) - posRefundsOf(orderId).reduce((n, r) => n + r.amount, 0)) / 100;
+      return { totalBefore: before, totalAfter: round2(before - payload.amountSatang / 100), amount: payload.amountSatang / 100 };
+    }
+    if (order.status !== "paid") throw new ConvexError("Only a paid order can be corrected");
+    return { totalBefore, totalAfter: payload.kind === "paymentFix" && payload.action === "voidUnreceivedOrder" ? 0 : totalBefore, amount: totalBefore };
+  };
+  const insertRequest = (args: SeededApproval) => {
+    const order = state.orders.get(args.orderId)!;
+    const createdAt = args.createdAt ?? Date.now();
+    const request: ApprovalRequest = {
+      _id: nextId<"staffApprovalRequests">("approval"), _creationTime: createdAt, orderId: order._id, lineId: "lineId" in args.payload ? args.payload.lineId : undefined,
+      approverEmail: undefined, resolvedAt: undefined, resolutionReason: undefined, percent: undefined,
+      kind: args.payload.kind, payload: args.payload, reason: args.reason, requesterEmail: args.requesterEmail, orderRevision: order.revision, rulesRevision: rules.revision,
+      status: "pending", createdAt, expiresAt: createdAt + APPROVAL_TTL_MS, ...previewRequest(order._id, args.payload),
+    };
+    requests.unshift(request);
+    return request;
+  };
+  /** Runs an approved request with the approver's own writes, as executeStaffApproval does. */
+  const executeRequest = async (payload: ApprovalPayload, orderId: Id<"bills">) => {
+    if (payload.kind === "discount") return posActions.updateLine({ lineId: payload.lineId, discount: payload.discount });
+    if (payload.kind === "customPrice" && payload.action === "overrideLinePrice") return posActions.overrideLinePrice({ lineId: payload.lineId, price: payload.price, note: payload.note });
+    if (payload.kind === "customPrice" && payload.action === "addCustomItem") return posActions.addItem({ orderId, item: { kind: "extra", name: payload.name, price: payload.price } });
+    if (payload.kind === "voidPaidSale") return posActions.voidOrder({ orderId, reason: "Approved request" });
+    if (payload.kind === "refund") return posActions.refundLine({ orderId, lineId: payload.lineId, amount: payload.amountSatang, currency: payload.currency, method: payload.method, reason: payload.reason, idempotencyKey: payload.idempotencyKey });
+    throw new ConvexError("The preview doesn't model this request.");
+  };
+  const resolveRequest = (requestId: Id<"staffApprovalRequests">, status: ApprovalRequest["status"], patch: Partial<ApprovalRequest> = {}) => {
+    const index = requests.findIndex((request) => request._id === requestId);
+    requests[index] = { ...requests[index], ...patch, status, resolvedAt: Date.now() };
+  };
+  const actions: CheckoutActions = {
+    ...posActions,
+    createOrder: () => later(() => ({ orderId: createOrder()._id })),
+    createApproval: ({ orderId, payload, reason }) => later(() => {
+      if (!cashier) throw new ConvexError("Only cashiers request manager approval.");
+      const clean = reason.trim();
+      if (!clean || clean.length > 500) throw new ConvexError("Give a reason of 1–500 characters.");
+      const open = requests.find((request) => request.orderId === orderId && requestStatus(request) === "pending");
+      if (open) throw new ConvexError({ code: "PENDING_APPROVAL", message: "Resolve the existing request first.", requestId: open._id });
+      const request = insertRequest({ orderId, payload, reason: clean, requesterEmail: staff.email });
+      return { requestId: request._id, status: "pending" as const, expiresAt: request.expiresAt, totalBefore: request.totalBefore, totalAfter: request.totalAfter, amount: request.amount, ...(request.percent !== undefined ? { percent: request.percent } : {}) };
+    }),
+    approveApproval: async ({ requestId }) => {
+      const request = requests.find((row) => row._id === requestId);
+      if (!request) throw new ConvexError("Request not found");
+      if (request.requesterEmail === staff.email) throw new ConvexError("You cannot approve your own request.");
+      if (request.status !== "pending") return { status: request.status, replayed: true };
+      const status = requestStatus(request);
+      if (status !== "pending") {
+        await later(() => resolveRequest(requestId, status));
+        return { status, replayed: false };
+      }
+      resolveRequest(requestId, "applied", { approverEmail: staff.email });
+      try {
+        await executeRequest(request.payload, request.orderId);
+      } catch (error) {
+        const index = requests.findIndex((row) => row._id === requestId);
+        requests[index] = request;
+        throw error;
+      }
+      return { status: "applied" as const, replayed: false };
+    },
+    rejectApproval: ({ requestId }) => later(() => {
+      const request = requests.find((row) => row._id === requestId);
+      if (!request) throw new ConvexError("Request not found");
+      if (request.status !== "pending") return { status: request.status };
+      const status = requestStatus(request);
+      const next = status === "pending" ? "rejected" : status;
+      resolveRequest(requestId, next, { approverEmail: staff.email });
+      return { status: next };
+    }),
+    cancelApproval: ({ requestId }) => later(() => {
+      const request = requests.find((row) => row._id === requestId);
+      if (!request || request.requesterEmail !== staff.email) throw new Error("Not authorized");
+      if (request.status !== "pending") return { status: request.status };
+      const status = requestStatus(request);
+      const next = status === "pending" ? "cancelled" : status;
+      resolveRequest(requestId, next);
+      return { status: next };
+    }),
+  };
+  /** As canReadCheckoutOrder: a cashier opens unpaid orders and today's settled ones. */
+  const cashierCanRead = (order: Order | undefined) => {
+    if (!order) return false;
+    if (!cashier || isOpen(order)) return true;
+    const settledAt = order.paymentEffectiveAt ?? order.paidAt;
+    return order.status !== "discarded" && settledAt !== undefined && businessDayOf(settledAt) === businessDate();
+  };
+  const businessDayOf = (at: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(at);
 
   const checkedEffective = effectiveTime;
   const checkedReason = (reason: string) => { if (!reason.trim() || reason.trim().length > 500) throw new Error("Enter a reason (at most 500 characters)"); return reason.trim(); };
@@ -1021,8 +1258,14 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const lines = linesOf(orderId);
     const customer = state.customers.find((c) => c._id === order.customerId);
     const parent = order.parentOrderId ? state.orders.get(order.parentOrderId) : undefined;
+    const posRefunds = posRefundsOf(orderId);
+    const refundedAmountSatang = posRefunds.reduce((n, r) => n + r.amount, 0);
     return {
       order: { ...order, title: orderTitle(order.orderNumber), state: stateOf(order) },
+      refundedAmountSatang,
+      fullyRefunded: order.status === "paid" && refundedAmountSatang > 0 && refundedAmountSatang === Math.round(billTotals(lines).total * 100),
+      refundHistoryTruncated: false,
+      posRefunds: posRefunds.toReversed().slice(0, 50).map(refundView),
       customer: customer ? card(customer) : null,
       receiptCustomer: order.customerSnapshot ?? null,
       legacyGuest: null,
@@ -1032,6 +1275,8 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       lines: lines.map((line) => ({
         ...line,
         net: lineNet(line),
+        refundedAmountSatang: refundedOn(line._id),
+        remainingRefundableSatang: remainingOn(order, line),
         imageUrl: linePhoto(line),
         staffName: line.staffId ? (isOpen(order) ? undefined : line.staffName) ?? STAFF.find((s) => s._id === line.staffId)?.name : undefined,
         sourceIssue: isOpen(order) ? sourceIssue(line) : null,
@@ -1079,6 +1324,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     customerName: order.customerSnapshot?.name ?? state.customers.find((c) => c._id === order.customerId)?.name,
     discarded: discardedInfo(order),
     bookingReference: refs[0]?.reference, otherBookings: Math.max(refs.length - 1, 0),
+    refundedAmountSatang: posRefundsOf(order._id).reduce((n, r) => n + r.amount, 0),
     };
   };
   const matches = (text: string, guest: Guest) => {
@@ -1097,17 +1343,59 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     setBookingSnapshot: (id, patch) => { state.bookings = state.bookings.map(b => b.id === id ? { ...b, ...patch } : b); version++; listeners.forEach(fn => fn()); },
     setCouponSnapshot: (code, patch) => { state.coupons = state.coupons.map(c => c.rules.code === code ? { ...c, rules: { ...c.rules, ...patch } } : c); version++; listeners.forEach(fn => fn()); },
     appointmentSnapshot: (id) => state.appointments.find(a => a.appointmentId === id),
+    seedApproval: (request) => later(() => insertRequest(request)._id),
+    setStaff: (next) => {
+      staff = next;
+      rules = next.rules ?? DEFAULT_CASHIER_RULES;
+      cashier = next.role === "cashier";
+      version++;
+      listeners.forEach((fn) => fn());
+    },
+    refundAttempts: () => refundAttempts.map((args) => ({ ...args })),
+    loseNextRefundResponse: () => { loseRefundResponse = true; },
+    refundFromAnotherTill: (lineName, satang) => {
+      const order = [...state.orders.values()].filter((o) => o.status === "paid").sort((a, b) => (b.paidAt ?? 0) - (a.paidAt ?? 0))[0];
+      const line = order && linesOf(order._id).find((l) => l.name === lineName);
+      if (!line) throw new Error(`No paid line named ${lineName}`);
+      const now = Date.now();
+      state.posRefunds.push({ _id: nextId("refund"), _creationTime: now, orderId: order._id, lineId: line._id, amount: satang, currency: line.currency, method: "cash", reason: "Another till", idempotencyKey: `other-till-${now}`, createdBy: ACTOR, createdByEmail: ACTOR, createdAt: now, businessDate: businessDayOf(now) });
+      patchOrder(order._id, { revision: order.revision + 1, correctionRevision: (order.correctionRevision ?? 0) + 1 });
+    },
+    useOrderApprovals: (orderId) => {
+      const v = useVersion();
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version
+      return useMemo(() => (orderId ? requests.filter((request) => request.orderId === orderId).map(effective) : undefined), [orderId, v]);
+    },
+    usePendingApprovals: () => {
+      const v = useVersion();
+      return useMemo(() => {
+        if (cashier) return undefined;
+        const list = requests.filter((request) => requestStatus(request) === "pending").map(effective).toReversed();
+        return { count: list.length, list };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version
+      }, [v]);
+    },
+    useFindOrder: (orderNumber) => {
+      const v = useVersion();
+      return useMemo(() => {
+        if (orderNumber === null) return undefined;
+        const order = [...state.orders.values()].find((row) => row.orderNumber === orderNumber);
+        return order && cashierCanRead(order) ? order._id : null;
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version
+      }, [orderNumber, v]);
+    },
     useRestoreCheck: (orderId) => { useVersion(); return restoreCheck(orderId); },
     useAppointmentFees: (appointmentId) => { useVersion(); return state.lines.filter(l => l.feeAppointmentId === appointmentId && l.fee).toReversed().slice(0, 20).map(l => { const o = state.orders.get(l.billId)!; return { lineId: l._id, kind: l.fee!.kind, amount: lineNet(l), currency: l.currency, reason: l.fee!.reason ?? null, by: l.fee!.by, at: l.fee!.at, order: { _id: o._id, title: orderTitle(o.orderNumber), state: stateOf(o), receiptNumber: o.receiptNumber ?? null } }; }); },
     useCorrectionHistory: (id) => { useVersion(); return usePage(state.corrections.filter(r => r.billId === id).toReversed(), id); },
     useAuditHistory: (id) => { useVersion(); return usePage(state.audit.filter(r => r.billId === id).toReversed(), id); },
     useBookingRefundHistory: (id) => { useVersion(); return usePage((options.financialHistory?.bookingRefunds ?? state.refunds.flatMap(r => "bookingId" in r ? [r] : [])).filter(r => r.billId === id).toReversed(), id); },
     useAppointmentRefundHistory: (id) => { useVersion(); return usePage((options.appointmentRefunds ?? options.financialHistory?.appointmentRefunds ?? []).filter(r => r.billId === id).toReversed(), id); },
+    useBillRefundHistory: (id) => { useVersion(); return usePage([...(options.financialHistory?.billRefunds ?? []), ...posRefundsOf(id).map(refundView)].filter(r => r.orderId === id).sort((a, b) => b.createdAt - a.createdAt), id); },
     useCatalog: () => CATALOG,
     useOrder: (orderId) => {
       const v = useVersion();
       // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version
-      return useMemo(() => (orderId ? orderView(orderId) : null), [orderId, v]);
+      return useMemo(() => (orderId && cashierCanRead(state.orders.get(orderId)) ? orderView(orderId) : null), [orderId, v]);
     },
     useOrderHistory: (orderId) => {
       useVersion();

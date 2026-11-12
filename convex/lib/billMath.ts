@@ -6,6 +6,8 @@ import { ConvexError } from 'convex/values';
 
 export const VAT_RATE = 0.07;
 export const MAX_TENDERS = 3;
+/** Bound receipt refund reads; never truncate a money balance. */
+export const MAX_BILL_REFUNDS = 1000;
 export const NOTE_MAX = 500;
 /**
  * Till limits. They keep every intermediate exact in doubles: a bill is at most 1e9 satang, and a

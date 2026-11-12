@@ -121,8 +121,11 @@ export function couponRefusal(err: unknown): CouponRefusal | null {
 }
 
 /** Plain-text receipt for share and copy. Tenders show what was handed over, plus change, like the printed receipt. */
-export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer" | "legacyGuest"> & Partial<Pick<OrderView, "promotion">> & BookingRefs, business: string) {
+export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer" | "legacyGuest"> & Partial<Pick<OrderView, "promotion" | "refundedAmountSatang" | "refundHistoryTruncated">> & BookingRefs, business: string) {
   const { order, lines, payments, totals } = view;
+  // POS line refunds (satang), as on the printed receipt; none past the history limit.
+  const refunds = !view.refundHistoryTruncated;
+  const refunded = refunds ? view.refundedAmountSatang ?? 0 : 0;
   const coupon = couponLabel(view);
   const row = (left: string, right: string) => `${left}  ${right}`;
   const change = changeDue(payments);
@@ -141,7 +144,7 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...lines.flatMap((line) => {
       const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
       const when = line.kind === "service" ? receiptSchedule(line.schedule) : null;
-      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(round2(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []), ...(when ? [`  ${when}`] : [])];
+      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(round2(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []), ...(when ? [`  ${when}`] : []), ...(refunds && line.refundedAmountSatang ? [row("  Refunded", formatMoney(-line.refundedAmountSatang / 100))] : [])];
     }),
     "",
     ...(totals.coupon ? [row("Subtotal", formatMoney(round2(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
@@ -150,6 +153,7 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...(totals.deposit ? [row("Paid before checkout", formatMoney(-totals.deposit))] : []),
     ...payments.map((p) => row(TENDER_LABELS[p.method].long, formatMoney(p.received ?? p.amount))),
     ...(change ? [row("Change", formatMoney(change))] : []),
+    ...(refunded ? [row("Refunded", formatMoney(-refunded / 100)), row("Net", formatMoney((Math.round(totals.total * 100) - refunded) / 100))] : []),
     ...(totals.coupon ? ["", `You saved ${formatMoney(totals.coupon)} with ${view.promotion?.code ?? "a coupon"}`] : []),
   ].join("\n");
 }

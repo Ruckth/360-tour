@@ -1,5 +1,27 @@
 // Browser-only fixtures: no backend connection or writes.
 import { getFunctionName } from "convex/server";
+import { useSyncExternalStore } from "react";
+
+/*
+ * A fixture can answer named functions itself (staffAccess:listPeople, ...) from its own in-memory
+ * store; its mutations then re-render every query. Functions it doesn't register keep the
+ * defaults below.
+ */
+type Handler = (args: never) => unknown;
+const queryHandlers = new Map<string, Handler>();
+const mutationHandlers = new Map<string, Handler>();
+let storeVersion = 0;
+const storeListeners = new Set<() => void>();
+const subscribeStore = (listener: () => void) => { storeListeners.add(listener); return () => { storeListeners.delete(listener); }; };
+const readStoreVersion = () => storeVersion;
+export function registerFixtureFunctions(handlers: { queries?: Record<string, Handler>; mutations?: Record<string, Handler> }) {
+  for (const [name, handler] of Object.entries(handlers.queries ?? {})) queryHandlers.set(name, handler);
+  for (const [name, handler] of Object.entries(handlers.mutations ?? {})) mutationHandlers.set(name, handler);
+}
+export function notifyFixtureStore() {
+  storeVersion += 1;
+  storeListeners.forEach((listener) => listener());
+}
 
 const params = new URLSearchParams(location.search);
 const attempts = new Map<string, number>();
@@ -94,14 +116,30 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   return [];
 }
 export function useConvexAuth() { return { isLoading: false, isAuthenticated: true }; }
-export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) { return fixtureQuery(query, args); }
+export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
+  useSyncExternalStore(subscribeStore, readStoreVersion, readStoreVersion);
+  const handler = args === "skip" ? undefined : queryHandlers.get(getFunctionName(query));
+  return handler ? handler(args as never) : fixtureQuery(query, args);
+}
 export function useQueries(requests: Record<string, { query: Parameters<typeof getFunctionName>[0]; args: unknown }>) {
   return Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => [key, fixtureQuery(query, args)]));
 }
-export function useMutation() {
+export function useMutation(mutation?: Parameters<typeof getFunctionName>[0]) {
+  const handler = mutation ? mutationHandlers.get(getFunctionName(mutation)) : undefined;
+  if (handler) return async (args: unknown) => {
+    document.body.dataset.submission = JSON.stringify(args);
+    try {
+      return await handler(args as never);
+    } finally {
+      notifyFixtureStore();
+    }
+  };
   return async (args: unknown) => {
     document.body.dataset.submission = JSON.stringify(args);
     window.dispatchEvent(new CustomEvent("fixture-mutation", { detail: args }));
     return "fixture-booking";
   };
+}
+export function useAction() {
+  return async () => null;
 }

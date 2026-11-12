@@ -11,7 +11,7 @@ import {
 	type BookingRules,
 	type SettingsInput
 } from './lib/siteSettings';
-import { adminEmails, requireAdmin } from './lib/adminAuth';
+import { adminEmails, requireAdmin, requireOwner } from './lib/adminAuth';
 import {
 	getEffectiveSettings,
 	getSiteSettingsRow,
@@ -84,7 +84,7 @@ export const update = mutation({
 		email: v.optional(v.object({ fromName: text, ownerNotificationEmail: text, footer: text }))
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireOwner(ctx);
 		const { business, ai, email, bookingRules, errors } = validateSettingsInput(args);
 		const firstError = Object.values(errors)[0];
 		if (firstError) throw new Error(firstError);
@@ -117,7 +117,7 @@ export const restore = mutation({
 		side: v.union(v.literal('before'), v.literal('after'))
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireOwner(ctx);
 		const row = await getSiteSettingsRow(ctx);
 		if (args.expectedRevision !== (row?.revision ?? 0))
 			throw new Error('Settings changed. Review the latest configuration and try again.');

@@ -76,11 +76,14 @@ export function CatalogPane({
   catalog,
   lines,
   onAdd,
+  customNeedsManager = false,
   className,
 }: {
   catalog: Catalog | undefined;
   lines: readonly OrderLine[];
   onAdd: (item: CatalogItem) => void;
+  /** A cashier whose custom items need a manager: the custom item form asks instead of adding. */
+  customNeedsManager?: boolean;
   className?: string;
 }) {
   const [tab, setTab] = useState<Tab>("frequent");
@@ -234,7 +237,7 @@ export function CatalogPane({
                 ) : null}
               </div>
             ) : null}
-            {tab === "extras" ? <CustomItemDialog onAdd={onAdd} /> : null}
+            {tab === "extras" ? <CustomItemDialog onAdd={onAdd} needsManager={customNeedsManager} /> : null}
           </>
         )}
       </div>
@@ -292,7 +295,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
 }
 
 /** The Custom item tile on the Extras tab and its form; the tile is the trigger, so focus returns to it. */
-function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
+function CustomItemDialog({ onAdd, needsManager }: { onAdd: (item: CatalogItem) => void; needsManager: boolean }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -337,7 +340,7 @@ function CustomItemDialog({ onAdd }: { onAdd: (item: CatalogItem) => void }) {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" className="h-auto min-h-10 whitespace-normal" disabled={!valid}>Add to order</Button>
+            <Button type="submit" className="h-auto min-h-10 whitespace-normal" disabled={!valid}>{needsManager ? "Ask manager" : "Add to order"}</Button>
           </DialogFooter>
         </form>
       </CheckoutDialogContent>

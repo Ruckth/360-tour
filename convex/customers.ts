@@ -5,7 +5,9 @@ import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
-import { orderTitle } from './lib/billMath';
+import { requireStaff } from './lib/staffAccess';
+import { orderTitle, round2 } from './lib/billMath';
+import { orderRefundTotal } from './lib/billRefunds';
 import { orderState } from './lib/orderLinks';
 import { assertValidEmail } from './lib/validation';
 import { customerPhoneError } from '../src/lib/booking/phone';
@@ -90,7 +92,8 @@ function customerValues(customer: { name: string; phone?: string; email?: string
 export const browseCustomers = query({
 	args: { query: v.string(), archived: v.boolean(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		const access = await requireStaff(ctx, 'checkout');
+		if (access.role === 'cashier' && (args.archived || args.query.trim().length < 2)) return { page: [], isDone: true, continueCursor: '' };
 		pageSize(args.paginationOpts.numItems);
 		const raw = args.query.trim();
 		if (raw.length > 200) throw new ConvexError('Search must be at most 200 characters');
@@ -113,7 +116,7 @@ export const browseCustomers = query({
 export const searchCustomers = query({
 	args: { query: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const raw = args.query.trim();
 		if (raw.length < 2) return [];
 		const digits = raw.replace(/\D/g, '');
@@ -142,20 +145,26 @@ export const getCustomer = query({
 			.withIndex('by_customerId_and_updatedAt', (q) => q.eq('customerId', customer._id))
 			.order('desc')
 			.take(11);
+		const refundedByOrder = new Map<Id<'bills'>, number>();
+		for (const order of orders.slice(0, 10)) refundedByOrder.set(order._id, await orderRefundTotal(ctx, order._id));
 		return {
 			...customerCard(customer),
 			notes: customer.notes,
 			mergeEnabled: CUSTOMER_POS_INTEGRATION_ENABLED,
             mergeProgress: await ctx.db.query('customerMergeJobs').withIndex('by_sourceId', q => q.eq('sourceId', customer._id)).unique(),
 			ordersHasMore: orders.length > 10,
-			orders: orders.slice(0, 10).map((order) => ({
-				_id: order._id,
-				title: orderTitle(order.orderNumber),
-				state: orderState(order),
-				total: order.total,
-				currency: order.currency,
-				updatedAt: order.updatedAt
-			}))
+			orders: orders.slice(0, 10).map((order) => {
+				const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: refundedByOrder.get(order._id) };
+				return {
+					_id: order._id,
+					title: orderTitle(order.orderNumber),
+					state: orderState(order),
+					total: Math.max(0, round2(order.total - (refundedByOrder.get(order._id) ?? 0) / 100)),
+					...refundAmounts,
+					currency: order.currency,
+					updatedAt: order.updatedAt
+				};
+			})
 		};
 	}
 });
@@ -166,7 +175,13 @@ export const listCustomerOrders = query({
 		await requireAdmin(ctx);
 		pageSize(args.paginationOpts.numItems);
 		const result = await ctx.db.query('bills').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', args.customerId)).order('desc').paginate(args.paginationOpts);
-		return { ...result, page: result.page.map(order => ({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: order.total, currency: order.currency })) };
+		const page = [];
+		for (const order of result.page) {
+			const refundedAmountSatang = await orderRefundTotal(ctx, order._id);
+			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang };
+			page.push({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, round2(order.total - refundedAmountSatang / 100)), ...refundAmounts, currency: order.currency });
+		}
+		return { ...result, page };
 	}
 });
 
@@ -183,7 +198,8 @@ export const customerHistory = query({
 export const createCustomer = mutation({
 	args: customerInput,
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = await requireStaff(ctx, 'checkout');
+		if (admin.role === 'cashier' && args.notes?.trim()) throw new Error('Not authorized');
 		const now = Date.now();
 		const profile = cleanCustomer(args);
 		const id = await ctx.db.insert('customers', { ...profile, revision: 0, createdBy: admin.email, createdAt: now, updatedAt: now });
@@ -311,3 +327,10 @@ export async function mergeCustomerRecords(ctx: MutationCtx, args: {
 }
 
 export const mergeCustomers = mutation({ args: mergeInput, handler: mergeCustomerRecords });
+
+/** Minimal identity card for the checkout picker; no notes, histories or unrelated orders. */
+export const checkoutCustomer = query({ args: { customerId: v.id('customers') }, handler: async (ctx, args) => {
+ await requireStaff(ctx, 'checkout');
+ const customer = await ctx.db.get(args.customerId);
+ return customer ? customerCard(customer) : null;
+} });

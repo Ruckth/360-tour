@@ -242,6 +242,42 @@ describe('report attribution and limits', () => {
 		expect(result).toMatchObject({ campaigns: [{ id: s.campaignId }], links: [{ id: s.linkId }], spend: [{ amount: 900 }], properties: [{ id: s.propertyId }] });
 	});
 
+	it('keeps the same range-budget truncation point with batched POS refunds', async () => {
+		const s = await setup();
+		const orders = await s.t.run(async ctx => {
+			const ids = [];
+			for (let i = 0; i < 1050; i++) {
+				const orderId = await ctx.db.insert('bills', { status: 'paid', currency: 'THB', itemCount: 1, total: 500, due: 0, hasItems: true, revision: 1, paidAt: now, createdBy: email, createdAt: now, updatedAt: now });
+				await ctx.db.insert('billPayments', { billId: orderId, method: 'cash', amount: 500, idempotencyKey: `budget-${i}`, createdBy: email, createdAt: now });
+				const lineId = await ctx.db.insert('billLines', { billId: orderId, kind: 'extra', name: 'Water', unitPrice: 500, qty: 1, currency: 'THB', createdAt: now });
+				ids.push({ orderId, lineId });
+			}
+			return ids;
+		});
+		vi.setSystemTime(now + 2 * day);
+		const args = { from: '2026-08-10', to: '2026-11-09', basis: 'cash' as const };
+		const beforeBudget = new ReadBudget();
+		const before = await s.t.run(ctx => readMarketingReport(ctx, args, beforeBudget));
+		await s.t.run(async ctx => {
+			for (const { orderId, lineId } of orders) {
+				await ctx.db.insert('billRefunds', { orderId, lineId, amount: 100, currency: 'THB', method: 'cash', reason: 'Return', idempotencyKey: `refund-${orderId}`, businessDate: '2026-11-10', createdAt: now + day, createdBy: email, createdByEmail: email });
+				await ctx.db.patch(orderId, { correctionRevision: 1 });
+			}
+		});
+		const afterBudget = new ReadBudget();
+		const after = await s.t.run(ctx => readMarketingReport(ctx, args, afterBudget));
+		expect(before.truncated).toBe(false);
+		expect(after.truncated).toBe(false);
+		expect(after.sales).toHaveLength(1050);
+		expect(after.sales.every(sale => sale.refunded === 1)).toBe(true);
+		expect(afterBudget.ranges).toBe(beforeBudget.ranges);
+		for (const maxRanges of [beforeBudget.ranges - 1, beforeBudget.ranges]) {
+			const report = await s.t.run(ctx => readMarketingReport(ctx, args, new ReadBudget(16000, maxRanges)));
+			expect(report.truncated).toBe(maxRanges < beforeBudget.ranges);
+			expect(report.sales.map(sale => sale.id)).toEqual(before.sales.map(sale => sale.id));
+		}
+	});
+
 	it('answers a busy month (3 stays and 20 walk-in orders a day) inside the budget', async () => {
 		const s = await setup();
 		await s.t.run(async ctx => {

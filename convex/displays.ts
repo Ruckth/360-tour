@@ -3,7 +3,7 @@ import { internal } from './_generated/api';
 import { internalMutation, mutation, query } from './_generated/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
+import { requireStaff } from './lib/staffAccess';
 import { PAIR_CODE_LENGTH, normalizePairCode, randomPairCode, randomSecret, sha256 } from './lib/displayTokens';
 import { DRIVER_LEASE_MS } from './lib/displayLease';
 import { displayOrderState, type DisplayOrderState } from './lib/displayView';
@@ -167,7 +167,7 @@ async function handOver(ctx: MutationCtx, till: Doc<'tills'>, driverId: string |
 export const createPairLink = mutation({
 	args: { clientId: v.string() },
 	handler: async (ctx, args) => {
-		const { email } = await requireAdmin(ctx);
+		const { email } = await requireStaff(ctx, 'checkout');
 		const driverId = checkClientId(args.clientId);
 		const till = await ensureDefaultTill(ctx);
 		const generation = (till.pairGeneration ?? 0) + 1;
@@ -243,7 +243,7 @@ export const startPairing = mutation({
 export const approveCode = mutation({
 	args: { code: v.string(), clientId: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const driverId = checkClientId(args.clientId);
 		const code = normalizePairCode(args.code);
 		if (code.length !== PAIR_CODE_LENGTH) throw displayError('INVALID_CODE', `Enter the ${PAIR_CODE_LENGTH}-character code shown on the display`);
@@ -265,7 +265,7 @@ export const approveCode = mutation({
 export const takeDisplay = mutation({
 	args: { clientId: v.string(), orderId: v.union(v.string(), v.null()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		await handOver(ctx, await ensureDefaultTill(ctx), checkClientId(args.clientId), orderIdFrom(ctx, args.orderId));
 		return null;
 	}
@@ -281,7 +281,7 @@ export const takeDisplay = mutation({
 export const showOrder = mutation({
 	args: { orderId: v.union(v.string(), v.null()), clientId: v.string(), leaseId: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const till = await getDefaultTill(ctx);
 		if (!till?.driverId || till.driverId !== args.clientId) return { shown: false };
 		const orderId = orderIdFrom(ctx, args.orderId);
@@ -302,7 +302,7 @@ export const showOrder = mutation({
 export const renewDriverLease = mutation({
 	args: { clientId: v.string(), leaseId: v.string(), orderId: v.union(v.string(), v.null()) },
 	handler: async (ctx, args): Promise<{ renewed: boolean }> => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const leaseId = checkLeaseId(args.leaseId);
 		const till = await getDefaultTill(ctx);
 		const orderId = orderIdFrom(ctx, args.orderId);
@@ -378,7 +378,7 @@ export const heartbeat = mutation({
 export const listDisplays = query({
 	args: { clientId: v.string() },
 	handler: async (ctx, args): Promise<{ displays: Array<{ _id: Id<'displays'>; name: string; pairedAt: number; lastSeenAt: number | null }>; driver: DisplayDriver }> => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const till = await getDefaultTill(ctx);
 		if (!till) return { displays: [], driver: 'none' };
 		const active = await activeDisplays(ctx, till._id).take(20);
@@ -397,7 +397,7 @@ export const listDisplays = query({
 export const revoke = mutation({
 	args: { displayId: v.id('displays') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
+		await requireStaff(ctx, 'checkout');
 		const display = await ctx.db.get(args.displayId);
 		if (!display || display.status === 'revoked') return null;
 		await ctx.db.patch(display._id, { status: 'revoked', revokedAt: Date.now(), pairCode: undefined, pairCodeExpiresAt: undefined });

@@ -3,9 +3,11 @@
 import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
+import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +22,8 @@ import {
 } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
+import type { ApprovalPayload } from "convex/lib/staffTypes";
+import { ApprovalRequestForm, OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
 import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
@@ -28,7 +32,11 @@ import { FinancialHistory } from "./FinancialHistory";
 import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
 import { OrderHistory } from "./OrderHistory";
 import { PayPanel } from "./PayPanel";
+import { discountOverLimit, formatPercent, needsApproval } from "./staff-approvals";
 import type { Run } from "./useOrderWrites";
+
+/** A request the cashier is about to send: what it is, its exact payload, and a reason to start from. */
+type Ask = { what: string; payload: ApprovalPayload; reason?: string };
 
 const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
@@ -78,7 +86,8 @@ export function OrderPanel({
   onPaid: (orderId: OrderId) => void;
   onClose?: () => void;
 }) {
-  const actions = useCheckoutBackend().useActions();
+  const backend = useCheckoutBackend();
+  const actions = backend.useActions();
   const [confirmClear, setConfirmClear] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(null);
@@ -92,7 +101,10 @@ export function OrderPanel({
   const stale = lines.filter((line) => line.sourceIssue).length;
   // A coupon that no longer fits must be fixed or removed first; settleOrder refuses it too.
   const couponBlocked = Boolean(view?.promotion?.problem) && lines.length > 0;
-  const cannotPay = !lines.length || stale > 0 || couponBlocked;
+  // settleOrder refuses an order with a request still waiting for a manager, whoever pays.
+  const approvals = backend.useOrderApprovals(orderId ?? null);
+  const waiting = approvals?.some((request) => request.status === "pending" && request.expiresAt > now) ?? false;
+  const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
   const staffDiscount = round2(totals.discount - totals.coupon);
 
   async function saveAndClose() {
@@ -193,6 +205,7 @@ export function OrderPanel({
                     onToggle={() => setExpanded(expanded === line._id ? null : line._id)}
                     run={run}
                     now={now}
+                    waiting={waiting}
                   />
                 ))}
               </ul>
@@ -229,7 +242,10 @@ export function OrderPanel({
             {couponBlocked ? (
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
             ) : null}
-            {lines.length && totals.due === 0 ? (
+            <OrderApprovalStatus requests={approvals} className="mb-2" />
+            {waiting ? (
+              <Button className="h-12 w-full rounded-xl" disabled data-testid="waiting-for-approval">Waiting for approval</Button>
+            ) : lines.length && totals.due === 0 ? (
               <Button className="h-12 w-full rounded-xl" disabled={cannotPay} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
             ) : (
               // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
@@ -289,8 +305,21 @@ function lineSubtitle(line: OrderLine, now: number) {
   return parts.filter(Boolean).join(" · ");
 }
 
-function OrderLineRow({ line, catalog, open, onToggle, run, now }: { line: OrderLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run; now: number }) {
+function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting }: { line: OrderLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run; now: number; waiting: boolean }) {
   const actions = useCheckoutBackend().useActions();
+  const send = useSendApproval();
+  const cashier = useStaffAccess().role === "cashier";
+  // A cashier updating a repriced booking row may need a manager (customPrice).
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const updateSource = () => run(async () => {
+    try {
+      return await actions.updateSourceLine({ lineId: line._id });
+    } catch (err) {
+      if (!cashier || !needsApproval(err)) throw err;
+      setAsk({ what: "price update", payload: { kind: "customPrice", action: "updateSourceLine", lineId: line._id } });
+      return null;
+    }
+  });
   const listPrice = round2(line.unitPrice * line.qty);
   const issue = line.sourceIssue;
   // Already part of `net`: shown so staff can tell it from a line discount.
@@ -329,13 +358,25 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now }: { line: Order
           <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
           <span className="min-w-0 flex-1">{issue.message}</span>
           {issue.kind === "online" ? null : (
-            <Button size="sm" variant="outline" className="h-7 shrink-0" onClick={() => run(() => actions.updateSourceLine({ lineId: line._id }))}>
+            <Button size="sm" variant="outline" className="h-7 shrink-0" onClick={() => void updateSource()}>
               {issue.kind === "changed" ? <><RefreshCw aria-hidden className="size-3.5" /> Update</> : <><Trash2 aria-hidden className="size-3.5" /> Remove</>}
             </Button>
           )}
         </div>
       ) : null}
-      {open && !line.fee ? <LineEditor line={line} catalog={catalog} run={run} /> : null}
+      {ask ? (
+        <ApprovalRequestForm
+          className="mx-3 mb-3"
+          what={ask.what}
+          onCancel={() => setAsk(null)}
+          onSend={async (reason) => {
+            const failed = await send(line.billId, ask.payload, reason);
+            if (!failed) setAsk(null);
+            return failed;
+          }}
+        />
+      ) : null}
+      {open && !line.fee ? <LineEditor line={line} catalog={catalog} run={run} waiting={waiting} /> : null}
     </li>
   );
 }
@@ -368,10 +409,10 @@ function QtyStepper({ line, run }: { line: OrderLine; run: Run }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div className="grid gap-1.5">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">{label}</div>
       {children}
     </div>
   );
@@ -431,8 +472,12 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog | undefined; run: Run }) {
+function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog: Catalog | undefined; run: Run; waiting: boolean }) {
   const actions = useCheckoutBackend().useActions();
+  const access = useStaffAccess();
+  const cashier = access.role === "cashier";
+  const send = useSendApproval();
+  const [ask, setAsk] = useState<Ask | null>(null);
   const [discountType, setDiscountType] = useState<"amount" | "percent">(line.discount?.type ?? "amount");
   const [discountValue, setDiscountValue] = useState(line.discount ? String(line.discount.value) : "");
   const [priceOpen, setPriceOpen] = useState(false);
@@ -443,9 +488,39 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
 
   const when = serviceScheduleValue(line);
+  // A cashier's limit, worked out as the server will (owners and managers have none).
+  const typed = isAmount(discountValue) ? { type: discountType, value: Number(discountValue) } : null;
+  // The discount already on the line (e.g. a manager approved it) is not a new request.
+  const applied = typed !== null && line.discount?.type === typed.type && line.discount.value === typed.value;
+  const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;
+  const priceNeedsManager = cashier && access.cashierRules.customPrice === "manager";
+
+  /** Runs a write; a cashier refused with NEEDS_APPROVAL gets the request form instead of an error. */
+  const orAsk = (write: () => Promise<unknown>, request: Ask) => run(async () => {
+    try {
+      return await write();
+    } catch (err) {
+      if (!cashier || !needsApproval(err)) throw err;
+      const amount = needsApproval(err)?.amount;
+      setAsk(request.payload.kind === "discount" && amount !== undefined ? { ...request, what: `${formatMoney(amount)} discount` } : request);
+      return null;
+    }
+  });
+
+  async function applyDiscount() {
+    if (!typed) return;
+    const request: Ask = { what: over ? `${formatMoney(over.amount)} discount` : "discount", payload: { kind: "discount", lineId, discount: typed } };
+    if (over) setAsk(request);
+    else await orAsk(() => actions.updateLine({ lineId, discount: typed }), request);
+  }
 
   async function applyPrice() {
-    if (await run(() => actions.overrideLinePrice({ lineId, price: Number(price), note }))) {
+    const request: Ask = { what: "custom price", payload: { kind: "customPrice", action: "overrideLinePrice", lineId, price: Number(price), note: note.trim() }, reason: note.trim() };
+    if (priceNeedsManager) {
+      setAsk(request);
+      return;
+    }
+    if (await orAsk(() => actions.overrideLinePrice({ lineId, price: Number(price), note }), request)) {
       setPriceOpen(false);
       setPrice("");
       setNote("");
@@ -500,15 +575,24 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
         <p className="text-xs text-muted-foreground">A stay is charged at its booked price. To change it, edit the booking, then update the row here.</p>
       ) : (
         <>
-          <Field label="Discount">
+          <Field
+            label={
+              <>
+                Discount
+                {cashier ? (
+                  <InfoTip label="About the discount limit">Up to {formatPercent(access.cashierRules.discountLimitPercent)}% without a manager. Coupons don&apos;t count.</InfoTip>
+                ) : null}
+              </>
+            }
+          >
             <div className="flex flex-wrap items-center gap-2">
               <ToggleGroup value={discountType} onValueChange={setDiscountType} aria-label="Discount type" className="p-0.5">
                 <ToggleGroupItem value="amount" className="px-2.5 py-1.5">฿</ToggleGroupItem>
                 <ToggleGroupItem value="percent" className="px-2.5 py-1.5">%</ToggleGroupItem>
               </ToggleGroup>
               <Input inputMode="decimal" aria-label="Discount" className="h-9 w-24" value={discountValue} onChange={(e) => setDiscountValue(amountInput(e.target.value))} placeholder="0" />
-              <Button size="sm" variant="outline" disabled={!isAmount(discountValue)} onClick={() => run(() => actions.updateLine({ lineId, discount: { type: discountType, value: Number(discountValue) } }))}>
-                Apply
+              <Button size="sm" variant="outline" disabled={!typed || (Boolean(over) && waiting)} onClick={() => void applyDiscount()}>
+                {over ? "Ask manager" : "Apply"}
               </Button>
               {line.discount ? (
                 <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => actions.updateLine({ lineId, discount: null }))) setDiscountValue(""); }}>
@@ -516,6 +600,11 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
                 </Button>
               ) : null}
             </div>
+            {over ? (
+              <p className="text-xs text-amber-800 dark:text-amber-300" data-testid="discount-limit-hint">
+                {formatMoney(over.amount)} is over your {formatPercent(over.limitPercent)}% limit.
+              </p>
+            ) : null}
           </Field>
 
           <Field label="Price">
@@ -528,7 +617,7 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
                   <Button size="sm" variant="ghost" className="h-7" onClick={editPrice}>
                     Edit
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7" onClick={() => run(() => actions.overrideLinePrice({ lineId, price: null, note: "" }))}>
+                  <Button size="sm" variant="ghost" className="h-7" onClick={() => void orAsk(() => actions.overrideLinePrice({ lineId, price: null, note: "" }), { what: "price restore", payload: { kind: "customPrice", action: "overrideLinePrice", lineId, price: null, note: "" } })}>
                     Restore
                   </Button>
                 </span>
@@ -542,7 +631,7 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
                 </div>
                 <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
                 <div className="flex gap-2">
-                  <Button size="sm" disabled={!isAmount(price) || !note.trim() || unchangedPrice} onClick={applyPrice}>Apply price</Button>
+                  <Button size="sm" disabled={!isAmount(price) || !note.trim() || unchangedPrice || (priceNeedsManager && waiting)} onClick={applyPrice}>{priceNeedsManager ? "Ask manager" : "Apply price"}</Button>
                   <Button size="sm" variant="ghost" onClick={() => setPriceOpen(false)}>Cancel</Button>
                 </div>
               </div>
@@ -554,6 +643,22 @@ function LineEditor({ line, catalog, run }: { line: OrderLine; catalog: Catalog 
           </Field>
         </>
       )}
+
+      {ask ? (
+        <ApprovalRequestForm
+          what={ask.what}
+          initialReason={ask.reason}
+          onCancel={() => setAsk(null)}
+          onSend={async (reason) => {
+            const failed = await send(line.billId, ask.payload, reason);
+            if (!failed) {
+              setAsk(null);
+              setPriceOpen(false);
+            }
+            return failed;
+          }}
+        />
+      ) : null}
 
       <Button size="sm" variant="ghost" className="justify-self-start text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
         <Trash2 aria-hidden className="size-3.5" /> Remove item
