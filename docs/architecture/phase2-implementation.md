@@ -22,9 +22,9 @@ The final merged-base checks use Node 22 (`/opt/homebrew/opt/node@22/bin/node`).
 | `pnpm knip` | pass, including configuration hints |
 | `pnpm exec eslint . --max-warnings 0` | pass, zero warnings |
 | `pnpm test:booking-ui` | 223 pass; 24 existing opt-in captures skipped |
-| `pnpm test:e2e:smoke` | final merged-base run recorded after the serial production build |
+| `pnpm test:e2e:smoke` | 13 pass after its own serial production build |
 | `pnpm arch:score --phase2` / `--phase 2` | 19/19 on the clean implementation commit; no metric targets changed |
-| Signed ingress + reliability + prompt + security/maintenance + reactive lifecycle + media focus | all pass; six required exact test titles are behavioral tests |
+| Signed ingress + reliability + prompt + security/maintenance + reactive lifecycle + media focus | all pass; six required exact test titles are behavioral tests; final copy/tool/card contracts 106/106 |
 | Local Convex + Next integration | 3/3 pass: transcript/reload, IME, handoff rotation/draft retention |
 
 Recorded evidence from the real local app: [server transcript screenshot](evidence/phase2/server-transcript.png), [send and reload recording](evidence/phase2/server-transcript-reload.webm), [handoff rotation recording](evidence/phase2/handoff-rotation.webm). These contain seeded/demo content and no credentials.
@@ -44,3 +44,5 @@ The local deployment is anonymous, checkout-local, with no provider/AI/email cre
 ## External steps
 
 Use [the cutover runbook](phase2-cutover-runbook.md) for callback URLs, configuration, drain/maintenance checks, provider acceptance, delivery reconciliation and rollback. Live provider rich-card acceptance, owner-console callbacks/secrets, shared/prod deployment, and actual Clerk staff browser sign-in remain parent-owned external work. The local web check uses a deterministic policy reply with no model credential, not a claim of live model/provider coverage. Disconnected smoke tests remain labeled as such.
+
+All Phase 0–2 source gates pass on a clean committed tree. `.arch-phase` advances to 2 only after the merged-base standard checks and smoke run pass. Independent review and the Phase 2 shared/production callback cutover remain root-owned.
