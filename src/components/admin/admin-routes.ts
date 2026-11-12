@@ -29,12 +29,18 @@ export const ADMIN_SETTINGS_TABS = [
   { id: "ai", label: "AI assistant", keywords: ["model", "concierge"] },
   { id: "email", label: "Email", keywords: ["notifications"] },
   { id: "channels", label: "Channels", keywords: ["LINE", "Facebook", "Messenger", "Instagram", "WhatsApp"] },
-  { id: "admins", label: "Admins", keywords: ["team", "access", "users"] },
+  { id: "team", label: "Team", keywords: ["admins", "access", "users", "roles", "cashier", "manager", "invite"] },
 ] as const;
 export type AdminSettingsTab = (typeof ADMIN_SETTINGS_TABS)[number]["id"];
 
 export function adminSettingsTabPath(tab: AdminSettingsTab): string {
   return tab === "business" ? "/admin/settings" : `/admin/settings?tab=${tab}`;
+}
+
+/** The settings tab a `?tab=` value opens; the old `admins` links open Team. */
+export function adminSettingsTab(value: string | null): AdminSettingsTab {
+  const id = value === "admins" ? "team" : value;
+  return ADMIN_SETTINGS_TABS.find((tab) => tab.id === id)?.id ?? "business";
 }
 
 /** Marketing sub-pages, in sidebar order. `/admin/marketing` opens the dashboard. */
@@ -153,7 +159,8 @@ export function searchAdminNav(query: string, nav: readonly AdminNavItem[] = ADM
 }
 
 /** The sub-page link for this URL: an exact path and `?tab` match, else the section's link without a tab, else the page it's nested under. */
-export function activeAdminSubLink(item: AdminNavItem, pathname: string, tab: string | null): string | undefined {
+export function activeAdminSubLink(item: AdminNavItem, pathname: string, tabParam: string | null): string | undefined {
+  const tab = tabParam === "admins" ? "team" : tabParam;
   const links = item.children ?? [];
   const parts = (href: string) => {
     const url = new URL(href, "http://admin.local");

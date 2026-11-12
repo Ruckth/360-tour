@@ -24,6 +24,7 @@ const labels: Record<string, string> = {
   restored: "Order restored",
   coupon_applied: "Coupon applied",
   coupon_removed: "Coupon removed",
+  refund: "Refund recorded",
 };
 const fields: Record<string, string> = {
   name: "Item",
@@ -182,6 +183,10 @@ function HistoryPage({ orderId }: { orderId: OrderId }) {
               Effective {historyTime(entry.effectiveAt)}
             </p>
             {entry.reason ? <p>{entry.reason}</p> : null}
+            {/* A POS line refund: its amount is satang, unlike the other entries' baht. */}
+            {entry.kind === "refund" && entry.after && typeof entry.after === "object" && typeof (entry.after as { amount?: unknown }).amount === "number" ? (
+              <p className="text-xs">{formatMoney((entry.after as { amount: number }).amount / 100, String((entry.after as { currency?: unknown }).currency ?? "THB"))}</p>
+            ) : null}
             {entry.before !== undefined ? (
               <div>
                 <p className="text-xs font-semibold">
@@ -190,7 +195,7 @@ function HistoryPage({ orderId }: { orderId: OrderId }) {
                 <HistoryValues value={entry.before} />
               </div>
             ) : null}
-            {entry.after !== undefined ? (
+            {entry.after !== undefined && entry.kind !== "refund" ? (
               <div>
                 <p className="text-xs font-semibold">After</p>
                 <HistoryValues value={entry.after} previous={entry.before} />

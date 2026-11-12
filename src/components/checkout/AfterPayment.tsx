@@ -4,22 +4,24 @@ import { CalendarClock, Check, Link2, Search } from "lucide-react";
 import { useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
+import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { errorText } from "@/lib/staff-bookings";
 import { formatReceiptNumber } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
 import type { Id } from "convex/_generated/dataModel";
 import { newAttemptKey, useCheckoutBackend, type LinkCandidate, type OrderLine, type OrderLink, type OrderView } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { scheduleLabel } from "./checkout-ui";
+import { checkoutErrorText } from "./refunds";
 
 /** Paid rows that can be applied to an appointment (service) or stay (room) after payment. */
-const linkTarget = (line: OrderLine) => (line.fee || line.net <= 0 ? null : line.kind === "service" ? "appointment" : line.kind === "room" ? "booking" : null);
+/** A row with line refunds can't be linked (LINE_HAS_REFUNDS); a linked row has none. */
+const linkTarget = (line: OrderLine) => (line.fee || line.net <= 0 || line.refundedAmountSatang ? null : line.kind === "service" ? "appointment" : line.kind === "room" ? "booking" : null);
 
 /**
  * After payment: payment, scheduling and booking are separate. Each paid service or room row can be
@@ -61,6 +63,9 @@ function Status({ label, value, done }: { label: string; value: string; done: bo
 
 function LinkRow({ view, line, link, paid }: { view: OrderView; line: OrderLine; link: OrderLink | null; paid: boolean }) {
   const [open, setOpen] = useState<"link" | "unlink" | null>(null);
+  // Linking moves paid money (paymentFix): a cashier links only when the rules allow it.
+  const access = useStaffAccess();
+  const canLink = access.role !== "cashier" || access.cashierRules.paymentFix === "cashier";
   const target = linkTarget(line)!;
   const when = line.kind === "service" ? scheduleLabel(line.schedule) : null;
   return (
@@ -73,7 +78,7 @@ function LinkRow({ view, line, link, paid }: { view: OrderView; line: OrderLine;
       </div>
       {when ? <p className="text-xs text-muted-foreground">Planned: {when}</p> : null}
       {link ? <p className="text-xs text-muted-foreground">{link.target.name}{link.target.guestName ? ` · ${link.target.guestName}` : ""} · by {link.linkedBy}</p> : null}
-      {paid ? (
+      {paid && canLink ? (
         <div>
           {link ? (
             <Button size="sm" variant="ghost" onClick={() => setOpen("unlink")}>Unlink…</Button>
@@ -106,7 +111,7 @@ function useOnceWrite() {
       return true;
     } catch (err) {
       // The key stays: a refused attempt wrote nothing, and one whose answer was lost replays.
-      setError(errorText(err, fallback));
+      setError(checkoutErrorText(err, fallback));
       return false;
     } finally {
       lock.current = false;
@@ -124,6 +129,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   const [reason, setReason] = useState("");
   const [notifyGuest, setNotifyGuest] = useState(false);
   const candidates = backend.useLinkCandidates({ orderId: view.order._id, lineId: line._id, query });
+  const cashier = useStaffAccess().role === "cashier";
   const { saving, error, save } = useOnceWrite();
   const what = target === "appointment" ? "appointment" : "stay";
 
@@ -156,11 +162,16 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
             {candidates === undefined ? <Spinner label="Searching" /> : null}
             {candidates?.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No {target === "appointment" ? "unpaid appointments" : "stays"} found.{" "}
-                <a className="underline" href={target === "appointment" ? adminStaffTabPath("calendar") : "/admin/hotel"} target="_blank" rel="noreferrer">
-                  {target === "appointment" ? "Book an appointment" : "Create a booking"}
-                </a>
-                , then search again.
+                No {target === "appointment" ? "unpaid appointments" : "stays"} found.
+                {cashier ? null : (
+                  <>
+                    {" "}
+                    <a className="underline" href={target === "appointment" ? adminStaffTabPath("calendar") : "/admin/hotel"} target="_blank" rel="noreferrer">
+                      {target === "appointment" ? "Book an appointment" : "Create a booking"}
+                    </a>
+                    , then search again.
+                  </>
+                )}
               </p>
             ) : null}
             <ul className="grid max-h-80 gap-2 overflow-y-auto">

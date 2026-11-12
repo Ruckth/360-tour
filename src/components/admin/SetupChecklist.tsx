@@ -73,8 +73,8 @@ export function useSetupChecklist(): { items: Item[]; loading: boolean } {
       id: "admins",
       label: "Admin sign-in (Clerk and ADMIN_EMAILS)",
       done: true,
-      href: "/admin/settings?tab=admins",
-      linkLabel: "Admins",
+      href: "/admin/settings?tab=team",
+      linkLabel: "Team",
     },
     {
       id: "profile",

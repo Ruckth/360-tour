@@ -1,3 +1,4 @@
+import { staffRole, cashierRulesFields, storedApprovalPayload, approvalStatus } from './lib/staffTypes';
 import { affiliateState, creditState, affiliateSnapshot, marketingRole } from './lib/affiliateTypes';
 import { chatCouponValidator } from './lib/chatCoupon';
 import { defineSchema, defineTable } from 'convex/server';
@@ -17,6 +18,19 @@ import { marketingAttributionValidator, marketingCaptureValidator } from './lib/
 import { couponRefusalProblemValidator, couponRefusalSurfaceValidator } from './lib/marketingReport';
 
 export default defineSchema({
+ staffGrants: defineTable({
+  email: v.string(), role: staffRole, tokenIdentifier: v.optional(v.string()), revision: v.optional(v.number()),
+  inviteExpiresAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(), updatedByEmail: v.string()
+ }).index('by_email', ['email']).index('by_tokenIdentifier', ['tokenIdentifier']),
+ cashierRules: defineTable({ key: v.literal('default'), ...cashierRulesFields, revision: v.number(), updatedAt: v.number(), updatedByEmail: v.string() }).index('by_key', ['key']),
+ staffApprovalRequests: defineTable({
+  orderId: v.id('bills'), lineId: v.optional(v.id('billLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund')),
+  payload: storedApprovalPayload, reason: v.string(), requesterEmail: v.string(), requesterTokenIdentifier: v.string(),
+  requesterAccessFingerprint: v.string(), orderFingerprint: v.string(), orderRevision: v.number(), rulesRevision: v.number(), rulesFingerprint: v.optional(v.string()),
+  status: approvalStatus, createdAt: v.number(), expiresAt: v.number(), resolvedAt: v.optional(v.number()),
+  approverEmail: v.optional(v.string()), approverTokenIdentifier: v.optional(v.string()), resolutionReason: v.optional(v.string()),
+  totalBefore: v.number(), totalAfter: v.number(), amount: v.number(), percent: v.optional(v.number())
+ }).index('by_orderId_and_status', ['orderId', 'status']).index('by_orderId_and_createdAt', ['orderId', 'createdAt']).index('by_status_and_createdAt', ['status', 'createdAt']),
  appointmentFeeAttempts: defineTable({
   key: v.string(), actor: v.string(), fingerprint: v.string(), orderId: v.id('bills'), lineId: v.id('billLines')
  }).index('by_key', ['key']),
@@ -699,6 +713,8 @@ export default defineSchema({
 		/** Short second line, e.g. "60 min" or "12 Oct – 15 Oct". */
 		detail: v.optional(v.string()),
 		unitPrice: v.number(),
+		/** Catalog subtotal baseline before manual reductions and coupons. Legacy rows use unitPrice. */
+		catalogUnitPrice: v.optional(v.number()),
 		/** Currency of unitPrice when the row was added (always THB). */
 		currency: v.string(),
 		qty: v.number(),
@@ -746,6 +762,14 @@ export default defineSchema({
 		.index('by_billId_and_kind', ['billId', 'kind'])
 		.index('by_bookingId', ['bookingId'])
 		.index('by_appointmentId', ['appointmentId']),
+
+	/** Append-only POS returns, in integer satang. Recording moves no money. */
+	billRefunds: defineTable({
+		orderId: v.id('bills'), lineId: v.id('billLines'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
+		reason: v.string(), idempotencyKey: v.string(), createdBy: v.string(), createdByEmail: v.string(),
+		createdAt: v.number(), businessDate: v.string()
+	}).index('by_orderId', ['orderId']).index('by_orderId_and_businessDate', ['orderId', 'businessDate']).index('by_lineId', ['lineId'])
+		.index('by_idempotencyKey', ['idempotencyKey']).index('by_businessDate', ['businessDate']),
 
 	billPayments: defineTable({
 		billId: v.id('bills'),
@@ -844,6 +868,7 @@ export default defineSchema({
 		actor: v.string(),
 		kind: v.union(
 			v.literal('price_override'),
+			v.literal('refund'),
 			v.literal('cleared'),
 			v.literal('paid'),
 			v.literal('void'),

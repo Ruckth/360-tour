@@ -3,15 +3,20 @@
 import { ChevronUp, ReceiptText, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
+import { useStaffAccess } from "@/components/admin/staff-access";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type CatalogItem, type OrderId } from "./backend";
 import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
-import { CheckoutSheetContent } from "./CheckoutLayers";
+import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { useLoadablePhoto } from "./CheckoutPhoto";
 import { OrderPanel } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
+import { errorText } from "@/lib/staff-bookings";
+import { needsApproval } from "./staff-approvals";
 import { useOrderWrites } from "./useOrderWrites";
 
 /**
@@ -46,8 +51,47 @@ export function CheckoutView({
   const [saved, setSaved] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError);
+  const access = useStaffAccess();
+  const cashier = access.role === "cashier";
+  const customNeedsManager = cashier && access.cashierRules.customPrice === "manager";
+  // A cashier's custom item that needs a manager: asked for, not added.
+  const [askItem, setAskItem] = useState<{ name: string; price: number } | null>(null);
+  const send = useSendApproval();
 
-  const add = useCallback((item: CatalogItem) => void run((id) => actions.addItem({ orderId: id, item })), [run, actions]);
+  const add = useCallback((item: CatalogItem) => {
+    if (customNeedsManager && item.kind === "extra") {
+      setAskItem({ name: item.name, price: item.price });
+      return;
+    }
+    void run(async (id) => {
+      try {
+        return await actions.addItem({ orderId: id, item });
+      } catch (err) {
+        if (!cashier || item.kind !== "extra" || !needsApproval(err)) throw err;
+        setAskItem({ name: item.name, price: item.price });
+        return null;
+      }
+    });
+  }, [run, actions, cashier, customNeedsManager]);
+
+  /** Sends the custom item request, starting an empty order first if there is none yet. */
+  async function requestItem(item: { name: string; price: number }, reason: string) {
+    let failed: string | null = null;
+    await run(async (id) => {
+      let target = id;
+      if (!target) {
+        try {
+          target = (await actions.createOrder({})).orderId;
+        } catch (err) {
+          failed = errorText(err, "Couldn’t start an order. Try again.");
+          return null;
+        }
+      }
+      failed = await send(target, { kind: "customPrice", action: "addCustomItem", name: item.name, price: item.price }, reason);
+      return { orderId: target };
+    }, () => { if (!failed) setAskItem(null); });
+    return failed;
+  }
 
   const changeOrder = useCallback(
     (next: OrderId | null) => {
@@ -120,7 +164,8 @@ export function CheckoutView({
       ) : null}
     </div>
   );
-  const message = error || notice || (missing ? "That order link is invalid or the order no longer exists. Start a new order or choose one from Orders." : "");
+  // A cashier can't open older receipts; the server answers those as missing too.
+  const message = error || notice || (missing ? (cashier ? "Not available." : "That order link is invalid or the order no longer exists. Start a new order or choose one from Orders.") : "");
 
   return (
     <div className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
@@ -131,7 +176,7 @@ export function CheckoutView({
         <p role="status" className="border-b border-border/70 bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>
       ) : null}
       <div className="flex min-h-0 flex-1">
-        {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} className="min-w-0 flex-1" />}
+        {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} className="min-w-0 flex-1" />}
         {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         <aside
@@ -141,6 +186,20 @@ export function CheckoutView({
           {panel()}
         </aside>
       </div>
+
+      <Dialog open={askItem !== null} onOpenChange={(open) => { if (!open) setAskItem(null); }}>
+        <CheckoutDialogContent className="max-w-sm" showCloseButton={false}>
+          <DialogTitle className="sr-only">Ask a manager</DialogTitle>
+          {askItem ? (
+            <ApprovalRequestForm
+              className="border-0 bg-transparent p-0 dark:bg-transparent"
+              what={`${askItem.name} · ${formatMoney(askItem.price)}`}
+              onCancel={() => setAskItem(null)}
+              onSend={(reason) => requestItem(askItem, reason)}
+            />
+          ) : null}
+        </CheckoutDialogContent>
+      </Dialog>
 
       {/* The pill is the sheet's trigger, so closing the sheet puts focus back on it. */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>

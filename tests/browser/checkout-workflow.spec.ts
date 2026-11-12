@@ -82,7 +82,9 @@ test('a paid unscheduled service is linked to its appointment from the receipt, 
   await open(page, '?scenario=unscheduled-paid');
   const receipt = page.locator('.pos-receipt');
   await expect(receipt).toContainText('To be scheduled');
-  const issued = await receipt.textContent();
+  // What prints: screen-only controls (a line's Refund, which a linked row loses) are left out.
+  const printed = () => receipt.evaluate((el) => { const paper = el.cloneNode(true) as HTMLElement; paper.querySelectorAll('[data-screen-only]').forEach((node) => node.remove()); return paper.textContent; });
+  const issued = await printed();
   const after = page.getByRole('region', { name: 'After payment', exact: true });
   await expect(after).toContainText('1 to link to an appointment');
   await after.getByRole('button', { name: 'Link appointment' }).click();
@@ -94,5 +96,5 @@ test('a paid unscheduled service is linked to its appointment from the receipt, 
   await dialog.getByRole('button', { name: 'Confirm link' }).click();
   await expect(after).toContainText('Linked · SVC-0002');
   await expect(page.getByText('Row linked after payment · #1')).toBeVisible();
-  expect(await receipt.textContent()).toBe(issued);
+  expect(await printed()).toBe(issued);
 });

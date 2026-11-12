@@ -21,6 +21,9 @@ export default defineConfig({
       },
       // Checkout's camera coupon scanner reads codes from a spec, not a camera.
       { find: /^qr-scanner$/, replacement: path.resolve("tests/browser/qr-scanner-mock.ts") },
+      // Outside Next and Clerk: the route comes from the page URL, and no one signs in.
+      { find: /^next\/navigation$/, replacement: path.resolve("tests/browser/next-navigation-mock.ts") },
+      { find: /^@clerk\/nextjs$/, replacement: path.resolve("tests/browser/clerk-mock.tsx") },
       { find: "@", replacement: path.resolve("src") },
       {
         find: /^convex\/(?!server$|values$|browser$|react$)(.*)$/,
