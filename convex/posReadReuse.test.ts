@@ -6,7 +6,8 @@ import type { QueryCtx } from './_generated/server';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { getOrder, stableCatalog, recentCatalogRanking, catalog } from './pos';
+import { getOrder } from './pos/orders';
+import { stableCatalog, recentCatalogRanking, catalog } from './pos/catalog';
 import schema from './schema';
 // Convex hides _handler from its public declaration; the test invokes it with a real local DB
 // so reads can be counted without substituting database behavior.
@@ -39,7 +40,7 @@ async function fixture() {
 
 it('reads a linked stay and property once, including nulls, and observes later edits without changing money', async () => {
   const { t, admin, read, propertyId, bookingId } = await fixture();
-  const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
   const initial = await read(orderId);
   expect(initial.gets).toEqual([orderId, bookingId, propertyId]);
   expect(initial.queries).toHaveLength(6);
@@ -64,7 +65,7 @@ it('reads a linked stay and property once, including nulls, and observes later e
 
 it('reuses appointment/service joins and sees edited or deleted appointment, service and staff on subsequent queries', async () => {
   const { t, admin, read, appointmentId, serviceId, staffId } = await fixture();
-  const { orderId } = await admin.mutation(api.pos.openOrderFor, { appointmentId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
   const initial = await read(orderId);
   expect(initial.gets).toEqual([orderId, appointmentId, serviceId, staffId]);
   expect(initial.result?.lines[0]).toMatchObject({ imageUrl: '/service.jpg', staffName: 'Current therapist', sourceIssue: null });
@@ -92,7 +93,7 @@ it('reuses appointment/service joins and sees edited or deleted appointment, ser
 
 it('keeps one photo lookup for 100 rows, skips fully frozen settled staff, and resolves mixed legacy and open rows live', async () => {
   const { t, admin, read, serviceId, staffId } = await fixture();
-  const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
+  const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
   const lineIds = await t.run(async ctx => {
     await ctx.db.patch(orderId, { status: 'paid' });
     const line = (await ctx.db.query('orderLines').withIndex('by_orderId', q => q.eq('orderId', orderId)).first())!;
@@ -130,7 +131,7 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
   const stable = await measure(handler(stableCatalog)), empty = await measure(handler(recentCatalogRanking));
   expect(stable.tables).toEqual(['services', 'properties', 'staff']);
   expect(empty).toEqual({ result: [], tables: ['orderLines'] });
-  const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
+  const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
   await t.run(async ctx => {
     // Older than the recent-300 cutoff; quantity never contributes to frequency.
     await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'extra', name: 'Outside', qty: 99, unitPrice: 100, currency: 'THB', createdAt: 0 });
@@ -145,21 +146,21 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
     await ctx.db.patch(serviceId, { price: 20000, imageUrl: '/edited.jpg' });
     await ctx.db.patch(propertyId, { currency: 'USD' });
   });
-  const edited = await admin.query(api.pos.stableCatalog, {});
+  const edited = await admin.query(api.pos.catalog.stableCatalog, {});
   expect(edited.services[0]).toMatchObject({ price: 20000, imageUrl: '/edited.jpg' });
   expect(edited.rooms).toEqual([]);
-  expect(await admin.query(api.pos.recentCatalogRanking, {})).toEqual(ranked.result);
+  expect(await admin.query(api.pos.catalog.recentCatalogRanking, {})).toEqual(ranked.result);
   await t.run(ctx => ctx.db.patch(serviceId, { status: 'archived' }));
-  expect((await admin.query(api.pos.stableCatalog, {})).services).toEqual([]);
-  await expect(t.query(api.pos.stableCatalog, {})).rejects.toThrow('Not authenticated');
-  await expect(t.query(api.pos.recentCatalogRanking, {})).rejects.toThrow('Not authenticated');
-  await expect(t.withIdentity({ email: 'outsider@example.com' }).query(api.pos.stableCatalog, {})).rejects.toThrow('Not authorized');
-  await expect(t.withIdentity({ email: 'outsider@example.com' }).query(api.pos.recentCatalogRanking, {})).rejects.toThrow('Not authorized');
+  expect((await admin.query(api.pos.catalog.stableCatalog, {})).services).toEqual([]);
+  await expect(t.query(api.pos.catalog.stableCatalog, {})).rejects.toThrow('Not authenticated');
+  await expect(t.query(api.pos.catalog.recentCatalogRanking, {})).rejects.toThrow('Not authenticated');
+  await expect(t.withIdentity({ email: 'outsider@example.com' }).query(api.pos.catalog.stableCatalog, {})).rejects.toThrow('Not authorized');
+  await expect(t.withIdentity({ email: 'outsider@example.com' }).query(api.pos.catalog.recentCatalogRanking, {})).rejects.toThrow('Not authorized');
 });
 
 it('counts rows rather than quantity, excludes appointment fees and source rows, and filters non-THB catalog entries', async () => {
   const { t, admin, serviceId, propertyId, staffId, appointmentId } = await fixture();
-  const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'High quantity', price: 100 } });
+  const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'High quantity', price: 100 } });
   await t.run(async ctx => {
     const original = (await ctx.db.query('orderLines').first())!;
     await ctx.db.patch(original._id, { qty: 99 });
@@ -170,9 +171,9 @@ it('counts rows rather than quantity, excludes appointment fees and source rows,
     await ctx.db.patch(serviceId, { currency: 'USD' });
     await ctx.db.patch(staffId, { status: 'archived' });
   });
-  const items = await admin.query(api.pos.stableCatalog, {});
+  const items = await admin.query(api.pos.catalog.stableCatalog, {});
   expect(items.services).toEqual([]); expect(items.staff).toEqual([]); expect(items.rooms).toHaveLength(1);
-  const frequent = await admin.query(api.pos.recentCatalogRanking, {});
+  const frequent = await admin.query(api.pos.catalog.recentCatalogRanking, {});
   expect(frequent).toEqual([`room:${propertyId}`, `service:${serviceId}`, 'extra:High quantity']);
-  expect(await admin.query(api.pos.catalog, {})).toEqual({ ...items, frequent });
+  expect(await admin.query(api.pos.catalog.catalog, {})).toEqual({ ...items, frequent });
 });

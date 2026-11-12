@@ -10,7 +10,7 @@ import type { OrderLine, OrderView } from "./backend";
  * satang throughout the backend and receipt model; form text and display use baht.
  */
 
-export type RefundMethod = FunctionArgs<typeof api.pos.refundLine>["method"];
+export type RefundMethod = FunctionArgs<typeof api.pos.commands.refundLine.refundLine>["method"];
 
 /** The methods staff pick from, in the till's order. */
 export const REFUND_METHODS: { value: RefundMethod; label: string }[] = [

@@ -19,19 +19,19 @@ async function setup() {
 }
 it('refuses an unreceived-payment reversal after a partial appointment refund and exposes the actual refund on its receipt', async () => {
   const { t, admin, appointmentId, read } = await setup();
-  const { orderId } = await admin.mutation(api.pos.openOrderFor, { appointmentId });
-  const view = (await admin.query(api.pos.getOrder, { orderId }))!;
-  await admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: 'appt-pos-settle', expectedRevision: view.order.revision!, expectedDue: 120000, tenders: [{ method: 'cash', amount: 120000 }] });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+  const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
+  await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: 'appt-pos-settle', expectedRevision: view.order.revision!, expectedDue: 120000, tenders: [{ method: 'cash', amount: 120000 }] });
   expect(await read()).toMatchObject({ money: { gross: 120000, net: 120000 } });
   await admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: (await read()).revision, amount: 40000, currency: 'THB', method: 'cash', reason: 'Partial adjustment', orderId: orderId, idempotencyKey: 'appt-pos-refund' });
   const before = await t.run(ctx => ctx.db.get(appointmentId));
-  await expect(admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'appt-no-reversal', reason: 'Mistake' })).rejects.toThrow('refunded');
+  await expect(admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'appt-no-reversal', reason: 'Mistake' })).rejects.toThrow('refunded');
   expect(await t.run(ctx => ctx.db.get(appointmentId))).toEqual(before);
-  const receipt = (await admin.query(api.pos.getOrder, { orderId }))!;
+  const receipt = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
   expect(receipt.order.status).toBe('paid');
   expect(receipt.payments[0].amount).toBe(120000);
   expect(receipt.refunds).toMatchObject([{ sourceType: 'appointment', appointmentId, amount: 40000 }]);
-  expect((await admin.query(api.pos.ordersForBooking, { appointmentId }))!.balance).toMatchObject({ paid: 80000, refunded: 40000, owed: 0 });
+  expect((await admin.query(api.pos.orders.ordersForBooking, { appointmentId }))!.balance).toMatchObject({ paid: 80000, refunded: 40000, owed: 0 });
 });
 
 it('records independent partial/full refunds, source/actor/times, replay safety and no recollection, preserving lifecycle', async () => {
@@ -83,9 +83,9 @@ it('amends manual tender/date with old values in history and reverses only unrec
 });
 it('preserves POS receipts, references their actual collected money, and blocks manual correction of refunded money', async () => {
   const { t, admin, appointmentId, read } = await setup();
-  const { orderId } = await admin.mutation(api.pos.openOrderFor, { appointmentId });
-  const view = (await admin.query(api.pos.getOrder, { orderId }))!;
-  await admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: 120000, idempotencyKey: 'pos-appointment-001', tenders: [{ method: 'cash', amount: 120000 }] });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+  const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
+  await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: 120000, idempotencyKey: 'pos-appointment-001', tenders: [{ method: 'cash', amount: 120000 }] });
   const receipt = await t.run(ctx => ctx.db.get(orderId));
   await admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: 1, amount: 20000, currency: 'THB', method: 'cash', reason: 'Partial courtesy refund', orderId: orderId, idempotencyKey: 'pos-refund-001' });
   expect(await read()).toMatchObject({ money: { net: 100000, owed: 0 }, orders: [{ refundable: 100000 }], refunds: [{ orderId: orderId }] });

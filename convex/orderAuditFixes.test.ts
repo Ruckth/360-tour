@@ -35,7 +35,7 @@ async function setup() {
 		source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 120000, currency: 'THB', confirmationCode: `SVC-L${Math.random()}`, accessToken: 'tok', createdAt: 1,
 		...fields
 	}));
-	const found = async (args: { orderId?: Id<'orders'>; query?: string }) => (await admin.query(api.pos.listAttachable, args)).map((row) => row.id);
+	const found = async (args: { orderId?: Id<'orders'>; query?: string }) => (await admin.query(api.pos.sourceReads.listAttachable, args)).map((row) => row.id);
 	const row = (id: Id<'appointments'>) => t.run((ctx) => ctx.db.get(id));
 	return { t, admin, nok, serviceId, book, legacy, found, row };
 }
@@ -76,17 +76,17 @@ describe('Add booking finds standalone appointments by contact', () => {
 		const byPhone = await book({ guestName: 'Guest one', guestPhone: '+66 81 444 5555' });
 		const byEmail = await book({ guestName: 'Guest two', guestPhone: '0899999999', guestEmail: 'Payer@Example.com' });
 		const other = await book({ guestName: 'Someone else', guestPhone: '0800000001' });
-		const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Payer', phone: '081-444-5555', email: 'payer@example.com' });
+		const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Payer', phone: '081-444-5555', email: 'payer@example.com' });
 		// Different formatting (no country code is not the same number), so only the email matches here.
-		const { orderId } = await admin.mutation(api.pos.linkCustomer, { customerId });
+		const { orderId } = await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { customerId });
 		expect(await found({ orderId })).toEqual(expect.arrayContaining([byEmail]));
 		expect(await found({ orderId })).not.toContain(other);
-		await admin.mutation(api.customers.updateCustomer, { customerId, name: 'Payer', phone: '+66 81 444 5555', email: 'payer@example.com' });
+		await admin.mutation(api.pos.customers.updateCustomer, { customerId, name: 'Payer', phone: '+66 81 444 5555', email: 'payer@example.com' });
 		expect(await found({ orderId })).toEqual(expect.arrayContaining([byPhone, byEmail]));
 		// Suggesting is read-only: nothing is attached, merged or copied.
-		expect((await admin.query(api.pos.getOrder, { orderId }))?.lines).toHaveLength(0);
+		expect((await admin.query(api.pos.orders.getOrder, { orderId }))?.lines).toHaveLength(0);
 		expect(await row(byPhone)).toMatchObject({ guestName: 'Guest one', guestPhone: '+66 81 444 5555' });
-		expect((await admin.query(api.customers.getCustomer, { customerId }))?.name).toBe('Payer');
+		expect((await admin.query(api.pos.customers.getCustomer, { customerId }))?.name).toBe('Payer');
 	});
 
 	it('finds an unpaid appointment behind many paid ones for the same phone, and never offers paid ones', async () => {
@@ -103,7 +103,7 @@ describe('Add booking finds standalone appointments by contact', () => {
 
 	it('keeps the lookup status admin-only', async () => {
 		const { t } = await setup();
-		await expect(t.query(api.pos.attachLookupStatus, {})).rejects.toThrow();
-		await expect(t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' }).query(api.pos.attachLookupStatus, {})).rejects.toThrow();
+		await expect(t.query(api.pos.sourceReads.attachLookupStatus, {})).rejects.toThrow();
+		await expect(t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' }).query(api.pos.sourceReads.attachLookupStatus, {})).rejects.toThrow();
 	});
 });

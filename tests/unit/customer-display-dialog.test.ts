@@ -12,10 +12,10 @@ vi.mock("react-qr-code", () => ({ default: (props: { value: string }) => {
 } }));
 
 const mutations = vi.hoisted(() => ({
-  "displays:createPairLink": vi.fn(async () => ({ secret: "secret", expiresAt: Date.now() + 600_000 })),
-  "displays:takeDisplay": vi.fn(async () => null),
-  "displays:revoke": vi.fn(async () => null),
-  "displays:approveCode": vi.fn(),
+  "pos/displays:createPairLink": vi.fn(async () => ({ secret: "secret", expiresAt: Date.now() + 600_000 })),
+  "pos/displays:takeDisplay": vi.fn(async () => null),
+  "pos/displays:revoke": vi.fn(async () => null),
+  "pos/displays:approveCode": vi.fn(),
 }));
 
 vi.mock("convex/react", () => ({
@@ -50,18 +50,18 @@ describe("customer display dialog", () => {
   it("creates no pairing link until staff ask for one (H1-07)", async () => {
     await openDialog(null);
     expect(document.querySelector('[role="tabpanel"]')).toBeTruthy();
-    expect(mutations["displays:createPairLink"]).not.toHaveBeenCalled();
+    expect(mutations["pos/displays:createPairLink"]).not.toHaveBeenCalled();
     expect(qrRender).not.toHaveBeenCalled();
     expect(document.querySelector('[aria-label="Display link"]')).toBeNull();
     await act(async () => button("Create link").click());
-    expect(mutations["displays:createPairLink"]).toHaveBeenCalledExactlyOnceWith({ clientId: "tab-here" });
+    expect(mutations["pos/displays:createPairLink"]).toHaveBeenCalledExactlyOnceWith({ clientId: "tab-here" });
     expect(document.querySelector<HTMLInputElement>('[aria-label="Display link"]')!.value).toContain("#pair=secret");
   });
 
   it("takes the display over with this tab's order", async () => {
     await openDialog("k17order0001");
     await act(async () => button("Show this checkout on the display").click());
-    expect(mutations["displays:takeDisplay"]).toHaveBeenCalledWith({ clientId: "tab-here", orderId: "k17order0001" });
+    expect(mutations["pos/displays:takeDisplay"]).toHaveBeenCalledWith({ clientId: "tab-here", orderId: "k17order0001" });
   });
 
   it("waits to take over while a booking link is still opening its order", async () => {
@@ -71,7 +71,7 @@ describe("customer display dialog", () => {
   });
 
   it("says so when a display can't be disconnected", async () => {
-    mutations["displays:revoke"].mockRejectedValueOnce(new Error("Not authorized"));
+    mutations["pos/displays:revoke"].mockRejectedValueOnce(new Error("Not authorized"));
     await openDialog(null);
     await act(async () => button("Disconnect").click());
     expect(document.querySelector('[role="alert"]')?.textContent).toBe("Not authorized");
@@ -92,7 +92,7 @@ it("renders the QR once through 60 countdown ticks, updates it once for a new UR
   expect(document.querySelector('[role="tabpanel"]')!.textContent).not.toBe(initial);
   expect(document.body.textContent).toContain("9 minutes");
   expect(document.querySelector<HTMLButtonElement>('[aria-label="Copy link"]')!.disabled).toBe(false);
-  mutations["displays:createPairLink"].mockResolvedValueOnce({ secret: "replacement", expiresAt: Date.now() + 60_000 });
+  mutations["pos/displays:createPairLink"].mockResolvedValueOnce({ secret: "replacement", expiresAt: Date.now() + 60_000 });
   await act(async () => button("New link").click());
   expect(qrRender).toHaveBeenCalledTimes(2);
   expect(qrRender.mock.calls[1][0].value).toContain("#pair=replacement");

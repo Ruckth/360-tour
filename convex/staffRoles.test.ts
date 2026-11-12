@@ -35,11 +35,11 @@ async function setup() {
     slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100000, currency: 'THB', maxGuests: 4,
     bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active',
   }));
-  const sale = () => cashier.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-  const view = async (orderId: Id<'orders'>) => (await cashier.query(api.pos.getOrder, { orderId }))!;
+  const sale = () => cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
+  const view = async (orderId: Id<'orders'>) => (await cashier.query(api.pos.orders.getOrder, { orderId }))!;
   const pay = async (orderId: Id<'orders'>) => {
     const current = await view(orderId);
-    return await cashier.mutation(api.pos.settleOrder, { orderId, idempotencyKey: `payment:${orderId}`, expectedDue: current.totals.due,
+    return await cashier.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: `payment:${orderId}`, expectedDue: current.totals.due,
       expectedRevision: current.order.revision, tenders: current.totals.due ? [{ method: 'cash', amount: current.totals.due }] : [],
       ...(current.customer && 'revision' in current.customer ? { expectedCustomerRevision: current.customer.revision } : {}),
     });
@@ -49,7 +49,7 @@ async function setup() {
     const { revision, ...fields } = current;
     return await owner.mutation(api.staffAccess.updateCashierRules, { expectedRevision: revision, ...fields, ...patch });
   };
-  const request = (orderId: Id<'orders'>, payload: ApprovalPayload) => cashier.mutation(api.staffApprovals.create, { orderId, payload, reason: 'Guest recovery' });
+  const request = (orderId: Id<'orders'>, payload: ApprovalPayload) => cashier.mutation(api.pos.staffApprovals.create, { orderId, payload, reason: 'Guest recovery' });
   const discountRequest = (orderId: Id<'orders'>, lineId: Id<'orderLines'>) => request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 10001 } });
   const coupon = async () => {
     const { couponId } = await owner.mutation(api.marketing.saveCoupon, { code: 'TWENTY', scope: 'services', benefit: { kind: 'percent', percent: 2000 } });
@@ -82,7 +82,7 @@ describe('staff permissions and invitations', () => {
     await t.run(ctx => ctx.db.insert('staffGrants', { email: 'owner@example.com', tokenIdentifier: 'owner', role: 'cashier', createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' }));
     expect((await owner.query(api.staffAccess.myAccess, {})).role).toBe('owner');
     await expect(owner.mutation(api.staffAccess.setGrant, { email: 'OWNER@example.com', role: 'cashier' })).rejects.toThrow('cannot be downgraded');
-    await owner.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Owner charge', price: 100000 } });
+    await owner.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Owner charge', price: 100000 } });
   });
 
   it('gives managers operations, but no settings writes, Team or implicit marketing access', async () => {
@@ -102,17 +102,17 @@ describe('staff permissions and invitations', () => {
 
   it('denies direct cashier calls outside checkout and exposes only search contact cards', async () => {
     const s = await setup();
-    const customerId = await s.owner.mutation(api.customers.createCustomer, { name: 'Alice', notes: 'Private guest details', email: 'alice@example.com' });
+    const customerId = await s.owner.mutation(api.pos.customers.createCustomer, { name: 'Alice', notes: 'Private guest details', email: 'alice@example.com' });
     await expect(s.cashier.query(api.settings.get, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.services.admin.listServices, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
-    await expect(s.cashier.query(api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
-    await expect(s.cashier.query(api.customers.getCustomer, { customerId })).rejects.toThrow('Not authorized');
-    await expect(s.cashier.mutation(api.customers.updateCustomer, { customerId, expectedRevision: 0, name: 'Changed' })).rejects.toThrow('Not authorized');
-    await expect(s.cashier.mutation(api.customers.createCustomer, { name: 'New guest', notes: 'No' })).rejects.toThrow('Not authorized');
-    expect(await s.cashier.query(api.customers.checkoutCustomer, { customerId })).not.toHaveProperty('notes');
-    expect(await s.cashier.query(api.customers.searchCustomers, { query: 'Alice' })).toMatchObject([{ name: 'Alice' }]);
-    expect((await s.cashier.query(api.customers.browseCustomers, { query: '', archived: false, paginationOpts: { numItems: 20, cursor: null } })).page).toEqual([]);
+    await expect(s.cashier.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
+    await expect(s.cashier.query(api.pos.customers.getCustomer, { customerId })).rejects.toThrow('Not authorized');
+    await expect(s.cashier.mutation(api.pos.customers.updateCustomer, { customerId, expectedRevision: 0, name: 'Changed' })).rejects.toThrow('Not authorized');
+    await expect(s.cashier.mutation(api.pos.customers.createCustomer, { name: 'New guest', notes: 'No' })).rejects.toThrow('Not authorized');
+    expect(await s.cashier.query(api.pos.customers.checkoutCustomer, { customerId })).not.toHaveProperty('notes');
+    expect(await s.cashier.query(api.pos.customers.searchCustomers, { query: 'Alice' })).toMatchObject([{ name: 'Alice' }]);
+    expect((await s.cashier.query(api.pos.customers.browseCustomers, { query: '', archived: false, paginationOpts: { numItems: 20, cursor: null } })).page).toEqual([]);
     const bookingId = await s.booking();
     await expect(s.cashier.query(api.bookings.admin.getForAdmin, { bookingId })).rejects.toThrow('Not authorized');
     await expect(s.cashier.mutation(api.bookings.commands.recordRefund.recordRefund, { bookingId, expectedRevision: 0, amount: 100, currency: 'THB', method: 'cash', reason: 'No', idempotencyKey: 'cashier-refund' })).rejects.toThrow('Not authorized');
@@ -169,79 +169,79 @@ describe('cashier money boundaries', () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     const value = type === 'amount' ? 10000 : 1000;
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value } });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type, value } });
     expect((await s.view(orderId)).totals.total).toBe(90000);
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value: value / 2 } });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type, value: value / 2 } });
     expect((await s.view(orderId)).totals.total).toBe(95000);
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value: type === 'amount' ? 10001 : 1001 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: type === 'amount' ? 10001 : 10010, subtotalSatang: 100000, limitSatang: 10000 }) });
+    await expect(s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type, value: type === 'amount' ? 10001 : 1001 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: type === 'amount' ? 10001 : 10010, subtotalSatang: 100000, limitSatang: 10000 }) });
     expect((await s.view(orderId)).totals.total).toBe(95000);
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: null });
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value } });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: null });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type, value } });
     expect((await s.view(orderId)).totals.total).toBe(90000);
   });
 
   it('uses current quantity and rounds half-satang like the existing bill math', async () => {
     const s = await setup();
-    const { orderId, lineId } = await s.cashier.mutation(api.pos.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
-    await s.cashier.mutation(api.pos.updateLine, { lineId, qtyChange: 1, discount: { type: 'amount', value: 20000 } });
+    const { orderId, lineId } = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, qtyChange: 1, discount: { type: 'amount', value: 20000 } });
     expect((await s.view(orderId)).totals.total).toBe(180000);
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, qtyChange: -1 })).rejects.toMatchObject(needsApproval('discount'));
+    await expect(s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, qtyChange: -1 })).rejects.toMatchObject(needsApproval('discount'));
     await s.t.run(ctx => ctx.db.patch(s.serviceId, { price: 1005 }));
     const tiny = await s.sale();
-    await s.cashier.mutation(api.pos.updateLine, { lineId: tiny.lineId, discount: { type: 'percent', value: 1000 } });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId: tiny.lineId, discount: { type: 'percent', value: 1000 } });
     expect((await s.view(tiny.orderId)).totals.total).toBe(904);
   });
 
   it('allows coupons over 10%, a linked customer, payment, receipt and customer display operations', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
-    const customerId = await s.cashier.mutation(api.customers.createCustomer, { name: 'Buyer', email: 'buyer@example.com' });
-    await s.cashier.mutation(api.pos.linkCustomer, { orderId, customerId });
+    const customerId = await s.cashier.mutation(api.pos.customers.createCustomer, { name: 'Buyer', email: 'buyer@example.com' });
+    await s.cashier.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
     await s.coupon();
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 10000 } });
-    await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 10000 } });
+    await s.cashier.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'TWENTY' });
     expect((await s.view(orderId)).totals).toMatchObject({ total: 72000, coupon: 18000 });
-    await s.cashier.mutation(api.pos.removeOrderCoupon, { orderId });
-    await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
-    await s.cashier.mutation(api.displays.takeDisplay, { clientId: 'cashier-browser', orderId });
-    expect(await s.cashier.mutation(api.displays.showOrder, { clientId: 'cashier-browser', orderId })).toEqual({ shown: true });
+    await s.cashier.mutation(api.pos.commands.removeOrderCoupon.removeOrderCoupon, { orderId });
+    await s.cashier.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'TWENTY' });
+    await s.cashier.mutation(api.pos.displays.takeDisplay, { clientId: 'cashier-browser', orderId });
+    expect(await s.cashier.mutation(api.pos.displays.showOrder, { clientId: 'cashier-browser', orderId })).toEqual({ shown: true });
     expect(await s.pay(orderId)).toMatchObject({ receiptNumber: 1, replayed: false });
     expect(await s.pay(orderId)).toMatchObject({ receiptNumber: 1, replayed: true });
     expect((await s.view(orderId)).receiptCustomer).toMatchObject({ name: 'Buyer' });
-    await s.cashier.query(api.orderHistoryPages.audit, { orderId, paginationOpts: { numItems: 20, cursor: null } });
+    await s.cashier.query(api.pos.orderHistoryPages.audit, { orderId, paginationOpts: { numItems: 20, cursor: null } });
   });
 
   it('requires custom-price permission, and granting it never bypasses the manual discount limit', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
-    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 90000, note: 'Discount' })).rejects.toMatchObject(needsApproval('customPrice'));
-    await expect(s.cashier.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 100 } })).rejects.toMatchObject(needsApproval('customPrice'));
+    await expect(s.cashier.mutation(api.pos.commands.overrideLinePrice.overrideLinePrice, { lineId, price: 90000, note: 'Discount' })).rejects.toMatchObject(needsApproval('customPrice'));
+    await expect(s.cashier.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 100 } })).rejects.toMatchObject(needsApproval('customPrice'));
     await s.rules({ customPrice: 'cashier' });
-    await s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 95000, note: 'Partial reduction' });
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 5000 } });
+    await s.cashier.mutation(api.pos.commands.overrideLinePrice.overrideLinePrice, { lineId, price: 95000, note: 'Partial reduction' });
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 5000 } });
     expect((await s.view(orderId)).totals.total).toBe(90000);
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 5001 } })).rejects.toMatchObject(needsApproval('discount'));
-    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 90000, note: 'Retained discount' })).rejects.toMatchObject(needsApproval('discount'));
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: null });
-    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 89999, note: 'Over limit' })).rejects.toMatchObject(needsApproval('discount'));
-    await s.cashier.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 2000 } });
+    await expect(s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 5001 } })).rejects.toMatchObject(needsApproval('discount'));
+    await expect(s.cashier.mutation(api.pos.commands.overrideLinePrice.overrideLinePrice, { lineId, price: 90000, note: 'Retained discount' })).rejects.toMatchObject(needsApproval('discount'));
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: null });
+    await expect(s.cashier.mutation(api.pos.commands.overrideLinePrice.overrideLinePrice, { lineId, price: 89999, note: 'Over limit' })).rejects.toMatchObject(needsApproval('discount'));
+    await s.cashier.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 2000 } });
   });
 
   it.each(['owner', 'manager'] as const)('uses the %s booking override as baseline across refresh and reattachment', async role => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.cashier.mutation(api.pos.openOrderFor, { bookingId });
+    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     const lineId = (await s.view(orderId)).lines[0]._id;
     await s.t.run(ctx => ctx.db.patch(bookingId, { total: 80000, providerRefundWaived: 10000, priceOverride: { total: 80000, quotedTotal: 100000, reason: 'Recovery', by: `${role}@example.com`, at: now } }));
-    await expect(s.cashier.mutation(api.pos.updateSourceLine, { lineId })).rejects.toMatchObject(needsApproval('customPrice'));
+    await expect(s.cashier.mutation(api.pos.commands.updateSourceLine.updateSourceLine, { lineId })).rejects.toMatchObject(needsApproval('customPrice'));
     await s.rules({ customPrice: 'cashier' });
-    await s.cashier.mutation(api.pos.updateSourceLine, { lineId });
+    await s.cashier.mutation(api.pos.commands.updateSourceLine.updateSourceLine, { lineId });
     expect(await s.t.run(ctx => ctx.db.get(lineId))).toMatchObject({ unitPrice: 70000, catalogUnitPrice: 70000 });
-    await s.cashier.mutation(api.pos.removeLine, { lineId });
-    await s.cashier.mutation(api.pos.attach, { orderId, bookingId });
+    await s.cashier.mutation(api.pos.commands.removeLine.removeLine, { lineId });
+    await s.cashier.mutation(api.pos.commands.attach.attach, { orderId, bookingId });
     expect(await s.t.run(ctx => ctx.db.get(lineId))).toBeNull();
     expect((await s.view(orderId)).totals.total).toBe(70000);
-    expect(await s.cashier.mutation(api.pos.openOrderFor, { bookingId })).toEqual({ orderId });
+    expect(await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId })).toEqual({ orderId });
   });
 });
 
@@ -255,14 +255,14 @@ describe('atomic manager approvals', () => {
     expect((await s.view(orderId)).order.revision).toBe(before.order.revision);
     expect((await s.view(orderId)).totals.total).toBe(100000);
     await expect(s.pay(orderId)).rejects.toMatchObject({ data: expect.objectContaining({ code: 'PENDING_APPROVAL' }) });
-    expect(await s.manager.query(api.staffApprovals.pending, {})).toMatchObject({ count: 1, list: [{ requesterEmail: 'cashier@example.com', reason: 'Guest recovery', amount: 10001 }] });
-    expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0]).not.toHaveProperty('orderFingerprint');
-    await expect(s.cashier.mutation(api.staffApprovals.approve, { requestId: result.requestId })).rejects.toThrow('Not authorized');
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: result.requestId })).toEqual({ status: 'applied', replayed: false });
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: result.requestId })).toEqual({ status: 'applied', replayed: true });
+    expect(await s.manager.query(api.pos.staffApprovals.pending, {})).toMatchObject({ count: 1, list: [{ requesterEmail: 'cashier@example.com', reason: 'Guest recovery', amount: 10001 }] });
+    expect((await s.cashier.query(api.pos.staffApprovals.forOrder, { orderId }))[0]).not.toHaveProperty('orderFingerprint');
+    await expect(s.cashier.mutation(api.pos.staffApprovals.approve, { requestId: result.requestId })).rejects.toThrow('Not authorized');
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: result.requestId })).toEqual({ status: 'applied', replayed: false });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: result.requestId })).toEqual({ status: 'applied', replayed: true });
     expect((await s.view(orderId)).totals.total).toBe(89999);
     expect((await s.view(orderId)).order.revision).toBe(before.order.revision + 1);
-    expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0]).toMatchObject({ status: 'applied', approverEmail: 'manager@example.com' });
+    expect((await s.cashier.query(api.pos.staffApprovals.forOrder, { orderId }))[0]).toMatchObject({ status: 'applied', approverEmail: 'manager@example.com' });
     const log = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'order').eq('entityId', orderId)).take(20));
     expect(log.find(row => row.kind === 'line_updated')?.actor).toBe('manager@example.com');
     await s.pay(orderId);
@@ -272,10 +272,10 @@ describe('atomic manager approvals', () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     const { requestId } = await s.discountRequest(orderId, lineId);
-    const response = action === 'cancel' ? await s.cashier.mutation(api.staffApprovals.cancel, { requestId }) : await s.manager.mutation(api.staffApprovals.reject, { requestId });
+    const response = action === 'cancel' ? await s.cashier.mutation(api.pos.staffApprovals.cancel, { requestId }) : await s.manager.mutation(api.pos.staffApprovals.reject, { requestId });
     expect(response.status).toBe(action === 'cancel' ? 'cancelled' : 'rejected');
     expect((await s.view(orderId)).totals.total).toBe(100000);
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId })).toMatchObject({ status: response.status, replayed: true });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).toMatchObject({ status: response.status, replayed: true });
     await s.pay(orderId);
   });
 
@@ -283,10 +283,10 @@ describe('atomic manager approvals', () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     const couponId = await s.coupon();
-    if (change === 'couponCatalog' || change === 'couponRestored') await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
+    if (change === 'couponCatalog' || change === 'couponRestored') await s.cashier.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'TWENTY' });
     const { requestId } = await s.discountRequest(orderId, lineId);
-    if (change === 'line') await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 100 } });
-    if (change === 'coupon') await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
+    if (change === 'line') await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 100 } });
+    if (change === 'coupon') await s.cashier.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'TWENTY' });
     if (change === 'couponCatalog' || change === 'couponRestored') await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
     if (change === 'couponRestored') await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     if (change === 'rules') await s.rules({ discountLimitPercent: 2000 });
@@ -297,10 +297,10 @@ describe('atomic manager approvals', () => {
       await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
       await s.cashier.mutation(api.staffAccess.claimInvite, {});
     }
-    expect(await s.manager.query(api.staffApprovals.pending, {})).toEqual({ count: 0, list: [] });
-    const before = (await s.owner.query(api.pos.getOrder, { orderId }))!.totals.total;
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId })).toMatchObject({ status: 'stale' });
-    expect((await s.owner.query(api.pos.getOrder, { orderId }))!.totals.total).toBe(before);
+    expect(await s.manager.query(api.pos.staffApprovals.pending, {})).toEqual({ count: 0, list: [] });
+    const before = (await s.owner.query(api.pos.orders.getOrder, { orderId }))!.totals.total;
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).toMatchObject({ status: 'stale' });
+    expect((await s.owner.query(api.pos.orders.getOrder, { orderId }))!.totals.total).toBe(before);
   });
 
   it('expires exactly at five minutes, with unchanged money and a scheduled terminal status', async () => {
@@ -308,9 +308,9 @@ describe('atomic manager approvals', () => {
     const { orderId, lineId } = await s.sale();
     const { requestId } = await s.discountRequest(orderId, lineId);
     vi.mocked(Date.now).mockReturnValue(now + APPROVAL_TTL_MS);
-    expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0].status).toBe('expired');
-    await s.t.mutation(internal.staffApprovals.expire, { requestId });
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId })).toMatchObject({ status: 'expired' });
+    expect((await s.cashier.query(api.pos.staffApprovals.forOrder, { orderId }))[0].status).toBe('expired');
+    await s.t.mutation(internal.pos.staffApprovals.expire, { requestId });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).toMatchObject({ status: 'expired' });
     expect((await s.view(orderId)).totals.total).toBe(100000);
     await s.pay(orderId);
   });
@@ -320,29 +320,29 @@ describe('atomic manager approvals', () => {
     const { orderId, lineId } = await s.sale();
     const first = await s.discountRequest(orderId, lineId);
     vi.mocked(Date.now).mockReturnValue(now + APPROVAL_TTL_MS - 1);
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: first.requestId })).toMatchObject({ status: 'applied' });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: first.requestId })).toMatchObject({ status: 'applied' });
     await s.pay(orderId);
     const invalid = await s.request(orderId, { kind: 'paymentFix', action: 'amendOrderPayment', tenders: [{ method: 'card', amount: 100 }] });
-    await expect(s.manager.mutation(api.staffApprovals.approve, { requestId: invalid.requestId })).rejects.toThrow('Payments add up');
+    await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId: invalid.requestId })).rejects.toThrow('Payments add up');
     const view = await s.view(orderId);
     expect(view.corrections).toEqual([]);
     expect(view.paymentRecord.tenders).toEqual([{ method: 'cash', amount: 89999 }]);
-    expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0].status).toBe('pending');
+    expect((await s.cashier.query(api.pos.staffApprovals.forOrder, { orderId }))[0].status).toBe('pending');
   });
 
   it('stales a source repricing request when the booked price changes again', async () => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.cashier.mutation(api.pos.openOrderFor, { bookingId });
+    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     const lineId = (await s.view(orderId)).lines[0]._id;
     await s.t.run(ctx => ctx.db.patch(bookingId, { total: 80000, priceOverride: { total: 80000, quotedTotal: 100000, reason: 'Recovery', by: 'owner@example.com', at: now } }));
     const first = await s.request(orderId, { kind: 'customPrice', action: 'updateSourceLine', lineId });
     expect(first).toMatchObject({ totalBefore: 100000, totalAfter: 80000, amount: 0, percent: 0 });
     await s.t.run(ctx => ctx.db.patch(bookingId, { total: 70000 }));
-    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: first.requestId })).toMatchObject({ status: 'stale' });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: first.requestId })).toMatchObject({ status: 'stale' });
     expect((await s.view(orderId)).totals.total).toBe(100000);
     const next = await s.request(orderId, { kind: 'customPrice', action: 'updateSourceLine', lineId });
-    await s.manager.mutation(api.staffApprovals.approve, { requestId: next.requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: next.requestId });
     expect((await s.view(orderId)).totals.total).toBe(70000);
   });
 
@@ -351,9 +351,9 @@ describe('atomic manager approvals', () => {
     const { orderId, lineId } = await s.sale();
     const { requestId } = await s.discountRequest(orderId, lineId);
     await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
-    await expect(s.cashier.mutation(api.staffApprovals.approve, { requestId })).rejects.toThrow('own request');
+    await expect(s.cashier.mutation(api.pos.staffApprovals.approve, { requestId })).rejects.toThrow('own request');
     await s.owner.mutation(api.staffAccess.setGrant, { email: 'manager@example.com', role: null });
-    await expect(s.manager.mutation(api.staffApprovals.approve, { requestId })).rejects.toThrow('Not authorized');
+    await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).rejects.toThrow('Not authorized');
     expect((await s.view(orderId)).totals.total).toBe(100000);
   });
 
@@ -361,21 +361,21 @@ describe('atomic manager approvals', () => {
     const s = await setup();
     const first = await s.sale();
     const second = await s.sale();
-    for (const reason of ['', ' ', 'x'.repeat(501)]) await expect(s.cashier.mutation(api.staffApprovals.create, { orderId: first.orderId, reason, payload: { kind: 'discount', lineId: first.lineId, discount: { type: 'percent', value: 2000 } } })).rejects.toThrow('1–500');
+    for (const reason of ['', ' ', 'x'.repeat(501)]) await expect(s.cashier.mutation(api.pos.staffApprovals.create, { orderId: first.orderId, reason, payload: { kind: 'discount', lineId: first.lineId, discount: { type: 'percent', value: 2000 } } })).rejects.toThrow('1–500');
     await expect(s.discountRequest(first.orderId, second.lineId)).rejects.toThrow('Item not found');
     const { requestId } = await s.discountRequest(first.orderId, first.lineId);
     await expect(s.discountRequest(first.orderId, first.lineId)).rejects.toMatchObject({ data: expect.objectContaining({ code: 'PENDING_APPROVAL' }) });
-    await expect(s.manager.mutation(api.staffApprovals.cancel, { requestId })).rejects.toThrow('Not authorized');
+    await expect(s.manager.mutation(api.pos.staffApprovals.cancel, { requestId })).rejects.toThrow('Not authorized');
   });
 
   it('shows coupon-adjusted before/after totals and applies the frozen exact discount', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     await s.coupon();
-    await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
+    await s.cashier.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'TWENTY' });
     const { requestId, totalBefore, totalAfter } = await s.discountRequest(orderId, lineId);
     expect([totalBefore, totalAfter]).toEqual([80000, 71999]);
-    await s.manager.mutation(api.staffApprovals.approve, { requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId });
     expect((await s.view(orderId)).totals.total).toBe(71999);
   });
 
@@ -384,8 +384,8 @@ describe('atomic manager approvals', () => {
     const { orderId, lineId } = await s.sale();
     const payload: ApprovalPayload = action === 'overrideLinePrice' ? { kind: 'customPrice', action, lineId, price: 70000, note: 'Recovery' } : { kind: 'customPrice', action, name: 'Custom item', price: 2500 };
     const { requestId } = await s.request(orderId, payload);
-    await s.manager.mutation(api.staffApprovals.approve, { requestId });
-    await s.manager.mutation(api.staffApprovals.approve, { requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId });
     expect((await s.view(orderId)).totals.total).toBe(action === 'overrideLinePrice' ? 70000 : 102500);
     if (action === 'overrideLinePrice') expect((await s.view(orderId)).audit).toMatchObject([{ kind: 'price_override', actor: 'manager@example.com', toPrice: 70000 }]);
   });
@@ -395,43 +395,43 @@ describe('atomic manager approvals', () => {
     const { orderId } = await s.sale();
     await s.pay(orderId);
     const args = { orderId, reason: 'Recorded mistake', expectedCorrectionRevision: 0, idempotencyKey: 'paid-fix-attempt' };
-    if (kind === 'voidPaidSale') await expect(s.cashier.mutation(api.pos.voidOrder, { orderId, reason: args.reason })).rejects.toMatchObject(needsApproval(kind));
-    else await expect(s.cashier.mutation(api.pos.amendOrderPayment, { ...args, tenders: [{ method: 'card', amount: 100000 }] })).rejects.toMatchObject(needsApproval(kind));
+    if (kind === 'voidPaidSale') await expect(s.cashier.mutation(api.pos.commands.voidOrder.voidOrder, { orderId, reason: args.reason })).rejects.toMatchObject(needsApproval(kind));
+    else await expect(s.cashier.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { ...args, tenders: [{ method: 'card', amount: 100000 }] })).rejects.toMatchObject(needsApproval(kind));
     const payload: ApprovalPayload = kind === 'voidPaidSale' ? { kind } : { kind, action: 'amendOrderPayment', tenders: [{ method: 'card', amount: 100000 }] };
     const { requestId } = await s.request(orderId, payload);
     expect((await s.view(orderId)).order.status).toBe('paid');
-    await s.manager.mutation(api.staffApprovals.approve, { requestId });
-    await s.manager.mutation(api.staffApprovals.approve, { requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId });
     const view = await s.view(orderId);
     if (kind === 'voidPaidSale') expect(view.order.status).toBe('void');
     else expect(view.corrections).toMatchObject([{ kind: 'amended', actor: 'manager@example.com', sequence: 1 }]);
     await s.rules({ [kind]: 'cashier' });
     const next = await s.sale();
     await s.pay(next.orderId);
-    if (kind === 'voidPaidSale') await s.cashier.mutation(api.pos.voidOrder, { orderId: next.orderId, reason: 'Allowed' });
-    else await s.cashier.mutation(api.pos.amendOrderPayment, { ...args, orderId: next.orderId, tenders: [{ method: 'card', amount: 100000 }] });
+    if (kind === 'voidPaidSale') await s.cashier.mutation(api.pos.commands.voidOrder.voidOrder, { orderId: next.orderId, reason: 'Allowed' });
+    else await s.cashier.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { ...args, orderId: next.orderId, tenders: [{ method: 'card', amount: 100000 }] });
   });
 
   it('executes paid linking, unlinking and unreceived reversals as payment fixes', async () => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId, lineId } = await s.cashier.mutation(api.pos.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
+    const { orderId, lineId } = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
     await s.pay(orderId);
     const direct = { orderId, lineId, bookingId, expectedTargetRevision: 0, expectedCorrectionRevision: 0, idempotencyKey: 'link-attempt', reason: 'Receipt for stay' };
-    await expect(s.cashier.mutation(api.pos.linkPaidLine, direct)).rejects.toMatchObject(needsApproval('paymentFix'));
-    await s.manager.mutation(api.pos.linkPaidLine, direct);
+    await expect(s.cashier.mutation(api.pos.commands.linkPaidLine.linkPaidLine, direct)).rejects.toMatchObject(needsApproval('paymentFix'));
+    await s.manager.mutation(api.pos.commands.linkPaidLine.linkPaidLine, direct);
     const linkId = (await s.view(orderId)).links[0]._id;
     expect((await s.t.run(ctx => ctx.db.get(bookingId)))?.amountPaid).toBe(100000);
-    await expect(s.cashier.mutation(api.pos.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: 1, idempotencyKey: 'unlink-attempt', reason: 'Wrong stay' })).rejects.toMatchObject(needsApproval('paymentFix'));
-    await s.manager.mutation(api.pos.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: 1, idempotencyKey: 'manager-unlink', reason: 'Wrong stay' });
+    await expect(s.cashier.mutation(api.pos.commands.unlinkPaidLine.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: 1, idempotencyKey: 'unlink-attempt', reason: 'Wrong stay' })).rejects.toMatchObject(needsApproval('paymentFix'));
+    await s.manager.mutation(api.pos.commands.unlinkPaidLine.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: 1, idempotencyKey: 'manager-unlink', reason: 'Wrong stay' });
     expect((await s.t.run(ctx => ctx.db.get(bookingId)))?.amountPaid ?? 0).toBe(0);
-    await expect(s.cashier.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 2, idempotencyKey: 'unreceived-attempt', reason: 'Nothing received' })).rejects.toMatchObject(needsApproval('paymentFix'));
+    await expect(s.cashier.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 2, idempotencyKey: 'unreceived-attempt', reason: 'Nothing received' })).rejects.toMatchObject(needsApproval('paymentFix'));
     const voidRequest = await s.request(orderId, { kind: 'paymentFix', action: 'voidUnreceivedOrder' });
-    await s.manager.mutation(api.staffApprovals.approve, { requestId: voidRequest.requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: voidRequest.requestId });
     expect((await s.view(orderId)).order).toMatchObject({ status: 'void', voidUnreceived: true });
     const corrections = (await s.view(orderId)).corrections;
     expect(corrections).toHaveLength(3);
-    await s.manager.mutation(api.staffApprovals.approve, { requestId: voidRequest.requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: voidRequest.requestId });
     expect((await s.view(orderId)).corrections).toHaveLength(3);
   });
 });
@@ -441,11 +441,11 @@ describe('staff-role audit regressions', () => {
   it.each([150000, 50000])('uses the agreed appointment price %s despite catalog drift', async price => {
     const s = await setup();
     const appointmentId = await s.appointment(price);
-    const { orderId } = await s.cashier.mutation(api.pos.openOrderFor, { appointmentId });
+    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
     const lineId = (await s.view(orderId)).lines[0]._id;
     expect(await s.t.run(ctx => ctx.db.get(lineId))).toMatchObject({ unitPrice: price, catalogUnitPrice: price });
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: price / 10 } });
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: price === 150000 ? 60000 : 5001 } })).rejects.toMatchObject(needsApproval('discount'));
+    await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: price / 10 } });
+    await expect(s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: price === 150000 ? 60000 : 5001 } })).rejects.toMatchObject(needsApproval('discount'));
   });
 
   it('never hides manual reduction behind a baseline below the line price', async () => {
@@ -453,7 +453,7 @@ describe('staff-role audit regressions', () => {
     const { orderId, lineId } = await s.sale();
     // Legacy/source snapshots can contain a baseline below their own pre-discount price.
     await s.t.run(ctx => ctx.db.patch(lineId, { unitPrice: 150000, catalogUnitPrice: 100000 }));
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 60000 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: 60000, subtotalSatang: 150000 }) });
+    await expect(s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 60000 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: 60000, subtotalSatang: 150000 }) });
     const preview = await s.request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 60000 } });
     expect(preview).toMatchObject({ amount: 60000, percent: 4000 });
   });
@@ -461,21 +461,21 @@ describe('staff-role audit regressions', () => {
   it.each(['openOrderFor', 'openOrderForLink'] as const)('%s preserves manager-approved discounts when reusing or extending an order', async endpoint => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.manager.mutation(api.pos.openOrderFor, { bookingId });
-    const { lineId } = await s.manager.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
-    await s.manager.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 30000 } });
+    const { orderId } = await s.manager.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { lineId } = await s.manager.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
+    await s.manager.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 30000 } });
     const before = await s.view(orderId);
-    expect(await s.cashier.mutation(api.pos[endpoint], { bookingId })).toEqual({ orderId });
+    expect(await s.cashier.mutation(({ openOrderFor: api.pos.commands.openOrderFor.openOrderFor, openOrderForLink: api.pos.commands.openOrderForLink.openOrderForLink })[endpoint], { bookingId })).toEqual({ orderId });
     expect((await s.view(orderId)).order.revision).toBe(before.order.revision);
     const appointmentId = await s.appointment(1000, bookingId);
-    expect(await s.cashier.mutation(api.pos[endpoint], { appointmentId })).toEqual({ orderId });
+    expect(await s.cashier.mutation(({ openOrderFor: api.pos.commands.openOrderFor.openOrderFor, openOrderForLink: api.pos.commands.openOrderForLink.openOrderForLink })[endpoint], { appointmentId })).toEqual({ orderId });
     const lines = (await s.view(orderId)).lines;
     expect(lines).toHaveLength(3);
     expect(lines.find(line => line._id === lineId)?.discount).toEqual({ type: 'amount', value: 30000 });
     const appointmentLine = lines.find(line => line.appointmentId === appointmentId)!;
-    await s.manager.mutation(api.pos.updateLine, { lineId: appointmentLine._id, discount: { type: 'amount', value: 20000 } });
-    expect(await s.cashier.mutation(api.pos[endpoint], { appointmentId })).toEqual({ orderId });
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 30100 } })).rejects.toMatchObject(needsApproval('discount'));
+    await s.manager.mutation(api.pos.commands.updateLine.updateLine, { lineId: appointmentLine._id, discount: { type: 'amount', value: 20000 } });
+    expect(await s.cashier.mutation(({ openOrderFor: api.pos.commands.openOrderFor.openOrderFor, openOrderForLink: api.pos.commands.openOrderForLink.openOrderForLink })[endpoint], { appointmentId })).toEqual({ orderId });
+    await expect(s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 30100 } })).rejects.toMatchObject(needsApproval('discount'));
   });
 
   it('limits cashier receipt and history reads to unpaid or current business-date settlements', async () => {
@@ -489,7 +489,7 @@ describe('staff-role audit regressions', () => {
       await ctx.db.delete(id);
       return id;
     });
-    const historyQueries = [api.orderHistoryPages.audit, api.orderHistoryPages.corrections, api.orderHistoryPages.bookingRefunds, api.orderHistoryPages.appointmentRefunds, api.pos.orderHistory];
+    const historyQueries = [api.pos.orderHistoryPages.audit, api.pos.orderHistoryPages.corrections, api.pos.orderHistoryPages.bookingRefunds, api.pos.orderHistoryPages.appointmentRefunds, api.pos.orders.orderHistory];
     const paginationOpts = { numItems: 20, cursor: null };
     // 23:59 Bangkok yesterday is still the previous business day, unlike UTC date comparison.
     const beforeMidnight = Date.parse('2026-11-11T16:59:59.999Z');
@@ -497,33 +497,33 @@ describe('staff-role audit regressions', () => {
     for (const at of [midnight, beforeMidnight, Date.parse('2026-11-12T17:00:00Z')]) {
       await s.t.run(ctx => ctx.db.patch(paid.orderId, { paymentEffectiveAt: at }));
       const visible = at === midnight;
-      expect(Boolean(await s.cashier.query(api.pos.getOrder, { orderId: paid.orderId }))).toBe(visible);
-      expect(await s.cashier.query(api.pos.findOrderByNumber, { orderNumber: number })).toBe(visible ? paid.orderId : null);
+      expect(Boolean(await s.cashier.query(api.pos.orders.getOrder, { orderId: paid.orderId }))).toBe(visible);
+      expect(await s.cashier.query(api.pos.orders.findOrderByNumber, { orderNumber: number })).toBe(visible ? paid.orderId : null);
       for (const query of historyQueries) {
         const read = s.cashier.query(query, { orderId: paid.orderId, paginationOpts });
         if (visible) await expect(read).resolves.toHaveProperty('page');
         else await expect(read).rejects.toThrow('Order not found');
       }
-      const approvalHistory = s.cashier.query(api.staffApprovals.forOrder, { orderId: paid.orderId });
+      const approvalHistory = s.cashier.query(api.pos.staffApprovals.forOrder, { orderId: paid.orderId });
       if (visible) await expect(approvalHistory).resolves.toEqual([]);
       else {
         await expect(approvalHistory).rejects.toThrow('Order not found');
         await expect(s.request(paid.orderId, { kind: 'paymentFix', action: 'voidUnreceivedOrder' })).rejects.toThrow('Order not found');
       }
-      expect(await s.cashier.query(api.pos.getOrder, { orderId: unpaid.orderId })).toBeTruthy();
+      expect(await s.cashier.query(api.pos.orders.getOrder, { orderId: unpaid.orderId })).toBeTruthy();
       for (const client of [s.manager, s.owner]) {
-        expect(await client.query(api.pos.getOrder, { orderId: paid.orderId })).toBeTruthy();
-        expect(await client.query(api.pos.findOrderByNumber, { orderNumber: number })).toBe(paid.orderId);
+        expect(await client.query(api.pos.orders.getOrder, { orderId: paid.orderId })).toBeTruthy();
+        expect(await client.query(api.pos.orders.findOrderByNumber, { orderNumber: number })).toBe(paid.orderId);
         for (const query of historyQueries) await expect(client.query(query, { orderId: paid.orderId, paginationOpts })).resolves.toHaveProperty('page');
       }
     }
     // Legacy receipts fall back to paidAt; voiding a sale does not reset its date.
     await s.t.run(ctx => ctx.db.patch(paid.orderId, { paymentEffectiveAt: undefined, paidAt: beforeMidnight, status: 'void', voidedAt: now }));
-    expect(await s.cashier.query(api.pos.getOrder, { orderId: paid.orderId })).toBeNull();
+    expect(await s.cashier.query(api.pos.orders.getOrder, { orderId: paid.orderId })).toBeNull();
     await s.t.run(ctx => ctx.db.patch(paid.orderId, { paidAt: midnight }));
-    expect(await s.cashier.query(api.pos.getOrder, { orderId: paid.orderId })).toBeTruthy();
-    expect(await s.cashier.query(api.pos.getOrder, { orderId: missing })).toBeNull();
-    expect(await s.cashier.query(api.pos.findOrderByNumber, { orderNumber: 99999 })).toBeNull();
+    expect(await s.cashier.query(api.pos.orders.getOrder, { orderId: paid.orderId })).toBeTruthy();
+    expect(await s.cashier.query(api.pos.orders.getOrder, { orderId: missing })).toBeNull();
+    expect(await s.cashier.query(api.pos.orders.findOrderByNumber, { orderNumber: 99999 })).toBeNull();
     for (const query of historyQueries) await expect(s.cashier.query(query, { orderId: missing, paginationOpts })).rejects.toThrow('Order not found');
   });
 
@@ -534,9 +534,9 @@ describe('staff-role audit regressions', () => {
     const s = await setup();
     await s.rules({ paymentFix: 'cashier', voidPaidSale: 'cashier' });
     const bookingId = await s.booking();
-    const { orderId, lineId } = await s.cashier.mutation(api.pos.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
+    const { orderId, lineId } = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
     await s.pay(orderId);
-    const linked = await s.owner.mutation(api.pos.linkPaidLine, {
+    const linked = await s.owner.mutation(api.pos.commands.linkPaidLine.linkPaidLine, {
       orderId, lineId, bookingId, expectedTargetRevision: 0, expectedCorrectionRevision: 0,
       idempotencyKey: 'owner-link-before-date-change', reason: 'Receipt for stay',
     });
@@ -545,44 +545,44 @@ describe('staff-role audit regressions', () => {
       customerSnapshot: { name: 'Historical private payer' },
     }));
     const before = await s.t.run(ctx => ctx.db.get(orderId));
-    expect(await s.cashier.query(api.pos.getOrder, { orderId })).toBeNull();
+    expect(await s.cashier.query(api.pos.orders.getOrder, { orderId })).toBeNull();
     const correction = { orderId, expectedCorrectionRevision: 1, reason: 'Cashier attempt' };
     const attempts = [
-      () => s.cashier.mutation(api.pos.voidOrder, { orderId, reason: correction.reason }),
-      () => s.cashier.mutation(api.pos.amendOrderPayment, { ...correction, idempotencyKey: 'hidden-amend', effectiveAt: now }),
-      () => s.cashier.mutation(api.pos.voidUnreceivedOrder, { ...correction, idempotencyKey: 'hidden-unreceived' }),
-      () => s.cashier.mutation(api.pos.linkPaidLine, { ...correction, lineId, bookingId, expectedTargetRevision: 0, idempotencyKey: 'hidden-link' }),
-      () => s.cashier.mutation(api.pos.unlinkPaidLine, { ...correction, linkId: linked.linkId, idempotencyKey: 'hidden-unlink' }),
+      () => s.cashier.mutation(api.pos.commands.voidOrder.voidOrder, { orderId, reason: correction.reason }),
+      () => s.cashier.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { ...correction, idempotencyKey: 'hidden-amend', effectiveAt: now }),
+      () => s.cashier.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { ...correction, idempotencyKey: 'hidden-unreceived' }),
+      () => s.cashier.mutation(api.pos.commands.linkPaidLine.linkPaidLine, { ...correction, lineId, bookingId, expectedTargetRevision: 0, idempotencyKey: 'hidden-link' }),
+      () => s.cashier.mutation(api.pos.commands.unlinkPaidLine.unlinkPaidLine, { ...correction, linkId: linked.linkId, idempotencyKey: 'hidden-unlink' }),
     ];
     for (const attempt of attempts) await expect(attempt()).rejects.toThrow('Order not found');
     expect(await s.t.run(ctx => ctx.db.get(orderId))).toEqual(before);
-    expect(await s.cashier.query(api.pos.getOrder, { orderId })).toBeNull();
+    expect(await s.cashier.query(api.pos.orders.getOrder, { orderId })).toBeNull();
     // A manager can still correct the historical receipt and deliberately make it visible today.
-    await s.manager.mutation(api.pos.amendOrderPayment, { ...correction, idempotencyKey: 'manager-amend-hidden', effectiveAt: now });
-    expect((await s.cashier.query(api.pos.getOrder, { orderId }))?.receiptCustomer?.name).toBe('Historical private payer');
+    await s.manager.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { ...correction, idempotencyKey: 'manager-amend-hidden', effectiveAt: now });
+    expect((await s.cashier.query(api.pos.orders.getOrder, { orderId }))?.receiptCustomer?.name).toBe('Historical private payer');
   });
 
   it('keeps paid-link discovery and link requests behind the paymentFix rule', async () => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId, lineId } = await s.cashier.mutation(api.pos.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
+    const { orderId, lineId } = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
     await s.pay(orderId);
     const lookup = { orderId, lineId, query: 'Guest' };
     const payload = { kind: 'paymentFix', action: 'linkPaidLine', lineId, bookingId, expectedTargetRevision: 0 } as const;
-    await expect(s.cashier.query(api.pos.linkCandidates, lookup)).rejects.toMatchObject(needsApproval('paymentFix'));
+    await expect(s.cashier.query(api.pos.sourceReads.linkCandidates, lookup)).rejects.toMatchObject(needsApproval('paymentFix'));
     await expect(s.request(orderId, payload)).rejects.toMatchObject(needsApproval('paymentFix'));
     expect(await s.t.run(ctx => ctx.db.query('staffApprovalRequests').take(10))).toEqual([]);
-    for (const client of [s.manager, s.owner]) expect(await client.query(api.pos.linkCandidates, lookup)).toMatchObject([{ id: bookingId, guestName: 'Guest' }]);
-    await s.manager.mutation(api.pos.linkPaidLine, { orderId, lineId, bookingId, expectedTargetRevision: 0, expectedCorrectionRevision: 0, idempotencyKey: 'manager-link', reason: 'Correct stay' });
+    for (const client of [s.manager, s.owner]) expect(await client.query(api.pos.sourceReads.linkCandidates, lookup)).toMatchObject([{ id: bookingId, guestName: 'Guest' }]);
+    await s.manager.mutation(api.pos.commands.linkPaidLine.linkPaidLine, { orderId, lineId, bookingId, expectedTargetRevision: 0, expectedCorrectionRevision: 0, idempotencyKey: 'manager-link', reason: 'Correct stay' });
     const linkId = (await s.view(orderId)).links[0]._id;
     await expect(s.request(orderId, { kind: 'paymentFix', action: 'unlinkPaidLine', linkId })).rejects.toMatchObject(needsApproval('paymentFix'));
     await s.rules({ paymentFix: 'cashier' });
-    await expect(s.cashier.query(api.pos.linkCandidates, lookup)).resolves.toBeInstanceOf(Array);
+    await expect(s.cashier.query(api.pos.sourceReads.linkCandidates, lookup)).resolves.toBeInstanceOf(Array);
     const unlink = await s.request(orderId, { kind: 'paymentFix', action: 'unlinkPaidLine', linkId });
-    await s.manager.mutation(api.staffApprovals.approve, { requestId: unlink.requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: unlink.requestId });
     const target = await s.t.run(ctx => ctx.db.get(bookingId));
     const link = await s.request(orderId, { ...payload, expectedTargetRevision: target?.revision ?? 0 });
-    await s.manager.mutation(api.staffApprovals.approve, { requestId: link.requestId });
+    await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: link.requestId });
     expect((await s.view(orderId)).links.filter(row => row.status === 'active')).toHaveLength(1);
   });
 

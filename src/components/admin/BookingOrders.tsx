@@ -22,7 +22,7 @@ const STATE_LABELS = { unpaid: "Unpaid", paid: "Paid", void: "Voided", discarded
  * charging it.
  */
 export function BookingOrders({ source, currency, closed }: { source: Source; currency: string; closed: boolean }) {
-  const summary = useQuery(api.pos.ordersForBooking, source);
+  const summary = useQuery(api.pos.orders.ordersForBooking, source);
   const openHref = "bookingId" in source ? `/admin/checkout?booking=${source.bookingId}` : `/admin/checkout?appointment=${source.appointmentId}`;
 
   if (summary === undefined) return <Skeleton className="h-16 w-full" aria-label="Loading orders" />;

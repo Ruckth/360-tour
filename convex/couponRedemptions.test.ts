@@ -185,10 +185,10 @@ describe('payment and status synchronization', () => {
     const id = await s.create();
     if (origin === 'manual') await s.pay(id);
     else {
-      const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { bookingId: id });
-      const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
+      const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId: id });
+      const view = (await s.admin.query(api.pos.orders.getOrder, { orderId }))!;
       expect(view.totals.due).toBe(720000);
-      await s.admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: 'pos-coupon-payment', tenders: [{ method: 'cash', amount: view.totals.due }] });
+      await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: 'pos-coupon-payment', tenders: [{ method: 'cash', amount: view.totals.due }] });
     }
     expect(await s.row(id)).toMatchObject({ state: 'consumed' });
     await s.reconcile();
@@ -450,10 +450,10 @@ describe('release 2a backend regressions', () => {
       const payment = (await s.t.run(ctx => ctx.db.query('bookingPayments').withIndex('by_bookingId_and_recordedAt', q => q.eq('bookingId', id)).first()))!;
       await s.admin.mutation(api.bookings.commands.cancelPayment.cancelPayment, { bookingId: id, expectedRevision: (await s.get(id)).revision!, paymentId: payment._id, reason: 'Cash was never received' });
     } else {
-      const { orderId } = await s.admin.mutation(api.pos.openOrderFor, { bookingId: id });
-      const view = (await s.admin.query(api.pos.getOrder, { orderId }))!;
-      await s.admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: 'mistaken-pos-payment', tenders: [{ method: 'cash', amount: view.totals.due }] });
-      await s.admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-mistaken-pos', reason: 'No money was actually received' });
+      const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId: id });
+      const view = (await s.admin.query(api.pos.orders.getOrder, { orderId }))!;
+      await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: 'mistaken-pos-payment', tenders: [{ method: 'cash', amount: view.totals.due }] });
+      await s.admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-mistaken-pos', reason: 'No money was actually received' });
     }
     expect(await s.row(id)).toMatchObject({ state: 'held' });
     expect(await s.coupon()).toMatchObject({ held: 1, heldDiscount: 180000, used: 0, discountGranted: 0 });

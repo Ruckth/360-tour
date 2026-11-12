@@ -372,12 +372,12 @@ describe('POS coupon ledger', () => {
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
     const serviceId = await admin.mutation(api.services.commands.createService.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 180000, currency: 'THB', staffIds: [staffId] });
-    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-    const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Anna Lee' });
-    await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
-    await admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA-500' });
-    const view = (await admin.query(api.pos.getOrder, { orderId }))!;
-    await admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: 'ledger-pos-pay-001', expectedRevision: view.order.revision, expectedDue: 130000, expectedCustomerRevision: 0, tenders: [{ method: 'cash', amount: 130000 }] });
+    const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
+    const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Anna Lee' });
+    await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
+    await admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'SPA-500' });
+    const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
+    await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: 'ledger-pos-pay-001', expectedRevision: view.order.revision, expectedDue: 130000, expectedCustomerRevision: 0, tenders: [{ method: 'cash', amount: 130000 }] });
     const detail = await admin.query(api.marketing.getCoupon, { couponId });
     expect(detail?.redemptions).toMatchObject([{ state: 'consumed', discount: 50000, order: { orderId, title: 'Order #1', receiptNumber: 'R-000001', customerName: 'Anna Lee' } }]);
     expect(detail?.redemptions[0].booking).toBeUndefined();

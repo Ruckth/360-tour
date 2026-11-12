@@ -262,7 +262,7 @@ describe("staff occupancy and finance consistency", () => {
         api.services.admin.getAppointmentFinancials,
         { appointmentId },
       );
-      const order = await admin.query(api.pos.ordersForBooking, {
+      const order = await admin.query(api.pos.orders.ordersForBooking, {
         appointmentId,
       });
       expect(order!.balance.owed).toBe(0);

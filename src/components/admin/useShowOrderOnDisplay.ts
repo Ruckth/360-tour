@@ -22,9 +22,9 @@ import { useDisplayDriver } from "./useDisplayDriver";
  */
 export function useShowOrderOnDisplay(orderId: string | null | undefined) {
   const { clientId, driver, displays } = useDisplayDriver();
-  const showOrder = useMutation(api.displays.showOrder);
-  const renewLease = useMutation(api.displays.renewDriverLease);
-  const releaseDisplay = useMutation(api.displays.releaseDisplay);
+  const showOrder = useMutation(api.pos.displays.showOrder);
+  const renewLease = useMutation(api.pos.displays.renewDriverLease);
+  const releaseDisplay = useMutation(api.pos.displays.releaseDisplay);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Set before the effects below run, in the same commit (effects run in order).

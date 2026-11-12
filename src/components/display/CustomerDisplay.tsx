@@ -73,9 +73,9 @@ function PairedDisplay() {
   const [token, setToken] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [linkFailed, setLinkFailed] = useState(false);
-  const claimLink = useMutation(api.displays.claimLink);
-  const startPairing = useMutation(api.displays.startPairing);
-  const heartbeat = useMutation(api.displays.heartbeat);
+  const claimLink = useMutation(api.pos.displays.claimLink);
+  const startPairing = useMutation(api.pos.displays.startPairing);
+  const heartbeat = useMutation(api.pos.displays.heartbeat);
   const started = useRef(false);
   const claimed = useRef(new Set<string>());
   const retry = useRef<number | undefined>(undefined);
@@ -182,7 +182,7 @@ function PairedDisplay() {
 
   useEffect(() => () => window.clearTimeout(retry.current), []);
 
-  const state = useQuery(api.displays.current, token ? { token } : "skip");
+  const state = useQuery(api.pos.displays.current, token ? { token } : "skip");
   const kind = state?.state;
   const paired = kind !== undefined && kind !== "unpaired" && kind !== "pending";
 

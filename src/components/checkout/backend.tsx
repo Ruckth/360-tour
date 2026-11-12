@@ -12,14 +12,15 @@ import { createContext, useContext, useMemo, useCallback, type ReactNode } from 
  * are the Convex functions' own, so both stay in step with convex/pos.ts and convex/customers.ts.
  */
 
-type Pos = typeof api.pos;
+type PosCommands = typeof api.pos.commands;
+type Pos = typeof api.pos.orders & typeof api.pos.catalog & typeof api.pos.sourceReads & { [K in keyof PosCommands]: PosCommands[K][K & keyof PosCommands[K]] };
 export type RestoreReview = FunctionReturnType<Pos["restoreCheck"]>;
 export type AppointmentFee = FunctionReturnType<Pos["appointmentFees"]>[number];
 export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appointmentRefunds" | "orderRefunds";
 /** A POS line refund (orderHistoryPages.orderRefunds, pos.refundLine). Its amount is integer satang. */
-export type LineRefund = FunctionReturnType<typeof api.orderHistoryPages.orderRefunds>["page"][number];
+export type LineRefund = FunctionReturnType<typeof api.pos.orderHistoryPages.orderRefunds>["page"][number];
 export type FinancialRows = { corrections: import("convex/_generated/dataModel").Doc<"orderCorrections">; audit: import("convex/_generated/dataModel").Doc<"orderAudit">; bookingRefunds: Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "_id" | "orderId" | "bookingId" | "amount" | "currency" | "method" | "reason" | "effectiveAt" | "recordedAt" | "recordedBy"> & Partial<Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "netBefore" | "netAfter" | "providerRefundId">>; appointmentRefunds: import("convex/_generated/dataModel").Doc<"appointmentRefunds">; orderRefunds: LineRefund };
-type Customers = typeof api.customers;
+type Customers = typeof api.pos.customers;
 export type Catalog = FunctionReturnType<Pos["catalog"]>;
 export type OrderView = NonNullable<FunctionReturnType<Pos["getOrder"]>>;
 export type OrderHistoryRow = FunctionReturnType<Pos["orderHistory"]>["page"][number];
@@ -40,7 +41,7 @@ export type CustomerOrderRow = FunctionReturnType<Customers["listCustomerOrders"
 export type CustomerPage<T> = { results: T[]; status: OrdersPage["status"]; loadMore: (numItems: number) => void };
 export type OrderId = Id<"orders">;
 export type CustomerId = Id<"customers">;
-type Approvals = typeof api.staffApprovals;
+type Approvals = typeof api.pos.staffApprovals;
 /** A manager-approval request, as staffApprovals.forOrder and staffApprovals.pending return it. */
 export type ApprovalRequest = FunctionReturnType<Approvals["forOrder"]>[number];
 export type ApprovalQueue = FunctionReturnType<Approvals["pending"]>;
