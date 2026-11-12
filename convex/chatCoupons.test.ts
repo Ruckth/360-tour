@@ -1,5 +1,7 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
+import { testServerSecret } from "./testing/fixtures.test-support";
+import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { expect, it, vi, afterEach } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
@@ -9,7 +11,7 @@ async function setup(channel: 'web' | 'whatsapp' = 'web') {
   const t = convexTest(schema, modules);
   const data = await t.run(async ctx => {
     const propertyId = await ctx.db.insert('properties', { slug: stay.propertySlug, name: 'Coupon Villa', tagline: '', description: '', pricePerNight: 10000, directDiscountPercent: 15, currency: 'THB', maxGuests: 4, bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], status: 'active' });
-    const sessionId = await ctx.db.insert('chatSessions', { channel, visitorPhone: stay.guestPhone, createdAt: Date.now() });
+    const sessionId = await ctx.db.insert('chatSessions', { guestTokenHash: fixtureGuestTokenHash, channel, visitorPhone: stay.guestPhone, createdAt: Date.now() });
     const couponId = await ctx.db.insert('coupons', { code: 'GUEST20', status: 'active', currentVersion: 1, used: 0, discountGranted: 0, createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'staff@example.com' });
     const versionId = await ctx.db.insert('couponVersions', { couponId, version: 1, benefit: { kind: 'percent', percent: 20 }, scope: 'accommodation', createdAt: Date.now(), createdByEmail: 'staff@example.com' });
     await ctx.db.insert('chatMessages', { sessionId, role: 'user', content: 'Please use coupon GUEST20', timestamp: Date.now() });
@@ -77,7 +79,7 @@ function modelTool(name: string, args: Record<string, unknown>) {
 it('web responds with an authoritative coupon preview and carries the code into a booking link', async () => {
   const { t, sessionId } = await setup();
   modelTool('preview_coupon', { couponCode: 'GUEST20', propertySlug: stay.propertySlug, checkIn: stay.checkIn, checkOut: stay.checkOut, guests: 2 });
-  const reply = await t.action(api.chatAi.respond, { sessionId, userMessage: 'Quote coupon GUEST20 for my dates', locale: 'en' });
+  const reply = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Quote coupon GUEST20 for my dates', locale: 'en' });
   expect(reply.response).toContain('save THB 4,000');
   expect(reply.response).toContain('THB 16,000');
   expect(reply.response).toContain('coupon=GUEST20');
@@ -87,19 +89,19 @@ it('web responds with an authoritative coupon preview and carries the code into 
 it('messaging yes returns a new plain text summary after coupon expiry, with no completion claim', async () => {
   const { t, sessionId, versionId } = await setup('whatsapp');
   modelTool('prepare_booking', { ...stay, couponCode: 'GUEST20' });
-  const initial = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'Please book with GUEST20', channel: 'whatsapp', bookingFlow: true, siteUrl: 'https://resort.example' });
+  const initial = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'Please book with GUEST20', channel: 'whatsapp', bookingFlow: true, siteUrl: 'https://resort.example' });
   expect(initial.response).toContain('coupon=GUEST20');
   expect(initial.response).toContain('save THB 4,000');
   await t.run(ctx => ctx.db.patch(versionId, { bookTo: '2026-01-01' }));
   modelTool('confirm_booking', {});
-  const changed = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true, siteUrl: 'https://resort.example' });
+  const changed = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true, siteUrl: 'https://resort.example' });
   expect(changed.response).toContain('Offer expired');
   expect(changed.response).toContain('THB 17,000');
   expect(changed.response).toContain('nothing is booked yet');
   expect(changed.response).toContain('Reply yes');
   expect(changed.response).not.toMatch(/booking card|buttons below|booking created/i);
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toEqual([]);
-  const final = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true });
+  const final = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true });
   expect(final.response).toContain('payment is pending');
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toHaveLength(1);
   expect(await t.run(ctx => ctx.db.query('couponRedemptions').collect())).toHaveLength(0);
@@ -107,7 +109,7 @@ it('messaging yes returns a new plain text summary after coupon expiry, with no 
 it('the last coupon slot cannot be held by a second reviewed quote', async () => {
   const { t, sessionId, versionId, couponId } = await setup();
   await t.run(ctx => ctx.db.patch(versionId, { usageLimit: 1 }));
-  const secondSessionId = await t.mutation(api.chat.createSession, { channel: 'web' });
+  const { sessionId: secondSessionId } = await t.mutation(api.chat.createSession, { channel: 'web' });
   await t.mutation(internal.chat.acceptGuestMessage, { sessionId: secondSessionId, content: 'coupon GUEST20' });
   await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
   await t.mutation(internal.bookings.prepareChatBooking, { sessionId: secondSessionId, ...stay, checkIn: '2027-01-20', checkOut: '2027-01-22', couponCode: 'GUEST20' });
@@ -122,7 +124,7 @@ it('does not deliver a model-invented coupon offer without a verified tool resul
   vi.stubEnv('AI_API_KEY', 'test-key');
   vi.stubEnv('AI_API_BASE_URL', 'https://ai.example.test/v1');
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'Use coupon INVENTED90 to save 90% on any villa!' } }] }), { status: 200 })));
-  const reply = await t.action(api.chatAi.respond, { sessionId, userMessage: 'Do you have a coupon for me?' });
+  const reply = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Do you have a coupon for me?' });
   expect(reply.response).not.toContain('INVENTED90');
   expect(reply.response).toContain('check the current eligibility');
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toEqual([]);
@@ -154,14 +156,14 @@ it('a fully covered stay cannot create an unpaid online booking or coupon hold',
 it('messaging confirmation and retries retain the frozen coupon saving in text and booking cards', async () => {
   const { t, sessionId, couponId } = await setup('whatsapp');
   modelTool('prepare_booking', { ...stay, couponCode: 'GUEST20' });
-  await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'Please book with GUEST20', channel: 'whatsapp', bookingFlow: true });
+  await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'Please book with GUEST20', channel: 'whatsapp', bookingFlow: true });
   modelTool('confirm_booking', {});
-  const confirmed = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true });
+  const confirmed = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true });
   expect(confirmed.response).toContain('GUEST20: save THB 4,000');
   expect(confirmed.card?.items[0].lines.join(' ')).toContain('GUEST20: save THB 4,000');
   // A retry describes the committed booking; subsequent catalog changes cannot erase its saving.
   await t.run(ctx => ctx.db.patch(couponId, { status: 'paused' }));
-  const repeated = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true });
+  const repeated = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes', channel: 'whatsapp', bookingFlow: true });
   expect(repeated.response).toContain('GUEST20: save THB 4,000');
   expect(await t.run(ctx => ctx.db.query('bookings').collect())).toHaveLength(1);
   expect(await t.run(ctx => ctx.db.query('couponRedemptions').collect())).toHaveLength(1);

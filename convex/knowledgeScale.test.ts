@@ -6,7 +6,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import migrationsTest from '@convex-dev/migrations/test';
-import { api, internal } from './_generated/api';
+import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
 import { approvedContextFor, getExactCandidates } from './chatKnowledge';
@@ -167,26 +167,6 @@ describe('retired readers never answer at scale (public entry points)', () => {
 		expect(await t.query(internal.chatKnowledge.getApprovedContext, { sessionId: await session(t, pool, 'pool-villa') })).toEqual([]);
 	});
 
-	it("resolveExact returns null even when this villa has a historical matching answer", async () => {
-		const { t } = setup();
-		for (let i = 0; i < 20; i++) {
-			const other = await property(t, `villa-${i}`);
-			await scopedAnswer(t, { propertyId: other, slug: `villa-${i}`, title: `Wifi ${i}`, question: 'What is the wifi password?', updatedAt: i });
-		}
-		const pool = await property(t, 'pool-villa');
-		await scopedAnswer(t, { propertyId: pool, slug: 'pool-villa', title: 'Pool wifi', question: 'What is the wifi password?', updatedAt: 500 });
-		expect(
-			await t.query(api.chatKnowledge.resolveExact, { sessionId: await session(t, pool, 'pool-villa'), messageText: 'What is the wifi password?' }),
-		).toBeNull();
-	});
-
-	it('resolveCuratedExact returns null even for a historical translated item', async () => {
-		const { t } = setup();
-		await curatedItem(t, { question: 'Is there wifi?', translations: { th: 'มีไวไฟไหม' }, answer: 'Yes, fast wifi.', answerMode: 'static', score: 1 });
-		const sessionId = await t.run((ctx) => ctx.db.insert('chatSessions', { channel: 'line', createdAt: 1, lastSeenAt: 1 }));
-		expect(await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: 'มีไวไฟไหม' })).toBeNull();
-		expect(await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: 'is there wifi' })).toBeNull();
-	});
 });
 
 // The pure ranking/scope/budget helpers remain live (the concierge retrieval still relies on the

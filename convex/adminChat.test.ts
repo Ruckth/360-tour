@@ -814,7 +814,7 @@ describe("adminChat.listSessions", () => {
 describe("admin chat metadata writes", () => {
   it("chat.acceptGuestMessage increments messageCount and latestMessageAt", async () => {
     const t = convexTest(schema, modules);
-    const sessionId = await t.mutation(api.chat.createSession, {
+    const { sessionId } = await t.mutation(api.chat.createSession, {
       channel: "web",
       visitorId: "visitor-metadata",
     });
@@ -840,12 +840,12 @@ describe("admin chat metadata writes", () => {
 
   it("identifyVisitor refreshes searchable contact text", async () => {
     const t = convexTest(schema, modules);
-    const sessionId = await t.mutation(api.chat.createSession, {
+    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, {
       channel: "web",
       visitorId: "visitor-contact-refresh",
     });
 
-    await t.mutation(api.chat.identifyVisitor, {
+    await t.mutation(api.chat.identifyVisitor, { guestToken: sessionIdGuestToken,
       sessionId,
       name: "Nina Contact",
       email: "NINA@Example.com",
@@ -1145,7 +1145,7 @@ describe("adminChat inbox lifecycle", () => {
       "Not authenticated",
     );
     await admin.mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
-    expect(await t.query(api.chat.isAiPaused, { sessionId })).toBe(true);
+    expect((await t.query(internal.chat.getSessionInternal, { sessionId }))?.aiPaused).toBe(true);
     expect(await t.run((ctx) => ctx.db.get(sessionId))).toMatchObject({
       aiPaused: true,
       assignedAdminEmail: adminEmail,
@@ -1155,7 +1155,7 @@ describe("adminChat inbox lifecycle", () => {
     const resumed = await t.run((ctx) => ctx.db.get(sessionId));
     expect(resumed?.aiPaused).toBeUndefined();
     expect(resumed?.assignedAdminEmail).toBeUndefined();
-    expect(await t.query(api.chat.isAiPaused, { sessionId })).toBe(false);
+    expect(Boolean((await t.query(internal.chat.getSessionInternal, { sessionId }))?.aiPaused)).toBe(false);
   });
 
   it("returns the 24-hour reply window for Meta channels", async () => {
@@ -1371,19 +1371,19 @@ describe("chat.touchSession heartbeat", () => {
         status: "active",
       }),
     );
-    const sessionId = await t.mutation(api.chat.createSession, { channel: "web", currentPath: "/" });
+    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, { channel: "web", currentPath: "/" });
     const before = await t.run((ctx) => ctx.db.get(sessionId));
 
     vi.useFakeTimers();
     vi.setSystemTime((before?.lastSeenAt ?? 0) + 30_000);
-    await t.mutation(api.chat.touchSession, { sessionId, currentPath: "/" });
+    await t.mutation(api.chat.touchSession, { guestToken: sessionIdGuestToken, sessionId, currentPath: "/" });
     const same = await t.run((ctx) => ctx.db.get(sessionId));
     expect(same?.lastSeenAt).toBe((before?.lastSeenAt ?? 0) + 30_000);
     expect(same?.adminSearchText).toBe(before?.adminSearchText);
     // No messages yet, so the inbox sorts this chat by when the guest was last seen.
     expect(same?.adminSortAt).toBe(same?.lastSeenAt);
 
-    await t.mutation(api.chat.touchSession, { sessionId, currentPath: "/villas/pool-villa", propertySlug: "pool-villa" });
+    await t.mutation(api.chat.touchSession, { guestToken: sessionIdGuestToken, sessionId, currentPath: "/villas/pool-villa", propertySlug: "pool-villa" });
     const moved = await t.run((ctx) => ctx.db.get(sessionId));
     expect(moved).toMatchObject({ propertyId, propertySlug: "pool-villa", currentPath: "/villas/pool-villa" });
     expect(moved?.adminSearchText).toContain("pool-villa");

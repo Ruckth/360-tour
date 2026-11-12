@@ -1,12 +1,10 @@
+import { createGuestToken, hashGuestToken, requireGuestToken } from './lib/guestToken';
+import { requireServerSecret } from './lib/serverSecret';
 import { cleanCapture, marketingCaptureValidator } from './lib/marketingAttribution';
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
-import {
-	DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
-	isReusableChatMessageCount
-} from './lib/chatReuse';
 import {
 	buildAdminChatMetadataPatch,
 	buildAdminSearchText,
@@ -87,7 +85,9 @@ export const createSession = mutation({
 
 		const marketingCapture = cleanCapture(args.marketing);
 		const now = Date.now();
-		return await ctx.db.insert('chatSessions', {
+		const guestToken = createGuestToken();
+		const sessionId = await ctx.db.insert('chatSessions', {
+			guestTokenHash: await hashGuestToken(guestToken),
 			...(marketingCapture ? { marketingCapture } : {}),
 			propertyId,
 			propertySlug: args.propertySlug,
@@ -120,12 +120,14 @@ export const createSession = mutation({
 			}),
 			createdAt: now
 		});
+		return { sessionId, guestToken };
 	}
 });
 
 export const touchSession = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
+		guestToken: v.optional(v.string()),
 		propertySlug: v.optional(v.string()),
 		currentPath: v.optional(v.string()),
 		referrer: v.optional(v.string()),
@@ -138,8 +140,7 @@ export const touchSession = mutation({
 		isOpen: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
+		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 
 		// Runs every 30s per open chat, so only fields that changed are written and the villa
 		// lookup happens only when the page's villa changes. lastSeenAt is always written: it is
@@ -202,56 +203,10 @@ export const touchSession = mutation({
 	}
 });
 
-export const getReusableSession = query({
-	args: {
-		visitorId: v.string(),
-		messageLimit: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		const visitorId = args.visitorId.trim();
-		const messageLimit = Math.max(
-			0,
-			Math.floor(args.messageLimit ?? DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT)
-		);
-		if (!visitorId || messageLimit <= 0) return null;
-
-		const sessions = await ctx.db
-			.query('chatSessions')
-			.withIndex('by_visitor', (q) => q.eq('visitorId', visitorId))
-			.order('desc')
-			.take(25);
-
-		for (const session of sessions) {
-			if (session.channel !== 'web') continue;
-			if (
-				session.lastClosedAt &&
-				(!session.lastOpenedAt || session.lastClosedAt >= session.lastOpenedAt)
-			) {
-				continue;
-			}
-
-			const legacyMessageCount = session.messages?.length ?? 0;
-			if (!isReusableChatMessageCount(legacyMessageCount, messageLimit)) continue;
-
-			const messages = await ctx.db
-				.query('chatMessages')
-				.withIndex('by_session', (q) => q.eq('sessionId', session._id))
-				.take(messageLimit - legacyMessageCount);
-
-			if (isReusableChatMessageCount(legacyMessageCount + messages.length, messageLimit)) {
-				return publicSession(session);
-			}
-		}
-
-		return null;
-	}
-});
-
 export const closeSession = mutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
+		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 
 		const now = Date.now();
 		await ctx.db.patch(args.sessionId, {
@@ -262,10 +217,9 @@ export const closeSession = mutation({
 });
 
 export const createBrowserHandoff = mutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
+		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 
 		const now = Date.now();
 		const token = createBrowserHandoffToken();
@@ -295,22 +249,25 @@ export const claimBrowserHandoff = mutation({
 		}
 
 		const session = await ctx.db.get(handoff.sessionId);
-		if (!session) return null;
+		if (!session || session.channel !== 'web') return null;
 
+		const guestToken = createGuestToken();
 		const now = Date.now();
 		await ctx.db.patch(handoff._id, { claimedAt: now });
 		await ctx.db.patch(handoff.sessionId, {
+			guestTokenHash: await hashGuestToken(guestToken),
 			lastSeenAt: now,
 			lastOpenedAt: now
 		});
 
-		return handoff.sessionId;
+		return { sessionId: handoff.sessionId, guestToken };
 	}
 });
 
 export const identifyVisitor = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
+		guestToken: v.optional(v.string()),
 		name: v.optional(v.string()),
 		email: v.optional(v.string()),
 		phone: v.optional(v.string()),
@@ -325,10 +282,7 @@ export const identifyVisitor = mutation({
 		contactHandle: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
-		// Messaging contact details come from the channel itself, never from the browser.
-		if (session.channel !== 'web') throw new Error('Only web chat visitors can be identified here');
+		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 
 		const name = args.name?.trim() || undefined;
 		const phone = args.phone?.trim() || undefined;
@@ -365,6 +319,7 @@ export const identifyVisitor = mutation({
 export const acceptGuestMessage = internalMutation({
 	args: {
 		sessionId: v.id('chatSessions'),
+		guestToken: v.optional(v.string()),
 		content: v.string(),
 		/** Release 3a: the guest's tab and consent as of this message; `{}` clears it. Web chat only. */
 		marketing: v.optional(marketingCaptureValidator)
@@ -372,6 +327,7 @@ export const acceptGuestMessage = internalMutation({
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		if (args.guestToken !== undefined) await requireGuestToken(session, args.guestToken);
 		if (!['web', 'line', 'facebook', 'whatsapp', 'instagram'].includes(session.channel)) throw new Error('Unsupported chat channel');
 		if (args.content.length > 2000) throw new Error('Message is too long');
 		await consumeChatAdmission(ctx, args.sessionId);
@@ -439,10 +395,9 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 
 /** Public view of a chat session: no admin-only or visitor-contact fields. */
 export const getSession = query({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) return null;
+		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		return publicSession(session);
 	}
 });
@@ -452,11 +407,11 @@ export const getSessionInternal = internalQuery({
 	handler: async (ctx, args) => await ctx.db.get(args.sessionId)
 });
 
-/** Webhooks check this before any automatic reply: staff took over the chat. */
+/** Guest view of whether staff took over this chat. */
 export const isAiPaused = query({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
+		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		return Boolean(session?.aiPaused);
 	}
 });
@@ -464,9 +419,11 @@ export const isAiPaused = query({
 export const getMessages = query({
 	args: {
 		sessionId: v.id('chatSessions'),
+		guestToken: v.optional(v.string()),
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
+		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		const recent = await ctx.db
 			.query('chatMessages')
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
@@ -489,5 +446,14 @@ export const getRecentMessages = internalQuery({
 			.take(args.limit);
 
 		return recent.reverse();
+	}
+});
+
+/** Temporary server bridge until channel ingress moves into Convex in Phase 2. */
+export const isAiPausedForServer = query({
+	args: { sessionId: v.id('chatSessions'), serverSecret: v.string() },
+	handler: async (ctx, args) => {
+		await requireServerSecret(args.serverSecret);
+		return Boolean((await ctx.db.get(args.sessionId))?.aiPaused);
 	}
 });

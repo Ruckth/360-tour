@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
+import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -47,7 +48,7 @@ async function createWebSession(
   args: { propertyId?: string; propertySlug?: string } = {},
 ) {
   return await t.run(async (ctx) => {
-    return await ctx.db.insert("chatSessions", {
+    return await ctx.db.insert("chatSessions", { guestTokenHash: fixtureGuestTokenHash,
       propertyId: args.propertyId as never,
       propertySlug: args.propertySlug,
       channel: "web",
@@ -116,37 +117,6 @@ async function seedHistoricalAnswer(
 }
 
 describe("legacy saved-answer readers are retired", () => {
-  it("resolveExact never answers from historical approved rows", async () => {
-    const t = convexTest(schema, modules);
-    const propertyId = await createProperty(t, "pool-villa");
-    await seedHistoricalAnswer(t, {
-      title: "Pool villa smoking policy",
-      answer: "At Pool Villa, smoking is only allowed beside the garden gate.",
-      question: "Can I smoke on the balcony?",
-      propertyId,
-      propertySlug: "pool-villa",
-    });
-    await seedHistoricalAnswer(t, {
-      title: "Global smoking policy",
-      answer: "Smoking is allowed only in the designated outdoor area.",
-      question: "Can I smoke on the balcony?",
-    });
-    const propertySession = await createWebSession(t, { propertyId, propertySlug: "pool-villa" });
-    const globalSession = await createWebSession(t);
-
-    expect(
-      await t.query(api.chatKnowledge.resolveExact, {
-        sessionId: propertySession,
-        messageText: " CAN I smoke on the balcony?! ",
-      }),
-    ).toBeNull();
-    expect(
-      await t.query(api.chatKnowledge.resolveExact, {
-        sessionId: globalSession,
-        messageText: "can i smoke on the balcony",
-      }),
-    ).toBeNull();
-  });
 
   it("getApprovedContext returns no approved prose for the concierge prompt", async () => {
     const t = convexTest(schema, modules);
@@ -160,19 +130,6 @@ describe("legacy saved-answer readers are retired", () => {
     expect(context).toEqual([]);
   });
 
-  it("ignores draft and archived historical rows too", async () => {
-    const t = convexTest(schema, modules);
-    await seedHistoricalAnswer(t, {
-      title: "Archived pets policy",
-      answer: "Pets are approved in this archived answer.",
-      question: "Can I bring my dog?",
-      status: "archived",
-    });
-    const sessionId = await createWebSession(t);
-    expect(
-      await t.query(api.chatKnowledge.resolveExact, { sessionId, messageText: "Can I bring my dog?" }),
-    ).toBeNull();
-  });
 });
 
 describe("legacy saved-answer writers refuse", () => {
@@ -214,7 +171,7 @@ describe("legacy saved-answer writers refuse", () => {
         propertyId,
       });
       const sessionId = await createWebSession(t);
-      const unknownQuestionId = await t.mutation(api.chatKnowledge.recordUnknownQuestion, {
+      const unknownQuestionId = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, {
         sessionId,
         userQuestion: "May I bring my dog?",
       });
@@ -345,7 +302,7 @@ describe("unknown-question loop is preserved", () => {
         ),
       );
 
-      const result = await t.action(api.chatAi.respond, {
+      const result = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken,
         sessionId,
         userMessage: "Can I bring two cats?",
       });
@@ -374,7 +331,7 @@ describe("unknown-question loop is preserved", () => {
       const t = convexTest(schema, modules);
       const admin = adminTest(t);
       const sessionId = await createWebSession(t);
-      await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Can I bring my dog?" });
+      await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Can I bring my dog?" });
 
       const normalized = "can i bring my dog";
       const ignored = await admin.mutation(api.chatKnowledge.adminIgnoreUnknownGroups, { normalizedQuestions: [normalized] });
@@ -398,7 +355,7 @@ describe("unknown-question loop is preserved", () => {
       const t = convexTest(schema, modules);
       const admin = adminTest(t);
       const sessionId = await createWebSession(t);
-      const unknownQuestionId = await t.mutation(api.chatKnowledge.recordUnknownQuestion, {
+      const unknownQuestionId = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, {
         sessionId,
         userQuestion: "Historic resolved question?",
       });
@@ -437,7 +394,7 @@ describe("reality guardrail stays ahead of any historical answer", () => {
       });
       const sessionId = await createWebSession(t);
 
-      const result = await t.action(api.chatAi.respond, {
+      const result = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken,
         sessionId,
         userMessage: "Is Auralis Cove a real luxury villa resort?",
       });

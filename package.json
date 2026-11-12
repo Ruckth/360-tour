@@ -38,7 +38,8 @@
     "ui-loop:audit": "node scripts/ui-loop/audit.ts",
     "ui-loop:report": "node scripts/ui-loop/report.ts",
     "ui-loop:anchors": "node scripts/ui-loop/anchors.ts",
-    "ui-loop:annotate": "node scripts/ui-loop/annotate.ts"
+    "ui-loop:annotate": "node scripts/ui-loop/annotate.ts",
+    "arch:score": "node scripts/arch-scorecard.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

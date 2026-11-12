@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
+import { fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
@@ -16,17 +17,17 @@ const modules = import.meta.glob("./**/*.ts");
 describe("chat browser handoffs", () => {
   it("creates and claims a handoff once", async () => {
     const t = convexTest(schema, modules);
-    const sessionId = await t.mutation(api.chat.createSession, {
+    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, {
       channel: "web",
       visitorId: "visitor-handoff",
     });
 
-    const token = await t.mutation(api.chat.createBrowserHandoff, { sessionId });
+    const token = await t.mutation(api.chat.createBrowserHandoff, { guestToken: sessionIdGuestToken, sessionId });
 
     expect(token).toMatch(/^[a-f0-9]{48}$/);
     await expect(
       t.mutation(api.chat.claimBrowserHandoff, { token }),
-    ).resolves.toBe(sessionId);
+    ).resolves.toMatchObject({ sessionId });
     await expect(
       t.mutation(api.chat.claimBrowserHandoff, { token }),
     ).resolves.toBeNull();
@@ -36,7 +37,7 @@ describe("chat browser handoffs", () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
     const sessionId = await t.run(async (ctx) => {
-      const session = await ctx.db.insert("chatSessions", {
+      const session = await ctx.db.insert("chatSessions", { guestTokenHash: fixtureGuestTokenHash,
         channel: "web",
         visitorId: "visitor-expired",
         createdAt: now,

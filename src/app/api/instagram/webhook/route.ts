@@ -281,7 +281,7 @@ async function handleInstagramEvent({
     }
 
     // Staff took over this chat: the guest message is recorded, no automatic reply.
-    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+    if (await client.query(api.chat.isAiPausedForServer, { sessionId: claimed.sessionId, serverSecret: process.env.CONVEX_SERVER_SECRET ?? "" } as never)) {
       await client.mutation(api.instagram.markEventIgnored, {
         eventId: claimed.eventId,
         reason: "AI paused: staff is replying",
@@ -301,7 +301,7 @@ async function handleInstagramEvent({
       turnId: turnMetrics.turnId,
     }));
 
-    if (await client.query(api.chat.isAiPaused, { sessionId: claimed.sessionId } as never)) {
+    if (await client.query(api.chat.isAiPausedForServer, { sessionId: claimed.sessionId, serverSecret: process.env.CONVEX_SERVER_SECRET ?? "" } as never)) {
       await client.mutation(api.instagram.markEventIgnored, {
         eventId: claimed.eventId,
         reason: "AI paused: staff is replying",

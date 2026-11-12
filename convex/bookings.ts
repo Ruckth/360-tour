@@ -1,3 +1,4 @@
+import { requireServerSecret } from './lib/serverSecret';
 import { activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity, type ChatCouponSnapshot } from './lib/chatCoupon';
 import { normalizeCouponCode } from './lib/offers';
 import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from './lib/marketingAttribution';
@@ -389,8 +390,9 @@ async function loadChatSession(ctx: QueryCtx | MutationCtx, sessionId: Id<'chatS
 
 /** Whether the next message in this chat should be routed to the AI booking flow. */
 export const isChatBookingFlowActive = query({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('chatSessions'), serverSecret: v.string() },
 	handler: async (ctx, args) => {
+		await requireServerSecret(args.serverSecret);
 		const session = await ctx.db.get(args.sessionId);
 		return Boolean(session?.bookingFlowAt && Date.now() - session.bookingFlowAt < (await getEffectiveSettings(ctx)).bookingRules.chatQuoteValidityMinutes * 60_000);
 	}

@@ -310,8 +310,8 @@ describe("businessFacts.adminResolveUnknownGroups", () => {
     const { t, admin } = setup();
     const sessionA = await session(t);
     const sessionB = await session(t);
-    const newId = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId: sessionA, userQuestion: "Check-in time?" });
-    const ignoredId = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId: sessionB, userQuestion: "Check-in time?" });
+    const newId = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId: sessionA, userQuestion: "Check-in time?" });
+    const ignoredId = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId: sessionB, userQuestion: "Check-in time?" });
     await t.run((ctx) => ctx.db.patch(ignoredId, { status: "ignored", ignoredAt: Date.now(), updatedAt: Date.now() }));
     const normalized = (await t.run((ctx) => ctx.db.get(newId)))!.normalizedQuestion;
 

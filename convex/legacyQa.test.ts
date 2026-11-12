@@ -17,7 +17,7 @@ it("never revives saved answers via matching, restoration, authoring, seeding or
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });
-  const sessionId = await t.mutation(api.chat.createSession, {
+  const { sessionId } = await t.mutation(api.chat.createSession, {
     channel: "web",
   });
   const { answerId, questionId, curatedId, unknownId } = await t.run(
@@ -70,26 +70,8 @@ it("never revives saved answers via matching, restoration, authoring, seeding or
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   expect(
-    await t.query(api.chatKnowledge.resolveExact, {
-      sessionId,
-      messageText: "Breakfast?",
-    }),
-  ).toBeNull();
-  expect(
     await t.query(internal.chatKnowledge.getApprovedContext, { sessionId }),
   ).toEqual([]);
-  expect(
-    await t.query(api.chatSuggestions.resolveCuratedExact, {
-      sessionId,
-      messageText: "Breakfast?",
-    }),
-  ).toBeNull();
-  expect(
-    await t.action(api.chatSuggestions.resolveCuratedSemantic, {
-      sessionId,
-      messageText: "Breakfast?",
-    }),
-  ).toBeNull();
   await expect(
     admin.mutation(api.chatKnowledge.adminCreateAnswer, {
       title: "No",

@@ -1,3 +1,4 @@
+import { getStoredGuestToken, storeGuestToken } from "@/components/chat/session/message-cache";
 import { useCallback, useMemo } from "react";
 import { createCouponRefusalReporter } from "@/lib/booking/coupon-refusals";
 import type { CouponRefusalSurface } from "convex/lib/marketingReport";
@@ -98,12 +99,6 @@ export type ChatSuggestionRef =
       source: "curated";
       suggestionId: string;
     };
-
-export type ReusableChatSession = {
-  _id: string;
-  visitorId?: string;
-  createdAt: number;
-};
 
 export async function listLiveProperties(client: ConvexReactClient) {
   return (await withConvexTimeout(
@@ -237,20 +232,12 @@ export async function createChatSession(
     marketing?: MarketingCapture;
   },
 ) {
-  return (await withConvexTimeout(
+  const result = await withConvexTimeout(
     client.mutation(api.chat.createSession, args as never),
     "Creating chat session",
-  )) as string;
-}
-
-export async function getReusableChatSession(
-  client: ConvexReactClient,
-  args: { visitorId: string; messageLimit?: number },
-) {
-  return (await withConvexTimeout(
-    client.query(api.chat.getReusableSession, args as never),
-    "Loading previous chat session",
-  )) as ReusableChatSession | null;
+  );
+  storeGuestToken(result.sessionId, result.guestToken);
+  return result.sessionId;
 }
 
 export async function touchChatSession(
@@ -270,7 +257,7 @@ export async function touchChatSession(
   },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chat.touchSession, args as never),
+    client.mutation(api.chat.touchSession, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Updating chat session",
   );
 }
@@ -280,7 +267,7 @@ export async function closeChatSession(
   args: { sessionId: string },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chat.closeSession, args as never),
+    client.mutation(api.chat.closeSession, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Closing chat session",
   );
 }
@@ -290,7 +277,7 @@ export async function createChatBrowserHandoff(
   args: { sessionId: string },
 ) {
   return (await withConvexTimeout(
-    client.mutation(api.chat.createBrowserHandoff, args as never),
+    client.mutation(api.chat.createBrowserHandoff, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Preparing browser handoff",
   )) as string;
 }
@@ -299,10 +286,13 @@ export async function claimChatBrowserHandoff(
   client: ConvexReactClient,
   args: { token: string },
 ) {
-  return (await withConvexTimeout(
+  const result = await withConvexTimeout(
     client.mutation(api.chat.claimBrowserHandoff, args as never),
     "Restoring browser handoff",
-  )) as string | null;
+  );
+  if (!result) return null;
+  storeGuestToken(result.sessionId, result.guestToken);
+  return result.sessionId;
 }
 
 export async function getChatMessages(
@@ -310,7 +300,7 @@ export async function getChatMessages(
   args: { sessionId: string; limit?: number },
 ) {
   return (await withConvexTimeout(
-    client.query(api.chat.getMessages, args as never),
+    client.query(api.chat.getMessages, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Loading chat messages",
   )) as ChatTranscriptMessage[];
 }
@@ -327,7 +317,7 @@ export async function identifyChatVisitor(
   },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chat.identifyVisitor, args as never),
+    client.mutation(api.chat.identifyVisitor, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Saving chat contact",
   );
 }
@@ -345,7 +335,7 @@ export async function askConcierge(
   },
 ) {
   return (await withConvexTimeout(
-    client.action(api.chatAi.respond, args as never),
+    client.action(api.chatAi.respond, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Asking concierge",
     AI_CONVEX_TIMEOUT_MS,
   )) as { response?: string; aiPaused?: boolean };
@@ -355,10 +345,23 @@ export async function getNextChatSuggestions(
   client: ConvexReactClient,
   args: { sessionId: string; candidateSuggestionIds: string[]; limit?: number },
 ) {
-  return (await withConvexTimeout(
-    client.query(api.chatSuggestions.nextForSession, args as never),
-    "Loading suggested questions",
-  )) as StaticChatSuggestionRef[];
+  const selected: StaticChatSuggestionRef[] = [];
+  const limit = Math.min(Math.max(args.limit ?? 2, 1), 5);
+  const candidateIds = [...new Set(args.candidateSuggestionIds)];
+  // Keep ranking across the full chip list while bounding each public query to five keys.
+  for (let offset = 0; offset < candidateIds.length && selected.length < limit; offset += 5) {
+    const next = await withConvexTimeout(
+      client.query(api.chatSuggestions.nextForSession, {
+        sessionId: args.sessionId,
+        guestToken: getStoredGuestToken(args.sessionId),
+        candidateSuggestionIds: candidateIds.slice(offset, offset + 5),
+        limit: limit - selected.length,
+      } as never),
+      "Loading suggested questions",
+    );
+    selected.push(...next);
+  }
+  return selected;
 }
 
 export async function markChatSuggestionsShown(
@@ -366,7 +369,7 @@ export async function markChatSuggestionsShown(
   args: { sessionId: string; suggestions: ChatSuggestionRef[] },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chatSuggestions.markShown, args as never),
+    client.mutation(api.chatSuggestions.markShown, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Marking suggested questions shown",
   );
 }
@@ -376,7 +379,7 @@ export async function markChatSuggestionClicked(
   args: { sessionId: string; suggestion: ChatSuggestionRef },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chatSuggestions.markClicked, args as never),
+    client.mutation(api.chatSuggestions.markClicked, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Marking suggested question clicked",
   );
 }
