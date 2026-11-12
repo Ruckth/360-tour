@@ -1,3 +1,4 @@
+// HTML emails use Resend's fetch API and can run in the default Convex runtime.
 import { v } from 'convex/values';
 import { Resend } from 'resend';
 import { internal } from './_generated/api';

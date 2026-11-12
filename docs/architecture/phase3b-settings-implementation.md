@@ -155,3 +155,7 @@ Repository `vercel.json` and `pnpm vercel-build` configuration are unchanged. No
 5. Root verifies frontend/profile/setup/history/cashier/checkout behavior, restores traffic and producers and records exact live actions. Coordinate frontend/backend rollback and queued-job/external RPC disposition under the same gate. This settings move needs no schema/data reset.
 
 No shared/prod backend acceptance, cutover, real send, review approval or merge is claimed here.
+
+## Parent review
+
+Standards, spec and independent audits found no new correctness issues at `f70d554`. The parent made the two suggested type-only imports explicit, sourcing `ActionCtx` from the generated server types, and restored the sender/environment and default-runtime comments. This changes no handler, permission, email behavior or schema. Fixed-base comparison and Convex typechecking pass; live settings acceptance remains pending.

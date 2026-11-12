@@ -1,3 +1,4 @@
+// HTML emails use Resend's fetch API and can run in the default Convex runtime.
 import { Resend } from 'resend';
 import { adminAction } from '../auth/model';
 import { footerHtml, fromHeader, loadSettings, ownerNotificationEmail } from './emailTransport';

@@ -1,5 +1,6 @@
 import type { QueryCtx } from '../_generated/server';
-import { EffectiveSettings, mergeSiteSettings } from '../lib/siteSettings';
+import type { EffectiveSettings } from '../lib/siteSettings';
+import { mergeSiteSettings } from '../lib/siteSettings';
 
 export async function getSiteSettingsRow(ctx: QueryCtx) {
 	return await ctx.db

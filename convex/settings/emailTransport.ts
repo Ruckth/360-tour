@@ -1,5 +1,5 @@
 import { internal } from '../_generated/api';
-import { type ActionCtx } from '../auth/model';
+import type { ActionCtx } from '../_generated/server';
 import type { EffectiveSettings } from '../lib/siteSettings';
 
 export function escapeHtml(value: string) {
@@ -10,6 +10,7 @@ export async function loadSettings(ctx: ActionCtx): Promise<EffectiveSettings> {
 	return await ctx.runQuery(internal.settings.settings.effective, {});
 }
 
+/** Display name from Settings; the address itself always comes from the EMAIL_FROM env var. */
 export function fromHeader(emailFrom: string, settings: EffectiveSettings) {
 	const address = emailFrom.match(/<([^>]+)>/)?.[1]?.trim() ?? emailFrom.trim();
 	const name = (settings.email.fromName || settings.businessName).replace(/[<>"\r\n]/g, '').trim();
