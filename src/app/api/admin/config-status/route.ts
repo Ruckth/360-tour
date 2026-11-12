@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   const client = new ConvexHttpClient(convexUrl);
   client.setAuth(token);
   try {
-    const facts = await client.query(api.settings.setupChecklist, {});
+    const facts = await client.query(api.settings.settings.setupChecklist, {});
     return Response.json({ channels: facts.channelConfig }, { headers: { "cache-control": "no-store" } });
   } catch {
     return Response.json({ error: "Not authorized" }, { status: 403 });

@@ -3,7 +3,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminMutation, adminQuery, internalMutation } from '../auth/model';
-import { appendRecordHistory } from '../lib/recordHistory';
+import { appendRecordHistory } from '../settings/model';
 import { patternForDate, patternsForRange, rosterDate, writeWeeklyPattern } from '../lib/rosterHistory';
 import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, addDays, assertValidTime, blocksTime, effectivePlan, localDayRange, patternDay, planUncovers, resortLocalParts, weekdayOf, type DayPlan, type RosterBreak } from '../lib/serviceSlots';
 import { assertValidIsoDate } from '../lib/validation';

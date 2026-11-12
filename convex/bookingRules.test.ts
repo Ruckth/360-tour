@@ -53,7 +53,7 @@ async function setup(rules?: Partial<BookingRules>) {
 		}),
 		sessionId: await ctx.db.insert('conversations', { channel: 'web', visitorId: 'guest', createdAt: now })
 	}));
-	if (rules) await admin.mutation(api.settings.update, { bookingRules: rules });
+	if (rules) await admin.mutation(api.settings.settings.update, { bookingRules: rules });
 	const prepare = () => t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay });
 	return { t, admin, propertyId, sessionId, prepare };
 }
@@ -92,9 +92,9 @@ const complete = (t: ReturnType<typeof convexTest>, bookingId: import('./_genera
 describe('booking rule settings', () => {
 	it('resolves defaults for missing settings and partially saved rules', async () => {
 		const { t, admin } = await setup();
-		expect((await admin.query(api.settings.get, {})).bookingRules).toEqual(BOOKING_RULE_DEFAULTS);
-		await admin.mutation(api.settings.update, { bookingRules: { minNights: 2 } });
-		expect((await t.query(api.settings.publicProfile, {})).bookingRules).toEqual({
+		expect((await admin.query(api.settings.settings.get, {})).bookingRules).toEqual(BOOKING_RULE_DEFAULTS);
+		await admin.mutation(api.settings.settings.update, { bookingRules: { minNights: 2 } });
+		expect((await t.query(api.settings.settings.publicProfile, {})).bookingRules).toEqual({
 			...BOOKING_RULE_DEFAULTS,
 			minNights: 2
 		});
@@ -120,7 +120,7 @@ describe('booking rule settings', () => {
 		{ unpaidHoldMinutes: Infinity }
 	])('rejects invalid values %j on the server without writing settings', async (bookingRules) => {
 		const { t, admin } = await setup();
-		await expect(admin.mutation(api.settings.update, { bookingRules })).rejects.toThrow();
+		await expect(admin.mutation(api.settings.settings.update, { bookingRules })).rejects.toThrow();
 		expect(await t.run((ctx) => ctx.db.query('siteSettings').first())).toBeNull();
 	});
 	it('revisions and restores booking rules through configuration history', async () => {
@@ -133,14 +133,14 @@ describe('booking rule settings', () => {
 				)
 				.first()
 		))!;
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			bookingRules: { minNights: 4, sameDayCutoff: '' },
 			expectedRevision: 1
 		});
 		await expect(
-			admin.mutation(api.settings.update, { bookingRules: { minNights: 5 }, expectedRevision: 1 })
+			admin.mutation(api.settings.settings.update, { bookingRules: { minNights: 5 }, expectedRevision: 1 })
 		).rejects.toThrow('Settings changed');
-		const restored = await admin.mutation(api.settings.restore, {
+		const restored = await admin.mutation(api.settings.settings.restore, {
 			historyId: entry._id,
 			side: 'after',
 			expectedRevision: 2
@@ -166,7 +166,7 @@ for (const path of ['web', 'chatPrepare', 'chatConfirm', 'link'] as const) {
 			let token = '';
 			if (path === 'chatConfirm' || path === 'link')
 				token = (await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...input })).confirmToken;
-			await admin.mutation(api.settings.update, { bookingRules: rule });
+			await admin.mutation(api.settings.settings.update, { bookingRules: rule });
 			const attempt =
 				path === 'web'
 					? t.mutation(api.bookings.bookings.create, { ...input, guestEmail: 'guest@example.com' })
@@ -306,7 +306,7 @@ describe('hold rollout and staff edits', () => {
 	])('preserves the promised $initial minute hold after changing settings to $updated', async ({ initial, updated }) => {
 		const { t, admin } = await setup({ unpaidHoldMinutes: initial });
 		const { bookingId } = await t.mutation(api.bookings.bookings.create, webStay);
-		await admin.mutation(api.settings.update, { bookingRules: { unpaidHoldMinutes: updated } });
+		await admin.mutation(api.settings.settings.update, { bookingRules: { unpaidHoldMinutes: updated } });
 		vi.setSystemTime(now + initial * minute - 1);
 		await t.mutation(internal.crons.expireBookingHold, { bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(bookingId)))?.status).toBe('pending');
@@ -345,7 +345,7 @@ describe('hold rollout and staff edits', () => {
 		const { t, admin } = await setup({ unpaidHoldMinutes: 10 });
 		const booking = await t.mutation(api.bookings.bookings.create, webStay);
 		const request = await startCheckout(t, booking);
-		await admin.mutation(api.settings.update, { bookingRules: { unpaidHoldMinutes: 120 } });
+		await admin.mutation(api.settings.settings.update, { bookingRules: { unpaidHoldMinutes: 120 } });
 		vi.setSystemTime(request.expiresAt - 1);
 		await t.mutation(internal.crons.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(booking.bookingId)))?.status).toBe('pending');

@@ -59,7 +59,7 @@ export function BookingDatePicker({
   useEffect(() => {
     let active = true;
     if (convex) {
-      void convex.query(api.settings.publicProfile, {}).then(profile => {
+      void convex.query(api.settings.settings.publicProfile, {}).then(profile => {
         if (active) setRules(profile.bookingRules);
       }).catch(() => { /* Calendar hints use defaults; the server always enforces current rules. */ });
     }

@@ -12,7 +12,7 @@ import { refundMethod } from '../lib/financeValidators';
 import { deletePlaceholderOrders, orderDeleteBlocker } from '../lib/orderLinks';
 import { roundMoney } from '../lib/orderMath';
 import { calculateDirectQuote } from '../lib/pricing';
-import { appendRecordHistory } from '../lib/recordHistory';
+import { appendRecordHistory } from '../settings/model';
 import { assertNoBookingOverlap } from '../lib/stayOverlap';
 import { satangToBaht } from '../shared/money';
 

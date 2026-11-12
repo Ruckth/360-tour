@@ -3,7 +3,7 @@ import type { QueryCtx } from '../_generated/server';
 import { orderTotals, lineCouponDiscount, lineDiscount, lineNet, linePrice } from './orderMath';
 import { isOpenOrder } from './orderLinks';
 import { orderLines } from './orderLines';
-import { getEffectiveSettings } from './siteSettings';
+import { getEffectiveSettings } from '../settings/model';
 
 /**
  * What the guest-facing customer display may show of an order. Everything is whitelisted here:

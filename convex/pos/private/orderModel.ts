@@ -11,7 +11,7 @@ import { MAX_LINES, orderLines } from '../../lib/orderLines';
 import { insertOrder, isOpenOrder, linkedOpenOrder, openOrderCharging, ordersForSource, type OrderSource } from '../../lib/orderLinks';
 import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../lib/orderMath';
 import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../lib/posCoupons';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../lib/serviceSlots';
 import { assertCashierDiscount, type StaffActor } from '../../lib/staffAccess';
 import { lineDiscountValidator } from '../../lib/staffTypes';

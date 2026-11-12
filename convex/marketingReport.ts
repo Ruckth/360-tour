@@ -5,7 +5,7 @@ import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBas
 import { requireStaff } from './lib/staffAccess';
 import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 import { readMarketingReport, reportSpend } from './lib/marketingReportRead';
-import { appendRecordHistory } from './lib/recordHistory';
+import { appendRecordHistory } from './settings/model';
 import { normalizeCouponCode } from './lib/offers';
 import { enforceRateLimit } from './lib/rateLimit';
 import { resortLocalParts } from './lib/serviceSlots';

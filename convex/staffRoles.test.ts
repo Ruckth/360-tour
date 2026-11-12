@@ -45,9 +45,9 @@ async function setup() {
     });
   };
   const rules = async (patch: Partial<Omit<CashierRules, 'revision'>>) => {
-    const current = await owner.query(api.staffAccess.getCashierRules, {});
+    const current = await owner.query(api.settings.cashierRules.getCashierRules, {});
     const { revision, ...fields } = current;
-    return await owner.mutation(api.staffAccess.updateCashierRules, { expectedRevision: revision, ...fields, ...patch });
+    return await owner.mutation(api.settings.cashierRules.updateCashierRules, { expectedRevision: revision, ...fields, ...patch });
   };
   const request = (orderId: Id<'orders'>, payload: ApprovalPayload) => cashier.mutation(api.pos.staffApprovals.create, { orderId, payload, reason: 'Guest recovery' });
   const discountRequest = (orderId: Id<'orders'>, lineId: Id<'orderLines'>) => request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 10001 } });
@@ -78,7 +78,7 @@ describe('staff permissions and invitations', () => {
     const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' });
     expect(await owner.query(api.staffAccess.myAccess, {})).toMatchObject({ role: 'owner', cashierRules: DEFAULT_CASHIER_RULES,
       capabilities: { checkout: true, approve: true, settings: true, manageTeam: true, bookings: true, marketing: true } });
-    await owner.mutation(api.settings.update, { business: { businessName: 'Still owner' } });
+    await owner.mutation(api.settings.settings.update, { business: { businessName: 'Still owner' } });
     await t.run(ctx => ctx.db.insert('staffGrants', { email: 'owner@example.com', tokenIdentifier: 'owner', role: 'cashier', createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' }));
     expect((await owner.query(api.staffAccess.myAccess, {})).role).toBe('owner');
     await expect(owner.mutation(api.staffAccess.setGrant, { email: 'OWNER@example.com', role: 'cashier' })).rejects.toThrow('cannot be downgraded');
@@ -88,14 +88,14 @@ describe('staff permissions and invitations', () => {
   it('gives managers operations, but no settings writes, Team or implicit marketing access', async () => {
     const s = await setup();
     expect(await s.manager.query(api.staffAccess.myAccess, {})).toMatchObject({ role: 'manager', capabilities: { checkout: true, approve: true, manageTeam: false, settings: false, bookings: true, marketing: false } });
-    await expect(s.manager.query(api.settings.get, {})).resolves.toBeTruthy();
+    await expect(s.manager.query(api.settings.settings.get, {})).resolves.toBeTruthy();
     await expect(s.manager.query(api.services.admin.listServices, {})).resolves.toHaveLength(1);
-    await expect(s.manager.mutation(api.settings.update, { business: { businessName: 'Denied' } })).rejects.toThrow('Not authorized');
-    await expect(s.manager.mutation(api.settings.restore, { expectedRevision: 0, side: 'after', historyId: await s.t.run(ctx => ctx.db.insert('recordChanges', { entityType: 'settings', entityId: 'default', actor: 'owner@example.com', kind: 'updated', recordedAt: now, effectiveAt: now })) })).rejects.toThrow('Not authorized');
+    await expect(s.manager.mutation(api.settings.settings.update, { business: { businessName: 'Denied' } })).rejects.toThrow('Not authorized');
+    await expect(s.manager.mutation(api.settings.settings.restore, { expectedRevision: 0, side: 'after', historyId: await s.t.run(ctx => ctx.db.insert('recordChanges', { entityType: 'settings', entityId: 'default', actor: 'owner@example.com', kind: 'updated', recordedAt: now, effectiveAt: now })) })).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
     await expect(s.manager.mutation(api.staffAccess.setGrant, { email: 'next@example.com', role: 'manager' })).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.marketingAccess.listGrants, {})).rejects.toThrow('Not authorized');
-    await expect(s.manager.query(api.recordHistory.list, { entityType: 'marketingGrant', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
+    await expect(s.manager.query(api.settings.recordHistory.list, { entityType: 'marketingGrant', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     expect(await s.manager.action(ctx => requireAdmin(ctx))).toEqual({ email: 'manager@example.com' });
     await expect(s.cashier.action(ctx => requireAdmin(ctx))).rejects.toThrow('Not authorized');
   });
@@ -103,7 +103,7 @@ describe('staff permissions and invitations', () => {
   it('denies direct cashier calls outside checkout and exposes only search contact cards', async () => {
     const s = await setup();
     const customerId = await s.owner.mutation(api.pos.customers.createCustomer, { name: 'Alice', notes: 'Private guest details', email: 'alice@example.com' });
-    await expect(s.cashier.query(api.settings.get, {})).rejects.toThrow('Not authorized');
+    await expect(s.cashier.query(api.settings.settings.get, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.services.admin.listServices, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
@@ -159,8 +159,8 @@ describe('staff permissions and invitations', () => {
     for (const discountLimitPercent of [-1, 10001, 100.1]) await expect(s.rules({ discountLimitPercent })).rejects.toThrow('two decimals');
     await s.rules({ discountLimitPercent: 1234 });
     const { revision, ...defaults } = DEFAULT_CASHIER_RULES;
-    await expect(s.owner.mutation(api.staffAccess.updateCashierRules, { ...defaults, expectedRevision: revision })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'STALE_RULES' }) });
-    await expect(s.manager.mutation(api.staffAccess.updateCashierRules, { ...defaults, expectedRevision: 1 })).rejects.toThrow('Not authorized');
+    await expect(s.owner.mutation(api.settings.cashierRules.updateCashierRules, { ...defaults, expectedRevision: revision })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'STALE_RULES' }) });
+    await expect(s.manager.mutation(api.settings.cashierRules.updateCashierRules, { ...defaults, expectedRevision: 1 })).rejects.toThrow('Not authorized');
   });
 });
 
@@ -593,23 +593,23 @@ describe('staff-role audit regressions', () => {
     for (const client of [s.owner, s.manager, s.cashier]) expect((await client.query(api.staffAccess.myAccess, {})).cashierRules).toEqual(updated);
     const { revision, refund, ...rules } = updated;
     expect(refund).toBe('cashier');
-    expect((await s.owner.mutation(api.staffAccess.updateCashierRules, { ...rules, expectedRevision: revision })).refund).toBe('cashier');
+    expect((await s.owner.mutation(api.settings.cashierRules.updateCashierRules, { ...rules, expectedRevision: revision })).refund).toBe('cashier');
     await s.t.run(async ctx => {
       const row = (await ctx.db.query('cashierRules').unique())!;
       await ctx.db.patch(row._id, { refund: undefined });
     });
-    expect((await s.owner.query(api.staffAccess.getCashierRules, {})).refund).toBe('manager');
+    expect((await s.owner.query(api.settings.cashierRules.getCashierRules, {})).refund).toBe('manager');
   });
 
   it('restores manager settings reads while keeping writes and Team history owner-only', async () => {
     const s = await setup();
-    await s.owner.mutation(api.settings.update, { business: { businessName: 'Manager can read' } });
-    expect(await s.manager.query(api.settings.admins, {})).toEqual(['owner@example.com']);
-    expect(await s.manager.query(api.settings.get, {})).toHaveProperty('businessName', 'Manager can read');
-    expect((await s.manager.query(api.recordHistory.list, { entityType: 'settings', paginationOpts: { numItems: 20, cursor: null } })).page).toHaveLength(1);
-    await expect(s.cashier.query(api.settings.admins, {})).rejects.toThrow('Not authorized');
-    await expect(s.cashier.query(api.recordHistory.list, { entityType: 'settings', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
-    for (const entityType of ['staffGrant', 'cashierRules', 'marketingGrant']) await expect(s.manager.query(api.recordHistory.list, { entityType, paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
-    await expect(s.manager.query(api.staffAccess.getCashierRules, {})).rejects.toThrow('Not authorized');
+    await s.owner.mutation(api.settings.settings.update, { business: { businessName: 'Manager can read' } });
+    expect(await s.manager.query(api.settings.settings.admins, {})).toEqual(['owner@example.com']);
+    expect(await s.manager.query(api.settings.settings.get, {})).toHaveProperty('businessName', 'Manager can read');
+    expect((await s.manager.query(api.settings.recordHistory.list, { entityType: 'settings', paginationOpts: { numItems: 20, cursor: null } })).page).toHaveLength(1);
+    await expect(s.cashier.query(api.settings.settings.admins, {})).rejects.toThrow('Not authorized');
+    await expect(s.cashier.query(api.settings.recordHistory.list, { entityType: 'settings', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
+    for (const entityType of ['staffGrant', 'cashierRules', 'marketingGrant']) await expect(s.manager.query(api.settings.recordHistory.list, { entityType, paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
+    await expect(s.manager.query(api.settings.cashierRules.getCashierRules, {})).rejects.toThrow('Not authorized');
   });
 });

@@ -1,7 +1,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { assertValidIsoDate } from './validation';
-import { appendRecordHistory } from './recordHistory';
+import { appendRecordHistory } from '../settings/model';
 
 type ReadCtx = QueryCtx | MutationCtx;
 export type WeeklyPattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;

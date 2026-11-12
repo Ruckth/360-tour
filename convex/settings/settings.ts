@@ -1,23 +1,10 @@
 import { v } from 'convex/values';
-import { internalQuery, type QueryCtx, adminQuery, publicQuery, staffMutation } from './auth/model';
-import { appendRecordHistory } from './lib/recordHistory';
-import { settingsSnapshot } from './lib/configurationHistory';
-import {
-	bookingRulesValidator,
-	BOOKING_RULE_RANGES,
-	resolveBookingRules,
-	BUSINESS_FIELDS,
-	mergeSiteSettings,
-	type BookingRules,
-	type SettingsInput
-} from './lib/siteSettings';
-import { adminEmails } from './lib/adminAuth';
-import {
-	getEffectiveSettings,
-	getSiteSettingsRow,
-	validateSettingsInput,
-	type EffectiveSettings
-} from './lib/siteSettings';
+import { adminQuery, internalQuery, publicQuery, staffMutation, type QueryCtx } from '../auth/model';
+import { adminEmails } from '../lib/adminAuth';
+import { BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../lib/siteSettings';
+import { settingsSnapshot } from './configurationWriter';
+import { getEffectiveSettings, getSiteSettingsRow } from './model';
+import { appendRecordHistory } from './recordWriter';
 
 const text = v.optional(v.string());
 
@@ -195,7 +182,9 @@ export const restore = staffMutation({
 });
 
 const DAY_MS = 86_400_000;
+
 const FAILED_SCAN_LIMIT = 500;
+
 const CHANNEL_TABLES = {
 	line: 'channelEvents',
 	facebook: 'channelEvents',

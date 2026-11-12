@@ -115,7 +115,7 @@ export function AdminBookingsView() {
   const [moving, setMoving] = useState<Move | null>(null);
 
   const data = useQuery(api.bookings.admin.listForAdmin, range);
-  const profile = useQuery(api.settings.publicProfile, {});
+  const profile = useQuery(api.settings.settings.publicProfile, {});
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
   const today = todayIsoLocal();

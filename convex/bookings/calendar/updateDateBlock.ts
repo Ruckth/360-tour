@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { releaseDateBlockRows, writeDateBlockRows } from '../../lib/availabilityWrites';
 import { stayDates } from '../../lib/dates';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { assertDateBlockUnchanged, dateBlockArgs, dateBlockSnapshot, validateDateBlock } from '../model';
 
 export const updateDateBlock = adminMutation({

@@ -1,8 +1,8 @@
 import { publicQuery, adminQuery, adminMutation } from '../auth/model';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { configurationWriter } from '../lib/configurationHistory';
-import { appendRecordHistory } from '../lib/recordHistory';
+import { configurationWriter } from '../settings/model';
+import { appendRecordHistory } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
 import { toPublicProperty, type PublicProperty } from './model';
 

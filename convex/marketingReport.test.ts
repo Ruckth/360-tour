@@ -582,7 +582,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 	}
 	await s.admin.mutation(api.marketingAffiliates.saveAffiliate, { id: affiliateId, name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'new-private@example.com', notes: 'New private note' });
 	for (const entityId of [undefined, affiliateId]) {
-		const history = await reader.query(api.recordHistory.list, { entityType: 'marketingAffiliate', ...(entityId ? { entityId } : {}), paginationOpts: { numItems: 100, cursor: null } });
+		const history = await reader.query(api.settings.recordHistory.list, { entityType: 'marketingAffiliate', ...(entityId ? { entityId } : {}), paginationOpts: { numItems: 100, cursor: null } });
 		const serialized = JSON.stringify(history);
 		for (const value of ['private-partner@example.com', 'new-private@example.com', 'Private partner note', 'New private note']) {
 			if (fullDetail) expect(serialized).toContain(value);

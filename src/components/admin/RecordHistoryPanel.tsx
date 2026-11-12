@@ -16,7 +16,7 @@ const listHistory = makeFunctionReference<
     paginationOpts: PaginationOptions;
   },
   PaginationResult<HistoryEntry>
->("recordHistory:list");
+>("settings/recordHistory:list");
 const listRecords = makeFunctionReference<
   "query",
   {
@@ -24,7 +24,7 @@ const listRecords = makeFunctionReference<
     paginationOpts: PaginationOptions;
   },
   PaginationResult<Doc<"configurationHistoryIndex">>
->("configurationHistory:records");
+>("settings/configurationHistory:records");
 
 const LABELS: Record<string, string> = {
   businessName: "Business name",

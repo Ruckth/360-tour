@@ -4,7 +4,7 @@ import { adminMutation, internalMutation, type MutationCtx, publicAction } from 
 import { blockBookingDates, releaseBookingDates } from '../../lib/availabilityWrites';
 import { assertBookingRevision, stayMoney, writeBooking } from '../../lib/bookingMoney';
 import { roundMoney } from '../../lib/orderMath';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { bookingHoldExpiresAt } from '../../lib/siteSettings';
 import { isDocumentedLiveRefund, recordStayPayment } from '../model';
 

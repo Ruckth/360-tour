@@ -77,7 +77,7 @@ async function policyReply(
   )
     return null;
   const settings: EffectiveSettings = await ctx.runQuery(
-    internal.settings.effective,
+    internal.settings.settings.effective,
     {},
   );
   const guestLocale = locale ?? replyLocale(userMessage);

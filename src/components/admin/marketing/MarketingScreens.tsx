@@ -104,7 +104,7 @@ export function MarketingLinksScreen() {
   const campaigns = useQuery(api.marketing.listCampaigns, {});
   const coupons = useQuery(api.marketing.listCoupons, {});
   const properties = useQuery(api.marketing.catalog, {});
-  const profile = useQuery(api.settings.publicProfile, {});
+  const profile = useQuery(api.settings.settings.publicProfile, {});
   return (
     <LinksView
       links={links}

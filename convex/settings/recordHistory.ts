@@ -1,9 +1,9 @@
-import { requireMarketingPermission } from './lib/marketingAccess';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { authenticatedQuery } from './auth/model';
-import { requireOwner, requireAdmin } from './lib/adminAuth';
-import { canReadMarketingPersonalData, redactMarketingHistoryValue } from './lib/marketingPrivacy';
+import { authenticatedQuery } from '../auth/model';
+import { requireAdmin, requireOwner } from '../lib/adminAuth';
+import { requireMarketingPermission } from '../lib/marketingAccess';
+import { canReadMarketingPersonalData, redactMarketingHistoryValue } from '../lib/marketingPrivacy';
 
 export const list = authenticatedQuery({
  args: { entityType: v.string(), entityId: v.optional(v.string()), paginationOpts: paginationOptsValidator },

@@ -47,7 +47,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
   },
   useAttachLookupStatus: ({ orderId, query }) => useQuery(api.pos.sourceReads.attachLookupStatus, { orderId: orderId ?? undefined, query: query.trim() || undefined }),
   useLinkCandidates: ({ orderId, lineId, query }) => useQuery(api.pos.sourceReads.linkCandidates, { orderId, lineId, query: query.trim() || undefined }),
-  useBusinessName: () => useQuery(api.settings.publicProfile, {})?.businessName,
+  useBusinessName: () => useQuery(api.settings.settings.publicProfile, {})?.businessName,
   useOrderApprovals: (orderId) => useQuery(api.pos.staffApprovals.forOrder, orderId ? { orderId } : SKIP),
   usePendingApprovals: () => useQuery(api.pos.staffApprovals.pending, useStaffAccess().capabilities.approve ? {} : SKIP),
   useFindOrder: (orderNumber) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),

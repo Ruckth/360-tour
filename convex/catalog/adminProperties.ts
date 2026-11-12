@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { uploadProblem } from '../lib/imageUploads';
 import { MAX_SLUG_LENGTH, SLUG_PATTERN, slugify } from '../lib/slug';
-import { configurationWriter, logOtaRate } from '../lib/configurationHistory';
+import { configurationWriter, logOtaRate } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
 
 // Villa admin: create/delete drafts, slug, status, uploads, 360 rooms and hotspots.

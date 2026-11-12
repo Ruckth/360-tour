@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { timeOffSnapshot } from '../model';
 
 export const removeTimeOff = adminMutation({

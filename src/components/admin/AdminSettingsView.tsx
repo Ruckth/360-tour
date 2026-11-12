@@ -61,7 +61,7 @@ export function AdminSettingsView() {
   useEffect(() => {
     if (legacyTab) router.replace(adminSettingsTabPath("team"), { scroll: false });
   }, [legacyTab, router]);
-  const settings = useQuery(api.settings.get, {});
+  const settings = useQuery(api.settings.settings.get, {});
 
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-4 sm:px-6">
@@ -229,8 +229,8 @@ function toInput(section: Section, values: Record<string, string>): SettingsInpu
 function SettingsForm({ section, settings, readOnly = false }: { section: Section; settings: EffectiveSettings & { revision: number }; readOnly?: boolean }) {
   const config = SECTIONS[section];
   const pending = useRef(false);
-  const update = useMutation(api.settings.update);
-  const restore = useMutation(api.settings.restore);
+  const update = useMutation(api.settings.settings.update);
+  const restore = useMutation(api.settings.settings.restore);
   const [revision, setRevision] = useState(settings.revision);
   const [savedValues, setSavedValues] = useState(() => config.values(settings));
   const [values, setValues] = useState(() => config.values(settings));
@@ -393,8 +393,8 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
 // ---------- Read-only sections ----------
 
 function ChannelsPanel() {
-  const health = useQuery(api.settings.channelHealth, {});
-  const server = useQuery(api.settings.serverConfig, {});
+  const health = useQuery(api.settings.settings.channelHealth, {});
+  const server = useQuery(api.settings.settings.serverConfig, {});
   const config = useChannelConfig();
 
   return (

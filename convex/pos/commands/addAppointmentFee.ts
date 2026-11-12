@@ -4,7 +4,7 @@ import { attemptKey, cleanReason } from '../../lib/bookingMoney';
 import { FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from '../../lib/orderLifecycle';
 import { isOpenOrder } from '../../lib/orderLinks';
 import { assertPrice } from '../../lib/orderMath';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../lib/serviceSlots';
 import { CURRENCY, LineFields, assertRoom, editableOrder, lineSnapshot, logOrder, refreshOrder } from '../private/orderModel';
 

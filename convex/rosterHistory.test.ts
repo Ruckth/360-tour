@@ -12,7 +12,7 @@ const list = makeFunctionReference<
 	'query',
 	{ entityType: string; entityId: string; paginationOpts: PaginationOptions },
 	PaginationResult<Doc<'recordChanges'>>
->('recordHistory:list');
+>('settings/recordHistory:list');
 const days = [0, 1, 2, 3, 4, 5, 6];
 const hours = (start = '09:00', end = '17:00') => days.map((weekday) => ({ weekday, start, end }));
 const breaks = days.map((weekday) => ({ weekday, start: '12:00', end: '13:00', label: 'Lunch' }));

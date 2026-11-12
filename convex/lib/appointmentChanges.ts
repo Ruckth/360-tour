@@ -2,7 +2,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { appointmentRevision } from './appointmentWindow';
 import { appointmentLookupFields } from './serviceSlots';
-import { appendRecordHistory } from './recordHistory';
+import { appendRecordHistory } from '../settings/model';
 
 /**
  * Shared recording for calendar edits and guest cancellations. Each tracked change

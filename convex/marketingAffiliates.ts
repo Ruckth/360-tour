@@ -7,7 +7,7 @@ import {
   creditMoney,
   syncAffiliateCredit,
 } from "./lib/affiliateCredits";
-import { appendRecordHistory } from "./lib/recordHistory";
+import { appendRecordHistory } from './settings/model';
 import { isIsoDate } from "./lib/dates";
 import { canReadMarketingPersonalData, withoutPartnerPersonalData, withMarketingReasonPrivacy } from "./lib/marketingPrivacy";
 const LIMIT = 200;

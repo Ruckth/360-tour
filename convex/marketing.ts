@@ -8,7 +8,7 @@ import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResul
 import { orderTitle, formatReceiptNumber } from './lib/orderMath';
 import { requireMarketingPermission, requireEditableDraft } from './lib/marketingAccess';
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
-import { appendRecordHistory } from './lib/recordHistory';
+import { appendRecordHistory } from './settings/model';
 import { cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey } from './lib/marketingAttribution';
 import { enforceRateLimit, rateLimitReached } from './lib/rateLimit';
 import { isMarketingLocale, localizeMarketingPath, validateMarketingSlug } from './lib/marketingSlugs';
