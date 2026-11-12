@@ -244,7 +244,7 @@ export async function readMarketingReport(
 		// Outside the batched windows (a corrected or historical date) fall back to one read each.
 		const tenders = bill.amendedTenders ? [] : inWindow(bill.paidAt) ? (tendersByBill.get(id) ?? []) : await rows(ctx.db.query('billPayments').withIndex('by_billId', q => q.eq('billId', id)));
 		const stayRows = inWindow(at) ? (stayPosByBill.get(id) ?? []) : await rows(ctx.db.query('bookingPayments').withIndex('by_billId', q => q.eq('billId', id)));
-		const batched = at >= start && !bill.correctionRevision;
+		const batched = at >= start && (bill.paymentEffectiveAt === undefined || bill.paymentEffectiveAt <= (bill.paidAt ?? at));
 		const receiptRefunds = batched ? (receiptRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', id)));
 		// An old order that kept its stay money (no stay payment row) also takes the refunds of that money.
 		const stayRefunds = stayRows.length ? [] : batched ? (oldOrderRefundsByBill.get(id) ?? []) : (await rows(ctx.db.query('bookingRefunds').withIndex('by_billId', q => q.eq('billId', id)))).filter(r => !r.paymentId);
@@ -253,8 +253,7 @@ export async function readMarketingReport(
 		// The stay part of the order is on the stay (its POS payment row), so the order keeps only its own money.
 		const collected = round2(sum(record.tenders, p => p.amount) - sum(stayRows.filter(p => p.status === 'recorded' && p.origin === 'pos'), p => p.amount));
 		// A legacy forward payment-date correction can precede refunds; fall back for those.
-		const posBatched = at >= start && (bill.paymentEffectiveAt === undefined || bill.paymentEffectiveAt <= (bill.paidAt ?? at));
-		const posRefunds = posBatched ? (posRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('billRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
+		const posRefunds = batched ? (posRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('billRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
 		const refunded = round2(sum(refunds, r => r.amount) + sum(posRefunds, r => r.amount / 100));
 		const discount = bill.promotion?.discount ?? 0;
 		if (collected === 0 && refunded === 0 && discount === 0) return null;

@@ -1708,6 +1708,9 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		let newEffective: number | undefined;
 		if (args.effectiveAt !== undefined) {
 			const at = effectiveTime(args.effectiveAt, now);
+			const firstRefund = await ctx.db.query('billRefunds').withIndex('by_orderId_and_businessDate', q => q.eq('orderId', order._id)).first();
+			if (firstRefund && resortTodayIso(at) > firstRefund.businessDate)
+				throw new ConvexError({ code: 'PAYMENT_DATE_AFTER_REFUND', message: 'Payment business date cannot be later than the earliest POS refund.', earliestRefundBusinessDate: firstRefund.businessDate });
 			if (at !== previousEffective) {
 				newEffective = at;
 				patch.paymentEffectiveAt = at;

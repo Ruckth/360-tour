@@ -77,7 +77,7 @@ export async function executeBillRefund(ctx: MutationCtx, input: BillRefundInput
   const state = await refundState(ctx, args);
   const now = Date.now();
   const refundId = await ctx.db.insert('billRefunds', { ...args, createdBy: actor.tokenIdentifier, createdByEmail: actor.email, createdAt: now, businessDate: resortTodayIso(now) });
-  await ctx.db.patch(order._id, { revision: order.revision + 1, updatedAt: now });
+  await ctx.db.patch(order._id, { revision: order.revision + 1, correctionRevision: (order.correctionRevision ?? 0) + 1, updatedAt: now });
   await ctx.db.insert('billAudit', { billId: order._id, lineId: args.lineId, at: now, actor: actor.email, kind: 'refund',
     note: `${state.line.name}: ${args.amount / 100} ${args.currency} returned (${args.method}). ${args.reason}`,
     fromPrice: state.remaining / 100, toPrice: (state.remaining - args.amount) / 100 });

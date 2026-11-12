@@ -46,7 +46,7 @@ payload: { kind: 'refund', lineId, amount, currency, method, idempotencyKey }
 
 It returns `{requestId,status:'pending',expiresAt,totalBefore,totalAfter,amount}`. Payload `amount` is integer **satang**; approval preview `amount`, `totalBefore` and `totalAfter` use existing **major currency units**. Before/after totals are receipt charge minus POS refunds, before/after this proposal; attached-source refunds have their separate ledgers. Request creation records no refund. `staffApprovals.approve({requestId})` returns `{status,replayed}` and executes the exact shared refund helper atomically with marking the request applied. Find the resulting refund via `getOrder`, paginated history, or retry the original `refundLine` args/key.
 
-Existing approval behavior remains: one effective pending request per order (`PENDING_APPROVAL`), five-minute inclusive expiry, no self approval by identity or email, current approver authorization, single use, and stale on order/line/links/source/customer/coupon changes, earlier POS refunds, requester changes or any cashier rule change. Refunds bump order revision. Fingerprints now include all rule values and the complete POS refund ledger. Pre-upgrade requests without the new optional rules fingerprint resolve stale and must be recreated. Another direct manager refund may proceed while a request is pending; it stales that request.
+Existing approval behavior remains: one effective pending request per order (`PENDING_APPROVAL`), five-minute inclusive expiry, no self approval by identity or email, current approver authorization, single use, and stale on order/line/links/source/customer/coupon changes, earlier POS refunds, requester changes or any cashier rule change. Refunds bump both order `revision` and `correctionRevision` once; idempotent replays bump neither. An already-open correction must reload the receipt. Fingerprints now include all rule values and the complete POS refund ledger. Pre-upgrade requests without the new optional rules fingerprint resolve stale and must be recreated. Another direct manager refund may proceed while a request is pending; it stales that request.
 
 `staffAccess.myAccess` and `getCashierRules` always return `refund:'manager'|'cashier'`, default `manager`. `updateCashierRules` accepts optional `refund` beside existing fields; omitting it preserves the current value for older UI callers. Missing stored fields read as `manager`. Updates increment the existing revision and retain `STALE_RULES` conflict handling.
 
@@ -80,6 +80,8 @@ A fully refunded order stays **paid**. `fullyRefunded` means positive POS return
 
 Both ordinary void and “void unreceived” are refused after any POS refund (`ORDER_HAS_REFUNDS`); refund after either void is refused (`ORDER_NOT_PAID`). Continue returning remaining walk-in lines instead. This prevents conflicting reversal paths, preserves proof that money was received and avoids double-counting returns.
 
+`amendOrderPayment`, including manager approval execution, refuses a payment business date later than the earliest POS refund business date. Earlier dates and times later within the same Bangkok day remain allowed.
+
 ## Typed errors
 
 New refund errors are `ConvexError({code,message,...})`:
@@ -97,6 +99,7 @@ New refund errors are `ConvexError({code,message,...})`:
 | `INVALID_IDEMPOTENCY_KEY` | Trimmed key outside 8–100 characters |
 | `IDEMPOTENCY_CONFLICT` | Key reused for different details |
 | `REFUND_HISTORY_LIMIT` | Complete ledger cannot be safely extended/read |
+| `PAYMENT_DATE_AFTER_REFUND` | Proposed payment business date is later than the earliest POS refund; includes `earliestRefundBusinessDate` |
 | `ORDER_HAS_REFUNDS` | A refunded order cannot be voided |
 | `LINE_HAS_REFUNDS` | A refunded line cannot be allocated to a source |
 

@@ -90,6 +90,44 @@ describe('POS line refunds', () => {
     await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 1, 'one-more-attempt'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
   });
 
+  it('invalidates an already-open correction after a refund, without bumping again on replay', async () => {
+    const s = await setup();
+    const { orderId, lineId } = await s.sale();
+    await s.pay(orderId);
+    const before = await s.view(orderId);
+    const args = s.args(orderId, lineId);
+    await s.owner.mutation(api.pos.refundLine, args);
+    await s.owner.mutation(api.pos.refundLine, args);
+    expect((await s.view(orderId)).paymentRecord.correctionRevision).toBe(before.paymentRecord.correctionRevision + 1);
+    await expect(s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: before.paymentRecord.correctionRevision, reason: 'Correct date', effectiveAt: now - day, idempotencyKey: 'stale-correction' })).rejects.toThrow('since you opened it');
+  });
+
+  it.each(['direct', 'approval'] as const)('rejects payment dates after the earliest refund through %s', async route => {
+    const s = await setup();
+    const { orderId, lineId } = await s.sale();
+    await s.pay(orderId, Date.parse('2026-11-01T03:00:00Z'));
+    vi.mocked(Date.now).mockReturnValue(Date.parse('2026-11-03T03:00:00Z'));
+    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId));
+    vi.mocked(Date.now).mockReturnValue(now);
+    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 100, 'later-refund'));
+    // A legacy forward correction makes this receipt visible to today's cashier.
+    if (route === 'approval') await s.t.run(ctx => ctx.db.patch(orderId, { paymentEffectiveAt: now }));
+    const badDate = Date.parse('2026-11-05T03:00:00Z');
+    if (route === 'direct') {
+      await expect(s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 2, reason: 'Correct date', effectiveAt: badDate, idempotencyKey: 'invalid-payment-date' })).rejects.toMatchObject(error('PAYMENT_DATE_AFTER_REFUND'));
+    } else {
+      const request = await s.cashier.mutation(api.staffApprovals.create, { orderId, reason: 'Correct date', payload: { kind: 'paymentFix', action: 'amendOrderPayment', effectiveAt: badDate } });
+      await expect(s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).rejects.toMatchObject(error('PAYMENT_DATE_AFTER_REFUND'));
+      expect(await s.t.run(ctx => ctx.db.get(request.requestId))).toMatchObject({ status: 'pending' });
+      await s.cashier.mutation(api.staffApprovals.cancel, { requestId: request.requestId });
+    }
+    // Same Bangkok day is valid even after the refund's time, as is moving earlier.
+    for (const [i, effectiveAt] of [Date.parse('2026-11-03T16:30:00Z'), Date.parse('2026-10-31T03:00:00Z')].entries()) {
+      await s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 2 + i, reason: 'Correct date', effectiveAt, idempotencyKey: `earlier-payment-${i}` });
+    }
+    expect((await s.view(orderId)).paymentRecord.effectiveAt).toBe(Date.parse('2026-10-31T03:00:00Z'));
+  });
+
   it('uses the issued coupon allocation after manual discount, preserving consumed redemption on full refund', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
@@ -178,7 +216,7 @@ describe('POS line refunds', () => {
     await s.owner.mutation(api.pos.refundLine, s.args(next.orderId, next.lineId));
     const before = await s.view(next.orderId);
     await expect(s.owner.mutation(api.pos.voidOrder, { orderId: next.orderId, reason: 'Wrong sale' })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
-    await expect(s.owner.mutation(api.pos.voidUnreceivedOrder, { orderId: next.orderId, reason: 'No money', idempotencyKey: 'void-attempt', expectedCorrectionRevision: 0 })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
+    await expect(s.owner.mutation(api.pos.voidUnreceivedOrder, { orderId: next.orderId, reason: 'No money', idempotencyKey: 'void-attempt', expectedCorrectionRevision: before.paymentRecord.correctionRevision })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
     expect(await s.view(next.orderId)).toEqual(before);
   });
 
@@ -213,7 +251,7 @@ describe('POS line refunds', () => {
     await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('LINE_NOT_REFUNDABLE'));
     await s.owner.mutation(api.pos.unlinkPaidLine, { orderId, linkId: link.linkId, expectedCorrectionRevision: 1, idempotencyKey: 'unlink-attempt', reason: 'Wrong guest' });
     await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId));
-    await expect(s.owner.mutation(api.pos.linkPaidLine, { ...linkArgs, expectedCorrectionRevision: 2, idempotencyKey: 'relink-attempt' })).rejects.toMatchObject(error('LINE_HAS_REFUNDS'));
+    await expect(s.owner.mutation(api.pos.linkPaidLine, { ...linkArgs, expectedCorrectionRevision: 3, idempotencyKey: 'relink-attempt' })).rejects.toMatchObject(error('LINE_HAS_REFUNDS'));
   });
 
   it('keeps stay money on the stay while refunding only a walk-in line on a mixed receipt', async () => {

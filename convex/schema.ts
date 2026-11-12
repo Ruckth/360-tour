@@ -768,7 +768,7 @@ export default defineSchema({
 		orderId: v.id('bills'), lineId: v.id('billLines'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
 		reason: v.string(), idempotencyKey: v.string(), createdBy: v.string(), createdByEmail: v.string(),
 		createdAt: v.number(), businessDate: v.string()
-	}).index('by_orderId', ['orderId']).index('by_lineId', ['lineId'])
+	}).index('by_orderId', ['orderId']).index('by_orderId_and_businessDate', ['orderId', 'businessDate']).index('by_lineId', ['lineId'])
 		.index('by_idempotencyKey', ['idempotencyKey']).index('by_businessDate', ['businessDate']),
 
 	billPayments: defineTable({
