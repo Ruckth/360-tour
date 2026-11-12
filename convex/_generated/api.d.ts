@@ -20,6 +20,7 @@ import type * as adminReply from "../adminReply.js";
 import type * as adminReviews from "../adminReviews.js";
 import type * as adminServices from "../adminServices.js";
 import type * as aiEval from "../aiEval.js";
+import type * as auth_model from "../auth/model.js";
 import type * as availability from "../availability.js";
 import type * as bookings from "../bookings.js";
 import type * as businessFacts from "../businessFacts.js";
@@ -162,6 +163,7 @@ declare const fullApi: ApiFromModules<{
   adminReviews: typeof adminReviews;
   adminServices: typeof adminServices;
   aiEval: typeof aiEval;
+  "auth/model": typeof auth_model;
   availability: typeof availability;
   bookings: typeof bookings;
   businessFacts: typeof businessFacts;

@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalQuery, mutation, query, type QueryCtx } from './_generated/server';
+import { internalQuery, mutation, query, type QueryCtx } from './auth/model';
 import { appendRecordHistory } from './lib/recordHistory';
 import { settingsSnapshot } from './lib/configurationHistory';
 import {

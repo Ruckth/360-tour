@@ -1,4 +1,4 @@
-import { mutation, query } from './_generated/server';
+import { mutation, query } from './auth/model';
 import { v, type Infer } from 'convex/values';
 import { requireAdmin } from './lib/adminAuth';
 import { recomputeSocialProof } from './lib/reviewStats';

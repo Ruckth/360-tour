@@ -1,5 +1,5 @@
 import { ConvexError, v } from 'convex/values';
-import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
+import { internalMutation, mutation, query, type MutationCtx } from './auth/model';
 import type { Doc } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { approvalPayload, APPROVAL_TTL_MS } from './lib/staffTypes';

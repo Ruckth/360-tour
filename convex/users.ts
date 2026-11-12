@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query } from "./auth/model";
 
 export const store = mutation({
 	args: {},

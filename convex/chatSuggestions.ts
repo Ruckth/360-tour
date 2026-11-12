@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { requireGuestToken } from './lib/guestToken';
-import { mutation, query } from './_generated/server';
+import { mutation, query } from './auth/model';
 import { STATIC_SUGGESTION_KEYS } from './lib/chatSuggestions';
 
 

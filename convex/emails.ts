@@ -1,5 +1,5 @@
 // HTML emails use Resend's fetch API and can run in the default Convex runtime.
-import { action, internalAction, type ActionCtx } from './_generated/server';
+import { action, internalAction, type ActionCtx } from './auth/model';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';

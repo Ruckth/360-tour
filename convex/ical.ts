@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from './_generated/server';
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from './auth/model';
 import type { ActionCtx, MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { requireAdmin } from './lib/adminAuth';

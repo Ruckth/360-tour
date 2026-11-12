@@ -1,4 +1,4 @@
-import { query, type QueryCtx } from './_generated/server';
+import { query, type QueryCtx } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 

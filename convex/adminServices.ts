@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
 import { initializeWeeklyPattern, writeWeeklyPattern } from './lib/rosterHistory';
 import { appendRecordHistory } from './lib/recordHistory';
-import { action, internalMutation, mutation, query } from './_generated/server';
+import { action, internalMutation, mutation, query } from './auth/model';
 import { internal } from './_generated/api';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';

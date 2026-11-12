@@ -614,7 +614,7 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
               <div className="grid gap-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor={`price-${lineId}`} className="sr-only">New unit price</Label>
-                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} placeholder={String(line.unitPrice)} autoFocus />
+                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE / 100))} placeholder={String(satangToBaht(line.unitPrice))} autoFocus />
                   <span className="text-xs text-muted-foreground">was {formatMoney(line.unitPrice)}</span>
                 </div>
                 <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />

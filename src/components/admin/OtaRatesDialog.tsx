@@ -1,5 +1,6 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
 import { parseMoneyInput } from '@/lib/money-input';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
@@ -81,7 +82,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         </SelectContent>
       </Select>
       <Label htmlFor="ota-rate">Nightly price (same currency as the villa, incl. the platform&apos;s fees)</Label>
-      <Input id="ota-rate" type="number" min={1} step={1} required inputMode="numeric" placeholder="10000" value={nightlyRate} onChange={event => setNightlyRate(event.target.value)} />
+      <Input id="ota-rate" type="number" min={0.01} step={0.01} required inputMode="decimal" placeholder="10000" value={nightlyRate} onChange={event => setNightlyRate(event.target.value)} />
       <Label htmlFor="ota-url">Listing URL (optional)</Label>
       <Input id="ota-url" type="url" placeholder="https://www.booking.com/hotel/..." value={url} onChange={event => setUrl(event.target.value)} />
       <Button type="submit" className="mt-1 justify-self-start" disabled={busy}>{busy ? <Spinner className="text-current" /> : null}{hasRate ? 'Update rate' : 'Save rate'}</Button>
@@ -92,7 +93,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <strong>{sourceLabel(rate.platform)} · {formatMoney(rate.nightlyRate, resort.currency)}</strong>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => { setPlatform(rate.platform); setNightlyRate(String(rate.nightlyRate)); setUrl(rate.url ?? ''); }}>Edit</Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => { setPlatform(rate.platform); setNightlyRate(String(satangToBaht(rate.nightlyRate))); setUrl(rate.url ?? ''); }}>Edit</Button>
             <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
               if (!(await confirm({ title: `Remove the ${sourceLabel(rate.platform)} rate?`, confirmLabel: 'Remove', destructive: true }))) return;
               setBusy(true); setError('');

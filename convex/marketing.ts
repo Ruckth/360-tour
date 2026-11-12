@@ -2,7 +2,7 @@ import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 // Marketing release 1: campaigns, short links, QR entry and the coupon catalog.
 // CONTRACT — names, args and return types are fixed so the admin UI and backend can be built in parallel.
 import { ConvexError, v, type ObjectType } from 'convex/values';
-import { mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
+import { mutation, query, type QueryCtx, type MutationCtx } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
 import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from './lib/offers';
 import { orderTitle, formatReceiptNumber } from './lib/orderMath';

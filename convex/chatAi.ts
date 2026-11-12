@@ -5,7 +5,7 @@ import { isCardTool, replyCardFromTool, type ReplyCard } from './lib/replyCards'
 import { unknownReply, detectReplyLocale } from "./lib/unknownReply";
 import { proposalIdentity } from './lib/chatWriteGuard';
 import { marketingCaptureValidator } from './lib/marketingAttribution';
-import { action, internalMutation, type ActionCtx } from './_generated/server';
+import { action, internalMutation, type ActionCtx } from './auth/model';
 import { v } from 'convex/values';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';

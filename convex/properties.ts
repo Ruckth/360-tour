@@ -1,4 +1,4 @@
-import { mutation, query } from './_generated/server';
+import { mutation, query } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';

@@ -1,4 +1,4 @@
-import { mutation, type MutationCtx } from './_generated/server';
+import { mutation, type MutationCtx } from './auth/model';
 import { v } from 'convex/values';
 import { answerAccepted, guestReceived, sendFailed, replyOutcomeValidator } from './lib/inboxLifecycle';
 import { requireServerSecret } from './lib/serverSecret';

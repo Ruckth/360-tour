@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { query } from './_generated/server';
+import { query } from './auth/model';
 import { requireAdmin } from './lib/adminAuth';
 
 /** Discover deleted villas, or rooms (including removed ones) from their retained villa id. */

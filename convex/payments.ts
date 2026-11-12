@@ -1,7 +1,7 @@
 import { bookingHoldExpiresAt } from './lib/siteSettings';
 import { v } from 'convex/values';
 import { appendRecordHistory } from './lib/recordHistory';
-import { action, internalMutation, mutation, type MutationCtx } from './_generated/server';
+import { action, internalMutation, mutation, type MutationCtx } from './auth/model';
 import { internal } from './_generated/api';
 import { isDocumentedLiveRefund, recordStayPayment } from './bookings';
 import { assertBookingRevision, stayMoney, writeBooking } from './lib/bookingMoney';
@@ -125,9 +125,11 @@ export const saveCheckoutSession = internalMutation({
 });
 
 export const expireCheckout = internalMutation({
-  args: { bookingId: v.id('bookings'), sessionId: v.string() },
+  args: { bookingId: v.string(), sessionId: v.string() },
   handler: async (ctx, args) => {
-    const booking = await ctx.db.get(args.bookingId);
+    const bookingId = ctx.db.normalizeId('bookings', args.bookingId);
+    const booking = bookingId ? await ctx.db.get(bookingId) : null;
+    if (!booking) { await recordOrphan(ctx, `expiry:${args.sessionId}`, { bookingId: args.bookingId, type: 'expiry' }); return; }
     if (!booking || booking.stripeCheckoutSessionId !== args.sessionId || !isPayable(booking)) return;
     if ((booking.stripeCheckoutExpiresAt ?? 0) > Date.now()) return;
     if (booking.status === 'confirmed' || booking.source === 'admin') {
@@ -213,15 +215,20 @@ export const createCheckout = action({
 
 export const completeCheckout = internalMutation({
   args: {
-    bookingId: v.id('bookings'),
+    bookingId: v.string(),
     sessionId: v.string(),
     amountTotal: v.number(),
     currency: v.string(),
     paymentIntentId: v.string(),
   },
   handler: async (ctx, args) => {
-    let booking = await ctx.db.get(args.bookingId);
-    if (!booking) { await recordOrphan(ctx, args.sessionId, { bookingId: args.bookingId, type: 'checkout' }); return; }
+    const bookingId = ctx.db.normalizeId('bookings', args.bookingId);
+    let booking = bookingId ? await ctx.db.get(bookingId) : null;
+    if (!booking) {
+      if (!Number.isSafeInteger(args.amountTotal) || args.amountTotal <= 0) throw new Error('Checkout amount mismatch');
+      await recordOrphan(ctx, `checkout:${args.sessionId}`, { bookingId: args.bookingId, type: 'checkout', amount: args.amountTotal, currency: args.currency, paymentIntentId: args.paymentIntentId });
+      return { orphaned: true as const };
+    }
     if (!Number.isSafeInteger(args.amountTotal) || args.amountTotal <= 0 || booking.currency.toLowerCase() !== args.currency.toLowerCase()) throw new Error('Checkout amount mismatch');
     const key = `stripe-checkout:${args.sessionId}`;
     const replay = await ctx.db.query('bookingPayments').withIndex('by_idempotencyKey', q => q.eq('idempotencyKey', key)).unique();
@@ -263,7 +270,7 @@ export const recordRefund = internalMutation({
     const source = await ctx.db.query('bookingPayments').withIndex('by_providerPaymentIntentId', q => q.eq('providerPaymentIntentId', args.paymentIntentId)).unique();
     const booking = source ? await ctx.db.get(source.bookingId)
       : await ctx.db.query('bookings').withIndex('by_stripePaymentIntentId', q => q.eq('stripePaymentIntentId', args.paymentIntentId)).unique();
-    if (!booking) { await recordOrphan(ctx, args.eventId, { paymentIntentId: args.paymentIntentId, type: 'refund' }); return; }
+    if (!booking) { await recordOrphan(ctx, args.eventId, { paymentIntentId: args.paymentIntentId, type: 'refund', amount: args.amountRefunded, currency: args.currency }); return { orphaned: true as const }; }
     if (booking.currency.toLowerCase() !== args.currency.toLowerCase()) throw new Error('Refund currency mismatch');
     const checkpoint = await ctx.db.query('stripeRefundCharges').withIndex('by_chargeId', q => q.eq('chargeId', args.chargeId)).unique();
     if (checkpoint && (checkpoint.bookingId !== booking._id || checkpoint.amount !== args.amount || checkpoint.paymentIntentId !== args.paymentIntentId || checkpoint.currency !== args.currency.toLowerCase())) throw new Error('Charge identity mismatch');
@@ -350,7 +357,7 @@ export const linkRecordedStripeRefund = mutation({
   }
 });
 
-async function recordOrphan(ctx: MutationCtx, eventId: string, details: Record<string, string>) {
+async function recordOrphan(ctx: MutationCtx, eventId: string, details: Record<string, string | number>) {
  const existing = await ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'stripe_orphan').eq('entityId', eventId)).first();
  if (!existing) await appendRecordHistory(ctx, { entityType: 'stripe_orphan', entityId: eventId, actor: 'system:stripe', kind: 'orphaned', after: details });
 }

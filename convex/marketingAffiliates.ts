@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { query, mutation, type QueryCtx } from "./_generated/server";
+import { query, mutation, type QueryCtx } from "./auth/model";
 import type { Doc, Id } from "./_generated/dataModel";
 import { affiliateState, creditState } from "./lib/affiliateTypes";
 import { requireMarketingPermission } from "./lib/marketingAccess";

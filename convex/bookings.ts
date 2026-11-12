@@ -1,3 +1,4 @@
+import { satangToBaht } from './shared/money';
 import { requireServerSecret } from './lib/serverSecret';
 import { activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity, type ChatCouponSnapshot } from './lib/chatCoupon';
 import { normalizeCouponCode } from './lib/offers';
@@ -5,7 +6,7 @@ import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from '
 import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
-import { internalMutation, internalQuery, mutation, query } from './_generated/server';
+import { internalMutation, internalQuery, mutation, query } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
@@ -170,13 +171,13 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 	}
 	const money = stayMoney(booking);
 	if (input.expectedAmount !== undefined && roundMoney(input.expectedAmount) !== money.owed) {
-		throw new Error(`This stay now owes ${money.owed}, not ${roundMoney(input.expectedAmount)}. Review the balance and try again.`);
+		throw new Error(`This stay now owes ${satangToBaht(money.owed)}, not ${satangToBaht(roundMoney(input.expectedAmount))}. Review the balance and try again.`);
 	}
 	if (money.owed <= 0) return { booking, paymentId: null };
 	const amount = input.amount ?? money.owed;
 	if (input.amount !== undefined) {
 		if (!Number.isFinite(amount) || amount <= 0 || roundMoney(amount) !== amount) throw new Error('The amount must be more than zero, in whole satang.');
-		if (amount > money.owed) throw new Error(`This stay owes ${money.owed}, less than ${amount}.`);
+		if (amount > money.owed) throw new Error(`This stay owes ${satangToBaht(money.owed)}, less than ${satangToBaht(amount)}.`);
 		// `refunded` counts all money as returned and `failed` needs a reopen, so a part payment needs a live status.
 		if (amount < money.owed && booking.paymentStatus !== 'pending' && booking.paymentStatus !== 'paid') {
 			throw new Error('Record what the stay owes in full, or reopen it first.');

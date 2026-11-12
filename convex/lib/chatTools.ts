@@ -542,6 +542,6 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 
 /** LLM/tool output is a presentation boundary; IDs, counts and timestamps retain their units. */
 function humanToolResult(value: unknown): string {
- const currencyFields = new Set(["price","pricePerNight","nightlyRate","directPrice","totalDirect","totalOTA","listedTotal","discountPercent","discountAmount","directTotal","maxSavings","total","subtotal","discount","amount","saving","fee","owed"]);
+ const currencyFields = new Set(["price","pricePerNight","nightlyRate","directPrice","totalDirect","totalOTA","listedTotal","discountPercent","discountAmount","directTotal","maxSavings","total","subtotal","discount","amount","saving","fee","owed","minEligibleSubtotal","eligibleSubtotal"]);
  return JSON.stringify(value, (key, item) => typeof item === 'number' && currencyFields.has(key) ? satangToBaht(item) : item);
 }

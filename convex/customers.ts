@@ -2,7 +2,7 @@ import { appendRecordHistory } from './lib/recordHistory';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
+import { internalMutation, mutation, query, type MutationCtx } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 import { requireStaff } from './lib/staffAccess';

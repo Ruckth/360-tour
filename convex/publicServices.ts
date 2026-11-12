@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { query, internalQuery } from "./_generated/server";
+import { query, internalQuery } from "./auth/model";
 import {
   catalogCategory,
   catalogFilter,

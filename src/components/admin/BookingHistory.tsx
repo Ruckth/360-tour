@@ -35,12 +35,12 @@ const FIELD_LABELS: Record<string, string> = {
   paymentMethod: "First payment by", amountPaid: "Received (gross)", amountRefunded: "Refunded", paidAt: "Paid on",
   refundedAt: "Refunded on", adminNotes: "Notes", cancelledAt: "Cancelled on", cancelledBy: "Cancelled by",
   cancelReason: "Cancellation reason", confirmationCode: "Reference", guestEmailsOff: "Guest emails off",
-  amount: "Amount", method: "Method", origin: "Source", context: "Refund of", notifiedGuest: "Guest emailed",
+  providerRefundWaived: "Provider refund waived", amount: "Amount", method: "Method", origin: "Source", context: "Refund of", notifiedGuest: "Guest emailed",
   keptPaid: "Payment kept", archivedVillaReason: "Archived villa reason", legacy: "Recorded before itemised payments",
   effectiveAt: "Received on", note: "Note", paymentKept: "Payment kept", receiptNumber: "Receipt",
 };
 
-const MONEY_FIELDS = new Set(["subtotal", "discountAmount", "total", "amountPaid", "amountRefunded", "amount", "keptPaid"]);
+const MONEY_FIELDS = new Set(["subtotal", "discountAmount", "total", "amountPaid", "amountRefunded", "amount", "keptPaid", "providerRefundWaived"]);
 const TIME_FIELDS = new Set(["paidAt", "refundedAt", "cancelledAt", "effectiveAt"]);
 /** Shown elsewhere (snapshots) or ids that mean nothing to staff. */
 const HIDDEN = new Set(["paymentId", "refundId", "orderId", "sequence", "before", "after", "tendersChanged", "customerChanged", "revision", "unlinkedAppointments", "createdAt", "createdBy", "source", "hasStripePayment", "villaStatus"]);

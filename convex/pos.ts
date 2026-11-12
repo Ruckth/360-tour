@@ -2,7 +2,7 @@ import { assertNoPosRefunds, assertLineHasNoPosRefunds, orderRefundView, execute
 import { captureAffiliateSnapshot, syncAffiliateCredit } from './lib/affiliateCredits';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
-import { mutation, query } from './_generated/server';
+import { mutation, query } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { isDocumentedLiveRefund, markBookingPaid, recordStayPayment } from './bookings';

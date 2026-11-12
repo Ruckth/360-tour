@@ -13,12 +13,12 @@ import { chartData, niceStep, type ChartMetric, type Prepared } from "./report-m
 
 const num = (value: number) => value.toLocaleString("en-US");
 
-function tick(value: number, money: boolean) {
+export function formatChartTick(value: number, money: boolean) {
   if (!money) return num(value);
   value /= 100;
   if (value >= 1_000_000) return `฿${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   if (value >= 10_000) return `฿${Math.round(value / 1000)}K`;
-  return thb(value);
+  return thb(value * 100);
 }
 
 export function DashboardChart({ p }: { p: Prepared }) {
@@ -140,7 +140,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
             <div aria-hidden className="absolute inset-x-0 bottom-6 top-3">
               {ticks.map((value) => (
                 <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
-                  {tick(value, money)}
+                  {formatChartTick(value, money)}
                 </span>
               ))}
               <div className="absolute inset-y-0 left-12 right-0">

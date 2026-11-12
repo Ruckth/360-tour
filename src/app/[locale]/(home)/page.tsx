@@ -41,7 +41,7 @@ function resortHighlights(
     { stat: String(villas.length), label: labels.villaTypes },
     reviewCount ? { stat: (ratingTotal / reviewCount).toFixed(1), label: labels.guestRating } : null,
     reviewCount ? { stat: String(reviewCount), label: labels.reviews } : null,
-    maxDiscount ? { stat: `${maxDiscount}%`, label: labels.directSavings } : null,
+    maxDiscount ? { stat: `${maxDiscount / 100}%`, label: labels.directSavings } : null,
   ].filter((item): item is { stat: string; label: string } => item !== null);
 }
 

@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
-import { query, type QueryCtx } from './_generated/server';
+import { query, type QueryCtx } from './auth/model';
 import type { Id } from './_generated/dataModel';
 import { canReadCheckoutOrder, requireStaff } from './lib/staffAccess';
 

@@ -1,4 +1,4 @@
-import { query, type QueryCtx } from './_generated/server';
+import { query, type QueryCtx } from './auth/model';
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { assertValidIsoDate } from './lib/validation';

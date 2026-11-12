@@ -1,4 +1,4 @@
-import { mutation, query, type QueryCtx } from './_generated/server';
+import { mutation, query, type QueryCtx } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';

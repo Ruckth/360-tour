@@ -1,5 +1,5 @@
 import { ConvexError, v } from 'convex/values';
-import { internalQuery, mutation, query } from './_generated/server';
+import { internalQuery, mutation, query } from './auth/model';
 import { adminEmails, requireOwner } from './lib/adminAuth';
 import { cashierRules, staffAccess, staffInvitationExpiry } from './lib/staffAccess';
 import { cashierRulesFields, STAFF_INVITATION_TTL_MS, staffRole } from './lib/staffTypes';

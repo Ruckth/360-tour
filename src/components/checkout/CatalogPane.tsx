@@ -182,7 +182,7 @@ export function CatalogPane({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="checkout-max-price">Price up to (฿)</Label>
-                <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value, MAX_PRICE))} placeholder="Any price" />
+                <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value, MAX_PRICE / 100))} placeholder="Any price" />
               </div>
               <Button variant="outline" onClick={() => { setGroups([]); setMaxPrice(""); }} disabled={!filterCount}>Reset filters</Button>
             </CheckoutSheetContent>
@@ -338,7 +338,7 @@ function CustomItemDialog({ onAdd, needsManager }: { onAdd: (item: CatalogItem) 
           </div>
           <div className="grid gap-2">
             <Label htmlFor="custom-item-price">Price (฿, VAT included)</Label>
-            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} />
+            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE / 100))} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpen(false)}>Cancel</Button>

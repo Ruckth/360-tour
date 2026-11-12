@@ -49,7 +49,8 @@ it('acknowledges Stripe events for deleted bookings', async () => {
   const bookingId = demo.bookings[1].bookingId;
   await t.run(ctx => ctx.db.delete(bookingId));
   vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test_only');
-  const created = Math.floor(Date.now() / 1000);
+  vi.stubEnv('ARCH_MONEY_CUTOVER_AT', String(Date.now()));
+  const created = Math.floor(Date.now() / 1000) - 1;
   const event = { id: 'evt_deleted', created, type: 'checkout.session.completed', data: { object: { id: 'cs_deleted', client_reference_id: bookingId, payment_status: 'paid', amount_total: 765000, currency: 'thb', payment_intent: 'pi_deleted' } } };
   async function deliver(body: unknown) {
     const payload = JSON.stringify(body), encoder = new TextEncoder();
@@ -91,4 +92,45 @@ it('deduplicates channel event keys within their channel only', async () => {
   expect(new Set(ids).size).toBe(4);
   const events = await t.run(ctx => ctx.db.query('channelEvents').collect());
   expect(events.map(event => event.channel).sort()).toEqual(['facebook', 'instagram', 'line', 'whatsapp']);
+});
+
+async function signedStripeDelivery(t: ReturnType<typeof createHarness>, event: unknown) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const payload = JSON.stringify(event), encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', encoder.encode('whsec_cutover_test'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(`${timestamp}.${payload}`)));
+  const signature = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return t.fetch('/stripe/webhook', { method: 'POST', body: payload, headers: { 'stripe-signature': `t=${timestamp},v1=${signature}` } });
+}
+
+it('acknowledges pre-cutover malformed and foreign Stripe booking references without losing later completion evidence', async () => {
+  const t = createHarness(convexTest);
+  await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  const foreign = (await t.run(ctx => ctx.db.query('properties').first()))!._id;
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_cutover_test');
+  vi.stubEnv('ARCH_MONEY_CUTOVER_AT', String(Date.now()));
+  const created = Math.floor(Date.now() / 1000) - 1;
+  for (const [i, bookingId] of ['not-a-convex-id', foreign].entries()) {
+    // An expiry and a captured payment can refer to the same session; both must survive deduplication.
+    for (const type of ['checkout.session.expired', 'checkout.session.completed']) {
+      const event = { id: `evt_${i}_${type}`, created, type, data: { object: { id: `cs_invalid_${i}`, client_reference_id: bookingId, payment_status: 'paid', amount_total: 10050, currency: 'thb', payment_intent: `pi_invalid_${i}` } } };
+      expect((await signedStripeDelivery(t, event)).status).toBe(200);
+      expect((await signedStripeDelivery(t, event)).status).toBe(200);
+    }
+  }
+  const orphans = await t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_recordedAt', q => q.eq('entityType', 'stripe_orphan')).take(10));
+  expect(orphans).toHaveLength(4);
+  expect(orphans.filter(row => row.after?.type === 'checkout')).toHaveLength(2);
+});
+
+it('keeps post-cutover orphaned money visible as failed Stripe deliveries for reconciliation', async () => {
+  const t = createHarness(convexTest);
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_cutover_test');
+  vi.stubEnv('ARCH_MONEY_CUTOVER_AT', String(Date.now() - 60_000));
+  const event = { id: 'evt_late_payment', created: Math.floor(Date.now() / 1000), type: 'checkout.session.completed', data: { object: { id: 'cs_late_payment', client_reference_id: 'missing-after-reset', payment_status: 'paid', amount_total: 10050, currency: 'thb', payment_intent: 'pi_late_payment' } } };
+  expect((await signedStripeDelivery(t, event)).status).toBe(500);
+  expect((await signedStripeDelivery(t, event)).status).toBe(500);
+  const orphans = await t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_recordedAt', q => q.eq('entityType', 'stripe_orphan')).take(10));
+  expect(orphans).toHaveLength(1);
+  expect(orphans[0].after).toMatchObject({ type: 'checkout', amount: 10050, currency: 'thb', paymentIntentId: 'pi_late_payment' });
 });

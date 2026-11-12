@@ -1,7 +1,7 @@
 import { requireMarketingPermission } from './lib/marketingAccess';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { query } from './_generated/server';
+import { query } from './auth/model';
 import { requireOwner, requireAdmin } from './lib/adminAuth';
 import { canReadMarketingPersonalData, redactMarketingHistoryValue } from './lib/marketingPrivacy';
 

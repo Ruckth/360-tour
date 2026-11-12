@@ -1,4 +1,4 @@
-import { mutation } from './_generated/server';
+import { mutation } from './auth/model';
 import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import { patchSessionAfterMessages } from './lib/adminChatMetadata';

@@ -1,6 +1,6 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { internalQuery, mutation, query, type MutationCtx } from './_generated/server';
+import { internalQuery, mutation, query, type MutationCtx } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 
