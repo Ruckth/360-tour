@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import ts from 'typescript';
 import { afterEach, expect, it } from 'vitest';
 import schema from '../../convex/schema';
 import { inspectSchema, schemaSourceReader } from '../../scripts/lib/convex-schema.mjs';
@@ -87,7 +88,8 @@ function archive(ref: string) {
   const dir = mkdtempSync(join(tmpdir(), 'schema-maintenance-')); scratch.push(dir);
   const read = schemaSourceReader('.', ref);
   const { sources } = inspectSchema(read);
-  for (const [path, source] of Object.entries({ ...sources, 'convex/crons.ts': read('convex/crons.ts')!, 'package.json': read('package.json')! })) {
+  const gate = read('convex/auth/model.ts');
+  for (const [path, source] of Object.entries({ ...sources, ...(gate ? { 'convex/auth/model.ts': gate } : {}), 'convex/crons.ts': read('convex/crons.ts')!, 'package.json': read('package.json')! })) {
     mkdirSync(dirname(join(dir, path)), { recursive: true }); writeFileSync(join(dir, path), source);
   }
   return dir;
@@ -99,6 +101,52 @@ it.each(['72a657f', 'f2482a0237e28a82c71b0557ea9422f61233845a', 'HEAD'])('preser
   expect(result.stderr).toBe(''); expect(result.status).toBe(0);
   const expected = inspectSchema(schemaSourceReader('.', ref));
   expect(inspectSchema(schemaSourceReader(dir)).sources).toEqual(expected.sources);
+  const gate = schemaSourceReader('.', ref)('convex/auth/model.ts');
+  if (gate) expect(readFileSync(join(dir, 'convex/auth/model.ts'), 'utf8')).toBe(gate);
+}, 30_000);
+
+it('prepares a functioning historical maintenance gate without importing current table or role models', () => {
+  const dir = archive('72a657f');
+  const result = spawnSync(process.execPath, ['scripts/architecture-maintenance.mjs', '--old-ref', '72a657f', '--dir', dir], { encoding: 'utf8' });
+  expect(result.stderr).toBe(''); expect(result.status).toBe(0);
+  const read = schemaSourceReader('.', '72a657f');
+  mkdirSync(join(dir, 'convex/_generated'), { recursive: true });
+  writeFileSync(join(dir, 'convex/_generated/server.js'), read('convex/_generated/server.js')!);
+  symlinkSync(resolve('node_modules'), join(dir, 'node_modules'), 'dir');
+  const gate = join(dir, 'convex/auth/model.cjs');
+  writeFileSync(gate, ts.transpileModule(readFileSync(join(dir, 'convex/auth/model.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
+  const runtime = spawnSync(process.execPath, ['-e', `
+    const assert = require('node:assert/strict');
+    const gate = require(process.argv[1]);
+    (async () => {
+      for (const name of ['query', 'mutation', 'action']) {
+        const probe = gate[name]({ args: {}, handler: () => 'allowed' });
+        process.env.ARCH_RESET_PAUSED = '0'; assert.equal(await probe._handler({}, {}), 'allowed');
+        process.env.ARCH_RESET_PAUSED = '1'; await assert.rejects(() => probe._handler({}, {}), error => error.data.code === 'MAINTENANCE');
+      }
+      const internal = gate.internalMutation({ args: {}, handler: () => 'internal' });
+      assert.equal(await internal._handler({}, {}), 'internal');
+      const http = gate.httpAction(async () => new Response('allowed'));
+      assert.equal((await http._handler({}, new Request('https://example.test'))).status, 503);
+    })().catch(error => { console.error(error); process.exitCode = 1; });
+  `, gate], { encoding: 'utf8' });
+  expect(runtime.stderr).toBe(''); expect(runtime.status).toBe(0);
+}, 30_000);
+
+it('rejects a modified existing access seam rather than replacing its trust policies', () => {
+  const ref = 'f2482a0', dir = archive(ref);
+  writeFileSync(join(dir, 'convex/auth/model.ts'), '// unexpected access seam');
+  const result = spawnSync(process.execPath, ['scripts/architecture-maintenance.mjs', '--old-ref', ref, '--dir', dir], { encoding: 'utf8' });
+  expect(result.status).not.toBe(0); expect(result.stderr).toContain('auth seam does not match');
+});
+
+it('runs reset and maintenance preparation through repository paths containing spaces', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'schema-spaced-')); scratch.push(dir);
+  const alias = join(dir, 'repository with spaces'); symlinkSync(process.cwd(), alias, 'dir');
+  const reset = spawnSync(process.execPath, ['--preserve-symlinks-main', join(alias, 'scripts/architecture-reset.mjs'), '--old-ref', '72a657f', '--out', join(dir, 'artifacts')], { encoding: 'utf8' });
+  expect(reset.stderr).toBe(''); expect(reset.status).toBe(0);
+  const maintenance = spawnSync(process.execPath, ['--preserve-symlinks-main', join(alias, 'scripts/architecture-maintenance.mjs'), '--old-ref', '72a657f', '--dir', archive('72a657f')], { encoding: 'utf8' });
+  expect(maintenance.stderr).toBe(''); expect(maintenance.status).toBe(0);
 }, 30_000);
 
 it('rejects changes to imported validators before maintenance writes', () => {

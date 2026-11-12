@@ -18,6 +18,8 @@ The program generates two empty snapshot ZIPs, an exact OLD schema/table manifes
 
 Since the Phase 3b schema split, the preparation script follows the actual `defineSchema` assembly for both historical monoliths and domain modules. It also writes `old-schema-sources/` and `new-schema-sources/` with repository-relative paths and per-file SHA-256 hashes in `manifest.schemaSources`. Keep these complete source graphs with the artifacts; the top-level `old-schema.ts` / `new-schema.ts` copies alone do not contain imported table definitions or validators. The maintenance preparation script verifies all reachable schema sources against the selected revision before writing its gate. These are offline preparation checks, not authorization to perform another reset.
 
+Maintenance preparation preserves the selected revision's existing access seam byte for byte and rejects a changed or missing copy. For revisions before that seam existed, it uses the reviewed schema-independent maintenance builders from `f2bd89a` (`--gate-ref` can select another reviewed compatible seam). It never substitutes today's guest/role builders into the old table model. Install the archived revision's dependencies and typecheck the prepared Convex source before deploying it; schema equality alone does not prove that its builders compile.
+
 Record the old application commit, the new application commit, selected deployment, Vercel deployment URLs, database export path/checksum, provider-webhook settings and cron names. There are eight cron jobs in the integrated old revision (the plan's seven was stale).
 
 ## 2. Quiesce the OLD deployment
