@@ -1,3 +1,4 @@
+import { maintenancePaused } from './auth/model';
 import { ConvexError, v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query } from './auth/model';
@@ -414,6 +415,7 @@ export const revoke = mutation({
 export const cleanPending = internalMutation({
 	args: {},
 	handler: async (ctx) => {
+    if (maintenancePaused()) return { displays: 0, links: 0 };
 		const now = Date.now();
 		const cutoff = now - PAIRING_TTL_MS;
 		let deleted = 0;

@@ -27,3 +27,14 @@ it('seeds internally under maintenance and restores public queries only after un
   vi.stubEnv('ARCH_RESET_PAUSED', '0');
   expect(await t.query(api.chat.getMessages, seed.conversation!)).toHaveLength(1);
 });
+
+it('keeps cron cleanup from changing data while maintenance remains active', async () => {
+  const t = createHarness(convexTest);
+  const id = await t.run(ctx => ctx.db.insert('rateLimits', { key: 'maintenance-probe', count: 1, expiresAt: Date.now() - 1000 }));
+  vi.stubEnv('ARCH_RESET_PAUSED', '1');
+  await t.mutation(internal.crons.cleanRateLimits, {});
+  expect(await t.run(ctx => ctx.db.get(id))).not.toBeNull();
+  vi.stubEnv('ARCH_RESET_PAUSED', '0');
+  await t.mutation(internal.crons.cleanRateLimits, {});
+  expect(await t.run(ctx => ctx.db.get(id))).toBeNull();
+});

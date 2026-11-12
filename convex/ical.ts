@@ -1,3 +1,4 @@
+import { maintenancePaused } from './auth/model';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from './auth/model';
@@ -290,6 +291,7 @@ export const syncSource = action({
 export const syncAll = internalAction({
   args: {},
   handler: async (ctx) => {
+    if (maintenancePaused()) return;
     let cursor: string | null = null;
     do {
       const page: { page: Doc<'icalSources'>[]; isDone: boolean; continueCursor: string } = await ctx.runQuery(internal.ical.pageSources, { paginationOpts: { numItems: 20, cursor } });

@@ -1,3 +1,4 @@
+import { maintenancePaused } from './auth/model';
 import { cronJobs } from 'convex/server';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
@@ -20,6 +21,7 @@ export const MARKETING_CLEANUP_BATCH_SIZE = 100;
 export const cleanRawMarketing = internalMutation({
   args: { cutoff: v.optional(v.number()) },
   handler: async (ctx, args): Promise<number> => {
+    if (maintenancePaused()) return 0;
     const cutoff = args.cutoff ?? Date.now() - RAW_MARKETING_RETENTION_MS;
     // Deletion advances the indexed page; no offset/cursor can skip deleted rows.
     const sessions = await ctx.db.query('marketingSessions')
@@ -54,6 +56,7 @@ async function expireHold(ctx: MutationCtx, booking: Doc<'bookings'>) {
 export const expireBookingHold = internalMutation({
   args: { bookingId: v.id('bookings'), expectedRevision: v.number() },
   handler: async (ctx, args) => {
+    if (maintenancePaused()) return 0;
     const booking = await ctx.db.get(args.bookingId);
     if (
       !booking ||
@@ -76,6 +79,7 @@ export const expireBookingHold = internalMutation({
 export const expirePending = internalMutation({
   args: { cutoff: v.optional(v.number()), cursor: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    if (maintenancePaused()) return 0;
     // Scan from the shortest supported hold, independently of today's settings.
     // Each booking's own deadline determines whether it may expire.
     const cutoff = args.cutoff ?? Date.now() - BOOKING_RULE_RANGES.unpaidHoldMinutes[0] * 60_000;
@@ -94,6 +98,7 @@ export const expirePending = internalMutation({
 export const cleanRateLimits = internalMutation({
   args: {},
   handler: async (ctx) => {
+    if (maintenancePaused()) return 0;
     const rows = await ctx.db.query('rateLimits').withIndex('by_expiresAt', q => q.lt('expiresAt', Date.now())).take(100);
     for (const row of rows) await ctx.db.delete(row._id);
     if (rows.length === 100) await ctx.scheduler.runAfter(0, internal.crons.cleanRateLimits, {});
@@ -106,6 +111,7 @@ export const STAFF_AVATAR_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 export const cleanStaffAvatarUploads = internalMutation({
   args: {},
   handler: async (ctx) => {
+    if (maintenancePaused()) return 0;
     const rows = await ctx.db.query('staffAvatarUploads').withIndex('by_createdAt', q => q.lt('createdAt', Date.now() - STAFF_AVATAR_UPLOAD_TTL_MS)).take(100);
     for (const row of rows) {
       if (await ctx.db.system.get(row.storageId)) await ctx.storage.delete(row.storageId);
@@ -122,6 +128,7 @@ export const queueLifecycleEmails = internalMutation({
     today: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (maintenancePaused()) return 0;
     if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
       console.warn('RESEND_API_KEY or EMAIL_FROM not configured, skipping lifecycle emails');
       return 0;
