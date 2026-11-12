@@ -128,6 +128,81 @@ describe('POS line refunds', () => {
     expect((await s.view(orderId)).paymentRecord.effectiveAt).toBe(Date.parse('2026-10-31T03:00:00Z'));
   });
 
+  it('discovers a sale paid before the cash range from its in-range refund', async () => {
+    const s = await setup();
+    vi.mocked(Date.now).mockReturnValue(now - 10 * day);
+    const { orderId, lineId } = await s.sale();
+    await s.pay(orderId, now - 10 * day);
+    vi.mocked(Date.now).mockReturnValue(now);
+    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId));
+    const report = await s.owner.query(api.marketingReport.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' });
+    expect(report.truncated).toBe(false);
+    expect(report.sales).toMatchObject([{ id: orderId, collected: 1000, refunded: 250 }]);
+    expect(report.events).toEqual([{ saleId: orderId, kind: 'refund', day: '2026-11-12', amount: 250 }]);
+    const cohort = await s.owner.query(api.marketingReport.getReport, { from: '2026-11-02', to: '2026-11-02', basis: 'cohort' });
+    expect(cohort.sales).toMatchObject([{ id: orderId, collected: 1000, refunded: 250 }]);
+  });
+
+  it.each([1000, 1002])('renders %s refund rows with safe totals and blocks further refunds', async count => {
+    const s = await setup();
+    const { orderId, lineId } = await s.sale();
+    await s.pay(orderId);
+    await s.t.run(async ctx => {
+      for (let i = 0; i < count; i++) await ctx.db.insert('billRefunds', { ...s.args(orderId, lineId, 1, `history-limit-${i}`), createdAt: now, businessDate: '2026-11-12', createdBy: 'issuer|owner', createdByEmail: 'owner@example.com' });
+    });
+    const view = await s.view(orderId);
+    expect(view).toMatchObject({ refundHistoryTruncated: count > 1000, fullyRefunded: false, refundedAmountSatang: Math.min(count, 1001), lines: [{ remainingRefundableSatang: 0 }] });
+    expect(view.posRefunds).toHaveLength(50);
+    expect(view.posRefunds![0].idempotencyKey).toBe(`history-limit-${count - 1}`);
+    expect(view.order.status).toBe('paid');
+    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 1, 'over-history-limit'))).rejects.toMatchObject(error('REFUND_HISTORY_LIMIT'));
+    const page = await s.owner.query(api.orderHistoryPages.billRefunds, { orderId, paginationOpts: { cursor: null, numItems: 50 } });
+    expect(page.page).toHaveLength(50);
+    expect(page.isDone).toBe(false);
+  });
+
+  it('subtracts POS refunds from customer money and exposes satang totals on order rows', async () => {
+    const s = await setup();
+    const customerId = await s.owner.mutation(api.customers.createCustomer, { name: 'Guest' });
+    const { orderId, lineId } = await s.sale();
+    await s.pay(orderId);
+    await s.owner.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'assign-customer', reason: 'Receipt payer', customer: { customerId, expectedCustomerRevision: 0 } });
+    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 25001));
+    await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 10000, 'second-return'));
+    const paginationOpts = { cursor: null, numItems: 10 };
+    expect((await s.owner.query(api.customers.getCustomer, { customerId }))!.orders).toMatchObject([{ total: 649.99, refundedAmountSatang: 35001 }]);
+    expect((await s.owner.query(api.customers.listCustomerOrders, { customerId, paginationOpts })).page).toMatchObject([{ total: 649.99, refundedAmountSatang: 35001 }]);
+    expect((await s.owner.query(api.pos.listOrders, { filter: 'paid', paginationOpts })).page).toMatchObject([{ total: 1000, refundedAmountSatang: 35001 }]);
+  });
+
+  it.each([1500, 2000])('keeps a mixed-order coupon of %s from spending a stay deposit on walk-in lines', async amount => {
+    const s = await setup();
+    const bookingId = await s.booking();
+    await s.t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 900, paymentStatus: 'paid' }));
+    const appointmentId = await s.appointment();
+    const { orderId } = await s.owner.mutation(api.pos.openOrderFor, { bookingId });
+    await s.owner.mutation(api.pos.attach, { orderId, appointmentId });
+    const { lineId } = await s.owner.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
+    const { couponId } = await s.owner.mutation(api.marketing.saveCoupon, { code: 'MIXED', scope: 'services', benefit: { kind: 'fixed', amount } });
+    await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    await s.owner.mutation(api.pos.applyOrderCoupon, { orderId, code: 'MIXED' });
+    const issued = await s.view(orderId);
+    const stay = issued.lines.find(line => line.bookingId === bookingId)!;
+    const appointment = issued.lines.find(line => line.appointmentId === appointmentId)!;
+    const walkIn = issued.lines.find(line => line._id === lineId)!;
+    expect(stay).toMatchObject({ net: 1000, deposit: 900 });
+    expect(stay.couponDiscount ?? 0).toBe(0);
+    expect(appointment.deposit ?? 0).toBe(0);
+    expect(appointment.net).toBe((2000 - amount) / 2);
+    expect(issued.totals.due).toBe(100 + appointment.net + walkIn.net);
+    await s.pay(orderId);
+    const cap = Math.round(walkIn.net * 100);
+    const tenders = (await s.view(orderId)).payments.reduce((sum, tender) => sum + tender.amount, 0);
+    expect(cap).toBeLessThanOrEqual(Math.round(tenders * 100));
+    if (cap) await s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, cap));
+    await expect(s.owner.mutation(api.pos.refundLine, s.args(orderId, lineId, 1, 'after-mixed-cap'))).rejects.toMatchObject(error('REFUND_EXCEEDS_REMAINING'));
+  });
+
   it('uses the issued coupon allocation after manual discount, preserving consumed redemption on full refund', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
@@ -328,6 +403,20 @@ describe('POS refund staff approvals', () => {
     await s.rules({ refund: 'cashier' });
     await s.cashier.mutation(api.pos.refundLine, s.args(orderId, lineId, 10000, 'cashier-return-attempt'));
     expect((await s.records(orderId))[1].createdBy).toBe('issuer|cashier');
+  });
+
+  it('keeps legacy stored refund payloads schema-valid but exposes explicit units and requires a new request', async () => {
+    const s = await setup();
+    const { orderId, lineId } = await s.sale();
+    await s.pay(orderId);
+    const request = await s.request(s.args(orderId, lineId));
+    const legacy = { lineId, amount: 25000, currency: 'THB', method: 'cash' as const, idempotencyKey: 'refund-attempt-1' };
+    await s.t.run(ctx => ctx.db.patch(request.requestId, { payload: { kind: 'refund', ...legacy } }));
+    const view = (await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0];
+    expect(view).toMatchObject({ status: 'stale', payload: { amountSatang: 25000 } });
+    expect(view.payload).not.toHaveProperty('amount');
+    expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'stale', replayed: false });
+    expect(await s.records(orderId)).toHaveLength(0);
   });
 
   it.each(['rule', 'refund', 'line', 'order', 'requester'] as const)('stales a refund request after a change to %s', async change => {

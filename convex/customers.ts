@@ -6,7 +6,8 @@ import { internalMutation, mutation, query, type MutationCtx } from './_generate
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 import { requireStaff } from './lib/staffAccess';
-import { orderTitle } from './lib/billMath';
+import { orderTitle, round2 } from './lib/billMath';
+import { orderRefundTotal } from './lib/billRefunds';
 import { orderState } from './lib/orderLinks';
 import { assertValidEmail } from './lib/validation';
 import { customerPhoneError } from '../src/lib/booking/phone';
@@ -144,6 +145,8 @@ export const getCustomer = query({
 			.withIndex('by_customerId_and_updatedAt', (q) => q.eq('customerId', customer._id))
 			.order('desc')
 			.take(11);
+		const refundedByOrder = new Map<Id<'bills'>, number>();
+		for (const order of orders.slice(0, 10)) refundedByOrder.set(order._id, await orderRefundTotal(ctx, order._id));
 		return {
 			...customerCard(customer),
 			notes: customer.notes,
@@ -154,7 +157,8 @@ export const getCustomer = query({
 				_id: order._id,
 				title: orderTitle(order.orderNumber),
 				state: orderState(order),
-				total: order.total,
+				total: Math.max(0, round2(order.total - (refundedByOrder.get(order._id) ?? 0) / 100)),
+				refundedAmountSatang: refundedByOrder.get(order._id),
 				currency: order.currency,
 				updatedAt: order.updatedAt
 			}))
@@ -168,7 +172,12 @@ export const listCustomerOrders = query({
 		await requireAdmin(ctx);
 		pageSize(args.paginationOpts.numItems);
 		const result = await ctx.db.query('bills').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', args.customerId)).order('desc').paginate(args.paginationOpts);
-		return { ...result, page: result.page.map(order => ({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: order.total, currency: order.currency })) };
+		const page = [];
+		for (const order of result.page) {
+			const refundedAmountSatang = await orderRefundTotal(ctx, order._id);
+			page.push({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, round2(order.total - refundedAmountSatang / 100)), refundedAmountSatang, currency: order.currency });
+		}
+		return { ...result, page };
 	}
 });
 

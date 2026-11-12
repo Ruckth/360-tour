@@ -1,4 +1,4 @@
-import { assertNoPosRefunds, assertLineHasNoPosRefunds, billRefundView, executeBillRefund, isWalkInLine, orderRefunds, refundState } from './lib/billRefunds';
+import { assertNoPosRefunds, assertLineHasNoPosRefunds, billRefundView, executeBillRefund, isWalkInLine, orderRefunds, orderRefundTotal, refundState } from './lib/billRefunds';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from './lib/affiliateCredits';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
@@ -23,6 +23,7 @@ import {
 	assertPrice,
 	assertPriceOverride,
 	assertTenders,
+	MAX_BILL_REFUNDS,
 	billTotals,
 	bookingBalance,
 	bookingChargeTotal,
@@ -609,8 +610,9 @@ export const getOrder = query({
 			ctx.db.query('billCorrections').withIndex('by_billId_and_sequence', (q) => q.eq('billId', order._id)).order('desc').take(20),
 			ctx.db.query('appointmentRefunds').withIndex('by_billId', q => q.eq('billId', order._id)).order('desc').take(MAX_STAY_ROWS),
 			isOpenOrder(order) ? [] : orderLineLinks(ctx, order._id),
-			order.status === 'paid' || order.status === 'void' ? orderRefunds(ctx, order._id) : []
+			order.status === 'paid' || order.status === 'void' ? orderRefunds(ctx, order._id, true) : []
 		]);
+		const refundHistoryTruncated = posRefunds.length > MAX_BILL_REFUNDS;
 		const refundedByLine = new Map<Id<'billLines'>, number>();
 		for (const refund of posRefunds) refundedByLine.set(refund.lineId, (refundedByLine.get(refund.lineId) ?? 0) + refund.amount);
 		const refundedAmountSatang = posRefunds.reduce((sum, row) => sum + row.amount, 0);
@@ -641,7 +643,7 @@ export const getOrder = query({
 			// Optional at the type boundary so existing offline checkout adapters remain compatible.
 			const refundAmounts: { refundedAmountSatang?: number; remainingRefundableSatang?: number } = {
 				refundedAmountSatang: refundedByLine.get(line._id) ?? 0,
-				remainingRefundableSatang: order.status === 'paid' && order.paidAt !== undefined && isWalkInLine(line) && !links.some(link => link.lineId === line._id && link.status === 'active')
+				remainingRefundableSatang: !refundHistoryTruncated && posRefunds.length < MAX_BILL_REFUNDS && order.status === 'paid' && order.paidAt !== undefined && isWalkInLine(line) && !links.some(link => link.lineId === line._id && link.status === 'active')
 					? Math.max(0, Math.round(lineNet(line) * 100) - (refundedByLine.get(line._id) ?? 0)) : 0,
 			};
 			rows.push({
@@ -657,9 +659,10 @@ export const getOrder = query({
 				stayCoupon: stay?.promotion && !stay.priceOverride ? { code: stay.promotion.code, discount: stay.promotion.discount } : null
 			});
 		}
-		const refundSummary: { posRefunds?: ReturnType<typeof billRefundView>[]; refundedAmountSatang?: number; fullyRefunded?: boolean } = {
+		const refundSummary: { posRefunds?: ReturnType<typeof billRefundView>[]; refundedAmountSatang?: number; fullyRefunded?: boolean; refundHistoryTruncated?: boolean } = {
+			refundHistoryTruncated,
 			posRefunds: posRefunds.slice(-50).reverse().map(billRefundView), refundedAmountSatang,
-			fullyRefunded: order.status === 'paid' && refundedAmountSatang > 0 && refundedAmountSatang === Math.round(billTotals(lines).total * 100),
+			fullyRefunded: !refundHistoryTruncated && order.status === 'paid' && refundedAmountSatang > 0 && refundedAmountSatang === Math.round(billTotals(lines).total * 100),
 		};
 		const promotion: OrderPromotionView | null = order.promotion ? {
 			code: order.promotion.code, couponVersion: order.promotion.couponVersion, discount: order.promotion.discount,
@@ -754,6 +757,7 @@ export const listOrders = query({
 		const rows = [];
 		for (const order of orders) {
 			const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
+			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: await orderRefundTotal(ctx, order._id) };
 			rows.push({
 				_id: order._id,
 				orderNumber: order.orderNumber,
@@ -761,6 +765,7 @@ export const listOrders = query({
 				state: orderState(order),
 				itemCount: order.itemCount,
 				total: order.total,
+				...refundAmounts,
 				due: await remaining(ctx, order),
 				currency: order.currency,
 				updatedAt: order.updatedAt,

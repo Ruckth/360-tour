@@ -55,11 +55,13 @@ Existing approval behavior remains: one effective pending request per order (`PE
 `pos.getOrder({orderId:string})` adds these live fields:
 
 - Each line: `refundedAmountSatang`, `remainingRefundableSatang` (zero when not eligible).
-- Top level: `refundedAmountSatang`, `fullyRefunded`, `posRefunds:RefundView[]` (newest 50).
+- Top level: `refundedAmountSatang`, `fullyRefunded`, `refundHistoryTruncated`, `posRefunds:RefundView[]` (newest 50).
 
 These fields are optional in TypeScript for compatibility with existing offline adapters; the live backend always supplies them. Existing `lines[].net`, totals, payment records, receipt number and linked stay/appointment `refunds` remain as issued. Show POS returns separately and divide satang by 100 for display; existing stay/appointment refund amounts use major units.
 
-`orderHistoryPages.billRefunds({orderId,paginationOpts:{cursor,numItems}})` returns the standard `{page:RefundView[],isDone,continueCursor,...}` Convex pagination result, newest first; page size 1–50. It has the same checkout visibility restriction. Use its independent cursor for all POS returns. Aggregate balances read the complete ledger, bounded at 1,000 rows per order; they never sum just the newest 50. Further returns fail visibly at the limit.
+`orderHistoryPages.billRefunds({orderId,paginationOpts:{cursor,numItems}})` returns the standard `{page:RefundView[],isDone,continueCursor,...}` Convex pagination result, newest first; page size 1–50. It has the same checkout visibility restriction. Use its independent cursor for all POS returns. Aggregate balances read the complete ledger, bounded at 1,000 rows per order; they never sum just the newest 50. Further returns fail visibly at the limit. `getOrder` still renders over-limit orders: it returns the newest 50 history entries, sets `refundHistoryTruncated:true`, forces every line’s `remainingRefundableSatang` to 0 and `fullyRefunded:false`. Refunded totals are lower bounds computed from the newest 1,001 rows in this case; the UI must not treat them as complete. Exactly 1,000 rows also blocks additional refunds and exposes zero remaining capacity, while its totals remain complete.
+
+`pos.listOrders` adds optional `refundedAmountSatang` while preserving the issued gross `total`; subtract `refundedAmountSatang / 100` when aggregating retained money and use the field for a “Refunded” label. `customers.getCustomer.orders` and `listCustomerOrders.page` return `total` net of POS refunds, plus `refundedAmountSatang`. No lifetime-spend aggregate exists in these endpoints; the profile’s recent ten orders are not lifetime history. These reads use `by_orderId`, at most 1,001 rows per order and a shared invocation read budget; they fail visibly rather than return a partial money total. For refund-heavy histories, narrow pagination. No unbounded refund scan is added.
 
 Every refund adds a `billAudit` row with `kind:'refund'`, amount/method/reason in the note and before/after line refundable values in major units. Thus the current FinancialHistory receipt-activity stream already exposes it. A `recordChanges` order history entry contains `{refundId,lineId,amount,currency,method,businessDate}`; its amount is satang. The UI can add the dedicated POS refund stream without changing existing source ledgers.
 
@@ -72,7 +74,7 @@ remainingSatang = round(lineNet(issuedLine) * 100) - sum(earlier billRefunds.amo
 0 < amount <= remainingSatang
 ```
 
-`billMath.lineNet` is the existing receipt math: gross after price override/quantity, less manual discount, then the stored coupon allocation (`couponDiscount`) frozen at settlement. No new coupon allocation is calculated. Each mutation re-reads the paid order, line, active source allocation and prior refund rows inside its transaction; Convex serialization prevents concurrent returns exceeding the cap.
+`billMath.lineNet` is the existing receipt math: gross after price override/quantity, less manual discount, then the stored coupon allocation (`couponDiscount`) frozen at settlement. No new coupon allocation is calculated. Mixed-receipt deposit coverage is preserved: POS coupons never discount stay rows (their net cannot fall below their stay deposit), and appointment rows have no deposit. Regression tests cover partial and full service discounts alongside a partially prepaid stay; refundable walk-in money does not exceed the POS tenders. An additional order cap is therefore unnecessary under the current checkout rules. Each mutation re-reads the paid order, line, active source allocation and prior refund rows inside its transaction; Convex serialization prevents concurrent returns exceeding the cap.
 
 Only paid orders with a settlement timestamp qualify. Attached booking/appointment rows and active paid-line links are refused with `LINE_NOT_REFUNDABLE`; use source finance controls for attached money. A refunded walk-in line cannot later be allocated via `linkPaidLine` (`LINE_HAS_REFUNDS`). This avoids allocating its original price after returning part of it. Standalone appointment fee extras own POS money and may be refunded here; the appointment status/payment and fee history remain unchanged.
 
@@ -98,7 +100,7 @@ New refund errors are `ConvexError({code,message,...})`:
 | `INVALID_REFUND_REASON` | Empty or over 500 characters after trimming |
 | `INVALID_IDEMPOTENCY_KEY` | Trimmed key outside 8–100 characters |
 | `IDEMPOTENCY_CONFLICT` | Key reused for different details |
-| `REFUND_HISTORY_LIMIT` | Complete ledger cannot be safely extended/read |
+| `REFUND_HISTORY_LIMIT` | Complete ledger cannot be safely extended/read (receipt rendering degrades as described above) |
 | `PAYMENT_DATE_AFTER_REFUND` | Proposed payment business date is later than the earliest POS refund; includes `earliestRefundBusinessDate` |
 | `ORDER_HAS_REFUNDS` | A refunded order cannot be voided |
 | `LINE_HAS_REFUNDS` | A refunded line cannot be allocated to a source |

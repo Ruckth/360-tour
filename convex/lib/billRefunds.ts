@@ -7,16 +7,32 @@ import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from './s
 import { resortTodayIso } from './dates';
 import { appendRecordHistory } from './recordHistory';
 import { syncAffiliateCredit } from './affiliateCredits';
+import { readBudget } from './readBudget';
 
 type ReadCtx = QueryCtx | MutationCtx;
 export type BillRefundInput = Pick<Doc<'billRefunds'>, 'orderId' | 'lineId' | 'amount' | 'currency' | 'method' | 'reason' | 'idempotencyKey'>;
 function fail(code: string, message: string): never { throw new ConvexError({ code, message }); }
 
 /** Never silently truncate money. Complete older history remains available through pagination. */
-export async function orderRefunds(ctx: ReadCtx, orderId: Id<'bills'>) {
-  const rows = await ctx.db.query('billRefunds').withIndex('by_orderId', q => q.eq('orderId', orderId)).take(MAX_BILL_REFUNDS + 1);
-  if (rows.length > MAX_BILL_REFUNDS) fail('REFUND_HISTORY_LIMIT', 'Too many refunds on this order. Contact support.');
-  return rows;
+export async function orderRefunds(ctx: ReadCtx, orderId: Id<'bills'>, allowTruncated = false) {
+  const rows = await ctx.db.query('billRefunds').withIndex('by_orderId', q => q.eq('orderId', orderId)).order('desc').take(MAX_BILL_REFUNDS + 1);
+  if (!allowTruncated && rows.length > MAX_BILL_REFUNDS) fail('REFUND_HISTORY_LIMIT', 'Too many refunds on this order. Contact support.');
+  return rows.reverse();
+}
+/** Indexed, bounded per order and across all rows of a list invocation. */
+export async function orderRefundTotal(ctx: ReadCtx, orderId: Id<'bills'>) {
+  const budget = readBudget(ctx);
+  budget.range();
+  budget.assert();
+  let count = 0;
+  let total = 0;
+  for await (const row of ctx.db.query('billRefunds').withIndex('by_orderId', q => q.eq('orderId', orderId))) {
+    budget.document(row);
+    budget.assert();
+    if (++count > MAX_BILL_REFUNDS) fail('REFUND_HISTORY_LIMIT', 'Too many refunds on this order. Contact support.');
+    total += row.amount;
+  }
+  return total;
 }
 export function billRefundView(row: Doc<'billRefunds'>) {
   return {
