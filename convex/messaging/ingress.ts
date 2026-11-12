@@ -1,11 +1,13 @@
-import { internalMutation, httpAction, maintenancePaused, type ActionCtx } from '../auth/model';
+import { internalMutation, httpAction, type ActionCtx } from '../auth/model';
+import { maintenancePaused } from '../lib/maintenance';
 import { internal } from '../_generated/api';
 import { v } from 'convex/values';
 import { adapters } from './channels';
 import { inboundValidator, socialChannel, type SocialChannel } from './channels/adapter';
-import { buildAdminSearchText } from '../lib/adminChatMetadata';
-import { currentClaim, recordGuest, scheduleNext } from './model';
-import { consumeChatAdmission } from '../lib/chatAdmission';
+import { buildAdminSearchText } from './adminChatMetadata';
+import { currentClaim } from './model';
+import { recordGuest, scheduleNext } from './pipeline';
+import { consumeChatAdmission } from './chatAdmission';
 
 /** One transaction accepts the entire signed delivery, deduplicates and schedules BEFORE HTTP 200. */
 export const accept = internalMutation({

@@ -10,8 +10,8 @@ beforeEach(() => localStorage.clear());
 
 it('persists guest credentials through creation, reload, and handoff and sends them on every session request', async () => {
 	const mutation = vi.fn(async (ref: FunctionReference<"mutation">, args: Record<string, unknown>) => {
-		if (getFunctionName(ref) === 'chat:createSession') return { sessionId: 'session-one', guestToken: 'original-token' };
-		if (getFunctionName(ref) === 'chat:claimBrowserHandoff') return { sessionId: 'session-one', guestToken: 'rotated-token' };
+		if (getFunctionName(ref) === 'messaging/chat:createSession') return { sessionId: 'session-one', guestToken: 'original-token' };
+		if (getFunctionName(ref) === 'messaging/chat:claimBrowserHandoff') return { sessionId: 'session-one', guestToken: 'rotated-token' };
 		return args;
 	});
 	const query = vi.fn<(ref: unknown, args: unknown) => Promise<unknown[]>>().mockResolvedValue([]);
@@ -29,14 +29,14 @@ it('persists guest credentials through creation, reload, and handoff and sends t
 	await markChatSuggestionsShown(client, { sessionId, suggestions: [{ source: 'static', suggestionId: 'availability' }] });
 	await markChatSuggestionClicked(client, { sessionId, suggestion: { source: 'static', suggestionId: 'availability' } });
 	await createChatBrowserHandoff(client, { sessionId });
-	await client.mutation(api.chat.sendMessage, { sessionId: sessionId as never, guestToken: getStoredGuestToken(sessionId)!, clientMessageId: crypto.randomUUID(), content: 'hello' });
+	await client.mutation(api.messaging.chat.sendMessage, { sessionId: sessionId as never, guestToken: getStoredGuestToken(sessionId)!, clientMessageId: crypto.randomUUID(), content: 'hello' });
 	await closeChatSession(client, { sessionId });
 	for (const [, args] of mutation.mock.calls.slice(1)) expect(args).toMatchObject({ sessionId, guestToken: 'original-token' });
 	for (const [, args] of query.mock.calls) expect(args).toMatchObject({ sessionId, guestToken: 'original-token' });
 	expect(action).not.toHaveBeenCalled();
 	await claimChatBrowserHandoff(client, { token: 'handoff' });
 	await getChatMessages(client, { sessionId });
-	expect(query).toHaveBeenLastCalledWith(api.chat.getMessages, { sessionId, guestToken: 'rotated-token' });
+	expect(query).toHaveBeenLastCalledWith(api.messaging.chat.getMessages, { sessionId, guestToken: 'rotated-token' });
 });
 
 it('removes the session token when clearing the stored session id', () => {

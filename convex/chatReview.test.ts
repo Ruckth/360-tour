@@ -9,7 +9,7 @@ const modules = import.meta.glob('./**/*.ts');
 
 it('returns a public session projection and the newest 100 messages', async () => {
 	const t = convexTest(schema, modules);
-	const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, { channel: 'web', visitorId: 'guest' });
+	const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, { channel: 'web', visitorId: 'guest' });
 	await t.run(async (ctx) => {
 		await ctx.db.patch(sessionId, {
 			assignedAdminEmail: 'staff@example.com', adminSearchText: 'private search',
@@ -19,14 +19,14 @@ it('returns a public session projection and the newest 100 messages', async () =
 			await ctx.db.insert('messages', { sessionId, role: 'user', content: `message ${i}`, timestamp: i });
 		}
 	});
-	const session = await t.query(api.chat.getSession, { guestToken: sessionIdGuestToken, sessionId });
+	const session = await t.query(api.messaging.chat.getSession, { guestToken: sessionIdGuestToken, sessionId });
 	expect(session).toMatchObject({ channel: 'web', aiPaused: false });
 	expect(session).not.toHaveProperty('visitorId');
 	expect(session).not.toHaveProperty('assignedAdminEmail');
 	expect(session).not.toHaveProperty('adminSearchText');
 	expect(session).not.toHaveProperty('adminStatus');
 	expect(session).not.toHaveProperty('lastStaffAlertAt');
-	const messages = await t.query(api.chat.getMessages, { guestToken: sessionIdGuestToken, sessionId });
+	const messages = await t.query(api.messaging.chat.getMessages, { guestToken: sessionIdGuestToken, sessionId });
 	expect(messages).toHaveLength(100);
 	expect(messages[0].content).toBe('message 5');
 	expect(messages[99].content).toBe('message 104');
@@ -34,25 +34,25 @@ it('returns a public session projection and the newest 100 messages', async () =
 
 it('does not store an automatic assistant reply when staff pauses during generation', async () => {
 	const t = convexTest(schema, modules);
-	const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, { channel: 'web' });
+	const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
 	await t.run((ctx) => ctx.db.patch(sessionId, { aiPaused: true }));
-	expect(await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+	expect(await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
 		sessionId, content: 'Stale AI reply'
 	})).toEqual({ stored: false, messageId: null });
-	expect(await t.query(api.chat.getMessages, { guestToken: sessionIdGuestToken, sessionId })).toEqual([]);
-	expect((await t.query(api.chat.getSession, { guestToken: sessionIdGuestToken, sessionId }))?.aiPaused).toBe(true);
+	expect(await t.query(api.messaging.chat.getMessages, { guestToken: sessionIdGuestToken, sessionId })).toEqual([]);
+	expect((await t.query(api.messaging.chat.getSession, { guestToken: sessionIdGuestToken, sessionId }))?.aiPaused).toBe(true);
 });
 
 it('keeps staff-only fields private when the guest resumes their own session', async () => {
 	const t = convexTest(schema, modules);
 	const visitorId = 'resume-private-fields';
-	const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, { channel: 'web', visitorId });
+	const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, { channel: 'web', visitorId });
 	await t.run((ctx) => ctx.db.patch(sessionId, {
 		assignedAdminEmail: 'staff@example.com', staffTask: 'Private internal follow-up',
 		adminSearchText: 'private search', inboxSendError: 'private provider diagnostic',
 		visitorEmail: 'guest@example.com', aiPaused: true,
 	}));
-	const resumed = await t.query(api.chat.getSession, { guestToken: sessionIdGuestToken, sessionId });
+	const resumed = await t.query(api.messaging.chat.getSession, { guestToken: sessionIdGuestToken, sessionId });
 	expect(resumed).toMatchObject({ _id: sessionId, channel: 'web', aiPaused: true });
 	for (const field of ['assignedAdminEmail', 'staffTask', 'adminSearchText', 'inboxSendError', 'visitorEmail']) {
 		expect(resumed).not.toHaveProperty(field);

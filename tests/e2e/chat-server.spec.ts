@@ -61,8 +61,8 @@ test.describe('durable web chat on an isolated local backend', () => {
         if (result.status !== 'success') throw new Error('Local handoff failed');
         return result.value;
       };
-      const token = await mutation('chat:createBrowserHandoff', { sessionId, guestToken });
-      const claimed = await mutation('chat:claimBrowserHandoff', { token });
+      const token = await mutation('messaging/chat:createBrowserHandoff', { sessionId, guestToken });
+      const claimed = await mutation('messaging/chat:claimBrowserHandoff', { token });
       return !!claimed?.guestToken && claimed.guestToken !== guestToken;
     });
     expect(rotated).toBe(true);

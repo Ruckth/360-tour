@@ -67,15 +67,15 @@ it('throttles staff alerts for a session to one per 30 minutes', async () => {
 	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', {
 		channel: 'web', visitorName: 'Guest', createdAt: Date.now()
 	}));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	const first = await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt);
 	expect(first).toBeTruthy();
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'Please connect me to someone' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'Please connect me to someone' });
 	await t.mutation(internal.concierge.knowledge.recordUnknownQuestion, { sessionId, userQuestion: 'What is the answer?' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBe(first);
 	const stale = Date.now() - 31 * 60 * 1000;
 	await t.run(async ctx => await ctx.db.patch(sessionId, { lastStaffAlertAt: stale }));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeGreaterThan(stale);
 });
 
@@ -106,7 +106,7 @@ it('skips pre-arrival mail when the booking is cancelled before the cron', async
 });
 
 it('detects staff requests without flagging booking questions', async () => {
-	const { asksForStaff } = await import('./chatKnowledge');
+	const { asksForStaff } = await import('./messaging/staffRequests');
 	expect(asksForStaff('Can I talk to the host?')).toBe(true);
 	expect(asksForStaff('Is there someone I can speak to?')).toBe(true);
 	expect(asksForStaff('ขอคุยกับพนักงาน')).toBe(true);
@@ -130,7 +130,7 @@ it('caps staff alerts globally so anonymous sessions cannot flood the owner', as
 	const t = convexTest(schema, modules);
 	await t.run(async ctx => await ctx.db.insert('rateLimits', { key: 'staff-alert:global', count: 30, expiresAt: Date.now() + 60 * 60 * 1000 }));
 	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'web', createdAt: Date.now() }));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeFalsy();
 });
 
@@ -142,7 +142,7 @@ it('uses a rolling hour for the global staff alert cap', async () => {
 		timestamps: [now - 61 * 60 * 1000, ...Array(29).fill(now - 30 * 60 * 1000)]
 	}));
 	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'web', createdAt: now }));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeTruthy();
 	const limit = await t.run(async ctx => await ctx.db.query('rateLimits')
 		.withIndex('by_key', q => q.eq('key', 'staff-alert:global')).unique());
@@ -157,5 +157,5 @@ it('treats missing email configuration as a non-fatal skip', async () => {
 	expect(await t.action(internal.emails.sendCancellation, { bookingId })).toEqual({ sent: false, reason: 'missing_config' });
 	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review' })).toBe(0);
 	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'line', createdAt: Date.now() }));
-	await expect(t.action(internal.emails.sendStaffAlert, { sessionId, channel: 'line', guestName: 'Guest', lastMessage: 'Help' })).resolves.toBeNull();
+	await expect(t.action(internal.messaging.alerts.sendStaffAlert, { sessionId, channel: 'line', guestName: 'Guest', lastMessage: 'Help' })).resolves.toBeNull();
 });

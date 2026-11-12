@@ -1,4 +1,5 @@
-import { internalAction, internalQuery, maintenancePaused, type ActionCtx } from '../auth/model';
+import { internalAction, internalQuery, type ActionCtx } from '../auth/model';
+import { maintenancePaused } from '../lib/maintenance';
 import { internal } from '../_generated/api';
 import { v } from 'convex/values';
 import { generateConciergeReply, withReplyOutcome, type ConciergeReply } from './generation';

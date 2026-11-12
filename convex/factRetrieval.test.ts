@@ -39,7 +39,7 @@ async function setup() {
     );
   const pool = await property("pool-villa");
   const garden = await property("garden-villa");
-  const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, {
+  const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, {
     channel: "web",
     propertySlug: "pool-villa",
   });

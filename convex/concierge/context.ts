@@ -5,7 +5,7 @@ import { api, internal } from '../_generated/api';
 export async function loadTurnContext(ctx: Pick<ActionCtx, 'runQuery'>, args: { sessionId: Id<'conversations'>; replyToMessageId?: Id<'messages'> }) {
   const [properties, settings, recentHistory] = await Promise.all([
     ctx.runQuery(api.catalog.properties.list, {}), ctx.runQuery(internal.settings.settings.effective, {}),
-    ctx.runQuery(internal.chat.getRecentMessages, { sessionId: args.sessionId, limit: 10, throughMessageId: args.replyToMessageId }),
+    ctx.runQuery(internal.messaging.chat.getRecentMessages, { sessionId: args.sessionId, limit: 10, throughMessageId: args.replyToMessageId }),
   ]);
   return { properties, settings, recentHistory };
 }

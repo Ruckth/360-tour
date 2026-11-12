@@ -4,13 +4,13 @@ import { api, internal } from '../_generated/api';
 import { generateConciergeReply, withReplyOutcome, type GenerateConciergeReplyArgs } from '../concierge/model';
 /** Existing pure generation suites exercise the same helper now called by internal runTurn. */
 export async function generateTestReply(t: TestConvexForDataModel<DataModel>, args: GenerateConciergeReplyArgs) {
-  const session = await t.query(internal.chat.getSessionInternal, { sessionId: args.sessionId });
+  const session = await t.query(internal.messaging.chat.getSessionInternal, { sessionId: args.sessionId });
   if (!session || session.aiPaused) throw new Error('AI replies are paused');
   return await t.action(async ctx => withReplyOutcome(await generateConciergeReply(ctx, { ...args, channel: session.channel }, session)));
 }
 /** Web integration suites use genuine guest admission, claim, generation and atomic commit. */
 export async function respondTest(t: TestConvexForDataModel<DataModel>, args: Omit<GenerateConciergeReplyArgs, 'channel'> & { guestToken?: string; actionHint?: 'booking' | 'tour' | 'none'; marketing?: { slug?: string } }) {
-  const queued = await t.mutation(api.chat.sendMessage, { sessionId: args.sessionId, guestToken: args.guestToken ?? '', clientMessageId: crypto.randomUUID(), content: args.userMessage, locale: args.locale, propertySlug: args.propertySlug, actionHint: args.actionHint, marketing: args.marketing });
+  const queued = await t.mutation(api.messaging.chat.sendMessage, { sessionId: args.sessionId, guestToken: args.guestToken ?? '', clientMessageId: crypto.randomUUID(), content: args.userMessage, locale: args.locale, propertySlug: args.propertySlug, actionHint: args.actionHint, marketing: args.marketing });
   const claimToken = crypto.randomUUID();
   const claim = await t.mutation(internal.messaging.worker.claim, { eventId: queued.eventId, token: claimToken });
   if (!claim) return { response: '', model: 'ai_paused', aiPaused: true };

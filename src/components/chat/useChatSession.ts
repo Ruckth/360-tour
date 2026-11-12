@@ -152,7 +152,7 @@ export function useChatSession(props: ChatExperienceProps) {
       const draft = pending.current;
       const clientMessageId = draft?.text === clean && draft.sessionId === sentSession && draft.clientMessageId ? draft.clientMessageId : crypto.randomUUID();
       pending.current = { text: clean, clientMessageId, sessionId: sentSession }; persistDraft(pending.current);
-      await convex.mutation(api.chat.sendMessage, { ...credentials, clientMessageId, content: clean, propertySlug: activePropertySlug, locale, actionHint, marketing: captureForBooking() ?? {} });
+      await convex.mutation(api.messaging.chat.sendMessage, { ...credentials, clientMessageId, content: clean, propertySlug: activePropertySlug, locale, actionHint, marketing: captureForBooking() ?? {} });
       if (submission.signal.aborted || activeSession.current !== sentSession) return;
       pending.current = null; persistDraft(null); setInput('');
       if (preset) void markChatSuggestionClicked(convex, { sessionId: sentSession, suggestion: { source: 'static', suggestionId: preset.id } }).catch(() => undefined);

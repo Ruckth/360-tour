@@ -1154,7 +1154,7 @@ it.each(["create", "confirmProposal"] as const)("freezes recorded vs claimed evi
     const result = path === "create"
       ? await s.t.mutation(api.bookings.bookings.create, { ...stay, marketing })
       : await (async () => {
-        const { sessionId } = await s.t.mutation(api.chat.createSession, { channel: "web" });
+        const { sessionId } = await s.t.mutation(api.messaging.chat.createSession, { channel: "web" });
         const { confirmToken } = await s.t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, propertySlug: stay.propertySlug, guestName: stay.guestName, guestPhone: stay.guestPhone, checkIn: stay.checkIn, checkOut: stay.checkOut, guests: stay.guests });
         const result = await s.t.mutation(api.bookings.bookings.confirmProposal, { token: confirmToken, marketing });
         if (result.needsReview) throw new Error("Expected a confirmed booking");

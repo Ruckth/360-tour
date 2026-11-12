@@ -267,7 +267,7 @@ describe("AI chat booking through generateReply", () => {
       },
     );
     expect(await listBookings(t)).toHaveLength(0);
-    expect((await t.query(internal.chat.getSessionInternal, { sessionId }))?.bookingFlowAt).toBeGreaterThan(0);
+    expect((await t.query(internal.messaging.chat.getSessionInternal, { sessionId }))?.bookingFlowAt).toBeGreaterThan(0);
 
     await runWithAi(
       [aiResponse(null, [{ name: "confirm_booking" }]), aiResponse("Booked!")],

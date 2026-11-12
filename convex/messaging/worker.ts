@@ -1,16 +1,18 @@
-import { internalAction, internalMutation, maintenancePaused } from '../auth/model';
+import { internalAction, internalMutation } from '../auth/model';
+import { maintenancePaused } from '../lib/maintenance';
 import { internal } from '../_generated/api';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { currentClaim, LEASE_MS, MAX_ATTEMPTS, nextEvent, reconcile, scheduleNext } from './model';
+import { currentClaim } from './model';
+import { LEASE_MS, MAX_ATTEMPTS, nextEvent, reconcile, scheduleNext } from './pipeline';
 import { runTurnHandler } from '../concierge/model';
 import { profileName } from './channels/profile';
-import { buildAdminChatMetadataPatch } from '../lib/adminChatMetadata';
+import { buildAdminChatMetadataPatch } from './adminChatMetadata';
 import { withMessagingImages } from './channels/images';
 import { adapters } from './channels';
 import type { SendResult } from './channels/adapter';
-import { answerAccepted } from '../lib/inboxLifecycle';
-import { patchSessionAfterMessages } from '../lib/adminChatMetadata';
+import { answerAccepted } from './inboxState';
+import { patchSessionAfterMessages } from './adminChatMetadata';
 import type { ConciergeReply } from '../concierge/model';
 import type { ReplyCard } from '../lib/replyCards';
 import { isRateLimitError } from '@convex-dev/rate-limiter';
@@ -174,7 +176,7 @@ export const run = internalAction({
     if (!event) return;
     try {
       if (event.channel !== 'web' && event.recipient) {
-        const session = await ctx.runQuery(internal.chat.getSessionInternal, { sessionId: event.sessionId! });
+        const session = await ctx.runQuery(internal.messaging.chat.getSessionInternal, { sessionId: event.sessionId! });
         if (!session?.visitorName && !maintenancePaused()) {
           const name = await profileName(event.channel, event.recipient);
           if (name) await ctx.runMutation(internal.messaging.worker.updateProfile, { eventId, claimToken, name });

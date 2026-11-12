@@ -12,7 +12,7 @@ import { recordStayPayment } from '../bookings/model';
 import { blockBookingDates } from '../lib/availabilityWrites';
 import { writeBooking } from '../lib/bookingMoney';
 import { insertOrder } from '../lib/orderLinks';
-import { createGuestToken, hashGuestToken } from '../lib/guestToken';
+import { createGuestToken, hashGuestToken } from '../messaging/model';
 import { DEFAULT_CASHIER_RULES } from '../lib/staffTypes';
 
 export type ScenarioName = 'empty' | 'demo-resort' | 'busy-weekend';

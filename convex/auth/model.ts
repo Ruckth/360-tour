@@ -2,19 +2,19 @@
 import { customAction, customCtx, customMutation, customQuery } from 'convex-helpers/server/customFunctions';
 import type { HttpActionBuilder } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
-import { action as rawAction, httpAction as rawHttpAction, mutation as rawMutation, query as rawQuery } from '../_generated/server';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
-import { requireGuestToken } from '../lib/guestToken';
-import { sha256 } from '../lib/displayTokens';
+import { action as rawAction, httpAction as rawHttpAction, mutation as rawMutation, query as rawQuery } from '../_generated/server';
 import { requireAdmin } from '../lib/adminAuth';
-import { requireStaff, type StaffCapability } from '../lib/staffAccess';
+import { sha256 } from '../lib/displayTokens';
+import { maintenancePaused } from '../lib/maintenance';
 import { requireMarketingPermission, type MarketingPermission } from '../lib/marketingAccess';
+import { requireStaff, type StaffCapability } from '../lib/staffAccess';
+import { requireGuestToken } from '../messaging/model';
 
 // Never re-export raw public builders through this seam.
-export { internalQuery, internalMutation, internalAction } from '../_generated/server';
-export type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
-
-export const maintenancePaused = () => process.env.ARCH_RESET_PAUSED === '1';
+export { internalAction, internalMutation, internalQuery } from '../_generated/server';
+export type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+export { maintenancePaused } from '../lib/maintenance';
 function operational() {
   if (maintenancePaused()) {
     throw new ConvexError({ code: 'MAINTENANCE', message: 'The resort is temporarily unavailable for maintenance. Please try again shortly.' });

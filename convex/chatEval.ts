@@ -46,7 +46,7 @@ export const comparisonTurn = internalAction({
 		model: v.union(v.literal('openai/gpt-6-luna'), v.literal('z-ai/glm-5.3-flash'))
 	},
 	handler: async (ctx, args) => {
-		const session: Doc<'conversations'> | null = await ctx.runQuery(internal.chat.getSessionInternal, { sessionId: args.sessionId });
+		const session: Doc<'conversations'> | null = await ctx.runQuery(internal.messaging.chat.getSessionInternal, { sessionId: args.sessionId });
 		if (!session || !session.visitorId?.startsWith('eval:')) throw new Error('Comparison requires an eval session');
 		await ctx.runMutation(internal.chatEval.writeMessage, { sessionId: args.sessionId, role: 'user', content: args.userMessage });
 		const toolTrace: NonNullable<GenerateConciergeReplyArgs['toolTrace']> = [];
@@ -63,7 +63,7 @@ export const comparisonTurn = internalAction({
 export const messagingTurn = internalAction({
 	args: { sessionId: v.id('conversations'), userMessage: v.string(), siteUrl: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const session: Doc<'conversations'> | null = await ctx.runQuery(internal.chat.getSessionInternal, {
+		const session: Doc<'conversations'> | null = await ctx.runQuery(internal.messaging.chat.getSessionInternal, {
 			sessionId: args.sessionId
 		});
 		if (!session?.visitorId?.startsWith('eval:')) throw new Error('Requires an eval session');

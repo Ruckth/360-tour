@@ -1,9 +1,9 @@
 import { paginationOptsValidator } from 'convex/server';
-import { type MutationCtx, publicMutation, adminQuery, adminMutation } from './auth/model';
 import { v } from 'convex/values';
-import type { Doc, Id } from './_generated/dataModel';
-import { assertValidEmail, normalizeEmail } from './lib/validation';
-import { enforceRateLimit } from './lib/rateLimit';
+import { adminMutation, adminQuery, publicMutation } from '../auth/model';
+import { assertValidEmail, normalizeEmail } from '../lib/validation';
+import { recordLead } from './leadWriter';
+import { enforceRateLimit } from './rateLimit';
 
 const leadSource = v.union(
 	v.literal('tour_completion'),
@@ -12,31 +12,6 @@ const leadSource = v.union(
 );
 
 const EXPORT_LIMIT = 5000;
-
-/**
- * One row per email + source + villa: a repeat sign-up from somewhere new gets its own row,
- * an identical repeat returns the existing one.
- */
-export async function recordLead(
-	ctx: MutationCtx,
-	lead: { email: string; source: Doc<'leads'>['source']; propertyId?: Id<'properties'> }
-) {
-	// first(), not unique(): older data may already hold duplicates of a combination.
-	const duplicate = await ctx.db
-		.query('leads')
-		.withIndex('by_email_and_source_and_propertyId', (q) =>
-			q.eq('email', lead.email).eq('source', lead.source).eq('propertyId', lead.propertyId)
-		)
-		.first();
-	if (duplicate) return duplicate._id;
-
-	return await ctx.db.insert('leads', {
-		...(lead.propertyId ? { propertyId: lead.propertyId } : {}),
-		email: lead.email,
-		source: lead.source,
-		createdAt: Date.now()
-	});
-}
 
 export const save = publicMutation({
   reason: "Anonymous contact capture with validated email and rate limits.",

@@ -7,7 +7,7 @@ import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 import { readMarketingReport, reportSpend } from './lib/marketingReportRead';
 import { appendRecordHistory } from './settings/model';
 import { normalizeCouponCode } from './lib/offers';
-import { enforceRateLimit } from './lib/rateLimit';
+import { enforceRateLimit } from './messaging/model';
 import { resortLocalParts } from './lib/serviceSlots';
 import { readRangeWithinBudget } from './lib/readBudget';
 

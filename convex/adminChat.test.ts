@@ -5,7 +5,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { buildAdminSearchText } from "./lib/adminChatMetadata";
+import { buildAdminSearchText } from './messaging/adminChatMetadata';
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -93,7 +93,7 @@ describe("adminChat.listSessions", () => {
     const t = convexTest(schema, modules);
 
     await expect(
-      t.query(api.adminChat.listSessions, {
+      t.query(api.messaging.adminChat.listSessions, {
         status: "all",
         paginationOpts: { numItems: 10, cursor: null },
       }),
@@ -126,7 +126,7 @@ describe("adminChat.listSessions", () => {
       lastSeenAt: 1_000,
     });
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       paginationOpts: { numItems: 10, cursor: null },
     });
@@ -151,7 +151,7 @@ describe("adminChat.listSessions", () => {
       });
     }
 
-    const firstPage = await admin.query(api.adminChat.listSessions, {
+    const firstPage = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       paginationOpts: { numItems: 10, cursor: null },
     });
@@ -161,7 +161,7 @@ describe("adminChat.listSessions", () => {
     expect(firstPage.continueCursor).toBeTruthy();
     expect(firstPage.sessions[0]?.visitorName).toBe("Visitor 11");
 
-    const secondPage = await admin.query(api.adminChat.listSessions, {
+    const secondPage = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       paginationOpts: { numItems: 10, cursor: firstPage.continueCursor },
     });
@@ -187,7 +187,7 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 1_700_000_000_020,
     });
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       empty: "empty",
       paginationOpts: { numItems: 10, cursor: null },
@@ -228,12 +228,12 @@ describe("adminChat.listSessions", () => {
       });
     });
 
-    const emptyResult = await admin.query(api.adminChat.listSessions, {
+    const emptyResult = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       empty: "empty",
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const allResult = await admin.query(api.adminChat.listSessions, {
+    const allResult = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       paginationOpts: { numItems: 10, cursor: null },
     });
@@ -271,7 +271,7 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 3_000,
     });
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       messageStartAt: 1_500,
       messageEndAt: 2_500,
@@ -334,24 +334,24 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 250,
     });
 
-    const lineResult = await admin.query(api.adminChat.listSessions, {
+    const lineResult = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       channel: "line",
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const facebookSearchResult = await admin.query(api.adminChat.listSessions, {
+    const facebookSearchResult = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       channel: "facebook",
       searchQuery: "guest",
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const whatsappResult = await admin.query(api.adminChat.listSessions, {
+    const whatsappResult = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       channel: "whatsapp",
       searchQuery: "9568",
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const instagramResult = await admin.query(api.adminChat.listSessions, {
+    const instagramResult = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       channel: "instagram",
       searchQuery: "ig123",
@@ -388,7 +388,7 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 3_000,
     });
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       messageStartAt: 2_000,
       messageEndAt: 2_999,
@@ -418,7 +418,7 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 3_000,
     });
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       messageEndAt: 3_500,
       paginationOpts: { numItems: 10, cursor: null },
@@ -456,7 +456,7 @@ describe("adminChat.listSessions", () => {
       });
     }
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "inactive",
       now,
       paginationOpts: { numItems: 10, cursor: null },
@@ -492,12 +492,12 @@ describe("adminChat.listSessions", () => {
       lastOpenedAt: now - 300_000,
     });
 
-    const firstPage = await admin.query(api.adminChat.listSessions, {
+    const firstPage = await admin.query(api.messaging.adminChat.listSessions, {
       status: "inactive",
       now,
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const secondPage = await admin.query(api.adminChat.listSessions, {
+    const secondPage = await admin.query(api.messaging.adminChat.listSessions, {
       status: "inactive",
       now,
       paginationOpts: { numItems: 10, cursor: firstPage.continueCursor },
@@ -539,7 +539,7 @@ describe("adminChat.listSessions", () => {
       });
     }
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "active",
       messageStartAt: 1_500,
       messageEndAt: 4_000,
@@ -579,14 +579,14 @@ describe("adminChat.listSessions", () => {
       });
     }
 
-    const firstPage = await admin.query(api.adminChat.listSessions, {
+    const firstPage = await admin.query(api.messaging.adminChat.listSessions, {
       status: "active",
       messageStartAt: 1_500,
       messageEndAt: 5_000,
       now,
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const secondPage = await admin.query(api.adminChat.listSessions, {
+    const secondPage = await admin.query(api.messaging.adminChat.listSessions, {
       status: "active",
       messageStartAt: 1_500,
       messageEndAt: 5_000,
@@ -627,12 +627,12 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 1_000,
     });
 
-    const direct = await admin.query(api.adminChat.listSessions, {
+    const direct = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       searchQuery: "garden-suite",
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const typo = await admin.query(api.adminChat.listSessions, {
+    const typo = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       searchQuery: "myaa",
       paginationOpts: { numItems: 10, cursor: null },
@@ -662,7 +662,7 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 1_000,
     });
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       searchQuery: "shared-query",
       paginationOpts: { numItems: 10, cursor: null },
@@ -700,7 +700,7 @@ describe("adminChat.listSessions", () => {
       });
     });
 
-    const result = await admin.query(api.adminChat.listSessions, {
+    const result = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       searchQuery: "halal restaurant",
       paginationOpts: { numItems: 10, cursor: null },
@@ -731,15 +731,15 @@ describe("adminChat.listSessions", () => {
       }
     });
 
-    const firstPage = await admin.query(api.adminChat.listTranscriptMessages, {
+    const firstPage = await admin.query(api.messaging.adminChat.listTranscriptMessages, {
       sessionId,
       paginationOpts: { numItems: 10, cursor: null },
     });
-    const secondPage = await admin.query(api.adminChat.listTranscriptMessages, {
+    const secondPage = await admin.query(api.messaging.adminChat.listTranscriptMessages, {
       sessionId,
       paginationOpts: { numItems: 20, cursor: firstPage.continueCursor },
     });
-    const thirdPage = await admin.query(api.adminChat.listTranscriptMessages, {
+    const thirdPage = await admin.query(api.messaging.adminChat.listTranscriptMessages, {
       sessionId,
       paginationOpts: { numItems: 20, cursor: secondPage.continueCursor },
     });
@@ -762,21 +762,21 @@ describe("adminChat.listSessions", () => {
 describe("admin chat metadata writes", () => {
   it("chat.acceptGuestMessage increments messageCount and latestMessageAt", async () => {
     const t = convexTest(schema, modules);
-    const { sessionId } = await t.mutation(api.chat.createSession, {
+    const { sessionId } = await t.mutation(api.messaging.chat.createSession, {
       channel: "web",
       visitorId: "visitor-metadata",
     });
 
-    await t.mutation(internal.chat.acceptGuestMessage, {
+    await t.mutation(internal.messaging.chat.acceptGuestMessage, {
       sessionId,
       content: "Hello",
     });
-    const afterFirst = await t.query(internal.chat.getSessionInternal, { sessionId });
-    await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+    const afterFirst = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
+    await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
       sessionId,
       content: "Hi there",
     });
-    const afterSecond = await t.query(internal.chat.getSessionInternal, { sessionId });
+    const afterSecond = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
 
     expect(afterFirst?.messageCount).toBe(1);
     expect(afterFirst?.latestMessageAt).toEqual(expect.any(Number));
@@ -788,12 +788,12 @@ describe("admin chat metadata writes", () => {
 
   it("identifyVisitor refreshes searchable contact text", async () => {
     const t = convexTest(schema, modules);
-    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, {
+    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, {
       channel: "web",
       visitorId: "visitor-contact-refresh",
     });
 
-    await t.mutation(api.chat.identifyVisitor, { guestToken: sessionIdGuestToken,
+    await t.mutation(api.messaging.chat.identifyVisitor, { guestToken: sessionIdGuestToken,
       sessionId,
       name: "Nina Contact",
       email: "NINA@Example.com",
@@ -801,7 +801,7 @@ describe("admin chat metadata writes", () => {
       contactApp: "whatsapp",
     });
 
-    const session = await t.query(internal.chat.getSessionInternal, { sessionId });
+    const session = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
     expect(session?.adminSearchText).toContain("nina contact");
     expect(session?.adminSearchText).toContain("nina@example.com");
     expect(session?.adminSearchText).toContain("+66111111111");
@@ -819,10 +819,10 @@ describe("admin chat metadata writes", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     const sessionId = claim.sessionId as Id<"conversations">;
-    const afterInbound = await t.query(internal.chat.getSessionInternal, { sessionId });
+    const afterInbound = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
 
     await completeTestEvent(t, claim.eventId, "Late check-in depends on availability.");
-    const afterReply = await t.query(internal.chat.getSessionInternal, { sessionId });
+    const afterReply = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
 
     expect(afterInbound?.messageCount).toBe(1);
     expect(afterInbound?.latestMessageAt).toBe(1_700_000_000_000);
@@ -846,10 +846,10 @@ describe("admin chat metadata writes", () => {
       eventTimestamp: 1_700_000_000_000,
     });
     const sessionId = claim.sessionId as Id<"conversations">;
-    const afterInbound = await t.query(internal.chat.getSessionInternal, { sessionId });
+    const afterInbound = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
 
     await completeTestEvent(t, claim.eventId, "Late check-in depends on availability.");
-    const afterReply = await t.query(internal.chat.getSessionInternal, { sessionId });
+    const afterReply = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
 
     expect(afterInbound?.messageCount).toBe(1);
     expect(afterInbound?.latestMessageAt).toBe(1_700_000_000_000);
@@ -877,7 +877,7 @@ describe("admin chat unanswered warning", () => {
         ctx.db.insert("messages", { sessionId, role, content: `${role} ${timestamp}`, timestamp }),
       );
     const needsReply = async () => {
-      const result = await admin.query(api.adminChat.listSessions, {
+      const result = await admin.query(api.messaging.adminChat.listSessions, {
         status: "all",
         paginationOpts: { numItems: 10, cursor: null },
       });
@@ -894,15 +894,15 @@ describe("admin chat unanswered warning", () => {
     expect(await needsReply()).toBe(true);
 
     await expect(
-      admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId: firstGuestMessageId }),
+      admin.mutation(api.messaging.adminChat.settleGuestMessage, { sessionId, messageId: firstGuestMessageId }),
     ).resolves.toBeNull();
     expect(await needsReply()).toBe(true);
 
-    await admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId: secondGuestMessageId });
+    await admin.mutation(api.messaging.adminChat.settleGuestMessage, { sessionId, messageId: secondGuestMessageId });
     expect(await needsReply()).toBe(false);
 
-    await admin.mutation(api.adminChat.setKeepWithStaff, { sessionId, keep: true });
-    await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: "Another staff question" });
+    await admin.mutation(api.messaging.adminChat.setKeepWithStaff, { sessionId, keep: true });
+    await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: "Another staff question" });
     expect(await needsReply()).toBe(true);
   });
 
@@ -915,7 +915,7 @@ describe("admin chat unanswered warning", () => {
     );
 
     await expect(
-      t.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId }),
+      t.mutation(api.messaging.adminChat.settleGuestMessage, { sessionId, messageId }),
     ).rejects.toThrow(/Not authenticated/);
   });
 });
@@ -982,19 +982,19 @@ describe("adminChat inbox lifecycle", () => {
     await insertMessage(t, answered, "user", base + 1);
     await insertMessage(t, answered, "assistant", base + 2);
     const settledMessage = await insertMessage(t, settled, "user", base + 1);
-    await admin.mutation(api.adminChat.settleGuestMessage, { sessionId: settled, messageId: settledMessage });
+    await admin.mutation(api.messaging.adminChat.settleGuestMessage, { sessionId: settled, messageId: settledMessage });
 
-    const needsReply = await admin.query(api.adminChat.listSessions, {
+    const needsReply = await admin.query(api.messaging.adminChat.listSessions, {
       status: "needs_reply",
       adminStatus: "open",
       now: base,
     });
     expect(needsReply.sessions.map((session) => session.visitorName)).toEqual(["Waiting"]);
 
-    await admin.mutation(api.adminChat.setSessionStatus, { sessionId: waiting, status: "resolved" });
-    const open = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "open", now: base });
+    await admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId: waiting, status: "resolved" });
+    const open = await admin.query(api.messaging.adminChat.listSessions, { status: "all", adminStatus: "open", now: base });
     expect(open.sessions.map((session) => session.visitorName)).toEqual(["Answered"]);
-    const resolved = await admin.query(api.adminChat.listSessions, {
+    const resolved = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       adminStatus: "resolved",
       now: base,
@@ -1002,7 +1002,7 @@ describe("adminChat inbox lifecycle", () => {
     expect(resolved.sessions).toMatchObject([{ visitorName: "Waiting", adminStatus: "resolved" }, { visitorName: "Settled", adminStatus: "resolved" }]);
     expect(typeof resolved.sessions[0].resolvedAt).toBe("number");
 
-    await admin.mutation(api.adminChat.setSessionStatus, { sessionId: waiting, status: "open" });
+    await admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId: waiting, status: "open" });
     const reopened = await t.run((ctx) => ctx.db.get(waiting));
     expect(reopened?.adminStatus).toBeUndefined();
     expect(reopened?.resolvedAt).toBeUndefined();
@@ -1015,20 +1015,20 @@ describe("adminChat inbox lifecycle", () => {
     const base = 1_700_000_000_000;
     for (let index = 0; index < 12; index++) {
       const sessionId = await insertAdminSession(t, { visitorName: `Completed ${index}`, messageCount: 1, latestMessageAt: base + index, channel: index % 2 ? "line" : "web" });
-      await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: index % 2 ? "archived" : "resolved" });
+      await admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId, status: index % 2 ? "archived" : "resolved" });
     }
     await insertAdminSession(t, { visitorName: "Still open", messageCount: 1, latestMessageAt: base + 100 });
-    const first = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", now: base });
+    const first = await admin.query(api.messaging.adminChat.listSessions, { status: "all", adminStatus: "done", now: base });
     expect(first.sessions).toHaveLength(10);
     expect(first.sessions.every((session) => session.adminStatus === "resolved" || session.adminStatus === "archived")).toBe(true);
-    const second = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", paginationOpts: { numItems: 10, cursor: first.continueCursor }, now: base });
+    const second = await admin.query(api.messaging.adminChat.listSessions, { status: "all", adminStatus: "done", paginationOpts: { numItems: 10, cursor: first.continueCursor }, now: base });
     expect(second.sessions).toHaveLength(2);
     expect(second.isDone).toBe(true);
     expect(new Set([...first.sessions, ...second.sessions].map((session) => session._id)).size).toBe(12);
-    const lineOnly = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", channel: "line", now: base });
+    const lineOnly = await admin.query(api.messaging.adminChat.listSessions, { status: "all", adminStatus: "done", channel: "line", now: base });
     expect(lineOnly.sessions).toHaveLength(6);
     expect(lineOnly.sessions.every((session) => session.channel === "line")).toBe(true);
-    const search = await admin.query(api.adminChat.listSessions, { status: "all", adminStatus: "done", searchQuery: "Completed", now: base });
+    const search = await admin.query(api.messaging.adminChat.listSessions, { status: "all", adminStatus: "done", searchQuery: "Completed", now: base });
     expect(search.sessions).toHaveLength(10);
     expect(search.sessions.every((session) => session.adminStatus !== undefined)).toBe(true);
   });
@@ -1039,12 +1039,12 @@ describe("adminChat inbox lifecycle", () => {
     const admin = adminTest(t);
     const sessionId = await insertAdminSession(t, { visitorName: "Guest" });
 
-    await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: "archived" });
-    await admin.mutation(api.adminReply.claim, { sessionId, requestId: "r-1", content: "Following up" });
-    await admin.mutation(api.adminReply.complete, { requestId: "r-1" });
+    await admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId, status: "archived" });
+    await admin.mutation(api.messaging.adminReply.claim, { sessionId, requestId: "r-1", content: "Following up" });
+    await admin.mutation(api.messaging.adminReply.complete, { requestId: "r-1" });
     expect((await t.run((ctx) => ctx.db.get(sessionId)))?.adminStatus).toBe("resolved");
 
-    await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: "Hello again" });
+    await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: "Hello again" });
     const session = await t.run((ctx) => ctx.db.get(sessionId));
     expect(session?.adminStatus).toBeUndefined();
     expect(session?.archivedAt).toBeUndefined();
@@ -1056,21 +1056,21 @@ describe("adminChat inbox lifecycle", () => {
     const admin = adminTest(t);
     const sessionId = await insertAdminSession(t);
 
-    await expect(t.mutation(api.adminChat.setAiPaused, { sessionId, paused: true })).rejects.toThrow(
+    await expect(t.mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: true })).rejects.toThrow(
       "Not authenticated",
     );
-    await admin.mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
-    expect((await t.query(internal.chat.getSessionInternal, { sessionId }))?.aiPaused).toBe(true);
+    await admin.mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: true });
+    expect((await t.query(internal.messaging.chat.getSessionInternal, { sessionId }))?.aiPaused).toBe(true);
     expect(await t.run((ctx) => ctx.db.get(sessionId))).toMatchObject({
       aiPaused: true,
       assignedAdminEmail: adminEmail,
     });
 
-    await admin.mutation(api.adminChat.setAiPaused, { sessionId, paused: false });
+    await admin.mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: false });
     const resumed = await t.run((ctx) => ctx.db.get(sessionId));
     expect(resumed?.aiPaused).toBeUndefined();
     expect(resumed?.assignedAdminEmail).toBeUndefined();
-    expect(Boolean((await t.query(internal.chat.getSessionInternal, { sessionId }))?.aiPaused)).toBe(false);
+    expect(Boolean((await t.query(internal.messaging.chat.getSessionInternal, { sessionId }))?.aiPaused)).toBe(false);
   });
 
   it("returns the 24-hour reply window for Meta channels", async () => {
@@ -1083,10 +1083,10 @@ describe("adminChat inbox lifecycle", () => {
     await insertMessage(t, whatsapp, "user", guestAt);
     await insertMessage(t, whatsapp, "assistant", guestAt + 5);
 
-    expect((await admin.query(api.adminChat.getSessionDetail, { sessionId: web }))?.replyWindow).toEqual({
+    expect((await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId: web }))?.replyWindow).toEqual({
       applies: false,
     });
-    expect((await admin.query(api.adminChat.getSessionDetail, { sessionId: whatsapp }))?.replyWindow).toEqual({
+    expect((await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId: whatsapp }))?.replyWindow).toEqual({
       applies: true,
       lastGuestMessageAt: guestAt,
       closesAt: guestAt + 24 * 60 * 60 * 1000,
@@ -1126,7 +1126,7 @@ describe("adminChat.listSessions with sparse filters", () => {
 
   it("finds every chat of a quiet channel on the first page", async () => {
     const { admin, line } = await seed();
-    const page = await admin.query(api.adminChat.listSessions, {
+    const page = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       channel: "line",
       paginationOpts: { numItems: 10, cursor: null },
@@ -1137,7 +1137,7 @@ describe("adminChat.listSessions with sparse filters", () => {
 
   it("finds resolved chats directly and still treats a missing status as open", async () => {
     const { admin, line } = await seed();
-    const resolved = await admin.query(api.adminChat.listSessions, {
+    const resolved = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       adminStatus: "resolved",
       paginationOpts: { numItems: 10, cursor: null },
@@ -1145,7 +1145,7 @@ describe("adminChat.listSessions with sparse filters", () => {
     expect(resolved.sessions.map((session) => session._id)).toEqual([line[0]]);
     expect(resolved.isDone).toBe(true);
 
-    const open = await admin.query(api.adminChat.listSessions, {
+    const open = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       adminStatus: "open",
       channel: "line",
@@ -1156,7 +1156,7 @@ describe("adminChat.listSessions with sparse filters", () => {
 
   it("keeps date filters on the channel index", async () => {
     const { admin, line } = await seed();
-    const page = await admin.query(api.adminChat.listSessions, {
+    const page = await admin.query(api.messaging.adminChat.listSessions, {
       status: "all",
       channel: "line",
       messageStartAt: 1_700_000_000_001,
@@ -1189,19 +1189,19 @@ describe("chat.touchSession heartbeat", () => {
         status: "active",
       }),
     );
-    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, { channel: "web", currentPath: "/" });
+    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, { channel: "web", currentPath: "/" });
     const before = await t.run((ctx) => ctx.db.get(sessionId));
 
     vi.useFakeTimers();
     vi.setSystemTime((before?.lastSeenAt ?? 0) + 30_000);
-    await t.mutation(api.chat.touchSession, { guestToken: sessionIdGuestToken, sessionId, currentPath: "/" });
+    await t.mutation(api.messaging.chat.touchSession, { guestToken: sessionIdGuestToken, sessionId, currentPath: "/" });
     const same = await t.run((ctx) => ctx.db.get(sessionId));
     expect(same?.lastSeenAt).toBe((before?.lastSeenAt ?? 0) + 30_000);
     expect(same?.adminSearchText).toBe(before?.adminSearchText);
     // No messages yet, so the inbox sorts this chat by when the guest was last seen.
     expect(same?.adminSortAt).toBe(same?.lastSeenAt);
 
-    await t.mutation(api.chat.touchSession, { guestToken: sessionIdGuestToken, sessionId, currentPath: "/villas/pool-villa", propertySlug: "pool-villa" });
+    await t.mutation(api.messaging.chat.touchSession, { guestToken: sessionIdGuestToken, sessionId, currentPath: "/villas/pool-villa", propertySlug: "pool-villa" });
     const moved = await t.run((ctx) => ctx.db.get(sessionId));
     expect(moved).toMatchObject({ propertyId, propertySlug: "pool-villa", currentPath: "/villas/pool-villa" });
     expect(moved?.adminSearchText).toContain("pool-villa");
@@ -1222,11 +1222,11 @@ it("returns the same Waiting eligibility in a deep-linked detail as in the queue
       timestamp: 1,
     }),
   );
-  const detail = await admin.query(api.adminChat.getSessionDetail, { sessionId });
+  const detail = await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId });
   expect(detail?.session.needsReply).toBe(true);
   expect(detail?.session.latestMessage?._id).toBe(messageId);
-  await admin.mutation(api.adminChat.settleGuestMessage, { sessionId, messageId });
-  expect((await admin.query(api.adminChat.getSessionDetail, { sessionId }))?.session.needsReply).toBe(false);
+  await admin.mutation(api.messaging.adminChat.settleGuestMessage, { sessionId, messageId });
+  expect((await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId }))?.session.needsReply).toBe(false);
 });
 
 describe("adminChat read optimizations", () => {
@@ -1296,7 +1296,7 @@ describe("adminChat read optimizations", () => {
       // Events in every table, so a wrong table or limit shows up on any channel.
       const newest = await insertEventsInEveryTable(t, sessionId, 12);
 
-      const detail = await admin.query(api.adminChat.getSessionDetail, { sessionId });
+      const detail = await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId });
       for (const other of eventChannels) {
         expect(detail?.[eventKeys[other]].map((event) => event._id)).toEqual(
           other === channel ? [newest[other]] : [],
@@ -1310,7 +1310,7 @@ describe("adminChat read optimizations", () => {
       );
 
       // The legacy transcript keeps its 10 newest events.
-      const transcript = await admin.query(api.adminChat.getTranscript, { sessionId });
+      const transcript = await admin.query(api.messaging.adminChat.getTranscript, { sessionId });
       for (const other of eventChannels) {
         const events = transcript[eventKeys[other]];
         expect(events).toHaveLength(other === channel ? 10 : 0);
@@ -1345,7 +1345,7 @@ describe("adminChat read optimizations", () => {
     }
     const names = (indexes: number[]) => indexes.map((index) => `Chat ${index}`);
     const listWaiting = (cursor: string | null) =>
-      admin.query(api.adminChat.listSessions, {
+      admin.query(api.messaging.adminChat.listSessions, {
         status: "needs_reply",
         now: base,
         paginationOpts: { numItems: 10, cursor },
@@ -1389,7 +1389,7 @@ describe("adminChat read optimizations", () => {
     let cursor: string | null = null;
     for (let call = 0; call < 5; call++) {
       const page: { sessions: { visitorName?: string }[]; continueCursor: string | null; isDone: boolean } =
-        await admin.query(api.adminChat.listSessions, {
+        await admin.query(api.messaging.adminChat.listSessions, {
           status: "needs_reply",
           now: base,
           paginationOpts: { numItems: 10, cursor },
@@ -1418,7 +1418,7 @@ describe("adminChat read optimizations", () => {
       await insertMessage(t, sessionId, index === 2 || index === 7 ? "assistant" : "user", latestMessageAt);
     }
     const search = (cursor: string | null) =>
-      admin.query(api.adminChat.listSessions, {
+      admin.query(api.messaging.adminChat.listSessions, {
         status: "needs_reply",
         searchQuery: "orderedquery",
         now: base,

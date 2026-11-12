@@ -243,7 +243,7 @@ export function ChatsView() {
   const factProperties = useQuery(api.catalog.properties.adminList, factTarget ? {} : "skip") as
     | AdminFactProperty[]
     | undefined;
-  const settleGuestMessageMutation = useMutation(api.adminChat.settleGuestMessage);
+  const settleGuestMessageMutation = useMutation(api.messaging.adminChat.settleGuestMessage);
   // The ref guards repeat clicks and `e` before React commits; the state drives the buttons.
   const settlingRef = useRef(new Set<Id<"messages">>());
   const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"messages">>>(() => new Set());
@@ -267,7 +267,7 @@ export function ChatsView() {
   ].join(":");
   const sessionsResetKey = `${filterResetKey}:${currentCursor ?? "first"}`;
   const liveSessionsResult = useQuery(
-    api.adminChat.listSessions,
+    api.messaging.adminChat.listSessions,
     invalidMessageDateRange
       ? "skip"
       : {
@@ -290,11 +290,11 @@ export function ChatsView() {
     [invalidMessageDateRange, sessionsResult, now],
   );
   const liveSessionDetail = useQuery(
-    api.adminChat.getSessionDetail,
+    api.messaging.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
   ) as SessionDetailResult | null | undefined;
   const transcriptPagination = usePaginatedQuery(
-    api.adminChat.listTranscriptMessages,
+    api.messaging.adminChat.listTranscriptMessages,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
     { initialNumItems: 10 },
   ) as TranscriptPaginationResult;

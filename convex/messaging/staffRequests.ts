@@ -1,9 +1,7 @@
-import { v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
-import { internalMutation, type MutationCtx } from './auth/model';
-import { staffNeeded } from './lib/inboxLifecycle';
-import { currentClaim, durableTurnValidator } from './messaging/claims';
+import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
+import { type MutationCtx } from '../auth/model';
+import { staffNeeded } from './inboxState';
 
 // A staff request needs a "talk/contact" verb near a "person/staff" noun (either order), so plain
 // questions about staff ("is there cleaning staff?", "price per person") don't page the owner.
@@ -54,7 +52,7 @@ export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'conversat
     return false;
   }
   await ctx.db.patch(sessionId, { lastStaffAlertAt: now });
-  await ctx.scheduler.runAfter(0, internal.emails.sendStaffAlert, {
+  await ctx.scheduler.runAfter(0, internal.messaging.alerts.sendStaffAlert, {
     sessionId,
     channel: session.channel,
     guestName: session.visitorName?.trim() || 'Unknown guest',
@@ -62,11 +60,3 @@ export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'conversat
   });
   return true;
 }
-
-export const alertStaffForHandoff = internalMutation({
-  args: { durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations'), lastMessage: v.string(), replyToMessageId: v.optional(v.id('messages')) },
-  handler: async (ctx, args) => {
-    if (args.durableTurn) { const event = await currentClaim(ctx, args.durableTurn.eventId, args.durableTurn.claimToken); if (event.sessionId !== args.sessionId) throw new Error('Turn conversation mismatch'); }
-    return await queueStaffAlert(ctx, args.sessionId, args.lastMessage, args.replyToMessageId);
-  }
-});

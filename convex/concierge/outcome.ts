@@ -1,4 +1,4 @@
-import type { ReplyOutcome } from "../lib/inboxLifecycle";
+import type { ReplyOutcome } from '../messaging/model';
 
 /** Generated prose needs an explicit outcome; missing evidence must never finish staff work. */
 export function conciergeReplyOutcome(response: string, model: string): {

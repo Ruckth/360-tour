@@ -1,9 +1,9 @@
-import { adminMutation } from './auth/model';
-import { internal } from './_generated/api';
 import { v } from 'convex/values';
-import { patchSessionAfterMessages } from './lib/adminChatMetadata';
-import { getChannelReplyWindow } from './lib/channelReplyWindow';
-import { assertNoPendingStaffSend, answerAccepted, latestGuestId, sendFailed } from './lib/inboxLifecycle';
+import { internal } from '../_generated/api';
+import { adminMutation } from '../auth/model';
+import { patchSessionAfterMessages } from './adminChatMetadata';
+import { getChannelReplyWindow } from './channelReplyWindow';
+import { answerAccepted, assertNoPendingStaffSend, latestGuestId, sendFailed } from './inboxState';
 
 const MAX_REPLY_LENGTH = 1000;
 
@@ -78,7 +78,7 @@ export const claim = adminMutation({
     await ctx.db.patch(args.sessionId, { inboxState: 'processing', inboxReason: 'sending',
       inboxSendRequestId: requestId, inboxSendError: undefined, aiPaused: true, assignedAdminEmail: email,
       adminStatus: undefined, resolvedAt: undefined });
-    await ctx.scheduler.runAfter(90_000, internal.inboxLifecycle.expireStaffSend, { requestId });
+    await ctx.scheduler.runAfter(90_000, internal.messaging.inboxLifecycle.expireStaffSend, { requestId });
     return { state: 'new' as const, channel: session.channel, recipient: recipient ?? null };
   },
 });

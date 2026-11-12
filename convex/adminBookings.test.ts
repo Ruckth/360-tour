@@ -105,7 +105,7 @@ describe("admin bookings", () => {
     const visitor = t.withIdentity({ email: "visitor@example.com", tokenIdentifier: "visitor-token" });
     await expect(visitor.query(api.bookings.bookings.getById, { id: bookingId })).rejects.toThrow("Not authorized");
     await expect(visitor.query(api.bookings.bookings.listByProperty, { propertyId, paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
-    await expect(visitor.query(api.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
+    await expect(visitor.query(api.messaging.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
   });
 
   it("requires an admin", async () => {

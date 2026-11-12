@@ -1,18 +1,15 @@
 import { ConvexError, v } from 'convex/values';
-import { guestQuery, guestMutation } from './auth/model';
-import { STATIC_SUGGESTION_KEYS } from './lib/chatSuggestions';
-
+import { guestMutation, guestQuery } from '../auth/model';
+import { STATIC_SUGGESTION_KEYS } from '../lib/chatSuggestions';
 
 const DEFAULT_LIMIT = 2;
 
 const SCORE_ORDERED_CANDIDATE_SCAN_LIMIT = 100;
 
-
 const staticSuggestionRefValidator = v.object({
 	source: v.literal('static'),
 	suggestionId: v.union(...STATIC_SUGGESTION_KEYS.map(key => v.literal(key)))
 });
-
 
 export const nextForSession = guestQuery({
 	args: {
@@ -49,6 +46,7 @@ export const nextForSession = guestQuery({
 		return selected;
 	}
 });
+
 export const markShown = guestMutation({
  args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()), suggestions: v.array(staticSuggestionRefValidator) },
  handler: async (ctx, args) => {
@@ -64,6 +62,7 @@ export const markShown = guestMutation({
   return { updated };
  }
 });
+
 export const markClicked = guestMutation({
  args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()), suggestion: staticSuggestionRefValidator },
  handler: async (ctx, args) => {

@@ -1,10 +1,11 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { deviceMutation, deviceQuery, internalMutation, maintenancePaused, publicMutation, staffMutation, staffQuery } from '../auth/model';
+import { deviceMutation, deviceQuery, internalMutation, publicMutation, staffMutation, staffQuery } from '../auth/model';
+import { maintenancePaused } from '../lib/maintenance';
 import { PAIR_CODE_LENGTH, normalizePairCode, randomPairCode, randomSecret, sha256 } from '../lib/displayTokens';
 import { displayOrderState } from '../lib/displayView';
-import { enforceRateLimit } from '../lib/rateLimit';
+import { enforceRateLimit } from '../messaging/model';
 import { CLEAN_BATCH, CLIENT_ID_MAX, DisplayDriver, DisplayState, INVALID_CLAIM_LIMIT, PAIRING_TTL_MS, SECRET_MAX, START_PAIRING_LIMIT, activeDisplays, checkClientId, checkLeaseId, deletePending, deletePresence, deviceLabel, displayByToken, displayError, endLease, ensureDefaultTill, getDefaultTill, handOver, leaseOf, orderIdFrom, presenceOf, retireLinks, revokeActive, setLease } from './private/displayModel';
 
 /**

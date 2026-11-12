@@ -11,23 +11,23 @@ describe("chat session reuse", () => {
 
   it("round-trips assistant action metadata with chat messages", async () => {
     const t = convexTest(schema, modules);
-    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, {
+    const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, {
       channel: "web",
       visitorId: "visitor-action-metadata",
     });
 
-    await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+    await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
       sessionId,
       content: "Use the booking card below to choose dates.",
       action: "booking",
     });
-    await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+    await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
       sessionId,
       content: "This answer should not show an action card.",
       action: "none",
     });
 
-    const messages = await t.query(api.chat.getMessages, { guestToken: sessionIdGuestToken, sessionId });
+    const messages = await t.query(api.messaging.chat.getMessages, { guestToken: sessionIdGuestToken, sessionId });
 
     expect(messages.map((message) => message.action)).toEqual(["booking", "none"]);
   });

@@ -1,16 +1,16 @@
-import { maintenancePaused } from './auth/model';
 import { cronJobs } from 'convex/server';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
+import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, internalMutation } from './_generated/server';
 import { releaseBookingDates } from './lib/availabilityWrites';
 import { writeBooking } from './lib/bookingMoney';
-import { resortLocalParts } from './lib/serviceSlots';
-import { bookingHoldExpiresAt, BOOKING_RULE_RANGES } from './lib/siteSettings';
-import { getEffectiveSettings } from './settings/model';
-import type { Doc } from './_generated/dataModel';
-import { RAW_MARKETING_RETENTION_MS } from './lib/marketingPolicy';
+import { maintenancePaused } from './lib/maintenance';
 import { ATTRIBUTION_WINDOW_MS } from './lib/marketingAttribution';
+import { RAW_MARKETING_RETENTION_MS } from './lib/marketingPolicy';
+import { resortLocalParts } from './lib/serviceSlots';
+import { BOOKING_RULE_RANGES, bookingHoldExpiresAt } from './lib/siteSettings';
+import { getEffectiveSettings } from './settings/model';
 
 if (RAW_MARKETING_RETENTION_MS <= ATTRIBUTION_WINDOW_MS) {
   throw new Error('Raw marketing retention must exceed the attribution window');
@@ -96,16 +96,6 @@ export const expirePending = internalMutation({
   },
 });
 
-export const cleanRateLimits = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    if (maintenancePaused()) return 0;
-    const rows = await ctx.db.query('rateLimits').withIndex('by_expiresAt', q => q.lt('expiresAt', Date.now())).take(100);
-    for (const row of rows) await ctx.db.delete(row._id);
-    if (rows.length === 100) await ctx.scheduler.runAfter(0, internal.crons.cleanRateLimits, {});
-  },
-});
-
 export const queueLifecycleEmails = internalMutation({
   args: {
     kind: v.union(v.literal('preArrival'), v.literal('review')),
@@ -148,7 +138,7 @@ const crons = cronJobs();
 crons.cron('clean raw marketing after 90 days', '0 3 * * *', internal.crons.cleanRawMarketing, {});
 crons.interval('expire unpaid bookings', { hours: 1 }, internal.crons.expirePending, {});
 crons.interval('sync OTA calendars', { minutes: 30 }, internal.bookings.calendar.ical.syncAll, {});
-crons.interval('clean rate limits', { hours: 1 }, internal.crons.cleanRateLimits, {});
+crons.interval('clean rate limits', { hours: 1 }, internal.messaging.maintenance.cleanRateLimits, {});
 crons.interval('clean unattached staff and service photos', { hours: 6 }, internal.services.maintenance.cleanStaffAvatarUploads, {});
 crons.interval('clean pending customer displays', { minutes: 10 }, internal.pos.displays.cleanPending, {});
 // 09:00 Asia/Bangkok, so guests get these in the resort's morning rather than at a deploy-relative time.

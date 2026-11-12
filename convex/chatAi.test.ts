@@ -246,13 +246,13 @@ describe("AI takeover", () => {
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      await adminTest(t).mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
+      await adminTest(t).mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: true });
 
       const result = await respondTest(t, { guestToken: fixtureGuestToken,
         sessionId,
         userMessage: "Is Auralis Cove a real luxury villa resort?",
       });
-      const transcript = await t.query(api.chat.getMessages, { guestToken: fixtureGuestToken, sessionId });
+      const transcript = await t.query(api.messaging.chat.getMessages, { guestToken: fixtureGuestToken, sessionId });
 
       expect(result).toMatchObject({ model: "ai_paused", aiPaused: true, response: "" });
       expect(transcript.map((message) => [message.role, message.content])).toEqual([

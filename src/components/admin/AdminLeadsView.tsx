@@ -44,11 +44,11 @@ export function AdminLeadsView() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const { results, status, loadMore } = usePaginatedQuery(
-    api.leads.list,
+    api.messaging.leads.list,
     source === "all" ? {} : { source },
     { initialNumItems: PAGE_SIZE },
   );
-  const removeLead = useMutation(api.leads.remove);
+  const removeLead = useMutation(api.messaging.leads.remove);
   const properties = useQuery(api.catalog.properties.adminList, {});
   const propertyNames = new Map(properties?.map((property) => [property._id as string, property.name]));
 
@@ -57,7 +57,7 @@ export function AdminLeadsView() {
     setError(null);
     setNotice(null);
     try {
-      const { rows, truncated } = await convex.query(api.leads.exportRows, source === "all" ? {} : { source });
+      const { rows, truncated } = await convex.query(api.messaging.leads.exportRows, source === "all" ? {} : { source });
       downloadCsv(`leads-${source}-${format(Date.now(), "yyyy-MM-dd")}.csv`, [
         ["email", "source", "villa", "created"],
         ...rows.map((lead) => [
