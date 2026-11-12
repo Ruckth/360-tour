@@ -29,7 +29,7 @@ export const BOOKING_RULE_RANGES = {
 	minNights: [1, 365],
 	maxAdvanceDays: [0, 730]
 } as const;
-/** All booking timing and policy consumers resolve defaults here; old rows need no backfill. */
+
 export function resolveBookingRules(row: Pick<Doc<'siteSettings'>, 'bookingRules'> | null): BookingRules {
 	const rules = { ...BOOKING_RULE_DEFAULTS };
 	for (const key of Object.keys(BOOKING_RULE_RANGES) as (keyof typeof BOOKING_RULE_RANGES)[]) {

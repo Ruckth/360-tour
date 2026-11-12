@@ -1,5 +1,7 @@
 "use client";
 
+import { basisPointsToPercent, percentToBasisPoints } from 'convex/shared/money';
+
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -254,7 +256,7 @@ const isStaleRules = (err: unknown) => {
 };
 
 type Draft = { limit: string } & Record<RuleKey, Permission>;
-const draftOf = (rules: CashierRules): Draft => ({ limit: String(rules.discountLimitPercent), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
+const draftOf = (rules: CashierRules): Draft => ({ limit: String(basisPointsToPercent(rules.discountLimitPercent)), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
 
 function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }) {
   const rules = useQuery(api.staffAccess.getCashierRules, {});
@@ -297,7 +299,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
     try {
       const saved = await update({
         expectedRevision: revision,
-        discountLimitPercent: Number(draft.limit),
+        discountLimitPercent: percentToBasisPoints(Number(draft.limit)),
         voidPaidSale: draft.voidPaidSale,
         customPrice: draft.customPrice,
         paymentFix: draft.paymentFix,

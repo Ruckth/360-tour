@@ -4,13 +4,13 @@ import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import Link from "next/link";
-import { formatReceiptNumber } from "convex/lib/billMath";
+import { formatReceiptNumber } from "convex/lib/orderMath";
 import { ButtonLink } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { orderPath, receiptPath } from "@/components/checkout/checkout-source";
 import { formatMoney } from "./labels";
 
-type Source = { bookingId: Id<"bookings"> } | { appointmentId: Id<"serviceAppointments"> };
+type Source = { bookingId: Id<"bookings"> } | { appointmentId: Id<"appointments"> };
 
 const STATE_LABELS = { unpaid: "Unpaid", paid: "Paid", void: "Voided", discarded: "Discarded" } as const;
 

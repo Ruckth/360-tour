@@ -1,4 +1,4 @@
-import { query, type QueryCtx } from './_generated/server';
+import { query, type QueryCtx } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 
@@ -10,12 +10,12 @@ const MAX_REVIEWS_SHOWN = 20;
 
 async function villaSocialProof(ctx: QueryCtx, propertyId: Doc<'properties'>['_id']) {
 	return await ctx.db
-		.query('socialProof')
+		.query('reviewStats')
 		.withIndex('by_property', (q) => q.eq('propertyId', propertyId))
 		.first();
 }
 
-function publicVilla(property: Doc<'properties'>, proof: Doc<'socialProof'> | null) {
+function publicVilla(property: Doc<'properties'>, proof: Doc<'reviewStats'> | null) {
 	return {
 		_id: property._id,
 		slug: property.slug,

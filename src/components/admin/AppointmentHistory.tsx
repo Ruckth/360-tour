@@ -52,7 +52,7 @@ export function AppointmentHistory({
   staffName,
   serviceName,
 }: {
-  appointmentId: Id<"serviceAppointments">;
+  appointmentId: Id<"appointments">;
   staffName: (id: string) => string;
   serviceName: (id: string) => string;
 }) {

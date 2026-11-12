@@ -31,13 +31,13 @@ async function setup() {
 	const pimId = await person('Pim'); // not qualified
 	const serviceId = await admin.mutation(api.adminServices.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: '', category: 'Wellness',
-		durationMin: 60, bufferMin: 15, price: 2000, currency: 'THB', staffIds: [maliId, nokId]
+		durationMin: 60, bufferMin: 15, price: 200000, currency: 'THB', staffIds: [maliId, nokId]
 	});
 	const book = async (time: string, staffId: Id<'staff'> = maliId, day = date) => (await admin.mutation(api.adminServices.createAppointment, {
 		serviceId, staffId, start: at(time, day), guestName: 'Ann', guestPhone: '+66111'
 	})).appointmentId;
-	const get = async (id: Id<'serviceAppointments'>) => (await t.run((ctx) => ctx.db.get(id)))!;
-	const history = (appointmentId: Id<'serviceAppointments'>) => admin.query(api.adminServices.listAppointmentHistory, { appointmentId });
+	const get = async (id: Id<'appointments'>) => (await t.run((ctx) => ctx.db.get(id)))!;
+	const history = (appointmentId: Id<'appointments'>) => admin.query(api.adminServices.listAppointmentHistory, { appointmentId });
 	return { t, admin, maliId, nokId, pimId, serviceId, book, get, history };
 }
 
@@ -55,7 +55,7 @@ describe('appointment changes', () => {
 		await expect(admin.mutation(api.adminServices.cancelAppointment, { appointmentId: id, expectedRevision: 0 })).rejects.toThrow(STALE_APPOINTMENT);
 		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: id, expectedRevision: 1, reason: '  Guest unwell ' });
 		expect(await get(id)).toMatchObject({
-			status: 'cancelled', paymentStatus: 'paid', price: 2000, start: at('10:00'), staffId: maliId,
+			status: 'cancelled', paymentStatus: 'paid', price: 200000, start: at('10:00'), staffId: maliId,
 			cancelledAt: Date.now(), cancelledBy: 'admin@example.com', cancellationReason: 'Guest unwell', revision: 2
 		});
 		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: maliId });
@@ -113,9 +113,9 @@ describe('appointment changes', () => {
 		const { admin, maliId, nokId, pimId, serviceId, book, get, history } = await setup();
 		const id = await book('10:00');
 		// A later change to the service template doesn't alter this booking's turnaround when it moves.
-		await admin.mutation(api.adminServices.updateService, { serviceId, bufferMin: 45, price: 2500 });
+		await admin.mutation(api.adminServices.updateService, { serviceId, bufferMin: 45, price: 250000 });
 		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: id, expectedRevision: 0, start: at('13:30'), staffId: nokId });
-		expect(await get(id)).toMatchObject({ start: at('13:30'), end: at('14:30'), blockedUntil: at('14:45'), staffId: nokId, price: 2000, status: 'booked', revision: 1 });
+		expect(await get(id)).toMatchObject({ start: at('13:30'), end: at('14:30'), blockedUntil: at('14:45'), staffId: nokId, price: 200000, status: 'booked', revision: 1 });
 		expect((await history(id))[0]).toMatchObject({
 			kind: 'rescheduled', actor: 'admin@example.com',
 			changes: expect.arrayContaining([
@@ -135,7 +135,7 @@ describe('appointment changes', () => {
 		await admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: 2, start: at('16:00'), staffId: nokId });
 		expect(await get(id)).toMatchObject({
 			start: at('16:00'), end: at('17:00'), blockedUntil: at('17:15'),
-			staffId: nokId, status: 'arrived', price: 2000, paymentStatus: 'unpaid', revision: 3
+			staffId: nokId, status: 'arrived', price: 200000, paymentStatus: 'unpaid', revision: 3
 		});
 		await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, expectedRevision: 2, start: at('13:30'), staffId: nokId })).rejects.toThrow(STALE_APPOINTMENT);
 	});
@@ -178,7 +178,7 @@ describe('appointment changes', () => {
 	it('saves guest details and a service change together, or neither', async () => {
 		const { admin, maliId, book, get } = await setup();
 		const facialId = await admin.mutation(api.adminServices.createService, {
-			slug: 'facial', name: 'Facial', description: '', category: 'Wellness', durationMin: 90, bufferMin: 0, price: 3000, currency: 'THB', staffIds: [maliId]
+			slug: 'facial', name: 'Facial', description: '', category: 'Wellness', durationMin: 90, bufferMin: 0, price: 300000, currency: 'THB', staffIds: [maliId]
 		});
 		const id = await book('09:00');
 		const before = await get(id);
@@ -197,15 +197,15 @@ describe('appointment changes', () => {
 		const { admin, maliId, book, get, history } = await setup();
 		const id = await book('09:00');
 		const serviceId = await admin.mutation(api.adminServices.createService, {
-			slug: 'facial-usd', name: 'Facial', description: '', category: 'Wellness', durationMin: 45, bufferMin: 5, price: 60, currency: 'USD', staffIds: [maliId]
+			slug: 'facial-usd', name: 'Facial', description: '', category: 'Wellness', durationMin: 45, bufferMin: 5, price: 6000, currency: 'USD', staffIds: [maliId]
 		});
-		const expectedService = { durationMin: 45, bufferMin: 5, price: 60, currency: 'USD' };
+		const expectedService = { durationMin: 45, bufferMin: 5, price: 6000, currency: 'USD' };
 		const edit = { appointmentId: id, expectedRevision: 0, guestName: 'Ann', guestPhone: '+66111', serviceId, expectedService };
-		await admin.mutation(api.adminServices.updateService, { serviceId, price: 70 });
+		await admin.mutation(api.adminServices.updateService, { serviceId, price: 7000 });
 		await expect(admin.mutation(api.adminServices.updateAppointmentDetails, edit)).rejects.toThrow('service changed');
-		expect(await get(id)).toMatchObject({ price: 2000, currency: 'THB' });
-		await admin.mutation(api.adminServices.updateAppointmentDetails, { ...edit, expectedService: { ...expectedService, price: 70 } });
-		expect((await history(id))[0]).toMatchObject({ currencyBefore: 'THB', currencyAfter: 'USD', changes: expect.arrayContaining([{ field: 'price', from: 2000, to: 70 }]) });
+		expect(await get(id)).toMatchObject({ price: 200000, currency: 'THB' });
+		await admin.mutation(api.adminServices.updateAppointmentDetails, { ...edit, expectedService: { ...expectedService, price: 7000 } });
+		expect((await history(id))[0]).toMatchObject({ currencyBefore: 'THB', currencyAfter: 'USD', changes: expect.arrayContaining([{ field: 'price', from: 200000, to: 7000 }]) });
 		await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id });
 		expect((await history(id))[0]).toMatchObject({ currencyBefore: 'USD', currencyAfter: 'USD' });
 	});

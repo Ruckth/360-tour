@@ -16,7 +16,7 @@ it('returns a public session projection and the newest 100 messages', async () =
 			adminStatus: 'resolved', adminSortAt: 12, lastStaffAlertAt: 42
 		});
 		for (let i = 0; i < 105; i++) {
-			await ctx.db.insert('chatMessages', { sessionId, role: 'user', content: `message ${i}`, timestamp: i });
+			await ctx.db.insert('messages', { sessionId, role: 'user', content: `message ${i}`, timestamp: i });
 		}
 	});
 	const session = await t.query(api.chat.getSession, { guestToken: sessionIdGuestToken, sessionId });

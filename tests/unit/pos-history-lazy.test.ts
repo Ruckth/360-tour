@@ -10,7 +10,7 @@ import type { Doc, Id } from 'convex/_generated/dataModel';
 
 let root: Root;
 const first = 'fxbill000002' as OrderId, second = 'fxbill000003' as OrderId;
-const hooks = ['useOrderHistory', 'useCorrectionHistory', 'useAuditHistory', 'useBookingRefundHistory', 'useAppointmentRefundHistory', 'useBillRefundHistory'] as const;
+const hooks = ['useOrderHistory', 'useCorrectionHistory', 'useAuditHistory', 'useBookingRefundHistory', 'useAppointmentRefundHistory', 'useOrderRefundHistory'] as const;
 const toggle = async (title: string, open: boolean) => act(async () => {
   const details = [...document.querySelectorAll('details')].find(d => d.querySelector('summary')?.textContent === title)!;
   details.open = open;
@@ -27,8 +27,8 @@ beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); root = creat
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it('subscribes only on first expansion, retains all ledger cursors while closed, and resets on every order switch', async () => {
-  const corrections: Doc<'billCorrections'>[] = [first, second].flatMap(billId => Array.from({ length: 61 }, (_, i) => ({
-    _id: `${billId}-${i}` as Id<'billCorrections'>, _creationTime: i, billId, sequence: i + 1, kind: 'amended', reason: `${billId} reason ${i}`, actor: 'cashier', recordedAt: i, idempotencyKey: `${billId}-${i}`,
+  const corrections: Doc<'orderCorrections'>[] = [first, second].flatMap(orderId => Array.from({ length: 61 }, (_, i) => ({
+    _id: `${orderId}-${i}` as Id<'orderCorrections'>, _creationTime: i, orderId, sequence: i + 1, kind: 'amended', reason: `${orderId} reason ${i}`, actor: 'cashier', recordedAt: i, idempotencyKey: `${orderId}-${i}`,
   })));
   const base = createFixtureBackend({ financialHistory: { corrections } });
   const calls = Object.fromEntries(hooks.map(h => [h, vi.fn()]));
@@ -46,7 +46,7 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
     useAuditHistory: instrument('useAuditHistory', base.useAuditHistory),
     useBookingRefundHistory: instrument('useBookingRefundHistory', base.useBookingRefundHistory),
     useAppointmentRefundHistory: instrument('useAppointmentRefundHistory', base.useAppointmentRefundHistory),
-    useBillRefundHistory: instrument('useBillRefundHistory', base.useBillRefundHistory),
+    useOrderRefundHistory: instrument('useOrderRefundHistory', base.useOrderRefundHistory),
   };
   await show(backend);
   for (const hook of hooks) expect(calls[hook]).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import { mutation } from './_generated/server';
+import { mutation } from './auth/model';
 import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import { patchSessionAfterMessages } from './lib/adminChatMetadata';
@@ -23,10 +23,10 @@ function recipientForSession(session: {
 
 export const claim = mutation({
   args: {
-    sessionId: v.id('chatSessions'),
+    sessionId: v.id('conversations'),
     requestId: v.string(),
     content: v.string(),
-    replyToMessageId: v.optional(v.id('chatMessages')),
+    replyToMessageId: v.optional(v.id('messages')),
   },
   handler: async (ctx, args) => {
     const { email } = await requireAdmin(ctx);
@@ -97,7 +97,7 @@ export const complete = mutation({
     if (attempt.status !== 'pending') throw new Error('Reply request is not pending');
 
     const timestamp = Date.now();
-    const messageId = await ctx.db.insert('chatMessages', {
+    const messageId = await ctx.db.insert('messages', {
       sessionId: attempt.sessionId,
       role: 'assistant',
       source: 'admin',

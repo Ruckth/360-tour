@@ -41,7 +41,7 @@ function CheckoutPage() {
     const attempt = { target };
     opened.current = attempt;
     const [kind, id] = target.split(":");
-    const args = kind === "booking" ? { bookingId: id as Id<"bookings"> } : { appointmentId: id as Id<"serviceAppointments"> };
+    const args = kind === "booking" ? { bookingId: id as Id<"bookings"> } : { appointmentId: id as Id<"appointments"> };
     openOrderFor(args).then(
       ({ orderId }) => opened.current === attempt && router.replace(orderPath(orderId)),
       (err: unknown) => opened.current === attempt && setOpenError({ target, message: errorText(err, "Couldn't open that booking at checkout.") }),

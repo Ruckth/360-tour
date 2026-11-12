@@ -1,6 +1,6 @@
 "use client";
 
-import { formatOrderNumber, formatReceiptNumber } from "convex/lib/billMath";
+import { formatOrderNumber, formatReceiptNumber } from "convex/lib/orderMath";
 import type { DisplayOrderState } from "convex/lib/displayView";
 import { TicketPercent } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -150,7 +150,7 @@ function Order({ order }: { order: OrderState }) {
   const count = order.lines.length;
   // The coupon has its own row; "Discounts" is what staff took off.
   const coupon = order.coupon && order.coupon.saving > 0 ? order.coupon : null;
-  const staffDiscount = Math.round((order.discount - (coupon?.saving ?? 0)) * 100) / 100;
+  const staffDiscount = order.discount - (coupon?.saving ?? 0);
 
   // Also on switching orders: another order with the same line count can have taller rows.
   useEffect(() => {

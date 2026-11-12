@@ -1,6 +1,7 @@
+import { maintenancePaused } from './auth/model';
 import { ConvexError, v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalMutation, mutation, query } from './_generated/server';
+import { internalMutation, mutation, query } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireStaff } from './lib/staffAccess';
@@ -110,7 +111,7 @@ async function revokeActive(ctx: MutationCtx, tillId: Id<'tills'>) {
 
 /** A URL's order id, normalized like pos.getOrder: anything that isn't an order shows the welcome screen. */
 function orderIdFrom(ctx: QueryCtx, orderId: string | null) {
-	return (orderId && ctx.db.normalizeId('bills', orderId)) || undefined;
+	return (orderId && ctx.db.normalizeId('orders', orderId)) || undefined;
 }
 
 async function leaseOf(ctx: QueryCtx, tillId: Id<'tills'>) {
@@ -154,7 +155,7 @@ async function retireLinks(ctx: MutationCtx, till: Doc<'tills'>) {
  * driving tab republishes its own. A take-over's order gets a lease of its own, which runs out
  * unless the new driver republishes under its lease (it does so at once).
  */
-async function handOver(ctx: MutationCtx, till: Doc<'tills'>, driverId: string | undefined, orderId: Id<'bills'> | undefined) {
+async function handOver(ctx: MutationCtx, till: Doc<'tills'>, driverId: string | undefined, orderId: Id<'orders'> | undefined) {
 	const leaseId = orderId ? randomSecret() : undefined;
 	await ctx.db.patch(till._id, { driverId, orderId, publishedAt: Date.now(), leaseId });
 	await setLease(ctx, till._id, leaseId);
@@ -414,6 +415,7 @@ export const revoke = mutation({
 export const cleanPending = internalMutation({
 	args: {},
 	handler: async (ctx) => {
+    if (maintenancePaused()) return { displays: 0, links: 0 };
 		const now = Date.now();
 		const cutoff = now - PAIRING_TTL_MS;
 		let deleted = 0;

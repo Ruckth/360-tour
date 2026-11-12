@@ -1,15 +1,15 @@
+import { bahtToSatang } from '../shared/money';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { writeBooking } from '../lib/bookingMoney';
 import { demoCode } from '../lib/codes';
-import { normalizeSuggestedQuestion } from '../lib/chatSuggestions';
 import { appointmentLookupFields, localDateTimeUtc, resortLocalParts } from '../lib/serviceSlots';
 
 /**
- * AI-EVAL test data: services, staff, knowledge answers, curated questions, and blocked dates
+ * AI-EVAL test data: services, staff, approved business facts, and blocked dates
  * used to exercise the AI concierge. Every record is tagged so cleanup removes only these rows:
  * - staff: name ends with "[AI-EVAL]"; services: slug starts with "ai-eval-"
- * - chatAnswers / chatQuestions / curatedChatQuestions / staffTimeOff: AI_EVAL_EMAIL
+ * - businessFacts / staffTimeOff: AI_EVAL_EMAIL
  * - availability: source "manual" rows on AI_EVAL_BLOCKS dates only
  * - bookings / appointments made during tests: guest name contains "AI-EVAL"
  */
@@ -64,19 +64,7 @@ const answerSeeds = [
 	}
 ] as const;
 
-const curatedSeeds = [
-	{ question: 'What spa and wellness services do you offer?', topic: 'services', dynamicIntent: 'property_details' as const, score: 70, translations: { th: 'มีบริการสปาอะไรบ้าง', ko: '어떤 스파 서비스가 있나요?' } },
-	{ question: 'Can I book a massage?', topic: 'services', dynamicIntent: 'booking_help' as const, score: 65, translations: { th: 'จองนวดได้ไหม', ko: '마사지 예약할 수 있나요?' } },
-	{ question: 'Is my villa available on specific dates?', topic: 'availability', dynamicIntent: 'availability' as const, score: 60, translations: { th: 'วิลล่าว่างวันที่ต้องการไหม', ko: '특정 날짜에 빌라 예약 가능한가요?' } },
-	{ question: 'How much does a stay cost for my dates?', topic: 'pricing', dynamicIntent: 'pricing' as const, score: 60, translations: { th: 'ราคาห้องพักช่วงวันที่ต้องการเท่าไหร่', ko: '제 날짜에 숙박 요금이 얼마예요?' } }
-];
 
-/** Dates blocked to create occupied inventory (checkOut exclusive). Fixed so cleanup is exact. */
-export const AI_EVAL_BLOCKS = [
-	{ propertySlug: 'pool-villa', from: '2026-10-09', to: '2026-10-16' },
-	{ propertySlug: 'garden-suite', from: '2026-10-02', to: '2026-10-05' },
-	{ propertySlug: 'penthouse', from: '2026-10-23', to: '2026-10-26' }
-] as const;
 
 function datesBetween(from: string, to: string) {
 	const out: string[] = [];
@@ -100,7 +88,7 @@ async function propertyBySlug(ctx: MutationCtx, slug: string) {
 
 export async function seedAiEvalData(ctx: MutationCtx) {
 	const now = Date.now();
-	const counts = { staff: 0, services: 0, timeOff: 0, occupiedAppointments: 0, answers: 0, questions: 0, curated: 0, blockedDates: 0 };
+	const counts = { staff: 0, services: 0, timeOff: 0, occupiedAppointments: 0, facts: 0, blockedDates: 0 };
 
 	const existingStaff = await aiEvalStaff(ctx);
 	const staffIds: Record<string, Id<'staff'>> = {};
@@ -122,7 +110,7 @@ export async function seedAiEvalData(ctx: MutationCtx) {
 		const found = await ctx.db.query('services').withIndex('by_slug', (q) => q.eq('slug', slug)).first();
 		serviceIds[seed.slug] = found?._id ?? await ctx.db.insert('services', {
 			slug, name: seed.name, description: seed.description, category: seed.category,
-			durationMin: seed.durationMin, bufferMin: seed.bufferMin, price: seed.price, currency: 'THB',
+			durationMin: seed.durationMin, bufferMin: seed.bufferMin, price: bahtToSatang(seed.price), currency: 'THB',
 			staffIds: seed.staff.map((key) => staffIds[key]), status: 'active', createdAt: now, updatedAt: now
 		});
 		if (!found) counts.services++;
@@ -140,50 +128,24 @@ export async function seedAiEvalData(ctx: MutationCtx) {
 	}
 	for (const slot of [{ staff: 'nok', time: '10:00' }, { staff: 'nok', time: '15:00' }] as const) {
 		const start = localDateTimeUtc(tomorrow, slot.time);
-		if (await ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) => q.eq('staffId', staffIds[slot.staff]).eq('start', start)).first()) continue;
-		const id = await ctx.db.insert('serviceAppointments', {
+		if (await ctx.db.query('appointments').withIndex('by_staff_start', (q) => q.eq('staffId', staffIds[slot.staff]).eq('start', start)).first()) continue;
+		const id = await ctx.db.insert('appointments', {
 			serviceId: serviceIds['thai-massage'], staffId: staffIds[slot.staff], start,
 			end: start + 60 * 60_000, blockedUntil: start + 75 * 60_000,
 			guestName: `${AI_EVAL_TAG} Occupied slot`, guestPhone: OCCUPIED_PHONE, guestPhoneDigits: appointmentLookupFields({ guestPhone: OCCUPIED_PHONE }).guestPhoneDigits, source: 'admin',
-			status: 'booked', paymentStatus: 'unpaid', price: 1500, currency: 'THB',
+			serviceNameSnapshot: 'Traditional Thai Massage', staffNameSnapshot: slot.staff, createdBy: AI_EVAL_EMAIL, amountPaid: 0, amountRefunded: 0, status: 'booked', paymentStatus: 'unpaid', price: 150000, currency: 'THB',
 			confirmationCode: '', accessToken: crypto.randomUUID(), createdAt: now
 		});
 		await ctx.db.patch(id, { confirmationCode: demoCode('SVC', id) });
 		counts.occupiedAppointments++;
 	}
 
-	const existingAnswers = (await ctx.db.query('chatAnswers').take(1000)).filter((row) => row.createdByAdminEmail === AI_EVAL_EMAIL);
-	for (const seed of answerSeeds) {
-		if (existingAnswers.some((row) => row.title === `${AI_EVAL_TAG} ${seed.title}`)) continue;
-		const answerId = await ctx.db.insert('chatAnswers', {
-			title: `${AI_EVAL_TAG} ${seed.title}`, answer: seed.answer, status: 'approved',
-			createdAt: now, updatedAt: now, createdByAdminEmail: AI_EVAL_EMAIL, updatedByAdminEmail: AI_EVAL_EMAIL
-		});
-		counts.answers++;
-		for (const [index, questionText] of seed.questions.entries()) {
-			await ctx.db.insert('chatQuestions', {
-				answerId, questionText, normalizedQuestion: normalizeSuggestedQuestion(questionText),
-				isPrimary: index === 0, isAiTrigger: index === 0, createdBy: 'admin', status: 'approved',
-				createdAt: now, updatedAt: now, approvedAt: now, createdByAdminEmail: AI_EVAL_EMAIL, updatedByAdminEmail: AI_EVAL_EMAIL
-			});
-			counts.questions++;
-		}
-	}
-
-	for (const seed of curatedSeeds) {
-		const normalizedQuestion = normalizeSuggestedQuestion(seed.question);
-		const exists = await ctx.db.query('curatedChatQuestions')
-			.withIndex('by_propertySlug_and_normalizedQuestion', (q) => q.eq('propertySlug', undefined).eq('normalizedQuestion', normalizedQuestion))
-			.first();
-		if (exists) continue;
-		await ctx.db.insert('curatedChatQuestions', {
-			question: seed.question, normalizedQuestion, translations: { en: seed.question, ...seed.translations },
-			answerMode: 'dynamic', dynamicIntent: seed.dynamicIntent, topic: seed.topic, score: seed.score, status: 'active',
-			createdAt: now, updatedAt: now, createdByAdminEmail: AI_EVAL_EMAIL, updatedByAdminEmail: AI_EVAL_EMAIL
-		});
-		counts.curated++;
-	}
-
+ const existingFacts = await ctx.db.query('businessFacts').withIndex('by_status_and_updatedAt', q => q.eq('status', 'approved')).take(1000);
+ for (const seed of answerSeeds) {
+  if (existingFacts.some(row => row.title === AI_EVAL_TAG + ' ' + seed.title)) continue;
+  await ctx.db.insert('businessFacts', { title: AI_EVAL_TAG + ' ' + seed.title, body: seed.answer, searchText: seed.title + ' ' + seed.answer, source: 'AI-EVAL fixture', status: 'approved', revision: 1, createdAt: now, updatedAt: now, createdByAdminEmail: AI_EVAL_EMAIL, updatedByAdminEmail: AI_EVAL_EMAIL });
+  counts.facts++;
+ }
 	for (const block of AI_EVAL_BLOCKS) {
 		const property = await propertyBySlug(ctx, block.propertySlug);
 		if (!property) continue;
@@ -209,7 +171,7 @@ export async function cancelAiEvalBookings(ctx: MutationCtx) {
 		bookings++;
 	}
 	const services = new Set((await aiEvalServices(ctx)).map((row) => row._id));
-	for (const appointment of await ctx.db.query('serviceAppointments').order('desc').take(1000)) {
+	for (const appointment of await ctx.db.query('appointments').order('desc').take(1000)) {
 		const tagged = appointment.guestName.includes('AI-EVAL') || services.has(appointment.serviceId);
 		if (!tagged || appointment.status !== 'booked' || appointment.guestPhone === OCCUPIED_PHONE) continue;
 		await ctx.db.patch(appointment._id, { status: 'cancelled' });
@@ -221,10 +183,10 @@ export async function cancelAiEvalBookings(ctx: MutationCtx) {
 /** Removes every AI-EVAL seed record. Test bookings are cancelled (not deleted). */
 export async function cleanupAiEvalData(ctx: MutationCtx) {
 	const cancelled = await cancelAiEvalBookings(ctx);
-	const removed = { staff: 0, services: 0, timeOff: 0, appointments: 0, answers: 0, questions: 0, curated: 0, blockedDates: 0 };
+	const removed = { staff: 0, services: 0, timeOff: 0, appointments: 0, facts: 0, blockedDates: 0 };
 	const services = await aiEvalServices(ctx);
 	const serviceIds = new Set(services.map((row) => row._id));
-	for (const appointment of await ctx.db.query('serviceAppointments').take(2000)) {
+	for (const appointment of await ctx.db.query('appointments').take(2000)) {
 		if (!serviceIds.has(appointment.serviceId)) continue;
 		await ctx.db.delete(appointment._id);
 		removed.appointments++;
@@ -241,18 +203,7 @@ export async function cleanupAiEvalData(ctx: MutationCtx) {
 		await ctx.db.delete(person._id);
 		removed.staff++;
 	}
-	for (const answer of (await ctx.db.query('chatAnswers').take(1000)).filter((row) => row.createdByAdminEmail === AI_EVAL_EMAIL)) {
-		for (const question of await ctx.db.query('chatQuestions').withIndex('by_answerId', (q) => q.eq('answerId', answer._id)).take(200)) {
-			await ctx.db.delete(question._id);
-			removed.questions++;
-		}
-		await ctx.db.delete(answer._id);
-		removed.answers++;
-	}
-	for (const curated of (await ctx.db.query('curatedChatQuestions').take(1000)).filter((row) => row.createdByAdminEmail === AI_EVAL_EMAIL)) {
-		await ctx.db.delete(curated._id);
-		removed.curated++;
-	}
+ for (const fact of await ctx.db.query('businessFacts').withIndex('by_status_and_updatedAt', q => q.eq('status', 'approved')).take(1000)) if (fact.createdByAdminEmail === AI_EVAL_EMAIL) { await ctx.db.delete(fact._id); removed.facts++; }
 	for (const block of AI_EVAL_BLOCKS) {
 		const property = await propertyBySlug(ctx, block.propertySlug);
 		if (!property) continue;
@@ -266,3 +217,9 @@ export async function cleanupAiEvalData(ctx: MutationCtx) {
 	}
 	return { ...cancelled, removed };
 }
+
+export const AI_EVAL_BLOCKS = [
+	{ propertySlug: 'pool-villa', from: '2026-10-09', to: '2026-10-16' },
+	{ propertySlug: 'garden-suite', from: '2026-10-02', to: '2026-10-05' },
+	{ propertySlug: 'penthouse', from: '2026-10-23', to: '2026-10-26' }
+] as const;

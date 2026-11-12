@@ -421,13 +421,14 @@ function CampaignEditor({
       medium: campaign?.medium ?? preset?.medium ?? "",
       startsOn: campaign?.startsOn ?? "",
       endsOn: campaign?.endsOn ?? "",
-      budget: wholeText(campaign?.budget),
+      budget: wholeText(campaign?.budget === undefined ? undefined : campaign.budget / 100),
       notes: campaign?.notes ?? "",
     }),
     onDirtyChange,
   );
 
-  const budget = parseWhole(form.budget);
+  const typedBudget = parseWhole(form.budget);
+  const budget = typedBudget === undefined ? undefined : typedBudget * 100;
   const duplicate = campaigns.some((other) => other._id !== campaign?._id && other.name.trim().toLowerCase() === form.name.trim().toLowerCase());
   const errors = {
     name: !form.name.trim() ? "Give the campaign a name" : duplicate ? "Another campaign already has this name" : "",

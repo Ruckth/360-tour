@@ -1,4 +1,4 @@
-import { query, type QueryCtx } from './_generated/server';
+import { query, type QueryCtx } from './auth/model';
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { assertValidIsoDate } from './lib/validation';
@@ -102,7 +102,7 @@ export const getBlockedDates = query({
 	}
 });
 
-/** Admin calendars include historical and legacy bookings, excluding only the edited booking. */
+
 export const getAdminBlockedDates = query({
 	args: {
 		propertyId: v.id('properties'),
@@ -125,7 +125,7 @@ export const getAdminBlockedDates = query({
 		const bookings = await findOverlappingBookings(ctx, args.propertyId, args.startDate, exclusiveEnd);
 		for (const booking of bookings) {
 			if (booking._id === args.excludeBookingId || !blocksNewBookings(booking)) continue;
-			// Clamp legacy stays to the requested window before enumerating nights.
+
 			const start = booking.checkIn > args.startDate ? booking.checkIn : args.startDate;
 			const stop = booking.checkOut < exclusiveEnd ? booking.checkOut : exclusiveEnd;
 			for (const date of stayDates(start, stop)) dates.add(date);
@@ -200,7 +200,7 @@ export const isAvailable = query({
 		if (nightsBetween(args.checkIn, args.checkOut) > 365) return false;
 		if (await findBlockingNight(ctx, args.propertyId, args.checkIn, args.checkOut)) return false;
 
-		// Also check the bookings themselves: a legacy booking may have no availability rows.
+
 		const overlapping = await findOverlappingBookings(
 			ctx,
 			args.propertyId,

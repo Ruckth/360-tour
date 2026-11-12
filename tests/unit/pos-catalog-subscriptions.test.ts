@@ -32,7 +32,7 @@ it('waits for both reactive queries and composes live ranking and catalog edits 
   state.values['pos:recentCatalogRanking'] = ['extra:Tea'];
   await render(); expect(current?.frequent).toEqual(['extra:Tea']);
   expect(current?.services).toBe(items.services);
-  const services = [{ _id: 's', name: 'Edited', price: 200, imageUrl: '/new.jpg' }];
+  const services = [{ _id: 's', name: 'Edited', price: 20000, imageUrl: '/new.jpg' }];
   state.values['pos:stableCatalog'] = { ...items, services };
   await render(); expect(current?.services).toBe(services);
   expect(current?.frequent).toEqual(['extra:Tea']);

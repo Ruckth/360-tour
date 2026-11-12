@@ -101,7 +101,7 @@ it("opens an existing order through Orders after a missing link", async () => {
 
 it("keeps a valid existing link usable", async () => {
   const backend = createFixtureBackend();
-  const pending = backend.useActions().addItem({ item: { kind: "extra", name: "Valid linked item", price: 100 } });
+  const pending = backend.useActions().addItem({ item: { kind: "extra", name: "Valid linked item", price: 10000 } });
   await settle();
   const { orderId } = await pending;
   await show(backend, `order=${orderId}`);

@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { PriceLines } from "@/components/booking/BookingPriceSummary";
@@ -17,7 +19,7 @@ export function BookedPrice({ booking, showSaving = false, className }: { bookin
   const t = useTranslations("Coupon");
   if (booking.subtotal === undefined) return null;
   const view = bookedPriceView(booking);
-  const money = (amount: number) => `${currencyPrefix(booking.currency)}${amount.toLocaleString()}`;
+  const money = (amount: number) => `${currencyPrefix(booking.currency)}${satangToBaht(amount).toLocaleString()}`;
   return (
     <div className={cn("grid gap-3", className)}>
       <div data-testid="booked-price" className="rounded-xl border border-border p-4 text-left text-sm text-muted-foreground">

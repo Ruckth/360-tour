@@ -9,7 +9,7 @@ import { appendRecordHistory } from './recordHistory';
  * bumps the revision and keeps its old and new values in history.
  */
 
-type Appointment = Doc<'serviceAppointments'>;
+type Appointment = Doc<'appointments'>;
 type ChangeKind = Doc<'appointmentChanges'>['kind'];
 
 export const STALE_APPOINTMENT = 'This appointment changed since you opened it. Review the latest details and try again.';
@@ -86,7 +86,7 @@ export async function recordRebooked(ctx: MutationCtx, original: Appointment, co
 	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: original._id, actor, kind: 'rebooked', after: { rebookedAs: confirmationCode } });
 }
 
-export async function appointmentHistory(ctx: QueryCtx | MutationCtx, appointmentId: Id<'serviceAppointments'>) {
+export async function appointmentHistory(ctx: QueryCtx | MutationCtx, appointmentId: Id<'appointments'>) {
 	return await ctx.db.query('appointmentChanges')
 		.withIndex('by_appointmentId_and_at', (q) => q.eq('appointmentId', appointmentId))
 		.order('desc')

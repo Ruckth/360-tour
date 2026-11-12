@@ -1,5 +1,9 @@
 "use client";
 
+import { parseMoneyInput } from '@/lib/money-input';
+
+import { satangToBaht } from 'convex/shared/money';
+
 import { ArrowLeft, ChevronRight, Plus, TicketPercent, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
@@ -21,10 +25,10 @@ import { cn } from "@/lib/utils";
 import {
   MAX_TENDERS,
   TENDER_METHODS,
-  round2,
+  roundMoney,
   type Tender,
   type TenderMethod,
-} from "convex/lib/billMath";
+} from "convex/lib/orderMath";
 import {
   newAttemptKey,
   useCheckoutBackend,
@@ -41,7 +45,7 @@ import {
   couponRefusal,
 } from "./checkout-ui";
 
-const CASH_STEPS = [100, 500, 1000];
+const CASH_STEPS = [10000, 50000, 100000];
 
 /**
  * Takes the payment. One idempotency key per attempt (this panel's lifetime): a retry after a
@@ -379,8 +383,8 @@ function CashForm({
     viewport?.addEventListener("resize", reveal);
     return () => viewport?.removeEventListener("resize", reveal);
   }, []);
-  const value = Number(received) || 0;
-  const change = round2(value - due);
+  const value = parseMoneyInput(received) || 0;
+  const change = roundMoney(value - due);
 
   return (
     <>
@@ -402,7 +406,7 @@ function CashForm({
         <Button
           variant="secondary"
           className="px-2"
-          onClick={() => setReceived(String(due))}
+          onClick={() => setReceived(String(satangToBaht(due)))}
         >
           Exact
         </Button>
@@ -412,7 +416,7 @@ function CashForm({
             variant="secondary"
             className="px-2"
             onClick={() =>
-              setReceived(amountInput(String(round2(value + step))))
+              setReceived(amountInput(String(satangToBaht(roundMoney(value + step)))))
             }
           >
             +{formatMoney(step)}
@@ -435,7 +439,7 @@ function CashForm({
           className="ml-auto min-w-0 text-right text-[min(1.5rem,11cqi)] leading-[calc(2/1.5)] font-bold tabular-nums [overflow-wrap:anywhere]"
           data-testid="cash-balance"
         >
-          {formatMoney(value >= due ? change : round2(due - value))}
+          {formatMoney(value >= due ? change : roundMoney(due - value))}
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -475,11 +479,11 @@ function SplitForm({
     { method: "cash", amount: "" },
     { method: "promptpay", amount: "" },
   ]);
-  const paid = round2(
-    rows.reduce((total, row) => total + (Number(row.amount) || 0), 0),
+  const paid = roundMoney(
+    rows.reduce((total, row) => total + (parseMoneyInput(row.amount) || 0), 0),
   );
-  const remaining = round2(due - paid);
-  const ready = remaining === 0 && rows.every((row) => Number(row.amount) > 0);
+  const remaining = roundMoney(due - paid);
+  const ready = remaining === 0 && rows.every((row) => parseMoneyInput(row.amount) > 0);
   const update = (index: number, patch: Partial<(typeof rows)[number]>) =>
     setRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
@@ -526,7 +530,7 @@ function SplitForm({
               disabled={remaining <= 0}
               onClick={() =>
                 update(index, {
-                  amount: String(round2((Number(row.amount) || 0) + remaining)),
+                  amount: String(satangToBaht(roundMoney((parseMoneyInput(row.amount) || 0) + remaining))),
                 })
               }
             >
@@ -583,7 +587,7 @@ function SplitForm({
           onPay(
             rows.map((row) => ({
               method: row.method,
-              amount: Number(row.amount),
+              amount: parseMoneyInput(row.amount),
             })),
           )
         }

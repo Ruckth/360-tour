@@ -72,7 +72,7 @@ export function assertAppointmentStart(start: number, policy?: AdminHistoricalPo
 export type AdminHistoricalPolicy = { kind: 'admin_historical'; reason?: string };
 
 /** Retrospective evidence is not today's roster. Overlaps need a deliberate, logged explanation. */
-export async function historicalWarnings(ctx: ReadCtx, staff: Doc<'staff'>, service: Doc<'services'>, start: number, blockedUntil: number, ignoreAppointmentId?: Id<'serviceAppointments'>) {
+export async function historicalWarnings(ctx: ReadCtx, staff: Doc<'staff'>, service: Doc<'services'>, start: number, blockedUntil: number, ignoreAppointmentId?: Id<'appointments'>) {
 	const warnings: string[] = [];
 	if ((await scheduleDays(ctx, staff, start, blockedUntil)).some(day => !day.patternHistoryKnown)) warnings.push('The weekly roster for this earlier date is unknown; the earliest observed pattern is shown. Verify the historical schedule.');
 	if (staff.status !== 'active') warnings.push('Staff member is archived.');
@@ -80,7 +80,7 @@ export async function historicalWarnings(ctx: ReadCtx, staff: Doc<'staff'>, serv
 	if (!service.staffIds.includes(staff._id)) warnings.push('Current service assignments do not confirm this historical assignment; verify who actually performed the work.');
 	if ((await staffBusyRanges(ctx, staff, start, blockedUntil, ignoreAppointmentId)).length) warnings.push('The current roster, breaks, time off or appointment records do not show this entire time as available. These are not proof of the historical roster.');
 	let overlap = false;
-	for await (const row of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', q => q.eq('staffId', staff._id).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', blockedUntil)))) {
+	for await (const row of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', q => q.eq('staffId', staff._id).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', blockedUntil)))) {
 		if (row._id !== ignoreAppointmentId && blocksTime(row) && row.blockedUntil > start) overlap = true;
 	}
 	if (overlap) warnings.push('Another appointment overlaps this historical time. Explain the correction before saving.');
@@ -183,7 +183,7 @@ export async function scheduleDays(ctx: ReadCtx, staff: Doc<'staff'>, from: numb
 	return days;
 }
 
-export function blocksTime(appointment: Doc<'serviceAppointments'>): boolean {
+export function blocksTime(appointment: Doc<'appointments'>): boolean {
 	return appointment.status !== 'cancelled' && appointment.status !== 'no_show';
 }
 
@@ -193,7 +193,7 @@ export async function staffBusyRanges(
 		staff: Doc<'staff'>,
 		from: number,
 		to: number,
-		ignoreAppointmentId?: Id<'serviceAppointments'>
+		ignoreAppointmentId?: Id<'appointments'>
 ): Promise<Range[]> {
 	if (to <= from) return [];
 	const busy: Range[] = [];
@@ -209,7 +209,7 @@ export async function staffBusyRanges(
 	))) {
 		if (row.end > from) busy.push([Math.max(row.start, from), Math.min(row.end, to)]);
 	}
-	for await (const row of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+	for await (const row of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staff._id).gte('start', from - APPOINTMENT_LOOKBACK).lt('start', to)
 	))) {
 		if (row._id !== ignoreAppointmentId && row.status !== 'cancelled' && row.status !== 'no_show' && row.blockedUntil > from) {
@@ -224,7 +224,7 @@ export async function assertStaffFree(
 		staff: Doc<'staff'>,
 		start: number,
 		blockedUntil: number,
-		ignoreAppointmentId?: Id<'serviceAppointments'>
+		ignoreAppointmentId?: Id<'appointments'>
 ): Promise<void> {
 	if (staff.status !== 'active' || (await staffBusyRanges(ctx, staff, start, blockedUntil, ignoreAppointmentId)).length) {
 		throw new Error(SLOT_CONFLICT);
@@ -237,7 +237,7 @@ export async function openStarts(
 		staff: Doc<'staff'>[],
 		date: string,
 		occupyMs: number,
-		ignoreAppointmentId?: Id<'serviceAppointments'>
+		ignoreAppointmentId?: Id<'appointments'>
 ): Promise<Slot[]> {
 	const [dayStart, dayEnd] = localDayRange(date);
 	const busy = await Promise.all(staff.map((person) => staffBusyRanges(ctx, person, dayStart, dayEnd + DAY, ignoreAppointmentId)));
@@ -283,9 +283,9 @@ export type AppointmentInput = {
 	guestPhone: string;
 	guestEmail?: string;
 	bookingId?: Id<'bookings'>;
-	chatSessionId?: Id<'chatSessions'>;
-	rebookedFromId?: Id<'serviceAppointments'>;
-	source: Doc<'serviceAppointments'>['source'];
+	chatSessionId?: Id<'conversations'>;
+	rebookedFromId?: Id<'appointments'>;
+	source: Doc<'appointments'>['source'];
 	/** Who created it (an admin's email), recorded on its order. Defaults to the channel. */
 	actor?: string;
 };
@@ -334,7 +334,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 		if (!historical && (await staffBusyRanges(ctx, person, input.start, blockedUntil)).length) continue;
 		let count = 0;
 		if (!input.staffId) {
-			for await (const appointment of boundedIntegrityRows(ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) =>
+			for await (const appointment of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', person._id).gte('start', dayStart).lt('start', dayEnd)
 			))) {
 				if (blocksTime(appointment)) count++;
@@ -353,7 +353,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const accessToken = crypto.randomUUID();
 	const lookup = appointmentLookupFields({ guestPhone, guestEmail });
 	const status = policy && input.source === 'admin' && input.start + service.durationMin * MINUTE < Date.now() ? 'completed' as const : 'booked' as const;
-	const appointmentId = await ctx.db.insert('serviceAppointments', {
+	const appointmentId = await ctx.db.insert('appointments', {
 		serviceId: service._id,
 		staffId: chosen._id,
 		staffNameSnapshot: chosen.name, serviceNameSnapshot: service.name, createdBy: actor,
@@ -370,6 +370,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 		...(input.rebookedFromId ? { rebookedFromId: input.rebookedFromId } : {}),
 		source: input.source,
 		status,
+		amountPaid: 0, amountRefunded: 0,
 		paymentStatus: 'unpaid',
 		price: service.price,
 		currency: service.currency,

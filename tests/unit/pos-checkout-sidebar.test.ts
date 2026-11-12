@@ -127,7 +127,7 @@ it('recovers from a failed photo when its URL changes, and falls back when the U
 it('enforces the new inline stepper bounds and keeps totals correct at 99 and one', async () => {
   const backend = createFixtureBackend();
   const actions = backend.useActions();
-  const { orderId, lineId } = await actions.addItem({ item: { kind: 'extra', name: 'Bounded extra', price: 100 } });
+  const { orderId, lineId } = await actions.addItem({ item: { kind: 'extra', name: 'Bounded extra', price: 10000 } });
   await actions.updateLine({ lineId, qtyChange: 98 });
   await act(async () => root.render(createElement(CheckoutBackendProvider, { backend, children: null } as ComponentProps<typeof CheckoutBackendProvider>,
     createElement(CheckoutView, { orderId, onOrderChange: () => {}, onPaid: () => {} }))));

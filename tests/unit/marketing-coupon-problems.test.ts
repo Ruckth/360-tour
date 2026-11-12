@@ -18,7 +18,7 @@ describe("coupon problem copy", () => {
     [{ code: "min_nights", minNights: 2, missingNights: 1 }, "Add 1 more night to use this offer", "Minimum nights"],
     [{ code: "min_nights", minNights: 3, missingNights: 2 }, "Add 2 more nights to use this offer", "Minimum nights"],
     // DCNT-SPA-500 needs ฿1,500 of spa services.
-    [{ code: "min_subtotal", minEligibleSubtotal: 1500, eligibleSubtotal: 1200 }, "Spend ฿300 more to use this offer", "Minimum spend"],
+    [{ code: "min_subtotal", minEligibleSubtotal: 150000, eligibleSubtotal: 120000 }, "Spend ฿300 more to use this offer", "Minimum spend"],
     [{ code: "nothing_eligible" }, "Nothing in this quote is covered by this code", "Not in scope"],
   ])("explains %j", (problem, message, title) => {
     expect(couponProblemMessage(problem)).toBe(message);

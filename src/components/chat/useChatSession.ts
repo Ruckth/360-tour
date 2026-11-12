@@ -1322,7 +1322,7 @@ export function useChatSession({
     if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
     const watch = convex.watchQuery(
       api.chat.getMessages,
-      { sessionId: sessionId as Id<"chatSessions">, guestToken: getStoredGuestToken(sessionId), limit: 100 },
+      { sessionId: sessionId as Id<"conversations">, guestToken: getStoredGuestToken(sessionId), limit: 100 },
     );
     const generation = chatLifecycle.value;
     const unsubscribe = watch.onUpdate(() => {
@@ -1341,7 +1341,7 @@ export function useChatSession({
   useEffect(() => {
     if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
     const watch = convex.watchQuery(api.chat.getSession, {
-      sessionId: sessionId as Id<"chatSessions">, guestToken: getStoredGuestToken(sessionId),
+      sessionId: sessionId as Id<"conversations">, guestToken: getStoredGuestToken(sessionId),
     });
     const generation = chatLifecycle.value;
     return watch.onUpdate(() => {

@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
@@ -27,7 +28,7 @@ async function createProperty(t: ReturnType<typeof convexTest>) {
       name: "Pool Villa",
       tagline: "Private stay",
       description: "A private villa for testing.",
-      pricePerNight: 8500,
+      pricePerNight: 850000,
       currency: "THB",
       maxGuests: 4,
       bedrooms: 2,
@@ -36,7 +37,7 @@ async function createProperty(t: ReturnType<typeof convexTest>) {
       images: [],
       amenities: ["Private Pool", "WiFi"],
       tourRoomIds: [],
-      directDiscountPercent: 15,
+      directDiscountPercent: 1500,
       status: "active",
     });
   });
@@ -50,7 +51,7 @@ describe("bounded list queries", () => {
 
     await t.run(async (ctx) => {
       for (let index = 0; index < 3; index++) {
-        await ctx.db.insert("bookings", {
+        await insertFixture(ctx, "bookings", {
           propertyId,
           guestName: `Guest ${index}`,
           guestEmail: `guest-${index}@example.com`,
@@ -59,9 +60,9 @@ describe("bounded list queries", () => {
           checkOut: `2030-01-0${index + 2}`,
           guests: 2,
           nights: 1,
-          subtotal: 8500,
+          subtotal: 850000,
           discountAmount: 0,
-          total: 8500,
+          total: 850000,
           currency: "THB",
           paymentStatus: "pending",
           status: "pending",

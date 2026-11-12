@@ -1,6 +1,6 @@
 // The cashier's "over your limit" hint must agree with the server's refusal, satang for satang.
 import { describe, expect, it } from "vitest";
-import type { LineDiscount } from "convex/lib/billMath";
+import type { LineDiscount } from "convex/lib/orderMath";
 import { assertCashierDiscount, type StaffActor } from "convex/lib/staffAccess";
 import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
 import { discountOverLimit } from "@/components/checkout/staff-approvals";
@@ -23,7 +23,7 @@ async function server(line: Line, discount: LineDiscount, limit: number) {
     return data!.amount!;
   }
 }
-async function agree(line: Line, discount: LineDiscount, limit = 10) {
+async function agree(line: Line, discount: LineDiscount, limit = 1000) {
   const hint = discountOverLimit(line, discount, { discountLimitPercent: limit });
   const refused = await server(line, discount, limit);
   expect(hint?.amount ?? null).toBe(refused);
@@ -31,51 +31,51 @@ async function agree(line: Line, discount: LineDiscount, limit = 10) {
 }
 
 describe("cashier discount limit hint", () => {
-  const massage = { unitPrice: 1000, qty: 1 };
+  const massage = { unitPrice: 100000, qty: 1 };
 
   it("allows exactly 10% and asks a manager for 0.01 over, in baht", async () => {
-    expect(await agree(massage, { type: "amount", value: 100 })).toBeNull();
-    expect(await agree(massage, { type: "amount", value: 100.01 })).toEqual({ amount: 100.01, limitPercent: 10 });
+    expect(await agree(massage, { type: "amount", value: 10000 })).toBeNull();
+    expect(await agree(massage, { type: "amount", value: 10001 })).toEqual({ amount: 10001, limitPercent: 1000 });
   });
 
   it("allows exactly 10% and asks a manager for 0.01 over, in percent", async () => {
-    expect(await agree(massage, { type: "percent", value: 10 })).toBeNull();
+    expect(await agree(massage, { type: "percent", value: 1000 })).toBeNull();
     // 10.01% of ฿1,000 is ฿100.10.
-    expect(await agree(massage, { type: "percent", value: 10.01 })).toEqual({ amount: 100.1, limitPercent: 10 });
+    expect(await agree(massage, { type: "percent", value: 1001 })).toEqual({ amount: 10010, limitPercent: 1000 });
   });
 
   it("rounds the limit to the satang the way the server does", async () => {
     // 10% of ฿10.05 is ฿1.005, so ฿1.01 is allowed and ฿1.02 is not.
-    const tea = { unitPrice: 10.05, qty: 1 };
-    expect(await agree(tea, { type: "amount", value: 1.01 })).toBeNull();
-    expect(await agree(tea, { type: "amount", value: 1.02 })).not.toBeNull();
-    expect(await agree(tea, { type: "percent", value: 10 })).toBeNull();
+    const tea = { unitPrice: 1005, qty: 1 };
+    expect(await agree(tea, { type: "amount", value: 101 })).toBeNull();
+    expect(await agree(tea, { type: "amount", value: 102 })).not.toBeNull();
+    expect(await agree(tea, { type: "percent", value: 1000 })).toBeNull();
   });
 
   it("counts the quantity, a price change and a higher catalog baseline, but not the coupon", async () => {
-    const nights = { unitPrice: 450, qty: 3 };
-    expect(await agree(nights, { type: "amount", value: 135 })).toBeNull();
-    expect(await agree(nights, { type: "amount", value: 135.01 })).not.toBeNull();
+    const nights = { unitPrice: 45000, qty: 3 };
+    expect(await agree(nights, { type: "amount", value: 13500 })).toBeNull();
+    expect(await agree(nights, { type: "amount", value: 13501 })).not.toBeNull();
     // A ฿950 override on a ฿1,000 row already uses ฿50 of the ฿100 allowance.
-    const repriced = { unitPrice: 1000, qty: 1, priceOverride: { price: 950 } };
-    expect(await agree(repriced, { type: "amount", value: 50 })).toBeNull();
-    expect(await agree(repriced, { type: "amount", value: 50.01 })).toEqual({ amount: 100.01, limitPercent: 10 });
+    const repriced = { unitPrice: 100000, qty: 1, priceOverride: { price: 95000 } };
+    expect(await agree(repriced, { type: "amount", value: 5000 })).toBeNull();
+    expect(await agree(repriced, { type: "amount", value: 5001 })).toEqual({ amount: 10001, limitPercent: 1000 });
     // A lower stored price can't hide a reduction from the catalog price.
-    const lowered = { unitPrice: 900, catalogUnitPrice: 1000, qty: 1 };
-    expect(await agree(lowered, { type: "amount", value: 0.01 })).not.toBeNull();
-    const withCoupon = { unitPrice: 1000, qty: 1, couponDiscount: 300 };
-    expect(await agree(withCoupon, { type: "amount", value: 100 })).toBeNull();
+    const lowered = { unitPrice: 90000, catalogUnitPrice: 100000, qty: 1 };
+    expect(await agree(lowered, { type: "amount", value: 1 })).not.toBeNull();
+    const withCoupon = { unitPrice: 100000, qty: 1, couponDiscount: 30000 };
+    expect(await agree(withCoupon, { type: "amount", value: 10000 })).toBeNull();
   });
 
   it("follows other limits, including two decimals and zero", async () => {
-    expect(await agree(massage, { type: "amount", value: 125 }, 12.5)).toBeNull();
-    expect(await agree(massage, { type: "amount", value: 125.01 }, 12.5)).not.toBeNull();
-    expect(await agree(massage, { type: "percent", value: 12.34 }, 12.34)).toBeNull();
-    expect(await agree(massage, { type: "amount", value: 0.01 }, 0)).not.toBeNull();
+    expect(await agree(massage, { type: "amount", value: 12500 }, 1250)).toBeNull();
+    expect(await agree(massage, { type: "amount", value: 12501 }, 1250)).not.toBeNull();
+    expect(await agree(massage, { type: "percent", value: 1234 }, 1234)).toBeNull();
+    expect(await agree(massage, { type: "amount", value: 1 }, 0)).not.toBeNull();
     expect(await agree(massage, { type: "amount", value: 0 }, 0)).toBeNull();
   });
 
   it("ignores a value that isn't a discount yet", () => {
-    expect(discountOverLimit(massage, { type: "amount", value: Number.NaN }, { discountLimitPercent: 10 })).toBeNull();
+    expect(discountOverLimit(massage, { type: "amount", value: Number.NaN }, { discountLimitPercent: 1000 })).toBeNull();
   });
 });

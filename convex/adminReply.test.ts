@@ -16,7 +16,7 @@ const adminEmail = "admin@example.com";
 
 async function insertSession(t: ReturnType<typeof convexTest>, channel: "web" | "line" | "facebook") {
   return await t.run((ctx) =>
-    ctx.db.insert("chatSessions", {
+    ctx.db.insert("conversations", {
       channel,
       ...(channel === "line" ? { visitorContactHandle: "Uline123" } : {}),
       ...(channel === "facebook" ? { visitorContactHandle: "fb-user-123" } : {}),
@@ -76,7 +76,7 @@ describe("admin replies", () => {
     const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "facebook");
     await t.run((ctx) =>
-      ctx.db.insert("chatMessages", {
+      ctx.db.insert("messages", {
         sessionId,
         role: "user",
         content: "Hi",

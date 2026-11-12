@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,15 +29,15 @@ async function setup() {
   }
   const serviceId = await t.run(ctx => ctx.db.insert('services', {
     slug: 'staff-test', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
-    price: 1000, currency: 'THB', staffIds: [], status: 'active', createdAt: now, updatedAt: now,
+    price: 100000, currency: 'THB', staffIds: [], status: 'active', createdAt: now, updatedAt: now,
   }));
   const propertyId = await t.run(ctx => ctx.db.insert('properties', {
-    slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 1000, currency: 'THB', maxGuests: 4,
+    slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100000, currency: 'THB', maxGuests: 4,
     bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active',
   }));
   const sale = () => cashier.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
-  const view = async (orderId: Id<'bills'>) => (await cashier.query(api.pos.getOrder, { orderId }))!;
-  const pay = async (orderId: Id<'bills'>) => {
+  const view = async (orderId: Id<'orders'>) => (await cashier.query(api.pos.getOrder, { orderId }))!;
+  const pay = async (orderId: Id<'orders'>) => {
     const current = await view(orderId);
     return await cashier.mutation(api.pos.settleOrder, { orderId, idempotencyKey: `payment:${orderId}`, expectedDue: current.totals.due,
       expectedRevision: current.order.revision, tenders: current.totals.due ? [{ method: 'cash', amount: current.totals.due }] : [],
@@ -48,20 +49,20 @@ async function setup() {
     const { revision, ...fields } = current;
     return await owner.mutation(api.staffAccess.updateCashierRules, { expectedRevision: revision, ...fields, ...patch });
   };
-  const request = (orderId: Id<'bills'>, payload: ApprovalPayload) => cashier.mutation(api.staffApprovals.create, { orderId, payload, reason: 'Guest recovery' });
-  const discountRequest = (orderId: Id<'bills'>, lineId: Id<'billLines'>) => request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 100.01 } });
+  const request = (orderId: Id<'orders'>, payload: ApprovalPayload) => cashier.mutation(api.staffApprovals.create, { orderId, payload, reason: 'Guest recovery' });
+  const discountRequest = (orderId: Id<'orders'>, lineId: Id<'orderLines'>) => request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 10001 } });
   const coupon = async () => {
-    const { couponId } = await owner.mutation(api.marketing.saveCoupon, { code: 'TWENTY', scope: 'services', benefit: { kind: 'percent', percent: 20 } });
+    const { couponId } = await owner.mutation(api.marketing.saveCoupon, { code: 'TWENTY', scope: 'services', benefit: { kind: 'percent', percent: 2000 } });
     await owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     return couponId;
   };
-  const booking = () => t.run(ctx => ctx.db.insert('bookings', {
+  const booking = () => t.run(ctx => insertFixture(ctx, 'bookings', {
     propertyId, guestName: 'Guest', guestPhone: '+66 81 234 5678', guestPhoneDigits: '66812345678', checkIn: '2026-11-13', checkOut: '2026-11-14',
-    guests: 2, nights: 1, subtotal: 1000, discountAmount: 0, total: 1000, currency: 'THB', paymentStatus: 'pending', status: 'confirmed', createdAt: now,
+    guests: 2, nights: 1, subtotal: 100000, discountAmount: 0, total: 100000, currency: 'THB', paymentStatus: 'pending', status: 'confirmed', createdAt: now,
   }));
-  const appointment = (price = 1000, bookingId?: Id<'bookings'>) => t.run(async ctx => {
+  const appointment = (price = 100000, bookingId?: Id<'bookings'>) => t.run(async ctx => {
     const staffId = await ctx.db.insert('staff', { name: 'Therapist', role: 'Therapist', color: '#abc', workingHours: [], breaks: [], status: 'active', createdAt: now, updatedAt: now });
-    return await ctx.db.insert('serviceAppointments', {
+    return await insertFixture(ctx, 'appointments', {
       serviceId, staffId, start: now + 3_600_000, end: now + 7_200_000, blockedUntil: now + 7_200_000,
       guestName: 'Appointment guest', guestPhone: '0800000000', source: 'admin', status: 'booked', paymentStatus: 'unpaid',
       price, currency: 'THB', confirmationCode: 'APPT', accessToken: 'test-only', createdAt: now, ...(bookingId ? { bookingId } : {}),
@@ -81,7 +82,7 @@ describe('staff permissions and invitations', () => {
     await t.run(ctx => ctx.db.insert('staffGrants', { email: 'owner@example.com', tokenIdentifier: 'owner', role: 'cashier', createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' }));
     expect((await owner.query(api.staffAccess.myAccess, {})).role).toBe('owner');
     await expect(owner.mutation(api.staffAccess.setGrant, { email: 'OWNER@example.com', role: 'cashier' })).rejects.toThrow('cannot be downgraded');
-    await owner.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Owner charge', price: 1000 } });
+    await owner.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Owner charge', price: 100000 } });
   });
 
   it('gives managers operations, but no settings writes, Team or implicit marketing access', async () => {
@@ -114,7 +115,7 @@ describe('staff permissions and invitations', () => {
     expect((await s.cashier.query(api.customers.browseCustomers, { query: '', archived: false, paginationOpts: { numItems: 20, cursor: null } })).page).toEqual([]);
     const bookingId = await s.booking();
     await expect(s.cashier.query(api.adminBookings.getForAdmin, { bookingId })).rejects.toThrow('Not authorized');
-    await expect(s.cashier.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 1, currency: 'THB', method: 'cash', reason: 'No', idempotencyKey: 'cashier-refund' })).rejects.toThrow('Not authorized');
+    await expect(s.cashier.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 100, currency: 'THB', method: 'cash', reason: 'No', idempotencyKey: 'cashier-refund' })).rejects.toThrow('Not authorized');
   });
 
   it('uses identity-bound claims, expiry, explicit resend, role change and revoke', async () => {
@@ -155,8 +156,8 @@ describe('staff permissions and invitations', () => {
 
   it('validates rule limits and optimistic revisions', async () => {
     const s = await setup();
-    for (const discountLimitPercent of [-1, 100.01, 1.001]) await expect(s.rules({ discountLimitPercent })).rejects.toThrow('two decimals');
-    await s.rules({ discountLimitPercent: 12.34 });
+    for (const discountLimitPercent of [-1, 10001, 100.1]) await expect(s.rules({ discountLimitPercent })).rejects.toThrow('two decimals');
+    await s.rules({ discountLimitPercent: 1234 });
     const { revision, ...defaults } = DEFAULT_CASHIER_RULES;
     await expect(s.owner.mutation(api.staffAccess.updateCashierRules, { ...defaults, expectedRevision: revision })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'STALE_RULES' }) });
     await expect(s.manager.mutation(api.staffAccess.updateCashierRules, { ...defaults, expectedRevision: 1 })).rejects.toThrow('Not authorized');
@@ -167,28 +168,28 @@ describe('cashier money boundaries', () => {
   it.each(['amount', 'percent'] as const)('enforces inclusive ten percent in satang for %s and replacement edits', async type => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
-    const value = type === 'amount' ? 100 : 10;
+    const value = type === 'amount' ? 10000 : 1000;
     await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value } });
-    expect((await s.view(orderId)).totals.total).toBe(900);
+    expect((await s.view(orderId)).totals.total).toBe(90000);
     await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value: value / 2 } });
-    expect((await s.view(orderId)).totals.total).toBe(950);
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value: type === 'amount' ? 100.01 : 10.01 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: type === 'amount' ? 100.01 : 100.1, subtotalSatang: 100000, limitSatang: 10000 }) });
-    expect((await s.view(orderId)).totals.total).toBe(950);
+    expect((await s.view(orderId)).totals.total).toBe(95000);
+    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value: type === 'amount' ? 10001 : 1001 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: type === 'amount' ? 10001 : 10010, subtotalSatang: 100000, limitSatang: 10000 }) });
+    expect((await s.view(orderId)).totals.total).toBe(95000);
     await s.cashier.mutation(api.pos.updateLine, { lineId, discount: null });
     await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type, value } });
-    expect((await s.view(orderId)).totals.total).toBe(900);
+    expect((await s.view(orderId)).totals.total).toBe(90000);
   });
 
   it('uses current quantity and rounds half-satang like the existing bill math', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.cashier.mutation(api.pos.addItem, { item: { kind: 'room', propertyId: s.propertyId } });
-    await s.cashier.mutation(api.pos.updateLine, { lineId, qtyChange: 1, discount: { type: 'amount', value: 200 } });
-    expect((await s.view(orderId)).totals.total).toBe(1800);
+    await s.cashier.mutation(api.pos.updateLine, { lineId, qtyChange: 1, discount: { type: 'amount', value: 20000 } });
+    expect((await s.view(orderId)).totals.total).toBe(180000);
     await expect(s.cashier.mutation(api.pos.updateLine, { lineId, qtyChange: -1 })).rejects.toMatchObject(needsApproval('discount'));
-    await s.t.run(ctx => ctx.db.patch(s.serviceId, { price: 10.05 }));
+    await s.t.run(ctx => ctx.db.patch(s.serviceId, { price: 1005 }));
     const tiny = await s.sale();
-    await s.cashier.mutation(api.pos.updateLine, { lineId: tiny.lineId, discount: { type: 'percent', value: 10 } });
-    expect((await s.view(tiny.orderId)).totals.total).toBe(9.04);
+    await s.cashier.mutation(api.pos.updateLine, { lineId: tiny.lineId, discount: { type: 'percent', value: 1000 } });
+    expect((await s.view(tiny.orderId)).totals.total).toBe(904);
   });
 
   it('allows coupons over 10%, a linked customer, payment, receipt and customer display operations', async () => {
@@ -197,9 +198,9 @@ describe('cashier money boundaries', () => {
     const customerId = await s.cashier.mutation(api.customers.createCustomer, { name: 'Buyer', email: 'buyer@example.com' });
     await s.cashier.mutation(api.pos.linkCustomer, { orderId, customerId });
     await s.coupon();
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 100 } });
+    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 10000 } });
     await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
-    expect((await s.view(orderId)).totals).toMatchObject({ total: 720, coupon: 180 });
+    expect((await s.view(orderId)).totals).toMatchObject({ total: 72000, coupon: 18000 });
     await s.cashier.mutation(api.pos.removeOrderCoupon, { orderId });
     await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
     await s.cashier.mutation(api.displays.takeDisplay, { clientId: 'cashier-browser', orderId });
@@ -213,17 +214,17 @@ describe('cashier money boundaries', () => {
   it('requires custom-price permission, and granting it never bypasses the manual discount limit', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
-    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 900, note: 'Discount' })).rejects.toMatchObject(needsApproval('customPrice'));
-    await expect(s.cashier.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 1 } })).rejects.toMatchObject(needsApproval('customPrice'));
+    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 90000, note: 'Discount' })).rejects.toMatchObject(needsApproval('customPrice'));
+    await expect(s.cashier.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 100 } })).rejects.toMatchObject(needsApproval('customPrice'));
     await s.rules({ customPrice: 'cashier' });
-    await s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 950, note: 'Partial reduction' });
-    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 50 } });
-    expect((await s.view(orderId)).totals.total).toBe(900);
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 50.01 } })).rejects.toMatchObject(needsApproval('discount'));
-    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 900, note: 'Retained discount' })).rejects.toMatchObject(needsApproval('discount'));
+    await s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 95000, note: 'Partial reduction' });
+    await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 5000 } });
+    expect((await s.view(orderId)).totals.total).toBe(90000);
+    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 5001 } })).rejects.toMatchObject(needsApproval('discount'));
+    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 90000, note: 'Retained discount' })).rejects.toMatchObject(needsApproval('discount'));
     await s.cashier.mutation(api.pos.updateLine, { lineId, discount: null });
-    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 899.99, note: 'Over limit' })).rejects.toMatchObject(needsApproval('discount'));
-    await s.cashier.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 20 } });
+    await expect(s.cashier.mutation(api.pos.overrideLinePrice, { lineId, price: 89999, note: 'Over limit' })).rejects.toMatchObject(needsApproval('discount'));
+    await s.cashier.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Custom', price: 2000 } });
   });
 
   it.each(['owner', 'manager'] as const)('uses the %s booking override as baseline across refresh and reattachment', async role => {
@@ -231,15 +232,15 @@ describe('cashier money boundaries', () => {
     const bookingId = await s.booking();
     const { orderId } = await s.cashier.mutation(api.pos.openOrderFor, { bookingId });
     const lineId = (await s.view(orderId)).lines[0]._id;
-    await s.t.run(ctx => ctx.db.patch(bookingId, { total: 800, providerRefundWaived: 100, priceOverride: { total: 800, quotedTotal: 1000, reason: 'Recovery', by: `${role}@example.com`, at: now } }));
+    await s.t.run(ctx => ctx.db.patch(bookingId, { total: 80000, providerRefundWaived: 10000, priceOverride: { total: 80000, quotedTotal: 100000, reason: 'Recovery', by: `${role}@example.com`, at: now } }));
     await expect(s.cashier.mutation(api.pos.updateSourceLine, { lineId })).rejects.toMatchObject(needsApproval('customPrice'));
     await s.rules({ customPrice: 'cashier' });
     await s.cashier.mutation(api.pos.updateSourceLine, { lineId });
-    expect(await s.t.run(ctx => ctx.db.get(lineId))).toMatchObject({ unitPrice: 700, catalogUnitPrice: 700 });
+    expect(await s.t.run(ctx => ctx.db.get(lineId))).toMatchObject({ unitPrice: 70000, catalogUnitPrice: 70000 });
     await s.cashier.mutation(api.pos.removeLine, { lineId });
     await s.cashier.mutation(api.pos.attach, { orderId, bookingId });
     expect(await s.t.run(ctx => ctx.db.get(lineId))).toBeNull();
-    expect((await s.view(orderId)).totals.total).toBe(700);
+    expect((await s.view(orderId)).totals.total).toBe(70000);
     expect(await s.cashier.mutation(api.pos.openOrderFor, { bookingId })).toEqual({ orderId });
   });
 });
@@ -250,16 +251,16 @@ describe('atomic manager approvals', () => {
     const { orderId, lineId } = await s.sale();
     const before = await s.view(orderId);
     const result = await s.discountRequest(orderId, lineId);
-    expect(result).toMatchObject({ status: 'pending', totalBefore: 1000, totalAfter: 899.99, amount: 100.01, percent: 10.001 });
+    expect(result).toMatchObject({ status: 'pending', totalBefore: 100000, totalAfter: 89999, amount: 10001, percent: 1000 });
     expect((await s.view(orderId)).order.revision).toBe(before.order.revision);
-    expect((await s.view(orderId)).totals.total).toBe(1000);
+    expect((await s.view(orderId)).totals.total).toBe(100000);
     await expect(s.pay(orderId)).rejects.toMatchObject({ data: expect.objectContaining({ code: 'PENDING_APPROVAL' }) });
-    expect(await s.manager.query(api.staffApprovals.pending, {})).toMatchObject({ count: 1, list: [{ requesterEmail: 'cashier@example.com', reason: 'Guest recovery', amount: 100.01 }] });
+    expect(await s.manager.query(api.staffApprovals.pending, {})).toMatchObject({ count: 1, list: [{ requesterEmail: 'cashier@example.com', reason: 'Guest recovery', amount: 10001 }] });
     expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0]).not.toHaveProperty('orderFingerprint');
     await expect(s.cashier.mutation(api.staffApprovals.approve, { requestId: result.requestId })).rejects.toThrow('Not authorized');
     expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: result.requestId })).toEqual({ status: 'applied', replayed: false });
     expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: result.requestId })).toEqual({ status: 'applied', replayed: true });
-    expect((await s.view(orderId)).totals.total).toBe(899.99);
+    expect((await s.view(orderId)).totals.total).toBe(89999);
     expect((await s.view(orderId)).order.revision).toBe(before.order.revision + 1);
     expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0]).toMatchObject({ status: 'applied', approverEmail: 'manager@example.com' });
     const log = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'order').eq('entityId', orderId)).take(20));
@@ -273,7 +274,7 @@ describe('atomic manager approvals', () => {
     const { requestId } = await s.discountRequest(orderId, lineId);
     const response = action === 'cancel' ? await s.cashier.mutation(api.staffApprovals.cancel, { requestId }) : await s.manager.mutation(api.staffApprovals.reject, { requestId });
     expect(response.status).toBe(action === 'cancel' ? 'cancelled' : 'rejected');
-    expect((await s.view(orderId)).totals.total).toBe(1000);
+    expect((await s.view(orderId)).totals.total).toBe(100000);
     expect(await s.manager.mutation(api.staffApprovals.approve, { requestId })).toMatchObject({ status: response.status, replayed: true });
     await s.pay(orderId);
   });
@@ -284,11 +285,11 @@ describe('atomic manager approvals', () => {
     const couponId = await s.coupon();
     if (change === 'couponCatalog' || change === 'couponRestored') await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
     const { requestId } = await s.discountRequest(orderId, lineId);
-    if (change === 'line') await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 1 } });
+    if (change === 'line') await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 100 } });
     if (change === 'coupon') await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
     if (change === 'couponCatalog' || change === 'couponRestored') await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
     if (change === 'couponRestored') await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-    if (change === 'rules') await s.rules({ discountLimitPercent: 20 });
+    if (change === 'rules') await s.rules({ discountLimitPercent: 2000 });
     if (change === 'role' || change === 'roleRestored') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
     if (change === 'roleRestored') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
     if (change === 'revoke' || change === 'regrant') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: null });
@@ -310,7 +311,7 @@ describe('atomic manager approvals', () => {
     expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0].status).toBe('expired');
     await s.t.mutation(internal.staffApprovals.expire, { requestId });
     expect(await s.manager.mutation(api.staffApprovals.approve, { requestId })).toMatchObject({ status: 'expired' });
-    expect((await s.view(orderId)).totals.total).toBe(1000);
+    expect((await s.view(orderId)).totals.total).toBe(100000);
     await s.pay(orderId);
   });
 
@@ -321,11 +322,11 @@ describe('atomic manager approvals', () => {
     vi.mocked(Date.now).mockReturnValue(now + APPROVAL_TTL_MS - 1);
     expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: first.requestId })).toMatchObject({ status: 'applied' });
     await s.pay(orderId);
-    const invalid = await s.request(orderId, { kind: 'paymentFix', action: 'amendOrderPayment', tenders: [{ method: 'card', amount: 1 }] });
+    const invalid = await s.request(orderId, { kind: 'paymentFix', action: 'amendOrderPayment', tenders: [{ method: 'card', amount: 100 }] });
     await expect(s.manager.mutation(api.staffApprovals.approve, { requestId: invalid.requestId })).rejects.toThrow('Payments add up');
     const view = await s.view(orderId);
     expect(view.corrections).toEqual([]);
-    expect(view.paymentRecord.tenders).toEqual([{ method: 'cash', amount: 899.99 }]);
+    expect(view.paymentRecord.tenders).toEqual([{ method: 'cash', amount: 89999 }]);
     expect((await s.cashier.query(api.staffApprovals.forOrder, { orderId }))[0].status).toBe('pending');
   });
 
@@ -334,15 +335,15 @@ describe('atomic manager approvals', () => {
     const bookingId = await s.booking();
     const { orderId } = await s.cashier.mutation(api.pos.openOrderFor, { bookingId });
     const lineId = (await s.view(orderId)).lines[0]._id;
-    await s.t.run(ctx => ctx.db.patch(bookingId, { total: 800, priceOverride: { total: 800, quotedTotal: 1000, reason: 'Recovery', by: 'owner@example.com', at: now } }));
+    await s.t.run(ctx => ctx.db.patch(bookingId, { total: 80000, priceOverride: { total: 80000, quotedTotal: 100000, reason: 'Recovery', by: 'owner@example.com', at: now } }));
     const first = await s.request(orderId, { kind: 'customPrice', action: 'updateSourceLine', lineId });
-    expect(first).toMatchObject({ totalBefore: 1000, totalAfter: 800, amount: 0, percent: 0 });
-    await s.t.run(ctx => ctx.db.patch(bookingId, { total: 700 }));
+    expect(first).toMatchObject({ totalBefore: 100000, totalAfter: 80000, amount: 0, percent: 0 });
+    await s.t.run(ctx => ctx.db.patch(bookingId, { total: 70000 }));
     expect(await s.manager.mutation(api.staffApprovals.approve, { requestId: first.requestId })).toMatchObject({ status: 'stale' });
-    expect((await s.view(orderId)).totals.total).toBe(1000);
+    expect((await s.view(orderId)).totals.total).toBe(100000);
     const next = await s.request(orderId, { kind: 'customPrice', action: 'updateSourceLine', lineId });
     await s.manager.mutation(api.staffApprovals.approve, { requestId: next.requestId });
-    expect((await s.view(orderId)).totals.total).toBe(700);
+    expect((await s.view(orderId)).totals.total).toBe(70000);
   });
 
   it('rejects self approval after promotion and approvers who lost access', async () => {
@@ -353,14 +354,14 @@ describe('atomic manager approvals', () => {
     await expect(s.cashier.mutation(api.staffApprovals.approve, { requestId })).rejects.toThrow('own request');
     await s.owner.mutation(api.staffAccess.setGrant, { email: 'manager@example.com', role: null });
     await expect(s.manager.mutation(api.staffApprovals.approve, { requestId })).rejects.toThrow('Not authorized');
-    expect((await s.view(orderId)).totals.total).toBe(1000);
+    expect((await s.view(orderId)).totals.total).toBe(100000);
   });
 
   it('validates reasons, target order, cancellation ownership and one pending request per order', async () => {
     const s = await setup();
     const first = await s.sale();
     const second = await s.sale();
-    for (const reason of ['', ' ', 'x'.repeat(501)]) await expect(s.cashier.mutation(api.staffApprovals.create, { orderId: first.orderId, reason, payload: { kind: 'discount', lineId: first.lineId, discount: { type: 'percent', value: 20 } } })).rejects.toThrow('1–500');
+    for (const reason of ['', ' ', 'x'.repeat(501)]) await expect(s.cashier.mutation(api.staffApprovals.create, { orderId: first.orderId, reason, payload: { kind: 'discount', lineId: first.lineId, discount: { type: 'percent', value: 2000 } } })).rejects.toThrow('1–500');
     await expect(s.discountRequest(first.orderId, second.lineId)).rejects.toThrow('Item not found');
     const { requestId } = await s.discountRequest(first.orderId, first.lineId);
     await expect(s.discountRequest(first.orderId, first.lineId)).rejects.toMatchObject({ data: expect.objectContaining({ code: 'PENDING_APPROVAL' }) });
@@ -373,20 +374,20 @@ describe('atomic manager approvals', () => {
     await s.coupon();
     await s.cashier.mutation(api.pos.applyOrderCoupon, { orderId, code: 'TWENTY' });
     const { requestId, totalBefore, totalAfter } = await s.discountRequest(orderId, lineId);
-    expect([totalBefore, totalAfter]).toEqual([800, 719.99]);
+    expect([totalBefore, totalAfter]).toEqual([80000, 71999]);
     await s.manager.mutation(api.staffApprovals.approve, { requestId });
-    expect((await s.view(orderId)).totals.total).toBe(719.99);
+    expect((await s.view(orderId)).totals.total).toBe(71999);
   });
 
   it.each(['overrideLinePrice', 'addCustomItem'] as const)('executes custom action %s once through the normal audit path', async action => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
-    const payload: ApprovalPayload = action === 'overrideLinePrice' ? { kind: 'customPrice', action, lineId, price: 700, note: 'Recovery' } : { kind: 'customPrice', action, name: 'Custom item', price: 25 };
+    const payload: ApprovalPayload = action === 'overrideLinePrice' ? { kind: 'customPrice', action, lineId, price: 70000, note: 'Recovery' } : { kind: 'customPrice', action, name: 'Custom item', price: 2500 };
     const { requestId } = await s.request(orderId, payload);
     await s.manager.mutation(api.staffApprovals.approve, { requestId });
     await s.manager.mutation(api.staffApprovals.approve, { requestId });
-    expect((await s.view(orderId)).totals.total).toBe(action === 'overrideLinePrice' ? 700 : 1025);
-    if (action === 'overrideLinePrice') expect((await s.view(orderId)).audit).toMatchObject([{ kind: 'price_override', actor: 'manager@example.com', toPrice: 700 }]);
+    expect((await s.view(orderId)).totals.total).toBe(action === 'overrideLinePrice' ? 70000 : 102500);
+    if (action === 'overrideLinePrice') expect((await s.view(orderId)).audit).toMatchObject([{ kind: 'price_override', actor: 'manager@example.com', toPrice: 70000 }]);
   });
 
   it.each(['voidPaidSale', 'paymentFix'] as const)('requires approval for %s, executes once and honors the cashier rule', async kind => {
@@ -395,8 +396,8 @@ describe('atomic manager approvals', () => {
     await s.pay(orderId);
     const args = { orderId, reason: 'Recorded mistake', expectedCorrectionRevision: 0, idempotencyKey: 'paid-fix-attempt' };
     if (kind === 'voidPaidSale') await expect(s.cashier.mutation(api.pos.voidOrder, { orderId, reason: args.reason })).rejects.toMatchObject(needsApproval(kind));
-    else await expect(s.cashier.mutation(api.pos.amendOrderPayment, { ...args, tenders: [{ method: 'card', amount: 1000 }] })).rejects.toMatchObject(needsApproval(kind));
-    const payload: ApprovalPayload = kind === 'voidPaidSale' ? { kind } : { kind, action: 'amendOrderPayment', tenders: [{ method: 'card', amount: 1000 }] };
+    else await expect(s.cashier.mutation(api.pos.amendOrderPayment, { ...args, tenders: [{ method: 'card', amount: 100000 }] })).rejects.toMatchObject(needsApproval(kind));
+    const payload: ApprovalPayload = kind === 'voidPaidSale' ? { kind } : { kind, action: 'amendOrderPayment', tenders: [{ method: 'card', amount: 100000 }] };
     const { requestId } = await s.request(orderId, payload);
     expect((await s.view(orderId)).order.status).toBe('paid');
     await s.manager.mutation(api.staffApprovals.approve, { requestId });
@@ -408,7 +409,7 @@ describe('atomic manager approvals', () => {
     const next = await s.sale();
     await s.pay(next.orderId);
     if (kind === 'voidPaidSale') await s.cashier.mutation(api.pos.voidOrder, { orderId: next.orderId, reason: 'Allowed' });
-    else await s.cashier.mutation(api.pos.amendOrderPayment, { ...args, orderId: next.orderId, tenders: [{ method: 'card', amount: 1000 }] });
+    else await s.cashier.mutation(api.pos.amendOrderPayment, { ...args, orderId: next.orderId, tenders: [{ method: 'card', amount: 100000 }] });
   });
 
   it('executes paid linking, unlinking and unreceived reversals as payment fixes', async () => {
@@ -420,7 +421,7 @@ describe('atomic manager approvals', () => {
     await expect(s.cashier.mutation(api.pos.linkPaidLine, direct)).rejects.toMatchObject(needsApproval('paymentFix'));
     await s.manager.mutation(api.pos.linkPaidLine, direct);
     const linkId = (await s.view(orderId)).links[0]._id;
-    expect((await s.t.run(ctx => ctx.db.get(bookingId)))?.amountPaid).toBe(1000);
+    expect((await s.t.run(ctx => ctx.db.get(bookingId)))?.amountPaid).toBe(100000);
     await expect(s.cashier.mutation(api.pos.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: 1, idempotencyKey: 'unlink-attempt', reason: 'Wrong stay' })).rejects.toMatchObject(needsApproval('paymentFix'));
     await s.manager.mutation(api.pos.unlinkPaidLine, { orderId, linkId, expectedCorrectionRevision: 1, idempotencyKey: 'manager-unlink', reason: 'Wrong stay' });
     expect((await s.t.run(ctx => ctx.db.get(bookingId)))?.amountPaid ?? 0).toBe(0);
@@ -437,24 +438,24 @@ describe('atomic manager approvals', () => {
 
 
 describe('staff-role audit regressions', () => {
-  it.each([1500, 500])('uses the agreed appointment price %s despite catalog drift', async price => {
+  it.each([150000, 50000])('uses the agreed appointment price %s despite catalog drift', async price => {
     const s = await setup();
     const appointmentId = await s.appointment(price);
     const { orderId } = await s.cashier.mutation(api.pos.openOrderFor, { appointmentId });
     const lineId = (await s.view(orderId)).lines[0]._id;
     expect(await s.t.run(ctx => ctx.db.get(lineId))).toMatchObject({ unitPrice: price, catalogUnitPrice: price });
     await s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: price / 10 } });
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: price === 1500 ? 600 : 50.01 } })).rejects.toMatchObject(needsApproval('discount'));
+    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: price === 150000 ? 60000 : 5001 } })).rejects.toMatchObject(needsApproval('discount'));
   });
 
   it('never hides manual reduction behind a baseline below the line price', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     // Legacy/source snapshots can contain a baseline below their own pre-discount price.
-    await s.t.run(ctx => ctx.db.patch(lineId, { unitPrice: 1500, catalogUnitPrice: 1000 }));
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 600 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: 600, subtotalSatang: 150000 }) });
-    const preview = await s.request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 600 } });
-    expect(preview).toMatchObject({ amount: 600, percent: 40 });
+    await s.t.run(ctx => ctx.db.patch(lineId, { unitPrice: 150000, catalogUnitPrice: 100000 }));
+    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 60000 } })).rejects.toMatchObject({ data: expect.objectContaining({ code: 'NEEDS_APPROVAL', amount: 60000, subtotalSatang: 150000 }) });
+    const preview = await s.request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 60000 } });
+    expect(preview).toMatchObject({ amount: 60000, percent: 4000 });
   });
 
   it.each(['openOrderFor', 'openOrderForLink'] as const)('%s preserves manager-approved discounts when reusing or extending an order', async endpoint => {
@@ -462,7 +463,7 @@ describe('staff-role audit regressions', () => {
     const bookingId = await s.booking();
     const { orderId } = await s.manager.mutation(api.pos.openOrderFor, { bookingId });
     const { lineId } = await s.manager.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
-    await s.manager.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 300 } });
+    await s.manager.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 30000 } });
     const before = await s.view(orderId);
     expect(await s.cashier.mutation(api.pos[endpoint], { bookingId })).toEqual({ orderId });
     expect((await s.view(orderId)).order.revision).toBe(before.order.revision);
@@ -470,11 +471,11 @@ describe('staff-role audit regressions', () => {
     expect(await s.cashier.mutation(api.pos[endpoint], { appointmentId })).toEqual({ orderId });
     const lines = (await s.view(orderId)).lines;
     expect(lines).toHaveLength(3);
-    expect(lines.find(line => line._id === lineId)?.discount).toEqual({ type: 'amount', value: 300 });
+    expect(lines.find(line => line._id === lineId)?.discount).toEqual({ type: 'amount', value: 30000 });
     const appointmentLine = lines.find(line => line.appointmentId === appointmentId)!;
-    await s.manager.mutation(api.pos.updateLine, { lineId: appointmentLine._id, discount: { type: 'amount', value: 200 } });
+    await s.manager.mutation(api.pos.updateLine, { lineId: appointmentLine._id, discount: { type: 'amount', value: 20000 } });
     expect(await s.cashier.mutation(api.pos[endpoint], { appointmentId })).toEqual({ orderId });
-    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 301 } })).rejects.toMatchObject(needsApproval('discount'));
+    await expect(s.cashier.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 30100 } })).rejects.toMatchObject(needsApproval('discount'));
   });
 
   it('limits cashier receipt and history reads to unpaid or current business-date settlements', async () => {
@@ -484,7 +485,7 @@ describe('staff-role audit regressions', () => {
     await s.pay(paid.orderId);
     const number = (await s.view(paid.orderId)).order.orderNumber!;
     const missing = await s.t.run(async ctx => {
-      const id = await ctx.db.insert('bills', { status: 'draft', currency: 'THB', itemCount: 0, total: 0, hasItems: false, revision: 0, createdAt: now, updatedAt: now, createdBy: 'owner@example.com' });
+      const id = await insertFixture(ctx, 'orders', { status: 'draft', currency: 'THB', itemCount: 0, total: 0, hasItems: false, revision: 0, createdAt: now, updatedAt: now, createdBy: 'owner@example.com' });
       await ctx.db.delete(id);
       return id;
     });

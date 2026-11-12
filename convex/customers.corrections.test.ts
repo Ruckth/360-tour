@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,9 +17,9 @@ function setup() {
   const create = (name = 'Ann Lee') => admin.mutation(api.customers.createCustomer, { name });
   const profile = (customerId: Id<'customers'>) => admin.query(api.customers.getCustomer, { customerId });
   const history = (customerId: Id<'customers'>) => admin.query(api.customers.customerHistory, { customerId, paginationOpts: firstPage });
-  const orders = (customerId: Id<'customers'>, count: number, overrides: Partial<Doc<'bills'>> = {}) => t.run(async ctx => {
-    const ids: Id<'bills'>[] = [];
-    for (let i = 0; i < count; i++) ids.push(await ctx.db.insert('bills', { customerId, status: 'draft', hasItems: true, itemCount: 1, total: 100, due: 100, currency: 'THB', revision: 3, orderNumber: i + 1, createdBy: 'admin@example.com', createdAt: 1, updatedAt: 2, ...overrides }));
+  const orders = (customerId: Id<'customers'>, count: number, overrides: Partial<Doc<'orders'>> = {}) => t.run(async ctx => {
+    const ids: Id<'orders'>[] = [];
+    for (let i = 0; i < count; i++) ids.push(await insertFixture(ctx, 'orders', { customerId, status: 'draft', hasItems: true, itemCount: 1, total: 10000, due: 10000, currency: 'THB', revision: 3, orderNumber: i + 1, createdBy: 'admin@example.com', createdAt: 1, updatedAt: 2, ...overrides }));
     return ids;
   });
   const mergeArgs = (sourceId: Id<'customers'>, destinationId: Id<'customers'>) => ({ sourceId, destinationId, sourceRevision: 0, destinationRevision: 0, reason: 'Confirmed same guest by phone', idempotencyKey: 'merge-attempt-01' });
@@ -115,7 +116,7 @@ describe('customer corrections', () => {
     const customerId = await create();
     const [active] = await orders(customerId, 1);
     const [empty] = await orders(customerId, 1, { hasItems: false, itemCount: 0 });
-    const [held] = await orders(customerId, 1, { status: 'held' });
+    const [held] = await orders(customerId, 1, { status: 'draft' });
     const [paid] = await orders(customerId, 1, { status: 'paid', customerSnapshot: { name: 'Issued' } });
     await admin.mutation(api.customers.updateCustomer, { customerId, expectedRevision: 0, name: 'Anna' });
     expect(await t.run(ctx => ctx.db.get(active))).toMatchObject({ revision: 3, updatedAt: 2 });
@@ -148,11 +149,11 @@ describe('customer corrections', () => {
   it('rejects stale payment review after customer correction without accepting stale checkout', async () => {
     const { admin, create } = setup();
     const customerId = await create();
-    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 100 } });
+    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 10000 } });
     await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
     const before = (await admin.query(api.pos.getOrder, { orderId }))!.order.revision;
     await admin.mutation(api.customers.updateCustomer, { customerId, name: 'Corrected', expectedRevision: 0 });
-    await expect(admin.mutation(api.pos.settleOrder, { orderId, expectedDue: 100, expectedRevision: before, expectedCustomerRevision: 0, idempotencyKey: 'payment-01', tenders: [{ method: 'cash', amount: 100 }] })).rejects.toThrow('The customer changed');
+    await expect(admin.mutation(api.pos.settleOrder, { orderId, expectedDue: 10000, expectedRevision: before, expectedCustomerRevision: 0, idempotencyKey: 'payment-01', tenders: [{ method: 'cash', amount: 10000 }] })).rejects.toThrow('The customer changed');
   });
 
   it('paginates order and history readers, with truthful recent-orders metadata', async () => {
@@ -177,13 +178,13 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
     const sourceId = await create('An Lee'); const destinationId = await create('Ann Lee');
     const [draft] = await orders(sourceId, 1);
     const [paid] = await orders(sourceId, 1, { status: 'paid', receiptNumber: 73, customerSnapshot: { name: 'An Lee' }, settleKey: 'paid-before' });
-    const { lineId, paymentId } = await t.run(async ctx => ({ lineId: await ctx.db.insert('billLines', { billId: paid, kind: 'extra', name: 'Water', unitPrice: 100, currency: 'THB', qty: 1, createdAt: 1 }), paymentId: await ctx.db.insert('billPayments', { billId: paid, method: 'cash', amount: 100, idempotencyKey: 'paid-before', createdBy: 'admin@example.com', createdAt: 1 }) }));
+    const { lineId, paymentId } = await t.run(async ctx => ({ lineId: await insertFixture(ctx, 'orderLines', { orderId: paid, kind: 'extra', name: 'Water', unitPrice: 10000, currency: 'THB', qty: 1, createdAt: 1 }), paymentId: await ctx.db.insert('orderPayments', { orderId: paid, method: 'cash', amount: 10000, idempotencyKey: 'paid-before', createdBy: 'admin@example.com', createdAt: 1 }) }));
     const args = mergeArgs(sourceId, destinationId);
     expect(await admin.run(ctx => mergeCustomerRecords(ctx, args))).toEqual({ replayed: false, destinationId });
     expect(await t.run(ctx => ctx.db.get(draft))).toMatchObject({ customerId: destinationId, revision: 4, updatedAt: 2 });
     expect(await t.run(ctx => ctx.db.get(paid))).toMatchObject({ customerId: destinationId, revision: 3, receiptNumber: 73, customerSnapshot: { name: 'An Lee' }, settleKey: 'paid-before', updatedAt: 2 });
-    expect(await t.run(ctx => ctx.db.get(lineId))).toMatchObject({ billId: paid });
-    expect(await t.run(ctx => ctx.db.get(paymentId))).toMatchObject({ billId: paid });
+    expect(await t.run(ctx => ctx.db.get(lineId))).toMatchObject({ orderId: paid });
+    expect(await t.run(ctx => ctx.db.get(paymentId))).toMatchObject({ orderId: paid });
     expect(await profile(sourceId)).toMatchObject({ name: 'An Lee', mergedInto: destinationId, revision: 1 });
     expect(await profile(destinationId)).toMatchObject({ name: 'Ann Lee', revision: 1 });
     for (const id of [sourceId, destinationId]) expect((await history(id)).page[0]).toMatchObject({ kind: 'merged', actor: 'admin@example.com', reason: args.reason, before: { sourceId, destinationId, source: { name: 'An Lee' }, destination: { name: 'Ann Lee' } }, after: { movedOrders: 2 } });
@@ -219,10 +220,10 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
     expect((await history(sourceId)).page.map(e => e.kind)).toEqual(['merge_started', 'created']);
     expect((await profile(sourceId))?.mergedInto).toBe(destinationId);
     // An unmoved source reference is never payable or newly linkable while a job is in progress.
-    const remaining = await t.run(async ctx => (await ctx.db.query('bills').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', sourceId)).take(1))[0]);
-    await t.run(ctx => ctx.db.insert('billLines', { billId: remaining._id, kind: 'extra', name: 'Water', unitPrice: 100, currency: 'THB', qty: 1, createdAt: 1 }));
+    const remaining = await t.run(async ctx => (await ctx.db.query('orders').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', sourceId)).take(1))[0]);
+    await t.run(ctx => insertFixture(ctx, 'orderLines', { orderId: remaining._id, kind: 'extra', name: 'Water', unitPrice: 10000, currency: 'THB', qty: 1, createdAt: 1 }));
     await expect(admin.mutation(api.pos.linkCustomer, { orderId: remaining._id, customerId: sourceId })).rejects.toThrow('merged');
-    await expect(admin.mutation(api.pos.settleOrder, { orderId: remaining._id, expectedDue: 100, expectedRevision: 3, expectedCustomerRevision: 0, idempotencyKey: 'stale-review-01', tenders: [{ method: 'cash', amount: 100 }] })).rejects.toThrow('merged');
+    await expect(admin.mutation(api.pos.settleOrder, { orderId: remaining._id, expectedDue: 10000, expectedRevision: 3, expectedCustomerRevision: 0, idempotencyKey: 'stale-review-01', tenders: [{ method: 'cash', amount: 10000 }] })).rejects.toThrow('merged');
     const next = await create('Next');
     await expect(admin.mutation(api.customers.mergeCustomers, { ...mergeArgs(destinationId, next), sourceRevision: 1 })).rejects.toThrow('in-progress');
     // Replay the original start without advancing or duplicating anything, then resume manually.
@@ -246,19 +247,19 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
     }
     expect((await profile(sourceId))?.orders).toEqual([]);
     const current = (await admin.query(api.pos.getOrder, { orderId: remaining._id }))!;
-    await expect(admin.mutation(api.pos.settleOrder, { orderId: remaining._id, expectedDue: 100, expectedRevision: current.order.revision, expectedCustomerRevision: 0, idempotencyKey: 'new-review-01', tenders: [{ method: 'cash', amount: 100 }] })).rejects.toThrow('customer changed');
-    await expect(admin.mutation(api.pos.settleOrder, { orderId: remaining._id, expectedDue: 100, expectedRevision: current.order.revision, expectedCustomerRevision: 1, idempotencyKey: 'new-review-01', tenders: [{ method: 'cash', amount: 100 }] })).resolves.toMatchObject({ replayed: false });
+    await expect(admin.mutation(api.pos.settleOrder, { orderId: remaining._id, expectedDue: 10000, expectedRevision: current.order.revision, expectedCustomerRevision: 0, idempotencyKey: 'new-review-01', tenders: [{ method: 'cash', amount: 10000 }] })).rejects.toThrow('customer changed');
+    await expect(admin.mutation(api.pos.settleOrder, { orderId: remaining._id, expectedDue: 10000, expectedRevision: current.order.revision, expectedCustomerRevision: 1, idempotencyKey: 'new-review-01', tenders: [{ method: 'cash', amount: 10000 }] })).resolves.toMatchObject({ replayed: false });
   });
 
   it('enables public merge and rejects archived/merged new links while allowing reviewed archived existing links', async () => {
     const { admin, create, mergeArgs } = setup();
     const sourceId = await create(); const destinationId = await create();
-    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 100 } });
+    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 10000 } });
     await admin.mutation(api.pos.linkCustomer, { orderId, customerId: sourceId });
     await admin.mutation(api.customers.setCustomerArchived, { customerId: sourceId, archived: true, expectedRevision: 0 });
     await expect(admin.mutation(api.pos.linkCustomer, { orderId, customerId: sourceId })).rejects.toThrow('Restore');
     const view = (await admin.query(api.pos.getOrder, { orderId }))!;
-    const payment = { orderId, expectedDue: 100, expectedRevision: view.order.revision, expectedCustomerRevision: 1, idempotencyKey: 'archived-paid-01', tenders: [{ method: 'cash' as const, amount: 100 }] };
+    const payment = { orderId, expectedDue: 10000, expectedRevision: view.order.revision, expectedCustomerRevision: 1, idempotencyKey: 'archived-paid-01', tenders: [{ method: 'cash' as const, amount: 10000 }] };
     await expect(admin.mutation(api.pos.settleOrder, { ...payment, expectedCustomerRevision: undefined })).rejects.toThrow('customer changed');
     await admin.mutation(api.pos.settleOrder, payment);
     await admin.mutation(api.customers.mergeCustomers, { ...mergeArgs(sourceId, destinationId), sourceRevision: 1 });

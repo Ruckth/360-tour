@@ -1,5 +1,9 @@
 "use client";
 
+import { parseMoneyInput } from '@/lib/money-input';
+
+import { satangToBaht } from 'convex/shared/money';
+
 import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
@@ -13,15 +17,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isTimeValue } from "@/lib/dates/values";
-import {
-  formatResortDate,
-  formatResortFullDate,
-  resortIsoDate,
-  resortTime24,
-  useNow,
-} from "@/lib/staff-bookings";
+import { useNow } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
-import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
+import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, roundMoney, type OrderTotals, type TenderMethod } from "convex/lib/orderMath";
 import type { ApprovalPayload } from "convex/lib/staffTypes";
 import { ApprovalRequestForm, OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
@@ -38,26 +36,14 @@ import type { Run } from "./useOrderWrites";
 /** A request the cashier is about to send: what it is, its exact payload, and a reason to start from. */
 type Ask = { what: string; payload: ApprovalPayload; reason?: string };
 
-const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
+const EMPTY_TOTALS: OrderTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
-/**
- * The date and time a service row's editor shows, in resort time (Bangkok). A legacy row with a
- * start shows its date and time, so editing one part keeps the other; a legacy "now" row and an
- * unscheduled row show both blank. Nothing is filled in from the clock.
- */
-export function serviceScheduleValue(line: Pick<OrderLine, "schedule" | "startAt">): { date: string; time: string } {
+/** Optional schedule fields remain blank until staff chooses them. */
+export function serviceScheduleValue(line: Pick<OrderLine, "schedule">): { date: string; time: string } {
   if (line.schedule) return { date: line.schedule.date ?? "", time: line.schedule.time ?? "" };
-  return line.startAt !== undefined ? { date: resortIsoDate(line.startAt), time: resortTime24(line.startAt) } : { date: "", time: "" };
+  return { date: "", time: "" };
 }
 
-/** A legacy row's start: "14:00" today, "Mon, Oct 26, 14:00" on another day this year, with the year otherwise. */
-export function serviceStartLabel(startAt: number, now: number) {
-  const time = resortTime24(startAt);
-  const day = resortIsoDate(startAt);
-  const today = resortIsoDate(now);
-  if (day === today) return time;
-  return `${day.slice(0, 4) === today.slice(0, 4) ? formatResortDate(startAt) : formatResortFullDate(startAt)}, ${time}`;
-}
 
 /**
  * The order: a compact list of rows with small photos (tap to edit inline; rooms and extras step
@@ -105,7 +91,7 @@ export function OrderPanel({
   const approvals = backend.useOrderApprovals(orderId ?? null);
   const waiting = approvals?.some((request) => request.status === "pending" && request.expiresAt > now) ?? false;
   const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
-  const staffDiscount = round2(totals.discount - totals.coupon);
+  const staffDiscount = roundMoney(totals.discount - totals.coupon);
 
   async function saveAndClose() {
     if (!orderId) return;
@@ -299,7 +285,7 @@ function lineSubtitle(line: OrderLine, now: number) {
   if (line.kind === "service" || line.kind === "appointment") {
     parts.push(line.staffName ?? "Any therapist");
     // Legacy rows (no schedule) keep their own meaning: a start, or "Now".
-    if (line.kind === "service") parts.push(scheduleLabel(line.schedule, now) ?? (line.startAt ? serviceStartLabel(line.startAt, now) : "Now"));
+    if (line.kind === "service") parts.push(scheduleLabel(line.schedule, now) ?? "Not scheduled");
   }
   if (MERGES_QTY[line.kind] && line.qty > 1) parts.push(`${formatMoney(line.priceOverride?.price ?? line.unitPrice)} each`);
   return parts.filter(Boolean).join(" · ");
@@ -320,7 +306,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting }: { li
       return null;
     }
   });
-  const listPrice = round2(line.unitPrice * line.qty);
+  const listPrice = roundMoney(line.unitPrice * line.qty);
   const issue = line.sourceIssue;
   // Already part of `net`: shown so staff can tell it from a line discount.
   const couponShare = line.couponDiscount ? lineCouponDiscount(line) : 0;
@@ -370,7 +356,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting }: { li
           what={ask.what}
           onCancel={() => setAsk(null)}
           onSend={async (reason) => {
-            const failed = await send(line.billId, ask.payload, reason);
+            const failed = await send(line.orderId, ask.payload, reason);
             if (!failed) setAsk(null);
             return failed;
           }}
@@ -479,7 +465,7 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
   const send = useSendApproval();
   const [ask, setAsk] = useState<Ask | null>(null);
   const [discountType, setDiscountType] = useState<"amount" | "percent">(line.discount?.type ?? "amount");
-  const [discountValue, setDiscountValue] = useState(line.discount ? String(line.discount.value) : "");
+  const [discountValue, setDiscountValue] = useState(line.discount ? String(satangToBaht(line.discount.value)) : "");
   const [priceOpen, setPriceOpen] = useState(false);
   const [price, setPrice] = useState("");
   const [note, setNote] = useState("");
@@ -489,7 +475,9 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
 
   const when = serviceScheduleValue(line);
   // A cashier's limit, worked out as the server will (owners and managers have none).
-  const typed = isAmount(discountValue) ? { type: discountType, value: Number(discountValue) } : null;
+  const discountAmount = parseMoneyInput(discountValue);
+  const typed = Number.isSafeInteger(discountAmount) && discountAmount >= 0 && (discountType !== "percent" || discountAmount <= 10000)
+    ? { type: discountType, value: discountAmount } : null;
   // The discount already on the line (e.g. a manager approved it) is not a new request.
   const applied = typed !== null && line.discount?.type === typed.type && line.discount.value === typed.value;
   const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;
@@ -515,12 +503,12 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
   }
 
   async function applyPrice() {
-    const request: Ask = { what: "custom price", payload: { kind: "customPrice", action: "overrideLinePrice", lineId, price: Number(price), note: note.trim() }, reason: note.trim() };
+    const request: Ask = { what: "custom price", payload: { kind: "customPrice", action: "overrideLinePrice", lineId, price: parseMoneyInput(price), note: note.trim() }, reason: note.trim() };
     if (priceNeedsManager) {
       setAsk(request);
       return;
     }
-    if (await orAsk(() => actions.overrideLinePrice({ lineId, price: Number(price), note }), request)) {
+    if (await orAsk(() => actions.overrideLinePrice({ lineId, price: parseMoneyInput(price), note }), request)) {
       setPriceOpen(false);
       setPrice("");
       setNote("");
@@ -529,11 +517,11 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
 
   // A changed price can be corrected (price or reason) in place, without restoring it first.
   function editPrice() {
-    setPrice(line.priceOverride ? String(line.priceOverride.price) : "");
+    setPrice(line.priceOverride ? String(satangToBaht(line.priceOverride.price)) : "");
     setNote(line.priceOverride?.note ?? "");
     setPriceOpen(true);
   }
-  const unchangedPrice = line.priceOverride !== undefined && Number(price) === line.priceOverride.price && note.trim() === line.priceOverride.note;
+  const unchangedPrice = line.priceOverride !== undefined && parseMoneyInput(price) === line.priceOverride.price && note.trim() === line.priceOverride.note;
 
   return (
     <div className="grid gap-4 border-t border-dashed border-border px-4 pt-3 pb-3">
@@ -626,7 +614,7 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
               <div className="grid gap-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor={`price-${lineId}`} className="sr-only">New unit price</Label>
-                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} placeholder={String(line.unitPrice)} autoFocus />
+                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE / 100))} placeholder={String(satangToBaht(line.unitPrice))} autoFocus />
                   <span className="text-xs text-muted-foreground">was {formatMoney(line.unitPrice)}</span>
                 </div>
                 <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
@@ -650,7 +638,7 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
           initialReason={ask.reason}
           onCancel={() => setAsk(null)}
           onSend={async (reason) => {
-            const failed = await send(line.billId, ask.payload, reason);
+            const failed = await send(line.orderId, ask.payload, reason);
             if (!failed) {
               setAsk(null);
               setPriceOpen(false);

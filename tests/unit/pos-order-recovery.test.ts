@@ -29,7 +29,7 @@ async function render(backend: CheckoutBackend, orderId: OrderId) {
 }
 async function setup() {
   const backend = createFixtureBackend();
-  const adding = backend.useActions().addItem({ item: { kind: "extra", name: "Recovery item", price: 100 } });
+  const adding = backend.useActions().addItem({ item: { kind: "extra", name: "Recovery item", price: 10000 } });
   await vi.advanceTimersByTimeAsync(200);
   return { backend, actions: backend.useActions(), orderId: (await adding).orderId };
 }

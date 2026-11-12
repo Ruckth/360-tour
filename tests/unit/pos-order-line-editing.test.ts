@@ -27,7 +27,7 @@ const priceInput = () => panel().querySelector<HTMLInputElement>('input[id^="pri
 const reasonInput = () => panel().querySelector<HTMLTextAreaElement>('textarea[aria-label="Reason for the price change"]')!;
 
 async function orderWithGift(backend: CheckoutBackend) {
-  const adding = backend.useActions().addItem({ item: { kind: "extra", name: "Gift basket", price: 1000 } });
+  const adding = backend.useActions().addItem({ item: { kind: "extra", name: "Gift basket", price: 100000 } });
   await vi.advanceTimersByTimeAsync(200);
   return (await adding).orderId;
 }
@@ -79,8 +79,8 @@ describe("editing a changed price", () => {
     await act(async () => root.render(createElement(Read)));
     const changes = read.view?.audit.filter((entry) => entry.kind === "price_override").reverse();
     expect(changes?.map(({ fromPrice, toPrice, note }) => ({ fromPrice, toPrice, note }))).toEqual([
-      { fromPrice: 1000, toPrice: 800, note: "Loyal guets" },
-      { fromPrice: 800, toPrice: 750, note: "Loyal guest" },
+      { fromPrice: 100000, toPrice: 80000, note: "Loyal guets" },
+      { fromPrice: 80000, toPrice: 75000, note: "Loyal guest" },
     ]);
   });
 

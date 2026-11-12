@@ -1,10 +1,10 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Regressions for reads that used to stop at a fixed row count (see docs/plans/convex-query-optimization-audit.md).
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import migrationsTest from '@convex-dev/migrations/test';
-import { api, components, internal } from './_generated/api';
+import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { markBookingPaid } from './bookings';
 import { READ_BUDGET_ERROR, readBudget, ReadBudget, ReadBudgetExceeded, reserveWrites } from './lib/readBudget';
@@ -26,7 +26,7 @@ type Tester = ReturnType<typeof convexTest>;
 const villa = {
 	tagline: '',
 	description: '',
-	pricePerNight: 100,
+	pricePerNight: 10000,
 	currency: 'THB',
 	maxGuests: 4,
 	bedrooms: 1,
@@ -61,9 +61,9 @@ function booking(
 		checkOut,
 		guests: 2,
 		nights: 1,
-		subtotal: 100,
+		subtotal: 10000,
 		discountAmount: 0,
-		total: 100,
+		total: 10000,
 		currency: 'THB',
 		paymentStatus: status === 'confirmed' ? ('paid' as const) : ('pending' as const),
 		status,
@@ -73,7 +73,7 @@ function booking(
 
 async function insertMany(t: Tester, count: number, row: (index: number) => Parameters<typeof booking>) {
 	await t.run(async (ctx) => {
-		for (let i = 0; i < count; i++) await ctx.db.insert('bookings', booking(...row(i)));
+		for (let i = 0; i < count; i++) await insertFixture(ctx, 'bookings', booking(...row(i)));
 	});
 }
 
@@ -96,7 +96,7 @@ describe('booking overlap reads every relevant booking', () => {
 		const { t, admin, propertyId } = await setup();
 		await insertMany(t, 500, () => [propertyId, '2020-01-01', '2020-01-03']);
 		// Legacy booking: confirmed, but its nights were never mirrored into availability.
-		await t.run((ctx) => ctx.db.insert('bookings', booking(propertyId, '2030-01-01', '2030-01-05')));
+		await t.run((ctx) => insertFixture(ctx, 'bookings', booking(propertyId, '2030-01-01', '2030-01-05')));
 
 		expect(await t.query(api.availability.isAvailable, { propertyId, checkIn: '2030-01-02', checkOut: '2030-01-03' })).toBe(false);
 		await expect(
@@ -114,7 +114,7 @@ describe('booking overlap reads every relevant booking', () => {
 	it('does not let admin confirm or payment hold nights of a mirror-less confirmed booking', async () => {
 		const { t, admin, propertyId } = await setup();
 		const pending = await t.mutation(api.bookings.create, { ...guest, propertySlug: 'villa', checkIn: '2030-03-01', checkOut: '2030-03-04' });
-		await t.run((ctx) => ctx.db.insert('bookings', booking(propertyId, '2030-03-02', '2030-03-03')));
+		await t.run((ctx) => insertFixture(ctx, 'bookings', booking(propertyId, '2030-03-02', '2030-03-03')));
 
 		await expect(
 			admin.mutation(api.adminBookings.updateBooking, { bookingId: pending.bookingId, action: 'confirm' })
@@ -163,7 +163,7 @@ describe('booking overlap reads every relevant booking', () => {
 describe('admin calendar', () => {
 	it('shows a long stay that started before 500 cancelled check-ins', async () => {
 		const { t, admin, propertyId } = await setup();
-		const longStay = await t.run((ctx) => ctx.db.insert('bookings', booking(propertyId, '2030-01-01', '2030-04-01')));
+		const longStay = await t.run((ctx) => insertFixture(ctx, 'bookings', booking(propertyId, '2030-01-01', '2030-04-01')));
 		await insertMany(t, 500, () => [propertyId, '2030-02-01', '2030-02-03', 'cancelled']);
 
 		const data = await admin.query(api.adminBookings.listForAdmin, { from: '2030-03-01', to: '2030-03-08' });
@@ -326,29 +326,6 @@ describe('booking search and guest lookup', () => {
 		const guests = await admin.query(api.adminBookings.findGuests, { phone: '66-81-234-5678' });
 		expect(guests.map((g) => g.guestName)).toContain('Old Guest');
 	});
-
-	it('backfills lookup fields on older bookings, resumably', async () => {
-		const { t, admin, propertyId } = await setup();
-		await insertMany(t, 150, () => [propertyId, '2029-01-01', '2029-01-02', 'cancelled']);
-		const legacy = await t.run((ctx) =>
-			ctx.db.insert('bookings', { ...booking(propertyId, '2020-01-01', '2020-01-02'), guestPhone: '+66 99 000 1111', guestEmail: 'Legacy@Example.com' })
-		);
-		await insertMany(t, 1000, () => [propertyId, '2029-01-01', '2029-01-02', 'cancelled']);
-		expect((await admin.query(api.adminBookings.searchBookings, { query: '66990001111' })).map((b) => b._id)).not.toContain(legacy);
-
-		migrationsTest.register(t);
-		vi.useFakeTimers();
-		// A dry run changes nothing.
-		await t.mutation(internal.migrations.run, { fn: 'migrations:backfillBookingGuestLookup', dryRun: true });
-		expect((await t.run((ctx) => ctx.db.get(legacy)))?.guestPhoneDigits).toBeUndefined();
-
-		await t.mutation(internal.migrations.runQueryOptimizationBackfills, {});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		expect(await t.run((ctx) => ctx.db.get(legacy))).toMatchObject({ guestPhoneDigits: '66990001111', guestEmailNormalized: 'legacy@example.com' });
-		expect((await admin.query(api.adminBookings.searchBookings, { query: '66990001111' })).map((b) => b._id)).toContain(legacy);
-		const status = await t.query(components.migrations.lib.getStatus, { names: ['migrations:backfillBookingGuestLookup'] });
-		expect(status[0]).toMatchObject({ state: 'success', processed: 1151 });
-	});
 });
 
 describe('lead dedup', () => {
@@ -365,51 +342,6 @@ describe('lead dedup', () => {
 	});
 });
 
-describe('legacy chat message backfill', () => {
-	const embedded = (count: number, prefix: string) =>
-		Array.from({ length: count }, (_, i) => ({ role: 'user' as const, content: `${prefix} ${i}`, timestamp: i }));
-
-	it('moves embedded messages past the first 5,000-session window, once', async () => {
-		vi.useFakeTimers();
-		const { t } = await setup();
-		migrationsTest.register(t);
-		const legacy = await t.run(async (ctx) => {
-			for (let i = 0; i < 30; i++) await ctx.db.insert('chatSessions', { channel: 'web', createdAt: i });
-			return await ctx.db.insert('chatSessions', { channel: 'web', createdAt: 99, messages: embedded(2, 'Hi') });
-		});
-		await t.mutation(internal.migrations.run, { fn: 'migrations:backfillChatMessages' });
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		expect((await t.run((ctx) => ctx.db.get(legacy)))?.messages).toBeUndefined();
-		expect((await t.run((ctx) => ctx.db.query('chatMessages').collect())).map((m) => m.content)).toEqual(['Hi 0', 'Hi 1']);
-		// Rerunning, even from the start, moves nothing twice.
-		await t.mutation(internal.migrations.run, { fn: 'migrations:backfillChatMessages', reset: true });
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		expect(await t.run((ctx) => ctx.db.query('chatMessages').collect())).toHaveLength(2);
-	});
-
-	it('refuses a batch that would pass the write limit, then resumes with the safe batch size', async () => {
-		vi.useFakeTimers();
-		const { t } = await setup();
-		migrationsTest.register(t);
-		await t.run(async (ctx) => {
-			for (let i = 0; i < 3; i++) await ctx.db.insert('chatSessions', { channel: 'web', createdAt: i, messages: embedded(4100, `S${i}`) });
-		});
-		// Three such sessions in one batch would be 12,303 writes: refused, nothing half-written.
-		await t.mutation(internal.migrations.run, { fn: 'migrations:backfillChatMessages', batchSize: 3 });
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		const [failed] = await t.query(components.migrations.lib.getStatus, { names: ['migrations:backfillChatMessages'] });
-		expect(failed.state).toBe('failed');
-		expect(await t.run(async (ctx) => (await ctx.db.query('chatMessages').take(1)).length)).toBe(0);
-
-		await t.mutation(internal.migrations.run, { fn: 'migrations:backfillChatMessages', batchSize: 1 });
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		const [done] = await t.query(components.migrations.lib.getStatus, { names: ['migrations:backfillChatMessages'] });
-		expect(done.state).toBe('success');
-		const sessions = await t.run((ctx) => ctx.db.query('chatSessions').collect());
-		expect(sessions.every((session) => session.messages === undefined)).toBe(true);
-		expect(await t.run(async (ctx) => (await ctx.db.query('chatMessages').collect()).length)).toBe(12_300);
-	});
-});
 
 describe('calendar host blocks and villa count', () => {
 	it('shows a mirror-less long host block behind 101 expired blocks', async () => {
@@ -462,8 +394,8 @@ describe('shared read budget', () => {
 		// 20 bookings of ~500 KB: one overlap scan alone would read more than the 8 MiB budget.
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 20; i++) {
-				await ctx.db.insert('bookings', { ...booking(propertyId, '2029-01-01', '2029-01-02', 'cancelled'), adminNotes: 'x'.repeat(500_000) });
-				await ctx.db.insert('bookings', { ...booking(propertyId, '2031-01-01', '2031-01-02', 'cancelled'), adminNotes: 'x'.repeat(500_000) });
+				await insertFixture(ctx, 'bookings', { ...booking(propertyId, '2029-01-01', '2029-01-02', 'cancelled'), adminNotes: 'x'.repeat(500_000) });
+				await insertFixture(ctx, 'bookings', { ...booking(propertyId, '2031-01-01', '2031-01-02', 'cancelled'), adminNotes: 'x'.repeat(500_000) });
 			}
 		});
 		await expect(

@@ -201,12 +201,12 @@ export function getLocalizedSocialProofByPropertyId(
   propertyId: string,
   messages: PublicMessages,
 ): PropertySocialProof | undefined {
-  const socialProof = getSocialProofByPropertyId(propertyId);
-  if (!socialProof) return undefined;
+  const reviewStats = getSocialProofByPropertyId(propertyId);
+  if (!reviewStats) return undefined;
 
   return {
-    ...socialProof,
-    reviews: socialProof.reviews.map((review) => {
+    ...reviewStats,
+    reviews: reviewStats.reviews.map((review) => {
       const content = messages.Reviews[review.id as keyof PublicMessages["Reviews"]];
       return content
         ? {
@@ -216,7 +216,7 @@ export function getLocalizedSocialProofByPropertyId(
           }
         : review;
     }),
-    tourSnippets: socialProof.tourSnippets.map((snippet) => {
+    tourSnippets: reviewStats.tourSnippets.map((snippet) => {
       const content = messages.TourSnippets[snippet.id as keyof PublicMessages["TourSnippets"]];
       return content ? { ...snippet, quote: content.quote } : snippet;
     }),

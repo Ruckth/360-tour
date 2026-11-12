@@ -22,7 +22,7 @@ type ReadCtx = QueryCtx | MutationCtx;
 
 export const NOT_SCHEDULED = 'The staff schedule for this date is not set yet, so it is not fully booked. Say it is not scheduled yet and offer another date or to have the team follow up.';
 
-async function sessionFor(ctx: ReadCtx, sessionId: Id<'chatSessions'>) {
+async function sessionFor(ctx: ReadCtx, sessionId: Id<'conversations'>) {
 	const session = await ctx.db.get(sessionId);
 	if (!session) throw new Error('Session not found');
 	return session;
@@ -87,7 +87,7 @@ export const checkServiceAvailability = internalQuery({
 
 export const prepareChatServiceBooking = internalMutation({
 	args: {
-		sessionId: v.id('chatSessions'), serviceSlug: v.string(), date: v.string(), time: v.string(),
+		sessionId: v.id('conversations'), serviceSlug: v.string(), date: v.string(), time: v.string(),
 		guestName: v.string(), guestPhone: v.optional(v.string()), staffPreference: v.optional(v.string()), deadlineAt: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
@@ -105,8 +105,8 @@ export const prepareChatServiceBooking = internalMutation({
 
 async function prepareQuote(
 	ctx: MutationCtx,
-	session: Doc<'chatSessions'>,
-	args: { sessionId: Id<'chatSessions'>; serviceSlug: string; date: string; time: string; guestName: string; guestPhone?: string; staffPreference?: string }
+	session: Doc<'conversations'>,
+	args: { sessionId: Id<'conversations'>; serviceSlug: string; date: string; time: string; guestName: string; guestPhone?: string; staffPreference?: string }
 ) {
 	const guestPhone = (session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone)?.trim();
 	if (!guestPhone) throw new Error('Ask the guest for their phone number before preparing the booking.');
@@ -145,7 +145,7 @@ async function prepareQuote(
 }
 
 export const confirmChatServiceBooking = internalMutation({
-	args: { sessionId: v.id('chatSessions'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
+	args: { sessionId: v.id('conversations'), deadlineAt: v.optional(v.number()), expectedProposal: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const session = await sessionFor(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
@@ -198,17 +198,17 @@ export const confirmChatServiceBooking = internalMutation({
 	}
 });
 
-async function guestAppointments(ctx: ReadCtx, session: Doc<'chatSessions'>) {
-	const fromChat = await ctx.db.query('serviceAppointments').withIndex('by_chatSession', (q) => q.eq('chatSessionId', session._id)).order('desc').take(20);
+async function guestAppointments(ctx: ReadCtx, session: Doc<'conversations'>) {
+	const fromChat = await ctx.db.query('appointments').withIndex('by_chatSession', (q) => q.eq('chatSessionId', session._id)).order('desc').take(20);
 	const phone = session.channel === 'whatsapp' ? session.visitorPhone?.trim() : undefined;
 	const byPhone = phone
-		? await ctx.db.query('serviceAppointments').withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone)).order('desc').take(20)
+		? await ctx.db.query('appointments').withIndex('by_guestPhone', (q) => q.eq('guestPhone', phone)).order('desc').take(20)
 		: [];
 	return [...new Map([...fromChat, ...byPhone].map((row) => [row._id, row])).values()];
 }
 
 export const listChatGuestServiceBookings = internalQuery({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
 		const appointments = (await guestAppointments(ctx, await sessionFor(ctx, args.sessionId)))
 			.filter((row) => row.start > Date.now()).sort((a, b) => a.start - b.start).slice(0, 10);
@@ -220,7 +220,7 @@ export const listChatGuestServiceBookings = internalQuery({
 });
 
 export const cancelChatServiceBooking = internalMutation({
-	args: { sessionId: v.id('chatSessions'), reference: v.string(), turnStartedAt: v.number(), deadlineAt: v.optional(v.number()) },
+	args: { sessionId: v.id('conversations'), reference: v.string(), turnStartedAt: v.number(), deadlineAt: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const session = await sessionFor(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);

@@ -51,7 +51,7 @@ function type(input: HTMLInputElement, value: string) {
   setter.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
-async function create(backend: CheckoutBackend, name = "Gift", price = 1000) {
+async function create(backend: CheckoutBackend, name = "Gift", price = 100000) {
   const added = backend.useActions().addItem({ item: { kind: "extra", name, price } });
   await vi.advanceTimersByTimeAsync(200);
   return await added;
@@ -226,7 +226,7 @@ describe("checkout order screen", () => {
     await settle();
     const { orderId: own } = await later;
     expect(own).not.toBe(sale);
-    const extra = actions.addItem({ orderId: own, item: { kind: "extra", name: "Late checkout", price: 1500 } });
+    const extra = actions.addItem({ orderId: own, item: { kind: "extra", name: "Late checkout", price: 150000 } });
     await settle();
     await extra;
     await showOrder(backend, own);
@@ -269,7 +269,7 @@ describe("checkout order screen", () => {
 
     // Another cashier changes the order while this cashier is taking payment.
     const edit = change === "total"
-      ? actions.addItem({ orderId, item: { kind: "extra", name: "Water", price: 50 } })
+      ? actions.addItem({ orderId, item: { kind: "extra", name: "Water", price: 5000 } })
       : actions.linkCustomer({ orderId, customerId: "fxcust000002" as CustomerId });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); await edit; });
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("The order changed while payment was open");
@@ -283,7 +283,7 @@ describe("checkout order screen", () => {
     await act(async () => button(`Confirm ฿${change === "total" ? "1,050" : "1,000"} received`).click());
     await settle();
     expect(settleOrder).toHaveBeenCalledOnce();
-    expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedDue: change === "total" ? 1050 : 1000, expectedRevision: 2 }));
+    expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedDue: change === "total" ? 105000 : 100000, expectedRevision: 2 }));
   });
 
   it("doesn't re-arm an open payment when the order is only saved elsewhere", async () => {
@@ -300,15 +300,15 @@ describe("checkout order screen", () => {
     expect(document.querySelector('[role="alert"]')).toBeNull();
     await act(async () => button("Confirm ฿1,000 received").click());
     await settle();
-    expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 1, expectedDue: 1000 }));
+    expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 1, expectedDue: 100000 }));
     await expect(settleOrder.mock.results[0].value).resolves.toMatchObject({ replayed: false });
   });
 
   it("starts a fresh payment when another order with the same total is opened (C5-01)", async () => {
     vi.useFakeTimers();
     const backend = createFixtureBackend();
-    const a = (await create(backend, "Water", 100)).orderId;
-    const b = (await create(backend, "Tea", 100)).orderId;
+    const a = (await create(backend, "Water", 10000)).orderId;
+    const b = (await create(backend, "Tea", 10000)).orderId;
     await showOrder(backend, a);
     await act(async () => button("Cash").click());
     await act(async () => button("Exact").click());
@@ -322,7 +322,7 @@ describe("checkout order screen", () => {
     vi.useFakeTimers();
     const backend = createFixtureBackend();
     const actions = backend.useActions();
-    const { orderId, lineId } = await create(backend, "Wedding", 1_000_000);
+    const { orderId, lineId } = await create(backend, "Wedding", 100_000_000);
     const step = actions.updateLine({ lineId, qtyChange: 9 });
     await vi.advanceTimersByTimeAsync(200);
     await step;
@@ -338,7 +338,7 @@ describe("checkout order screen", () => {
     vi.useFakeTimers();
     const backend = createFixtureBackend();
     const actions = backend.useActions();
-    const { orderId, lineId } = await create(backend, "Tea", 10.1);
+    const { orderId, lineId } = await create(backend, "Tea", 1010);
     const step = actions.updateLine({ lineId, qtyChange: 2 });
     await vi.advanceTimersByTimeAsync(200);
     await step;
@@ -350,14 +350,14 @@ describe("checkout order screen", () => {
   it("adds up quick quantity taps (C4-07)", async () => {
     vi.useFakeTimers();
     const actions = createFixtureBackend().useActions();
-    const added = actions.addItem({ item: { kind: "extra", name: "Coconut water", price: 90 } });
+    const added = actions.addItem({ item: { kind: "extra", name: "Coconut water", price: 9000 } });
     await vi.runAllTimersAsync();
     const { orderId, lineId } = await added;
     const taps = Promise.all([actions.updateLine({ lineId, qtyChange: 1 }), actions.updateLine({ lineId, qtyChange: 1 })]);
     await vi.runAllTimersAsync();
     await taps;
     // 3 × ฿90 is due, and the order is on its third revision (add, then two steps).
-    const paid = actions.settleOrder({ orderId, idempotencyKey: "attempt-0001", expectedDue: 270, expectedRevision: 3, tenders: [{ method: "card", amount: 270 }] });
+    const paid = actions.settleOrder({ orderId, idempotencyKey: "attempt-0001", expectedDue: 27000, expectedRevision: 3, tenders: [{ method: "card", amount: 27000 }] });
     await vi.runAllTimersAsync();
     await expect(paid).resolves.toMatchObject({ replayed: false });
   });

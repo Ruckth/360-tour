@@ -1,5 +1,5 @@
 import { paginationOptsValidator } from 'convex/server';
-import { mutation, query, type MutationCtx } from './_generated/server';
+import { mutation, query, type MutationCtx } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { assertValidEmail, normalizeEmail } from './lib/validation';

@@ -21,7 +21,7 @@ import {
   useNow,
 } from "@/lib/staff-bookings";
 
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 
 /**
  * Date, time and qualified staff for an upcoming booked appointment, with the before → after

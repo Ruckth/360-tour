@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
@@ -21,9 +22,9 @@ function setup() {
 
 async function insertBooking(t: ReturnType<typeof setup>['t'], propertyId: Id<'properties'>) {
 	await t.run(async (ctx) => {
-		await ctx.db.insert('bookings', {
+		await insertFixture(ctx, 'bookings', {
 			propertyId, guestName: 'Guest', guestPhone: '123', checkIn: '2026-10-01', checkOut: '2026-10-03', guests: 1,
-			nights: 2, subtotal: 200, discountAmount: 0, total: 200, currency: 'THB', paymentStatus: 'paid', status: 'confirmed', createdAt: 0
+			nights: 2, subtotal: 20000, discountAmount: 0, total: 20000, currency: 'THB', paymentStatus: 'paid', status: 'confirmed', createdAt: 0
 		});
 	});
 }
@@ -78,7 +79,7 @@ describe('villa create, slug and delete', () => {
 		const { t, admin } = setup();
 		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
 		await expect(admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'active' })).rejects.toThrow('price');
-		await admin.mutation(api.properties.update, { propertyId, pricePerNight: 5000 });
+		await admin.mutation(api.properties.update, { propertyId, pricePerNight: 500000 });
 		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'active' });
 		expect(await t.query(api.properties.list, {})).toHaveLength(1);
 		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'archived' });
@@ -93,9 +94,9 @@ describe('villa create, slug and delete', () => {
 			propertyId, authorName: 'Ann', authorCity: 'Paris', authorCountry: 'France', rating: 5, title: '', body: 'Lovely',
 			date: '2026-09-01', verified: true
 		});
-		await admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'agoda', nightlyRate: 9000 });
+		await admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'agoda', nightlyRate: 900000 });
 
-		await admin.mutation(api.properties.update, { propertyId, pricePerNight: 100 });
+		await admin.mutation(api.properties.update, { propertyId, pricePerNight: 10000 });
 		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'active' });
 		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId })).rejects.toThrow('Only draft');
 		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'draft' });
@@ -104,12 +105,12 @@ describe('villa create, slug and delete', () => {
 		await admin.mutation(api.adminProperties.deleteDraft, { propertyId });
 		const leftovers = await t.run(async (ctx) => ({
 			property: await ctx.db.get(propertyId),
-			rooms: await ctx.db.query('rooms').collect(),
+			rooms: await ctx.db.query('tourScenes').collect(),
 			reviews: await ctx.db.query('reviews').collect(),
-			socialProof: await ctx.db.query('socialProof').collect(),
+			reviewStats: await ctx.db.query('reviewStats').collect(),
 			otaRates: await ctx.db.query('otaRates').collect()
 		}));
-		expect(leftovers).toEqual({ property: null, rooms: [], reviews: [], socialProof: [], otaRates: [] });
+		expect(leftovers).toEqual({ property: null, rooms: [], reviews: [], reviewStats: [], otaRates: [] });
 	});
 
 	it('refuses to delete drafts with bookings, calendar entries or chats', async () => {
@@ -126,27 +127,10 @@ describe('villa create, slug and delete', () => {
 
 		const chatted = await admin.mutation(api.adminProperties.create, { name: 'Chatted' });
 		await t.run(async (ctx) => {
-			await ctx.db.insert('chatSessions', { propertyId: chatted, channel: 'web', createdAt: 0 });
+			await ctx.db.insert('conversations', { propertyId: chatted, channel: 'web', createdAt: 0 });
 		});
 		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId: chatted })).rejects.toThrow('chatted');
 		expect(await t.run((ctx) => ctx.db.get(chatted))).not.toBeNull();
-	});
-
-	it('lists chat and lead references that block draft deletion', async () => {
-		const { t, admin } = setup();
-		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Referenced Villa' });
-		const slug = (await t.run(ctx => ctx.db.get(propertyId)))!.slug;
-		await t.run(async ctx => {
-			const answerId = await ctx.db.insert('chatAnswers', { propertyId, title: 'Title', answer: 'Answer', status: 'approved', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
-			await ctx.db.insert('chatAnswerPropertyScopes', { propertyId, answerId, propertySlug: slug, normalizedSlug: slug, source: 'property', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
-			await ctx.db.insert('chatKnowledgeScopes', { slug, normalizedSlug: slug, label: 'Villa', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
-			await ctx.db.insert('chatTopics', { propertyId, name: 'Pool', normalizedName: 'pool', description: '', createdAt: 0, updatedAt: 0 });
-			await ctx.db.insert('chatUnknownQuestions', { propertyId, propertySlug: slug, userQuestion: 'Pool?', normalizedQuestion: 'pool', status: 'new', adminNotified: false, createdAt: 0, updatedAt: 0 });
-			await ctx.db.insert('curatedChatQuestions', { question: 'Pool?', normalizedQuestion: 'pool', propertySlug: slug, topic: 'pool', score: 1, status: 'active', createdAt: 0, updatedAt: 0, createdByAdminEmail: 'admin@example.com', updatedByAdminEmail: 'admin@example.com' });
-			await ctx.db.insert('leads', { propertyId, email: 'guest@example.com', source: 'chat', createdAt: 0 });
-		});
-		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId })).rejects.toThrow(/chat answers.*chat answer property scopes.*chat knowledge scopes.*chat topics.*unknown chat questions.*curated chat questions.*leads/);
-		expect(await t.run(ctx => ctx.db.get(propertyId))).not.toBeNull();
 	});
 
 	it('refuses draft deletion when a child table exceeds its deletion batch', async () => {
@@ -307,12 +291,12 @@ describe('360 rooms', () => {
 		});
 		await t.run(async (ctx) => {
 			await ctx.db.patch(propertyId, {
-				pricePerNight: 9000,
+				pricePerNight: 900000,
 				images: ['https://images.unsplash.com/a.webp'],
 				status: 'active',
 				icalExportToken: 'secret'
 			});
-			await ctx.db.insert('otaRates', { propertyId, platform: 'agoda', nightlyRate: 9900, updatedAt: 0 });
+			await ctx.db.insert('otaRates', { propertyId, platform: 'agoda', nightlyRate: 990000, updatedAt: 0 });
 			await ctx.db.insert('reviews', {
 				propertyId, authorName: 'G', authorCity: '', authorCountry: '', authorAvatarUrl: '', rating: 5,
 				title: 'Nice', body: 'Nice', date: '2026-01-01', verified: true
@@ -326,7 +310,7 @@ describe('360 rooms', () => {
 			name: 'Villa (copy)',
 			slug: 'villa-copy',
 			status: 'draft',
-			pricePerNight: 9000,
+			pricePerNight: 900000,
 			images: ['https://images.unsplash.com/a.webp'],
 			tourRoomIds: ['living-room', 'pool', 'bedroom']
 		});
@@ -340,7 +324,7 @@ describe('360 rooms', () => {
 			rates: await ctx.db.query('otaRates').withIndex('by_property_platform', (q) => q.eq('propertyId', copyId)).collect(),
 			reviews: await ctx.db.query('reviews').withIndex('by_property', (q) => q.eq('propertyId', copyId)).collect()
 		}));
-		expect(children.rates).toEqual([expect.objectContaining({ platform: 'agoda', nightlyRate: 9900 })]);
+		expect(children.rates).toEqual([expect.objectContaining({ platform: 'agoda', nightlyRate: 990000 })]);
 		expect(children.reviews).toEqual([]);
 
 		expect((await admin.query(api.adminProperties.get, { propertyId: await admin.mutation(api.adminProperties.duplicate, { propertyId }) }))?.property.slug).toBe('villa-copy-2');

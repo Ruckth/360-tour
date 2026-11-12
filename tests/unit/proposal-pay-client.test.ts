@@ -21,7 +21,7 @@ const summary = {
   checkOut: "2026-12-03",
   guests: 2,
   nights: 2,
-  total: 200,
+  total: 20000,
   currency: "THB",
   cancellationPolicy: "Free cancellation",
   unpaidHoldMinutes: 30,

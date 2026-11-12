@@ -24,7 +24,7 @@ async function setup() {
         name: slug,
         tagline: "",
         description: "",
-        pricePerNight: 1000,
+        pricePerNight: 100000,
         currency: "THB",
         maxGuests: 4,
         bedrooms: 2,
@@ -33,7 +33,7 @@ async function setup() {
         images: [],
         amenities: ["WiFi"],
         tourRoomIds: [],
-        directDiscountPercent: 10,
+        directDiscountPercent: 1000,
         status: "active",
       }),
     );
@@ -61,20 +61,6 @@ async function setup() {
 }
 
 describe("business fact evidence", () => {
-  it("disables retrieval without reviving old context when the cohort is zero", async () => {
-    const { t, sessionId, fact } = await setup();
-    await fact("Included.");
-    vi.stubEnv("AI_FACT_RETRIEVAL_PERCENT", "0");
-    expect(
-      await t.query(internal.businessFacts.search, {
-        sessionId,
-        query: "breakfast",
-      }),
-    ).toEqual({ facts: [], noMatch: true });
-    expect(
-      await t.query(internal.chatKnowledge.getApprovedContext, { sessionId }),
-    ).toEqual([]);
-  });
   it("requires an administrator and a source, and prevents lost edits", async () => {
     const { t, admin, fact } = await setup();
     const input = {

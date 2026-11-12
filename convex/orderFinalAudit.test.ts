@@ -1,10 +1,10 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Independent final audit. Required-behavior assertions intentionally fail for confirmed gaps.
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
-import { orderBackfillPatch } from './lib/orderBackfill';
 import { ensureLinkedOrder } from './lib/orderLinks';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -16,8 +16,8 @@ async function setup() {
   const admin = t.withIdentity({ email: 'order-final@example.com', tokenIdentifier: 'order-final' });
   const ids = await t.run(async ctx => {
     const staffId = await ctx.db.insert('staff', { name: 'Original therapist', role: 'Therapist', color: '#abc', workingHours: [], breaks: [], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
-    const serviceId = await ctx.db.insert('services', { slug: 'order-final-service', name: 'Final massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 1200, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
-    const appointmentId = await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: Date.now() + 86400000, end: Date.now() + 90000000, blockedUntil: Date.now() + 90000000, guestName: 'Unique appointment guest', guestPhone: '+66 81 123 4567', guestEmail: 'unique-appointment@example.com', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SVC-ORDER-FINAL', accessToken: 'order-final-test-token', createdAt: Date.now() });
+    const serviceId = await ctx.db.insert('services', { slug: 'order-final-service', name: 'Final massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
+    const appointmentId = await insertFixture(ctx, 'appointments', { serviceId, staffId, start: Date.now() + 86400000, end: Date.now() + 90000000, blockedUntil: Date.now() + 90000000, guestName: 'Unique appointment guest', guestPhone: '+66 81 123 4567', guestEmail: 'unique-appointment@example.com', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 120000, currency: 'THB', confirmationCode: 'SVC-ORDER-FINAL', accessToken: 'order-final-test-token', createdAt: Date.now() });
     return { staffId, serviceId, appointmentId };
   });
   return { t, admin, ...ids };
@@ -49,35 +49,6 @@ describe('Independent final audit: appointment discovery and rollout/history', (
     const rows = await admin.query(api.pos.listAttachable, { orderId });
     expect(rows.map(row => row.id)).toContain(appointmentId);
   });
-
-  it('shows the remaining deposited balance on a legacy unpaid row before its migration page', async () => {
-    const { t, admin } = await setup();
-    const orderId = await t.run(async ctx => {
-      const id = await ctx.db.insert('bills', { status: 'held', currency: 'THB', createdBy: 'legacy', itemCount: 1, total: 30000, hasItems: true, revision: 1, createdAt: 1, updatedAt: 1 });
-      await ctx.db.insert('billLines', { billId: id, kind: 'booking', name: 'Legacy deposited stay', unitPrice: 30000, deposit: 10000, currency: 'THB', qty: 1, createdAt: 1 });
-      return id;
-    });
-    expect((await admin.query(api.pos.getOrder, { orderId }))?.totals.due).toBe(20000);
-    const rows = await admin.query(api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } });
-    expect(rows.page.find(row => row._id === orderId)?.due).toBe(20000);
-  });
-
-  it('preserves a legacy receipt therapist after the migration and a later staff rename', async () => {
-    const { t, admin, staffId, serviceId } = await setup();
-    const orderId = await t.run(async ctx => {
-      const id = await ctx.db.insert('bills', { status: 'paid', receiptNumber: 17, currency: 'THB', createdBy: 'legacy', itemCount: 1, total: 1200, hasItems: true, revision: 1, createdAt: 1, updatedAt: 1 });
-      await ctx.db.insert('billLines', { billId: id, kind: 'service', serviceId, staffId, name: 'Legacy massage', unitPrice: 1200, currency: 'THB', qty: 1, createdAt: 1 });
-      const order = (await ctx.db.get(id))!;
-      const patch = await orderBackfillPatch(ctx, order);
-      if (patch) await ctx.db.patch(id, patch);
-      return id;
-    });
-    const before = await admin.query(api.pos.getOrder, { orderId });
-    expect(before?.lines[0].staffName).toBe('Original therapist');
-    await admin.mutation(api.adminServices.updateStaff, { staffId, name: 'Renamed therapist' });
-    const after = await admin.query(api.pos.getOrder, { orderId });
-    expect(after?.lines[0].staffName).toBe(before?.lines[0].staffName);
-  });
 });
 
 
@@ -85,7 +56,7 @@ describe('Independent final recheck: attaching to an existing standalone order',
   it('shows the charged appointment despite its own empty order, keeps payer/identity and reopens without duplicate charge', async () => {
     const { t, admin, appointmentId } = await setup();
     const placeholder = await t.run(ctx => ensureLinkedOrder(ctx, { appointmentId }, 'creation'));
-    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Separate extra', price: 90 } });
+    const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Separate extra', price: 9000 } });
     const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Separate payer' });
     await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
     const before = await admin.query(api.pos.getOrder, { orderId });

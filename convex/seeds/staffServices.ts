@@ -1,3 +1,4 @@
+import { bahtToSatang } from '../shared/money';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { demoCode } from '../lib/codes';
@@ -43,7 +44,7 @@ export async function seedStaffServicesData(ctx: MutationCtx) {
 		if (!service) {
 			const id = await ctx.db.insert('services', {
 				slug: seed.slug, name: seed.name, description: seed.description, category: seed.category,
-				durationMin: seed.durationMin, bufferMin: seed.bufferMin, price: seed.price, currency: 'THB',
+				durationMin: seed.durationMin, bufferMin: seed.bufferMin, price: bahtToSatang(seed.price), currency: 'THB',
 				staffIds: seed.staff.map((index) => staffIds[index]), status: 'active', createdAt: now, updatedAt: now
 			});
 			service = await ctx.db.get(id);
@@ -62,19 +63,20 @@ export async function seedStaffServicesData(ctx: MutationCtx) {
 	for (const sample of samples) {
 		const start = localDateTimeUtc(date, sample.time);
 		const staffId = staffIds[sample.staff];
-		const seededBefore = await ctx.db.query('serviceAppointments').withIndex('by_guestPhone', (q) => q.eq('guestPhone', sample.guestPhone)).first();
+		const seededBefore = await ctx.db.query('appointments').withIndex('by_guestPhone', (q) => q.eq('guestPhone', sample.guestPhone)).first();
 		if (seededBefore) continue;
-		const existing = await ctx.db.query('serviceAppointments').withIndex('by_staff_start', (q) => q.eq('staffId', staffId).eq('start', start)).first();
+		const existing = await ctx.db.query('appointments').withIndex('by_staff_start', (q) => q.eq('staffId', staffId).eq('start', start)).first();
 		if (existing) continue;
 		const service = serviceSeeds[sample.service];
 		const person = await ctx.db.get(staffId);
 		if (!person || (await staffBusyRanges(ctx, person, start, start + (service.durationMin + service.bufferMin) * 60_000)).length) continue;
-		const id = await ctx.db.insert('serviceAppointments', {
+		const id = await ctx.db.insert('appointments', {
 			serviceId: serviceIds[sample.service], staffId, start,
 			end: start + service.durationMin * 60_000,
 			blockedUntil: start + (service.durationMin + service.bufferMin) * 60_000,
 			guestName: sample.guestName, guestPhone: sample.guestPhone, guestPhoneDigits: appointmentLookupFields(sample).guestPhoneDigits, source: 'admin',
-			status: 'booked', paymentStatus: 'unpaid', price: service.price, currency: 'THB',
+			serviceNameSnapshot: service.name, staffNameSnapshot: person.name, createdBy: 'system:seed', revision: 0, financialRevision: 0, amountPaid: 0, amountRefunded: 0,
+			status: 'booked', paymentStatus: 'unpaid', price: bahtToSatang(service.price), currency: 'THB',
 			confirmationCode: '', accessToken: crypto.randomUUID(), createdAt: now
 		});
 		await ctx.db.patch(id, { confirmationCode: demoCode('SVC', id) });

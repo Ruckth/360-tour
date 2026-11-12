@@ -1,5 +1,7 @@
 "use client";
 
+import { roundRatio, satangToBaht } from 'convex/shared/money';
+
 import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -142,7 +144,7 @@ function BookingDetails({
     !booking.paidAt &&
     !booking.hasStripePayment &&
     booking.money.gross === 0;
-  const nightly = booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0;
+  const nightly = booking.nights > 0 ? roundRatio(booking.subtotal, booking.nights) : 0;
   const balance = booking.amountPaid !== undefined ? balanceText(booking.total, booking.amountPaid, booking.currency) : null;
   const notesChanged = notes.trim() !== (booking.adminNotes ?? "");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Another villa";
@@ -261,7 +263,7 @@ function BookingDetails({
           <BookingOrders
             source={{ bookingId: booking._id }}
             currency={booking.currency}
-            closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
+            closed={cancelled || booking.paymentStatus === "failed"}
           />
         </Detail>
         <Detail label="Phone">{booking.guestPhone}</Detail>
@@ -413,7 +415,7 @@ export function EditBookingDialog({
   const [guestPhone, setGuestPhone] = useState(booking.guestPhone);
   const [guestEmail, setGuestEmail] = useState(booking.guestEmail ?? "");
   const [custom, setCustom] = useState(Boolean(booking.priceOverride));
-  const [customTotal, setCustomTotal] = useState(String(booking.priceOverride?.total ?? booking.total));
+  const [customTotal, setCustomTotal] = useState(String(satangToBaht(booking.priceOverride?.total ?? booking.total)));
   const [customReason, setCustomReason] = useState(booking.priceOverride?.reason ?? "");
   const [villaReason, setVillaReason] = useState("");
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);

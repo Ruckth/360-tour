@@ -30,10 +30,10 @@ for (const theme of ["light", "dark"]) for (const width of [390, 820, 1180, 1440
     const amount = dialog.getByPlaceholder("12,000");
     await dialog.getByRole("button", { name: "Add spend", exact: true }).click();
     await expect(amount).toHaveAttribute("aria-invalid", "true");
-    await amount.fill("12.5");
+    await amount.fill("12.555");
     await dialog.getByRole("button", { name: "Add spend", exact: true }).click();
     await expect(amount).toHaveAttribute("aria-invalid", "true");
-    await expect(dialog.getByText("Enter the amount in whole baht.", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Enter a positive amount with at most two decimals.", { exact: true })).toBeVisible();
     await audit(page, width, `add-${scenario}-${width}-${theme}`);
     if (width === 390) { const box = (await dialog.boundingBox())!; expect(Math.round(box.y + box.height)).toBe(900); }
     await page.keyboard.press("Escape"); await expect(dialog).toBeHidden();
@@ -44,7 +44,7 @@ for (const theme of ["light", "dark"]) for (const width of [390, 820, 1180, 1440
     await dialog.getByRole("button", { name: "Add spend", exact: true }).click();
     await expect(dialog).toBeHidden();
     const saved = JSON.parse((await page.locator("body").getAttribute("data-spend"))!);
-    expect(saved[0]).toMatchObject({ amount: 12000, from: "2026-10-08", to: "2026-11-06" });
+    expect(saved[0]).toMatchObject({ amount: 1200000, from: "2026-10-08", to: "2026-11-06" });
   });
   for (const scenario of ["normal", "empty"]) test(`sections ${scenario} ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -64,6 +64,6 @@ for (const theme of ["light", "dark"]) for (const width of [390, 820, 1180, 1440
     await dialog.getByPlaceholder("12,000").fill("500");
     await dialog.getByRole("button", { name: "Add spend", exact: true }).click();
     await expect(dialog).toBeHidden(); await expect(add).toBeFocused();
-    expect(JSON.parse((await page.locator("body").getAttribute("data-spend"))!)).toMatchObject({ campaignId: "c1", amount: 500, from: "2026-11-01", to: "2026-11-09" });
+    expect(JSON.parse((await page.locator("body").getAttribute("data-spend"))!)).toMatchObject({ campaignId: "c1", amount: 50000, from: "2026-11-01", to: "2026-11-09" });
   });
 }

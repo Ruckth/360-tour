@@ -10,8 +10,8 @@ import "@/app.css";
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 const empty = params.get("case") === "empty";
-const campaign: CampaignRow = { _creationTime: 1, source: "facebook", medium: "paid", status: "active", createdAt: 1, updatedAt: 1, updatedByEmail: "staff@example.com", linkCount: 0, couponCount: 0, opens: 0, countsCapped: false, _id: "c1" as Id<"marketingCampaigns">, name: "November escape", budget: 10000 };
-const entries = [6000, 5000, 1000].map((amount, index) => ({ id: `s${index}` as Id<"marketingSpend">, campaignId: campaign._id, amount, from: "2026-11-01", to: `2026-11-0${index + 2}`, note: `Invoice ${index + 1}` }));
+const campaign: CampaignRow = { _creationTime: 1, source: "facebook", medium: "paid", status: "active", createdAt: 1, updatedAt: 1, updatedByEmail: "staff@example.com", linkCount: 0, couponCount: 0, opens: 0, countsCapped: false, _id: "c1" as Id<"marketingCampaigns">, name: "November escape", budget: 1000000 };
+const entries = [600000, 500000, 100000].map((amount, index) => ({ id: `s${index}` as Id<"marketingSpend">, campaignId: campaign._id, amount, from: "2026-11-01", to: `2026-11-0${index + 2}`, note: `Invoice ${index + 1}` }));
 function Fixture() {
   return <ConfirmProvider><main className="min-h-dvh bg-background p-4 text-foreground"><h1 className="text-xl">Marketing spend and refusals</h1>
 

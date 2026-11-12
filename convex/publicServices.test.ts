@@ -14,7 +14,7 @@ type ServicePage = FunctionReturnType<typeof api.publicServices.list>;
 function service(index: number, overrides: Partial<ServiceInput> = {}): ServiceInput {
   return {
     slug: `service-${index}`, name: `Service ${index}`, description: `Description ${index}`,
-    category: 'Wellness', durationMin: 60, bufferMin: 15, price: 1000 + index,
+    category: 'Wellness', durationMin: 60, bufferMin: 15, price: 100000 + index * 100,
     currency: 'THB', staffIds: [], status: 'active', createdAt: index, updatedAt: index,
     ...overrides,
   };
@@ -35,7 +35,7 @@ describe('public service catalog', () => {
     const detail = await t.query(api.publicServices.getBySlug, { slug: 'service-1' });
     expect(detail).toEqual({
       slug: 'service-1', name: 'Service 1', description: 'x'.repeat(1000), category: 'Wellness',
-      durationMin: 60, price: 1001, currency: 'THB', imageUrl: 'https://example.convex.cloud/api/storage/photo',
+      durationMin: 60, price: 100100, currency: 'THB', imageUrl: 'https://example.convex.cloud/api/storage/photo',
     });
     const list = await t.query(api.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
     expect(list.page).toEqual([detail]);

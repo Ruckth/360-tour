@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
@@ -176,7 +177,7 @@ describe('which checkout drives the display', () => {
 	async function showing() {
 		const context = await setup();
 		const { t, admin } = context;
-		const order = async (name: string) => (await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name, price: 10 } })).orderId;
+		const order = async (name: string) => (await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name, price: 1000 } })).orderId;
 		const show = (orderId: string | null, clientId = HERE) => admin.mutation(api.displays.showOrder, { orderId, clientId });
 		const current = (token: string) => t.query(api.displays.current, { token });
 		return { ...context, order, show, current };
@@ -252,7 +253,7 @@ describe('which checkout drives the display', () => {
 		await show(await order('Water'));
 		expect(await show('notreal1')).toEqual({ shown: true });
 		expect(await current(token)).toEqual(IDLE);
-		const lineId = await t.run(async (ctx) => (await ctx.db.query('billLines').first())!._id);
+		const lineId = await t.run(async (ctx) => (await ctx.db.query('orderLines').first())!._id);
 		await show(await order('Juice'));
 		await show(lineId);
 		expect(await current(token)).toEqual(IDLE);
@@ -319,9 +320,9 @@ describe('display order projection', () => {
 		const { t, admin, pairByLink } = context;
 		const token = await pairByLink();
 		const current = () => t.query(api.displays.current, { token });
-		const show = (orderId: Id<'bills'> | null) => admin.mutation(api.displays.showOrder, { orderId, clientId: HERE });
-		const view = (orderId: Id<'bills'>) => admin.query(api.pos.getOrder, { orderId }).then((result) => result!);
-		const settle = async (orderId: Id<'bills'>) => {
+		const show = (orderId: Id<'orders'> | null) => admin.mutation(api.displays.showOrder, { orderId, clientId: HERE });
+		const view = (orderId: Id<'orders'>) => admin.query(api.pos.getOrder, { orderId }).then((result) => result!);
+		const settle = async (orderId: Id<'orders'>) => {
 			const { order, totals, customer } = await view(orderId);
 			await admin.mutation(api.pos.settleOrder, {
 				orderId, idempotencyKey: `attempt-${orderId}`, expectedDue: totals.due, expectedRevision: order.revision,
@@ -335,36 +336,36 @@ describe('display order projection', () => {
 	it('shows coupon savings and line shares, hides invalid coupons and freezes the paid display', async () => {
 		const { admin, current, show, settle, view } = await showing();
 		const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
-		const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 1200, currency: 'THB', staffIds: [staffId] });
-		const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 500 }, scope: 'services', minEligibleSubtotal: 1500 });
+		const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [staffId] });
+		const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 50000 }, scope: 'services', minEligibleSubtotal: 150000 });
 		await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
 		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
 		const { lineId } = await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
-		await admin.mutation(api.pos.overrideLinePrice, { lineId, price: 600, note: 'Foot spa' });
+		await admin.mutation(api.pos.overrideLinePrice, { lineId, price: 60000, note: 'Foot spa' });
 		await admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA-500' });
 		await show(orderId);
-		expect(await current()).toMatchObject({ state: 'order', coupon: { code: 'SPA-500', saving: 500 }, total: 1300, due: 1300, lines: [{ couponDiscount: 333, total: 867 }, { couponDiscount: 167, total: 433 }] });
+		expect(await current()).toMatchObject({ state: 'order', coupon: { code: 'SPA-500', saving: 50000 }, total: 130000, due: 130000, lines: [{ couponDiscount: 33333, total: 86667 }, { couponDiscount: 16667, total: 43333 }] });
 		await admin.mutation(api.pos.removeLine, { lineId });
-		expect(await current()).toMatchObject({ state: 'order', coupon: null, total: 1200, lines: [{ couponDiscount: 0 }] });
+		expect(await current()).toMatchObject({ state: 'order', coupon: null, total: 120000, lines: [{ couponDiscount: 0 }] });
 		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
 		expect((await view(orderId)).promotion?.problem).toBeNull();
 		await settle(orderId);
 		await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
-		expect(await current()).toMatchObject({ state: 'paid', coupon: { code: 'SPA-500', saving: 500 }, total: 1900, amountPaid: 1900 });
+		expect(await current()).toMatchObject({ state: 'paid', coupon: { code: 'SPA-500', saving: 50000 }, total: 190000, amountPaid: 190000 });
 	});
 
 	it('shows a draft with items, with the customer first name only and no other fields', async () => {
 		const { admin, current, show } = await showing();
 		const customerId = await admin.mutation(api.customers.createCustomer, { name: '  Anna Maria Lee ', phone: '+66 81 234 5678', email: 'anna@example.com', notes: 'VIP, allergic to nuts' });
-		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Coconut', price: 80 } });
+		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Coconut', price: 8000 } });
 		await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
 		await show(orderId);
 
 		const state = await current();
 		expect(state).toEqual({
 			state: 'order', businessName: 'Auralis Cove Retreat', customerFirstName: 'Anna', orderNumber: 1, currency: 'THB',
-			lines: [{ name: 'Coconut', detail: null, qty: 1, unitPrice: 80, price: 80, discount: 0, couponDiscount: 0, total: 80, deposit: 0 }],
-			subtotal: 80, discount: 0, coupon: null, deposit: 0, total: 80, vat: 5.23, due: 80, activeAt: Date.now()
+			lines: [{ name: 'Coconut', detail: null, qty: 1, unitPrice: 8000, price: 8000, discount: 0, couponDiscount: 0, total: 8000, deposit: 0 }],
+			subtotal: 8000, discount: 0, coupon: null, deposit: 0, total: 8000, vat: 523, due: 8000, activeAt: Date.now()
 		});
 		const json = JSON.stringify(state);
 		for (const secret of ['Maria', 'Lee', '+66', 'anna@example.com', 'VIP', 'admin@example.com', HERE, orderId, customerId]) expect(json).not.toContain(secret);
@@ -374,22 +375,22 @@ describe('display order projection', () => {
 		const { t, admin, current, show, view } = await showing();
 		const bookingId = await t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', {
-				slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 4,
+				slug: 'villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 4,
 				bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 			});
-			return await ctx.db.insert('bookings', {
+			return await insertFixture(ctx, 'bookings', {
 				propertyId, guestName: 'Anna', guestPhone: '+66 81 234 5678', guestPhoneDigits: '66812345678', checkIn: '2026-11-01', checkOut: '2026-11-04',
-				guests: 2, nights: 3, subtotal: 30000, discountAmount: 0, total: 30000, currency: 'THB', amountPaid: 10000,
+				guests: 2, nights: 3, subtotal: 3000000, discountAmount: 0, total: 3000000, currency: 'THB', amountPaid: 1000000,
 				paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'CONF-ANNA', createdAt: Date.now()
 			});
 		});
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-		const massage = await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Massage', price: 1250.5 } });
-		await admin.mutation(api.pos.updateLine, { lineId: massage.lineId, discount: { type: 'percent', value: 15 } });
-		const juice = await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 120 } });
-		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 120 } });
-		await admin.mutation(api.pos.overrideLinePrice, { lineId: juice.lineId, price: 99.5, note: 'Happy hour' });
-		await admin.mutation(api.pos.updateLine, { lineId: juice.lineId, discount: { type: 'amount', value: 10 } });
+		const massage = await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Massage', price: 125050 } });
+		await admin.mutation(api.pos.updateLine, { lineId: massage.lineId, discount: { type: 'percent', value: 1500 } });
+		const juice = await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 12000 } });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 12000 } });
+		await admin.mutation(api.pos.overrideLinePrice, { lineId: juice.lineId, price: 9950, note: 'Happy hour' });
+		await admin.mutation(api.pos.updateLine, { lineId: juice.lineId, discount: { type: 'amount', value: 1000 } });
 		await show(orderId);
 
 		const checkout = await view(orderId);
@@ -399,10 +400,10 @@ describe('display order projection', () => {
 			subtotal: checkout.totals.subtotal, discount: checkout.totals.discount, deposit: checkout.totals.deposit,
 			total: checkout.totals.total, vat: checkout.totals.vat, due: checkout.totals.due
 		});
-		expect(state.deposit).toBe(10000);
+		expect(state.deposit).toBe(1000000);
 		expect(state.lines.map((line) => line.total)).toEqual(checkout.lines.map((line) => line.net));
-		expect(state.lines.find((line) => line.name === 'Juice')).toEqual({ name: 'Juice', detail: null, qty: 2, unitPrice: 120, price: 99.5, discount: 10, couponDiscount: 0, total: 189, deposit: 0 });
-		expect(state.lines[0]).toMatchObject({ deposit: 10000, detail: expect.any(String) });
+		expect(state.lines.find((line) => line.name === 'Juice')).toEqual({ name: 'Juice', detail: null, qty: 2, unitPrice: 12000, price: 9950, discount: 1000, couponDiscount: 0, total: 18900, deposit: 0 });
+		expect(state.lines[0]).toMatchObject({ deposit: 1000000, detail: expect.any(String) });
 		expect(state.customerFirstName).toBeNull();
 	});
 
@@ -411,17 +412,17 @@ describe('display order projection', () => {
 		await show(null);
 		expect(await current()).toEqual(IDLE);
 
-		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 50 } });
+		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 5000 } });
 		await show(orderId);
 		expect(await current()).toMatchObject({ state: 'order' });
 		await admin.mutation(api.pos.removeLine, { lineId });
 		expect(await current()).toEqual(IDLE);
 
-		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Water', price: 50 } });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Water', price: 5000 } });
 		await admin.mutation(api.pos.discardOrder, { orderId, expectedRevision: (await view(orderId)).order.revision, idempotencyKey: 'discard-0001' });
 		expect(await current()).toEqual(IDLE);
 
-		const paid = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Towel', price: 300 } });
+		const paid = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Towel', price: 30000 } });
 		await show(paid.orderId);
 		await settle(paid.orderId);
 		await admin.mutation(api.pos.voidOrder, { orderId: paid.orderId, reason: 'Wrong order' });
@@ -430,13 +431,13 @@ describe('display order projection', () => {
 
 	it('marks an open order active when it changes or is published again', async () => {
 		const { admin, current, show } = await showing();
-		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 50 } });
+		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 5000 } });
 		await show(orderId);
 		const shownAt = Date.now();
 		expect(await current()).toMatchObject({ activeAt: shownAt });
 
 		vi.setSystemTime(shownAt + 60_000);
-		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 80 } });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 8000 } });
 		expect(await current()).toMatchObject({ activeAt: shownAt + 60_000 });
 
 		vi.setSystemTime(shownAt + 120_000);
@@ -446,17 +447,17 @@ describe('display order projection', () => {
 
 	it('shows a legacy held order like a draft', async () => {
 		const { t, admin, current, show } = await showing();
-		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 50 } });
-		await t.run((ctx) => ctx.db.patch(orderId, { status: 'held' }));
+		const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 5000 } });
+		await t.run((ctx) => ctx.db.patch(orderId, { status: 'draft' }));
 		await show(orderId);
-		expect(await current()).toMatchObject({ state: 'order', total: 50 });
+		expect(await current()).toMatchObject({ state: 'order', total: 5000 });
 	});
 
 	it('thanks the guest once paid, with what was paid at the counter and the receipt number', async () => {
 		const { admin, current, show, settle } = await showing();
 		const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Somchai Jaidee', phone: '+66 89 000 0000' });
-		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Spa day', price: 2500 } });
-		await admin.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 500 } });
+		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Spa day', price: 250000 } });
+		await admin.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 50000 } });
 		await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
 		await show(orderId);
 		await settle(orderId);
@@ -464,18 +465,18 @@ describe('display order projection', () => {
 		const state = await current();
 		expect(state).toEqual({
 			state: 'paid', businessName: 'Auralis Cove Retreat', customerFirstName: 'Somchai', orderNumber: 1, currency: 'THB',
-			total: 2000, vat: 130.84, amountPaid: 2000, coupon: null, receiptNumber: 1, paidAt: Date.now()
+			total: 200000, vat: 13084, amountPaid: 200000, coupon: null, receiptNumber: 1, paidAt: Date.now()
 		});
 		expect(JSON.stringify(state)).not.toMatch(/Jaidee|\+66|cash|admin@example\.com/);
 	});
 
 	it('follows the order the driving checkout shows last', async () => {
 		const { admin, current, show } = await showing();
-		const first = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'First', price: 10 } });
-		const second = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Second', price: 20 } });
+		const first = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'First', price: 1000 } });
+		const second = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Second', price: 2000 } });
 		await show(first.orderId);
 		await show(second.orderId);
-		expect(await current()).toMatchObject({ state: 'order', total: 20 });
+		expect(await current()).toMatchObject({ state: 'order', total: 2000 });
 		await show(null);
 		expect(await current()).toEqual(IDLE);
 	});

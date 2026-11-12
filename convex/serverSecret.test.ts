@@ -16,10 +16,10 @@ const SECRET = "trusted-secret";
 afterEach(() => vi.unstubAllEnvs());
 
 const channels = [
-  { channel: "line", table: "lineWebhookEvents", sender: { lineUserId: "U-secret-test" } },
-  { channel: "facebook", table: "facebookWebhookEvents", sender: { facebookUserId: "fb-secret-test" } },
-  { channel: "instagram", table: "instagramWebhookEvents", sender: { instagramUserId: "ig-secret-test" } },
-  { channel: "whatsapp", table: "whatsappWebhookEvents", sender: { whatsappUserId: "66911111111" } },
+  { channel: "line", table: "channelEvents", sender: { lineUserId: "U-secret-test" } },
+  { channel: "facebook", table: "channelEvents", sender: { facebookUserId: "fb-secret-test" } },
+  { channel: "instagram", table: "channelEvents", sender: { instagramUserId: "ig-secret-test" } },
+  { channel: "whatsapp", table: "channelEvents", sender: { whatsappUserId: "66911111111" } },
 ] as const;
 
 const misconfigurations = [
@@ -38,8 +38,8 @@ describe("channel server secret", () => {
     } as never) as unknown as { eventId: never; sessionId: never };
     const snapshot = () => t.run(async (ctx) => ({
       events: await ctx.db.query(table).collect(),
-      sessions: await ctx.db.query("chatSessions").collect(),
-      messages: await ctx.db.query("chatMessages").collect(),
+      sessions: await ctx.db.query("conversations").collect(),
+      messages: await ctx.db.query("messages").collect(),
     }));
     const before = await snapshot();
 
@@ -49,7 +49,7 @@ describe("channel server secret", () => {
       const calls = [
         () => t.mutation(mutations.claimEvent, { serverSecret: provided, eventKey: "forged", eventType: "message", ...sender } as never),
         () => t.mutation(mutations.recordInboundEvent, { ...ids, sessionId: seed.sessionId, userContent: "forged" } as never),
-        () => t.mutation(mutations.completeEvent, { ...ids, sessionId: seed.sessionId, assistantContent: "forged", replyMode: "exact" } as never),
+        () => t.mutation(mutations.completeEvent, { ...ids, sessionId: seed.sessionId, assistantContent: "forged", replyMode: "ai" } as never),
         () => t.mutation(mutations.markEventIgnored, { ...ids, reason: "forged" } as never),
         () => t.mutation(mutations.markEventFailed, { ...ids, error: "forged" } as never),
       ];

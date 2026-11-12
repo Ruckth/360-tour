@@ -48,7 +48,7 @@ export type AppointmentDraft = {
   date: string;
   staffId?: Id<"staff">;
   start?: number;
-  rebook?: Doc<"serviceAppointments">;
+  rebook?: Doc<"appointments">;
 };
 
 const LAST_SERVICE_KEY = "admin.staff.lastServiceId";
@@ -89,7 +89,7 @@ export function NewAppointmentDialog({
   services: Service[];
   staff: Staff[];
   onClose: () => void;
-  onCreated: (id: Id<"serviceAppointments">, start: number) => void;
+  onCreated: (id: Id<"appointments">, start: number) => void;
 }) {
   const createAppointment = useMutation(api.adminServices.createAppointment);
   const { rebook } = draft;

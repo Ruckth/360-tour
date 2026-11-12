@@ -1,10 +1,14 @@
 import { httpRouter } from 'convex/server';
-import { httpAction } from './_generated/server';
+import { httpAction } from './auth/model';
 import { internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
 
 const http = httpRouter();
 const encoder = new TextEncoder();
+// Only known pre-cutover financial orphans are acknowledged; newer captures stay visible as failed deliveries for reconciliation.
+function isCutoverReplay(created: number | undefined) {
+  const cutoff = Number(process.env.ARCH_MONEY_CUTOVER_AT);
+  return Number.isSafeInteger(cutoff) && cutoff > 0 && Number.isSafeInteger(created) && created! > 0 && created! < Math.floor(cutoff / 1000);
+}
 const compactDate = (date: string) => date.replace(/-/g, '');
 
 async function validStripeSignature(payload: string, header: string | null, secret: string): Promise<boolean> {
@@ -44,13 +48,14 @@ http.route({
         return new Response('Incomplete checkout', { status: 400 });
       }
       try {
-        await ctx.runMutation(internal.payments.completeCheckout, {
-          bookingId: session.client_reference_id as Id<'bookings'>,
+        const result = await ctx.runMutation(internal.payments.completeCheckout, {
+          bookingId: session.client_reference_id,
           sessionId: session.id,
           amountTotal: session.amount_total!,
           currency: session.currency,
           paymentIntentId: session.payment_intent,
         });
+        if (result?.orphaned && !isCutoverReplay(event.created)) return new Response('Payment requires reconciliation', { status: 500 });
       } catch (error) {
         console.error('Stripe checkout could not confirm booking', error);
         return new Response('Could not confirm booking', { status: 500 });
@@ -58,21 +63,27 @@ http.route({
     } else if (event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed') {
       const session = event.data?.object;
       if (!session?.id || !session.client_reference_id) return new Response('Incomplete checkout', { status: 400 });
-      await ctx.runMutation(internal.payments.expireCheckout, {
-        bookingId: session.client_reference_id as Id<'bookings'>,
-        sessionId: session.id,
-      });
+      try {
+        await ctx.runMutation(internal.payments.expireCheckout, {
+          bookingId: session.client_reference_id,
+          sessionId: session.id,
+        });
+      } catch (error) {
+        console.error('Stripe checkout expiry could not be recorded', error);
+        return new Response('Could not expire checkout', { status: 500 });
+      }
     } else if (event.type === 'charge.refunded') {
       const charge = event.data?.object;
       if (!event.id || !event.created || !charge?.id || !charge.currency || !charge.payment_intent || !Number.isSafeInteger(charge.amount) || !Number.isSafeInteger(charge.amount_refunded)) {
         return new Response('Incomplete refund', { status: 400 });
       }
       try {
-        await ctx.runMutation(internal.payments.recordRefund, {
+        const result = await ctx.runMutation(internal.payments.recordRefund, {
           paymentIntentId: charge.payment_intent, chargeId: charge.id, eventId: event.id, eventCreated: event.created, currency: charge.currency, refunds: (charge.refunds?.data ?? []).flatMap(r => r.id && r.amount !== undefined && r.currency ? [{ id: r.id, amount: r.amount, currency: r.currency, ...(r.status ? { status: r.status } : {}) }] : []),
           amount: charge.amount!,
           amountRefunded: charge.amount_refunded!,
         });
+        if (result?.orphaned && !isCutoverReplay(event.created)) return new Response('Refund requires reconciliation', { status: 500 });
       } catch (error) {
         console.error('Stripe refund could not update booking', error);
         return new Response('Could not reconcile refund', { status: 500 });

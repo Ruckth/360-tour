@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    "target": "ES2020",
     "lib": [
       "dom",
       "dom.iterable",
@@ -29,9 +29,6 @@
       ],
       "convex/*": [
         "./convex/*"
-      ],
-      "@convex-dev/migrations/test": [
-        "./types/convex-migrations-test.d.ts"
       ]
     }
   },

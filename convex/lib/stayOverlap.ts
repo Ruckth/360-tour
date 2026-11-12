@@ -23,14 +23,7 @@ export function staysOverlap(stay: { start: string; end: string }, from: string,
 	return stay.start < to && stay.end > from;
 }
 
-/**
- * Rows overlapping [from, to), read from two index ranges that each hold every overlapping row:
- * rows starting before `to` (newest start first) and rows ending after `from` (soonest end first).
- * They are read in lockstep; once either range runs out, every overlap has been seen. Cost is
- * about twice the smaller side, with no assumption about how long a legacy row can be.
- * `complete` is false when neither side ran out within `OVERLAP_SCAN_LIMIT` rows, or the shared
- * budget was spent first.
- */
+
 async function lockstepOverlap<T extends { _id: string }>(
 	startsBefore: AsyncIterator<T>,
 	endsAfter: AsyncIterator<T>,
@@ -84,7 +77,7 @@ export async function scanOverlappingBookings(
 	return { bookings: rows, complete };
 }
 
-/** Host date blocks of one villa overlapping [from, to), including mirror-less legacy ones. */
+
 export async function scanOverlappingDateBlocks(
 	ctx: QueryCtx,
 	propertyId: Id<'properties'>,

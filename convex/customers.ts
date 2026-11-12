@@ -2,12 +2,12 @@ import { appendRecordHistory } from './lib/recordHistory';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
+import { internalMutation, mutation, query, type MutationCtx } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
 import { requireStaff } from './lib/staffAccess';
-import { orderTitle, round2 } from './lib/billMath';
-import { orderRefundTotal } from './lib/billRefunds';
+import { orderTitle, roundMoney } from './lib/orderMath';
+import { orderRefundTotal } from './lib/orderRefunds';
 import { orderState } from './lib/orderLinks';
 import { assertValidEmail } from './lib/validation';
 import { customerPhoneError } from '../src/lib/booking/phone';
@@ -128,7 +128,7 @@ export const searchCustomers = query({
 		]);
 		const found = new Map<Id<'customers'>, Doc<'customers'>>();
 		for (const customer of [...byPhone, ...byEmail, ...byName]) found.set(customer._id, customer);
-		// Legacy contact suggestions only. The production picker uses browseCustomers with pagination.
+
 		return [...found.values()].filter(c => !c.archivedAt && !c.mergedInto).slice(0, SEARCH_LIMIT).map(customerCard);
 	}
 });
@@ -141,11 +141,11 @@ export const getCustomer = query({
 		const customer = await ctx.db.get(args.customerId);
 		if (!customer) return null;
 		const orders = await ctx.db
-			.query('bills')
+			.query('orders')
 			.withIndex('by_customerId_and_updatedAt', (q) => q.eq('customerId', customer._id))
 			.order('desc')
 			.take(11);
-		const refundedByOrder = new Map<Id<'bills'>, number>();
+		const refundedByOrder = new Map<Id<'orders'>, number>();
 		for (const order of orders.slice(0, 10)) refundedByOrder.set(order._id, await orderRefundTotal(ctx, order._id));
 		return {
 			...customerCard(customer),
@@ -159,7 +159,7 @@ export const getCustomer = query({
 					_id: order._id,
 					title: orderTitle(order.orderNumber),
 					state: orderState(order),
-					total: Math.max(0, round2(order.total - (refundedByOrder.get(order._id) ?? 0) / 100)),
+					total: Math.max(0, roundMoney(order.total - (refundedByOrder.get(order._id) ?? 0))),
 					...refundAmounts,
 					currency: order.currency,
 					updatedAt: order.updatedAt
@@ -174,12 +174,12 @@ export const listCustomerOrders = query({
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		pageSize(args.paginationOpts.numItems);
-		const result = await ctx.db.query('bills').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', args.customerId)).order('desc').paginate(args.paginationOpts);
+		const result = await ctx.db.query('orders').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', args.customerId)).order('desc').paginate(args.paginationOpts);
 		const page = [];
 		for (const order of result.page) {
 			const refundedAmountSatang = await orderRefundTotal(ctx, order._id);
 			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang };
-			page.push({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, round2(order.total - refundedAmountSatang / 100)), ...refundAmounts, currency: order.currency });
+			page.push({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, roundMoney(order.total - refundedAmountSatang)), ...refundAmounts, currency: order.currency });
 		}
 		return { ...result, page };
 	}
@@ -214,7 +214,7 @@ function expectRevision(customer: Doc<'customers'>, expectedRevision: number | u
 }
 
 /**
- * Edits the profile. Paid receipts keep the details they were issued with (bills.customerSnapshot).
+ * Edits the profile. Paid receipts keep the details they were issued with (orders.customerSnapshot).
  * The customer revision changes without traversing orders. Settlement checks the exact revision
  * reviewed by the cashier, so unseen profile edits require renewed review.
  */
@@ -259,9 +259,9 @@ async function moveMergeBatch(ctx: MutationCtx, jobId: Id<'customerMergeJobs'>) 
     const source = await ctx.db.get(job.sourceId);
     const destination = await ctx.db.get(job.destinationId);
     if (!source || source.mergedInto !== job.destinationId || !destination || destination.mergedInto) throw new Error('Merge identities changed. Contact an administrator before resuming.');
-    const orders = await ctx.db.query('bills').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', job.sourceId)).take(MERGE_BATCH + 1);
+    const orders = await ctx.db.query('orders').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', job.sourceId)).take(MERGE_BATCH + 1);
     for (const order of orders.slice(0, MERGE_BATCH)) {
-        await ctx.db.patch(order._id, { customerId: job.destinationId, ...(order.status === 'draft' || order.status === 'held' ? { revision: order.revision + 1 } : {}) });
+        await ctx.db.patch(order._id, { customerId: job.destinationId, ...(order.status === 'draft' ? { revision: order.revision + 1 } : {}) });
         await appendRecordHistory(ctx, { entityType: 'order', entityId: order._id, actor: job.actor, kind: 'customer_merged', reason: job.reason, before: { customerId: job.sourceId }, after: { customerId: job.destinationId } });
     }
     const movedOrders = job.movedOrders + Math.min(orders.length, MERGE_BATCH);

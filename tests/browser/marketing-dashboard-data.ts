@@ -27,7 +27,7 @@ export const PROPERTIES = [
 
 export const CAMPAIGNS: ReportData["campaigns"] = [
   { id: cid("c-fb-always"), name: "Facebook · Always on", source: "facebook", medium: "social", status: "active" },
-  { id: cid("c-fb-nov"), name: "Facebook · November escape", source: "facebook", medium: "paid_social", status: "active", budget: 60000 },
+  { id: cid("c-fb-nov"), name: "Facebook · November escape", source: "facebook", medium: "paid_social", status: "active", budget: 6000000 },
   { id: cid("c-ig"), name: "Instagram · Always on", source: "instagram", medium: "social", status: "active" },
   { id: cid("c-maps"), name: "Google Maps · Profile", source: "google", medium: "organic", status: "active" },
   { id: cid("c-line"), name: "LINE · Rich menu", source: "line", medium: "messaging", status: "active" },
@@ -168,7 +168,7 @@ function makeSales(): ReportSale[] {
   // Staff-entered: 6 admin stays (2 with the LINE code) and 3 checkout orders with the spa code.
   split(67600, 6, 5).forEach((net, i) => push({ kind: "stay", channel: "admin", bucket: "staff", collected: net, refunded: 0 }, dayIn(range, i + 5), i < 2 ? "k-l" : undefined));
   [1300, 1000, 1500].forEach((net, i) => push({ kind: "order", channel: "pos", bucket: "staff", collected: net, refunded: 0 }, dayIn(range, i + 9), "k-spa"));
-  return sales;
+  return sales.map(sale => ({ ...sale, collected: sale.collected * 100, refunded: sale.refunded * 100, discount: sale.discount * 100 }));
 }
 
 function makeSessions(): ReportData["sessions"] {
@@ -201,8 +201,8 @@ function cashEvents(sales: ReportSale[]): ReportMoneyEvent[] {
 }
 
 export const SPEND: ReportData["spend"] = [
-  { id: "sp-nov" as Id<"marketingSpend">, campaignId: cid("c-fb-nov"), amount: 45000, from: "2026-11-01", to: FIXTURE_TO, note: "Meta ads, first week" },
-  { id: "sp-spa" as Id<"marketingSpend">, campaignId: cid("c-spa"), amount: 1200, from: "2026-11-01", to: FIXTURE_TO, note: "Posters" },
+  { id: "sp-nov" as Id<"marketingSpend">, campaignId: cid("c-fb-nov"), amount: 4500000, from: "2026-11-01", to: FIXTURE_TO, note: "Meta ads, first week" },
+  { id: "sp-spa" as Id<"marketingSpend">, campaignId: cid("c-spa"), amount: 120000, from: "2026-11-01", to: FIXTURE_TO, note: "Posters" },
 ];
 
 export function dashboardReport(options: { basis?: ReportBasis; spend?: boolean; truncated?: boolean; nonThb?: number } = {}): ReportData {

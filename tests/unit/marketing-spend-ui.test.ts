@@ -21,8 +21,8 @@ const NOW = Date.parse("2026-11-08T05:00:00Z");
 const c1 = "c1" as Id<"marketingCampaigns">;
 const c2 = "c2" as Id<"marketingCampaigns">;
 const entry = (id: string, from: string, to: string, amount: number, note?: string): ReportSpend => ({ id: id as Id<"marketingSpend">, campaignId: c1, amount, from, to, note });
-const october = entry("s1", "2026-10-08", "2026-10-31", 27000, "Meta ads · October invoice");
-const november = entry("s2", "2026-11-01", "2026-11-06", 18000);
+const october = entry("s1", "2026-10-08", "2026-10-31", 2700000, "Meta ads · October invoice");
+const november = entry("s2", "2026-11-01", "2026-11-06", 1800000);
 
 let root: Root;
 const render = (node: ReactNode) => act(async () => root.render(createElement(ConfirmProvider, null, node)));
@@ -69,22 +69,22 @@ describe("SpendDialog", () => {
     expect(document.activeElement).toBe(amountInput());
 
     await click(button("Add spend"));
-    expect(alerts()).toContain("Enter the amount in whole baht.");
+    expect(alerts()).toContain("Enter a positive amount with at most two decimals.");
     expect(props.onSave).not.toHaveBeenCalled();
 
-    await type(amountInput(), "12.5");
+    await type(amountInput(), "12.555");
     await click(button("Add spend"));
-    expect(alerts()).toContain("Enter the amount in whole baht.");
+    expect(alerts()).toContain("Enter a positive amount with at most two decimals.");
 
-    await type(amountInput(), "12,000");
+    await type(amountInput(), "12,000.50");
     await type(noteInput(), "  Meta ads · 1–8 Nov ");
     await click(button("Add spend"));
-    expect(props.onSave).toHaveBeenCalledWith({ id: undefined, campaignId: c1, amount: 12000, from: "2026-11-01", to: "2026-11-08", note: "Meta ads · 1–8 Nov" });
+    expect(props.onSave).toHaveBeenCalledWith({ id: undefined, campaignId: c1, amount: 1200050, from: "2026-11-01", to: "2026-11-08", note: "Meta ads · 1–8 Nov" });
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("flags dates in the wrong order and a note that's too long", async () => {
-    const { props, node } = dialog({ defaults: { from: "2026-11-10", to: "2026-11-01", amount: 500 } });
+    const { props, node } = dialog({ defaults: { from: "2026-11-10", to: "2026-11-01", amount: 50000 } });
     await render(node);
     expect(amountInput()?.value).toBe("500");
     await type(noteInput(), "x".repeat(501));
@@ -112,10 +112,10 @@ describe("SpendDialog", () => {
 
     await type(amountInput(), "28000");
     await click(button("Save changes"));
-    expect(props.onSave).toHaveBeenCalledWith({ id: "s1", campaignId: c1, amount: 28000, from: "2026-10-08", to: "2026-10-31", note: "Meta ads · October invoice" });
+    expect(props.onSave).toHaveBeenCalledWith({ id: "s1", campaignId: c1, amount: 2800000, from: "2026-10-08", to: "2026-10-31", note: "Meta ads · October invoice" });
 
     await click(button("Delete"));
-    expect(text()).toContain(`Delete ${thb(27000)} of spend?`);
+    expect(text()).toContain(`Delete ${thb(2700000)} of spend?`);
     await click(button("Delete spend"));
     expect(props.onDelete).toHaveBeenCalledWith("s1");
     expect(props.onOpenChange).toHaveBeenLastCalledWith(false);
@@ -138,7 +138,7 @@ describe("SpendDialog", () => {
     expect(document.querySelector('[role="combobox"]')?.textContent).toContain("Spa week");
     await type(amountInput(), "1200");
     await click(button("Add spend"));
-    expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({ campaignId: c2, amount: 1200 }));
+    expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({ campaignId: c2, amount: 120000 }));
   });
 });
 
@@ -153,23 +153,23 @@ describe("CampaignSpendSection", () => {
     });
 
   it("lists entries newest first with the total against the budget", async () => {
-    await render(section([october, november], 60000));
+    await render(section([october, november], 6000000));
     const rows = [...document.querySelectorAll("li")].map((li) => li.textContent);
     expect(rows[0]).toContain("1–6 Nov 2026");
     expect(rows[0]).toContain("No note");
     expect(rows[1]).toContain("Meta ads · October invoice");
-    expect(text()).toContain(`Total of ${thb(60000)} budget`);
-    expect(text()).toContain(`${thb(45000)} (75%)`);
-    expect(document.querySelector('[role="meter"]')?.getAttribute("aria-valuenow")).toBe("45000");
+    expect(text()).toContain(`Total of ${thb(6000000)} budget`);
+    expect(text()).toContain(`${thb(4500000)} (75%)`);
+    expect(document.querySelector('[role="meter"]')?.getAttribute("aria-valuenow")).toBe("4500000");
     expect(text()).toContain("Without spend, ROAS is unavailable, never 0×.");
   });
 
   it("shows a plain total without a budget, and says when it's over", async () => {
     await render(section([october], undefined));
-    expect(text()).toContain(`Total${thb(27000)}`);
+    expect(text()).toContain(`Total${thb(2700000)}`);
     expect(document.querySelector('[role="meter"]')).toBeNull();
-    await render(section([october, november], 40000));
-    expect(text()).toContain(`${thb(5000)} over budget`);
+    await render(section([october, november], 4000000));
+    expect(text()).toContain(`${thb(500000)} over budget`);
   });
 
   it("has an empty state", async () => {
@@ -181,13 +181,13 @@ describe("CampaignSpendSection", () => {
   it("opens the dialog for this campaign and deletes after confirming", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onDelete = vi.fn().mockResolvedValue(undefined);
-    await render(section([october], 60000, { onSave, onDelete }));
+    await render(section([october], 6000000, { onSave, onDelete }));
     await click(button("Add spend"));
     expect(document.querySelector('[role="combobox"]')).toBeNull();
     await type(amountInput(), "3000");
     await click([...document.querySelectorAll('[role="dialog"] button[type="submit"]')][0]);
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ campaignId: c1, amount: 3000, from: "2026-11-01", to: "2026-11-08" }));
-    expect(text()).toContain(`Added ${thb(3000)} of spend`);
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ campaignId: c1, amount: 300000, from: "2026-11-01", to: "2026-11-08" }));
+    expect(text()).toContain(`Added ${thb(300000)} of spend`);
 
     await click(document.querySelector('button[aria-label^="Actions for spend"]'));
     await click(button("Delete"));
@@ -251,7 +251,7 @@ describe("CouponRefusalsCard", () => {
 
 describe("spend slot in the campaign sheet", () => {
   const campaign = {
-    _id: c1, _creationTime: 0, name: "November escape", source: "facebook", medium: "social", status: "active", budget: 60000,
+    _id: c1, _creationTime: 0, name: "November escape", source: "facebook", medium: "social", status: "active", budget: 6000000,
     createdAt: 0, updatedAt: 0, updatedByEmail: "a@example.com", linkCount: 0, couponCount: 0, opens: 0, countsCapped: false,
   } as CampaignRow;
 

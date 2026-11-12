@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalQuery, mutation, query, type QueryCtx } from './_generated/server';
+import { internalQuery, mutation, query, type QueryCtx } from './auth/model';
 import { appendRecordHistory } from './lib/recordHistory';
 import { settingsSnapshot } from './lib/configurationHistory';
 import {
@@ -132,7 +132,7 @@ export const restore = mutation({
 			if (typeof source[field] !== 'string') throw new Error('Incomplete settings snapshot');
 			business[field] = source[field];
 		}
-		// Whitelist and validate nested fields too; legacy/malformed snapshots cannot inject fields.
+
 		const ai = source.ai as Record<string, unknown> | undefined;
 		const email = source.email as Record<string, unknown> | undefined;
 		if (
@@ -195,24 +195,24 @@ export const restore = mutation({
 const DAY_MS = 86_400_000;
 const FAILED_SCAN_LIMIT = 500;
 const CHANNEL_TABLES = {
-	line: 'lineWebhookEvents',
-	facebook: 'facebookWebhookEvents',
-	instagram: 'instagramWebhookEvents',
-	whatsapp: 'whatsappWebhookEvents'
+	line: 'channelEvents',
+	facebook: 'channelEvents',
+	instagram: 'channelEvents',
+	whatsapp: 'channelEvents'
 } as const;
 
 export type ChannelKey = keyof typeof CHANNEL_TABLES;
 
-async function channelStats(ctx: QueryCtx, table: (typeof CHANNEL_TABLES)[ChannelKey], now: number) {
+async function channelStats(ctx: QueryCtx, channel: ChannelKey, now: number) {
 	const byStatus = (status: 'replied' | 'failed') =>
-		ctx.db.query(table).withIndex('by_status_and_created_at', (q) => q.eq('status', status));
-	const latest = await ctx.db.query(table).order('desc').first();
+		ctx.db.query('channelEvents').withIndex('by_channel_and_status_and_createdAt', (q) => q.eq('channel', channel).eq('status', status));
+	const latest = await ctx.db.query('channelEvents').withIndex('by_channel_and_createdAt', q => q.eq('channel', channel)).order('desc').first();
 	const replied = await byStatus('replied').order('desc').first();
 	const latestFailure = await byStatus('failed').order('desc').first();
 	// Bounded: counts stop at FAILED_SCAN_LIMIT (the UI shows "500+").
 	const failedWeek = await ctx.db
-		.query(table)
-		.withIndex('by_status_and_created_at', (q) => q.eq('status', 'failed').gte('createdAt', now - 7 * DAY_MS))
+		.query('channelEvents')
+		.withIndex('by_channel_and_status_and_createdAt', (q) => q.eq('channel', channel).eq('status', 'failed').gte('createdAt', now - 7 * DAY_MS))
 		.order('desc')
 		.take(FAILED_SCAN_LIMIT);
 	return {
@@ -236,7 +236,7 @@ export const channelHealth = query({
 		const channels = await Promise.all(
 			(Object.keys(CHANNEL_TABLES) as ChannelKey[]).map(async (channel) => ({
 				channel,
-				...(await channelStats(ctx, CHANNEL_TABLES[channel], now))
+				...(await channelStats(ctx, channel, now))
 			}))
 		);
 		const sources = (await ctx.db.query('icalSources').take(100)).filter((source) => !source.deletingAt);
@@ -285,14 +285,14 @@ export const setupChecklist = query({
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
 			.take(100);
 		const sources = (await ctx.db.query('icalSources').take(100)).filter((source) => !source.deletingAt);
-		const replied = async (table: (typeof CHANNEL_TABLES)[ChannelKey]) =>
+		const replied = async (channel: ChannelKey) =>
 			(await ctx.db
-				.query(table)
-				.withIndex('by_status_and_created_at', (q) => q.eq('status', 'replied'))
+				.query('channelEvents')
+				.withIndex('by_channel_and_status_and_createdAt', (q) => q.eq('channel', channel).eq('status', 'replied'))
 				.first()) !== null;
 		const channelsReplied = {} as Record<ChannelKey, boolean>;
 		for (const channel of Object.keys(CHANNEL_TABLES) as ChannelKey[]) {
-			channelsReplied[channel] = await replied(CHANNEL_TABLES[channel]);
+			channelsReplied[channel] = await replied(channel);
 		}
 		return {
 			aiKey: set('AI_API_KEY'),

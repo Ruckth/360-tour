@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { api } from 'convex/_generated/api';
 import { usePathname } from 'next/navigation';

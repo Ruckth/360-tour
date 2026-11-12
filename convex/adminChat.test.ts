@@ -2,7 +2,6 @@
 
 import { convexTest } from "convex-test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import migrationsTest from "@convex-dev/migrations/test";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { buildAdminSearchText } from "./lib/adminChatMetadata";
@@ -68,7 +67,7 @@ async function insertAdminSession(
       createdAt,
     };
 
-    return await ctx.db.insert("chatSessions", {
+    return await ctx.db.insert("conversations", {
       channel: session.channel,
       ...(session.visitorId ? { visitorId: session.visitorId } : {}),
       ...(session.visitorName ? { visitorName: session.visitorName } : {}),
@@ -228,7 +227,7 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 1_700_000_000_010,
     });
     await t.run(async (ctx) => {
-      await ctx.db.insert("chatMessages", {
+      await ctx.db.insert("messages", {
         sessionId: staleSessionId,
         role: "assistant",
         content: "This stored message means the thread is not empty.",
@@ -700,7 +699,7 @@ describe("adminChat.listSessions", () => {
       adminSortAt: 1_000,
     });
     await t.run(async (ctx) => {
-      await ctx.db.insert("chatMessages", {
+      await ctx.db.insert("messages", {
         sessionId: matchingSessionId,
         role: "user",
         content: "Is there a halal restaurant nearby?",
@@ -730,7 +729,7 @@ describe("adminChat.listSessions", () => {
 
     await t.run(async (ctx) => {
       for (let index = 0; index < 45; index++) {
-        await ctx.db.insert("chatMessages", {
+        await ctx.db.insert("messages", {
           sessionId,
           role: index % 2 === 0 ? "user" : "assistant",
           content: `Message ${index}`,
@@ -764,50 +763,6 @@ describe("adminChat.listSessions", () => {
       Array.from({ length: 15 }, (_, index) => `Message ${14 - index}`),
     );
     expect(thirdPage.isDone).toBe(true);
-  });
-
-  it("backfills latest-message metadata from legacy embedded messages", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    const t = convexTest(schema, modules);
-    const admin = adminTest(t);
-    const sessionId = await t.run(async (ctx) => {
-      return await ctx.db.insert("chatSessions", {
-        channel: "web",
-        visitorName: "Legacy transcript",
-        visitorId: "legacy-transcript",
-        messageCount: 0,
-        latestMessageAt: 1_000,
-        adminSortAt: 1_000,
-        adminSearchText: "legacy transcript",
-        messages: [
-          { role: "user", content: "Old hello", timestamp: 2_000 },
-          { role: "assistant", content: "Old reply", timestamp: 3_000 },
-        ],
-        createdAt: 900,
-      });
-    });
-
-    migrationsTest.register(t);
-    vi.useFakeTimers();
-    try {
-      await t.mutation(internal.migrations.run, { fn: "migrations:backfillChatSessionAdminMetadata" });
-      await t.finishAllScheduledFunctions(vi.runAllTimers);
-    } finally {
-      vi.useRealTimers();
-    }
-
-    const session = await t.query(internal.chat.getSessionInternal, { sessionId });
-    const filtered = await admin.query(api.adminChat.listSessions, {
-      status: "all",
-      messageStartAt: 2_500,
-      messageEndAt: 3_500,
-      paginationOpts: { numItems: 10, cursor: null },
-    });
-
-    expect(session?.messageCount).toBe(2);
-    expect(session?.latestMessageAt).toBe(3_000);
-    expect(session?.adminSortAt).toBe(3_000);
-    expect(filtered.sessions.map((row) => row._id)).toContain(sessionId);
   });
 });
 
@@ -871,7 +826,7 @@ describe("admin chat metadata writes", () => {
       messageText: "Can I check in late?",
       eventTimestamp: 1_700_000_000_000,
     });
-    const sessionId = claim.sessionId as Id<"chatSessions">;
+    const sessionId = claim.sessionId as Id<"conversations">;
 
     await t.mutation(api.line.recordInboundEvent, {
       serverSecret: TEST_SERVER_SECRET,
@@ -913,7 +868,7 @@ describe("admin chat metadata writes", () => {
       messageText: "Can I check in late?",
       eventTimestamp: 1_700_000_000_000,
     });
-    const sessionId = claim.sessionId as Id<"chatSessions">;
+    const sessionId = claim.sessionId as Id<"conversations">;
 
     await t.mutation(api.whatsapp.recordInboundEvent, {
       serverSecret: TEST_SERVER_SECRET,
@@ -956,7 +911,7 @@ describe("admin chat unanswered warning", () => {
     });
     const insertMessage = (role: "user" | "assistant", timestamp: number) =>
       t.run(async (ctx) =>
-        ctx.db.insert("chatMessages", { sessionId, role, content: `${role} ${timestamp}`, timestamp }),
+        ctx.db.insert("messages", { sessionId, role, content: `${role} ${timestamp}`, timestamp }),
       );
     const needsReply = async () => {
       const result = await admin.query(api.adminChat.listSessions, {
@@ -993,7 +948,7 @@ describe("admin chat unanswered warning", () => {
     const t = convexTest(schema, modules);
     const sessionId = await insertAdminSession(t);
     const messageId = await t.run(async (ctx) =>
-      ctx.db.insert("chatMessages", { sessionId, role: "user", content: "Hi", timestamp: 1 }),
+      ctx.db.insert("messages", { sessionId, role: "user", content: "Hi", timestamp: 1 }),
     );
 
     await expect(
@@ -1031,7 +986,7 @@ describe("channel profile names", () => {
 
     const names = await t.run(async (ctx) =>
       Promise.all(
-        claims.map(async (claim) => (await ctx.db.get(claim.sessionId as Id<"chatSessions">))?.visitorName),
+        claims.map(async (claim) => (await ctx.db.get(claim.sessionId as Id<"conversations">))?.visitorName),
       ),
     );
     expect(names).toEqual(["Somchai", "Maya Chen", "ana.travels"]);
@@ -1041,12 +996,12 @@ describe("channel profile names", () => {
 describe("adminChat inbox lifecycle", () => {
   async function insertMessage(
     t: ReturnType<typeof convexTest>,
-    sessionId: Id<"chatSessions">,
+    sessionId: Id<"conversations">,
     role: "user" | "assistant",
     timestamp: number,
   ) {
     return await t.run((ctx) =>
-      ctx.db.insert("chatMessages", {
+      ctx.db.insert("messages", {
         sessionId,
         role,
         content: role === "user" ? "Guest question" : "Reply",
@@ -1177,103 +1132,6 @@ describe("adminChat inbox lifecycle", () => {
       closesAt: guestAt + 24 * 60 * 60 * 1000,
     });
   });
-
-  it("deletes only archived chats and cascades their rows in batches", async () => {
-    vi.useFakeTimers();
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    try {
-      const t = convexTest(schema, modules);
-      const admin = adminTest(t);
-      const sessionId = await insertAdminSession(t);
-      const keptSessionId = await insertAdminSession(t);
-      await t.run(async (ctx) => {
-        const questionId = await ctx.db.insert("curatedChatQuestions", {
-          question: "Pool?",
-          normalizedQuestion: "pool",
-          topic: "amenities",
-          score: 1,
-          status: "active",
-          createdAt: 1,
-          updatedAt: 1,
-          createdByAdminEmail: adminEmail,
-          updatedByAdminEmail: adminEmail,
-        });
-        for (let index = 0; index < 250; index++) {
-          await ctx.db.insert("chatMessages", { sessionId, role: "user", content: `m${index}`, timestamp: index });
-        }
-        const assistantMessageId = await ctx.db.insert("chatMessages", {
-          sessionId,
-          role: "assistant",
-          content: "answer",
-          timestamp: 999,
-        });
-        await ctx.db.insert("chatMessages", { sessionId: keptSessionId, role: "user", content: "keep", timestamp: 1 });
-        await ctx.db.insert("adminReplyAttempts", {
-          requestId: "req",
-          sessionId,
-          adminEmail,
-          content: "hi",
-          status: "sent",
-          createdAt: 1,
-        });
-        await ctx.db.insert("chatBrowserHandoffs", { token: "tok", sessionId, expiresAt: 2, createdAt: 1 });
-        await ctx.db.insert("chatQuestionInteractions", { sessionId, questionId, createdAt: 1 });
-        await ctx.db.insert("chatStaticSuggestionInteractions", {
-          sessionId,
-          suggestionKey: "pool",
-          createdAt: 1,
-          updatedAt: 1,
-        });
-        await ctx.db.insert("chatSuggestedQuestions", {
-          sessionId,
-          assistantMessageId,
-          question: "Pool?",
-          normalizedQuestion: "pool",
-          locale: "en",
-          topic: "amenities",
-          score: 1,
-          status: "active",
-          createdAt: 1,
-        });
-      });
-      const unknownId = await t.run((ctx) => ctx.db.insert("chatUnknownQuestions", {
-        sessionId, userId: "visitor-secret", userQuestion: "Is there a pool?",
-        normalizedQuestion: "is there a pool", status: "new", adminNotified: false,
-        createdAt: 1, updatedAt: 1,
-      }));
-
-      await expect(admin.mutation(api.adminChat.deleteArchivedSession, { sessionId })).rejects.toThrow(
-        "Archive the chat before deleting it",
-      );
-      await admin.mutation(api.adminChat.setSessionStatus, { sessionId, status: "archived" });
-      await admin.mutation(api.adminChat.deleteArchivedSession, { sessionId });
-      expect(await t.run((ctx) => ctx.db.get(sessionId))).toBeNull();
-      await t.finishAllScheduledFunctions(vi.runAllTimers);
-      expect(await t.run((ctx) => ctx.db.get(unknownId))).toMatchObject({
-        userQuestion: "Is there a pool?", status: "new",
-      });
-      expect((await t.run((ctx) => ctx.db.get(unknownId)))?.sessionId).toBeUndefined();
-      expect((await t.run((ctx) => ctx.db.get(unknownId)))?.userId).toBeUndefined();
-
-      const remaining = await t.run(async (ctx) => ({
-        messages: await ctx.db.query("chatMessages").collect(),
-        attempts: await ctx.db.query("adminReplyAttempts").collect(),
-        handoffs: await ctx.db.query("chatBrowserHandoffs").collect(),
-        questionInteractions: await ctx.db.query("chatQuestionInteractions").collect(),
-        staticInteractions: await ctx.db.query("chatStaticSuggestionInteractions").collect(),
-        suggested: await ctx.db.query("chatSuggestedQuestions").collect(),
-      }));
-      expect(remaining.messages.map((message) => message.content)).toEqual(["keep"]);
-      expect(remaining.attempts).toHaveLength(0);
-      expect(remaining.handoffs).toHaveLength(0);
-      expect(remaining.questionInteractions).toHaveLength(0);
-      expect(remaining.staticInteractions).toHaveLength(0);
-      expect(remaining.suggested).toHaveLength(0);
-      expect(await admin.query(api.adminChat.getSessionDetail, { sessionId })).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 });
 
 describe("adminChat.listSessions with sparse filters", () => {
@@ -1288,7 +1146,7 @@ describe("adminChat.listSessions with sparse filters", () => {
         latestMessageAt: 1_700_000_100_000 + index,
       });
     }
-    const line: Id<"chatSessions">[] = [];
+    const line: Id<"conversations">[] = [];
     for (let index = 0; index < 3; index++) {
       line.push(
         await insertAdminSession(t, {
@@ -1358,7 +1216,7 @@ describe("chat.touchSession heartbeat", () => {
         name: "Pool Villa",
         tagline: "",
         description: "",
-        pricePerNight: 100,
+        pricePerNight: 10000,
         currency: "THB",
         maxGuests: 2,
         bedrooms: 1,
@@ -1397,7 +1255,7 @@ it("returns the same Waiting eligibility in a deep-linked detail as in the queue
   const admin = adminTest(t);
   const sessionId = await insertAdminSession(t, { visitorName: "Older waiting guest", messageCount: 1 });
   const messageId = await t.run(async (ctx) =>
-    ctx.db.insert("chatMessages", {
+    ctx.db.insert("messages", {
       sessionId,
       role: "user",
       content: "Is late check-in available?",
@@ -1413,10 +1271,10 @@ it("returns the same Waiting eligibility in a deep-linked detail as in the queue
 
 describe("adminChat read optimizations", () => {
   const eventTables = {
-    line: "lineWebhookEvents",
-    facebook: "facebookWebhookEvents",
-    whatsapp: "whatsappWebhookEvents",
-    instagram: "instagramWebhookEvents",
+    line: "channelEvents",
+    facebook: "channelEvents",
+    whatsapp: "channelEvents",
+    instagram: "channelEvents",
   } as const;
   const eventKeys = {
     line: "lineEvents",
@@ -1429,26 +1287,26 @@ describe("adminChat read optimizations", () => {
 
   async function insertMessage(
     t: ReturnType<typeof convexTest>,
-    sessionId: Id<"chatSessions">,
+    sessionId: Id<"conversations">,
     role: "user" | "assistant",
     timestamp: number,
   ) {
     return await t.run((ctx) =>
-      ctx.db.insert("chatMessages", { sessionId, role, content: `${role} ${timestamp}`, timestamp }),
+      ctx.db.insert("messages", { sessionId, role, content: `${role} ${timestamp}`, timestamp }),
     );
   }
 
   /** Inserts `count` events into every channel's event table; returns each table's newest id. */
   async function insertEventsInEveryTable(
     t: ReturnType<typeof convexTest>,
-    sessionId: Id<"chatSessions">,
+    sessionId: Id<"conversations">,
     count: number,
   ) {
     return await t.run(async (ctx) => {
       const newest = {} as Record<EventChannel, string>;
       for (const channel of eventChannels) {
         for (let index = 0; index < count; index++) {
-          newest[channel] = await ctx.db.insert(eventTables[channel], {
+          newest[channel] = await ctx.db.insert(eventTables[channel], { channel,
             eventKey: `${channel}-${sessionId}-${index}`,
             sessionId,
             eventType: "message",
@@ -1514,7 +1372,7 @@ describe("adminChat read optimizations", () => {
     // 105 chats, newest first; the Waiting matches are spread over the first 100-row source page
     // so page 1 overflows, and one more match sits in the second source page.
     const waitingIndexes = new Set([0, 3, 4, 9, 17, 18, 30, 44, 61, 62, 77, 90, 99, 102]);
-    const ids: Id<"chatSessions">[] = [];
+    const ids: Id<"conversations">[] = [];
     for (let index = 0; index < 105; index++) {
       const latestMessageAt = base + 10_000 - index * 10;
       const sessionId = await insertAdminSession(t, {

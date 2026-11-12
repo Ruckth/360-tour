@@ -1,3 +1,4 @@
+import { percentageOf } from '../shared/money';
 // Shared offer engine (pure, no I/O). Used by the guest quote, admin "test a quote" and, later, POS.
 // CONTRACT — implementation owned by the backend work package. Keep these exported types stable.
 
@@ -81,14 +82,15 @@ export function normalizeCouponCode(raw: string): string {
  * discount × line ≤ 8.1e15 < 2^53 and the integer allocation below is exact.
  * (A year in the largest villa is about ฿4.4M.)
  */
-export const MAX_QUOTE_SUBTOTAL = 90_000_000;
+export const MAX_QUOTE_SUBTOTAL = 9_000_000_000;
 
 /** Stable largest-remainder allocation: equal remainders follow input line order. */
 function allocate(eligible: QuoteLine[], discount: number): Map<QuoteLine, number> {
 	const total = eligible.reduce((sum, line) => sum + line.amount, 0);
 	const shares = eligible.map((line, index) => {
-		const remainder = total > 0 ? (discount * line.amount) % total : 0;
-		return { line, index, remainder, value: total > 0 ? (discount * line.amount - remainder) / total : 0 };
+		const product = BigInt(discount) * BigInt(line.amount);
+  const remainder = total > 0 ? Number(product % BigInt(total)) : 0;
+  return { line, index, remainder, value: total > 0 ? Number(product / BigInt(total)) : 0 };
 	});
 	let remaining = discount - shares.reduce((sum, share) => sum + share.value, 0);
 	for (const share of [...shares].sort((a, b) => b.remainder - a.remainder || a.index - b.index)) {
@@ -119,7 +121,7 @@ function couponProblem(coupon: CouponRules, accommodation: Extract<QuoteLine, { 
 
 export function evaluateOffer(input: OfferInput): OfferResult {
 	const { lines, coupon, today } = input;
-	// Quotes use whole baht. Reject invalid callers before largest-remainder rounding.
+	// Quotes use integer satang. Reject invalid callers before largest-remainder rounding.
 	if (lines.some(line => !Number.isSafeInteger(line.amount) || line.amount < 0)) {
 		throw new Error('Quote line amounts must be non-negative safe integers');
 	}
@@ -135,12 +137,11 @@ export function evaluateOffer(input: OfferInput): OfferResult {
 
 	const accommodationSubtotal = accommodation.reduce((sum, line) => sum + line.amount, 0);
 	const directDiscount = Math.min(accommodationSubtotal, Math.max(0,
-		Math.round(accommodationSubtotal * Math.min(100, input.directDiscountPercent) / 100)));
+		percentageOf(accommodationSubtotal, input.directDiscountPercent)));
 	let couponDiscount = 0;
 	let capped = false;
 	if (coupon && !problem) {
-		couponDiscount = Math.min(eligibleSubtotal, Math.round(coupon.benefit.kind === 'percent'
-			? eligibleSubtotal * coupon.benefit.percent / 100 : coupon.benefit.amount));
+		couponDiscount = Math.min(eligibleSubtotal, coupon.benefit.kind === 'percent' ? percentageOf(eligibleSubtotal, coupon.benefit.percent) : coupon.benefit.amount);
 		const cap = Math.min(coupon.maxSaving ?? Infinity,
 			coupon.discountBudget === undefined ? Infinity : coupon.discountBudget - coupon.discountGranted - (coupon.heldDiscount ?? 0));
 		if (couponDiscount > cap) {

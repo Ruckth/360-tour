@@ -35,7 +35,7 @@ declare global {
 
 const modules = import.meta.glob("./**/*.ts");
 
-const guestTokens = new Map<Id<"chatSessions">, string>();
+const guestTokens = new Map<Id<"conversations">, string>();
 
 async function newWebSession(t: ReturnType<typeof convexTest>, currentPath = "/") {
   const guest = await t.mutation(api.chat.createSession, { channel: "web", currentPath });
@@ -44,9 +44,9 @@ async function newWebSession(t: ReturnType<typeof convexTest>, currentPath = "/"
 }
 
 /** Mark the session as having a message so its admin sort is driven by latestMessageAt, not lastSeenAt. */
-async function giveMessage(t: ReturnType<typeof convexTest>, sessionId: Id<"chatSessions">, at: number) {
+async function giveMessage(t: ReturnType<typeof convexTest>, sessionId: Id<"conversations">, at: number) {
   await t.run(async (ctx) => {
-    await ctx.db.insert("chatMessages", { sessionId, role: "user", content: "hi", timestamp: at });
+    await ctx.db.insert("messages", { sessionId, role: "user", content: "hi", timestamp: at });
     await ctx.db.patch(sessionId, { messageCount: 1, latestMessageAt: at, adminSortAt: at });
   });
 }
@@ -54,7 +54,7 @@ async function giveMessage(t: ReturnType<typeof convexTest>, sessionId: Id<"chat
 /** Did `touchSession` write presence? Returns the new lastSeenAt, or null when the write was skipped. */
 async function heartbeatWrote(
   t: ReturnType<typeof convexTest>,
-  sessionId: Id<"chatSessions">,
+  sessionId: Id<"conversations">,
   args: Record<string, unknown>,
 ) {
   const before = await t.run((ctx) => ctx.db.get(sessionId));
@@ -129,7 +129,7 @@ describe("chat.touchSession presence writes", () => {
         name: "Pool Villa",
         tagline: "",
         description: "",
-        pricePerNight: 100,
+        pricePerNight: 10000,
         currency: "THB",
         maxGuests: 2,
         bedrooms: 1,

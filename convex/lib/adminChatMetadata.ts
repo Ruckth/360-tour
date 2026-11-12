@@ -2,7 +2,7 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 
 type SearchableSession = {
-	_id?: Id<'chatSessions'>;
+	_id?: Id<'conversations'>;
 	propertySlug?: string;
 	channel?: 'web' | 'whatsapp' | 'line' | 'facebook' | 'instagram';
 	visitorId?: string;
@@ -100,7 +100,7 @@ export function buildAdminChatMetadataPatch(
 
 export async function patchSessionAfterMessages(
 	ctx: MutationCtx,
-	sessionId: Id<'chatSessions'>,
+	sessionId: Id<'conversations'>,
 	options: {
 		addedMessages: number;
 		latestMessageAt: number;

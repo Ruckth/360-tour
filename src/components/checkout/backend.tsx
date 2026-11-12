@@ -15,10 +15,10 @@ import { createContext, useContext, useMemo, useCallback, type ReactNode } from 
 type Pos = typeof api.pos;
 export type RestoreReview = FunctionReturnType<Pos["restoreCheck"]>;
 export type AppointmentFee = FunctionReturnType<Pos["appointmentFees"]>[number];
-export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appointmentRefunds" | "billRefunds";
-/** A POS line refund (orderHistoryPages.billRefunds, pos.refundLine). Its amount is integer satang. */
-export type LineRefund = FunctionReturnType<typeof api.orderHistoryPages.billRefunds>["page"][number];
-export type FinancialRows = { corrections: import("convex/_generated/dataModel").Doc<"billCorrections">; audit: import("convex/_generated/dataModel").Doc<"billAudit">; bookingRefunds: Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "_id" | "billId" | "bookingId" | "amount" | "currency" | "method" | "reason" | "effectiveAt" | "recordedAt" | "recordedBy"> & Partial<Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "netBefore" | "netAfter" | "providerRefundId">>; appointmentRefunds: import("convex/_generated/dataModel").Doc<"appointmentRefunds">; billRefunds: LineRefund };
+export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appointmentRefunds" | "orderRefunds";
+/** A POS line refund (orderHistoryPages.orderRefunds, pos.refundLine). Its amount is integer satang. */
+export type LineRefund = FunctionReturnType<typeof api.orderHistoryPages.orderRefunds>["page"][number];
+export type FinancialRows = { corrections: import("convex/_generated/dataModel").Doc<"orderCorrections">; audit: import("convex/_generated/dataModel").Doc<"orderAudit">; bookingRefunds: Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "_id" | "orderId" | "bookingId" | "amount" | "currency" | "method" | "reason" | "effectiveAt" | "recordedAt" | "recordedBy"> & Partial<Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "netBefore" | "netAfter" | "providerRefundId">>; appointmentRefunds: import("convex/_generated/dataModel").Doc<"appointmentRefunds">; orderRefunds: LineRefund };
 type Customers = typeof api.customers;
 export type Catalog = FunctionReturnType<Pos["catalog"]>;
 export type OrderView = NonNullable<FunctionReturnType<Pos["getOrder"]>>;
@@ -38,7 +38,7 @@ export type CustomerDetail = NonNullable<FunctionReturnType<Customers["getCustom
 export type CustomerHistoryRow = FunctionReturnType<Customers["customerHistory"]>["page"][number];
 export type CustomerOrderRow = FunctionReturnType<Customers["listCustomerOrders"]>["page"][number];
 export type CustomerPage<T> = { results: T[]; status: OrdersPage["status"]; loadMore: (numItems: number) => void };
-export type OrderId = Id<"bills">;
+export type OrderId = Id<"orders">;
 export type CustomerId = Id<"customers">;
 type Approvals = typeof api.staffApprovals;
 /** A manager-approval request, as staffApprovals.forOrder and staffApprovals.pending return it. */
@@ -72,13 +72,13 @@ export type CheckoutActions = { [K in PosAction]: (args: FunctionArgs<Pos[K]>) =
 
 export type CheckoutBackend = {
   useRestoreCheck(orderId: OrderId): RestoreReview | undefined;
-  useAppointmentFees(appointmentId: Id<"serviceAppointments">): AppointmentFee[] | undefined;
+  useAppointmentFees(appointmentId: Id<"appointments">): AppointmentFee[] | undefined;
   useCorrectionHistory(orderId: OrderId): CustomerPage<FinancialRows["corrections"]>;
   useAuditHistory(orderId: OrderId): CustomerPage<FinancialRows["audit"]>;
   useBookingRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["bookingRefunds"]>;
   useAppointmentRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["appointmentRefunds"]>;
-  /** POS line refunds on this receipt, newest first (orderHistoryPages.billRefunds). */
-  useBillRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["billRefunds"]>;
+  /** POS line refunds on this receipt, newest first (orderHistoryPages.orderRefunds). */
+  useOrderRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["orderRefunds"]>;
   useCatalog(): Catalog | undefined;
   /** undefined while loading, null when the order doesn't exist. */
   useOrder(orderId: OrderId | null): OrderView | null | undefined;
@@ -94,7 +94,7 @@ export type CheckoutBackend = {
   /** Whether this exact lookup reached its results without a capped contact/legacy scan. */
   useAttachLookupStatus(args: { orderId: OrderId | null; query: string }): AttachLookupStatus | undefined;
   /** Appointments or stays a paid row can be linked to, each with why it can't (pos.linkCandidates). undefined while loading. */
-  useLinkCandidates(args: { orderId: OrderId; lineId: Id<"billLines">; query: string }): LinkCandidate[] | null | undefined;
+  useLinkCandidates(args: { orderId: OrderId; lineId: Id<"orderLines">; query: string }): LinkCandidate[] | null | undefined;
   useBusinessName(): string | undefined;
   /** Approval requests on this order, newest first (staffApprovals.forOrder). undefined while loading or without an order. */
   useOrderApprovals(orderId: OrderId | null): ApprovalRequest[] | undefined;

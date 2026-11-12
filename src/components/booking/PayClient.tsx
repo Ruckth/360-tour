@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreditCard, ShieldCheck } from "lucide-react";
@@ -130,7 +132,7 @@ export function PayClient({
           <div className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
             {t("bookingTotalStatus", {
               currency: booking.currency,
-              total: booking.total.toLocaleString(),
+              total: satangToBaht(booking.total).toLocaleString(),
               status: booking.paymentStatus,
             })}
           </div>
@@ -138,7 +140,7 @@ export function PayClient({
         {booking && quotedTotal !== null && booking.total !== quotedTotal ? (
           <Alert variant="warning" className="mt-3">
             <AlertDescription>
-              {couponT("totalChanged", { total: `${currencyPrefix(booking.currency)}${booking.total.toLocaleString()}` })}
+              {couponT("totalChanged", { total: `${currencyPrefix(booking.currency)}${satangToBaht(booking.total).toLocaleString()}` })}
             </AlertDescription>
           </Alert>
         ) : null}

@@ -36,14 +36,14 @@ const show = (backend: CheckoutBackend, orderId: OrderId, paying = false, onPaid
 const receipt = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
 async function sale(link = false, backend = createFixtureBackend()) {
   const actions = backend.useActions();
-  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Tea", price: 100 } }));
+  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Tea", price: 10000 } }));
   if (link) await run(actions.linkCustomer({ orderId, customerId }));
   await show(backend, orderId);
   return { backend, actions, orderId };
 }
 async function paidSale(link = false) {
   const result = await sale(link);
-  await run(result.actions.settleOrder({ orderId: result.orderId, idempotencyKey: "paid-original-01", expectedDue: 100, expectedRevision: current.order.revision, expectedCustomerRevision: link ? 0 : undefined, effectiveAt: Date.parse("2026-10-01T03:00:34.567Z"), tenders: [{ method: "card", amount: 100 }] }));
+  await run(result.actions.settleOrder({ orderId: result.orderId, idempotencyKey: "paid-original-01", expectedDue: 10000, expectedRevision: current.order.revision, expectedCustomerRevision: link ? 0 : undefined, effectiveAt: Date.parse("2026-10-01T03:00:34.567Z"), tenders: [{ method: "card", amount: 10000 }] }));
   return result;
 }
 const expandHistory = async (title: string) => act(async () => {
@@ -89,7 +89,7 @@ it("invalidates an unseen customer edit while payment is open without substituti
   expect(document.querySelector('[role="alert"]')?.textContent).toContain("changed while payment was open");
   expect(button("Review updated order")).toBeTruthy();
   expect(settle).not.toHaveBeenCalled();
-  const stale = actions.settleOrder({ orderId, idempotencyKey: "stale-fixture-01", expectedDue: 100, expectedRevision: current.order.revision, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 100 }] });
+  const stale = actions.settleOrder({ orderId, idempotencyKey: "stale-fixture-01", expectedDue: 10000, expectedRevision: current.order.revision, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 10000 }] });
   const check = expect(stale).rejects.toThrow("customer changed"); await tick(); await check;
   expect(current.order.status).toBe("draft");
 });
@@ -107,14 +107,14 @@ it("amends a wrong tender through the real control while preserving the original
   await input("#payment-correction-reason", "Recorded card, actually bank transfer");
   await click("Save recording correction"); await tick();
   expect(amendment).toHaveBeenCalledOnce();
-  expect(amendment.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, tenders: [{ method: "transfer", amount: 100 }] });
+  expect(amendment.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, tenders: [{ method: "transfer", amount: 10000 }] });
   expect(document.querySelector('[aria-label="Receipt"]')!.textContent).toBe(originalPaper);
   expect(document.querySelector('[aria-label="Payment recording"]')!.textContent).toContain("Bank transfer · ฿100 · amended");
   await show(backend, orderId);
   expect(current.payments).toEqual(originalPayments);
   expect(current.paymentRecord.effectiveAt).toBe(Date.parse("2026-10-01T03:00:34.567Z"));
   expect(receiptText(current, "Retreat")).toBe(originalText);
-  expect(current.corrections[0]).toMatchObject({ tendersBefore: [{ method: "card", amount: 100 }], tendersAfter: [{ method: "transfer", amount: 100 }], actor: "preview@example.com" });
+  expect(current.corrections[0]).toMatchObject({ tendersBefore: [{ method: "card", amount: 10000 }], tendersAfter: [{ method: "transfer", amount: 10000 }], actor: "preview@example.com" });
 });
 
 it("retains correction inputs and key on response loss, and preserves original customer when correcting the payer", async () => {
@@ -155,8 +155,8 @@ it("requires the explicit no-money assertion and reason before voiding a mistake
 
 it("shows imported booking refunds with amount, actor and effective/recorded dates without presenting a send action", async () => {
   const orderId = "fxbill000002" as OrderId;
-  const backend = createFixtureBackend({ recordedRefunds: [{ sourceType: "booking", billId: orderId, _id: "refund-1" as Id<"bookingRefunds">, bookingId: "fxbkg000001" as Id<"bookings">, amount: 50, currency: "THB", method: "transfer", reason: "Returned overpayment", effectiveAt: Date.parse("2026-10-30T00:00:00Z"), recordedAt: Date.now(), recordedBy: "cashier@example.com" }] });
-  await run(backend.useActions().settleOrder({ orderId, idempotencyKey: "refund-view-01", expectedDue: 780, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 780 }] }));
+  const backend = createFixtureBackend({ recordedRefunds: [{ sourceType: "booking", orderId: orderId, _id: "refund-1" as Id<"bookingRefunds">, bookingId: "fxbkg000001" as Id<"bookings">, amount: 5000, currency: "THB", method: "transfer", reason: "Returned overpayment", effectiveAt: Date.parse("2026-10-30T00:00:00Z"), recordedAt: Date.now(), recordedBy: "cashier@example.com" }] });
+  await run(backend.useActions().settleOrder({ orderId, idempotencyKey: "refund-view-01", expectedDue: 78000, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 78000 }] }));
   await receipt(backend, orderId);
   const text = document.querySelector('[aria-label="Recorded refunds"]')!.textContent;
   expect(text).toContain("Recorded · ฿50 · transfer"); expect(text).toContain("cashier@example.com"); expect(text).toContain("Effective"); expect(text).toContain("Recorded");
@@ -165,7 +165,7 @@ it("shows imported booking refunds with amount, actor and effective/recorded dat
 
 it("shows paginated readable item history, cleared contents, actor and dates from actual fixture edits", async () => {
   const { backend, actions, orderId } = await sale();
-  for (let i = 0; i < 25; i++) await run(actions.addItem({ orderId, item: { kind: "extra", name: `Item ${i}`, price: 10 } }));
+  for (let i = 0; i < 25; i++) await run(actions.addItem({ orderId, item: { kind: "extra", name: `Item ${i}`, price: 1000 } }));
   await run(actions.clearOrder({ orderId }));
   await act(async () => root.render(provide(backend, createElement(OrderHistory, { orderId }))));
   await expandHistory("Order history");
@@ -228,10 +228,10 @@ it("reopens only the fixture order’s proven linked payment on a mistaken entry
   const backend = createFixtureBackend(); const actions = backend.useActions();
   const { orderId } = await run(actions.openOrderFor({ bookingId: "fxbkg000001" as NonNullable<Parameters<typeof actions.openOrderFor>[0]["bookingId"]> }));
   await show(backend, orderId);
-  expect(current.totals.due).toBe(26000);
-  await run(actions.settleOrder({ orderId, idempotencyKey: "stay-paid-fixture", expectedDue: 26000, expectedRevision: current.order.revision, tenders: [{ method: "card", amount: 26000 }] }));
+  expect(current.totals.due).toBe(2600000);
+  await run(actions.settleOrder({ orderId, idempotencyKey: "stay-paid-fixture", expectedDue: 2600000, expectedRevision: current.order.revision, tenders: [{ method: "card", amount: 2600000 }] }));
   await run(actions.voidUnreceivedOrder({ orderId, idempotencyKey: "stay-void-fixture", expectedCorrectionRevision: 0, reason: "Mistaken entry; no money received" }));
   const replacement = await run(actions.openOrderFor({ bookingId: "fxbkg000001" as NonNullable<Parameters<typeof actions.openOrderFor>[0]["bookingId"]> }));
   await show(backend, replacement.orderId);
-  expect(current.totals).toMatchObject({ deposit: 10000, due: 26000, total: 36000 });
+  expect(current.totals).toMatchObject({ deposit: 1000000, due: 2600000, total: 3600000 });
 });

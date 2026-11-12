@@ -24,7 +24,7 @@ export function TurnaroundDialog({
   initialMin,
   onClose,
 }: {
-  appointment: Doc<"serviceAppointments">;
+  appointment: Doc<"appointments">;
   serviceDefaultMin?: number;
   /** From resizing the turnaround on the calendar. */
   initialMin?: number;

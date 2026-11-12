@@ -27,13 +27,13 @@ export const chatCouponValidator = v.object({
 export type ChatCouponSnapshot = Infer<typeof chatCouponValidator>;
 
 /** Latest explicit guest choice, with withdrawals and replacements applied in transcript order. */
-export async function activeGuestCoupon(ctx: QueryCtx | MutationCtx, sessionId: Id<'chatSessions'>) {
-  const messages = await ctx.db.query('chatMessages').withIndex('by_session', q => q.eq('sessionId', sessionId)).order('desc').take(100);
+export async function activeGuestCoupon(ctx: QueryCtx | MutationCtx, sessionId: Id<'conversations'>) {
+  const messages = await ctx.db.query('messages').withIndex('by_session', q => q.eq('sessionId', sessionId)).order('desc').take(100);
   return guestCouponFromHistory(messages.reverse().filter(message => message.role === 'user').map(message => message.content));
 }
 
 /** A model may repeat the guest's current code, never choose one from the catalog or stale history. */
-export async function assertGuestSuppliedCoupon(ctx: QueryCtx | MutationCtx, sessionId: Id<'chatSessions'>, code: string) {
+export async function assertGuestSuppliedCoupon(ctx: QueryCtx | MutationCtx, sessionId: Id<'conversations'>, code: string) {
   if (!/^[A-Z0-9-]{3,32}$/.test(code)) throw new Error('Ask the guest for a valid coupon code.');
   if (await activeGuestCoupon(ctx, sessionId) !== code) {
     throw new Error('Only a coupon code supplied by this guest can be quoted. Ask the guest for their code.');

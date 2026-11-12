@@ -1,3 +1,4 @@
+import { calculateBookingQuote } from "@/lib/booking/quote";
 import { describe, expect, it } from "vitest";
 import { properties } from "@/lib/data/properties";
 import { getPublicMessages } from "@/lib/i18n/messages-loader";
@@ -18,7 +19,7 @@ function dbVilla(overrides: Partial<DbVillaList["villas"][number]> = {}): DbVill
     name: "Tideglass Pool Residence",
     tagline: seededPool.tagline,
     description: seededPool.description,
-    pricePerNight: 9000,
+    pricePerNight: 900000,
     currency: "THB",
     maxGuests: 4,
     bedrooms: 2,
@@ -27,7 +28,7 @@ function dbVilla(overrides: Partial<DbVillaList["villas"][number]> = {}): DbVill
     images: ["/a.webp"],
     amenities: ["Private Pool"],
     tourRoomIds: [],
-    directDiscountPercent: 10,
+    directDiscountPercent: 1000,
     translations: [],
     contentEditedAt: null,
     reviewCount: 0,
@@ -91,7 +92,7 @@ describe("villa catalog fallback", () => {
       { hasProperties: true, villas: [dbVilla({ reviewCount: 2, averageRating: 4.5 }), dbVilla({ slug: "new", name: "New" })] },
     );
     expect(catalog.source).toBe("db");
-    expect(catalog.villas[0]).toMatchObject({ id: "pool-villa", pricePerNight: 9000, directDiscountPercent: 10, rating: { average: 4.5, count: 2 } });
+    expect(catalog.villas[0]).toMatchObject({ id: "pool-villa", pricePerNight: 900000, directDiscountPercent: 1000, rating: { average: 4.5, count: 2 } });
     expect(catalog.villas[1]).toMatchObject({ id: "new", rating: null });
   });
 
@@ -99,4 +100,9 @@ describe("villa catalog fallback", () => {
     expect(summarizeRatings([])).toBeNull();
     expect(summarizeRatings([{ rating: 5 }, { rating: 4 }, { rating: 4 }])).toEqual({ average: 4.33, count: 3 });
   });
+});
+
+it('quotes the static demo catalog at the same 15 percent rate as the seeded resort', () => {
+  const villa = catalogEn(undefined).villas.find(villa => villa.slug === 'pool-villa')!;
+  expect(calculateBookingQuote({ pricePerNight: villa.pricePerNight, nights: 2, discountPercent: villa.directDiscountPercent, currency: villa.currency })).toMatchObject({ subtotal: 1700000, discountAmount: 255000, directTotal: 1445000 });
 });

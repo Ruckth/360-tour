@@ -1,5 +1,7 @@
 "use client";
 
+import { bahtToSatang, satangToBaht } from 'convex/shared/money';
+
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
@@ -617,7 +619,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
       category: text("category"),
       durationMin: Number(text("durationMin")),
       bufferMin: Number(text("bufferMin")),
-      price: Number(text("price")),
+      price: bahtToSatang(Number(text("price"))),
       currency: service?.currency ?? "THB",
       staffIds: [...staffIds],
     };
@@ -708,7 +710,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
               <Input id="sv-buffer" name="bufferMin" type="number" min={0} step={5} defaultValue={service?.bufferMin ?? 15} required />
             </Field>
             <Field label={`Price (${service?.currency ?? "THB"})`} htmlFor="sv-price">
-              <Input id="sv-price" name="price" type="number" min={0} defaultValue={service?.price} required />
+              <Input id="sv-price" name="price" type="number" step="0.01" min={0} defaultValue={service ? satangToBaht(service.price) : undefined} required />
             </Field>
           </div>
           <fieldset>

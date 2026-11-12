@@ -1,3 +1,4 @@
+import { percentageOf } from 'convex/shared/money';
 export type BookingQuote = {
   pricePerNight: number;
   nights: number;
@@ -21,7 +22,7 @@ export function calculateBookingQuote({
 }): BookingQuote {
   const safeNights = Math.max(0, nights);
   const subtotal = pricePerNight * safeNights;
-  const discountAmount = Math.round(subtotal * (discountPercent / 100));
+  const discountAmount = percentageOf(subtotal, discountPercent);
 
   return {
     pricePerNight,

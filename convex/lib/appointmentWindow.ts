@@ -9,10 +9,10 @@ import type { Doc } from '../_generated/dataModel';
 const MINUTE = 60_000;
 export const TURNAROUND_STEP_MIN = 5;
 
-type Window = Pick<Doc<'serviceAppointments'>, 'start' | 'end' | 'blockedUntil'>;
-type Lifecycle = Pick<Doc<'serviceAppointments'>, 'status' | 'start'>;
+type Window = Pick<Doc<'appointments'>, 'start' | 'end' | 'blockedUntil'>;
+type Lifecycle = Pick<Doc<'appointments'>, 'status' | 'start'>;
 
-export const appointmentRevision = (appointment: Pick<Doc<'serviceAppointments'>, 'revision'>) => appointment.revision ?? 0;
+export const appointmentRevision = (appointment: Pick<Doc<'appointments'>, 'revision'>) => appointment.revision ?? 0;
 
 export const turnaroundMinutes = (appointment: Window) => Math.round((appointment.blockedUntil - appointment.end) / MINUTE);
 

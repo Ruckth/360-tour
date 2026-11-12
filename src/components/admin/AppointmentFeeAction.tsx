@@ -1,5 +1,7 @@
 "use client";
 
+import { parseMoneyInput } from '@/lib/money-input';
+
 import { useRef, useState } from "react";
 import type { Doc } from "convex/_generated/dataModel";
 import { appointmentRevision } from "convex/lib/appointmentWindow";
@@ -15,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMoney } from "./labels";
 
-type Appointment = Pick<Doc<"serviceAppointments">, "_id" | "status" | "paymentStatus" | "price" | "currency" | "revision" | "start" | "confirmationCode">;
+type Appointment = Pick<Doc<"appointments">, "_id" | "status" | "paymentStatus" | "price" | "currency" | "revision" | "start" | "confirmationCode">;
 /** Mount in AppointmentSheet with its actual appointment document. Never uses the ordinary attachment path. */
 export function AppointmentFeeAction({ appointment, onPendingChange }: { appointment: Appointment; onPendingChange?: (pending: boolean) => void }) {
   return <CheckoutBackendProvider backend={convexCheckoutBackend}><InlineErrorBoundary resetKey={appointment._id} message="Couldn't load appointment fees. Try again."><AppointmentFeeControls key={appointment._id} appointment={appointment} onPendingChange={onPendingChange} /></InlineErrorBoundary></CheckoutBackendProvider>;
@@ -40,8 +42,8 @@ export function AppointmentFeeControls({ appointment, onPendingChange }: { appoi
   const checking = fees === undefined || Boolean(voidFee && voidView === undefined);
   const changed = appointmentRevision(appointment) !== appointmentRevision(reviewed) || appointment.status !== reviewed.status || appointment.price !== reviewed.price || appointment.paymentStatus !== reviewed.paymentStatus || appointment.currency !== reviewed.currency;
   const eligible = (reviewed.status === "no_show" || reviewed.status === "cancelled") && reviewed.paymentStatus === "unpaid" && reviewed.currency === "THB";
-  const value = Number(amount);
-  const valid = amount.trim() !== "" && Number.isFinite(value) && value > 0 && Math.round(value * 100) / 100 === value && (reviewed.price <= 0 || value <= reviewed.price) && reason.trim().length > 0;
+  const value = parseMoneyInput(amount);
+  const valid = amount.trim() !== "" && Number.isFinite(value) && value > 0 && Number.isSafeInteger(value) && (reviewed.price <= 0 || value <= reviewed.price) && reason.trim().length > 0;
   async function add() {
     if (sending.current || (!attempt && (!valid || changed || !eligible || active))) return;
     // Preserve the reviewed revision and attempt key after a lost response.

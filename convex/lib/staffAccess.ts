@@ -1,3 +1,4 @@
+import { percentageOf, roundRatio } from '../shared/money';
 import { ConvexError } from 'convex/values';
 import type { UserIdentity } from 'convex/server';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
@@ -7,7 +8,7 @@ import { adminEmails } from './adminAuth';
 import { DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS, type CashierAction, type CashierRules } from './staffTypes';
 import { resortTodayIso } from './dates';
 import { isOpenOrder, isSettledOrder } from './orderLinks';
-import { lineCouponBase, round2, type PricedLine } from './billMath';
+import { lineCouponBase, roundMoney, type PricedLine } from './orderMath';
 
 export type StaffRole = 'owner' | 'manager' | 'cashier' | null;
 export function staffCapabilities(role: StaffRole) {
@@ -69,23 +70,23 @@ export async function requireCashierAction(ctx: QueryCtx | MutationCtx, actor: S
 
 /** Baseline (at least the line price) × current quantity; the coupon is deliberately excluded. Whole satang throughout. */
 export function manualReduction(line: PricedLine & { catalogUnitPrice?: number }) {
-  const subtotalSatang = Math.round(round2(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty) * 100);
-  const reductionSatang = Math.max(0, subtotalSatang - Math.round(lineCouponBase(line) * 100));
-  return { subtotalSatang, reductionSatang, percent: subtotalSatang ? reductionSatang * 100 / subtotalSatang : 0 };
+  const subtotalSatang = roundMoney(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty);
+  const reductionSatang = Math.max(0, subtotalSatang - lineCouponBase(line));
+  return { subtotalSatang, reductionSatang, percent: subtotalSatang ? roundRatio(BigInt(reductionSatang) * 10000n, subtotalSatang) : 0 };
 }
 export async function assertCashierDiscount(ctx: QueryCtx | MutationCtx, actor: StaffActor, line: PricedLine & { catalogUnitPrice?: number }) {
   if (actor.role !== 'cashier') return;
   const rules = await cashierRules(ctx);
   const reduction = manualReduction(line);
-  const limitSatang = Math.floor((2 * reduction.subtotalSatang * Math.round(rules.discountLimitPercent * 100) + 10000) / 20000);
+  const limitSatang = percentageOf(reduction.subtotalSatang, rules.discountLimitPercent);
   if (reduction.reductionSatang > limitSatang) throw new ConvexError({
     code: 'NEEDS_APPROVAL', kind: 'discount', message: 'This manual discount needs manager approval.',
-    ...reduction, amount: reduction.reductionSatang / 100, limitSatang, discountLimitPercent: rules.discountLimitPercent,
+    ...reduction, amount: reduction.reductionSatang, limitSatang, discountLimitPercent: rules.discountLimitPercent,
   });
 }
 
 /** Cashier recall is limited to active checkout and receipts on today's resort business date. */
-export function canReadCheckoutOrder(actor: StaffActor, order: Doc<'bills'> | null) {
+export function canReadCheckoutOrder(actor: StaffActor, order: Doc<'orders'> | null) {
   if (!order) return false;
   if (actor.role !== 'cashier') return true;
   if (isOpenOrder(order)) return true;

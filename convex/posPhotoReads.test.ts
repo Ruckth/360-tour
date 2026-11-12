@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Independent read-side photo regressions. All records exist only in convex-test.
 import { convexTest } from 'convex-test';
@@ -17,18 +18,18 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
   });
   const serviceId = await admin.mutation(api.adminServices.createService, {
     slug: 'audit-service', name: 'Audit service', description: '', category: 'Audit', durationMin: 60,
-    bufferMin: 0, price: 100, currency: 'THB', staffIds: [staffId],
+    bufferMin: 0, price: 10000, currency: 'THB', staffIds: [staffId],
   });
   await t.run(ctx => ctx.db.patch(serviceId, { imageUrl: '/initial.jpg' }));
   const { propertyId, bookingId } = await t.run(async ctx => {
     const propertyId = await ctx.db.insert('properties', {
-      slug: 'audit-villa', name: 'Audit villa', tagline: '', description: '', pricePerNight: 100,
+      slug: 'audit-villa', name: 'Audit villa', tagline: '', description: '', pricePerNight: 10000,
       currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 30, images: ['/villa.jpg'],
       amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active',
     });
-    const bookingId = await ctx.db.insert('bookings', {
+    const bookingId = await insertFixture(ctx, 'bookings', {
       propertyId, guestName: 'Audit guest', guestPhone: '0800000000', checkIn: '2026-10-29', checkOut: '2026-10-30',
-      guests: 1, nights: 1, subtotal: 100, discountAmount: 0, total: 100, currency: 'THB',
+      guests: 1, nights: 1, subtotal: 10000, discountAmount: 0, total: 10000, currency: 'THB',
       amountPaid: 0, paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'AUDIT-PHOTO', createdAt: Date.now(),
     });
     return { propertyId, bookingId };
@@ -39,9 +40,9 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
   const read = () => admin.query(api.pos.getOrder, { orderId });
   const stored = () => t.run(async ctx => ({
     order: await ctx.db.get(orderId),
-    lines: await ctx.db.query('billLines').collect(),
-    audit: await ctx.db.query('billAudit').collect(),
-    payments: await ctx.db.query('billPayments').collect(),
+    lines: await ctx.db.query('orderLines').collect(),
+    audit: await ctx.db.query('orderAudit').collect(),
+    payments: await ctx.db.query('orderPayments').collect(),
   }));
   const before = await stored();
   const initial = await read();

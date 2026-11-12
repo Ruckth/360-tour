@@ -5,6 +5,6 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 export const MAX_LINES = 100;
 
 /** An order's rows, oldest first. */
-export async function orderLines(ctx: QueryCtx | MutationCtx, orderId: Id<'bills'>) {
-	return await ctx.db.query('billLines').withIndex('by_billId', (q) => q.eq('billId', orderId)).take(MAX_LINES);
+export async function orderLines(ctx: QueryCtx | MutationCtx, orderId: Id<'orders'>) {
+	return await ctx.db.query('orderLines').withIndex('by_orderId', (q) => q.eq('orderId', orderId)).take(MAX_LINES);
 }

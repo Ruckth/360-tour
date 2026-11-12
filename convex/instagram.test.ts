@@ -55,7 +55,7 @@ describe("Instagram webhook events", () => {
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "You can explore all demo villas on the 360° tour.",
-      replyMode: "exact",
+      replyMode: "ai",
       instagramReplyStatus: 200,
     });
 
@@ -80,7 +80,7 @@ describe("Instagram webhook events", () => {
     ]);
     expect(event).toMatchObject({
       status: "replied",
-      replyMode: "exact",
+      replyMode: "ai",
       instagramReplyStatus: 200,
     });
   });

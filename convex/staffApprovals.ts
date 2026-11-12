@@ -1,8 +1,8 @@
 import { ConvexError, v } from 'convex/values';
-import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
+import { internalMutation, mutation, query, type MutationCtx } from './auth/model';
 import type { Doc } from './_generated/dataModel';
 import { internal } from './_generated/api';
-import { approvalPayload, approvalPayloadView, APPROVAL_TTL_MS } from './lib/staffTypes';
+import { approvalPayload, APPROVAL_TTL_MS } from './lib/staffTypes';
 import { canReadCheckoutOrder, cashierRules, requireCashierAction, requireStaff } from './lib/staffAccess';
 import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from './lib/staffApprovalState';
 import { appendRecordHistory } from './lib/recordHistory';
@@ -17,7 +17,7 @@ function cleanReason(reason: string) {
 function requestView(request: Doc<'staffApprovalRequests'>, status: Doc<'staffApprovalRequests'>['status']) {
   return {
     _id: request._id, _creationTime: request._creationTime,
-    orderId: request.orderId, lineId: request.lineId, kind: request.kind, payload: approvalPayloadView(request.payload, request.reason),
+    orderId: request.orderId, lineId: request.lineId, kind: request.kind, payload: request.payload,
     reason: request.reason, requesterEmail: request.requesterEmail, approverEmail: request.approverEmail,
     orderRevision: request.orderRevision, rulesRevision: request.rulesRevision, status,
     createdAt: request.createdAt, expiresAt: request.expiresAt, resolvedAt: request.resolvedAt,
@@ -30,7 +30,7 @@ async function resolve(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, 
   await appendRecordHistory(ctx, { entityType: 'staffApproval', entityId: request.orderId, actor, kind: status, reason: reason ?? request.reason,
     after: { requestId: request._id, kind: request.kind, requesterEmail: request.requesterEmail, payload: request.payload } });
 }
-export const create = mutation({ args: { orderId: v.id('bills'), payload: approvalPayload, reason: v.string() }, handler: async (ctx, args) => {
+export const create = mutation({ args: { orderId: v.id('orders'), payload: approvalPayload, reason: v.string() }, handler: async (ctx, args) => {
   const actor = await requireStaff(ctx, 'checkout');
   if (actor.role !== 'cashier') throw new ConvexError('Only cashiers request manager approval.');
   if (args.payload.kind === 'paymentFix' && ['linkPaidLine', 'unlinkPaidLine'].includes(args.payload.action)) await requireCashierAction(ctx, actor, 'paymentFix');
@@ -100,7 +100,7 @@ export const reject = mutation({ args: { requestId: v.id('staffApprovalRequests'
   return { status: next };
 } });
 
-export const forOrder = query({ args: { orderId: v.id('bills') }, handler: async (ctx, args) => {
+export const forOrder = query({ args: { orderId: v.id('orders') }, handler: async (ctx, args) => {
   const actor = await requireStaff(ctx, 'checkout');
   if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, await ctx.db.get(args.orderId))) throw new ConvexError('Order not found');
   const [recent, pending] = await Promise.all([

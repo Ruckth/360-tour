@@ -13,11 +13,11 @@ async function setup() {
 	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const { propertyId, roomId } = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
-			slug: 'pool-villa', name: 'Pool Villa', tagline: 'Sea views', description: 'Villa', pricePerNight: 8500,
+			slug: 'pool-villa', name: 'Pool Villa', tagline: 'Sea views', description: 'Villa', pricePerNight: 850000,
 			currency: 'THB', maxGuests: 4, bedrooms: 2, bathrooms: 2, area: 145, images: [], amenities: [],
-			tourRoomIds: [], directDiscountPercent: 10, status: 'active'
+			tourRoomIds: [], directDiscountPercent: 1000, status: 'active'
 		});
-		const roomId = await ctx.db.insert('rooms', { propertyId, slug: 'living', name: 'Living', imagePath: '/living.webp', hotspots: [] });
+		const roomId = await ctx.db.insert('tourScenes', { propertyId, slug: 'living', name: 'Living', imagePath: '/living.webp', hotspots: [] });
 		return { propertyId, roomId };
 	});
 	return { t, admin, propertyId, roomId };
@@ -38,11 +38,11 @@ describe('admin property editing', () => {
 	it('updates property fields and excludes inactive villas from the public list', async () => {
 		const { t, admin, propertyId } = await setup();
 		await admin.mutation(api.properties.update, {
-			propertyId, name: '  Tideglass Residence ', currency: 'usd', pricePerNight: 300, directDiscountPercent: 15,
+			propertyId, name: '  Tideglass Residence ', currency: 'usd', pricePerNight: 30000, directDiscountPercent: 1500,
 			amenities: ['Pool', ' ', 'Wi-Fi'], images: ['https://images.unsplash.com/a.jpg', '/b.webp'], status: 'draft'
 		});
 		expect(await t.run((ctx) => ctx.db.get(propertyId))).toMatchObject({
-			name: 'Tideglass Residence', currency: 'USD', pricePerNight: 300, directDiscountPercent: 15,
+			name: 'Tideglass Residence', currency: 'USD', pricePerNight: 30000, directDiscountPercent: 1500,
 			amenities: ['Pool', 'Wi-Fi'], images: ['https://images.unsplash.com/a.jpg', '/b.webp'], status: 'draft', tagline: 'Sea views'
 		});
 		expect(await t.query(api.properties.list, {})).toHaveLength(0);
@@ -52,8 +52,8 @@ describe('admin property editing', () => {
 	it('validates property input', async () => {
 		const { admin, propertyId } = await setup();
 		await expect(admin.mutation(api.properties.update, { propertyId, name: ' ' })).rejects.toThrow('Name is required');
-		await expect(admin.mutation(api.properties.update, { propertyId, pricePerNight: -1 })).rejects.toThrow('Price per night');
-		await expect(admin.mutation(api.properties.update, { propertyId, directDiscountPercent: 101 })).rejects.toThrow('between 0 and 100');
+		await expect(admin.mutation(api.properties.update, { propertyId, pricePerNight: -100 })).rejects.toThrow('Price per night');
+		await expect(admin.mutation(api.properties.update, { propertyId, directDiscountPercent: 10100 })).rejects.toThrow('between 0 and 100');
 		await expect(admin.mutation(api.properties.update, { propertyId, maxGuests: 0 })).rejects.toThrow('Max guests');
 		await expect(admin.mutation(api.properties.update, { propertyId, bedrooms: 1.5 })).rejects.toThrow('whole number');
 		await expect(admin.mutation(api.properties.update, { propertyId, currency: 'baht' })).rejects.toThrow('3-letter');
@@ -80,9 +80,9 @@ describe('admin property editing', () => {
 		const { t, propertyId } = await setup();
 		const hotspot = { id: 'pool-to-living', position: [1, 2, 3], targetRoomSlug: 'living', label: 'Living' };
 		await t.run(async (ctx) => {
-			await ctx.db.insert('rooms', { propertyId, slug: 'pool', name: 'Pool', imagePath: '/pool.webp', hotspots: [hotspot] });
-			await ctx.db.insert('rooms', { propertyId, slug: 'bedroom', name: 'Bedroom', imagePath: '/bed.webp', hotspots: [] });
-			await ctx.db.insert('rooms', { propertyId, slug: 'terrace', name: 'Terrace', imagePath: '/terrace.webp', hotspots: [] });
+			await ctx.db.insert('tourScenes', { propertyId, slug: 'pool', name: 'Pool', imagePath: '/pool.webp', hotspots: [hotspot] });
+			await ctx.db.insert('tourScenes', { propertyId, slug: 'bedroom', name: 'Bedroom', imagePath: '/bed.webp', hotspots: [] });
+			await ctx.db.insert('tourScenes', { propertyId, slug: 'terrace', name: 'Terrace', imagePath: '/terrace.webp', hotspots: [] });
 			await ctx.db.patch(propertyId, { tourRoomIds: ['pool', 'living'] });
 		});
 		const rooms = await t.query(api.properties.getTourRooms, { slug: 'pool-villa' });

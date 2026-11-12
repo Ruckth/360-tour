@@ -230,11 +230,11 @@ export function ChatsView() {
   const lastWrittenSearchQuery = useRef(urlSearchQuery);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
-  const selectedSessionId = searchParams.get("session") as Id<"chatSessions"> | null;
+  const selectedSessionId = searchParams.get("session") as Id<"conversations"> | null;
   const [incomingSessionId, setIncomingSessionId] = useState(() =>
     !searchParams.has("view") && !searchParams.has("state") ? selectedSessionId : null,
   );
-  function selectSession(sessionId: Id<"chatSessions"> | null) {
+  function selectSession(sessionId: Id<"conversations"> | null) {
     if (sessionId === selectedSessionId) return;
     updateParams({ session: sessionId });
   }
@@ -245,8 +245,8 @@ export function ChatsView() {
     | undefined;
   const settleGuestMessageMutation = useMutation(api.adminChat.settleGuestMessage);
   // The ref guards repeat clicks and `e` before React commits; the state drives the buttons.
-  const settlingRef = useRef(new Set<Id<"chatMessages">>());
-  const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"chatMessages">>>(() => new Set());
+  const settlingRef = useRef(new Set<Id<"messages">>());
+  const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"messages">>>(() => new Set());
   const [settleError, setSettleError] = useState<string | null>(null);
   const trimmedSearchQuery = searchQuery.trim();
   const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt, "start");
@@ -361,7 +361,7 @@ export function ChatsView() {
     return reply.send();
   }
 
-  async function settleGuestMessage(sessionId: Id<"chatSessions">, messageId: Id<"chatMessages">) {
+  async function settleGuestMessage(sessionId: Id<"conversations">, messageId: Id<"messages">) {
     if (settlingRef.current.has(messageId)) return;
     settlingRef.current.add(messageId);
     setSettlingMessageIds(new Set(settlingRef.current));

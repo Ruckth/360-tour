@@ -19,7 +19,7 @@ import { RoomHotspotList } from "./RoomHotspotList";
 import { TONES } from "./status-tones";
 import { Field, IMAGE_ACCEPT, panoramaWarning, SaveBar, SaveStatus, Section, Thumb, useImageUpload, useSaver } from "./property-form";
 
-type Room = Doc<"rooms">;
+type Room = Doc<"tourScenes">;
 
 /** 360° tour rooms in tour order: add, rename, replace panorama, reorder, delete, edit hotspots. */
 export function PropertyRoomsEditor({ propertyId, rooms }: { propertyId: Id<"properties">; rooms: Room[] }) {

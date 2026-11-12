@@ -5,7 +5,7 @@ import { v } from 'convex/values';
  * financial record and the argument that created it can't drift apart.
  */
 
-/** How money recorded by hand on a stay was received. `unrecorded` is only written by the legacy "Mark paid" API. */
+
 export const MANUAL_PAYMENT_METHODS = ['cash', 'promptpay', 'card', 'transfer', 'other'] as const;
 export const manualPaymentMethod = v.union(
 	v.literal('cash'), v.literal('promptpay'), v.literal('card'), v.literal('transfer'), v.literal('other')
@@ -15,7 +15,7 @@ export const storedPaymentMethod = v.union(
 	v.literal('unrecorded'), v.literal('stripe'), v.literal('provider'), v.literal('order')
 );
 
-/** How money was given back. `stripe` = refunded in the Stripe dashboard; `unrecorded` only from the legacy cancel API. */
+
 export const REFUND_METHODS = ['cash', 'promptpay', 'card', 'transfer', 'stripe', 'other'] as const;
 export const refundMethod = v.union(
 	v.literal('cash'), v.literal('promptpay'), v.literal('card'), v.literal('transfer'), v.literal('stripe'), v.literal('other')

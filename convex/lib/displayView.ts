@@ -1,13 +1,13 @@
 import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { billTotals, lineCouponDiscount, lineDiscount, lineNet, linePrice } from './billMath';
+import { orderTotals, lineCouponDiscount, lineDiscount, lineNet, linePrice } from './orderMath';
 import { isOpenOrder } from './orderLinks';
 import { orderLines } from './orderLines';
 import { getEffectiveSettings } from './siteSettings';
 
 /**
  * What the guest-facing customer display may show of an order. Everything is whitelisted here:
- * no ids, staff, notes, audit fields, contact details or tenders. Totals come from billMath, the
+ * no ids, staff, notes, audit fields, contact details or tenders. Totals come from orderMath, the
  * same functions the checkout uses, so the display always agrees with the till.
  */
 
@@ -67,7 +67,7 @@ async function holdsLiveLease(ctx: QueryCtx, till: Doc<'tills'>) {
 }
 
 /** A paid order thanks whoever its receipt was issued to; an open one greets its linked customer. */
-async function customerFirstName(ctx: QueryCtx, order: Doc<'bills'>) {
+async function customerFirstName(ctx: QueryCtx, order: Doc<'orders'>) {
 	if (order.status === 'paid') return firstName(order.customerSnapshot?.name);
 	return order.customerId ? firstName((await ctx.db.get(order.customerId))?.name) : null;
 }
@@ -83,7 +83,7 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 	const lines = await orderLines(ctx, order._id);
 	if (!lines.length) return { state: 'idle', businessName };
 
-	const totals = billTotals(lines);
+	const totals = orderTotals(lines);
 	const coupon: DisplayCoupon | null = order.promotion && !order.promotion.problem && totals.coupon > 0 ? { code: order.promotion.code, saving: totals.coupon } : null;
 	const shared: Shared = { businessName, customerFirstName: await customerFirstName(ctx, order), orderNumber: order.orderNumber ?? null, currency: order.currency };
 	if (order.status === 'paid') {

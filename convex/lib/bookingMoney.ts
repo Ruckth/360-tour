@@ -2,7 +2,7 @@ import { syncAffiliateCredit } from './affiliateCredits';
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { MAX_BILL, bookingBalance, round2 } from './billMath';
+import { MAX_ORDER, bookingBalance, roundMoney } from './orderMath';
 import { resortTodayIso } from './dates';
 import { syncCouponRedemption } from './couponRedemptions';
 import { appendRecordHistory } from './recordHistory';
@@ -55,15 +55,15 @@ export function cleanReason(value: string | undefined, label = 'Reason', require
 /** A money amount: finite, more than zero, whole satang and within the till limit. */
 export function assertMoney(amount: number, label = 'Amount') {
 	if (!Number.isFinite(amount) || amount <= 0) throw new ConvexError(`${label} must be more than zero`);
-	if (round2(amount) !== amount) throw new ConvexError(`${label} is in whole satang (at most 2 decimals)`);
-	if (amount > MAX_BILL) throw new ConvexError(`${label} is at most ${MAX_BILL.toLocaleString('en-US')}`);
+	if (roundMoney(amount) !== amount) throw new ConvexError(`${label} is in whole satang (at most 2 decimals)`);
+	if (amount > MAX_ORDER) throw new ConvexError(`${label} is at most ${(MAX_ORDER / 100).toLocaleString('en-US')}`);
 }
 
 /** A stay price: zero or more, whole satang, within the till limit. */
 export function assertStayPrice(total: number) {
 	if (!Number.isFinite(total) || total < 0) throw new ConvexError('Price must be zero or more');
-	if (round2(total) !== total) throw new ConvexError('Price is in whole satang (at most 2 decimals)');
-	if (total > MAX_BILL) throw new ConvexError(`Price is at most ${MAX_BILL.toLocaleString('en-US')}`);
+	if (roundMoney(total) !== total) throw new ConvexError('Price is in whole satang (at most 2 decimals)');
+	if (total > MAX_ORDER) throw new ConvexError(`Price is at most ${(MAX_ORDER / 100).toLocaleString('en-US')}`);
 }
 
 /** The business time something happened. Defaults to now; any past date is allowed, the future is not. */
@@ -92,14 +92,13 @@ export function resolveNotify(explicit: boolean | undefined, stay: { checkIn: st
 	return explicit ?? (!stay.guestEmailsOff && !isHistoricalStay(stay));
 }
 
-/** Money on the stay, net of refunds (see billMath.bookingBalance). */
+/** Money on the stay, net of refunds (see orderMath.bookingBalance). */
 export function stayMoney(booking: Booking) {
 	const { paid, owed, gross, refunded } = bookingBalance(booking);
-	const legacyRefund = booking.paymentStatus === 'refunded' && booking.amountRefunded === undefined;
 	const cancelled = booking.status === 'cancelled';
 	// A live stay only refunds what exceeds its price, so a refund never reopens a balance; to give
 	// back more, correct the price or cancel first. A cancelled stay can refund everything kept.
-	const refundable = booking.paymentStatus === 'refunded' ? 0 : cancelled ? paid : Math.max(0, round2(-owed));
+	const refundable = booking.paymentStatus === 'refunded' ? 0 : cancelled ? paid : Math.max(0, roundMoney(-owed));
 	return {
 		total: booking.total,
 		currency: booking.currency,
@@ -107,10 +106,9 @@ export function stayMoney(booking: Booking) {
 		refunded,
 		net: paid,
 		owed: Math.max(0, owed),
-		credit: Math.max(0, round2(-owed)),
+		credit: Math.max(0, roundMoney(-owed)),
 		refundable,
-		refundContext: cancelled ? ('cancellation' as const) : ('credit' as const),
-		legacyRefund
+		refundContext: cancelled ? ('cancellation' as const) : ('credit' as const)
 	};
 }
 
@@ -175,10 +173,4 @@ export async function writeBooking(ctx: MutationCtx, booking: Booking, patch: Bo
 	if (updated.promotion && !options.deferCouponSync) await syncCouponRedemption(ctx, updated);
 	await syncAffiliateCredit(ctx, {bookingId: updated._id}, entry.actor, options.paymentUnlinked ? 'payment_unlinked' : undefined);
 	return updated;
-}
-
-/** Legacy money without a payment row, shared by the stay ledger and marketing report. */
-export function unitemisedStayMoney(gross: number, payments: Pick<Doc<'bookingPayments'>, 'status' | 'amount'>[]) {
-	const itemised = round2(payments.filter(p => p.status === 'recorded').reduce((sum, p) => sum + p.amount, 0));
-	return Math.max(round2(gross - itemised), 0);
 }

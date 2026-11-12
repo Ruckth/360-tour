@@ -1,4 +1,4 @@
-import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './auth/model';
 import { internal } from './_generated/api';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
@@ -23,7 +23,7 @@ const DETAIL_CHANNEL_EVENT_LIMIT = 1;
 type FilterCursor = {
 	sourceCursor: string | null;
 	sourceDone: boolean;
-	overflowIds: Id<'chatSessions'>[];
+	overflowIds: Id<'conversations'>[];
 };
 
 const sessionStatusValidator = v.union(
@@ -93,7 +93,7 @@ function parseFilterCursor(cursor: string | null): FilterCursor {
 			sourceCursor: typeof parsed.sourceCursor === 'string' ? parsed.sourceCursor : null,
 			sourceDone: typeof parsed.sourceDone === 'boolean' ? parsed.sourceDone : false,
 			overflowIds: Array.isArray(parsed.overflowIds)
-				? parsed.overflowIds.filter((id): id is Id<'chatSessions'> => typeof id === 'string')
+				? parsed.overflowIds.filter((id): id is Id<'conversations'> => typeof id === 'string')
 				: []
 		};
 	} catch {
@@ -163,7 +163,7 @@ function typoTolerantContactScore(query: string, searchText?: string) {
 	return matched === queryTokens.length ? 55 + matched : 0;
 }
 
-function getSessionLatestMessageSortAt(session: Doc<'chatSessions'>) {
+function getSessionLatestMessageSortAt(session: Doc<'conversations'>) {
 	return session.latestMessageAt ?? Number.NEGATIVE_INFINITY;
 }
 
@@ -172,19 +172,19 @@ function getSessionLatestMessageSortAt(session: Doc<'chatSessions'>) {
  * and each villa are fetched once, however many filters and rows use them.
  */
 type SessionLookups = {
-	latestMessage: (sessionId: Id<'chatSessions'>) => Promise<Doc<'chatMessages'> | null>;
+	latestMessage: (sessionId: Id<'conversations'>) => Promise<Doc<'messages'> | null>;
 	property: (propertyId: Id<'properties'>) => Promise<Doc<'properties'> | null>;
 };
 
 function createSessionLookups(ctx: QueryCtx): SessionLookups {
-	const latestMessages = new Map<Id<'chatSessions'>, Promise<Doc<'chatMessages'> | null>>();
+	const latestMessages = new Map<Id<'conversations'>, Promise<Doc<'messages'> | null>>();
 	const properties = new Map<Id<'properties'>, Promise<Doc<'properties'> | null>>();
 	return {
 		latestMessage(sessionId) {
 			let latest = latestMessages.get(sessionId);
 			if (!latest) {
 				latest = ctx.db
-					.query('chatMessages')
+					.query('messages')
 					.withIndex('by_session', (q) => q.eq('sessionId', sessionId))
 					.order('desc')
 					.first();
@@ -203,33 +203,26 @@ function createSessionLookups(ctx: QueryCtx): SessionLookups {
 	};
 }
 
-async function sessionHasStoredMessages(lookups: SessionLookups, session: Doc<'chatSessions'>) {
-	if (session.messages && session.messages.length > 0) return true;
+async function sessionHasStoredMessages(lookups: SessionLookups, session: Doc<'conversations'>) {
 	return Boolean(await lookups.latestMessage(session._id));
 }
 
-async function getSessionLatestMessageAt(lookups: SessionLookups, session: Doc<'chatSessions'>) {
+async function getSessionLatestMessageAt(lookups: SessionLookups, session: Doc<'conversations'>) {
 	const latestStoredMessage = await lookups.latestMessage(session._id);
-	const latestLegacyMessageAt = session.messages?.reduce<number | undefined>(
-		(latest, message) =>
-			typeof latest === 'number' ? Math.max(latest, message.timestamp) : message.timestamp,
-		undefined
-	);
-
-	return latestStoredMessage?.timestamp ?? latestLegacyMessageAt ?? session.latestMessageAt;
+ return latestStoredMessage?.timestamp ?? session.latestMessageAt;
 }
 
 /** The guest wrote last and no admin marked that message as settled. */
 function sessionNeedsReply(
-	session: Doc<'chatSessions'>,
-	latestMessage: Doc<'chatMessages'> | null
+	session: Doc<'conversations'>,
+	latestMessage: Doc<'messages'> | null
 ) {
 	return inboxNeedsStaff(session, latestMessage);
 }
 
 async function sessionMatchesFilters(
 	lookups: SessionLookups,
-	session: Doc<'chatSessions'>,
+	session: Doc<'conversations'>,
 	options: {
 		status: SessionStatus;
 		adminStatus: AdminStatusFilter;
@@ -297,7 +290,7 @@ async function sessionMatchesFilters(
  */
 async function filterMatchingSessions(
 	lookups: SessionLookups,
-	sessions: Doc<'chatSessions'>[],
+	sessions: Doc<'conversations'>[],
 	options: Parameters<typeof sessionMatchesFilters>[2]
 ) {
 	const matches = await Promise.all(
@@ -309,7 +302,7 @@ async function filterMatchingSessions(
 async function decorateSession(
 	ctx: QueryCtx,
 	lookups: SessionLookups,
-	session: Doc<'chatSessions'>,
+	session: Doc<'conversations'>,
 	now: number
 ) {
 	const [
@@ -323,29 +316,29 @@ async function decorateSession(
 		lookups.latestMessage(session._id),
 		session.channel === 'line'
 			? ctx.db
-					.query('lineWebhookEvents')
-					.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+					.query('channelEvents')
+					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'line').eq('sessionId', session._id))
 					.order('desc')
 					.first()
 			: null,
 		session.channel === 'facebook'
 			? ctx.db
-					.query('facebookWebhookEvents')
-					.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+					.query('channelEvents')
+					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'facebook').eq('sessionId', session._id))
 					.order('desc')
 					.first()
 			: null,
 		session.channel === 'whatsapp'
 			? ctx.db
-					.query('whatsappWebhookEvents')
-					.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+					.query('channelEvents')
+					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'whatsapp').eq('sessionId', session._id))
 					.order('desc')
 					.first()
 			: null,
 		session.channel === 'instagram'
 			? ctx.db
-					.query('instagramWebhookEvents')
-					.withIndex('by_session', (q) => q.eq('sessionId', session._id))
+					.query('channelEvents')
+					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'instagram').eq('sessionId', session._id))
 					.order('desc')
 					.first()
 			: null,
@@ -371,7 +364,7 @@ async function decorateSession(
 async function decorateSessions(
 	ctx: QueryCtx,
 	lookups: SessionLookups,
-	sessions: Doc<'chatSessions'>[],
+	sessions: Doc<'conversations'>[],
 	now: number
 ) {
 	return await Promise.all(sessions.map((session) => decorateSession(ctx, lookups, session, now)));
@@ -397,24 +390,24 @@ async function searchSessions(
 		return { sessions: [], continueCursor: null, isDone: true };
 	}
 
-	const scored = new Map<Id<'chatSessions'>, number>();
-	const bump = (sessionId: Id<'chatSessions'>, score: number) => {
+	const scored = new Map<Id<'conversations'>, number>();
+	const bump = (sessionId: Id<'conversations'>, score: number) => {
 		scored.set(sessionId, Math.max(scored.get(sessionId) ?? 0, score));
 	};
 
 	const [contactMatches, messageMatches, fuzzyCandidates] = await Promise.all([
 		ctx.db
-			.query('chatSessions')
+			.query('conversations')
 			.withSearchIndex('search_adminSearchText', (q) =>
 				q.search('adminSearchText', normalizedQuery)
 			)
 			.take(SEARCH_SESSION_LIMIT),
 		ctx.db
-			.query('chatMessages')
+			.query('messages')
 			.withSearchIndex('search_content', (q) => q.search('content', options.query))
 			.take(SEARCH_MESSAGE_LIMIT),
 		ctx.db
-			.query('chatSessions')
+			.query('conversations')
 			.withIndex('by_adminSortAt')
 			.order('desc')
 			.take(FUZZY_SCAN_LIMIT)
@@ -431,7 +424,7 @@ async function searchSessions(
 		await Promise.all(
 			Array.from(scored.keys()).map(async (sessionId) => await ctx.db.get(sessionId))
 		)
-	).filter((session): session is Doc<'chatSessions'> => Boolean(session));
+	).filter((session): session is Doc<'conversations'> => Boolean(session));
 
 	const lookups = createSessionLookups(ctx);
 	const filtered = await filterMatchingSessions(
@@ -485,13 +478,13 @@ async function listFilteredSessions(
 	const parsedCursor = parseFilterCursor(options.cursor);
 	let cursor = parsedCursor.sourceCursor;
 	let sourceDone = parsedCursor.sourceDone;
-	const matched: Doc<'chatSessions'>[] = [];
-	const seen = new Set<Id<'chatSessions'>>();
+	const matched: Doc<'conversations'>[] = [];
+	const seen = new Set<Id<'conversations'>>();
 
 	// Dedupes synchronously in input order, checks the remaining rows concurrently, then appends
 	// matches in input order, so the page and its overflow keep the source order.
-	const addMatches = async (sessions: (Doc<'chatSessions'> | null)[]) => {
-		const candidates: Doc<'chatSessions'>[] = [];
+	const addMatches = async (sessions: (Doc<'conversations'> | null)[]) => {
+		const candidates: Doc<'conversations'>[] = [];
 		for (const session of sessions) {
 			if (!session || seen.has(session._id)) continue;
 			seen.add(session._id);
@@ -517,13 +510,13 @@ async function listFilteredSessions(
 		const page =
 			options.empty !== 'non_empty'
 				? await ctx.db
-						.query('chatSessions')
+						.query('conversations')
 						.withIndex('by_adminSortAt')
 						.order('desc')
 						.paginate(paginationOpts)
 				: sparseAdminStatus
 					? await ctx.db
-							.query('chatSessions')
+							.query('conversations')
 							.withIndex('by_adminStatus_and_latestMessageAt', (q) =>
 								q.eq('adminStatus', sparseAdminStatus).gte('latestMessageAt', startAt).lte('latestMessageAt', endAt)
 							)
@@ -531,17 +524,17 @@ async function listFilteredSessions(
 							.paginate(paginationOpts)
 					: options.channel !== 'all'
 						? await ctx.db
-								.query('chatSessions')
+								.query('conversations')
 								.withIndex('by_channel_and_latestMessageAt', (q) =>
 									q
-										.eq('channel', options.channel as Doc<'chatSessions'>['channel'])
+										.eq('channel', options.channel as Doc<'conversations'>['channel'])
 										.gte('latestMessageAt', startAt)
 										.lte('latestMessageAt', endAt)
 								)
 								.order('desc')
 								.paginate(paginationOpts)
 						: await ctx.db
-								.query('chatSessions')
+								.query('conversations')
 								.withIndex('by_latestMessageAt', (q) =>
 									q.gte('latestMessageAt', startAt).lte('latestMessageAt', endAt)
 								)
@@ -631,7 +624,7 @@ export const listSessions = query({
 });
 
 export const getSessionDetail = query({
-	args: { sessionId: v.id('chatSessions'), now: v.optional(v.number()) },
+	args: { sessionId: v.id('conversations'), now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
@@ -645,29 +638,29 @@ export const getSessionDetail = query({
 		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property, replyWindow, latestMessage] = await Promise.all([
 			session.channel === 'line'
 				? ctx.db
-						.query('lineWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'line').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
 			session.channel === 'facebook'
 				? ctx.db
-						.query('facebookWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'facebook').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
 			session.channel === 'whatsapp'
 				? ctx.db
-						.query('whatsappWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'whatsapp').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
 			session.channel === 'instagram'
 				? ctx.db
-						.query('instagramWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'instagram').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(DETAIL_CHANNEL_EVENT_LIMIT)
 				: [],
@@ -697,7 +690,7 @@ export const getSessionDetail = query({
 });
 
 export const settleGuestMessage = mutation({
-	args: { sessionId: v.id('chatSessions'), messageId: v.id('chatMessages') },
+	args: { sessionId: v.id('conversations'), messageId: v.id('messages') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
@@ -715,7 +708,7 @@ export const settleGuestMessage = mutation({
 
 export const listTranscriptMessages = query({
 	args: {
-		sessionId: v.id('chatSessions'),
+		sessionId: v.id('conversations'),
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
@@ -724,7 +717,7 @@ export const listTranscriptMessages = query({
 		// No session read: it is patched by every guest heartbeat, which would rerun this live
 		// transcript each time. A deleted chat's messages are removed with it, so it pages empty.
 		return await ctx.db
-			.query('chatMessages')
+			.query('messages')
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 			.order('desc')
 			.paginate(args.paginationOpts);
@@ -732,7 +725,7 @@ export const listTranscriptMessages = query({
 });
 
 export const getTranscript = query({
-	args: { sessionId: v.id('chatSessions'), now: v.optional(v.number()) },
+	args: { sessionId: v.id('conversations'), now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 
@@ -742,35 +735,35 @@ export const getTranscript = query({
 
 		const [messages, lineEvents, facebookEvents, whatsappEvents, instagramEvents, property] = await Promise.all([
 			ctx.db
-				.query('chatMessages')
+				.query('messages')
 				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 				.order('asc')
 				.take(500),
 			session.channel === 'line'
 				? ctx.db
-						.query('lineWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'line').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(10)
 				: [],
 			session.channel === 'facebook'
 				? ctx.db
-						.query('facebookWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'facebook').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(10)
 				: [],
 			session.channel === 'whatsapp'
 				? ctx.db
-						.query('whatsappWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'whatsapp').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(10)
 				: [],
 			session.channel === 'instagram'
 				? ctx.db
-						.query('instagramWebhookEvents')
-						.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
+						.query('channelEvents')
+						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'instagram').eq('sessionId', args.sessionId))
 						.order('desc')
 						.take(10)
 				: [],
@@ -793,8 +786,8 @@ export const getTranscript = query({
 });
 
 export const setSessionStatus = mutation({
-	args: { sessionId: v.id('chatSessions'), status: adminStatusValidator,
-		expectedGuestMessageId: v.optional(v.union(v.id('chatMessages'), v.null())) },
+	args: { sessionId: v.id('conversations'), status: adminStatusValidator,
+		expectedGuestMessageId: v.optional(v.union(v.id('messages'), v.null())) },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);
@@ -826,7 +819,7 @@ export const setSessionStatus = mutation({
 });
 
 export const setAiPaused = mutation({
-	args: { sessionId: v.id('chatSessions'), paused: v.boolean() },
+	args: { sessionId: v.id('conversations'), paused: v.boolean() },
 	handler: async (ctx, args) => {
 		const { email } = await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);
@@ -838,7 +831,7 @@ export const setAiPaused = mutation({
 });
 
 export const setStaffTask = mutation({
-	args: { sessionId: v.id('chatSessions'), task: v.union(v.string(), v.null()) },
+	args: { sessionId: v.id('conversations'), task: v.union(v.string(), v.null()) },
 	handler: async (ctx, args) => {
 		const { email } = await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);
@@ -867,7 +860,7 @@ export const setStaffTask = mutation({
 });
 
 export const setKeepWithStaff = mutation({
-	args: { sessionId: v.id('chatSessions'), keep: v.boolean() },
+	args: { sessionId: v.id('conversations'), keep: v.boolean() },
 	handler: async (ctx, args) => {
 		const { email } = await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);
@@ -880,7 +873,7 @@ export const setKeepWithStaff = mutation({
 const DELETE_BATCH_SIZE = 200;
 
 /** Deletes up to one batch of a session's child rows. Returns true once nothing is left. */
-async function deleteSessionChildrenBatch(ctx: MutationCtx, sessionId: Id<'chatSessions'>) {
+async function deleteSessionChildrenBatch(ctx: MutationCtx, sessionId: Id<'conversations'>) {
 	let budget = DELETE_BATCH_SIZE;
 	const unknowns = await ctx.db.query('chatUnknownQuestions')
 		.withIndex('by_sessionId', (q) => q.eq('sessionId', sessionId)).take(budget);
@@ -891,22 +884,15 @@ async function deleteSessionChildrenBatch(ctx: MutationCtx, sessionId: Id<'chatS
 	if (budget <= 0) return false;
 	const batches = [
 		(limit: number) =>
-			ctx.db.query('chatMessages').withIndex('by_session', (q) => q.eq('sessionId', sessionId)).take(limit),
+			ctx.db.query('messages').withIndex('by_session', (q) => q.eq('sessionId', sessionId)).take(limit),
 		(limit: number) =>
 			ctx.db.query('adminReplyAttempts').withIndex('by_sessionId', (q) => q.eq('sessionId', sessionId)).take(limit),
 		(limit: number) =>
 			ctx.db.query('chatBrowserHandoffs').withIndex('by_sessionId', (q) => q.eq('sessionId', sessionId)).take(limit),
 		(limit: number) =>
-			ctx.db.query('chatQuestionInteractions').withIndex('by_session', (q) => q.eq('sessionId', sessionId)).take(limit),
-		(limit: number) =>
 			ctx.db
 				.query('chatStaticSuggestionInteractions')
 				.withIndex('by_session', (q) => q.eq('sessionId', sessionId))
-				.take(limit),
-		(limit: number) =>
-			ctx.db
-				.query('chatSuggestedQuestions')
-				.withIndex('by_session_and_status', (q) => q.eq('sessionId', sessionId))
 				.take(limit)
 	];
 
@@ -920,7 +906,7 @@ async function deleteSessionChildrenBatch(ctx: MutationCtx, sessionId: Id<'chatS
 }
 
 export const deleteSessionChildren = internalMutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
 		if (!(await deleteSessionChildrenBatch(ctx, args.sessionId))) {
 			await ctx.scheduler.runAfter(0, internal.adminChat.deleteSessionChildren, args);
@@ -931,7 +917,7 @@ export const deleteSessionChildren = internalMutation({
 
 /** Hard-deletes an archived chat and (in batches) its transcript and interactions. Webhook logs are kept. */
 export const deleteArchivedSession = mutation({
-	args: { sessionId: v.id('chatSessions') },
+	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
 		await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);

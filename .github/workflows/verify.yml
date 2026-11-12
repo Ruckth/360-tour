@@ -17,6 +17,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm arch:score --phase "$(cat .arch-phase)"
+      - name: Dead code and dependency check
+        run: pnpm knip
       - run: pnpm verify
         env:
           NEXT_PUBLIC_CONVEX_URL: https://example.convex.cloud

@@ -69,7 +69,7 @@ export function usePaginatedQuery() {
   return { results: [], status: "Exhausted", loadMore: () => undefined };
 }
 
-const money = { total: 28900, currency: "THB", gross: 28900, refunded: 0, net: 28900, owed: 0, credit: 0, refundable: 0, refundContext: "credit", legacyRefund: false };
+const money = { total: 2890000, currency: "THB", gross: 2890000, refunded: 0, net: 2890000, owed: 0, credit: 0, refundable: 0, refundContext: "credit",  };
 
 function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   if (args === "skip") return undefined;
@@ -77,15 +77,15 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   // Picker fixtures supply their catalog through the real component's initial props.
   if (name === "adminServices:listServices" || name === "adminServices:listStaff") return undefined;
   if (name === "pos:ordersForBooking") return {
-    balance: { total: 28900, paid: 28900, owed: 0, refunded: 0, credit: 0 },
+    balance: { total: 2890000, paid: 2890000, owed: 0, refunded: 0, credit: 0 },
     activeOrder: null,
     orders: [],
     discardedOrders: [],
     refunds: [],
   };
   if (name === "adminBookings:bookingFinancials") return {
-    revision: 0, money, payments: [], refunds: [], legacyOrders: [], unitemised: 28900,
-    legacyManual: { cancellable: false, reason: "Receipt provenance is unknown in this legacy fixture." }, hasStripePayment: false, complete: true,
+    revision: 0, money, payments: [], refunds: [],
+    hasStripePayment: false, complete: true,
   };
   if (name === "adminBookings:findGuests" && params.has("returning")) return [{
     guestName: "Returning Guest", guestPhone: params.get("phone") ?? "0812345678",
@@ -94,15 +94,15 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   if (name === "adminBookings:quoteBookingEdit") {
     // The stay's stored price, or 7,000 a night once its dates change.
     const { checkIn, checkOut } = args as { checkIn: string; checkOut: string };
-    if (checkIn === "2025-01-30" && checkOut === "2025-02-03") return { subtotal: 34000, discountAmount: 5100, total: 28900, currency: "THB", promotion: null, couponRemoved: false, repriced: false };
-    const total = 7000 * Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000);
+    if (checkIn === "2025-01-30" && checkOut === "2025-02-03") return { subtotal: 3400000, discountAmount: 510000, total: 2890000, currency: "THB", promotion: null, couponRemoved: false, repriced: false };
+    const total = 700000 * Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000);
     return { subtotal: total, discountAmount: 0, total, currency: "THB", promotion: null, couponRemoved: false, repriced: true };
   }
   if (name === "adminBookings:getForAdmin") return {
     _id: "booking-id", createdAt: 1738231200000, propertyId: "pool-id", guestName: "Historical Guest", guestPhone: "0812345678",
     checkIn: "2025-01-30", checkOut: "2025-02-03", guests: 2, nights: 4,
-    subtotal: 34000, discountAmount: 5100, total: 28900, currency: "THB",
-    status: "completed", paymentStatus: "paid", amountPaid: 28900, source: "admin",
+    subtotal: 3400000, discountAmount: 510000, total: 2890000, currency: "THB",
+    status: "completed", paymentStatus: "paid", amountPaid: 2890000, source: "admin",
     propertyName: "Tideglass Pool Residence", hasStripePayment: false, checkoutLive: false,
     revision: 0, propertyStatus: "active", priceOverride: null, money, historical: true,
     guestEmailsOff: true, confirmationEmailed: false, notifyByDefault: false,

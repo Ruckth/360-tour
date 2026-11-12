@@ -37,15 +37,15 @@ vi.mock("@/components/reui/phone-input", () => ({
 
 const NOW = Date.parse("2026-11-07T03:00:00Z");
 // kit/data.md: Mossbell Garden Suite ฿4,500/night, 15% direct offer.
-const villa = { _id: "p1", slug: "mossbell", name: "Mossbell Garden Suite", maxGuests: 2, status: "active", pricePerNight: 4500, directDiscountPercent: 15, currency: "THB" };
+const villa = { _id: "p1", slug: "mossbell", name: "Mossbell Garden Suite", maxGuests: 2, status: "active", pricePerNight: 450000, directDiscountPercent: 1500, currency: "THB" };
 const F1: CouponRules = {
-  code: "DCNT-F1-20", version: 1, status: "active", benefit: { kind: "percent", percent: 20 }, scope: "accommodation",
-  stayFrom: "2026-11-01", stayTo: "2026-12-20", minNights: 2, maxSaving: 3000, used: 35, discountGranted: 0,
+  code: "DCNT-F1-20", version: 1, status: "active", benefit: { kind: "percent", percent: 2000 }, scope: "accommodation",
+  stayFrom: "2026-11-01", stayTo: "2026-12-20", minNights: 2, maxSaving: 300000, used: 35, discountGranted: 0,
 };
-const quote = (nights: number, pricePerNight = 4500): OfferResult =>
+const quote = (nights: number, pricePerNight = 450000): OfferResult =>
   evaluateOffer({
     lines: [{ id: "a", kind: "accommodation", propertySlug: "mossbell", checkIn: "2026-11-12", checkOut: `2026-11-${12 + nights}`, nights, amount: pricePerNight * nights }],
-    directDiscountPercent: 15, today: "2026-11-07", coupon: F1,
+    directDiscountPercent: 1500, today: "2026-11-07", coupon: F1,
   });
 
 let root: Root;
@@ -104,7 +104,7 @@ describe("new booking with a coupon code", () => {
   });
 
   it("doesn't send a code the direct offer beats", async () => {
-    preview.mockResolvedValue(quote(3, 12000));
+    preview.mockResolvedValue(quote(3, 1200000));
     await openDialog("2026-11-15");
     await type("nb-coupon", "DCNT-F1-20");
     await settle();
@@ -152,7 +152,7 @@ describe("new booking with a coupon code", () => {
 
 const row = (patch: Partial<RedemptionRow>): RedemptionRow =>
   ({
-    _id: "r1", _creationTime: 0, couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", bookingId: "b1", state: "held", discount: 1800,
+    _id: "r1", _creationTime: 0, couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", bookingId: "b1", state: "held", discount: 180000,
     createdAt: Date.parse("2026-11-07T03:42:00Z"), updatedAt: Date.parse("2026-11-07T03:42:00Z"),
     booking: { guestName: "Maya Chen", checkIn: "2026-11-12", checkOut: "2026-11-14", confirmationCode: "CONF-2026-H7Q2KD" },
     ...patch,
@@ -160,14 +160,14 @@ const row = (patch: Partial<RedemptionRow>): RedemptionRow =>
 
 describe("booking sheet promotion", () => {
   it("links the coupon with its version, discount and ledger state", async () => {
-    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 1800, redemptionId: "r1" }, currency: "THB", redemption: { state: "consumed", overLimit: false } }));
+    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 180000, redemptionId: "r1" }, currency: "THB", redemption: { state: "consumed", overLimit: false } }));
     const link = document.querySelector("a")!;
     expect(link.getAttribute("href")).toBe("/admin/marketing/coupons/c1");
     expect(document.querySelector("[data-testid='booking-promotion']")?.textContent).toBe("DCNT-F1-20· v1· −฿1,800Consumed");
   });
 
   it("flags a use that went over the limit", async () => {
-    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 1800, redemptionId: "r1" }, currency: "THB", redemption: { state: "consumed", overLimit: true } }));
+    await render(createElement(BookingPromotionLine, { promotion: { couponId: "c1", couponVersion: 1, code: "DCNT-F1-20", discount: 180000, redemptionId: "r1" }, currency: "THB", redemption: { state: "consumed", overLimit: true } }));
     expect(text()).toContain("Over the limit");
   });
 });
@@ -206,7 +206,7 @@ describe("coupon usage", () => {
 
   it("lists checkout sales beside bookings, linked to their receipts", async () => {
     const order = { orderId: "fxbill000042" as never, title: "Order #42", receiptNumber: "R-000318", customerName: "Mia Tanaka" };
-    await render(createElement(CouponLedger, { code: "DCNT-SPA-500", redemptions: [row({ _id: "r4" as never, state: "consumed", discount: 500, createdAt: 4, booking: undefined, order })] }));
+    await render(createElement(CouponLedger, { code: "DCNT-SPA-500", redemptions: [row({ _id: "r4" as never, state: "consumed", discount: 50000, createdAt: 4, booking: undefined, order })] }));
     const entry = document.querySelector("[data-testid='ledger-row']")!;
     expect(entry.textContent).toContain("Order #42R-000318");
     expect(entry.textContent).toContain("Checkout · Mia Tanaka · v1");

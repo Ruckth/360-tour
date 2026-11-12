@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
 import { RESORT_ZONE, formatResortDate, formatResortFullDate, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
 import type { ServiceSchedule } from "convex/lib/serviceSchedule";
-import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, round2, type TenderMethod } from "convex/lib/billMath";
+import { MAX_ORDER, changeDue, formatReceiptNumber, lineCouponDiscount, roundMoney, type TenderMethod } from "convex/lib/orderMath";
 import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import type { OrderView } from "./backend";
 
@@ -29,7 +29,7 @@ export const TOUCH_TARGETS =
 export const UP_TO_FOUR_COLUMNS = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,max(4rem,calc((100%_-_1.5rem)/4_-_1px))),1fr))] gap-2";
 
 /** Money typed at the till (or set by a shortcut): digits, one decimal point, two decimals, and at most `max`. */
-export function amountInput(value: string, max = MAX_BILL) {
+export function amountInput(value: string, max = MAX_ORDER / 100) {
   const [whole, ...rest] = value.replace(/[^\d.]/g, "").split(".");
   const digits = whole.slice(0, String(max).length);
   const text = rest.length ? `${digits}.${rest.join("").slice(0, 2)}` : digits;
@@ -86,8 +86,8 @@ export function correctionTitle(kind: "amended" | "void_unreceived" | "linked" |
 }
 
 /** Who a receipt is issued to: the name frozen at payment (or a legacy order's copied name). */
-export function receiptName(view: Pick<OrderView, "receiptCustomer" | "legacyGuest">) {
-  return view.receiptCustomer?.name ?? view.legacyGuest?.name;
+export function receiptName(view: Pick<OrderView, "receiptCustomer">) {
+  return view.receiptCustomer?.name;
 }
 
 type BookingRefs = Pick<OrderView, "source"> & Partial<Pick<OrderView, "sources">>;
@@ -121,7 +121,7 @@ export function couponRefusal(err: unknown): CouponRefusal | null {
 }
 
 /** Plain-text receipt for share and copy. Tenders show what was handed over, plus change, like the printed receipt. */
-export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer" | "legacyGuest"> & Partial<Pick<OrderView, "promotion" | "refundedAmountSatang" | "refundHistoryTruncated">> & BookingRefs, business: string) {
+export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer"> & Partial<Pick<OrderView, "promotion" | "refundedAmountSatang" | "refundHistoryTruncated">> & BookingRefs, business: string) {
   const { order, lines, payments, totals } = view;
   // POS line refunds (satang), as on the printed receipt; none past the history limit.
   const refunds = !view.refundHistoryTruncated;
@@ -144,16 +144,16 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...lines.flatMap((line) => {
       const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
       const when = line.kind === "service" ? receiptSchedule(line.schedule) : null;
-      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(round2(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []), ...(when ? [`  ${when}`] : []), ...(refunds && line.refundedAmountSatang ? [row("  Refunded", formatMoney(-line.refundedAmountSatang / 100))] : [])];
+      return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(roundMoney(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []), ...(when ? [`  ${when}`] : []), ...(refunds && line.refundedAmountSatang ? [row("  Refunded", formatMoney(-line.refundedAmountSatang))] : [])];
     }),
     "",
-    ...(totals.coupon ? [row("Subtotal", formatMoney(round2(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
+    ...(totals.coupon ? [row("Subtotal", formatMoney(roundMoney(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
     row("Total", formatMoney(totals.total)),
     row("VAT 7% included", formatMoney(totals.vat)),
     ...(totals.deposit ? [row("Paid before checkout", formatMoney(-totals.deposit))] : []),
     ...payments.map((p) => row(TENDER_LABELS[p.method].long, formatMoney(p.received ?? p.amount))),
     ...(change ? [row("Change", formatMoney(change))] : []),
-    ...(refunded ? [row("Refunded", formatMoney(-refunded / 100)), row("Net", formatMoney((Math.round(totals.total * 100) - refunded) / 100))] : []),
+    ...(refunded ? [row("Refunded", formatMoney(-refunded)), row("Net", formatMoney(totals.total - refunded))] : []),
     ...(totals.coupon ? ["", `You saved ${formatMoney(totals.coupon)} with ${view.promotion?.code ?? "a coupon"}`] : []),
   ].join("\n");
 }

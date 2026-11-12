@@ -46,7 +46,7 @@ import {
 
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (

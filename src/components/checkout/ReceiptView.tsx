@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
+import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, roundMoney } from "convex/lib/orderMath";
 import { cn } from "@/lib/utils";
 import { OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type OrderId } from "./backend";
@@ -78,7 +78,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [notice, setNotice] = useState("");
   const noticeRef = useRef<HTMLParagraphElement>(null);
   // The line whose refund form is open; one at a time.
-  const [refunding, setRefunding] = useState<Id<"billLines"> | null>(null);
+  const [refunding, setRefunding] = useState<Id<"orderLines"> | null>(null);
   const receiptRef = useRef<HTMLElement>(null);
   // Starts as an A4 length until the receipt has been measured.
   const [pageLengthMm, setPageLengthMm] = useState(297);
@@ -118,18 +118,18 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const bookings = receiptBookings(view);
   const change = changeDue(payments);
   const coupon = couponLabel(view);
-  const staffDiscount = round2(totals.discount - totals.coupon);
+  const staffDiscount = roundMoney(totals.discount - totals.coupon);
   // POS line refunds, in satang. Past the history limit the totals are lower bounds, so none are shown.
   const truncated = Boolean(view.refundHistoryTruncated);
   const refunded = truncated ? 0 : refundedSatang(view);
-  const net = (Math.round(totals.total * 100) - refunded) / 100;
+  const net = totals.total - refunded;
   const paid = order.status === "paid";
   const waiting = approvals?.some((r) => r.status === "pending") ?? false;
   // A cashier who must ask can't send a second request while one waits.
   const refundLocked = cashier && access.cashierRules.refund === "manager" && waiting;
 
   /** Closes the form. Cancel returns focus to the line's Refund; a finished refund or request focuses the notice. */
-  function closeRefund(lineId: Id<"billLines">, message?: string) {
+  function closeRefund(lineId: Id<"orderLines">, message?: string) {
     flushSync(() => {
       setRefunding(null);
       if (message) setNotice(message);

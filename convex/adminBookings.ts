@@ -1,4 +1,4 @@
-import { mutation, query } from './_generated/server';
+import { mutation, query } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { paginationOptsValidator } from 'convex/server';
@@ -39,7 +39,7 @@ import {
 	writeBooking,
 	type BookingPatch
 } from './lib/bookingMoney';
-import { round2 } from './lib/billMath';
+import { roundMoney } from './lib/orderMath';
 import { demoCode } from './lib/codes';
 import { calculateDirectQuote } from './lib/pricing';
 import { nightsBetween, stayDates, resortTodayIso } from './lib/dates';
@@ -48,7 +48,6 @@ import { appendRecordHistory } from './lib/recordHistory';
 import { manualPaymentMethod, refundMethod } from './lib/financeValidators';
 import {
 	cancelStayRecord,
-	legacyManualPayment,
 	paymentAmendBlocker,
 	paymentCancelBlocker,
 	recordStayRefund,
@@ -337,10 +336,9 @@ const refundInput = {
 	idempotencyKey: v.string(),
 	/** Business date the money was given back; defaults to now. */
 	effectiveAt: v.optional(v.number()),
-	/** The payment it returns (from bookingFinancials), or a legacy order that charged the stay. */
+
 	paymentId: v.optional(v.id('bookingPayments')),
-	billId: v.optional(v.id('bills')),
-	unitemised: v.optional(v.boolean())
+	orderId: v.optional(v.id('orders')),
 };
 
 async function loadBooking(ctx: QueryCtx | MutationCtx, bookingId: Id<'bookings'>) {
@@ -361,17 +359,11 @@ async function confirmStay(ctx: MutationCtx, booking: Doc<'bookings'>, actor: st
 	if (notify) await queueBookingEmails(ctx, booking);
 }
 
-/**
- * The booking sheet's one-click actions. `expectedRevision` (sent by the sheet) refuses a change
- * made on another device meanwhile. `notifyGuest` defaults to yes for current stays and no for
- * historical ones. Cancelling keeps any money paid; record refunds with `recordRefund` or
- * `cancelStay`. The legacy `refundRecorded: true` records a full refund without amount details.
- */
+
 export const updateBooking = mutation({
 	args: {
 		bookingId: v.id('bookings'),
 		action: v.union(v.literal('confirm'), v.literal('cancel'), v.literal('markPaid')),
-		refundRecorded: v.optional(v.boolean()),
 		expectedRevision: v.optional(v.number()),
 		notifyGuest: v.optional(v.boolean()),
 		reason: v.optional(v.string())
@@ -383,7 +375,7 @@ export const updateBooking = mutation({
 
 		if (args.action === 'cancel') {
 			await cancelStayRecord(ctx, booking, {
-				actor: admin.email, reason: args.reason, notifyGuest: args.notifyGuest, legacyFullRefund: args.refundRecorded === true
+				actor: admin.email, reason: args.reason, notifyGuest: args.notifyGuest
 			});
 			return;
 		}
@@ -431,7 +423,7 @@ export const recordPayment = mutation({
 		await assertNotOnOpenOrder(ctx, { bookingId: booking._id }, 'This stay');
 		const note = cleanReason(args.note, 'Note', false);
 		const { paymentId } = await recordStayPayment(ctx, booking._id, {
-			origin: 'manual', method: args.method, actor: admin.email, legacyMethod: 'admin',
+			origin: 'manual', method: args.method, actor: admin.email, paymentLabel: 'admin',
 			effectiveAt: args.effectiveAt, note, idempotencyKey: key, notifyGuest: args.notifyGuest, expectedAmount: args.expectedAmount
 		});
 		if (!paymentId) throw new Error('Nothing is owed on this stay.');
@@ -476,18 +468,12 @@ export const amendPayment = mutation({
 	}
 });
 
-/**
- * Cancels a hand-entered payment that was recorded by mistake (no money was received). It reduces
- * what the stay counts as paid, and may leave it unpaid again; nothing is refunded. Online and
- * order payments refuse. `legacy: true` covers a "Mark paid" recorded before payments were
- * itemised, only when the app can prove it was that alone (see lib/stayCorrections legacyManualPayment).
- */
+
 export const cancelPayment = mutation({
 	args: {
 		bookingId: v.id('bookings'),
 		expectedRevision: v.number(),
-		paymentId: v.optional(v.id('bookingPayments')),
-		legacy: v.optional(v.boolean()),
+		paymentId: v.id('bookingPayments'),
 		reason: v.string()
 	},
 	handler: async (ctx, args) => {
@@ -495,11 +481,10 @@ export const cancelPayment = mutation({
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision);
 		assertNoLiveCheckout(booking);
-		if (Boolean(args.paymentId) === Boolean(args.legacy)) throw new Error('Choose one payment entry to cancel.');
 		const reason = cleanReason(args.reason, 'Reason')!;
 		const money = stayMoney(booking);
 		const now = Date.now();
-		let amount: number;
+		let amount = 0;
 		let paymentId: Id<'bookingPayments'> | undefined;
 		if (args.paymentId) {
 			const payment = await ctx.db.get(args.paymentId);
@@ -509,14 +494,11 @@ export const cancelPayment = mutation({
 			await ctx.db.patch(payment._id, { status: 'cancelled', cancelledAt: now, cancelledBy: admin.email, cancelReason: reason });
 			amount = payment.amount;
 			paymentId = payment._id;
-		} else {
-			const legacy = await legacyManualPayment(ctx, booking);
-			if ('blocked' in legacy) throw new Error(legacy.blocked);
-			amount = legacy.amount;
 		}
-		const gross = round2(money.gross - amount);
+
+		const gross = roundMoney(money.gross - amount);
 		await writeBooking(ctx, booking, await stayPaymentReversalPatch(ctx, booking, gross),
-			{ actor: admin.email, kind: 'payment_cancelled', reason, details: { amount, ...(paymentId ? { paymentId } : { legacy: true }) } });
+			{ actor: admin.email, kind: 'payment_cancelled', reason, details: { amount, paymentId } });
 	}
 });
 
@@ -608,8 +590,7 @@ export const reopenBooking = mutation({
 		await writeBooking(ctx, booking, {
 			status: confirmed ? 'confirmed' : 'pending',
 			paymentStatus: paid ? 'paid' : 'pending',
-			// A legacy refunded stay counts its whole payment as refunded; keep counting it once reopened.
-			...(money.legacyRefund ? { amountRefunded: money.refunded } : {}),
+
 			refundedAt: undefined,
 			cancelledAt: undefined,
 			cancelledBy: undefined,
@@ -873,7 +854,6 @@ export const editBooking = mutation({
 		const guestFacingChange = stayChanged || args.guests !== booking.guests || nextTotal !== booking.total;
 		await writeBooking(ctx, booking, {
 			propertyId: args.propertyId,
-			tenantId: property.tenantId,
 			checkIn: args.checkIn,
 			checkOut: args.checkOut,
 			guests: args.guests,
@@ -941,7 +921,7 @@ async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>, a
 		await ctx.db.patch(session._id, { pendingCancellation: undefined });
 	}
 	const appointments = await ctx.db
-		.query('serviceAppointments')
+		.query('appointments')
 		.withIndex('by_booking', (q) => q.eq('bookingId', booking._id))
 		.take(51);
 	if (appointments.length > 50) throw new Error('This booking has more than 50 service appointments. Remove some before deleting it.');

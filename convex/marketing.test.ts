@@ -5,14 +5,14 @@ import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-const rules = { benefit: { kind: 'percent' as const, percent: 20 }, scope: 'accommodation' as const, minNights: 2, maxSaving: 3000 };
+const rules = { benefit: { kind: 'percent' as const, percent: 2000 }, scope: 'accommodation' as const, minNights: 2, maxSaving: 300000 };
 const quote = { code: 'dcnt-f1-20 ', propertySlug: 'mossbell', checkIn: '2026-11-10', checkOut: '2026-11-12' };
 async function setup() {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'Admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', {
-    slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 4500, currency: 'THB',
-    maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 15, status: 'active',
+    slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 450000, currency: 'THB',
+    maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active',
   }));
   const campaignId = await admin.mutation(api.marketing.saveCampaign, { name: 'November escape', source: 'facebook', medium: 'social' });
   const { couponId } = await admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'DCNT-F1-20', campaignId });
@@ -70,7 +70,7 @@ describe('campaigns, links and resolution', () => {
     expect(saved?.couponId).toBeUndefined();
     expect(saved?.locale).toBeUndefined();
     expect(saved?.placement).toBeUndefined();
-    await admin.mutation(api.marketing.saveCampaign, { campaignId, name: 'Updated', source: 'line', medium: 'messaging', budget: 100, startsOn: '2026-11-01' });
+    await admin.mutation(api.marketing.saveCampaign, { campaignId, name: 'Updated', source: 'line', medium: 'messaging', budget: 10000, startsOn: '2026-11-01' });
     await admin.mutation(api.marketing.saveCampaign, { campaignId, name: 'Updated', source: 'line', medium: 'messaging' });
     expect((await t.run(ctx => ctx.db.get(campaignId)))?.budget).toBeUndefined();
   });
@@ -146,7 +146,7 @@ describe('coupon catalog and quote preview', () => {
     const { t, admin, couponId } = await setup();
     expect(await admin.mutation(api.marketing.saveCoupon, { couponId, code: 'dcnt-f1-20 ', ...rules })).toEqual({ couponId, version: 1 });
     // Benefit field ordering must not create a spurious version.
-    expect(await admin.mutation(api.marketing.saveCoupon, { couponId, code: 'DCNT-F1-20', ...rules, benefit: { percent: 20, kind: 'percent' } })).toEqual({ couponId, version: 1 });
+    expect(await admin.mutation(api.marketing.saveCoupon, { couponId, code: 'DCNT-F1-20', ...rules, benefit: { percent: 2000, kind: 'percent' } })).toEqual({ couponId, version: 1 });
     const next = await admin.mutation(api.marketing.saveCoupon, { couponId, code: 'DCNT-F1-20', ...rules, minNights: 3, terms: 'New terms' });
     expect(next.version).toBe(2);
     const detail = await admin.query(api.marketing.getCoupon, { couponId });
@@ -157,9 +157,9 @@ describe('coupon catalog and quote preview', () => {
     await expect(admin.mutation(api.marketing.saveCoupon, { couponId, code: 'CHANGED', ...rules })).rejects.toMatchObject({ data: { code: 'coupon_code_locked' } });
   });
   it.each([
-    { code: 'a' }, { benefit: { kind: 'percent' as const, percent: 101 } },
-    { benefit: { kind: 'percent' as const, percent: 0.5 } }, { benefit: { kind: 'fixed' as const, amount: 0 } },
-    { minNights: 0 }, { usageLimit: 1.5 }, { discountBudget: -1 }, { maxSaving: Infinity },
+    { code: 'a' }, { benefit: { kind: 'percent' as const, percent: 10100 } },
+    { benefit: { kind: 'percent' as const, percent: 50 } }, { benefit: { kind: 'fixed' as const, amount: 0 } },
+    { minNights: 0 }, { usageLimit: 1.5 }, { discountBudget: -100 }, { maxSaving: Infinity },
     { minEligibleSubtotal: 0 }, { bookFrom: '2026-11-31' },
     { bookFrom: '2026-12-01', bookTo: '2026-11-01' }, { stayFrom: '2026-12-01', stayTo: '2026-11-01' },
   ])('rejects invalid rules %j', async overrides => {
@@ -169,20 +169,20 @@ describe('coupon catalog and quote preview', () => {
   it('uses Bangkok today, tests drafts and paused coupons, exposes only OfferResult publicly', async () => {
     const { t, admin, couponId } = await setup();
     await admin.mutation(api.marketing.saveCoupon, { couponId, code: 'DCNT-F1-20', ...rules, bookFrom: '2026-11-07', bookTo: '2026-11-07' });
-    expect(await admin.query(api.marketing.testQuote, quote)).toMatchObject({ couponStatus: 'applied', total: 7200 });
-    expect(await t.query(api.marketing.previewCoupon, quote)).toMatchObject({ couponStatus: 'invalid', problem: { code: 'not_active' }, total: 7650 });
+    expect(await admin.query(api.marketing.testQuote, quote)).toMatchObject({ couponStatus: 'applied', total: 720000 });
+    expect(await t.query(api.marketing.previewCoupon, quote)).toMatchObject({ couponStatus: 'invalid', problem: { code: 'not_active' }, total: 765000 });
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
     expect((await admin.query(api.marketing.testQuote, quote)).couponStatus).toBe('applied');
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-    const result = await t.query(api.marketing.previewCoupon, { ...quote, services: [{ label: 'Spa', amount: 1800 }] });
-    expect(result).toMatchObject({ subtotal: 10800, total: 9000 });
+    const result = await t.query(api.marketing.previewCoupon, { ...quote, services: [{ label: 'Spa', amount: 180000 }] });
+    expect(result).toMatchObject({ subtotal: 1080000, total: 900000 });
     expect(Object.keys(result).sort()).toEqual(['allocation', 'applied', 'capped', 'couponDiscount', 'couponStatus', 'directDiscount', 'discount', 'subtotal', 'total'].sort());
-    expect(await t.query(api.marketing.previewCoupon, { ...quote, code: 'UNKNOWN' })).toMatchObject({ couponStatus: 'invalid', problem: { code: 'not_found' }, total: 7650 });
+    expect(await t.query(api.marketing.previewCoupon, { ...quote, code: 'UNKNOWN' })).toMatchObject({ couponStatus: 'invalid', problem: { code: 'not_found' }, total: 765000 });
     expect((await t.query(api.marketing.previewCoupon, { ...quote, code: '' })).couponStatus).toBe('none');
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'archived' });
     expect((await admin.query(api.marketing.testQuote, quote)).problem).toEqual({ code: 'not_active' });
     await expect(t.query(api.marketing.previewCoupon, { ...quote, checkOut: quote.checkIn })).rejects.toMatchObject({ data: { code: 'invalid_stay_dates' } });
-    await expect(t.query(api.marketing.previewCoupon, { ...quote, services: [{ label: 'Bad', amount: -1 }] })).rejects.toMatchObject({ data: { code: 'invalid_service_amount' } });
+    await expect(t.query(api.marketing.previewCoupon, { ...quote, services: [{ label: 'Bad', amount: -100 }] })).rejects.toMatchObject({ data: { code: 'invalid_service_amount' } });
   });
 });
 
@@ -298,26 +298,26 @@ describe('marketing audit regressions', () => {
     }
   });
 
-  it.each([-1, 0.6, NaN, Infinity, 1e308, 10_000_001, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe service amount %s in public and admin quotes', async amount => {
+  it.each([-1, 0.6, NaN, Infinity, 1e308, 1_000_000_001, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe service amount %s in public and admin quotes', async amount => {
     const { t, admin } = await setup();
     const args = { ...quote, services: [{ label: 'Bad', amount }] };
     await expect(t.query(api.marketing.previewCoupon, args)).rejects.toThrow('invalid_service_amount');
     await expect(admin.query(api.marketing.testQuote, args)).rejects.toThrow('invalid_service_amount');
   });
 
-  it('bounds service count at 50 and accepts zero and maximum whole-baht prices', async () => {
+  it('bounds service count at 50 and accepts zero and maximum satang prices', async () => {
     const { t } = await setup();
-    const services = Array.from({ length: 50 }, (_, i) => ({ label: `Service ${i}`, amount: i ? 1_000_000 : 0 }));
+    const services = Array.from({ length: 50 }, (_, i) => ({ label: `Service ${i}`, amount: i ? 100000000 : 0 }));
     const result = await t.query(api.marketing.previewCoupon, { ...quote, services });
     expect(Number.isFinite(result.total)).toBe(true);
-    expect(result.allocation.every((line, i) => line.discount <= (i ? services[i - 1].amount : 9000))).toBe(true);
+    expect(result.allocation.every((line, i) => line.discount <= (i ? services[i - 1].amount : 900000))).toBe(true);
     await expect(t.query(api.marketing.previewCoupon, { ...quote, services: [...services, { label: 'Extra', amount: 0 }] }))
       .rejects.toThrow('too_many_services');
   });
 
   it('rejects quotes above the subtotal ceiling in both quote handlers', async () => {
     const { t, admin, propertyId } = await setup();
-    await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 50_000_000 }));
+    await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 5000000000 }));
     await expect(t.query(api.marketing.previewCoupon, quote)).rejects.toThrow('invalid_quote_total');
     await expect(admin.query(api.marketing.testQuote, quote)).rejects.toThrow('invalid_quote_total');
   });
@@ -326,11 +326,11 @@ describe('marketing audit regressions', () => {
     const { admin } = await setup();
     const cases = [
       [() => admin.mutation(api.marketing.saveCampaign, { name: '', source: 'fb', medium: 'social' }), 'missing_campaign_fields'],
-      [() => admin.mutation(api.marketing.saveCampaign, { name: 'x', source: 'fb', medium: 'social', budget: -1 }), 'invalid_budget'],
+      [() => admin.mutation(api.marketing.saveCampaign, { name: 'x', source: 'fb', medium: 'social', budget: -100 }), 'invalid_budget'],
       [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'AB' }), 'invalid_coupon_code'],
       [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'NEW', usageLimit: 0 }), 'invalid_coupon_limits'],
       [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'NEW', bookFrom: 'bad' }), 'invalid_date_range'],
-      [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'NEW', benefit: { kind: 'percent', percent: 101 } }), 'invalid_coupon_benefit'],
+      [() => admin.mutation(api.marketing.saveCoupon, { ...rules, code: 'NEW', benefit: { kind: 'percent', percent: 10100 } }), 'invalid_coupon_benefit'],
       [() => admin.query(api.marketing.testQuote, { ...quote, checkOut: quote.checkIn }), 'invalid_stay_dates'],
     ] as const;
     for (const [call, code] of cases) {
@@ -357,9 +357,9 @@ describe('marketing destination and pricing follow-up regressions', () => {
       path: '/en/booking?mk=f1', status: 'active', offerRemoved: true,
     });
   });
-  it('reports fractional accommodation pricing with an actionable error before invoking the whole-baht engine', async () => {
+  it('reports fractional accommodation pricing with an actionable error before invoking the satang engine', async () => {
     const { t, propertyId } = await setup();
-    await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 0.6, directDiscountPercent: 100 }));
+    await t.run(ctx => ctx.db.patch(propertyId, { pricePerNight: 0.6, directDiscountPercent: 10000 }));
     await expect(t.query(api.marketing.previewCoupon, { ...quote, checkOut: '2026-11-11' }))
       .rejects.toThrow('invalid_accommodation_amount');
   });
@@ -368,18 +368,18 @@ describe('marketing destination and pricing follow-up regressions', () => {
 describe('POS coupon ledger', () => {
   it('lists consumed checkout uses with the order title, formatted receipt and frozen customer name', async () => {
     const { t, admin } = await setup();
-    const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 500 }, scope: 'services' });
+    const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 50000 }, scope: 'services' });
     await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     const staffId = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
-    const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 1800, currency: 'THB', staffIds: [staffId] });
+    const serviceId = await admin.mutation(api.adminServices.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 180000, currency: 'THB', staffIds: [staffId] });
     const { orderId } = await admin.mutation(api.pos.addItem, { item: { kind: 'service', serviceId } });
     const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Anna Lee' });
     await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
     await admin.mutation(api.pos.applyOrderCoupon, { orderId, code: 'SPA-500' });
     const view = (await admin.query(api.pos.getOrder, { orderId }))!;
-    await admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: 'ledger-pos-pay-001', expectedRevision: view.order.revision, expectedDue: 1300, expectedCustomerRevision: 0, tenders: [{ method: 'cash', amount: 1300 }] });
+    await admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: 'ledger-pos-pay-001', expectedRevision: view.order.revision, expectedDue: 130000, expectedCustomerRevision: 0, tenders: [{ method: 'cash', amount: 130000 }] });
     const detail = await admin.query(api.marketing.getCoupon, { couponId });
-    expect(detail?.redemptions).toMatchObject([{ state: 'consumed', discount: 500, order: { orderId, title: 'Order #1', receiptNumber: 'R-000001', customerName: 'Anna Lee' } }]);
+    expect(detail?.redemptions).toMatchObject([{ state: 'consumed', discount: 50000, order: { orderId, title: 'Order #1', receiptNumber: 'R-000001', customerName: 'Anna Lee' } }]);
     expect(detail?.redemptions[0].booking).toBeUndefined();
     await t.run(ctx => ctx.db.patch(customerId, { name: 'Changed later' }));
     expect((await admin.query(api.marketing.getCoupon, { couponId }))?.redemptions[0].order?.customerName).toBe('Anna Lee');

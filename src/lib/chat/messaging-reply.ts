@@ -43,11 +43,7 @@ export type IncomingMessage = {
   turnId?: string;
 };
 
-/**
- * replyMode is persisted on event rows. Old literals (approved_exact, question_bank_exact,
- * question_bank_semantic, exact, postback) are intentionally still accepted by the Convex
- * validators for historical rows, but this seam never PRODUCES them any more.
- */
+/** Current reply modes produced by the shared messaging seam. */
 export type MessagingReplyMode =
   | "ai"
   | "guardrail"

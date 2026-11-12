@@ -27,8 +27,8 @@ vi.mock("@/lib/booking/use-blocked-dates", () => {
 });
 vi.mock("@/lib/react/convex-api", () => ({
   listLiveProperties: async () => [{
-    _id: "p1", slug: "pool-villa", name: "Pool villa", tagline: "", description: "", pricePerNight: 5000, maxGuests: 4,
-    bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: [], tourRoomIds: [], currency: "THB", directDiscountPercent: 15,
+    _id: "p1", slug: "pool-villa", name: "Pool villa", tagline: "", description: "", pricePerNight: 500000, maxGuests: 4,
+    bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: [], tourRoomIds: [], currency: "THB", directDiscountPercent: 1500,
   }],
   isPropertyAvailable: async () => true,
   createBooking: (client: unknown, args: { marketing?: unknown }) => fixture.createBooking(client, args),

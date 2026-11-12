@@ -1,4 +1,4 @@
-import { mutation, query, type QueryCtx } from './_generated/server';
+import { mutation, query, type QueryCtx } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
@@ -53,22 +53,14 @@ async function deleteBlocker(ctx: QueryCtx, property: Doc<'properties'>): Promis
 	if (await ctx.db.query('availability').withIndex('by_property', (q) => q.eq('propertyId', property._id)).first()) {
 		return 'This villa has calendar entries. Archive it instead.';
 	}
-	if (await ctx.db.query('chatSessions').withIndex('by_property', (q) => q.eq('propertyId', property._id)).first()) {
+	if (await ctx.db.query('conversations').withIndex('by_property', (q) => q.eq('propertyId', property._id)).first()) {
 		return 'Guests have chatted about this villa. Archive it instead.';
 	}
 	const propertyId = property._id;
 	const slug = property.slug;
 	const references = [
-		['chat answers', await ctx.db.query('chatAnswers').withIndex('by_propertyId_and_status_and_updatedAt', q => q.eq('propertyId', propertyId)).first()],
-		['chat answer property scopes', await ctx.db.query('chatAnswerPropertyScopes').withIndex('by_propertySlug', q => q.eq('propertySlug', slug)).first()],
-		['chat answer property scopes', await ctx.db.query('chatAnswerPropertyScopes').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
-		['chat knowledge scopes', await ctx.db.query('chatKnowledgeScopes').withIndex('by_normalizedSlug', q => q.eq('normalizedSlug', slug)).first()],
-		['chat topics', await ctx.db.query('chatTopics').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
-		['chat questions', await ctx.db.query('chatQuestions').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
-		['chat answer topics', await ctx.db.query('chatAnswerTopics').withIndex('by_propertyId', q => q.eq('propertyId', propertyId)).first()],
 		['unknown chat questions', await ctx.db.query('chatUnknownQuestions').withIndex('by_propertyId_and_status_and_createdAt', q => q.eq('propertyId', propertyId)).first()],
 		['unknown chat questions', await ctx.db.query('chatUnknownQuestions').withIndex('by_propertySlug', q => q.eq('propertySlug', slug)).first()],
-		['curated chat questions', await ctx.db.query('curatedChatQuestions').withIndex('by_propertySlug_and_normalizedQuestion', q => q.eq('propertySlug', slug)).first()],
 		['leads', await ctx.db.query('leads').withIndex('by_property', q => q.eq('propertyId', propertyId)).first()],
 	] as const;
 	const found = [...new Set(references.filter(([, row]) => row !== null).map(([name]) => name))];
@@ -77,7 +69,7 @@ async function deleteBlocker(ctx: QueryCtx, property: Doc<'properties'>): Promis
 }
 
 async function propertyRooms(ctx: QueryCtx, propertyId: Id<'properties'>) {
-	const rooms = await ctx.db.query('rooms').withIndex('by_property', (q) => q.eq('propertyId', propertyId)).take(MAX_ROOMS + 1);
+	const rooms = await ctx.db.query('tourScenes').withIndex('by_property', (q) => q.eq('propertyId', propertyId)).take(MAX_ROOMS + 1);
 	if (rooms.length > MAX_ROOMS) throw new Error('Too many rooms to safely edit this villa. Contact support.');
 	return rooms;
 }
@@ -88,7 +80,7 @@ async function getProperty(ctx: QueryCtx, propertyId: Id<'properties'>) {
 	return property;
 }
 
-async function getRoom(ctx: QueryCtx, roomId: Id<'rooms'>) {
+async function getRoom(ctx: QueryCtx, roomId: Id<'tourScenes'>) {
 	const room = await ctx.db.get(roomId);
 	if (!room) throw new Error('Room not found');
 	return room;
@@ -129,7 +121,6 @@ export const create = mutation({
 		const slug = await pickSlug(args.slug, name, 'villa', 'Slug', (s) => propertySlugTaken(ctx, s));
 		const template = await ctx.db.query('properties').first();
 		return await history.insertProperty({
-			tenantId: template?.tenantId,
 			slug,
 			name,
 			tagline: '',
@@ -163,7 +154,6 @@ export const duplicate = mutation({
 		const name = `${source.name} (copy)`;
 		const slug = await pickSlug(undefined, name, 'villa', 'Slug', (s) => propertySlugTaken(ctx, s));
 		const propertyId = await history.insertProperty({
-			tenantId: source.tenantId,
 			slug,
 			name,
 			tagline: source.tagline,
@@ -252,15 +242,12 @@ export const deleteDraft = mutation({
 		if (blocker) throw new Error(blocker);
 		const propertyId = property._id;
 		const children = [
-			ctx.db.query('rooms').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
+			ctx.db.query('tourScenes').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
 			ctx.db.query('reviews').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
-			ctx.db.query('socialProof').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
+			ctx.db.query('reviewStats').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
 			ctx.db.query('tourSnippets').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
-			ctx.db.query('recentBookingDisplay').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
 			ctx.db.query('otaRates').withIndex('by_property_platform', (q) => q.eq('propertyId', propertyId)),
-			ctx.db.query('pricing').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
-			ctx.db.query('icalSources').withIndex('by_property', (q) => q.eq('propertyId', propertyId)),
-			ctx.db.query('propertyKnowledge').withIndex('by_property', (q) => q.eq('propertyId', propertyId))
+			ctx.db.query('icalSources').withIndex('by_property', (q) => q.eq('propertyId', propertyId))
 		];
 		const childRows = [];
 		for (const rows of children) {
@@ -271,7 +258,7 @@ export const deleteDraft = mutation({
 			childRows.push(batch);
 		}
 		for (const batch of childRows) for (const row of batch) {
-			const roomId = ctx.db.normalizeId('rooms', row._id);
+			const roomId = ctx.db.normalizeId('tourScenes', row._id);
 			if (roomId) await history.deleteRoom(roomId);
 			else {
 			 const rateId = ctx.db.normalizeId('otaRates', row._id);
@@ -333,7 +320,7 @@ export const createRoom = mutation({
 });
 
 export const deleteRoom = mutation({
-	args: { roomId: v.id('rooms') },
+	args: { roomId: v.id('tourScenes') },
 	handler: async (ctx, args) => {
 		const admin = await requireAdmin(ctx);
 		const history = configurationWriter(ctx, admin.email);
@@ -370,7 +357,7 @@ export const reorderRooms = mutation({
 
 export const setHotspots = mutation({
 	args: {
-		roomId: v.id('rooms'),
+		roomId: v.id('tourScenes'),
 		hotspots: v.array(
 			v.object({ id: v.optional(v.string()), label: v.string(), targetRoomSlug: v.string(), position: v.array(v.number()) })
 		)

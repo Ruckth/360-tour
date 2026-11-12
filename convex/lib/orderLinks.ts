@@ -1,80 +1,76 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { orderTitle } from './billMath';
+import { orderTitle } from './orderMath';
 import { sourceLineLinks } from './lineLinks';
 
 /**
  * How orders relate to bookings and appointments (the "sources" they charge).
  *
- * - An order may be linked to one stay (`bills.bookingId`) or one standalone appointment
- *   (`bills.appointmentId`): opening that booking at checkout reuses its open order.
+ * - An order may be linked to one stay (`orders.bookingId`) or one standalone appointment
+ *   (`orders.appointmentId`): opening that booking at checkout reuses its open order.
  * - Each charged stay or appointment is also a line with its own `bookingId`/`appointmentId`,
  *   so an order can carry a stay plus its appointments and extras. A source is charged on at
  *   most one open order at a time.
  * - Paid and void orders are history and never change. A paid service or room row can still be
- *   applied to its appointment or stay later through a billLineLinks row (lib/lineLinks.ts).
+ *   applied to its appointment or stay later through a orderLineLinks row (lib/lineLinks.ts).
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
-export type OrderSource = { bookingId: Id<'bookings'> } | { appointmentId: Id<'serviceAppointments'> };
+export type OrderSource = { bookingId: Id<'bookings'> } | { appointmentId: Id<'appointments'> };
 
-export const isOpenOrder = (order: Pick<Doc<'bills'>, 'status'>) => order.status === 'draft' || order.status === 'held';
+export const isOpenOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'draft';
 
 /**
  * Paid or void: an order that was settled and is history. Use this, not `!isOpenOrder`, wherever
  * "an order that took money" is meant: a discarded order is neither open nor settled.
  */
-export const isSettledOrder = (order: Pick<Doc<'bills'>, 'status'>) => order.status === 'paid' || order.status === 'void';
+export const isSettledOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'paid' || order.status === 'void';
 
-/** Open orders are listed as unpaid; `held` is the legacy spelling of draft. */
-export function orderState(order: Pick<Doc<'bills'>, 'status'>): 'unpaid' | 'paid' | 'void' | 'discarded' {
+
+export function orderState(order: Pick<Doc<'orders'>, 'status'>): 'unpaid' | 'paid' | 'void' | 'discarded' {
 	return isOpenOrder(order) ? 'unpaid' : order.status === 'paid' ? 'paid' : order.status === 'discarded' ? 'discarded' : 'void';
 }
 
 const SOURCE_SCAN = 20;
 
-/** Running numbers in billCounters: "order" and "receipt". */
+/** Running numbers in orderCounters: "order" and "receipt". */
 export const ORDER_COUNTER = 'order';
 export const RECEIPT_COUNTER = 'receipt';
 
 /** Next number for the key, written in the caller's transaction so two orders can't share one. */
 export async function nextCounter(ctx: MutationCtx, key: string) {
-	const row = await ctx.db.query('billCounters').withIndex('by_key', (q) => q.eq('key', key)).unique();
+	const row = await ctx.db.query('orderCounters').withIndex('by_key', (q) => q.eq('key', key)).unique();
 	const value = (row?.value ?? 0) + 1;
 	if (row) await ctx.db.patch(row._id, { value });
-	else await ctx.db.insert('billCounters', { key, value });
+	else await ctx.db.insert('orderCounters', { key, value });
 	return value;
 }
 
 function sourceLines(ctx: ReadCtx, source: OrderSource) {
 	return 'bookingId' in source
-		? ctx.db.query('billLines').withIndex('by_bookingId', (q) => q.eq('bookingId', source.bookingId)).order('desc')
-		: ctx.db.query('billLines').withIndex('by_appointmentId', (q) => q.eq('appointmentId', source.appointmentId)).order('desc');
+		? ctx.db.query('orderLines').withIndex('by_bookingId', (q) => q.eq('bookingId', source.bookingId)).order('desc')
+		: ctx.db.query('orderLines').withIndex('by_appointmentId', (q) => q.eq('appointmentId', source.appointmentId)).order('desc');
 }
 
-function linkedWithStatus(ctx: ReadCtx, source: OrderSource, status: Doc<'bills'>['status']) {
+function linkedWithStatus(ctx: ReadCtx, source: OrderSource, status: Doc<'orders'>['status']) {
 	return 'bookingId' in source
-		? ctx.db.query('bills').withIndex('by_bookingId_and_status', (q) => q.eq('bookingId', source.bookingId).eq('status', status)).order('desc')
-		: ctx.db.query('bills').withIndex('by_appointmentId_and_status', (q) => q.eq('appointmentId', source.appointmentId).eq('status', status)).order('desc');
+		? ctx.db.query('orders').withIndex('by_bookingId_and_status', (q) => q.eq('bookingId', source.bookingId).eq('status', status)).order('desc')
+		: ctx.db.query('orders').withIndex('by_appointmentId_and_status', (q) => q.eq('appointmentId', source.appointmentId).eq('status', status)).order('desc');
 }
 
 /** A source charged on more rows than this (paid history included) is refused rather than half-checked. */
 const MAX_SOURCE_LINES = 500;
 
-/**
- * The open order (other than `exceptOrderId`) that charges this source on one of its lines.
- * Every row for the source is checked (up to MAX_SOURCE_LINES), so an open legacy order behind
- * newer paid or void history is still found and the source is never charged twice.
- */
-export async function openOrderCharging(ctx: ReadCtx, source: OrderSource, exceptOrderId?: Id<'bills'>) {
-	const seen = new Set<Id<'bills'>>();
+
+export async function openOrderCharging(ctx: ReadCtx, source: OrderSource, exceptOrderId?: Id<'orders'>) {
+	const seen = new Set<Id<'orders'>>();
 	let count = 0;
 	for await (const line of sourceLines(ctx, source)) {
 		if (++count > MAX_SOURCE_LINES) throw new ConvexError('This booking has too much order history to check. Contact support.');
-		if (line.billId === exceptOrderId || seen.has(line.billId)) continue;
-		seen.add(line.billId);
-		const order = await ctx.db.get(line.billId);
+		if (line.orderId === exceptOrderId || seen.has(line.orderId)) continue;
+		seen.add(line.orderId);
+		const order = await ctx.db.get(line.orderId);
 		if (order && isOpenOrder(order)) return order;
 	}
 	return null;
@@ -82,7 +78,7 @@ export async function openOrderCharging(ctx: ReadCtx, source: OrderSource, excep
 
 /** The open order linked to this booking or standalone appointment, if any. */
 export async function linkedOpenOrder(ctx: ReadCtx, source: OrderSource) {
-	return (await linkedWithStatus(ctx, source, 'draft').first()) ?? (await linkedWithStatus(ctx, source, 'held').first());
+	return await linkedWithStatus(ctx, source, 'draft').first();
 }
 
 /** Where checkout continues for this source: the open order charging it, else its linked open order. */
@@ -95,32 +91,32 @@ export async function activeOrderFor(ctx: ReadCtx, source: OrderSource) {
  * Discarded orders are included, so a booking with one is never mistaken for one without orders.
  */
 export async function ordersForSource(ctx: ReadCtx, source: OrderSource, limit = 10) {
-	const found = new Map<Id<'bills'>, Doc<'bills'>>();
-	for (const status of ['draft', 'held', 'paid', 'void', 'discarded'] as const) {
+	const found = new Map<Id<'orders'>, Doc<'orders'>>();
+	for (const status of ['draft', 'paid', 'void', 'discarded'] as const) {
 		for (const order of await linkedWithStatus(ctx, source, status).take(limit)) found.set(order._id, order);
 	}
 	for (const line of await sourceLines(ctx, source).take(SOURCE_SCAN)) {
-		if (found.has(line.billId)) continue;
-		const order = await ctx.db.get(line.billId);
+		if (found.has(line.orderId)) continue;
+		const order = await ctx.db.get(line.orderId);
 		if (order) found.set(order._id, order);
 	}
 	// A paid row linked to the source later (lib/lineLinks.ts), including links since undone.
 	for (const link of await sourceLineLinks(ctx, source, undefined, SOURCE_SCAN)) {
-		if (found.has(link.billId)) continue;
-		const order = await ctx.db.get(link.billId);
+		if (found.has(link.orderId)) continue;
+		const order = await ctx.db.get(link.orderId);
 		if (order) found.set(order._id, order);
 	}
 	return [...found.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
 }
 
-type OrderLinks = Partial<Pick<Doc<'bills'>, 'bookingId' | 'appointmentId' | 'parentOrderId' | 'customerId'>>;
+type OrderLinks = Partial<Pick<Doc<'orders'>, 'bookingId' | 'appointmentId' | 'parentOrderId' | 'customerId'>>;
 
 /** A new unpaid order with its permanent number. */
-export async function insertOrder(ctx: MutationCtx, actor: string, links: OrderLinks = {}): Promise<Doc<'bills'>> {
+export async function insertOrder(ctx: MutationCtx, actor: string, links: OrderLinks = {}): Promise<Doc<'orders'>> {
 	const now = Date.now();
 	const orderNumber = await nextCounter(ctx, ORDER_COUNTER);
 	const set = Object.fromEntries(Object.entries(links).filter(([, value]) => value !== undefined)) as OrderLinks;
-	const id = await ctx.db.insert('bills', {
+	const id = await ctx.db.insert('orders', {
 		status: 'draft', orderNumber, currency: 'THB', itemCount: 0, total: 0, due: 0, hasItems: false, revision: 0,
 		createdBy: actor, createdAt: now, updatedAt: now, ...set
 	});
@@ -138,12 +134,12 @@ export async function ensureLinkedOrder(ctx: MutationCtx, source: OrderSource, a
 }
 
 /** An order nobody has used: created with its booking, still empty, never paid or audited. */
-async function isPlaceholder(ctx: ReadCtx, order: Doc<'bills'>) {
+async function isPlaceholder(ctx: ReadCtx, order: Doc<'orders'>) {
 	if (order.status !== 'draft' || order.hasItems || order.customerId || order.receiptNumber !== undefined) return false;
 	const [line, payment, audit] = await Promise.all([
-		ctx.db.query('billLines').withIndex('by_billId', (q) => q.eq('billId', order._id)).first(),
-		ctx.db.query('billPayments').withIndex('by_billId', (q) => q.eq('billId', order._id)).first(),
-		ctx.db.query('billAudit').withIndex('by_billId_and_at', (q) => q.eq('billId', order._id)).first()
+		ctx.db.query('orderLines').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).first(),
+		ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).first(),
+		ctx.db.query('orderAudit').withIndex('by_orderId_and_at', (q) => q.eq('orderId', order._id)).first()
 	]);
 	return !line && !payment && !audit;
 }

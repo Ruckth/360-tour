@@ -179,7 +179,7 @@ test.describe("Settings › Team", () => {
     await rules.getByRole("button", { name: "Save rules" }).click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({
-      expectedRevision: 0, discountLimitPercent: 12.5, voidPaidSale: "cashier", customPrice: "manager", paymentFix: "manager", refund: "manager",
+      expectedRevision: 0, discountLimitPercent: 1250, voidPaidSale: "cashier", customPrice: "manager", paymentFix: "manager", refund: "manager",
     });
   });
 

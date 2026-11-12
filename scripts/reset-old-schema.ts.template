@@ -1,0 +1,18 @@
+// Copy ONLY this helper into convex/maintenance/reset.ts on the OLD schema revision.
+import { paginationOptsValidator } from 'convex/server';
+import { v } from 'convex/values';
+import { internalMutation } from '../_generated/server';
+
+export const cancelScheduledPage = internalMutation({
+  args: { paginationOpts: paginationOptsValidator, deployment: v.string() },
+  handler: async (ctx, args) => {
+    if (process.env.ARCH_RESET_PAUSED !== '1' || process.env.CONVEX_CLOUD_URL !== `https://${args.deployment}.convex.cloud`) throw new Error('Reset pause/deployment does not match');
+    const page = await ctx.db.system.query('_scheduled_functions').paginate(args.paginationOpts);
+    let cancelled = 0, inProgress = 0;
+    for (const row of page.page) {
+      if (row.state.kind === 'pending') { await ctx.scheduler.cancel(row._id); cancelled++; }
+      else if (row.state.kind === 'inProgress') inProgress++;
+    }
+    return { cancelled, inProgress, isDone: page.isDone, continueCursor: page.continueCursor };
+  },
+});

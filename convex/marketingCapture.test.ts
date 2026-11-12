@@ -14,7 +14,7 @@ const visitorKey = 'mv_' + '1'.repeat(32);
 const email = 'admin@example.com';
 const campaign = { name: 'November', source: 'facebook', medium: 'social' };
 const stay = { propertySlug: 'mossbell', guestName: 'Mia', guestPhone: '+66811112222', checkIn: '2026-11-10', checkOut: '2026-11-12', guests: 2 };
-const rules = { code: 'NOV20', benefit: { kind: 'percent' as const, percent: 20 }, scope: 'accommodation' as const };
+const rules = { code: 'NOV20', benefit: { kind: 'percent' as const, percent: 2000 }, scope: 'accommodation' as const };
 
 beforeEach(() => {
   vi.stubEnv('ADMIN_EMAILS', email);
@@ -27,8 +27,8 @@ async function setup() {
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email, tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', {
-    slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 4500, currency: 'THB',
-    maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 15, status: 'active'
+    slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 450000, currency: 'THB',
+    maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'
   }));
   const campaignId = await admin.mutation(api.marketing.saveCampaign, campaign);
   const link = { slug: 'f1', name: 'Post', campaignId, destination: { kind: 'booking' as const }, entry: 'link' as const };
@@ -209,8 +209,8 @@ describe('web chat capture', () => {
   it('refreshes the capture with each guest message, so a later tab or an opt-out is what the booking sees', async () => {
     const s = await setup();
     await s.session(now - day);
-    const capture = async (sessionId: Id<'chatSessions'>) => (await s.t.run(ctx => ctx.db.get(sessionId)))?.marketingCapture;
-    const say = (sessionId: Id<'chatSessions'>, role: 'user' | 'assistant', marketing?: { visitorKey?: string; slug?: string }) =>
+    const capture = async (sessionId: Id<'conversations'>) => (await s.t.run(ctx => ctx.db.get(sessionId)))?.marketingCapture;
+    const say = (sessionId: Id<'conversations'>, role: 'user' | 'assistant', marketing?: { visitorKey?: string; slug?: string }) =>
       role === 'user'
         ? s.t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Hi', ...(marketing ? { marketing } : {}) })
         : s.t.mutation(internal.chat.addAssistantMessageWithSuggestions, { sessionId, content: 'Hi' });
@@ -243,7 +243,7 @@ describe('web chat capture', () => {
 
   it('does not attribute a messaging booking even if a legacy session has a capture', async () => {
     const s = await setup();
-    const sessionId = await s.t.run(ctx => ctx.db.insert('chatSessions', { channel: 'whatsapp', visitorPhone: '66811112222', marketingCapture: { slug: 'f1' }, createdAt: now }));
+    const sessionId = await s.t.run(ctx => ctx.db.insert('conversations', { channel: 'whatsapp', visitorPhone: '66811112222', marketingCapture: { slug: 'f1' }, createdAt: now }));
     await s.t.mutation(internal.bookings.prepareChatBooking, { ...stay, sessionId });
     const result = await s.t.mutation(internal.bookings.confirmChatBooking, { sessionId });
     if (result.needsReview) throw new Error("Expected a confirmed booking");
@@ -290,7 +290,7 @@ describe('marketing history', () => {
     await s.admin.mutation(api.marketing.setLinkStatus, { linkId: s.linkId, status: 'paused' });
     await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
     expect(await s.t.run(ctx => ctx.db.query('recordChanges').take(100))).toEqual(before);
-    const changedRules = { benefit: { kind: 'percent' as const, percent: 25 }, scope: rules.scope };
+    const changedRules = { benefit: { kind: 'percent' as const, percent: 2500 }, scope: rules.scope };
     await s.admin.mutation(api.marketing.saveCoupon, { ...changedRules, couponId, code: 'NEW20' });
     const history = await events('coupon', couponId);
     expect(history[history.length - 1]).toEqual(event('coupon', couponId, 'version_added', { ...changedRules, version: 2 }));
@@ -299,12 +299,12 @@ describe('marketing history', () => {
 
   it('records clearing optional campaign and link fields as null', async () => {
     const s = await setup();
-    await s.admin.mutation(api.marketing.saveCampaign, { ...campaign, campaignId: s.campaignId, budget: 100 });
+    await s.admin.mutation(api.marketing.saveCampaign, { ...campaign, campaignId: s.campaignId, budget: 10000 });
     await s.admin.mutation(api.marketing.saveCampaign, { ...campaign, campaignId: s.campaignId });
     await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId, placement: 'Lobby' });
     await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId });
     const latest = (entityType: string, entityId: Id<'marketingCampaigns'> | Id<'marketingLinks'>) => s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', entityType).eq('entityId', entityId)).order('desc').first());
-    expect(await latest('marketingCampaign', s.campaignId)).toMatchObject({ before: { budget: 100 }, after: { budget: null } });
+    expect(await latest('marketingCampaign', s.campaignId)).toMatchObject({ before: { budget: 10000 }, after: { budget: null } });
     expect(await latest('marketingLink', s.linkId)).toMatchObject({ before: { placement: 'Lobby' }, after: { placement: null } });
   });
 });

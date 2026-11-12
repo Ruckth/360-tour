@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -19,17 +20,17 @@ async function setup() {
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email: 'audit@example.com', tokenIdentifier: 'audit' });
 	const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Audit Villa', slug: 'audit-villa' });
-	await admin.mutation(api.properties.update, { propertyId, pricePerNight: 1000, status: 'active' });
-	const view = (orderId: Id<'bills'>) => admin.query(api.pos.getOrder, { orderId }).then((order) => order!);
+	await admin.mutation(api.properties.update, { propertyId, pricePerNight: 100000, status: 'active' });
+	const view = (orderId: Id<'orders'>) => admin.query(api.pos.getOrder, { orderId }).then((order) => order!);
 	const booking = () => admin.mutation(api.adminBookings.createBooking, {
 		propertySlug: 'audit-villa', guestName: 'Guest X', guestPhone: '+66 81 234 5678', guestEmail: 'regular@example.com',
 		checkIn: '2026-12-01', checkOut: '2026-12-02', guests: 1, confirmed: true, notifyGuest: false,
 	});
-	const extra = () => admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 50 } });
-	const discard = async (orderId: Id<'bills'>) => admin.mutation(api.pos.discardOrder, {
+	const extra = () => admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 5000 } });
+	const discard = async (orderId: Id<'orders'>) => admin.mutation(api.pos.discardOrder, {
 		orderId, expectedRevision: (await view(orderId)).order.revision, idempotencyKey: `discard-${orderId}`,
 	});
-	const settle = async (orderId: Id<'bills'>) => {
+	const settle = async (orderId: Id<'orders'>) => {
 		const order = await view(orderId);
 		return admin.mutation(api.pos.settleOrder, {
 			orderId, expectedRevision: order.order.revision, expectedDue: order.totals.due,
@@ -51,8 +52,8 @@ describe('verified POS bug hunt regressions', () => {
 			slug: `massage-${price}`, name: `Massage ${price}`, description: '', category: 'Massage',
 			durationMin: 60, bufferMin: 0, price, currency: 'THB', staffIds: [staffId],
 		});
-		const serviceId = await service(1200);
-		const cheaperServiceId = await service(500);
+		const serviceId = await service(120000);
+		const cheaperServiceId = await service(50000);
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, {
 			serviceId, staffId, start: Date.parse('2026-10-31T03:00:00Z'),
 			guestName: 'Anna', guestPhone: '0812345678', historicalReason: 'Record yesterday’s appointment',
@@ -63,7 +64,7 @@ describe('verified POS bug hunt regressions', () => {
 			reason: 'Correct recorded status', effectiveAt: Date.now(),
 		});
 		await correct('no_show');
-		const { orderId } = await admin.mutation(api.pos.addAppointmentFee, { appointmentId, kind: 'no_show', amount: 800 });
+		const { orderId } = await admin.mutation(api.pos.addAppointmentFee, { appointmentId, kind: 'no_show', amount: 80000 });
 		await correct('booked');
 		await admin.mutation(api.adminServices.updateAppointmentDetails, {
 			appointmentId, expectedRevision: (await appointment()).revision ?? 0,
@@ -74,7 +75,7 @@ describe('verified POS bug hunt regressions', () => {
 		await expect(settle(orderId)).rejects.toThrow('price');
 		expect((await view(orderId)).order.state).toBe('unpaid');
 		await admin.mutation(api.pos.removeLine, { lineId: (await view(orderId)).lines[0]._id });
-		await admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 500 });
+		await admin.mutation(api.pos.addAppointmentFee, { orderId, appointmentId, kind: 'no_show', amount: 50000 });
 		await expect(settle(orderId)).resolves.toBeDefined();
 	});
 
@@ -135,7 +136,7 @@ describe('verified POS bug hunt regressions', () => {
 		});
 		const serviceId = await admin.mutation(api.adminServices.createService, {
 			slug: 'attachment-massage', name: 'Massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0,
-			price: 500, currency: 'THB', staffIds: [staffId],
+			price: 50000, currency: 'THB', staffIds: [staffId],
 		});
 		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, {
 			serviceId, staffId, bookingId, start: Date.parse('2026-12-01T03:00:00Z'), guestName: 'Anna', guestPhone: '0812345678',
@@ -164,11 +165,11 @@ describe('verified POS bug hunt regressions', () => {
 		const { admin, view, extra } = await setup();
 		const { orderId } = await extra();
 		const staleRevision = (await view(orderId)).order.revision;
-		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Coffee', price: 100 } });
+		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'extra', name: 'Coffee', price: 10000 } });
 		await expect(admin.mutation(api.pos.settleOrder, {
-			orderId, expectedRevision: staleRevision, expectedDue: 50, idempotencyKey: 'stale-payment', tenders: [{ method: 'cash', amount: 50 }],
+			orderId, expectedRevision: staleRevision, expectedDue: 5000, idempotencyKey: 'stale-payment', tenders: [{ method: 'cash', amount: 5000 }],
 		})).rejects.toMatchObject({ data: 'The order changed. Check the total and pay again.' });
-		await expect(admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Bad price', price: -1 } })).rejects.toBeInstanceOf(ConvexError);
+		await expect(admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Bad price', price: -100 } })).rejects.toBeInstanceOf(ConvexError);
 		await expect(admin.mutation(api.customers.createCustomer, { name: '' })).rejects.toMatchObject({ data: 'Enter the customer name' });
 		await expect(admin.mutation(api.customers.createCustomer, { name: 'Anna', email: 'invalid' })).rejects.toMatchObject({ data: 'Please enter a valid email address' });
 	});
@@ -180,12 +181,12 @@ describe('verified POS bug hunt regressions', () => {
 		let legacy!: Id<'bookings'>;
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 24; i++) {
-				const id = await ctx.db.insert('bookings', {
+				const id = await insertFixture(ctx, 'bookings', {
 					propertyId, guestName: `Regular ${i}`, guestPhone: '+66 81 234 5678',
 					...(i === 2 ? {} : { guestPhoneDigits: '66812345678', guestEmailNormalized: 'regular@example.com' }),
 					guestEmail: 'regular@example.com', checkIn: '2026-12-01', checkOut: '2026-12-02', guests: 1, nights: 1,
-					subtotal: 1000, discountAmount: 0, total: 1000, currency: 'THB', status: 'confirmed',
-					paymentStatus: i === 0 || i === 2 ? 'pending' : 'paid', amountPaid: i === 0 || i === 2 ? 0 : i === 1 ? 500 : 1000,
+					subtotal: 100000, discountAmount: 0, total: 100000, currency: 'THB', status: 'confirmed',
+					paymentStatus: i === 0 || i === 2 ? 'pending' : 'paid', amountPaid: i === 0 || i === 2 ? 0 : i === 1 ? 50000 : 100000,
 					confirmationCode: `REGULAR-${i}`, createdAt: Date.now(),
 				});
 				if (i === 0) unpaid = id;
@@ -210,7 +211,7 @@ describe('verified POS bug hunt regressions', () => {
 		const { _id: ignoredId, _creationTime: ignoredCreation, ...fields } = original;
 		void ignoredId; void ignoredCreation;
 		await t.run(async (ctx) => {
-			for (let i = 0; i < 501; i++) await ctx.db.insert('bookings', { ...fields, paymentStatus: 'paid', amountPaid: 1000, confirmationCode: `PAID-${i}` });
+			for (let i = 0; i < 501; i++) await insertFixture(ctx, 'bookings', { ...fields, paymentStatus: 'paid', amountPaid: 100000, confirmationCode: `PAID-${i}` });
 		});
 		const query = 'regular@example.com';
 		expect(await admin.query(api.pos.listAttachable, { query })).toEqual([]);

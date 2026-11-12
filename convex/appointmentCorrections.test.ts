@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import type { PaginationResult } from 'convex/server';
@@ -24,13 +25,13 @@ async function setup() {
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
   });
   const serviceId = await admin.mutation(api.adminServices.createService, {
-    slug: 'massage', name: 'Thai massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 1200, currency: 'THB', staffIds: [staffId]
+    slug: 'massage', name: 'Thai massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staffId]
   });
   const book = async (start = past, extra: { historicalReason?: string } = {}) => (await admin.mutation(api.adminServices.createAppointment, {
     staffId, serviceId, start, guestName: 'Ann', guestPhone: '', ...extra
   })).appointmentId;
-  const get = async (id: Id<'serviceAppointments'>) => (await t.run(ctx => ctx.db.get(id)))!;
-  const history = async (id: Id<'serviceAppointments'>) => t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'appointment').eq('entityId', id)).take(100));
+  const get = async (id: Id<'appointments'>) => (await t.run(ctx => ctx.db.get(id)))!;
+  const history = async (id: Id<'appointments'>) => t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'appointment').eq('entityId', id)).take(100));
   return { t, admin, staffId, serviceId, book, get, history };
 }
 
@@ -46,7 +47,7 @@ describe('admin appointment corrections', () => {
     await expect(t.run(ctx => createAppointmentRecord(ctx, { ...publicInput, source: 'admin' }))).rejects.toThrow('future');
     await expect(t.run(ctx => createAppointmentRecord(ctx, publicInput, { kind: 'admin_historical' }))).rejects.toThrow('Not authenticated');
     const id = await book();
-    expect(await get(id)).toMatchObject({ start: past, status: 'completed', paymentStatus: 'unpaid', staffNameSnapshot: 'Mali', serviceNameSnapshot: 'Thai massage', createdBy: 'admin@example.com', price: 1200 });
+    expect(await get(id)).toMatchObject({ start: past, status: 'completed', paymentStatus: 'unpaid', staffNameSnapshot: 'Mali', serviceNameSnapshot: 'Thai massage', createdBy: 'admin@example.com', price: 120000 });
     const [creation] = await history(id);
     expect(creation).toMatchObject({ kind: 'created', actor: 'admin@example.com', recordedAt: now, effectiveAt: past, after: { status: 'completed', paymentStatus: 'unpaid' } });
     expect(JSON.stringify(creation)).not.toContain((await get(id)).accessToken);
@@ -73,9 +74,9 @@ describe('admin appointment corrections', () => {
     expect((await get(publicEntry.appointmentId)).status).toBe('booked');
     const { orderId } = await admin.mutation(api.pos.openOrderFor, { appointmentId: ended });
     const order = (await admin.query(api.pos.getOrder, { orderId }))!;
-    expect(order.order.due).toBe(1200);
-    await admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: order.order.revision, expectedDue: 1200, idempotencyKey: 'completed-unpaid-collect', tenders: [{ method: 'cash', amount: 1200 }] });
-    expect(await get(ended)).toMatchObject({ status: 'completed', paymentStatus: 'paid', amountPaid: 1200 });
+    expect(order.order.due).toBe(120000);
+    await admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: order.order.revision, expectedDue: 120000, idempotencyKey: 'completed-unpaid-collect', tenders: [{ method: 'cash', amount: 120000 }] });
+    expect(await get(ended)).toMatchObject({ status: 'completed', paymentStatus: 'paid', amountPaid: 120000 });
   });
 
   it('accepts archived historical sources with descriptive snapshots and roster warnings, while future use remains protected', async () => {
@@ -98,7 +99,7 @@ describe('admin appointment corrections', () => {
     const { t, book, history } = await setup();
     const id = await book();
     await expect(book()).rejects.toThrow('Explain the historical appointment overlap');
-    expect(await t.run(ctx => ctx.db.query('serviceAppointments').take(10))).toHaveLength(1);
+    expect(await t.run(ctx => ctx.db.query('appointments').take(10))).toHaveLength(1);
     expect(await history(id)).toHaveLength(1);
     const overlapping = await book(past, { historicalReason: 'Duplicate-time source diary corrected after checking the therapist' });
     expect((await history(overlapping))[0]).toMatchObject({ reason: expect.stringContaining('source diary') });
@@ -119,10 +120,10 @@ describe('admin appointment corrections', () => {
     const id = await book();
     const { orderId } = await admin.mutation(api.pos.openOrderFor, { appointmentId: id });
     const view = (await admin.query(api.pos.getOrder, { orderId }))!;
-    await admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: 1200, idempotencyKey: 'historical-receipt-001', tenders: [{ method: 'cash', amount: 1200 }] });
+    await admin.mutation(api.pos.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: 120000, idempotencyKey: 'historical-receipt-001', tenders: [{ method: 'cash', amount: 120000 }] });
     const readFinancialFacts = () => t.run(async ctx => ({
-      order: await ctx.db.get(orderId), lines: await ctx.db.query('billLines').withIndex('by_billId', q => q.eq('billId', orderId)).take(100),
-      payments: await ctx.db.query('billPayments').take(100)
+      order: await ctx.db.get(orderId), lines: await ctx.db.query('orderLines').withIndex('by_orderId', q => q.eq('orderId', orderId)).take(100),
+      payments: await ctx.db.query('orderPayments').take(100)
     }));
     const facts = await readFinancialFacts();
     expect(facts.order?.status).toBe('paid');
@@ -137,13 +138,13 @@ describe('admin appointment corrections', () => {
     const id = await book();
     await admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId: id, expectedRevision: 0, effectiveAt: past + 3600000 });
     expect((await get(id)).status).toBe('completed');
-    await admin.mutation(api.adminServices.updateService, { serviceId, price: 9999, durationMin: 90 });
+    await admin.mutation(api.adminServices.updateService, { serviceId, price: 999900, durationMin: 90 });
     const before = await get(id);
-    const orders = await t.run(ctx => ctx.db.query('bills').take(100));
+    const orders = await t.run(ctx => ctx.db.query('orders').take(100));
     const move = { appointmentId: id, staffId, start: at('2020-01-03'), expectedRevision: 1 };
     await admin.mutation(api.adminServices.rescheduleAppointment, move);
     expect(await get(id)).toMatchObject({ start: move.start, end: move.start + 3600000, price: before.price, currency: before.currency, paymentStatus: 'paid', paidAt: past + 3600000, status: 'completed', revision: 2 });
-    expect(await t.run(ctx => ctx.db.query('bills').take(100))).toEqual(orders);
+    expect(await t.run(ctx => ctx.db.query('orders').take(100))).toEqual(orders);
     const changes = await history(id);
     await expect(admin.mutation(api.adminServices.rescheduleAppointment, { ...move, start: at('2020-01-04') })).rejects.toThrow(STALE_APPOINTMENT);
     expect(await history(id)).toEqual(changes);
@@ -235,7 +236,7 @@ describe('admin appointment corrections', () => {
     expect(new Set(found.map(row => row._id)).size).toBe(58);
     expect(found[found.length - 1]?.changes.some(change => change.field === 'created')).toBe(true);
     const original = await get(id);
-    const legacy = await t.run(ctx => ctx.db.insert('serviceAppointments', { serviceId: original.serviceId, staffId: original.staffId, start: past, end: past + 3600000, blockedUntil: past + 3600000, guestName: '', guestPhone: '', source: 'admin', status: 'cancelled', paymentStatus: 'unpaid', price: 100, currency: 'THB', confirmationCode: 'OLD', accessToken: 'never-log-this', createdAt: past }));
+    const legacy = await t.run(ctx => insertFixture(ctx, 'appointments', { serviceId: original.serviceId, staffId: original.staffId, start: past, end: past + 3600000, blockedUntil: past + 3600000, guestName: '', guestPhone: '', source: 'admin', status: 'cancelled', paymentStatus: 'unpaid', price: 10000, currency: 'THB', confirmationCode: 'OLD', accessToken: 'never-log-this', createdAt: past }));
     expect((await admin.query(api.adminServices.listAppointmentHistoryPage, { appointmentId: legacy, paginationOpts: { numItems: 10, cursor: null } })).page).toEqual([]);
     await expect(admin.query(api.adminServices.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 101, cursor: null } })).rejects.toThrow('Page size');
   });

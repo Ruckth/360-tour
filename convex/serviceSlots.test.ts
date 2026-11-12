@@ -29,7 +29,7 @@ async function setup() {
 	}
 	const serviceId = await admin.mutation(api.adminServices.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: 'Massage', category: 'Wellness',
-		durationMin: 60, bufferMin: 30, price: 2000, currency: 'THB', staffIds
+		durationMin: 60, bufferMin: 30, price: 200000, currency: 'THB', staffIds
 	});
 	const booking = { serviceId, guestName: 'Guest', guestPhone: '+66000000000' };
 	return { t, admin, staffIds, serviceId, booking };
@@ -173,7 +173,7 @@ describe('service slots', () => {
 		});
 		const serviceId = await admin.mutation(api.adminServices.createService, {
 			slug: 'transfer', name: 'Transfer', description: '', category: 'Arrival',
-			durationMin: 60, bufferMin: 30, price: 1500, currency: 'THB', staffIds: [staffId]
+			durationMin: 60, bufferMin: 30, price: 150000, currency: 'THB', staffIds: [staffId]
 		});
 		await admin.mutation(api.adminServices.createAppointment, { serviceId, guestName: 'Guest', guestPhone: '+66000000000', start: at('23:00') });
 		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date: '2026-09-26' });

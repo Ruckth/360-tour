@@ -96,7 +96,7 @@ beforeEach(async () => {
   if (!claim.ok) throw new Error("pairing failed");
   token = claim.token;
   const customerId = await admin.mutation(api.customers.createCustomer, { name: "Anna Lee" });
-  ({ orderId } = await admin.mutation(api.pos.addItem, { item: { kind: "extra", name: "Massage", price: 1200 } }));
+  ({ orderId } = await admin.mutation(api.pos.addItem, { item: { kind: "extra", name: "Massage", price: 120000 } }));
   await admin.mutation(api.pos.linkCustomer, { orderId: orderId as never, customerId });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });

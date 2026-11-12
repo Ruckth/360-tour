@@ -62,7 +62,7 @@ const credit: CreditRow = {
   state: "pending",
   affiliateId: partner._id,
   eligible: true,
-  eligibleNet: 700,
+  eligibleNet: 70000,
   approvedNet: 0,
   revision: 4,
   createdAt: 0,

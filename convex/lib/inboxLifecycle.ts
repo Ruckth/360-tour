@@ -10,10 +10,10 @@ export const replyOutcomeValidator = v.union(
 );
 export type ReplyOutcome = "answered" | "awaiting_guest" | "needs_staff";
 
-/** Old rows retain their existing manual lifecycle until the reviewed backfill runs. */
+
 export function inboxNeedsStaff(
-  session: Doc<"chatSessions">,
-  latest: Doc<"chatMessages"> | null,
+  session: Doc<"conversations">,
+  latest: Doc<"messages"> | null,
 ) {
   if (session.inboxState) return session.inboxState === "needs_staff";
   return (
@@ -23,11 +23,11 @@ export function inboxNeedsStaff(
 
 export async function latestGuestId(
   ctx: QueryCtx | MutationCtx,
-  session: Doc<"chatSessions">,
+  session: Doc<"conversations">,
 ) {
   if (session.latestGuestMessageId) return session.latestGuestMessageId;
   const recent = await ctx.db
-    .query("chatMessages")
+    .query("messages")
     .withIndex("by_session", (q) => q.eq("sessionId", session._id))
     .order("desc")
     .take(100);
@@ -36,8 +36,8 @@ export async function latestGuestId(
 
 export async function guestReceived(
   ctx: MutationCtx,
-  sessionId: Id<"chatSessions">,
-  messageId: Id<"chatMessages">,
+  sessionId: Id<"conversations">,
+  messageId: Id<"messages">,
 ) {
   const session = await ctx.db.get(sessionId);
   if (!session || session.latestGuestMessageId === messageId) return;
@@ -62,8 +62,8 @@ export async function guestReceived(
 
 export async function staffNeeded(
   ctx: MutationCtx,
-  sessionId: Id<"chatSessions">,
-  replyToMessageId?: Id<"chatMessages">,
+  sessionId: Id<"conversations">,
+  replyToMessageId?: Id<"messages">,
 ) {
   const session = await ctx.db.get(sessionId);
   if (
@@ -88,9 +88,9 @@ export async function staffNeeded(
 export async function answerAccepted(
   ctx: MutationCtx,
   args: {
-    sessionId: Id<"chatSessions">;
-    replyToMessageId?: Id<"chatMessages">;
-    messageId?: Id<"chatMessages">;
+    sessionId: Id<"conversations">;
+    replyToMessageId?: Id<"messages">;
+    messageId?: Id<"messages">;
     source: "ai" | "staff";
     outcome: ReplyOutcome;
     requestId?: string;
@@ -132,8 +132,8 @@ export async function answerAccepted(
 
 export async function sendFailed(
   ctx: MutationCtx,
-  sessionId: Id<"chatSessions">,
-  replyToMessageId: Id<"chatMessages"> | undefined,
+  sessionId: Id<"conversations">,
+  replyToMessageId: Id<"messages"> | undefined,
   error: string,
   requestId?: string,
 ) {
@@ -162,7 +162,7 @@ export async function sendFailed(
 
 export async function finishWithoutReply(
   ctx: MutationCtx,
-  sessionId: Id<"chatSessions">,
+  sessionId: Id<"conversations">,
 ) {
   const session = await ctx.db.get(sessionId);
   if (!session) throw new Error("Session not found");
@@ -188,7 +188,7 @@ export async function finishWithoutReply(
 /** Explicit ownership changes may not bypass a pending send, follow-up or handoff. */
 export async function changeStaffOwnership(
   ctx: MutationCtx,
-  sessionId: Id<"chatSessions">,
+  sessionId: Id<"conversations">,
   email: string,
   args: { paused?: boolean; keep?: boolean },
 ) {
@@ -231,7 +231,7 @@ export async function changeStaffOwnership(
 /** A second tab must not replace the request that owns an unfinished channel send. */
 export async function assertNoPendingStaffSend(
   ctx: MutationCtx,
-  session: Doc<"chatSessions">,
+  session: Doc<"conversations">,
 ) {
   const requestId = session.inboxSendRequestId;
   if (!requestId) return;

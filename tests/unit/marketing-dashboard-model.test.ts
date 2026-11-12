@@ -37,7 +37,7 @@ const B = touch("lb", "cb", "instagram");
 let n = 0;
 const sale = (patch: Partial<ReportSale>): ReportSale => ({
   kind: "stay", id: `s${++n}`, label: "Guest", channel: "web", bucket: "tracked", createdDay: "2026-10-10", paidDay: "2026-10-10",
-  paid: true, collected: 1000, refunded: 0, discount: 0, ...patch,
+  paid: true, collected: 100000, refunded: 0, discount: 0, ...patch,
 });
 function report(patch: Partial<ReportData>): ReportData {
   return {
@@ -61,16 +61,16 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
   const t = businessTotals(p);
 
   it("matches the tracked and business totals", () => {
-    expect(t.tracked.net).toBe(1_091_700);
-    expect(t.all.net).toBe(1_515_900);
-    expect(t.all.refunded).toBe(38_400);
+    expect(t.tracked.net).toBe(109170000);
+    expect(t.all.net).toBe(151590000);
+    expect(t.all.refunded).toBe(3840000);
     expect(t.trackedSessions).toBe(11_980);
     // 136 tracked paid sales: 132 stays + 4 Spa week checkout orders counted in money only.
     expect(t.tracked.paid).toBe(132);
     expect(t.tracked.paidOther).toBe(4);
     expect(t.all.paid + t.all.paidOther).toBe(186);
-    expect(t.unknown).toMatchObject({ paid: 41, net: 352_800 });
-    expect(t.staff).toMatchObject({ paid: 6, paidOther: 3, net: 71_400 });
+    expect(t.unknown).toMatchObject({ paid: 41, net: 35280000 });
+    expect(t.staff).toMatchObject({ paid: 6, paidOther: 3, net: 7140000 });
     expect(t.messaging.sales).toBe(0);
   });
 
@@ -80,7 +80,7 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
 
   it("sums ROAS over the campaigns that have spend", () => {
     // November escape (/f1 + /a1) ฿364,600 on ฿45,000; Spa week ฿5,600 on ฿1,200.
-    expect(t.roas).toMatchObject({ kind: "value", value: (364_600 + 5_600) / 46_200, net: 370_200, spend: 46_200, campaigns: 2 });
+    expect(t.roas).toMatchObject({ kind: "value", value: (364_600 + 5_600) / 46_200, net: 37020000, spend: 4620000, campaigns: 2 });
     // Campaigns that sold with no spend entered are named, so the tile can say the figure leaves them out.
     const missing = t.roas.kind === "value" ? t.roas.missing : [];
     expect(missing).toContain("c-ig");
@@ -90,20 +90,20 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
   it("builds source rows with sessions, conversion, ROAS and pinned untracked rows", () => {
     const b = buildBreakdown(p, "source", [], BY_NET);
     const fb = row(b.rows, "source:facebook");
-    expect(fb.net).toBe(148_600 + 176_400 + 188_200);
+    expect(fb.net).toBe(14_860_000 + 17_640_000 + 18_820_000);
     expect(fb.sessions).toBe(1_240 + 860 + 2_310);
     expect(fb.conv).toBeCloseTo((18 + 21 + 24) / 4_410, 10);
     // Facebook · Always on and Songkran have no spend: the source ROAS covers November escape only.
-    expect(fb.roas).toMatchObject({ kind: "value", net: 364_600, spend: 45_000, campaigns: 1 });
+    expect(fb.roas).toMatchObject({ kind: "value", net: 36460000, spend: 4500000, campaigns: 1 });
     expect(row(b.rows, "source:instagram").roas).toEqual({ kind: "missing", campaignIds: ["c-ig"] });
     expect(b.rows[0].key).toBe("source:facebook");
     expect(b.pinned.map((r) => [r.kind, r.paid + r.paidOther, r.net, r.sessions, r.conv])).toEqual([
-      ["unknown", 41, 352_800, null, null],
-      ["staff", 9, 71_400, null, null],
+      ["unknown", 41, 35_280_000, null, null],
+      ["staff", 9, 7_140_000, null, null],
     ]);
     expect(b.totals.map((r) => [r.name, r.net, r.sessions])).toEqual([
-      ["Tracked total", 1_091_700, 11_980],
-      ["Business total", 1_515_900, null],
+      ["Tracked total", 109_170_000, 11_980],
+      ["Business total", 151_590_000, null],
     ]);
   });
 
@@ -114,20 +114,20 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
     expect(nov.roas).toMatchObject({ kind: "value", value: 364_600 / 45_000 });
     expect(row(campaigns.rows, "campaign:c-fb-always").roas).toEqual({ kind: "missing", campaignIds: ["c-fb-always"] });
     expect(campaigns.totals).toHaveLength(1);
-    expect(campaigns.totals[0]).toMatchObject({ name: "Total for facebook", net: 513_200, sessions: 4_410 });
+    expect(campaigns.totals[0]).toMatchObject({ name: "Total for facebook", net: 51320000, sessions: 4_410 });
 
     const links = buildBreakdown(p, "source", [{ level: "source", id: "facebook" }, { level: "campaign", id: "c-fb-nov" }], BY_NET);
     expect(links.rows.map((r) => [r.name, r.paid, r.net, r.refunded])).toEqual([
-      ["/a1", 24, 188_200, 9_600],
-      ["/f1", 21, 176_400, 0],
+      ["/a1", 24, 18_820_000, 960_000],
+      ["/f1", 21, 17_640_000, 0],
     ]);
     expect(links.rows.every((r) => r.drill.level === "sales")).toBe(true);
-    expect(links.totals[0]).toMatchObject({ name: "Total for Facebook · November escape", net: 364_600 });
+    expect(links.totals[0]).toMatchObject({ name: "Total for Facebook · November escape", net: 36460000 });
   });
 
   it("counts Spa week orders in money but not in paid stays", () => {
     const b = buildBreakdown(p, "link", [], BY_NET);
-    expect(row(b.rows, "link:l-q1")).toMatchObject({ paid: 0, paidOther: 4, net: 5_600, sessions: 95, conv: 0 });
+    expect(row(b.rows, "link:l-q1")).toMatchObject({ paid: 0, paidOther: 4, net: 560000, sessions: 95, conv: 0 });
     // Draft /a2 and paused /sk have no results, so they're not listed.
     expect(b.rows.map((r) => r.key)).not.toContain("link:l-a2");
     expect(b.rows.map((r) => r.key)).not.toContain("link:l-sk");
@@ -139,11 +139,11 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
     expect(b.showRoas).toBe(false);
     const f1 = row(b.rows, "coupon:k-f1");
     expect(f1.paid).toBe(35);
-    expect(f1.discount).toBe(66_450);
+    expect(f1.discount).toBe(6645000);
     expect(f1.lines.filter((l) => l.group === "unknown")).toHaveLength(4);
     expect(b.pinned.map((r) => r.kind)).toEqual(["none"]);
     const sum = [...b.rows, ...b.pinned].reduce((total, r) => total + r.net, 0);
-    expect(sum).toBe(1_515_900);
+    expect(sum).toBe(151_590_000);
     expect(b.totals.map((r) => r.name)).toEqual(["Business total"]);
   });
 });
@@ -160,11 +160,11 @@ describe("touch", () => {
     const r = report({ sales: [scanned, tracked] });
     const last = buildBreakdown(prepareReport(r, LAST), "source", [], BY_NET);
     const first = buildBreakdown(prepareReport(r, FIRST), "source", [], BY_NET);
-    expect(row(last.rows, "source:facebook").collected).toBe(2000);
-    expect(row(first.rows, "source:facebook").collected).toBe(1000);
-    expect(row(first.rows, "source:instagram").collected).toBe(1000);
-    expect(last.totals[0].collected).toBe(2000);
-    expect(first.totals[0].collected).toBe(2000);
+    expect(row(last.rows, "source:facebook").collected).toBe(200000);
+    expect(row(first.rows, "source:facebook").collected).toBe(100000);
+    expect(row(first.rows, "source:instagram").collected).toBe(100000);
+    expect(last.totals[0].collected).toBe(200000);
+    expect(first.totals[0].collected).toBe(200000);
   });
 
   it("moves credit between links on the fixture without changing the totals", () => {
@@ -199,29 +199,29 @@ describe("property filter", () => {
   it("adds up across properties to less than All properties (orders have none)", () => {
     const all = businessTotals(prepareReport(dashboardReport(), LAST)).all.net;
     const parts = ["prop-tideglass", "prop-mossbell", "prop-canopy"].map((id) => businessTotals(prepareReport(dashboardReport(), { property: id, touch: "last" })).all.net);
-    const orders = 5_600 + 1_300 + 1_000 + 1_500;
+    const orders = 560_000 + 130_000 + 100_000 + 150_000;
     expect(parts.reduce((a, b) => a + b, 0)).toBe(all - orders);
   });
 });
 
 describe("cash basis", () => {
   it("counts events dated in range, discount and payments completed by paidDay", () => {
-    const early = sale({ id: "early", createdDay: "2026-09-20", paidDay: "2026-09-21", collected: 5000, refunded: 1000, discount: 300, last: A });
-    const inside = sale({ id: "inside", createdDay: "2026-10-05", paidDay: "2026-10-06", collected: 2000, discount: 200, last: A });
+    const early = sale({ id: "early", createdDay: "2026-09-20", paidDay: "2026-09-21", collected: 500000, refunded: 100000, discount: 30000, last: A });
+    const inside = sale({ id: "inside", createdDay: "2026-10-05", paidDay: "2026-10-06", collected: 200000, discount: 20000, last: A });
     const r = report({
       basis: "cash",
       sales: [early, inside],
       events: [
-        { saleId: "early", kind: "payment", day: "2026-10-03", amount: 2500 }, // balance paid in range
-        { saleId: "early", kind: "refund", day: "2026-10-20", amount: 1000 },
-        { saleId: "inside", kind: "payment", day: "2026-10-06", amount: 2000 },
-        { saleId: "inside", kind: "payment", day: "2026-11-02", amount: 999 }, // outside: ignored
+        { saleId: "early", kind: "payment", day: "2026-10-03", amount: 250000 }, // balance paid in range
+        { saleId: "early", kind: "refund", day: "2026-10-20", amount: 100000 },
+        { saleId: "inside", kind: "payment", day: "2026-10-06", amount: 200000 },
+        { saleId: "inside", kind: "payment", day: "2026-11-02", amount: 99900 }, // outside: ignored
       ],
       sessions: [{ day: "2026-10-06", linkId: lid("la"), count: 10 }],
     });
     const p = prepareReport(r, LAST);
     const t = businessTotals(p);
-    expect(t.all).toMatchObject({ collected: 4500, refunded: 1000, net: 3500, discount: 200, paid: 1, paidOther: 0 });
+    expect(t.all).toMatchObject({ collected: 450000, refunded: 100000, net: 350000, discount: 20000, paid: 1, paidOther: 0 });
     const b = buildBreakdown(p, "source", [], BY_NET);
     expect(b.showSessions).toBe(false);
   });
@@ -282,30 +282,30 @@ describe("ROAS", () => {
   it("counts a campaign's spend under one source after its source was edited", () => {
     // Sold as facebook, then the campaign's source was changed to tiktok.
     const r = report({
-      sales: [sale({ last: A, collected: 2000 })],
-      spend: [spend(1000, "2026-10-01", "2026-10-31")],
+      sales: [sale({ last: A, collected: 200000 })],
+      spend: [spend(100000, "2026-10-01", "2026-10-31")],
       campaigns: [{ id: cid("ca"), name: "ca", source: "tiktok", medium: "social", status: "active" }],
     });
     const p = prepareReport(r, LAST);
     const b = buildBreakdown(p, "source", [], BY_NET);
-    expect(row(b.rows, "source:facebook")).toMatchObject({ net: 2000, roas: { kind: "missing", campaignIds: [] } });
-    expect(row(b.rows, "source:tiktok").roas).toMatchObject({ kind: "value", spend: 1000 });
+    expect(row(b.rows, "source:facebook")).toMatchObject({ net: 200000, roas: { kind: "missing", campaignIds: [] } });
+    expect(row(b.rows, "source:tiktok").roas).toMatchObject({ kind: "value", spend: 100000 });
     // The drill under the old source lists the campaign's sales there without its spend.
     expect(row(buildBreakdown(p, "source", [{ level: "source", id: "facebook" }], BY_NET).rows, "campaign:ca").roas).toBeUndefined();
-    expect(businessTotals(p).roas).toMatchObject({ kind: "value", value: 2, spend: 1000 });
+    expect(businessTotals(p).roas).toMatchObject({ kind: "value", value: 2, spend: 100000 });
   });
 
   it("lists the source of an ended campaign that has spend and no results", () => {
     const r = report({
-      sales: [sale({ last: A, collected: 2000 })],
-      spend: [spend(1000, "2026-10-01", "2026-10-31"), { ...spend(1000, "2026-10-02", "2026-10-31", "cb") }],
+      sales: [sale({ last: A, collected: 200000 })],
+      spend: [spend(100000, "2026-10-01", "2026-10-31"), { ...spend(100000, "2026-10-02", "2026-10-31", "cb") }],
       campaigns: [
         { id: cid("ca"), name: "ca", source: "facebook", medium: "social", status: "active" },
         { id: cid("cb"), name: "cb", source: "instagram", medium: "social", status: "ended" },
       ],
     });
     const b = buildBreakdown(prepareReport(r, LAST), "source", [], BY_NET);
-    expect(row(b.rows, "source:instagram").roas).toMatchObject({ kind: "value", value: 0, spend: 1000 });
+    expect(row(b.rows, "source:instagram").roas).toMatchObject({ kind: "value", value: 0, spend: 100000 });
     expect(b.totals[0].roas).toMatchObject({ kind: "value", value: 1 });
   });
 
@@ -316,18 +316,18 @@ describe("ROAS", () => {
 
   it("prorates a spend entry that only partly overlaps the range", () => {
     // 1 Sep–30 Nov (91 days) for ฿9,100: 31 days fall in October → ฿3,100.
-    const p = prepareReport(report({ sales: [sale({ last: A, collected: 6200 })], spend: [spend(9100, "2026-09-01", "2026-11-30")] }), LAST);
-    expect(p.spend.get("ca")).toBeCloseTo(3100, 6);
-    expect(roasFor(p, ["ca"])).toMatchObject({ kind: "value", value: 2, net: 6200 });
+    const p = prepareReport(report({ sales: [sale({ last: A, collected: 620000 })], spend: [spend(910000, "2026-09-01", "2026-11-30")] }), LAST);
+    expect(p.spend.get("ca")).toBeCloseTo(310000, 6);
+    expect(roasFor(p, ["ca"])).toMatchObject({ kind: "value", value: 2, net: 620000 });
   });
 
   it("uses net after refunds and sums only campaigns that have spend", () => {
     const r = report({
-      sales: [sale({ last: A, collected: 3000, refunded: 1000 }), sale({ last: B, collected: 9000 })],
-      spend: [spend(1000, "2026-10-01", "2026-10-31")],
+      sales: [sale({ last: A, collected: 300000, refunded: 100000 }), sale({ last: B, collected: 900000 })],
+      spend: [spend(100000, "2026-10-01", "2026-10-31")],
     });
     const p = prepareReport(r, LAST);
-    expect(roasFor(p, ["ca", "cb"])).toEqual({ kind: "value", value: 2, net: 2000, spend: 1000, campaigns: 1, missing: ["cb"] });
+    expect(roasFor(p, ["ca", "cb"])).toEqual({ kind: "value", value: 2, net: 200000, spend: 100000, campaigns: 1, missing: ["cb"] });
   });
 
   it("ignores spend that doesn't overlap", () => {
@@ -364,7 +364,7 @@ describe("chart", () => {
     expect(data.buckets).toHaveLength(30);
     expect(data.series.at(-1)?.label).toBe("Not tracked");
     const total = data.buckets.reduce((sum, b) => sum + Object.values(b.values).reduce((a, v) => a + v, 0), 0);
-    expect(total).toBe(1_515_900);
+    expect(total).toBe(151_590_000);
     expect(chartData(p, "paid").buckets.reduce((sum, b) => sum + b.total, 0)).toBe(132 + 41 + 6);
   });
 
@@ -398,14 +398,14 @@ describe("sales sheet order", () => {
 
 describe("sales CSV numbers", () => {
   it("writes a refund-only sale's net as a negative number and keeps satang", () => {
-    const refunded = sale({ last: A, collected: 1000, refunded: 1000, paidDay: "2026-09-20", createdDay: "2026-09-20" });
-    const small = sale({ last: A, collected: 99.5 });
+    const refunded = sale({ last: A, collected: 100000, refunded: 100000, paidDay: "2026-09-20", createdDay: "2026-09-20" });
+    const small = sale({ last: A, collected: 9950 });
     const r = report({
       basis: "cash",
       sales: [refunded, small],
       events: [
-        { saleId: refunded.id, kind: "refund", day: "2026-10-05", amount: 1000 },
-        { saleId: small.id, kind: "payment", day: "2026-10-10", amount: 99.5 },
+        { saleId: refunded.id, kind: "refund", day: "2026-10-05", amount: 100000 },
+        { saleId: small.id, kind: "payment", day: "2026-10-10", amount: 9950 },
       ],
     });
     const lines = salesCsv(prepareReport(r, LAST), "All properties").split("\r\n");
@@ -417,12 +417,12 @@ describe("sales CSV numbers", () => {
 
 
 it("counts coupon-only Finance settlements separately throughout totals, breakdowns and CSV", () => {
-  const covered = sale({ kind: "order", channel: "pos", id: "covered", bucket: "staff", paidDay: undefined, settlementDay: "2026-10-10", collected: 0, discount: 500 });
+  const covered = sale({ kind: "order", channel: "pos", id: "covered", bucket: "staff", paidDay: undefined, settlementDay: "2026-10-10", collected: 0, discount: 50000 });
   const p = prepareReport(report({ basis: "cash", sales: [covered] }), LAST);
-  expect(businessTotals(p).all).toMatchObject({ collected: 0, discount: 500, paid: 0, couponOnlySettlements: 1 });
+  expect(businessTotals(p).all).toMatchObject({ collected: 0, discount: 50000, paid: 0, couponOnlySettlements: 1 });
   expect(chartData(p, "paid").buckets.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(0);
   const b = buildBreakdown(p, "source", [], BY_NET);
-  expect(b.pinned[0]).toMatchObject({ paid: 0, couponOnlySettlements: 1, discount: 500 });
+  expect(b.pinned[0]).toMatchObject({ paid: 0, couponOnlySettlements: 1, discount: 50000 });
   const csv = salesCsv(p, "All properties").split("\r\n");
   const header = csv.find(line => line.startsWith("Kind,"))!.split(",");
   const values = csv.find(line => line.includes(",covered,"))!.split(",");
@@ -433,7 +433,7 @@ it("counts coupon-only Finance settlements separately throughout totals, breakdo
   const total = summary.find(line => line.startsWith("total,Business total,"))!.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
   expect(Object.fromEntries(summaryHeader.map((key, i) => [key, total[i]]))).toMatchObject({ "First-payment sales": "0", "Coupon-only settlements": "1", Discounts: "500", Collected: "0" });
   const cohort = prepareReport(report({ sales: [covered] }), LAST);
-  expect(businessTotals(cohort).all).toMatchObject({ paid: 0, paidOther: 1, discount: 500 });
+  expect(businessTotals(cohort).all).toMatchObject({ paid: 0, paidOther: 1, discount: 50000 });
   expect(salesCsv(cohort, "All properties")).not.toContain("Settlement day");
 });
 

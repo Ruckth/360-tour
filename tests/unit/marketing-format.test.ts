@@ -18,27 +18,27 @@ import { buildQrCard, qrCardSvg } from "@/components/admin/marketing/qr-card";
 import type { CouponRow } from "@/components/admin/marketing/types";
 
 const F1 = {
-  benefit: { kind: "percent", percent: 20 },
+  benefit: { kind: "percent", percent: 2000 },
   scope: "accommodation",
   bookFrom: "2026-11-01",
   bookTo: "2026-11-30",
   stayFrom: "2026-11-01",
   stayTo: "2026-12-20",
   minNights: 2,
-  maxSaving: 3000,
+  maxSaving: 300000,
   usageLimit: 500,
-  discountBudget: 80000,
+  discountBudget: 8000000,
 } as const;
 
 const quote = (overrides: Partial<OfferResult>): OfferResult => ({
-  subtotal: 9000,
+  subtotal: 900000,
   applied: "none",
   couponStatus: "none",
   directDiscount: 0,
   couponDiscount: 0,
   capped: false,
   discount: 0,
-  total: 9000,
+  total: 900000,
   allocation: [],
   ...overrides,
 });
@@ -54,14 +54,14 @@ describe("marketing labels", () => {
   });
 
   it("summarises benefit, scope and rules", () => {
-    expect(benefitLabel({ kind: "percent", percent: 20 })).toBe("20% off");
-    expect(benefitLabel({ kind: "fixed", amount: 500 })).toBe("฿500 off");
+    expect(benefitLabel({ kind: "percent", percent: 2000 })).toBe("20% off");
+    expect(benefitLabel({ kind: "fixed", amount: 50000 })).toBe("฿500 off");
     const name = (slug: string) => ({ "mossbell-garden-suite": "Mossbell Garden Suite" })[slug] ?? slug;
     expect(scopeLabel("accommodation", undefined, name)).toBe("Accommodation, all villas");
     expect(scopeLabel("accommodation", ["mossbell-garden-suite"], name)).toBe("Accommodation, Mossbell Garden Suite");
     expect(scopeLabel("services", undefined, name)).toBe("Spa services");
     expect(couponRulesLine(F1)).toBe("Book 1–30 Nov 2026 · stay 1 Nov–20 Dec 2026 · min 2 nights · max saving ฿3,000");
-    expect(couponRulesLine({ benefit: { kind: "percent", percent: 10 } })).toBe("Ongoing, no minimum");
+    expect(couponRulesLine({ benefit: { kind: "percent", percent: 1000 } })).toBe("Ongoing, no minimum");
     expect(generatedTerms(F1)).toBe(
       "Book by 30 Nov 2026 · Stay 1 Nov–20 Dec 2026 · Min 2 nights · Max saving ฿3,000 · While codes last · One code per booking",
     );
@@ -69,12 +69,12 @@ describe("marketing labels", () => {
 
   it("derives what a live coupon does today", () => {
     const row = (over: Partial<CouponRow>) =>
-      ({ status: "active", used: 38, discountGranted: 66450, rules: { ...F1 }, ...over }) as unknown as CouponRow;
+      ({ status: "active", used: 38, discountGranted: 6645000, rules: { ...F1 }, ...over }) as unknown as CouponRow;
     expect(couponState(row({}), "2026-11-07")).toBe("active");
     expect(couponState(row({}), "2026-12-01")).toBe("expired");
     expect(couponState(row({}), "2026-10-20")).toBe("scheduled");
     expect(couponState(row({ used: 500 }), "2026-11-07")).toBe("sold_out");
-    expect(couponState(row({ discountGranted: 80000 }), "2026-11-07")).toBe("budget_used");
+    expect(couponState(row({ discountGranted: 8000000 }), "2026-11-07")).toBe("budget_used");
     expect(couponState(row({ status: "paused" }), "2026-11-07")).toBe("paused");
   });
 
@@ -84,7 +84,7 @@ describe("marketing labels", () => {
     expect(normalizeSlugInput("/Spa Week")).toBe("spa-week");
     expect(slugCheckMessage({ ok: true, slug: "f2" })).toBeNull();
     expect(slugCheckMessage({ ok: false, slug: "f1", reason: "taken" }, "Facebook · November post")).toBe("Already used by Facebook · November post");
-    expect(slugCheckMessage({ ok: false, slug: "rooms", reason: "reserved" })).toBe("Reserved by the site");
+    expect(slugCheckMessage({ ok: false, slug: "tourScenes", reason: "reserved" })).toBe("Reserved by the site");
     expect(slugCheckMessage({ ok: false, slug: "F_1", reason: "invalid" })).toBe("Use lower-case letters, numbers and dashes");
   });
 
@@ -98,13 +98,13 @@ describe("marketing labels", () => {
 
 describe("test-quote verdict", () => {
   it("says the coupon wins and by how much (Mossbell 2 nights)", () => {
-    const verdict = quoteVerdict(quote({ applied: "coupon", couponStatus: "applied", directDiscount: 1350, couponDiscount: 1800, discount: 1800, total: 7200 }));
+    const verdict = quoteVerdict(quote({ applied: "coupon", couponStatus: "applied", directDiscount: 135000, couponDiscount: 180000, discount: 180000, total: 720000 }));
     expect(verdict).toEqual({ tone: "success", title: "Coupon wins", detail: "It saves ฿450 more than the direct offer, so it replaces it." });
   });
 
   it("says the direct offer wins over a capped coupon (Canopy 3 nights)", () => {
     const verdict = quoteVerdict(
-      quote({ subtotal: 36000, applied: "direct", couponStatus: "coupon_worse", directDiscount: 5400, couponDiscount: 3000, capped: true, discount: 5400, total: 30600 }),
+      quote({ subtotal: 3600000, applied: "direct", couponStatus: "coupon_worse", directDiscount: 540000, couponDiscount: 300000, capped: true, discount: 540000, total: 3060000 }),
     );
     expect(verdict.title).toBe("Direct offer wins");
     expect(verdict.detail).toBe("฿5,400 direct vs ฿3,000 with the code (capped). The code isn’t used.");
@@ -113,13 +113,13 @@ describe("test-quote verdict", () => {
   it("explains a failed rule and what the guest keeps (Tideglass 1 night)", () => {
     const verdict = quoteVerdict(
       quote({
-        subtotal: 8500,
+        subtotal: 850000,
         applied: "direct",
         couponStatus: "invalid",
         problem: { code: "min_nights", minNights: 2, missingNights: 1 },
-        directDiscount: 1275,
-        discount: 1275,
-        total: 7225,
+        directDiscount: 127500,
+        discount: 127500,
+        total: 722500,
       }),
     );
     expect(verdict).toEqual({
@@ -167,7 +167,7 @@ describe("QR offer card", () => {
 describe('quoteVerdict for a services-only coupon on a stay', () => {
   it('says both offers apply', async () => {
     const { quoteVerdict } = await import('../../src/components/admin/marketing/marketing-format');
-    const v = quoteVerdict({ subtotal: 10800, applied: 'coupon', couponStatus: 'applied', directDiscount: 1350, couponDiscount: 500, capped: false, discount: 1850, total: 8950, allocation: [] });
+    const v = quoteVerdict({ subtotal: 1080000, applied: 'coupon', couponStatus: 'applied', directDiscount: 135000, couponDiscount: 50000, capped: false, discount: 185000, total: 895000, allocation: [] });
     expect(v.title).toBe('Both apply');
     expect(v.detail).toContain('฿1,350');
   });

@@ -15,7 +15,7 @@ vi.mock('@/lib/marketing/capture', () => ({ captureForBooking: () => ({}) }));
 vi.mock('@/components/booking/useCouponPreview', () => ({ useCouponPreview: () => ({ preview: mock.preview }) }));
 vi.mock('@/components/booking/BookingDatePicker', () => ({ BookingRangePicker: () => null }));
 vi.mock('@/components/property/PropertyImage', () => ({ PropertyImage: () => null }));
-const offer = evaluateOffer({ lines: [{ id: 'stay', kind: 'accommodation', propertySlug: 'pool-villa', checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, amount: 20000 }], directDiscountPercent: 15, today: '2026-11-11', coupon: { code: 'GUEST20', version: 1, status: 'active', benefit: { kind: 'percent', percent: 20 }, scope: 'accommodation', used: 0, discountGranted: 0 } });
+const offer = evaluateOffer({ lines: [{ id: 'stay', kind: 'accommodation', propertySlug: 'pool-villa', checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, amount: 2000000 }], directDiscountPercent: 1500, today: '2026-11-11', coupon: { code: 'GUEST20', version: 1, status: 'active', benefit: { kind: 'percent', percent: 2000 }, scope: 'accommodation', used: 0, discountGranted: 0 } });
 let root: Root;
 const intl: ComponentProps<typeof NextIntlClientProvider> = { locale: 'en', messages, timeZone: 'Asia/Bangkok', children: null };
 async function show(component: React.ReactElement) { await act(async () => root.render(createElement(NextIntlClientProvider, intl, component))); }
@@ -44,10 +44,10 @@ it('shows the server coupon saving and carries the guest code into booking check
   expect(new URL(window.location.href).searchParams.get('coupon')).toBe('GUEST20');
 });
 it('displays a refusal and waits for a second explicit review before starting payment', async () => {
-  const summary = { property: 'Pool Villa', checkIn: '2027-01-10', checkOut: '2027-01-12', guests: 2, nights: 2, total: 16000, currency: 'THB', unpaidHoldMinutes: 30, cancellationPolicy: '', holdExpiresAt: null,
-    coupon: { code: 'GUEST20', status: 'applied', discount: 4000 } };
+  const summary = { property: 'Pool Villa', checkIn: '2027-01-10', checkOut: '2027-01-12', guests: 2, nights: 2, total: 1600000, currency: 'THB', unpaidHoldMinutes: 30, cancellationPolicy: '', holdExpiresAt: null,
+    coupon: { code: 'GUEST20', status: 'applied', discount: 400000 } };
   mock.query.mockResolvedValue(summary);
-  mock.mutation.mockResolvedValueOnce({ needsReview: true, quote: { ...summary, total: 17000, confirmToken: 'new-review', coupon: { code: 'GUEST20', status: 'invalid', discount: 0, problem: { code: 'sold_out' } } } });
+  mock.mutation.mockResolvedValueOnce({ needsReview: true, quote: { ...summary, total: 1700000, confirmToken: 'new-review', coupon: { code: 'GUEST20', status: 'invalid', discount: 0, problem: { code: 'sold_out' } } } });
   mock.mutation.mockResolvedValueOnce({ needsReview: false, bookingId: 'booking', accessToken: 'secret' });
   mock.action.mockRejectedValue(new Error('Stop after verified payment call'));
   mock.client = { query: mock.query, mutation: mock.mutation, action: mock.action };

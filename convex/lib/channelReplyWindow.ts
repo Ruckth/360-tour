@@ -4,13 +4,13 @@ import type { QueryCtx } from '../_generated/server';
 /** WhatsApp, Messenger and Instagram only allow free-text replies within 24 h of the guest's last message. */
 export const CHANNEL_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export function channelHasReplyWindow(channel: Doc<'chatSessions'>['channel']) {
+export function channelHasReplyWindow(channel: Doc<'conversations'>['channel']) {
 	return channel === 'whatsapp' || channel === 'facebook' || channel === 'instagram';
 }
 
-async function getLastGuestMessageAt(ctx: QueryCtx, sessionId: Id<'chatSessions'>) {
+async function getLastGuestMessageAt(ctx: QueryCtx, sessionId: Id<'conversations'>) {
 	const recentMessages = await ctx.db
-		.query('chatMessages')
+		.query('messages')
 		.withIndex('by_session', (q) => q.eq('sessionId', sessionId))
 		.order('desc')
 		.take(100);
@@ -18,7 +18,7 @@ async function getLastGuestMessageAt(ctx: QueryCtx, sessionId: Id<'chatSessions'
 }
 
 /** `closesAt` is undefined when the channel has no window or the guest never wrote. */
-export async function getChannelReplyWindow(ctx: QueryCtx, session: Doc<'chatSessions'>) {
+export async function getChannelReplyWindow(ctx: QueryCtx, session: Doc<'conversations'>) {
 	if (!channelHasReplyWindow(session.channel)) return { applies: false as const };
 	const lastGuestMessageAt = await getLastGuestMessageAt(ctx, session._id);
 	return {

@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
@@ -24,8 +25,8 @@ async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', adminEmail);
 	const t = convexTest(schema, modules);
 	const propertyId = await t.run((ctx) => ctx.db.insert('properties', {
-		slug: 'pool-villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 4,
-		bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 15, status: 'active'
+		slug: 'pool-villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 4,
+		bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'
 	}));
 	const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: 'admin' });
 	const stranger = t.withIdentity({ email: 'stranger@example.com', tokenIdentifier: 'stranger' });
@@ -54,8 +55,8 @@ async function setup() {
 			guestPhone: b.guestPhone, guestEmail: b.guestEmail, expectedRevision: b.revision ?? 0, ...changes
 		});
 	};
-	const order = (orderId: Id<'bills'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
-	const settle = async (orderId: Id<'bills'>, tenders: Array<{ method: 'cash' | 'card' | 'promptpay' | 'transfer'; amount: number }>, extra: Record<string, unknown> = {}) => {
+	const order = (orderId: Id<'orders'>) => admin.query(api.pos.getOrder, { orderId }).then((view) => view!);
+	const settle = async (orderId: Id<'orders'>, tenders: Array<{ method: 'cash' | 'card' | 'promptpay' | 'transfer'; amount: number }>, extra: Record<string, unknown> = {}) => {
 		const view = await order(orderId);
 		return admin.mutation(api.pos.settleOrder, {
 			orderId, idempotencyKey: key('settle'), expectedDue: view.totals.due, expectedRevision: view.order.revision, tenders, ...extra
@@ -68,23 +69,6 @@ async function setup() {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('refund records', () => {
-	it('atomically cancels and refunds only the selected older deposit beside an itemised payment', async () => {
-		const { t, admin, create, pay, rev, financials, get } = await setup();
-		const bookingId = await create(5, 6, { confirmed: true });
-		await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 200 }));
-		await pay(bookingId);
-		const before = await get(bookingId);
-		const args = { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false, refund: { amount: 201, currency: 'THB', method: 'cash' as const, reason: 'Returned older deposit', unitemised: true, idempotencyKey: 'cancel-older-deposit' } };
-		await expect(admin.mutation(api.adminBookings.cancelStay, args)).rejects.toThrow('At most 200');
-		expect(await get(bookingId)).toEqual(before);
-		await admin.mutation(api.adminBookings.cancelStay, { ...args, refund: { ...args.refund, amount: 200 } });
-		const after = await financials(bookingId);
-		expect((await get(bookingId)).status).toBe('cancelled');
-		expect(after.unitemisedRefundable).toBe(0);
-		expect(after.payments[0].refunded).toBe(0);
-		expect(after.refunds).toMatchObject([{ amount: 200 }]);
-		expect(after.refunds[0].paymentId).toBeUndefined();
-	});
 	it('cancels a multiple-payment stay with a selected linked refund and replays the exact atomic request', async () => {
 		const { t, admin, create, pay, edit, rev, financials, get, history } = await setup();
 		const bookingId = await create(5, 6, { confirmed: true });
@@ -92,10 +76,9 @@ describe('refund records', () => {
 		await edit(bookingId, { checkOut: isoInDays(7) });
 		await pay(bookingId);
 		const before = await get(bookingId);
-		await expect(admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'cancel', refundRecorded: true })).rejects.toThrow('Cancel keeping the payment');
 		expect(await get(bookingId)).toEqual(before);
 		const selected = (await financials(bookingId)).payments[1];
-		const args = { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false, reason: 'Guest cancelled', refund: { amount: 1000, currency: 'THB', method: 'cash' as const, reason: 'Money returned', paymentId: selected._id, effectiveAt: Date.now(), idempotencyKey: 'cancel-multi-source-1' } };
+		const args = { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false, reason: 'Guest cancelled', refund: { amount: 100000, currency: 'THB', method: 'cash' as const, reason: 'Money returned', paymentId: selected._id, effectiveAt: Date.now(), idempotencyKey: 'cancel-multi-source-1' } };
 		await admin.mutation(api.adminBookings.cancelStay, args);
 		const stored = await get(bookingId);
 		const events = await history(bookingId);
@@ -103,8 +86,8 @@ describe('refund records', () => {
 		expect(await get(bookingId)).toEqual(stored);
 		expect(await history(bookingId)).toEqual(events);
 		expect(stored.status).toBe('cancelled');
-		expect((await financials(bookingId)).refunds).toMatchObject([{ paymentId: selected._id, amount: 1000 }]);
-		expect((await financials(bookingId)).payments.find(p => p._id === selected._id)?.refunded).toBe(1000);
+		expect((await financials(bookingId)).refunds).toMatchObject([{ paymentId: selected._id, amount: 100000 }]);
+		expect((await financials(bookingId)).payments.find(p => p._id === selected._id)?.refunded).toBe(100000);
 		expect(await t.run(ctx => ctx.db.query('bookingRefunds').collect())).toHaveLength(1);
 	});
 	it('links an omitted sole POS refund source to its payment and receipt', async () => {
@@ -114,28 +97,21 @@ describe('refund records', () => {
 		await settle(orderId, [{ method: 'cash', amount: (await order(orderId)).totals.due }]);
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false });
 		const before = await financials(bookingId);
-		await refund(bookingId, 500);
-		expect((await financials(bookingId)).payments[0].refunded).toBe(500);
-		expect((await order(orderId)).refunds).toMatchObject([{ amount: 500, sourceType: 'booking' }]);
+		await refund(bookingId, 50000);
+		expect((await financials(bookingId)).payments[0].refunded).toBe(50000);
+		expect((await order(orderId)).refunds).toMatchObject([{ amount: 50000, sourceType: 'booking' }]);
 		expect((await financials(bookingId)).refunds[0]).toMatchObject({ paymentId: before.payments[0]._id, order: { _id: orderId } });
 	});
 
-	it('requires an explicit source for multiple payments and bounds older unitemised money separately', async () => {
-		const { t, admin, create, pay, edit, rev, financials, refund, get } = await setup();
+	it('requires an explicit source for multiple payments', async () => {
+		const { admin, create, pay, edit, rev, financials, refund } = await setup();
 		const bookingId = await create(5, 6, { confirmed: true });
 		await pay(bookingId);
 		await edit(bookingId, { checkOut: isoInDays(7) });
 		await pay(bookingId);
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false });
-		await expect(refund(bookingId, 500)).rejects.toThrow('Select the payment or receipt');
+		await expect(refund(bookingId, 50000)).rejects.toThrow('Select the payment');
 		expect((await financials(bookingId)).refunds).toHaveLength(0);
-		const b = await get(bookingId);
-		await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: b.amountPaid! + 200 }));
-		expect((await financials(bookingId)).unitemisedRefundable).toBe(200);
-		await expect(refund(bookingId, 201, { unitemised: true })).rejects.toThrow('At most 200');
-		await refund(bookingId, 200, { unitemised: true });
-		expect((await financials(bookingId)).payments.every(p => p.refunded === 0)).toBe(true);
-		expect((await financials(bookingId)).unitemisedRefundable).toBe(0);
 	});
 
 	it('freezes every refund audit field and actor across a committed retry', async () => {
@@ -144,10 +120,10 @@ describe('refund records', () => {
 		await pay(bookingId);
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false });
 		const paymentId = (await financials(bookingId)).payments[0]._id;
-		const args = { bookingId, expectedRevision: await rev(bookingId), amount: 100, currency: 'THB', method: 'cash' as const, reason: 'Returned cash', effectiveAt: Date.now() - DAY, idempotencyKey: 'refund-all-fields', paymentId };
+		const args = { bookingId, expectedRevision: await rev(bookingId), amount: 10000, currency: 'THB', method: 'cash' as const, reason: 'Returned cash', effectiveAt: Date.now() - DAY, idempotencyKey: 'refund-all-fields', paymentId };
 		const result = await admin.mutation(api.adminBookings.recordRefund, args);
 		await expect(admin.mutation(api.adminBookings.recordRefund, args)).resolves.toEqual({ ...result, replayed: true });
-		for (const changes of [{ reason: 'Other reason' }, { effectiveAt: args.effectiveAt + 1 }, { paymentId: undefined }, { currency: 'USD' }, { unitemised: true }, { method: 'transfer' as const }]) {
+		for (const changes of [{ reason: 'Other reason' }, { effectiveAt: args.effectiveAt + 1 }, { paymentId: undefined }, { currency: 'USD' }, { method: 'transfer' as const }]) {
 			await expect(admin.mutation(api.adminBookings.recordRefund, { ...args, ...changes })).rejects.toThrow('different refund');
 		}
 		vi.stubEnv('ADMIN_EMAILS', `${adminEmail},desk@example.com`);
@@ -158,48 +134,48 @@ describe('refund records', () => {
 	it('allows editing a live fully refunded stay without inventing cancellation', async () => {
 		const { t, create, edit, get } = await setup();
 		const bookingId = await create(5, 6, { confirmed: true });
-		await t.run(ctx => ctx.db.patch(bookingId, { paymentStatus: 'refunded', amountPaid: 8500, amountRefunded: 8500, providerRefundWaived: 8500 }));
+		await t.run(ctx => ctx.db.patch(bookingId, { paymentStatus: 'refunded', amountPaid: 850000, amountRefunded: 850000, providerRefundWaived: 850000 }));
 		await edit(bookingId, { guestName: 'Corrected guest' });
-		expect(await get(bookingId)).toMatchObject({ status: 'confirmed', guestName: 'Corrected guest', amountRefunded: 8500 });
+		expect(await get(bookingId)).toMatchObject({ status: 'confirmed', guestName: 'Corrected guest', amountRefunded: 850000 });
 	});
 	it('records a partial refund of the credit after a completed paid stay is shortened, without reopening a balance', async () => {
 		const { admin, get, create, financials, history, pay, refund, edit, order, settle } = await setup();
 		const bookingId = await create(-10, -7, { confirmed: true });
 		await pay(bookingId, { method: 'card', effectiveAt: Date.now() - 10 * DAY });
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 25500, total: 25500 });
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 2550000, total: 2550000 });
 
 		// Nothing exceeds the price yet, so a live stay can't refund.
-		await expect(refund(bookingId, 1000)).rejects.toThrow('correct its price or cancel it first');
+		await expect(refund(bookingId, 100000)).rejects.toThrow('correct its price or cancel it first');
 
 		// The guest left after two nights: the stay costs 17,000, 8,500 is owed back.
 		await edit(bookingId, { checkOut: isoInDays(-8) });
-		expect((await financials(bookingId)).money).toMatchObject({ total: 17000, net: 25500, owed: 0, credit: 8500, refundable: 8500, refundContext: 'credit' });
+		expect((await financials(bookingId)).money).toMatchObject({ total: 1700000, net: 2550000, owed: 0, credit: 850000, refundable: 850000, refundContext: 'credit' });
 
 		const paymentId = (await financials(bookingId)).payments[0]._id;
-		await expect(refund(bookingId, 8500.01, { paymentId })).rejects.toThrow('Only the credit of 8500');
-		const { refundId } = await refund(bookingId, 8500, { paymentId, method: 'card', effectiveAt: Date.now() - 7 * DAY });
+		await expect(refund(bookingId, 850001, { paymentId })).rejects.toThrow('Only the credit of 8500');
+		const { refundId } = await refund(bookingId, 850000, { paymentId, method: 'card', effectiveAt: Date.now() - 7 * DAY });
 		const after = await financials(bookingId);
-		expect(after.money).toMatchObject({ total: 17000, gross: 25500, refunded: 8500, net: 17000, owed: 0, credit: 0, refundable: 0 });
-		expect(after.refunds).toMatchObject([{ _id: refundId, amount: 8500, method: 'card', reason: 'Left early', context: 'credit', paymentId }]);
-		expect(after.payments[0]).toMatchObject({ refunded: 8500, refundable: 17000 });
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 25500, amountRefunded: 8500 });
+		expect(after.money).toMatchObject({ total: 1700000, gross: 2550000, refunded: 850000, net: 1700000, owed: 0, credit: 0, refundable: 0 });
+		expect(after.refunds).toMatchObject([{ _id: refundId, amount: 850000, method: 'card', reason: 'Left early', context: 'credit', paymentId }]);
+		expect(after.payments[0]).toMatchObject({ refunded: 850000, refundable: 1700000 });
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 2550000, amountRefunded: 850000 });
 
 		// The stay is settled: no balance, nothing to charge at checkout, and the booking sheet shows the refund.
 		const orders = await admin.query(api.pos.ordersForBooking, { bookingId });
-		expect(orders).toMatchObject({ balance: { total: 17000, paid: 17000, owed: 0, refunded: 8500, credit: 0 }, refunds: [{ amount: 8500, method: 'card' }] });
+		expect(orders).toMatchObject({ balance: { total: 1700000, paid: 1700000, owed: 0, refunded: 850000, credit: 0 }, refunds: [{ amount: 850000, method: 'card' }] });
 		await expect(admin.mutation(api.pos.attach, { bookingId })).rejects.toThrow('nothing left to pay');
-		expect((await admin.query(api.adminBookings.getForAdmin, { bookingId }))?.amountPaid).toBe(17000);
+		expect((await admin.query(api.adminBookings.getForAdmin, { bookingId }))?.amountPaid).toBe(1700000);
 		expect((await history(bookingId)).map((row) => row.kind)).toEqual(['refund_recorded', 'edited', 'payment_recorded', 'confirmed', 'created']);
 
 		// Re-extended after the refund: checkout charges only the new balance, against the net paid.
 		await edit(bookingId, { checkOut: isoInDays(-7) });
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-		expect((await order(orderId)).totals).toMatchObject({ total: 25500, deposit: 17000, due: 8500 });
+		expect((await order(orderId)).totals).toMatchObject({ total: 2550000, deposit: 1700000, due: 850000 });
 		// The open order owns the balance: a desk payment on the booking would collect it twice.
 		await expect(pay(bookingId)).rejects.toThrow('still open');
-		await settle(orderId, [{ method: 'cash', amount: 8500 }]);
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 34000, amountRefunded: 8500, total: 25500 });
-		expect((await financials(bookingId)).money).toMatchObject({ gross: 34000, refunded: 8500, net: 25500, owed: 0, credit: 0 });
+		await settle(orderId, [{ method: 'cash', amount: 850000 }]);
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 3400000, amountRefunded: 850000, total: 2550000 });
+		expect((await financials(bookingId)).money).toMatchObject({ gross: 3400000, refunded: 850000, net: 2550000, owed: 0, credit: 0 });
 	});
 
 	it('separates cancellation from refunds, refuses duplicates, overrefunds and invalid amounts, and closes a fully refunded stay', async () => {
@@ -208,56 +184,56 @@ describe('refund records', () => {
 		await pay(bookingId);
 		// Cancelling keeps the money.
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: await rev(bookingId), reason: 'Guest cancelled', notifyGuest: false });
-		expect(await get(bookingId)).toMatchObject({ status: 'cancelled', paymentStatus: 'paid', amountPaid: 25500, cancelReason: 'Guest cancelled', cancelledBy: adminEmail });
-		expect((await financials(bookingId)).money).toMatchObject({ net: 25500, refundable: 25500, refundContext: 'cancellation' });
+		expect(await get(bookingId)).toMatchObject({ status: 'cancelled', paymentStatus: 'paid', amountPaid: 2550000, cancelReason: 'Guest cancelled', cancelledBy: adminEmail });
+		expect((await financials(bookingId)).money).toMatchObject({ net: 2550000, refundable: 2550000, refundContext: 'cancellation' });
 
-		for (const [amount, message] of [[Number.NaN, 'more than zero'], [0, 'more than zero'], [-5, 'more than zero'], [Number.POSITIVE_INFINITY, 'more than zero'], [10.005, 'whole satang'], [25500.01, 'At most 25500']] as const) {
+		for (const [amount, message] of [[Number.NaN, 'more than zero'], [0, 'more than zero'], [-5, 'more than zero'], [Number.POSITIVE_INFINITY, 'more than zero'], [10.005, 'whole satang'], [2550001, 'At most 25500']] as const) {
 			await expect(refund(bookingId, amount)).rejects.toThrow(message);
 		}
-		await expect(refund(bookingId, 100, { currency: 'USD' })).rejects.toThrow('refund it in THB');
-		await expect(refund(bookingId, 100, { reason: '  ' })).rejects.toThrow('Refund reason is required');
-		await expect(refund(bookingId, 100, { effectiveAt: Date.now() + DAY })).rejects.toThrow('future');
-		await expect(refund(bookingId, 100, { expectedRevision: 0 })).rejects.toThrow('changed since you opened it');
+		await expect(refund(bookingId, 10000, { currency: 'USD' })).rejects.toThrow('refund it in THB');
+		await expect(refund(bookingId, 10000, { reason: '  ' })).rejects.toThrow('Refund reason is required');
+		await expect(refund(bookingId, 10000, { effectiveAt: Date.now() + DAY })).rejects.toThrow('future');
+		await expect(refund(bookingId, 10000, { expectedRevision: 0 })).rejects.toThrow('changed since you opened it');
 
 		// A payment of another booking can't be referenced.
 		const other = await create(30, 31);
 		await pay(other);
 		const foreign = (await financials(other)).payments[0]._id;
-		await expect(refund(bookingId, 100, { paymentId: foreign })).rejects.toThrow('another booking');
+		await expect(refund(bookingId, 10000, { paymentId: foreign })).rejects.toThrow('another booking');
 
 		// A retried refund (same key) is recorded once; reusing the key for a different refund is refused.
 		const attempt = { idempotencyKey: 'refund-retry-0001' };
-		const first = await refund(bookingId, 5000, attempt);
-		const retry = await admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 5000, currency: 'THB', method: 'transfer', reason: 'Left early', ...attempt });
+		const first = await refund(bookingId, 500000, attempt);
+		const retry = await admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 500000, currency: 'THB', method: 'transfer', reason: 'Left early', ...attempt });
 		expect(retry).toEqual({ refundId: first.refundId, replayed: true });
-		await expect(refund(bookingId, 4000, attempt)).rejects.toThrow('already used for a different refund');
+		await expect(refund(bookingId, 400000, attempt)).rejects.toThrow('already used for a different refund');
 		expect(await t.run((ctx) => ctx.db.query('bookingRefunds').collect())).toHaveLength(1);
 
-		await expect(refund(bookingId, 20500.01)).rejects.toThrow('At most 20500');
-		await refund(bookingId, 20500);
-		expect(await get(bookingId)).toMatchObject({ status: 'cancelled', paymentStatus: 'refunded', amountRefunded: 25500 });
-		expect((await financials(bookingId)).money).toMatchObject({ net: 0, refunded: 25500, refundable: 0 });
+		await expect(refund(bookingId, 2050001)).rejects.toThrow('At most 20500');
+		await refund(bookingId, 2050000);
+		expect(await get(bookingId)).toMatchObject({ status: 'cancelled', paymentStatus: 'refunded', amountRefunded: 2550000 });
+		expect((await financials(bookingId)).money).toMatchObject({ net: 0, refunded: 2550000, refundable: 0 });
 		await expect(refund(bookingId, 1)).rejects.toThrow('Nothing is left to refund');
 		// Not payable again by any path.
 		await expect(admin.mutation(api.pos.openOrderFor, { bookingId })).rejects.toThrow('cancelled');
 		await expect(admin.mutation(api.pos.attach, { bookingId })).rejects.toThrow('nothing left to pay');
 		await expect(pay(bookingId)).rejects.toThrow('cancelled');
-		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.balance).toMatchObject({ paid: 0, owed: 0, refunded: 25500 });
+		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.balance).toMatchObject({ paid: 0, owed: 0, refunded: 2550000 });
 	});
 
 	it('cancels and refunds part of a paid stay in one transaction, and rolls both back when the refund is invalid', async () => {
 		const { admin, get, rev, create, financials, pay } = await setup();
 		const bookingId = await create(20, 23);
 		await pay(bookingId);
-		const refundArgs = { amount: 99999, currency: 'THB', method: 'cash' as const, reason: 'Cancellation fee kept', idempotencyKey: key() };
+		const refundArgs = { amount: 9999900, currency: 'THB', method: 'cash' as const, reason: 'Cancellation fee kept', idempotencyKey: key() };
 		await expect(admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: await rev(bookingId), refund: refundArgs })).rejects.toThrow('At most');
 		expect(await get(bookingId)).toMatchObject({ status: 'confirmed', paymentStatus: 'paid' });
-		const cancelArgs = { bookingId, expectedRevision: await rev(bookingId), refund: { ...refundArgs, amount: 20000 } };
+		const cancelArgs = { bookingId, expectedRevision: await rev(bookingId), refund: { ...refundArgs, amount: 2000000 } };
 		await admin.mutation(api.adminBookings.cancelStay, cancelArgs);
 		await expect(admin.mutation(api.adminBookings.cancelStay, cancelArgs)).resolves.toEqual({ replayed: true });
 		await expect(admin.mutation(api.adminBookings.cancelStay, { ...cancelArgs, reason: 'Different cancellation' })).rejects.toThrow('different refund');
-		expect(await get(bookingId)).toMatchObject({ status: 'cancelled', paymentStatus: 'paid', amountRefunded: 20000 });
-		expect((await financials(bookingId)).money).toMatchObject({ net: 5500, refundable: 5500 });
+		expect(await get(bookingId)).toMatchObject({ status: 'cancelled', paymentStatus: 'paid', amountRefunded: 2000000 });
+		expect((await financials(bookingId)).money).toMatchObject({ net: 550000, refundable: 550000 });
 	});
 });
 
@@ -266,33 +242,33 @@ describe('payment entries and their corrections', () => {
 		const { admin, get, rev, create, financials, history, pay } = await setup();
 		const bookingId = await create(5, 7);
 		const lastWeek = Date.now() - 7 * DAY;
-		await expect(pay(bookingId, { expectedAmount: 100 })).rejects.toThrow('now owes 17000');
+		await expect(pay(bookingId, { expectedAmount: 10000 })).rejects.toThrow('now owes 17000');
 		await expect(pay(bookingId, { effectiveAt: Date.now() + DAY })).rejects.toThrow('future');
 		const attempt = key('pay');
 		const { paymentId } = await pay(bookingId, { idempotencyKey: attempt, effectiveAt: lastWeek, note: 'Front desk' });
 		expect(await pay(bookingId, { idempotencyKey: attempt })).toEqual({ paymentId, replayed: true });
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', status: 'confirmed', paidAt: lastWeek, amountPaid: 17000, paymentMethod: 'admin' });
-		expect((await financials(bookingId)).payments).toMatchObject([{ _id: paymentId, origin: 'manual', method: 'cash', amount: 17000, effectiveAt: lastWeek, note: 'Front desk', amendBlocker: null, cancelBlocker: null }]);
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', status: 'confirmed', paidAt: lastWeek, amountPaid: 1700000, paymentMethod: 'admin' });
+		expect((await financials(bookingId)).payments).toMatchObject([{ _id: paymentId, origin: 'manual', method: 'cash', amount: 1700000, effectiveAt: lastWeek, note: 'Front desk', amendBlocker: null, cancelBlocker: null }]);
 
 		// Wrong method and date: fixed in place, no cancellation, no money moved.
 		const yesterday = Date.now() - DAY;
 		await expect(admin.mutation(api.adminBookings.amendPayment, { bookingId, paymentId, expectedRevision: await rev(bookingId), method: 'transfer', reason: ' ' })).rejects.toThrow('required');
 		await admin.mutation(api.adminBookings.amendPayment, { bookingId, paymentId, expectedRevision: await rev(bookingId), method: 'transfer', effectiveAt: yesterday, reason: 'Was a bank transfer' });
 		expect((await financials(bookingId)).payments[0]).toMatchObject({ method: 'transfer', effectiveAt: yesterday, amendedBy: adminEmail, status: 'recorded' });
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', paidAt: yesterday, amountPaid: 17000 });
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', paidAt: yesterday, amountPaid: 1700000 });
 
 		// Recorded on the wrong booking: no money was received here, so the entry is cancelled and the stay is unpaid again.
 		await admin.mutation(api.adminBookings.cancelPayment, { bookingId, paymentId, expectedRevision: await rev(bookingId), reason: 'Entered on the wrong booking' });
 		const reverted = await get(bookingId);
 		expect(reverted).toMatchObject({ paymentStatus: 'pending', status: 'confirmed' });
-		expect(reverted.amountPaid).toBeUndefined();
+		expect(reverted.amountPaid).toBe(0);
 		expect(reverted.paidAt).toBeUndefined();
 		expect((await financials(bookingId)).payments[0]).toMatchObject({ status: 'cancelled', cancelReason: 'Entered on the wrong booking', refundable: 0 });
-		expect((await financials(bookingId)).money).toMatchObject({ owed: 17000, net: 0 });
+		expect((await financials(bookingId)).money).toMatchObject({ owed: 1700000, net: 0 });
 		expect((await history(bookingId)).slice(0, 3).map((row) => row.kind)).toEqual(['payment_cancelled', 'payment_amended', 'payment_recorded']);
 		// The stay can be paid correctly again.
 		await pay(bookingId, { method: 'card' });
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 17000 });
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 1700000 });
 	});
 
 	it('refuses to cancel a manual entry that was partly refunded', async () => {
@@ -300,7 +276,7 @@ describe('payment entries and their corrections', () => {
 		const bookingId = await create(5, 7);
 		const { paymentId } = await pay(bookingId);
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: await rev(bookingId) });
-		await refund(bookingId, 1000, { paymentId });
+		await refund(bookingId, 100000, { paymentId });
 		await expect(admin.mutation(api.adminBookings.cancelPayment, { bookingId, paymentId, expectedRevision: await rev(bookingId), reason: 'Mistake' })).rejects.toThrow('refunded, so it was real money');
 		expect((await financials(bookingId)).payments[0].cancelBlocker).toContain('refunded');
 	});
@@ -318,7 +294,7 @@ describe('payment entries and their corrections', () => {
 		await t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: 'cs_1', amountTotal: 2550000, currency: 'thb', paymentIntentId: 'pi_1' });
 		await t.run((ctx) => ctx.db.patch(bookingId, { stripeCheckoutExpiresAt: Date.now() - 1 }));
 		const online = (await financials(bookingId)).payments[0];
-		expect(online).toMatchObject({ origin: 'online', method: 'stripe', amount: 25500, recordedBy: 'system:stripe' });
+		expect(online).toMatchObject({ origin: 'online', method: 'stripe', amount: 2550000, recordedBy: 'system:stripe' });
 
 		// Online money can't be amended or undone as a "mistake".
 		await expect(admin.mutation(api.adminBookings.cancelPayment, { bookingId, paymentId: online._id, expectedRevision: await rev(bookingId), reason: 'x' })).rejects.toThrow('provider');
@@ -327,16 +303,16 @@ describe('payment entries and their corrections', () => {
 		// Extend by a night and collect the balance at the desk, dated yesterday.
 		await edit(bookingId, { checkOut: isoInDays(24), notifyGuest: false });
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-		expect((await order(orderId)).totals).toMatchObject({ total: 34000, deposit: 25500, due: 8500 });
+		expect((await order(orderId)).totals).toMatchObject({ total: 3400000, deposit: 2550000, due: 850000 });
 		const yesterday = Date.now() - DAY;
-		await settle(orderId, [{ method: 'card', amount: 8500 }], { effectiveAt: yesterday });
+		await settle(orderId, [{ method: 'card', amount: 850000 }], { effectiveAt: yesterday });
 		const paid = await order(orderId);
 		expect(paid.order.paidAt).toBeGreaterThan(yesterday + DAY - 60_000);
 		expect(paid.paymentRecord.effectiveAt).toBe(yesterday);
 		expect(paid.payments[0].effectiveAt).toBe(yesterday);
 		const pos = (await financials(bookingId)).payments.find((p) => p.origin === 'pos')!;
-		expect(pos).toMatchObject({ amount: 8500, method: 'order', effectiveAt: yesterday, order: { _id: orderId } });
-		expect(await get(bookingId)).toMatchObject({ amountPaid: 34000, paymentMethod: 'stripe', stripePaymentIntentId: 'pi_1' });
+		expect(pos).toMatchObject({ amount: 850000, method: 'order', effectiveAt: yesterday, order: { _id: orderId } });
+		expect(await get(bookingId)).toMatchObject({ amountPaid: 3400000, paymentMethod: 'stripe', stripePaymentIntentId: 'pi_1' });
 		await expect(admin.mutation(api.adminBookings.amendPayment, { bookingId, paymentId: pos._id, expectedRevision: await rev(bookingId), method: 'cash', reason: 'x' })).rejects.toThrow('receipt');
 
 		// The card was never actually charged: reverse only what this order took; the Stripe deposit stays.
@@ -344,10 +320,10 @@ describe('payment entries and their corrections', () => {
 		const voidKey = key('void');
 		await admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: voidKey, reason: 'Card machine declined; nothing received' });
 		expect(await admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: voidKey, reason: 'again' })).toEqual({ replayed: true });
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 25500, total: 34000 });
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 2550000, total: 3400000 });
 		const after = await financials(bookingId);
-		expect(after.money).toMatchObject({ net: 25500, owed: 8500 });
-		expect(after.payments.find((p) => p.origin === 'online')).toMatchObject({ status: 'recorded', amount: 25500 });
+		expect(after.money).toMatchObject({ net: 2550000, owed: 850000 });
+		expect(after.payments.find((p) => p.origin === 'online')).toMatchObject({ status: 'recorded', amount: 2550000 });
 		expect(after.payments.find((p) => p.origin === 'pos')).toMatchObject({ status: 'cancelled' });
 		const voided = await order(orderId);
 		expect(voided.order).toMatchObject({ status: 'void', receiptNumber: 1, voidUnreceived: true });
@@ -356,7 +332,7 @@ describe('payment entries and their corrections', () => {
 		// The balance can be charged again on a new order.
 		const again = await admin.mutation(api.pos.openOrderFor, { bookingId });
 		expect(again.orderId).not.toBe(orderId);
-		expect((await order(again.orderId)).totals.due).toBe(8500);
+		expect((await order(again.orderId)).totals.due).toBe(850000);
 		expect((await history(bookingId)).map((row) => row.kind)).toContain('payment_cancelled');
 	});
 
@@ -364,13 +340,13 @@ describe('payment entries and their corrections', () => {
 		const { admin, get, create, financials, history, order, settle } = await setup();
 		const bookingId = await create(20, 22);
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-		await settle(orderId, [{ method: 'card', amount: 17000 }]);
+		await settle(orderId, [{ method: 'card', amount: 1700000 }]);
 		await admin.mutation(api.pos.voidOrder, { orderId, reason: 'Wrong card' });
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 17000 });
-		expect((await financials(bookingId)).payments).toMatchObject([{ origin: 'pos', status: 'recorded', amount: 17000 }]);
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 1700000 });
+		expect((await financials(bookingId)).payments).toMatchObject([{ origin: 'pos', status: 'recorded', amount: 1700000 }]);
 		expect((await order(orderId)).order).toMatchObject({ status: 'void', voidReason: 'Wrong card' });
 		expect((await order(orderId)).order.voidUnreceived).toBeUndefined();
-		expect((await history(bookingId))[0]).toMatchObject({ kind: 'order_voided', reason: 'Wrong card', after: { billId: orderId, paymentKept: true } });
+		expect((await history(bookingId))[0]).toMatchObject({ kind: 'order_voided', reason: 'Wrong card', after: { orderId: orderId, paymentKept: true } });
 	});
 
 	it('amends a wrong tender, date and payer on a paid receipt while keeping the issued receipt and payments', async () => {
@@ -380,16 +356,16 @@ describe('payment entries and their corrections', () => {
 		const ann = await admin.mutation(api.customers.createCustomer, { name: 'Ann' });
 		const bob = await admin.mutation(api.customers.createCustomer, { name: 'Bob', phone: '0812345678' });
 		await admin.mutation(api.pos.linkCustomer, { orderId, customerId: ann });
-		await settle(orderId, [{ method: 'card', amount: 17000 }], { expectedCustomerRevision: 0 });
+		await settle(orderId, [{ method: 'card', amount: 1700000 }], { expectedCustomerRevision: 0 });
 		const issued = await order(orderId);
 		const base = { orderId, reason: 'Guest paid cash' };
 
-		await expect(admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: key(), tenders: [{ method: 'cash', amount: 16000 }] })).rejects.toThrow('add up to 16000');
-		await expect(admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: key(), tenders: [{ method: 'card', amount: 17000 }] })).rejects.toThrow('Nothing changed');
+		await expect(admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: key(), tenders: [{ method: 'cash', amount: 1600000 }] })).rejects.toThrow('add up to 16000');
+		await expect(admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: key(), tenders: [{ method: 'card', amount: 1700000 }] })).rejects.toThrow('Nothing changed');
 		const attempt = key('amend');
-		await admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: attempt, tenders: [{ method: 'cash', amount: 10000 }, { method: 'promptpay', amount: 7000 }] });
-		expect(await admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: attempt, tenders: [{ method: 'cash', amount: 17000 }] })).toEqual({ sequence: 1, replayed: true });
-		await expect(admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: key(), tenders: [{ method: 'cash', amount: 17000 }] })).rejects.toThrow('corrected since');
+		await admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: attempt, tenders: [{ method: 'cash', amount: 1000000 }, { method: 'promptpay', amount: 700000 }] });
+		expect(await admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: attempt, tenders: [{ method: 'cash', amount: 1700000 }] })).toEqual({ sequence: 1, replayed: true });
+		await expect(admin.mutation(api.pos.amendOrderPayment, { ...base, expectedCorrectionRevision: 0, idempotencyKey: key(), tenders: [{ method: 'cash', amount: 1700000 }] })).rejects.toThrow('corrected since');
 
 		const twoDaysAgo = Date.now() - 2 * DAY;
 		await t.run((ctx) => ctx.db.patch(bob, { mergedInto: ann }));
@@ -401,100 +377,20 @@ describe('payment entries and their corrections', () => {
 		expect(view.order).toMatchObject({ status: 'paid', receiptNumber: issued.order.receiptNumber, customerSnapshot: { name: 'Ann' }, customerId: bob, correctionRevision: 2 });
 		expect(view.payments).toEqual(issued.payments);
 		expect(view.paymentRecord).toMatchObject({
-			tenders: [{ method: 'cash', amount: 10000 }, { method: 'promptpay', amount: 7000 }], tendersAmended: true,
+			tenders: [{ method: 'cash', amount: 1000000 }, { method: 'promptpay', amount: 700000 }], tendersAmended: true,
 			customer: { name: 'Bob', phone: '0812345678' }, customerAmended: true, effectiveAt: twoDaysAgo, correctionRevision: 2
 		});
 		expect(view.corrections.map((c) => c.sequence)).toEqual([2, 1]);
-		expect(view.corrections[1]).toMatchObject({ tendersBefore: [{ method: 'card', amount: 17000 }], tendersAfter: [{ method: 'cash', amount: 10000 }, { method: 'promptpay', amount: 7000 }] });
+		expect(view.corrections[1]).toMatchObject({ tendersBefore: [{ method: 'card', amount: 1700000 }], tendersAfter: [{ method: 'cash', amount: 1000000 }, { method: 'promptpay', amount: 700000 }] });
 		// The stay's payment record follows the corrected business date.
 		expect((await financials(bookingId)).payments[0]).toMatchObject({ origin: 'pos', effectiveAt: twoDaysAgo });
 		// Unpaid orders can't be amended.
-		const { orderId: open } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 50 } });
+		const { orderId: open } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 5000 } });
 		await expect(admin.mutation(api.pos.amendOrderPayment, { orderId: open, reason: 'x', expectedCorrectionRevision: 0, idempotencyKey: key(), effectiveAt: twoDaysAgo })).rejects.toThrow('Only a paid order');
 	});
-
-	it('refuses to reverse a legacy order paid before stay payments were itemised, but still allows a capped refund by reference', async () => {
-		const { t, admin, get, rev, create, financials, order, settle, refund } = await setup();
-		const bookingId = await create(20, 22);
-		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-		await settle(orderId, [{ method: 'cash', amount: 17000 }]);
-		// Simulate an order paid before this release: no itemised stay payment.
-		await t.run(async (ctx) => {
-			for (const row of await ctx.db.query('bookingPayments').collect()) await ctx.db.delete(row._id);
-		});
-		expect((await financials(bookingId)).unitemised).toBe(17000);
-		expect((await financials(bookingId)).legacyOrders).toMatchObject([{ _id: orderId, charged: 17000, refundable: 17000 }]);
-		await expect(admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: key(), reason: 'No money' })).rejects.toThrow("can't prove");
-		expect((await order(orderId)).order.status).toBe('paid');
-		// Tenders can still be corrected.
-		await admin.mutation(api.pos.amendOrderPayment, { orderId, reason: 'Was card', expectedCorrectionRevision: 0, idempotencyKey: key(), tenders: [{ method: 'card', amount: 17000 }] });
-		// A refund referring to the order is capped by what that order took for the stay.
-		await admin.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: await rev(bookingId) });
-		await expect(refund(bookingId, 17000.5, { billId: orderId })).rejects.toThrow('At most');
-		await refund(bookingId, 7000, { billId: orderId });
-		await expect(refund(bookingId, 10000.01, { billId: orderId })).rejects.toThrow('At most');
-		expect(await get(bookingId)).toMatchObject({ amountRefunded: 7000 });
-		expect((await order(orderId)).refunds).toMatchObject([{ amount: 7000, bookingId }]);
-	});
-
-	it('itemises the legacy "Mark paid" API so it is corrected as an entry, not by the legacy path', async () => {
-		const { admin, get, rev, create, financials } = await setup();
-		const bookingId = await create(20, 22);
-		await admin.mutation(api.adminBookings.updateBooking, { bookingId, action: 'markPaid' });
-		const fin = await financials(bookingId);
-		expect(fin.payments).toMatchObject([{ origin: 'manual', method: 'unrecorded', amount: 17000, cancelBlocker: null }]);
-		expect(fin.legacyManual).toMatchObject({ cancellable: false });
-		await expect(admin.mutation(api.adminBookings.cancelPayment, { bookingId, legacy: true, expectedRevision: await rev(bookingId), reason: 'Mistake' })).rejects.toThrow('itemised');
-		await expect(admin.mutation(api.adminBookings.cancelPayment, { bookingId, expectedRevision: await rev(bookingId), reason: 'Mistake' })).rejects.toThrow('Choose one');
-		await admin.mutation(api.adminBookings.cancelPayment, { bookingId, paymentId: fin.payments[0]._id, expectedRevision: await rev(bookingId), reason: 'Mistake' });
-		expect((await get(bookingId)).paymentStatus).toBe('pending');
-	});
 });
 
-describe('legacy documents', () => {
-	it('counts a legacy refunded stay as fully refunded without inventing records, and reopens it unpaid', async () => {
-		const { t, admin, get, rev, financials, pay, history } = await setup();
-		const propertyId = (await t.run((ctx) => ctx.db.query('properties').first()))!._id;
-		const bookingId = await t.run((ctx) => ctx.db.insert('bookings', {
-			propertyId, guestName: 'Old', guestPhone: '0811111111', checkIn: isoInDays(20), checkOut: isoInDays(22), guests: 2, nights: 2,
-			subtotal: 20000, discountAmount: 3000, total: 17000, currency: 'THB', amountPaid: 17000, paymentStatus: 'refunded', status: 'cancelled',
-			paymentMethod: 'admin', refundedAt: Date.now() - DAY, source: 'admin', createdAt: Date.now() - 30 * DAY
-		}));
-		const before = await financials(bookingId);
-		expect(before).toMatchObject({ revision: 0, payments: [], refunds: [], unitemised: 17000, money: { gross: 17000, refunded: 17000, net: 0, refundable: 0, legacyRefund: true } });
-		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.balance).toMatchObject({ paid: 0, refunded: 17000, owed: 0 });
-		await expect(admin.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 1, currency: 'THB', method: 'cash', reason: 'x', idempotencyKey: key() })).rejects.toThrow('before refund amounts were recorded');
-		expect(await t.run((ctx) => ctx.db.query('bookingRefunds').collect())).toHaveLength(0);
 
-		await expect(admin.mutation(api.adminBookings.reopenBooking, { bookingId, expectedRevision: 0, confirmed: false, reason: ' ' })).rejects.toThrow('Reason is required');
-		await admin.mutation(api.adminBookings.reopenBooking, { bookingId, expectedRevision: 0, confirmed: false, reason: 'Guest is coming after all' });
-		expect(await get(bookingId)).toMatchObject({ status: 'pending', paymentStatus: 'pending', amountPaid: 17000, amountRefunded: 17000, revision: 1 });
-		expect((await financials(bookingId)).money).toMatchObject({ gross: 17000, refunded: 17000, net: 0, owed: 17000 });
-		await pay(bookingId);
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 34000, amountRefunded: 17000 });
-		expect((await financials(bookingId)).money).toMatchObject({ net: 17000, owed: 0 });
-		expect((await history(bookingId)).map((row) => row.kind)).toEqual(['payment_recorded', 'reopened']);
-		expect(await rev(bookingId)).toBe(2);
-	});
-
-	it('reads bookings without revision, history or payment entries', async () => {
-		const { t, admin } = await setup();
-		const propertyId = (await t.run((ctx) => ctx.db.query('properties').first()))!._id;
-		const bookingId = await t.run((ctx) => ctx.db.insert('bookings', {
-			propertyId, guestName: 'Legacy', guestPhone: '0811111111', checkIn: isoInDays(20), checkOut: isoInDays(22), guests: 2, nights: 2,
-			subtotal: 20000, discountAmount: 3000, total: 17000, currency: 'THB', paymentStatus: 'paid', status: 'confirmed', paymentMethod: 'admin', createdAt: 1
-		}));
-		const detail = await admin.query(api.adminBookings.getForAdmin, { bookingId });
-		expect(detail).toMatchObject({ revision: 0, amountPaid: 17000, priceOverride: null, money: { gross: 17000, net: 17000, owed: 0 } });
-		const fin = await admin.query(api.adminBookings.bookingFinancials, { bookingId });
-		expect(fin).toMatchObject({ unitemised: 17000, legacyManual: { cancellable: true, amount: 17000 } });
-		expect((await admin.query(api.adminBookings.bookingHistory, { bookingId, paginationOpts: page })).page).toEqual([]);
-		await admin.mutation(api.adminBookings.cancelPayment, { bookingId, legacy: true, expectedRevision: 0, reason: 'Marked paid by mistake' });
-		expect(await t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({ paymentStatus: 'pending', revision: 1 });
-		const [row] = (await admin.query(api.adminBookings.bookingHistory, { bookingId, paginationOpts: page })).page;
-		expect(row).toMatchObject({ kind: 'payment_cancelled', reason: 'Marked paid by mistake', before: { paymentStatus: 'paid' }, after: { paymentStatus: 'pending', legacy: true, amount: 17000 } });
-	});
-});
 
 describe('custom stay price', () => {
 	it('sets a reasoned price with revision checks, flags the open checkout row and settles the new price', async () => {
@@ -502,30 +398,30 @@ describe('custom stay price', () => {
 		const bookingId = await create(20, 23);
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
 		const stale = await order(orderId);
-		expect(stale.totals.due).toBe(25500);
+		expect(stale.totals.due).toBe(2550000);
 
-		await expect(edit(bookingId, { priceOverride: { total: 20000, reason: ' ' } })).rejects.toThrow('Reason for the custom price is required');
-		await expect(edit(bookingId, { priceOverride: { total: 20000.001, reason: 'Negotiated' } })).rejects.toThrow('whole satang');
-		await expect(edit(bookingId, { priceOverride: { total: 20000, reason: 'Negotiated' }, expectedRevision: undefined })).rejects.toThrow('missing revision');
-		await expect(edit(bookingId, { priceOverride: { total: 20000, reason: 'Negotiated' }, expectedRevision: 99 })).rejects.toThrow('changed since you opened it');
-		await edit(bookingId, { priceOverride: { total: 20000, reason: 'Negotiated rate' } });
-		expect(await get(bookingId)).toMatchObject({ total: 20000, subtotal: 30000, priceOverride: { total: 20000, quotedTotal: 25500, reason: 'Negotiated rate', by: adminEmail } });
+		await expect(edit(bookingId, { priceOverride: { total: 2000000, reason: ' ' } })).rejects.toThrow('Reason for the custom price is required');
+		await expect(edit(bookingId, { priceOverride: { total: 2000000.1, reason: 'Negotiated' } })).rejects.toThrow('whole satang');
+		await expect(edit(bookingId, { priceOverride: { total: 2000000, reason: 'Negotiated' }, expectedRevision: undefined })).rejects.toThrow('missing revision');
+		await expect(edit(bookingId, { priceOverride: { total: 2000000, reason: 'Negotiated' }, expectedRevision: 99 })).rejects.toThrow('changed since you opened it');
+		await edit(bookingId, { priceOverride: { total: 2000000, reason: 'Negotiated rate' } });
+		expect(await get(bookingId)).toMatchObject({ total: 2000000, subtotal: 3000000, priceOverride: { total: 2000000, quotedTotal: 2550000, reason: 'Negotiated rate', by: adminEmail } });
 
 		// The open row is stale until refreshed, then charges the custom price.
 		const lineId = (await order(orderId)).lines[0]._id;
 		expect((await order(orderId)).lines[0].sourceIssue?.kind).toBe('changed');
-		await expect(admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: key(), expectedDue: 25500, expectedRevision: stale.order.revision, tenders: [{ method: 'cash', amount: 25500 }] })).rejects.toThrow();
+		await expect(admin.mutation(api.pos.settleOrder, { orderId, idempotencyKey: key(), expectedDue: 2550000, expectedRevision: stale.order.revision, tenders: [{ method: 'cash', amount: 2550000 }] })).rejects.toThrow();
 		await admin.mutation(api.pos.updateSourceLine, { lineId });
-		expect((await order(orderId)).totals.due).toBe(20000);
-		await settle(orderId, [{ method: 'cash', amount: 20000 }]);
-		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 20000, total: 20000 });
+		expect((await order(orderId)).totals.due).toBe(2000000);
+		await settle(orderId, [{ method: 'cash', amount: 2000000 }]);
+		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 2000000, total: 2000000 });
 
 		// A stay change must say what happens to the custom price.
 		await expect(edit(bookingId, { checkOut: isoInDays(24) })).rejects.toThrow('custom price');
-		await edit(bookingId, { checkOut: isoInDays(24), priceOverride: { total: 26000, reason: 'Extra night at the same rate' } });
-		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.balance).toMatchObject({ total: 26000, paid: 20000, owed: 6000 });
+		await edit(bookingId, { checkOut: isoInDays(24), priceOverride: { total: 2600000, reason: 'Extra night at the same rate' } });
+		expect((await admin.query(api.pos.ordersForBooking, { bookingId }))?.balance).toMatchObject({ total: 2600000, paid: 2000000, owed: 600000 });
 		await edit(bookingId, { priceOverride: null });
-		expect(await get(bookingId)).toMatchObject({ total: 34000 });
+		expect(await get(bookingId)).toMatchObject({ total: 3400000 });
 		expect((await get(bookingId)).priceOverride).toBeUndefined();
 		expect((await history(bookingId)).filter((row) => row.kind === 'edited').map((row) => row.reason)).toEqual(['Back to the villa rate', 'Extra night at the same rate', 'Negotiated rate']);
 		expect(await rev(bookingId)).toBeGreaterThan(3);
@@ -579,7 +475,7 @@ describe('reopen', () => {
 		await admin.mutation(api.adminBookings.cancelStay, { bookingId: rival, expectedRevision: await rev(rival), notifyGuest: false });
 		// Money kept means it comes back paid and confirmed, whatever was asked.
 		await admin.mutation(api.adminBookings.reopenBooking, { bookingId: kept, expectedRevision: await rev(kept), confirmed: false, reason: 'Guest is coming after all', notifyGuest: false });
-		expect(await get(kept)).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', amountPaid: 25500 });
+		expect(await get(kept)).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', amountPaid: 2550000 });
 		expect((await get(kept)).cancelledAt).toBeUndefined();
 		await expect(admin.mutation(api.adminBookings.reopenBooking, { bookingId: kept, expectedRevision: await rev(kept), confirmed: true, reason: 'Again' })).rejects.toThrow('Only cancelled');
 
@@ -638,8 +534,8 @@ describe('history, deletion and concurrency', () => {
 		const bookingId = await create(20, 22);
 		const appointmentId = await t.run(async (ctx) => {
 			const staffId = await ctx.db.insert('staff', { name: 'Nok', role: 'Spa', color: '#fff', status: 'active', workingHours: [], breaks: [], createdAt: 0, updatedAt: 0 });
-			const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 100, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
-			return await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: 1, end: 2, blockedUntil: 2, guestName: 'Mia', guestPhone: '1', bookingId, source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 100, currency: 'THB', confirmationCode: 'SPA1', accessToken: 'x', createdAt: 0 });
+			const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 10000, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
+			return await insertFixture(ctx, 'appointments', { serviceId, staffId, start: 1, end: 2, blockedUntil: 2, guestName: 'Mia', guestPhone: '1', bookingId, source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 10000, currency: 'THB', confirmationCode: 'SPA1', accessToken: 'x', createdAt: 0 });
 		});
 		await expect(admin.mutation(api.adminBookings.deleteBooking, { bookingId, expectedRevision: 99 })).rejects.toThrow('changed since you opened it');
 		await admin.mutation(api.adminBookings.deleteBooking, { bookingId, expectedRevision: await rev(bookingId) });
@@ -663,7 +559,7 @@ describe('history, deletion and concurrency', () => {
 		const { t, stranger, create, admin, order, settle } = await setup();
 		const bookingId = await create(20, 22);
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-		await settle(orderId, [{ method: 'cash', amount: 17000 }]);
+		await settle(orderId, [{ method: 'cash', amount: 1700000 }]);
 		const paymentId = (await t.run((ctx) => ctx.db.query('bookingPayments').first()))!._id;
 		const anonymous = t;
 		for (const caller of [stranger, anonymous]) {
@@ -671,10 +567,10 @@ describe('history, deletion and concurrency', () => {
 				caller.query(api.adminBookings.bookingFinancials, { bookingId }),
 				caller.query(api.adminBookings.bookingHistory, { bookingId, paginationOpts: page }),
 				caller.query(api.pos.orderHistory, { orderId, paginationOpts: page }),
-				caller.mutation(api.adminBookings.recordPayment, { bookingId, expectedRevision: 0, expectedAmount: 1, method: 'cash', idempotencyKey: key() }),
+				caller.mutation(api.adminBookings.recordPayment, { bookingId, expectedRevision: 0, expectedAmount: 100, method: 'cash', idempotencyKey: key() }),
 				caller.mutation(api.adminBookings.amendPayment, { bookingId, paymentId, expectedRevision: 0, method: 'cash', reason: 'x' }),
 				caller.mutation(api.adminBookings.cancelPayment, { bookingId, paymentId, expectedRevision: 0, reason: 'x' }),
-				caller.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 1, currency: 'THB', method: 'cash', reason: 'x', idempotencyKey: key() }),
+				caller.mutation(api.adminBookings.recordRefund, { bookingId, expectedRevision: 0, amount: 100, currency: 'THB', method: 'cash', reason: 'x', idempotencyKey: key() }),
 				caller.mutation(api.adminBookings.cancelStay, { bookingId, expectedRevision: 0 }),
 				caller.mutation(api.adminBookings.reopenBooking, { bookingId, expectedRevision: 0, confirmed: true, reason: 'x' }),
 				caller.mutation(api.pos.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: key(), reason: 'x', effectiveAt: Date.now() - DAY }),
@@ -690,17 +586,17 @@ describe('history, deletion and concurrency', () => {
 describe('checkout records', () => {
 	it('logs ordinary order edits with snapshots, including what a clear removed', async () => {
 		const { admin, propertyId } = await setup();
-		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 50 } });
+		const { orderId, lineId } = await admin.mutation(api.pos.addItem, { item: { kind: 'extra', name: 'Water', price: 5000 } });
 		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'room', propertyId } });
 		await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'room', propertyId } });
-		await admin.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 10 } });
-		await admin.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 10 } });
+		await admin.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 1000 } });
+		await admin.mutation(api.pos.updateLine, { lineId, discount: { type: 'amount', value: 1000 } });
 		await admin.mutation(api.pos.removeLine, { lineId });
 		await admin.mutation(api.pos.clearOrder, { orderId });
 		const rows = (await admin.query(api.pos.orderHistory, { orderId, paginationOpts: page })).page;
 		expect(rows.map((row) => row.kind)).toEqual(['cleared', 'line_removed', 'line_updated', 'line_updated', 'line_added', 'line_added']);
 		expect(rows[0]).toMatchObject({ actor: adminEmail, before: { lines: [{ kind: 'room', qty: 2, propertyId }] } });
-		expect(rows[1]).toMatchObject({ before: { name: 'Water', discount: { type: 'amount', value: 10 } } });
+		expect(rows[1]).toMatchObject({ before: { name: 'Water', discount: { type: 'amount', value: 1000 } } });
 		expect(rows[3]).toMatchObject({ before: { kind: 'room', qty: 1 }, after: { kind: 'room', qty: 2 } });
 	});
 
@@ -708,16 +604,16 @@ describe('checkout records', () => {
 		const { t, admin, order, settle } = await setup();
 		const appointmentId = await t.run(async (ctx) => {
 			const staffId = await ctx.db.insert('staff', { name: 'Nok', role: 'Spa', color: '#fff', status: 'active', workingHours: [], breaks: [], createdAt: 0, updatedAt: 0 });
-			const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 1200, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
-			return await ctx.db.insert('serviceAppointments', { serviceId, staffId, start: Date.now() - 2 * DAY, end: Date.now() - 2 * DAY + 3_600_000, blockedUntil: Date.now() - 2 * DAY + 3_600_000, guestName: 'Eve', guestPhone: '1', source: 'admin', status: 'completed', paymentStatus: 'unpaid', price: 1200, currency: 'THB', confirmationCode: 'SPA2', accessToken: 'x', createdAt: 0 });
+			const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
+			return await insertFixture(ctx, 'appointments', { serviceId, staffId, start: Date.now() - 2 * DAY, end: Date.now() - 2 * DAY + 3_600_000, blockedUntil: Date.now() - 2 * DAY + 3_600_000, guestName: 'Eve', guestPhone: '1', source: 'admin', status: 'completed', paymentStatus: 'unpaid', price: 120000, currency: 'THB', confirmationCode: 'SPA2', accessToken: 'x', createdAt: 0 });
 		});
 		const { orderId } = await admin.mutation(api.pos.openOrderFor, { appointmentId });
 		const customerId = await admin.mutation(api.customers.createCustomer, { name: 'Eve' });
 		await admin.mutation(api.pos.linkCustomer, { orderId, customerId });
-		await expect(settle(orderId, [{ method: 'cash', amount: 1200 }], { effectiveAt: Date.now() + DAY, expectedCustomerRevision: 0 })).rejects.toThrow('future');
-		await expect(settle(orderId, [{ method: 'cash', amount: 1200 }], { expectedCustomerRevision: 4 })).rejects.toThrow('customer changed');
+		await expect(settle(orderId, [{ method: 'cash', amount: 120000 }], { effectiveAt: Date.now() + DAY, expectedCustomerRevision: 0 })).rejects.toThrow('future');
+		await expect(settle(orderId, [{ method: 'cash', amount: 120000 }], { expectedCustomerRevision: 4 })).rejects.toThrow('customer changed');
 		const monday = Date.now() - 2 * DAY;
-		await settle(orderId, [{ method: 'cash', amount: 1200 }], { effectiveAt: monday, expectedCustomerRevision: 0 });
+		await settle(orderId, [{ method: 'cash', amount: 120000 }], { effectiveAt: monday, expectedCustomerRevision: 0 });
 		expect(await t.run((ctx) => ctx.db.get(appointmentId))).toMatchObject({ paymentStatus: 'paid', paidAt: monday, paidBy: adminEmail });
 		const view = await order(orderId);
 		expect(view.order).toMatchObject({ paymentEffectiveAt: monday, customerRevisionAtPayment: 0 });
@@ -725,8 +621,8 @@ describe('checkout records', () => {
 
 		// Mistaken settlement: the appointment goes back to unpaid at its price before checkout.
 		await admin.mutation(api.pos.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: key(), reason: 'Settled the wrong order' });
-		const appointment = (await t.run((ctx) => ctx.db.get(appointmentId))) as Doc<'serviceAppointments'>;
-		expect(appointment).toMatchObject({ paymentStatus: 'unpaid', price: 1200 });
+		const appointment = (await t.run((ctx) => ctx.db.get(appointmentId))) as Doc<'appointments'>;
+		expect(appointment).toMatchObject({ paymentStatus: 'unpaid', price: 120000 });
 		expect(appointment.paidAt).toBeUndefined();
 	});
 });

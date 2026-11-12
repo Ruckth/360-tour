@@ -2,10 +2,10 @@ import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
 // Marketing release 1: campaigns, short links, QR entry and the coupon catalog.
 // CONTRACT — names, args and return types are fixed so the admin UI and backend can be built in parallel.
 import { ConvexError, v, type ObjectType } from 'convex/values';
-import { mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
+import { mutation, query, type QueryCtx, type MutationCtx } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
 import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from './lib/offers';
-import { orderTitle, formatReceiptNumber } from './lib/billMath';
+import { orderTitle, formatReceiptNumber } from './lib/orderMath';
 import { requireMarketingPermission, requireEditableDraft } from './lib/marketingAccess';
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
 import { appendRecordHistory } from './lib/recordHistory';
@@ -60,7 +60,7 @@ export type CouponRow = Doc<'coupons'> & { rules: Doc<'couponVersions'>; campaig
 export type RedemptionRow = Doc<'couponRedemptions'> & {
 	booking?: { guestName: string; checkIn: string; checkOut: string; confirmationCode?: string };
 	/** Release 2b: a checkout order's use. `receiptNumber` is formatted ("R-000123"); null if never paid. */
-	order?: { orderId: Id<'bills'>; title: string; receiptNumber: string | null; customerName: string | null };
+	order?: { orderId: Id<'orders'>; title: string; receiptNumber: string | null; customerName: string | null };
 };
 export type CouponDetail = CouponRow & { versions: Doc<'couponVersions'>[]; links: LinkRow[]; redemptions: RedemptionRow[] };
 export type SlugCheck = { ok: true; slug: string } | { ok: false; slug: string; reason: 'empty' | 'invalid' | 'reserved' | 'taken' };
@@ -118,7 +118,7 @@ function validateRange(from?: string, to?: string) {
 
 function validateRules(rules: RuleFields) {
 	const value = rules.benefit.kind === 'percent' ? rules.benefit.percent : rules.benefit.amount;
-	if (!Number.isFinite(value) || value <= 0 || (rules.benefit.kind === 'percent' && (value < 1 || value > 100))) {
+	if (!Number.isSafeInteger(value) || value <= 0 || (rules.benefit.kind === 'percent' && (value < 100 || value > 10000))) {
 		throw new ConvexError({ code: 'invalid_coupon_benefit', message: 'Invalid coupon benefit. Enter a positive amount or a percentage from 1 to 100.' });
 	}
 	validateRange(rules.bookFrom, rules.bookTo);
@@ -173,13 +173,13 @@ async function quote(ctx: QueryCtx, args: QuoteArgs, adminTest: boolean): Promis
 	const nights = nightsBetween(args.checkIn, args.checkOut);
 	const accommodationAmount = property.pricePerNight * nights;
 	if (!Number.isSafeInteger(accommodationAmount) || accommodationAmount < 0) {
-		throw new ConvexError({ code: 'invalid_accommodation_amount', message: 'The stay price must be non-negative whole baht. Check the villa nightly rate and stay dates.' });
+		throw new ConvexError({ code: 'invalid_accommodation_amount', message: 'The stay price must be non-negative integer satang. Check the villa nightly rate and stay dates.' });
 	}
 	if ((args.services?.length ?? 0) > 50) throw new ConvexError({ code: 'too_many_services', message: 'Use at most 50 services in a quote.' });
 	const lines: QuoteLine[] = [{ id: 'accommodation', kind: 'accommodation', propertySlug: property.slug,
 		checkIn: args.checkIn, checkOut: args.checkOut, nights, amount: accommodationAmount }];
 	for (const [index, service] of (args.services ?? []).entries()) {
-		if (!Number.isSafeInteger(service.amount) || service.amount < 0 || service.amount > 10_000_000) throw new ConvexError({ code: 'invalid_service_amount', message: 'Invalid service amount. Enter whole baht from 0 to 10,000,000 per service.' });
+		if (!Number.isSafeInteger(service.amount) || service.amount < 0 || service.amount > 1_000_000_000) throw new ConvexError({ code: 'invalid_service_amount', message: 'Invalid service amount. Enter integer satang from 0 to 1,000,000,000 per service.' });
 		lines.push({ id: `service-${index}`, kind: 'service', ...service });
 	}
 	if (lines.reduce((sum, line) => sum + line.amount, 0) > MAX_QUOTE_SUBTOTAL) {
@@ -247,7 +247,7 @@ export const getCoupon = query({
 		const rows = await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', coupon._id)).order('desc').take(50);
 		const redemptions: RedemptionRow[] = await Promise.all(rows.map(async row => {
 			const booking = row.bookingId ? await ctx.db.get(row.bookingId) : null;
-			const order = row.billId ? await ctx.db.get(row.billId) : null;
+			const order = row.orderId ? await ctx.db.get(row.orderId) : null;
 			return {
 				...row,
 				...(order && { order: {
@@ -298,7 +298,7 @@ export const saveCampaign = mutation({
 		if (admin.role === 'marketer' && fields.budget !== undefined) throw new Error('Marketers cannot set budgets');
 		if (!fields.name.trim() || !fields.source.trim() || !fields.medium.trim()) throw new ConvexError({ code: 'missing_campaign_fields', message: 'Name, source and medium are required. Fill in all three fields.' });
 		validateRange(fields.startsOn, fields.endsOn);
-		if (fields.budget !== undefined && (!Number.isFinite(fields.budget) || fields.budget < 0)) throw new ConvexError({ code: 'invalid_budget', message: 'Invalid budget. Enter a finite, non-negative amount.' });
+		if (fields.budget !== undefined && (!Number.isSafeInteger(fields.budget) || fields.budget < 0)) throw new ConvexError({ code: 'invalid_budget', message: 'Invalid budget. Enter a finite, non-negative amount.' });
 		const audit = auditFields(admin);
 		if (campaignId) {
 			const existing = await getOrThrow(ctx, 'marketingCampaigns', campaignId);

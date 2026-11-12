@@ -5,10 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
 import { CheckoutBackendProvider, type CheckoutActions, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { serviceScheduleValue, serviceStartLabel } from "@/components/checkout/OrderPanel";
+import { serviceScheduleValue } from "@/components/checkout/OrderPanel";
 import { receiptSchedule, scheduleLabel } from "@/components/checkout/checkout-ui";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
-import { changeSchedule, scheduleFromStartAt } from "convex/lib/serviceSchedule";
+import { changeSchedule } from "convex/lib/serviceSchedule";
 
 /** A resort (Bangkok, UTC+7) wall-clock time, whatever zone the test machine runs in. */
 const at = (date: string, time: string) => Date.parse(`${date}T${time}:00+07:00`);
@@ -22,8 +22,6 @@ describe("optional service date and time", () => {
     expect(changeSchedule({ time: "14:30" }, { time: "" })).toEqual({ schedule: {} });
     expect(changeSchedule({}, { date: "2026-02-31" })).toHaveProperty("problem");
     expect(changeSchedule({}, { time: "24:00" })).toHaveProperty("problem");
-    // A legacy start splits into its resort date and time, so editing one keeps the other.
-    expect(scheduleFromStartAt(at("2026-10-29", "00:30"))).toEqual({ date: "2026-10-29", time: "00:30" });
   });
 
   it("labels unset parts as unset, never as now", () => {
@@ -40,16 +38,9 @@ describe("optional service date and time", () => {
     expect(receiptSchedule({ time: "14:30" })).toBe("14:30 · date to be confirmed");
   });
 
-  it("shows a legacy row's start in the editor, and blank parts for unscheduled and legacy 'now' rows", () => {
-    expect(serviceScheduleValue({ startAt: at("2026-10-26", "14:30"), schedule: undefined })).toEqual({ date: "2026-10-26", time: "14:30" });
-    expect(serviceScheduleValue({ startAt: undefined, schedule: undefined })).toEqual({ date: "", time: "" });
-    expect(serviceScheduleValue({ startAt: undefined, schedule: { time: "09:15" } })).toEqual({ date: "", time: "09:15" });
-  });
-
-  it("labels legacy rows with their date unless they are today", () => {
-    expect(serviceStartLabel(at("2026-10-28", "14:30"), NOW)).toBe("14:30");
-    expect(serviceStartLabel(at("2026-10-26", "14:30"), NOW)).toBe("Mon, Oct 26, 14:30");
-    expect(serviceStartLabel(at("2025-12-31", "14:30"), NOW)).toBe("Wed, Dec 31, 2025, 14:30");
+  it("shows blank parts for unscheduled rows", () => {
+    expect(serviceScheduleValue({ schedule: undefined })).toEqual({ date: "", time: "" });
+    expect(serviceScheduleValue({ schedule: { time: "09:15" } })).toEqual({ date: "", time: "09:15" });
   });
 });
 

@@ -14,7 +14,7 @@ vi.mock('convex/react', () => ({
 }));
 const now = Date.parse('2026-11-01T12:00:00+07:00');
 const staff = { _id: 'staff1', name: 'Mali', status: 'active', color: '#abc' } as Doc<'staff'>;
-const service = { _id: 'service1', name: 'Massage', category: 'Wellness', description: '', slug: 'massage', status: 'active', durationMin: 60, bufferMin: 15, price: 1200, currency: 'THB', staffIds: [staff._id] } as Doc<'services'>;
+const service = { _id: 'service1', name: 'Massage', category: 'Wellness', description: '', slug: 'massage', status: 'active', durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staff._id] } as Doc<'services'>;
 const intl = { locale: 'en', messages, timeZone: 'Asia/Bangkok' } as unknown as ComponentProps<typeof NextIntlClientProvider>;
 let root: Root;
 beforeEach(() => {
@@ -38,5 +38,5 @@ it.each([
   // The trusted mutation derives status; the form cannot inject a fictitious paid/completed flag.
   expect(mocks.create.mock.calls[0][0]).not.toHaveProperty('status');
   expect(mocks.create.mock.calls[0][0]).not.toHaveProperty('paymentStatus');
-  expect(onCreated).toHaveBeenCalledWith('created1' as Id<'serviceAppointments'>, start);
+  expect(onCreated).toHaveBeenCalledWith('created1' as Id<'appointments'>, start);
 });

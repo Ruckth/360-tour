@@ -70,7 +70,7 @@ async function spaOrder(backend: CheckoutBackend) {
   const first = actions.addItem({ item: service(1) });
   await vi.advanceTimersByTimeAsync(200);
   const { orderId } = await first;
-  const rest = Promise.all([actions.addItem({ orderId, item: service(7) }), actions.addItem({ orderId, item: { kind: "extra", name: "Breakfast basket", price: 450 } })]);
+  const rest = Promise.all([actions.addItem({ orderId, item: service(7) }), actions.addItem({ orderId, item: { kind: "extra", name: "Breakfast basket", price: 45000 } })]);
   await vi.advanceTimersByTimeAsync(400);
   await rest;
   return orderId;

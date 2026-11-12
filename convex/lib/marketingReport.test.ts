@@ -18,19 +18,19 @@ describe('report days', () => {
 });
 
 describe('spend', () => {
-	it('validates whole baht, order of dates, length and note', () => {
-		expect(validateSpend({ amount: 12000, from: '2026-11-01', to: '2026-11-30' })).toBeNull();
-		expect(validateSpend({ amount: 120.5, from: '2026-11-01', to: '2026-11-30' })).toMatch(/whole baht/);
-		expect(validateSpend({ amount: 0, from: '2026-11-01', to: '2026-11-30' })).toMatch(/whole baht/);
-		expect(validateSpend({ amount: 100, from: '2026-11-30', to: '2026-11-01' })).toMatch(/start date/);
-		expect(validateSpend({ amount: 100, from: '2025-01-01', to: '2026-11-01' })).toMatch(/a year/);
-		expect(validateSpend({ amount: 100, from: '2026-11-01', to: '2026-11-01', note: 'x'.repeat(501) })).toMatch(/note/);
+	it('validates integer satang, order of dates, length and note', () => {
+		expect(validateSpend({ amount: 1200000, from: '2026-11-01', to: '2026-11-30' })).toBeNull();
+		expect(validateSpend({ amount: 120.5, from: '2026-11-01', to: '2026-11-30' })).toMatch(/positive amount/);
+		expect(validateSpend({ amount: 0, from: '2026-11-01', to: '2026-11-30' })).toMatch(/positive amount/);
+		expect(validateSpend({ amount: 10000, from: '2026-11-30', to: '2026-11-01' })).toMatch(/start date/);
+		expect(validateSpend({ amount: 10000, from: '2025-01-01', to: '2026-11-01' })).toMatch(/a year/);
+		expect(validateSpend({ amount: 10000, from: '2026-11-01', to: '2026-11-01', note: 'x'.repeat(501) })).toMatch(/note/);
 	});
 
 	it('prorates an entry by the days that fall in the range', () => {
-		const entry = { amount: 30000, from: '2026-11-01', to: '2026-11-30' };
-		expect(spendInRange(entry, '2026-11-01', '2026-11-30')).toBe(30000);
-		expect(spendInRange(entry, '2026-11-21', '2026-12-20')).toBe(10000);
+		const entry = { amount: 3000000, from: '2026-11-01', to: '2026-11-30' };
+		expect(spendInRange(entry, '2026-11-01', '2026-11-30')).toBe(3000000);
+		expect(spendInRange(entry, '2026-11-21', '2026-12-20')).toBe(1000000);
 		expect(spendInRange(entry, '2026-12-01', '2026-12-31')).toBe(0);
 	});
 });
@@ -39,3 +39,10 @@ it('lists every refusal code once', () => {
 	expect(new Set(COUPON_REFUSAL_PROBLEMS).size).toBe(COUPON_REFUSAL_PROBLEMS.length);
 	expect(COUPON_REFUSAL_PROBLEMS).toContain('coupon_worse');
 });
+
+ it('allocates fractional spend ranges as integer satang without losing the entry total', () => {
+  const entry = { amount: 100, from: '2026-11-01', to: '2026-11-03' };
+  const daily = ['2026-11-01', '2026-11-02', '2026-11-03'].map(day => spendInRange(entry, day, day));
+  expect(daily).toEqual([33, 34, 33]);
+  expect(daily.reduce((sum, amount) => sum + amount, 0)).toBe(spendInRange(entry, entry.from, entry.to));
+ });

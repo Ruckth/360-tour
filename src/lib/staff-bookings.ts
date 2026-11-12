@@ -85,11 +85,11 @@ export function formatTimeOff(range: { start: number; end: number }) {
   return `${start} – ${end}`;
 }
 
-export type AppointmentStatus = Doc<"serviceAppointments">["status"];
-export type PaymentStatus = Doc<"serviceAppointments">["paymentStatus"];
+export type AppointmentStatus = Doc<"appointments">["status"];
+export type PaymentStatus = Doc<"appointments">["paymentStatus"];
 
 /** Keep anonymous appointments distinct without storing a placeholder as the guest's name. */
-export function appointmentGuestLabel(appointment: Pick<Doc<"serviceAppointments">, "guestName" | "confirmationCode">) {
+export function appointmentGuestLabel(appointment: Pick<Doc<"appointments">, "guestName" | "confirmationCode">) {
   return appointment.guestName.trim() || `Unnamed guest · ${appointment.confirmationCode}`;
 }
 
@@ -118,7 +118,7 @@ export const appointmentStatusColor = (key: AppointmentDisplayStatus) => CALENDA
 
 /** Completed but unpaid needs the desk's attention, so it gets its own chip. */
 export function displayStatus(
-  appointment: Pick<Doc<"serviceAppointments">, "status" | "paymentStatus">,
+  appointment: Pick<Doc<"appointments">, "status" | "paymentStatus">,
 ): AppointmentDisplayStatus {
   return appointment.status === "completed" && appointment.paymentStatus === "unpaid" ? "unpaid" : appointment.status;
 }

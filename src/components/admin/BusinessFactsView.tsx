@@ -4,22 +4,20 @@ import { api } from "convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BusinessFactsPanel } from "@/components/admin/BusinessFactsPanel";
-import { LegacyArchivePanel } from "@/components/admin/LegacyArchivePanel";
 import { MissingInformationPanel } from "@/components/admin/MissingInformationPanel";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
 import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 
-const VIEW_MODES = ["facts", "missing", "legacy"] as const;
+const VIEW_MODES = ["facts", "missing"] as const;
 type ViewMode = (typeof VIEW_MODES)[number];
 const TAB_LABELS: Record<ViewMode, string> = {
   facts: "Business facts",
   missing: "Missing information",
-  legacy: "Legacy archive",
 };
 
 /**
  * Staff knowledge workspace: author approved business facts, resolve missing-information reports,
- * and read the retired Q&A archive. Replaces the old Auto Answers / Q&A / variant authoring.
+ * using verified facts or structured sources.
  */
 export function BusinessFactsView() {
   const router = useRouter();
@@ -49,7 +47,6 @@ export function BusinessFactsView() {
       <section {...tabPanelProps("knowledge", mode)} className="min-w-0 border border-border bg-card">
         {mode === "facts" ? <BusinessFactsPanel properties={properties} /> : null}
         {mode === "missing" ? <MissingInformationPanel properties={properties} /> : null}
-        {mode === "legacy" ? <LegacyArchivePanel /> : null}
       </section>
     </div>
   );

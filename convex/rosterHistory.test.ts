@@ -250,7 +250,7 @@ describe('durable effective roster patterns', () => {
 			category: 'Wellness',
 			durationMin: 60,
 			bufferMin: 0,
-			price: 100,
+			price: 10000,
 			currency: 'THB',
 			staffIds: [staffId]
 		});
@@ -313,7 +313,7 @@ describe('durable effective roster patterns', () => {
 			category: 'Wellness',
 			durationMin: 60,
 			bufferMin: 0,
-			price: 100,
+			price: 10000,
 			currency: 'THB',
 			staffIds: [staffId]
 		});

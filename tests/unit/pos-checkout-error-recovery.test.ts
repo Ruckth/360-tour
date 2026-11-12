@@ -22,7 +22,7 @@ async function render(backend: CheckoutBackend, orderId: OrderId) {
 }
 async function setup() {
   const backend = createFixtureBackend();
-  const adding = backend.useActions().addItem({ item: { kind: 'extra', name: 'Audit item', price: 100 } });
+  const adding = backend.useActions().addItem({ item: { kind: 'extra', name: 'Audit item', price: 10000 } });
   await vi.advanceTimersByTimeAsync(200);
   return { backend, orderId: (await adding).orderId };
 }
@@ -91,7 +91,7 @@ describe('Checkout error recovery', () => {
     const loadMore = vi.fn();
     let loaded = false;
     const paginated: CheckoutBackend = { ...backend, useOrders: () => ({
-      results: loaded ? [{ _id: orderId, title: 'Order #1043', orderNumber: 1043, state: 'unpaid', itemCount: 1, total: 100, due: 100, currency: 'THB', updatedAt: Date.now(), receiptNumber: undefined, customerName: undefined, bookingReference: 'QA-MOCK-SOURCE', otherBookings: 0, discarded: null }] : [],
+      results: loaded ? [{ _id: orderId, title: 'Order #1043', orderNumber: 1043, state: 'unpaid', itemCount: 1, total: 10000, due: 10000, currency: 'THB', updatedAt: Date.now(), receiptNumber: undefined, customerName: undefined, bookingReference: 'QA-MOCK-SOURCE', otherBookings: 0, discarded: null }] : [],
       status: loaded ? 'CanLoadMore' : 'LoadingFirstPage', loadMore,
     }) };
     await render(paginated, orderId);

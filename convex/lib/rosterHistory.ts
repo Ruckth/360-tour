@@ -11,7 +11,7 @@ export function rosterDate(at = Date.now()) {
 	return new Date(at + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 const pattern = (staff: WeeklyPattern): WeeklyPattern => ({ workingHours: staff.workingHours, breaks: staff.breaks });
-function legacy(person: Doc<'staff'>): PatternEvidence {
+function initialPatternEvidence(person: Doc<'staff'>): PatternEvidence {
 	// Creation is the only proven origin when the document has never been updated.
 	const proven = person.createdAt === person.updatedAt;
 	return {
@@ -35,7 +35,7 @@ export async function patternForDate(ctx: ReadCtx, person: Doc<'staff'>, date: s
 		.withIndex('by_staffId_and_effectiveFrom', (q) => q.eq('staffId', person._id))
 		.first();
 	if (first) return { pattern: pattern(first), historyKnown: false, knownFrom: first.effectiveFrom };
-	const value = legacy(person);
+	const value = initialPatternEvidence(person);
 	return { ...value, historyKnown: value.historyKnown && date >= value.knownFrom };
 }
 
@@ -64,7 +64,7 @@ export async function patternsForRange(ctx: ReadCtx, people: Doc<'staff'>[], fir
 					.first());
 			const baseline = earliest
 				? { pattern: pattern(earliest), historyKnown: false, knownFrom: earliest.effectiveFrom }
-				: legacy(person);
+				: initialPatternEvidence(person);
 			return [
 				person._id,
 				(date: string): PatternEvidence => {
@@ -98,7 +98,7 @@ export async function writeWeeklyPattern(
 		.order('desc')
 		.first();
 	if (!latest) {
-		const baseline = legacy(person);
+		const baseline = initialPatternEvidence(person);
 		await ctx.db.insert('staffPatternVersions', {
 			staffId: person._id,
 			...pattern(person),
@@ -129,7 +129,7 @@ export async function writeWeeklyPattern(
 	return versionId;
 }
 
-/** Initialize at creation or before the first profile write. Legacy updated rows begin with observed evidence. */
+
 export async function initializeWeeklyPattern(ctx: MutationCtx, staffId: Id<'staff'>, actor: string) {
 	const person = await ctx.db.get(staffId);
 	if (!person) throw new Error('Staff member not found');
@@ -140,7 +140,7 @@ export async function initializeWeeklyPattern(ctx: MutationCtx, staffId: Id<'sta
 			.first()
 	)
 		return;
-	const baseline = legacy(person);
+	const baseline = initialPatternEvidence(person);
 	await ctx.db.insert('staffPatternVersions', {
 		staffId,
 		...pattern(person),

@@ -12,7 +12,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 it('requires the booking token before creating a Stripe session', async () => {
   const t = convexTest(schema, modules);
   await t.run(async ctx => {
-    await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
+    await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
   const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_test');
@@ -42,7 +42,7 @@ it('lets host-confirmed unpaid bookings pay online with an attempt idempotency k
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(async ctx => {
-    await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
+    await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
   const bookingId = await admin.mutation(api.adminBookings.createBooking, { propertySlug: 'villa', guestName: 'Guest', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2, confirmed: true });
   // Older than the 24h guest expiry: admin bookings stay payable.
@@ -58,7 +58,7 @@ it('lets host-confirmed unpaid bookings pay online with an attempt idempotency k
   expect((await t.action(api.payments.createCheckout, { bookingId, accessToken })).url).toBe('https://checkout.stripe.com/pay/admin');
   const amountTotal = 20000;
   await t.mutation(internal.payments.completeCheckout, { bookingId, sessionId: 'cs_test_admin', amountTotal, currency: 'thb', paymentIntentId: 'pi_admin' });
-  expect(await t.run(async ctx => await ctx.db.get(bookingId))).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', amountPaid: 200 });
+  expect(await t.run(async ctx => await ctx.db.get(bookingId))).toMatchObject({ status: 'confirmed', paymentStatus: 'paid', amountPaid: 20000 });
 });
 
 it.each([false, true])('renews an expired checkout for a %s admin booking without changing its quote', async (confirmed) => {
@@ -68,7 +68,7 @@ it.each([false, true])('renews an expired checkout for a %s admin booking withou
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(async ctx => {
-    await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
+    await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
   const bookingId = await admin.mutation(api.adminBookings.createBooking, { propertySlug: 'villa', guestName: 'Guest', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2, confirmed });
   const accessToken = (await t.run(ctx => ctx.db.get(bookingId)))!.accessToken!;
@@ -93,12 +93,12 @@ it.each([false, true])('renews an expired checkout for a %s admin booking withou
 
 it('refuses to attach a Stripe session after the quote or attempt changes', async () => {
   const t = convexTest(schema, modules);
-  await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
+  await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   const { request } = await t.mutation(internal.payments.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
   if (!request) throw new Error('Expected checkout request');
   const save = () => t.mutation(internal.payments.saveCheckoutSession, { bookingId, accessToken, sessionId: 'cs_old', url: 'https://checkout.stripe.com/old', expiresAt: request.expiresAt, attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut });
-  await t.run(ctx => ctx.db.patch(bookingId, { total: 250 }));
+  await t.run(ctx => ctx.db.patch(bookingId, { total: 25000 }));
   await expect(save()).rejects.toThrow('Booking changed during checkout');
   await t.run(ctx => ctx.db.patch(bookingId, { total: request.total, checkoutRequest: undefined }));
   await t.mutation(internal.payments.beginCheckout, { bookingId, accessToken, siteUrl: 'https://example.com' });
@@ -110,7 +110,7 @@ it('retries one unfinished attempt with the same Stripe key and request body', a
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_test');
   vi.stubEnv('SITE_URL', 'https://example.com');
   const t = convexTest(schema, modules);
-  await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
+  await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const { bookingId, accessToken } = await t.mutation(api.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   const calls: Array<{ key: string; body: string }> = [];
   vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {

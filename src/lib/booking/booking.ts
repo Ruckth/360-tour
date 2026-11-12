@@ -9,7 +9,7 @@ export type BookingProperty = Property & {
 };
 
 /** Direct-booking discount used by the static/demo inventory (matches the Convex seed). */
-export const DEMO_DIRECT_DISCOUNT_PERCENT = 15;
+export const DEMO_DIRECT_DISCOUNT_PERCENT = 1500;
 
 export type BookingMode = "demo" | "live";
 

@@ -230,7 +230,7 @@ describe('staff photo uploads', () => {
 });
 
 describe('service photos', () => {
-	const fields = (staffId: Id<'staff'>) => ({ slug: 'thai-massage', name: 'Thai Massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 1200, currency: 'THB', staffIds: [staffId] });
+	const fields = (staffId: Id<'staff'>) => ({ slug: 'thai-massage', name: 'Thai Massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staffId] });
 
 	it('attaches an upload on create and replaces or removes it on update, deleting the old file', async () => {
 		const { t, admin, staffId, pendingUpload, fileExists, pendingIds } = await setup();

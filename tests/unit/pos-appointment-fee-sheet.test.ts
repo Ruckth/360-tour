@@ -22,10 +22,10 @@ vi.mock('convex/react', () => ({
 it('mounts the real fee control beside financials and blocks sheet Close, Escape and appointment actions while adding', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const root = createRoot(document.body.appendChild(document.createElement('div')));
-  let finish!: (value: { orderId: Id<'bills'>; lineId: Id<'billLines'>; replayed: boolean }) => void;
+  let finish!: (value: { orderId: Id<'orders'>; lineId: Id<'orderLines'>; replayed: boolean }) => void;
   mocks.fee.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
   const onClose = vi.fn(), start = Date.now() - 3600000;
-  const appointment: Doc<'serviceAppointments'> = { _id: 'fxappt000002' as Id<'serviceAppointments'>, _creationTime: start, serviceId: 'fxsvc000002' as Id<'services'>, staffId: 'fxstaff000001' as Id<'staff'>, status: 'no_show', paymentStatus: 'unpaid', price: 1600, currency: 'THB', revision: 0, start, end: start + 3600000, blockedUntil: start + 3600000, guestName: 'Somchai', guestPhone: '0812345678', source: 'admin', confirmationCode: 'SVC-0002', accessToken: 'fixture', createdAt: start };
+  const appointment: Doc<'appointments'> = { amountPaid: 0, amountRefunded: 0, guestPhoneDigits: '0812345678', serviceNameSnapshot: 'Massage', staffNameSnapshot: 'Nok', _id: 'fxappt000002' as Id<'appointments'>, _creationTime: start, serviceId: 'fxsvc000002' as Id<'services'>, staffId: 'fxstaff000001' as Id<'staff'>, status: 'no_show', paymentStatus: 'unpaid', price: 160000, currency: 'THB', revision: 0, start, end: start + 3600000, blockedUntil: start + 3600000, guestName: 'Somchai', guestPhone: '0812345678', source: 'admin', confirmationCode: 'SVC-0002', accessToken: 'fixture', createdAt: start };
   const button = (name: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === name)!;
   const type = async (selector: string, value: string) => act(async () => {
     const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
@@ -40,8 +40,8 @@ it('mounts the real fee control beside financials and blocks sheet Close, Escape
     await act(async () => button('Close').click());
     await act(async () => document.querySelector('[role="dialog"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     expect(onClose).not.toHaveBeenCalled(); expect(button('Adding fee…').disabled).toBe(true); expect(button('Correct status').disabled).toBe(true);
-    expect(mocks.fee).toHaveBeenCalledExactlyOnceWith({ appointmentId: appointment._id, kind: 'no_show', amount: 500, reason: 'No attendance', expectedRevision: appointment.revision ?? 0, idempotencyKey: expect.any(String) });
-    await act(async () => finish({ orderId: 'fxbill000099' as Id<'bills'>, lineId: 'fxline000099' as Id<'billLines'>, replayed: false }));
+    expect(mocks.fee).toHaveBeenCalledExactlyOnceWith({ appointmentId: appointment._id, kind: 'no_show', amount: 50000, reason: 'No attendance', expectedRevision: appointment.revision ?? 0, idempotencyKey: expect.any(String) });
+    await act(async () => finish({ orderId: 'fxbill000099' as Id<'orders'>, lineId: 'fxline000099' as Id<'orderLines'>, replayed: false }));
     expect(document.querySelector('a[href="/admin/checkout?order=fxbill000099"]')).toBeTruthy();
     await act(async () => button('Close').click()); expect(onClose).toHaveBeenCalledOnce();
   } finally { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals(); }
