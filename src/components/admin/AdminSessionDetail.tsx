@@ -61,6 +61,7 @@ const DELIVERY_STATUS: Record<LineWebhookStatus, { label: string; tone: Tone }> 
   processing: { label: "processing", tone: "info" },
   replied: { label: "replied", tone: "success" },
   ignored: { label: "ignored", tone: "muted" },
+  reconciliation: { label: "needs delivery review", tone: "danger" },
   failed: { label: "failed", tone: "danger" },
 };
 

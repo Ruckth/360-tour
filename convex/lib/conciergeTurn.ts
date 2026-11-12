@@ -9,9 +9,9 @@ type TurnOptions = {
 	messages: ChatMessage[];
 	tools: ToolDef[];
 	request: (messages: ChatMessage[], tools: ToolDef[], timeoutMs: number) => Promise<LlmResponse>;
-	execute: (name: string, args: unknown) => Promise<string>;
+	execute: (name: string, args: unknown, invocationKey: string) => Promise<string>;
 	onTool?: (trace: { name: string; args: Record<string, unknown>; result: string }) => void | Promise<void>;
-	invalidateProposal?: (name: string) => Promise<void>;
+	invalidateProposal?: (name: string, invocationKey: string) => Promise<void>;
 	deadlineAt: number;
 	/** Optional metrics sink. Records each model request (ms) and each tool (name, ms, ok). */
 	metrics?: {
@@ -31,12 +31,14 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 	let committedTool: string | undefined;
 	let proposal: string | null = null;
 	let status: string | null = null;
+	let requestCount = 0;
 	const reads = new Map<string, string>();
 	const directOfferEvidence = { percents: new Set<number>(), savings: new Set<number>() };
 	const request = async (offeredTools: ToolDef[]) => {
 		const remaining = options.deadlineAt - Date.now();
 		if (remaining <= 0) throw new Error('AI turn deadline exceeded');
 		const startedAt = Date.now();
+		requestCount++;
 		try {
 			return await options.request(messages, offeredTools, Math.min(remaining, 15_000));
 		} finally {
@@ -52,6 +54,8 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 			messages.push({ role: 'assistant', content: response.content, tool_calls: response.tool_calls, ...(response.responsesOutput ? { responsesOutput: response.responsesOutput } : {}) });
 			for (const call of response.tool_calls) {
 				const name = call.function.name;
+				// A model call is distinct from its operation and arguments. The event scopes this key.
+				const invocationKey = JSON.stringify([requestCount, call.id]);
 				let args: unknown;
 				let result: string;
 				const toolStartedAt = Date.now();
@@ -62,7 +66,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 					if (committed && /^(?:prepare|confirm|cancel)_/.test(name)) throw new Error('A transaction already completed in this turn');
 					if (name.startsWith('prepare_')) {
 						prepared.add(name);
-						await options.invalidateProposal?.(name);
+						await options.invalidateProposal?.(name, invocationKey);
 					}
 					args = JSON.parse(call.function.arguments);
 					if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Tool arguments must be an object');
@@ -74,7 +78,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 					const writes = /^(?:prepare|confirm|cancel)_/.test(name);
 					const key = JSON.stringify([name, args]);
 					if (writes) reads.clear();
-					result = !writes && reads.has(key) ? reads.get(key)! : await options.execute(name, args);
+					result = !writes && reads.has(key) ? reads.get(key)! : await options.execute(name, args, invocationKey);
 					if (!writes) {
 						const value = JSON.parse(result);
 						if (!value.error && value.ok !== false) reads.set(key, result);
@@ -118,7 +122,7 @@ export async function runConciergeTurn(options: TurnOptions): Promise<{ content:
 		if (error instanceof InvalidAiResponseError) {
 			for (const name of error.preparationTools) {
 				if (!allowed.has(name)) continue;
-				try { await options.invalidateProposal?.(name); } catch { /* Keep the original failure response. */ }
+				try { await options.invalidateProposal?.(name, JSON.stringify([requestCount, 'invalid-response', name])); } catch { /* Keep the original failure response. */ }
 			}
 		}
 		return committed ? { content: committed, failed: false, outcome: 'answered', committedTool } : { content: toolFailureReply(message), failed: true };

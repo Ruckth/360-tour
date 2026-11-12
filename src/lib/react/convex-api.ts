@@ -1,4 +1,4 @@
-import { getStoredGuestToken, storeGuestToken } from "@/components/chat/session/message-cache";
+import { getStoredGuestToken, storeGuestToken } from "@/components/chat/session/credentials";
 import { useCallback, useMemo } from "react";
 import { createCouponRefusalReporter } from "@/lib/booking/coupon-refusals";
 import type { CouponRefusalSurface } from "convex/lib/marketingReport";
@@ -11,7 +11,6 @@ import type { ChatActionHint } from "@/lib/chat/action-card";
 import type { PropertyTranslation } from "@/lib/i18n/public-content";
 
 const CONVEX_TIMEOUT_MS = 8_000;
-const AI_CONVEX_TIMEOUT_MS = 45_000;
 
 async function withConvexTimeout<T>(promise: Promise<T>, label: string, timeoutMs = CONVEX_TIMEOUT_MS) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -320,25 +319,6 @@ export async function identifyChatVisitor(
     client.mutation(api.chat.identifyVisitor, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Saving chat contact",
   );
-}
-
-export async function askConcierge(
-  client: ConvexReactClient,
-  args: {
-    sessionId: string;
-    userMessage: string;
-    propertySlug?: string;
-    locale?: string;
-    actionHint?: ChatActionHint;
-    /** Release 3a: see captureForBooking; `{}` clears the chat's capture. */
-    marketing?: MarketingCapture;
-  },
-) {
-  return (await withConvexTimeout(
-    client.action(api.chatAi.respond, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
-    "Asking concierge",
-    AI_CONVEX_TIMEOUT_MS,
-  )) as { response?: string; aiPaused?: boolean };
 }
 
 export async function getNextChatSuggestions(

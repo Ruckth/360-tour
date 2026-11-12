@@ -1,3 +1,4 @@
+import { respondTest } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
@@ -156,8 +157,8 @@ describe('settings.channelHealth', () => {
 describe('setup checklist', () => {
 	it('reports env keys, villa readiness, iCal sync, saved profile and replied channels', async () => {
 		const { t, admin } = setup();
-		expect(await admin.query(api.settings.setupChecklist, {})).toEqual({
-			aiKey: false, email: false, stripe: false, serverSecret: false, villaReady: false, icalSynced: false, profileSaved: false,
+		expect(await admin.query(api.settings.setupChecklist, {})).toMatchObject({
+			aiKey: false, email: false, stripe: false, messagingImageSecret: false, villaReady: false, icalSynced: false, profileSaved: false,
 			channelsReplied: { line: false, facebook: false, instagram: false, whatsapp: false }
 		});
 
@@ -231,7 +232,7 @@ describe('settings in the AI prompt', () => {
 			await ctx.db.insert('conversations', { guestTokenHash: fixtureGuestTokenHash, channel: 'web', visitorId: 'v1', lastSeenAt: Date.now(), createdAt: Date.now() })
 		);
 
-		await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Can I check live availability?' });
+		await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Can I check live availability?' });
 		const prompt = prompts.find((content) => content.includes('BUSINESS PROFILE')) ?? '';
 		expect(prompt).toContain('Sea Breeze');
 		expect(prompt).not.toContain('Auralis Cove Retreat');

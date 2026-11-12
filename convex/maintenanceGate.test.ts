@@ -11,7 +11,7 @@ it('blocks public reads, writes, actions and webhooks during a cutover while int
   vi.stubEnv('ARCH_RESET_PAUSED', '1');
   await expect(t.query(api.chat.getMessages, guest)).rejects.toThrow('MAINTENANCE');
   await expect(t.mutation(api.chat.createSession, { channel: 'web' })).rejects.toThrow('MAINTENANCE');
-  await expect(t.action(api.chatAi.respond, { ...guest, userMessage: 'Please help' })).rejects.toThrow('MAINTENANCE');
+  await expect(t.mutation(api.chat.sendMessage, { ...guest, clientMessageId: crypto.randomUUID(), content: 'Please help' })).rejects.toThrow('MAINTENANCE');
   const response = await t.fetch('/stripe/webhook', { method: 'POST', body: '{}' });
   expect(response.status).toBe(503);
   expect(response.headers.get('Retry-After')).toBe('60');

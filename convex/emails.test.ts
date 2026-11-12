@@ -5,7 +5,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { internal } from './_generated/api';
 import schema from './schema';
 
-declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob('./**/*.ts');
 const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 const today = day(0);

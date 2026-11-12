@@ -1,5 +1,6 @@
 import { httpRouter } from 'convex/server';
 import { httpAction } from './auth/model';
+import { webhook } from './messaging/ingress';
 import { internal } from './_generated/api';
 
 const http = httpRouter();
@@ -113,5 +114,9 @@ http.route({
     return new Response(lines.join('\r\n') + '\r\n', { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-store' } });
   }),
 });
+
+for (const channel of ['line', 'facebook', 'instagram', 'whatsapp'] as const) {
+  for (const method of ['GET', 'POST'] as const) http.route({ path: `/${channel}/webhook`, method, handler: webhook(channel) });
+}
 
 export default http;

@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { convexTest } from 'convex-test';
 import type { vi } from 'vitest';
 import schema from '../schema';
@@ -5,10 +6,6 @@ import { api } from '../_generated/api';
 import type { FunctionArgs } from 'convex/server';
 
 // Match the existing suites' ImportMeta declaration without loading Vite globals.
-declare global {
-	interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; }
-}
-
 // Convex discovers every ordinary .ts file as an entry point. Keep test runners
 // injected and the Vite-only glob inside the helper, so loading this module in
 // Convex never loads Vitest or evaluates import.meta.glob.

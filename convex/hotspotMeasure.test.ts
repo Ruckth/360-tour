@@ -27,12 +27,6 @@ import type { Id } from "./_generated/dataModel";
 import { ACTIVE_CHAT_WINDOW_MS, PRESENCE_WRITE_THROTTLE_MS, isChatSessionActive } from "./lib/chatPresence";
 import schema from "./schema";
 
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
-
 const modules = import.meta.glob("./**/*.ts");
 
 const guestTokens = new Map<Id<"conversations">, string>();

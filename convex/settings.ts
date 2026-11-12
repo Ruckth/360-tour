@@ -266,13 +266,13 @@ export const serverConfig = query({
 			OWNER_NOTIFICATION_EMAIL: set('OWNER_NOTIFICATION_EMAIL'),
 			STRIPE_SECRET_KEY: set('STRIPE_SECRET_KEY'),
 			STRIPE_WEBHOOK_SECRET: set('STRIPE_WEBHOOK_SECRET'),
-			CONVEX_SERVER_SECRET: set('CONVEX_SERVER_SECRET')
+			MESSAGING_IMAGE_SECRET: set('MESSAGING_IMAGE_SECRET')
 		};
 	}
 });
 
 /**
- * Convex-side facts for the setup checklist. Channel env vars live on Vercel, so the UI combines
+ * Convex-side facts for the setup checklist. Channel env vars live on Convex, so the UI combines
  * `channelsReplied` with /api/admin/config-status.
  */
 export const setupChecklist = query({
@@ -298,11 +298,17 @@ export const setupChecklist = query({
 			aiKey: set('AI_API_KEY'),
 			email: set('RESEND_API_KEY') && set('EMAIL_FROM'),
 			stripe: set('STRIPE_SECRET_KEY') && set('STRIPE_WEBHOOK_SECRET'),
-			serverSecret: set('CONVEX_SERVER_SECRET'),
+			messagingImageSecret: set('MESSAGING_IMAGE_SECRET'),
 			villaReady: active.some((p) => p.images.length > 0 && p.pricePerNight > 0),
 			icalSynced: sources.some((s) => s.lastSyncedAt !== undefined && !s.lastSyncError),
 			profileSaved: (await getSiteSettingsRow(ctx)) !== null,
-			channelsReplied
+			channelsReplied,
+      channelConfig: Object.fromEntries((['line','facebook','instagram','whatsapp'] as const).map(channel => {
+        const prefix = channel.toUpperCase();
+        const names = channel === 'line' ? ['LINE_CHANNEL_SECRET','LINE_CHANNEL_ACCESS_TOKEN'] : [`${prefix}_APP_SECRET|META_APP_SECRET`,`${prefix}_VERIFY_TOKEN`,`${prefix}_ACCESS_TOKEN`];
+        const vars = Object.fromEntries(names.map(name => [name.replace('|',' or '), name.split('|').some(set)]));
+        return [channel, { configured: Object.values(vars).every(Boolean), vars }];
+      })),
 		};
 	}
 });

@@ -1,3 +1,4 @@
+import { durableTurnValidator, currentClaim } from './messaging/claims';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './auth/model';
@@ -101,8 +102,11 @@ export async function queueStaffAlert(ctx: MutationCtx, sessionId: Id<'conversat
 
 
 export const alertStaffForHandoff = internalMutation({
-	args: { sessionId: v.id('conversations'), lastMessage: v.string(), replyToMessageId: v.optional(v.id('messages')) },
-	handler: async (ctx, args) => await queueStaffAlert(ctx, args.sessionId, args.lastMessage, args.replyToMessageId)
+	args: { durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations'), lastMessage: v.string(), replyToMessageId: v.optional(v.id('messages')) },
+	handler: async (ctx, args) => {
+    if (args.durableTurn) { const event = await currentClaim(ctx, args.durableTurn.eventId, args.durableTurn.claimToken); if (event.sessionId !== args.sessionId) throw new Error('Turn conversation mismatch'); }
+    return await queueStaffAlert(ctx, args.sessionId, args.lastMessage, args.replyToMessageId);
+  }
 });
 
 
@@ -143,7 +147,7 @@ async function reopenUnknownQuestion(ctx: MutationCtx, unknownQuestionId: Id<'ch
 
 
 export const recordUnknownQuestion = internalMutation({
-	args: {
+	args: { durableTurn: v.optional(durableTurnValidator),
 		sessionId: v.optional(v.id('conversations')),
 		replyToMessageId: v.optional(v.id('messages')),
 		userQuestion: v.string(),
@@ -152,6 +156,7 @@ export const recordUnknownQuestion = internalMutation({
 		propertySlug: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
+    if (args.durableTurn) { const event = await currentClaim(ctx, args.durableTurn.eventId, args.durableTurn.claimToken); if (event.sessionId !== args.sessionId) throw new Error('Turn conversation mismatch'); }
 		const userQuestion = sanitizeRequiredText(args.userQuestion, 'Question', 1000);
 		const normalizedQuestion = normalizeQuestion(userQuestion);
 		if (!normalizedQuestion) throw new Error('Question is required');

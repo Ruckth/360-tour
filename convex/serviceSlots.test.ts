@@ -6,10 +6,6 @@ import { api } from './_generated/api';
 import { localDateTimeUtc, resortLocalParts } from './lib/serviceSlots';
 import schema from './schema';
 
-declare global {
-	interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>> }
-}
-
 const modules = import.meta.glob('./**/*.ts');
 const date = '2026-09-25';
 const at = (time: string) => localDateTimeUtc(date, time);

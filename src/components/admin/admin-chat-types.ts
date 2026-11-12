@@ -13,7 +13,7 @@ export type AdminMessage = {
   timestamp: number;
 };
 
-export type LineWebhookStatus = "received" | "processing" | "replied" | "ignored" | "failed";
+export type LineWebhookStatus = "received" | "processing" | "replied" | "ignored" | "failed" | "reconciliation";
 export type LineReplyMode =
   | "ai"
   | "unknown_fallback"

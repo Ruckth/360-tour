@@ -8,11 +8,6 @@
  * @module
  */
 
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
 import type * as adminBookings from "../adminBookings.js";
 import type * as adminChat from "../adminChat.js";
 import type * as adminProperties from "../adminProperties.js";
@@ -29,16 +24,19 @@ import type * as chatAi from "../chatAi.js";
 import type * as chatEval from "../chatEval.js";
 import type * as chatKnowledge from "../chatKnowledge.js";
 import type * as chatSuggestions from "../chatSuggestions.js";
+import type * as concierge_context from "../concierge/context.js";
+import type * as concierge_copy from "../concierge/copy.js";
+import type * as concierge_model from "../concierge/model.js";
+import type * as concierge_prompt from "../concierge/prompt.js";
+import type * as concierge_runTurn from "../concierge/runTurn.js";
 import type * as configurationHistory from "../configurationHistory.js";
 import type * as crons from "../crons.js";
 import type * as customers from "../customers.js";
 import type * as displays from "../displays.js";
 import type * as emails from "../emails.js";
-import type * as facebook from "../facebook.js";
 import type * as http from "../http.js";
 import type * as ical from "../ical.js";
 import type * as inboxLifecycle from "../inboxLifecycle.js";
-import type * as instagram from "../instagram.js";
 import type * as leads from "../leads.js";
 import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminChatMetadata from "../lib/adminChatMetadata.js";
@@ -103,7 +101,6 @@ import type * as lib_recordHistory from "../lib/recordHistory.js";
 import type * as lib_replyCards from "../lib/replyCards.js";
 import type * as lib_reviewStats from "../lib/reviewStats.js";
 import type * as lib_rosterHistory from "../lib/rosterHistory.js";
-import type * as lib_serverSecret from "../lib/serverSecret.js";
 import type * as lib_serviceCatalog from "../lib/serviceCatalog.js";
 import type * as lib_serviceSchedule from "../lib/serviceSchedule.js";
 import type * as lib_serviceSlots from "../lib/serviceSlots.js";
@@ -117,12 +114,23 @@ import type * as lib_stayOverlap from "../lib/stayOverlap.js";
 import type * as lib_turnMetrics from "../lib/turnMetrics.js";
 import type * as lib_unknownReply from "../lib/unknownReply.js";
 import type * as lib_validation from "../lib/validation.js";
-import type * as line from "../line.js";
 import type * as maintenance_scenarios from "../maintenance/scenarios.js";
 import type * as marketing from "../marketing.js";
 import type * as marketingAccess from "../marketingAccess.js";
 import type * as marketingAffiliates from "../marketingAffiliates.js";
 import type * as marketingReport from "../marketingReport.js";
+import type * as messaging_channels_adapter from "../messaging/channels/adapter.js";
+import type * as messaging_channels_images from "../messaging/channels/images.js";
+import type * as messaging_channels_index from "../messaging/channels/index.js";
+import type * as messaging_channels_line from "../messaging/channels/line.js";
+import type * as messaging_channels_meta from "../messaging/channels/meta.js";
+import type * as messaging_channels_profile from "../messaging/channels/profile.js";
+import type * as messaging_channels_richMessages from "../messaging/channels/richMessages.js";
+import type * as messaging_channels_whatsapp from "../messaging/channels/whatsapp.js";
+import type * as messaging_claims from "../messaging/claims.js";
+import type * as messaging_ingress from "../messaging/ingress.js";
+import type * as messaging_model from "../messaging/model.js";
+import type * as messaging_worker from "../messaging/worker.js";
 import type * as orderHistoryPages from "../orderHistoryPages.js";
 import type * as payments from "../payments.js";
 import type * as pos from "../pos.js";
@@ -140,21 +148,19 @@ import type * as seeds_staffServices from "../seeds/staffServices.js";
 import type * as seeds_tourSnippets from "../seeds/tourSnippets.js";
 import type * as serviceBookings from "../serviceBookings.js";
 import type * as settings from "../settings.js";
+import type * as shared_messagingImages from "../shared/messagingImages.js";
 import type * as shared_money from "../shared/money.js";
 import type * as staffAccess from "../staffAccess.js";
 import type * as staffApprovals from "../staffApprovals.js";
 import type * as testing_harness from "../testing/harness.js";
 import type * as users from "../users.js";
-import type * as whatsapp from "../whatsapp.js";
 
-/**
- * A utility for referencing Convex functions in your app's API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = api.myModule.myFunction;
- * ```
- */
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
+
 declare const fullApi: ApiFromModules<{
   adminBookings: typeof adminBookings;
   adminChat: typeof adminChat;
@@ -172,16 +178,19 @@ declare const fullApi: ApiFromModules<{
   chatEval: typeof chatEval;
   chatKnowledge: typeof chatKnowledge;
   chatSuggestions: typeof chatSuggestions;
+  "concierge/context": typeof concierge_context;
+  "concierge/copy": typeof concierge_copy;
+  "concierge/model": typeof concierge_model;
+  "concierge/prompt": typeof concierge_prompt;
+  "concierge/runTurn": typeof concierge_runTurn;
   configurationHistory: typeof configurationHistory;
   crons: typeof crons;
   customers: typeof customers;
   displays: typeof displays;
   emails: typeof emails;
-  facebook: typeof facebook;
   http: typeof http;
   ical: typeof ical;
   inboxLifecycle: typeof inboxLifecycle;
-  instagram: typeof instagram;
   leads: typeof leads;
   "lib/adminAuth": typeof lib_adminAuth;
   "lib/adminChatMetadata": typeof lib_adminChatMetadata;
@@ -246,7 +255,6 @@ declare const fullApi: ApiFromModules<{
   "lib/replyCards": typeof lib_replyCards;
   "lib/reviewStats": typeof lib_reviewStats;
   "lib/rosterHistory": typeof lib_rosterHistory;
-  "lib/serverSecret": typeof lib_serverSecret;
   "lib/serviceCatalog": typeof lib_serviceCatalog;
   "lib/serviceSchedule": typeof lib_serviceSchedule;
   "lib/serviceSlots": typeof lib_serviceSlots;
@@ -260,12 +268,23 @@ declare const fullApi: ApiFromModules<{
   "lib/turnMetrics": typeof lib_turnMetrics;
   "lib/unknownReply": typeof lib_unknownReply;
   "lib/validation": typeof lib_validation;
-  line: typeof line;
   "maintenance/scenarios": typeof maintenance_scenarios;
   marketing: typeof marketing;
   marketingAccess: typeof marketingAccess;
   marketingAffiliates: typeof marketingAffiliates;
   marketingReport: typeof marketingReport;
+  "messaging/channels/adapter": typeof messaging_channels_adapter;
+  "messaging/channels/images": typeof messaging_channels_images;
+  "messaging/channels/index": typeof messaging_channels_index;
+  "messaging/channels/line": typeof messaging_channels_line;
+  "messaging/channels/meta": typeof messaging_channels_meta;
+  "messaging/channels/profile": typeof messaging_channels_profile;
+  "messaging/channels/richMessages": typeof messaging_channels_richMessages;
+  "messaging/channels/whatsapp": typeof messaging_channels_whatsapp;
+  "messaging/claims": typeof messaging_claims;
+  "messaging/ingress": typeof messaging_ingress;
+  "messaging/model": typeof messaging_model;
+  "messaging/worker": typeof messaging_worker;
   orderHistoryPages: typeof orderHistoryPages;
   payments: typeof payments;
   pos: typeof pos;
@@ -283,18 +302,173 @@ declare const fullApi: ApiFromModules<{
   "seeds/tourSnippets": typeof seeds_tourSnippets;
   serviceBookings: typeof serviceBookings;
   settings: typeof settings;
+  "shared/messagingImages": typeof shared_messagingImages;
   "shared/money": typeof shared_money;
   staffAccess: typeof staffAccess;
   staffApprovals: typeof staffApprovals;
   "testing/harness": typeof testing_harness;
   users: typeof users;
-  whatsapp: typeof whatsapp;
 }>;
+
+/**
+ * A utility for referencing Convex functions in your app's public API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
 export declare const api: FilterApi<
   typeof fullApi,
   FunctionReference<any, "public">
 >;
+
+/**
+ * A utility for referencing Convex functions in your app's internal API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = internal.myModule.myFunction;
+ * ```
+ */
 export declare const internal: FilterApi<
   typeof fullApi,
   FunctionReference<any, "internal">
 >;
+
+export declare const components: {
+  rateLimiter: {
+    lib: {
+      checkRateLimit: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
+      getValue: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          key?: string;
+          name: string;
+          sampleShards?: number;
+        },
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          shard: number;
+          ts: number;
+          value: number;
+        }
+      >;
+      rateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      resetRateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        { key?: string; name: string },
+        null
+      >;
+    };
+    time: {
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
+    };
+  };
+};

@@ -1,5 +1,6 @@
+import { durableToolValidator, durableTurnValidator, currentClaim, withDurableTool } from './messaging/model';
+import { startDurablePreparation } from './messaging/claims';
 import { satangToBaht } from './shared/money';
-import { requireServerSecret } from './lib/serverSecret';
 import { activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity, type ChatCouponSnapshot } from './lib/chatCoupon';
 import { normalizeCouponCode } from './lib/offers';
 import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from './lib/marketingAttribution';
@@ -356,28 +357,31 @@ async function loadChatSession(ctx: QueryCtx | MutationCtx, sessionId: Id<'conve
 }
 
 /** Whether the next message in this chat should be routed to the AI booking flow. */
-export const isChatBookingFlowActive = query({
-	args: { sessionId: v.id('conversations'), serverSecret: v.string() },
-	handler: async (ctx, args) => {
-		await requireServerSecret(args.serverSecret);
-		const session = await ctx.db.get(args.sessionId);
-		return Boolean(session?.bookingFlowAt && Date.now() - session.bookingFlowAt < (await getEffectiveSettings(ctx)).bookingRules.chatQuoteValidityMinutes * 60_000);
-	}
-});
-
 export const touchChatBookingFlow = internalMutation({
-	args: { sessionId: v.id('conversations') },
+	args: { durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
+    if (args.durableTurn) {
+      const event = await currentClaim(ctx, args.durableTurn.eventId, args.durableTurn.claimToken);
+      if (event.sessionId !== args.sessionId) throw new Error('Turn conversation mismatch');
+    }
 		await ctx.db.patch(args.sessionId, { bookingFlowAt: Date.now() });
 	}
 });
 
 /** Invalidate the old draft even when a replacement tool call later fails parsing or validation. */
 export const invalidateChatProposal = internalMutation({
-	args: { sessionId: v.id('conversations'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
+	args: { durableTool: v.optional(durableToolValidator), durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
 	handler: async (ctx, args) => {
+    if (args.durableTurn) {
+      const event = await currentClaim(ctx, args.durableTurn.eventId, args.durableTurn.claimToken);
+      if (event.sessionId !== args.sessionId) throw new Error('Turn conversation mismatch');
+    }
 		const session = await loadChatSession(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
+		if (args.durableTool) {
+			if (args.durableTool.name !== (args.kind === 'villa' ? 'prepare_booking' : 'prepare_service_booking')) throw new Error('Preparation kind mismatch');
+			if (!await startDurablePreparation(ctx, args.sessionId, args.durableTool)) return;
+		}
 		await ctx.db.patch(args.sessionId, args.kind === 'villa' ? { pendingBookingQuote: undefined } : { pendingServiceQuote: undefined });
 	}
 });
@@ -461,7 +465,7 @@ async function prepareChatBookingRecord(ctx: MutationCtx, args: PrepareChatBooki
 }
 
 export const prepareChatBooking = internalMutation({
-	args: {
+	args: { durableTool: v.optional(durableToolValidator),
 		sessionId: v.id('conversations'),
 		propertySlug: v.string(),
 		checkIn: v.string(),
@@ -472,7 +476,7 @@ export const prepareChatBooking = internalMutation({
 		couponCode: v.optional(v.string()),
 		deadlineAt: v.optional(v.number())
 	},
-	handler: (ctx, args) => prepareChatBookingRecord(ctx, args)
+	handler: (ctx, args) => withDurableTool(ctx, args.sessionId, args.durableTool, () => prepareChatBookingRecord(ctx, args))
 });
 
 /** A confirmed proposal shows the booking's actual frozen saving, including later staff edits. */
@@ -644,14 +648,14 @@ export const confirmProposal = mutation({
 });
 
 export const confirmChatBooking = internalMutation({
-	args: {
+	args: { durableTool: v.optional(durableToolValidator),
 		sessionId: v.id('conversations'),
 		deadlineAt: v.optional(v.number()),
 		expectedProposal: v.optional(v.string())
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args) => withDurableTool(ctx, args.sessionId, args.durableTool, async () => {
 		return await confirmPreparedBooking(ctx, args);
-	}
+	})
 });
 
 /** Bookings this chat guest may see: made in this chat, or (WhatsApp) under their verified number. */
@@ -700,13 +704,13 @@ export const listChatGuestBookings = internalQuery({
  * a call on a later turn (after the guest replied) cancels. `turnStartedAt` marks the current turn.
  */
 export const cancelChatBooking = internalMutation({
-	args: {
+	args: { durableTool: v.optional(durableToolValidator),
 		sessionId: v.id('conversations'),
 		reference: v.string(),
 		turnStartedAt: v.number(),
 		deadlineAt: v.optional(v.number())
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args) => withDurableTool(ctx, args.sessionId, args.durableTool, async () => {
 		const session = await loadChatSession(ctx, args.sessionId);
 		assertChatWriteAllowed(session, args.deadlineAt);
 		const reference = args.reference.trim().toUpperCase();
@@ -751,5 +755,5 @@ export const cancelChatBooking = internalMutation({
 		await releaseBookingDates(ctx, booking);
 		await ctx.db.patch(args.sessionId, { pendingCancellation: undefined });
 		return { state: 'cancelled' as const, ...summary };
-	}
+	})
 });

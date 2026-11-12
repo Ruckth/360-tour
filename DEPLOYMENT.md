@@ -34,7 +34,7 @@ That command deploys Convex functions first, injects the Convex deployment URL i
 
 Verify every variable in the actual Vercel and Convex deployments before launch. This repository does not contain production secret values.
 
-Vercel name audit on 24 September 2026: Production and Preview both list `INSTAGRAM_APP_SECRET`, but neither lists `FACEBOOK_APP_SECRET`, `WHATSAPP_APP_SECRET`, or `META_APP_SECRET`. Facebook and WhatsApp POST webhooks will return 500 until the matching Meta app secret is added to those environments and redeployed. This audit checked variable names, not secret values or live webhook delivery.
+Historical Vercel name audit on 24 September 2026 (superseded for ingress by Phase 2): Production and Preview both list `INSTAGRAM_APP_SECRET`, but neither lists `FACEBOOK_APP_SECRET`, `WHATSAPP_APP_SECRET`, or `META_APP_SECRET`. Facebook and WhatsApp POST webhooks will return 500 until the matching Meta app secret is added to those environments and redeployed. This audit checked variable names, not secret values or live webhook delivery.
 
 Convex production name audit on the same date: `RESEND_API_KEY` is present, while `EMAIL_FROM`, `OWNER_NOTIFICATION_EMAIL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `SITE_URL` are absent. Booking emails and live Stripe Checkout remain disabled there until those values are configured. Secret contents were not read.
 
@@ -45,7 +45,7 @@ Set these in Vercel Production and Preview:
 | Name | Required | Notes |
 | --- | --- | --- |
 | `CONVEX_DEPLOY_KEY` | Yes | Required by `pnpm vercel-build`. Use the correct Convex deploy key for each Vercel environment. |
-| `CONVEX_SERVER_SECRET` | Yes for channel webhooks | Use the same random secret in Vercel and Convex. Next.js sends it to Convex for LINE, Facebook, Instagram, and WhatsApp event mutations. |
+| `MESSAGING_IMAGE_SECRET` | For social card images | Dedicated image-conversion signing key, shared with Convex. It does not authenticate webhook functions. |
 | `NEXT_PUBLIC_CONVEX_URL` | Yes | Usually injected by `convex deploy`; keep a placeholder only if Vercel requires the key before first deploy. |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Optional | Convex HTTP origin for the OTA export URL shown in admin. If omitted, the app derives it from `NEXT_PUBLIC_CONVEX_URL`. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes for admin | Enables Clerk UI and admin sign-in. Do not use `placeholder` in production if admin should work. |
@@ -78,7 +78,7 @@ Set these in the Convex production deployment:
 | --- | --- | --- |
 | `CLERK_JWT_ISSUER_DOMAIN` | Yes for admin | Required for Convex to validate Clerk tokens. |
 | `ADMIN_EMAILS` | Yes for admin | Comma-separated allowlist for `/admin`, for example `owner@example.com,manager@example.com`. |
-| `CONVEX_SERVER_SECRET` | Yes for channel webhooks | Must match Vercel exactly. Webhook event mutations reject every call while it is unset or empty, so set it in Convex and Vercel before deploying (`npx convex env set --prod CONVEX_SERVER_SECRET`, which prompts for the value). |
+| `MESSAGING_IMAGE_SECRET` | For social card images | Match the Vercel image-conversion signing key. No public event mutation accepts a shared secret. |
 | `AI_API_KEY` | No | Enables live AI concierge responses. |
 | `AI_API_BASE_URL` | No | Use `https://api.x.ai/v1` for xAI. |
 | `AI_SIMPLE_MODEL` | No | Current expected value is `grok-4.3`. |
@@ -143,89 +143,26 @@ To enable `/admin`:
 
 If Clerk is missing or set to `placeholder`, `/admin` shows the setup state. If Clerk is enabled but Convex cannot validate the token, the admin dashboard shows the Convex auth setup warning.
 
-## LINE Webhook
+## Social webhook ingress (Phase 2)
 
-After deploying production, set the LINE Developers Console webhook URL to:
+The four Next webhook routes are removed. Configure callbacks on the **Convex HTTP site**, not the website. Root owns provider-console migration and secrets. With the parent-verified production mapping, the new URLs are:
 
-```txt
-https://tour.helpgueststay.com/api/line/webhook
-```
+| Channel | Production callback |
+| --- | --- |
+| LINE | `https://wary-toad-189.convex.site/line/webhook` |
+| Facebook | `https://wary-toad-189.convex.site/facebook/webhook` |
+| Instagram | `https://wary-toad-189.convex.site/instagram/webhook` |
+| WhatsApp | `https://wary-toad-189.convex.site/whatsapp/webhook` |
 
-For local testing without LINE Console, send signed `POST` requests to:
+Shared development uses the corresponding `optimistic-turtle-573.convex.site` host. Do not change either deployment from an implementation checkout. Isolated local HTTP actions use the local site's port, separate from the Next website port.
 
-```txt
-http://localhost:3000/api/line/webhook
-```
+Put `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, each provider's `*_APP_SECRET` (or `META_APP_SECRET`), `*_VERIFY_TOKEN`, `*_ACCESS_TOKEN`, and graph versions in **Convex**. Set Convex `SITE_URL` to the public website origin so confirmation/payment/catalogue links work. WhatsApp stores the signed payload's phone-number ID, with `WHATSAPP_PHONE_NUMBER_ID` as a fallback. `MESSAGING_RICH_CARDS=line,whatsapp` enables cards; `MESSAGING_IMAGE_SECRET` in Convex and Vercel enables JPEG conversion. Existing staff replies still use the authenticated Next admin route, so retain its provider access tokens/graph versions in Vercel until that route moves.
 
-For LINE Console verification against local development, expose the local app through a tunnel and use:
+Meta GET verification preserves `hub.mode=subscribe`, `hub.verify_token` and plain `hub.challenge`. Facebook and Instagram subscribe to `messages` and `messaging_postbacks`; WhatsApp subscribes to messages. LINE GET reports endpoint health; signed POST verifies actual durable acceptance. Keep client-certificate webhook attachment disabled unless certificate validation is separately implemented.
 
-```txt
-https://<your-ngrok-domain>/api/line/webhook
-```
+Ingress checks the signature against the raw request bytes, then awaits one transaction that deduplicates, records the event/user message and schedules work before returning 200. A failed transaction returns 503 for provider retry. No provider send or AI call runs inside ingress. Stripe and `/ical/export` retain their existing Convex paths and Phase 1 cutoff behavior.
 
-For the full LINE automation audit checklist, including LINE OA response settings, token checks, customer link checks, and production smoke tests, see [LINE_AUTOMATION_AUDIT.md](./LINE_AUTOMATION_AUDIT.md).
-
-## Facebook Messenger Webhook
-
-After deploying production, set the Meta Developers Messenger webhook to:
-
-```txt
-https://tour.helpgueststay.com/api/facebook/webhook
-```
-
-Use the exact Vercel `FACEBOOK_VERIFY_TOKEN` value in Meta's **Verify token** field. Keep **Attach a client certificate to Webhook requests** turned off unless the webhook code is explicitly extended to validate client certificates.
-
-After **Verify and save** succeeds, add subscriptions for:
-
-```txt
-messages
-messaging_postbacks
-```
-
-For a quick production verification, this URL should return plain `hello` when the token matches:
-
-```txt
-https://tour.helpgueststay.com/api/facebook/webhook?hub.mode=subscribe&hub.verify_token=<FACEBOOK_VERIFY_TOKEN>&hub.challenge=hello
-```
-
-## WhatsApp Webhook
-
-After deploying production, set the Meta Developers WhatsApp webhook to:
-
-```txt
-https://tour.helpgueststay.com/api/whatsapp/webhook
-```
-
-Use the exact Vercel `WHATSAPP_VERIFY_TOKEN` value in Meta's **Verify token** field. Keep **Attach a client certificate to Webhook requests** turned off unless the webhook code is explicitly extended to validate client certificates.
-
-For a quick production verification, this URL should return plain `hello` when the token matches:
-
-```txt
-https://tour.helpgueststay.com/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=<WHATSAPP_VERIFY_TOKEN>&hub.challenge=hello
-```
-
-## Instagram Webhook
-
-After deploying production, set the Meta Developers Instagram webhook to:
-
-```txt
-https://tour.helpgueststay.com/api/instagram/webhook
-```
-
-Use the exact Vercel `INSTAGRAM_VERIFY_TOKEN` value in Meta's **Verify token** field. Keep **Attach a client certificate to Webhook requests** turned off unless the webhook code is explicitly extended to validate client certificates.
-
-After **Verify and save** succeeds, add subscriptions for:
-
-```txt
-messages
-messaging_postbacks
-```
-
-For a quick production verification, this URL should return plain `hello` when the token matches:
-
-```txt
-https://tour.helpgueststay.com/api/instagram/webhook?hub.mode=subscribe&hub.verify_token=<INSTAGRAM_VERIFY_TOKEN>&hub.challenge=hello
-```
+Read [the Phase 2 cutover runbook](docs/architecture/phase2-cutover-runbook.md) before enabling traffic. An uncertain send requires owner reconciliation; replaying the provider webhook cannot cause an automatic duplicate send. LINE push requires explicit reply-token expiry rejection, never local age, a generic invalid/used token, a timeout or a crashed action.
 
 ## Deployment
 

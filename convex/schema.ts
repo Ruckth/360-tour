@@ -1173,7 +1173,8 @@ export default defineSchema({
 		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
 		timestamp: v.number()
 	})
-		.index('by_session', ['sessionId', 'timestamp'])
+		.index('by_sessionId_and_role', ['sessionId', 'role'])
+    .index('by_session', ['sessionId', 'timestamp'])
 		.searchIndex('search_content', {
 			searchField: 'content',
 			filterFields: ['sessionId']
@@ -1205,8 +1206,16 @@ export default defineSchema({
 		.index('by_sessionId', ['sessionId']),
 
 	channelEvents: defineTable({
-		channel: v.union(v.literal('line'), v.literal('facebook'), v.literal('instagram'), v.literal('whatsapp')),
+		channel: v.union(v.literal('web'), v.literal('line'), v.literal('facebook'), v.literal('instagram'), v.literal('whatsapp')),
 		eventKey: v.string(),
+    recipient: v.optional(v.string()), accountId: v.optional(v.string()), profileName: v.optional(v.string()),
+    admittedAt: v.optional(v.number()), replyToken: v.optional(v.string()), arrivedAt: v.optional(v.number()),
+    claimToken: v.optional(v.string()), leaseExpiresAt: v.optional(v.number()), attempts: v.optional(v.number()), nextAttemptAt: v.optional(v.number()),
+    dispatchState: v.optional(v.union(v.literal('prepared'), v.literal('sending'), v.literal('sent'), v.literal('rejected'), v.literal('uncertain'))),
+    responseText: v.optional(v.string()), responseModel: v.optional(v.string()), responseCardJson: v.optional(v.string()),
+    responseOutcome: v.optional(v.union(v.literal('answered'), v.literal('awaiting_guest'), v.literal('needs_staff'))),
+    locale: v.optional(v.string()), propertySlug: v.optional(v.string()), actionHint: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
+    toolResults: v.optional(v.array(v.object({ key: v.string(), name: v.string(), resultJson: v.string(), pending: v.optional(v.boolean()) }))),
 		sessionId: v.optional(v.id('conversations')),
 		lineUserId: v.optional(v.string()),
   facebookUserId: v.optional(v.string()), pageId: v.optional(v.string()),
@@ -1227,7 +1236,8 @@ export default defineSchema({
 			v.literal('processing'),
 			v.literal('replied'),
 			v.literal('ignored'),
-			v.literal('failed')
+			v.literal('failed'),
+      v.literal('reconciliation')
 		),
 		replyMode: v.optional(
 			v.union(
@@ -1251,7 +1261,10 @@ export default defineSchema({
 		createdAt: v.number(),
 		updatedAt: v.number()
 	})
-		.index('by_channel_and_eventKey', ['channel', 'eventKey'])
+		.index('by_sessionId_and_status_and_createdAt', ['sessionId', 'status', 'createdAt'])
+    .index('by_status_and_leaseExpiresAt', ['status', 'leaseExpiresAt'])
+    .index('by_status_and_nextAttemptAt', ['status', 'nextAttemptAt'])
+    .index('by_channel_and_eventKey', ['channel', 'eventKey'])
  .index('by_channel_and_createdAt', ['channel', 'createdAt'])
 		.index('by_channel_and_sessionId', ['channel', 'sessionId'])
 		.index('by_channel_and_status_and_createdAt', ['channel', 'status', 'createdAt']),

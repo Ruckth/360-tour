@@ -10,7 +10,7 @@ test('does not execute pending writes after the round budget, even if the provid
 	const execute = vi.fn(async () => JSON.stringify({ properties: [] }));
 	const result = await runConciergeTurn({ message: 'yes', messages: [], tools: [...TOOLS, ...BOOKING_TOOLS], deadlineAt: Date.now() + 20000, request: async () => replies.shift()!, execute });
 		expect(result.failed).toBe(true); expect(result.content).not.toContain('Your booking is confirmed');
-		expect(execute).toHaveBeenCalledTimes(1); expect(execute).not.toHaveBeenCalledWith('confirm_booking', expect.anything());
+		expect(execute).toHaveBeenCalledTimes(1); expect(execute).not.toHaveBeenCalledWith('confirm_booking', expect.anything(), expect.any(String));
 });
 
 test('rejects an oversized batch before executing its first tool', async () => {

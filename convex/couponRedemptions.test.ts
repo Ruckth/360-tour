@@ -8,7 +8,6 @@ import { holdCouponRedemption } from './lib/couponRedemptions';
 import { writeBooking } from './lib/bookingMoney';
 import { createBookingRecord } from './lib/bookingWrites';
 
-declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob('./**/*.ts');
 const email = 'admin@example.com';
 const NOW = Date.parse('2026-11-07T10:00:00Z');
