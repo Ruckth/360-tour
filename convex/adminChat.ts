@@ -1,9 +1,8 @@
-import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './auth/model';
+import { internalMutation, type MutationCtx, type QueryCtx, adminQuery, adminMutation } from './auth/model';
 import { internal } from './_generated/api';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
 import {
 	getAdminChatMessageCount,
 	getAdminChatSortAt,
@@ -561,7 +560,7 @@ async function listFilteredSessions(
 	};
 }
 
-export const listSessions = query({
+export const listSessions = adminQuery({
 	args: {
 		paginationOpts: v.optional(paginationOptsValidator),
 		status: v.optional(sessionStatusValidator),
@@ -577,7 +576,6 @@ export const listSessions = query({
 		now: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 
 		const now = args.now ?? Date.now();
 		const status = args.status ?? 'active';
@@ -623,10 +621,9 @@ export const listSessions = query({
 	}
 });
 
-export const getSessionDetail = query({
+export const getSessionDetail = adminQuery({
 	args: { sessionId: v.id('conversations'), now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 
 		const now = args.now ?? Date.now();
 		const session = await ctx.db.get(args.sessionId);
@@ -689,10 +686,9 @@ export const getSessionDetail = query({
 	}
 });
 
-export const settleGuestMessage = mutation({
+export const settleGuestMessage = adminMutation({
 	args: { sessionId: v.id('conversations'), messageId: v.id('messages') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 
 		const message = await ctx.db.get(args.messageId);
 		if (!message || message.sessionId !== args.sessionId || message.role !== 'user') {
@@ -706,13 +702,12 @@ export const settleGuestMessage = mutation({
 	}
 });
 
-export const listTranscriptMessages = query({
+export const listTranscriptMessages = adminQuery({
 	args: {
 		sessionId: v.id('conversations'),
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 
 		// No session read: it is patched by every guest heartbeat, which would rerun this live
 		// transcript each time. A deleted chat's messages are removed with it, so it pages empty.
@@ -724,10 +719,9 @@ export const listTranscriptMessages = query({
 	}
 });
 
-export const getTranscript = query({
+export const getTranscript = adminQuery({
 	args: { sessionId: v.id('conversations'), now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 
 		const now = args.now ?? Date.now();
 		const session = await ctx.db.get(args.sessionId);
@@ -785,11 +779,10 @@ export const getTranscript = query({
 	}
 });
 
-export const setSessionStatus = mutation({
+export const setSessionStatus = adminMutation({
 	args: { sessionId: v.id('conversations'), status: adminStatusValidator,
 		expectedGuestMessageId: v.optional(v.union(v.id('messages'), v.null())) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
@@ -818,10 +811,10 @@ export const setSessionStatus = mutation({
 	}
 });
 
-export const setAiPaused = mutation({
+export const setAiPaused = adminMutation({
 	args: { sessionId: v.id('conversations'), paused: v.boolean() },
 	handler: async (ctx, args) => {
-		const { email } = await requireAdmin(ctx);
+		const { email } = ctx.admin;
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
@@ -830,10 +823,10 @@ export const setAiPaused = mutation({
 	}
 });
 
-export const setStaffTask = mutation({
+export const setStaffTask = adminMutation({
 	args: { sessionId: v.id('conversations'), task: v.union(v.string(), v.null()) },
 	handler: async (ctx, args) => {
-		const { email } = await requireAdmin(ctx);
+		const { email } = ctx.admin;
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 		if (args.task !== null) {
@@ -859,10 +852,10 @@ export const setStaffTask = mutation({
 	}
 });
 
-export const setKeepWithStaff = mutation({
+export const setKeepWithStaff = adminMutation({
 	args: { sessionId: v.id('conversations'), keep: v.boolean() },
 	handler: async (ctx, args) => {
-		const { email } = await requireAdmin(ctx);
+		const { email } = ctx.admin;
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 		await changeStaffOwnership(ctx, args.sessionId, email, { keep: args.keep });
@@ -916,10 +909,9 @@ export const deleteSessionChildren = internalMutation({
 });
 
 /** Hard-deletes an archived chat and (in batches) its transcript and interactions. Webhook logs are kept. */
-export const deleteArchivedSession = mutation({
+export const deleteArchivedSession = adminMutation({
 	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 		if (session.adminStatus !== 'archived') throw new Error('Archive the chat before deleting it');

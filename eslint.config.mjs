@@ -20,6 +20,19 @@ const config = [
     ],
   },
   {
+    files: ["convex/**/*.ts"],
+    ignores: ["convex/auth/**", "convex/_generated/**", "convex/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["**/_generated/server", "**/_generated/server.js", "convex/server"],
+          importNames: ["query", "mutation", "action", "httpAction", "queryGeneric", "mutationGeneric", "actionGeneric", "httpActionGeneric"],
+          message: "Public registrations must use explicit access builders from convex/auth/model.",
+        }],
+      }],
+    },
+  },
+  {
     rules: {
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/immutability": "off",

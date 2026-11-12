@@ -1,12 +1,11 @@
 import { bookingHoldExpiresAt } from './lib/siteSettings';
 import { v } from 'convex/values';
 import { appendRecordHistory } from './lib/recordHistory';
-import { action, internalMutation, mutation, type MutationCtx } from './auth/model';
+import { internalMutation, type MutationCtx, publicAction, adminMutation } from './auth/model';
 import { internal } from './_generated/api';
 import { isDocumentedLiveRefund, recordStayPayment } from './bookings';
 import { assertBookingRevision, stayMoney, writeBooking } from './lib/bookingMoney';
 import { roundMoney } from './lib/orderMath';
-import { requireAdmin } from './lib/adminAuth';
 import { blockBookingDates, releaseBookingDates } from './lib/availabilityWrites';
 
 const CHECKOUT_LIFETIME_SECONDS = 60 * 60;
@@ -150,7 +149,8 @@ export const expireCheckout = internalMutation({
   },
 });
 
-export const createCheckout = action({
+export const createCheckout = publicAction({
+  reason: "Booking access-token capability; internal beginCheckout validates the specific payable booking.",
   args: { bookingId: v.id('bookings'), accessToken: v.string() },
   handler: async (ctx, args): Promise<{ url: string }> => {
     const key = process.env.STRIPE_SECRET_KEY;
@@ -331,10 +331,10 @@ export const recordRefund = internalMutation({
 });
 
 /** Staff supply exact provider evidence, never an amount-based match. This moves no money. */
-export const linkRecordedStripeRefund = mutation({
+export const linkRecordedStripeRefund = adminMutation({
   args: { bookingId: v.id('bookings'), refundId: v.id('bookingRefunds'), expectedRevision: v.number(), chargeId: v.string(), providerRefundId: v.string() },
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const admin = ctx.admin;
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error('Booking not found');
     const refund = await ctx.db.get(args.refundId);

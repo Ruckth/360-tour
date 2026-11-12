@@ -1,8 +1,7 @@
 import { ConvexError, v } from "convex/values";
-import { query, mutation, type QueryCtx } from "./auth/model";
+import { type QueryCtx, marketingQuery, marketingMutation } from './auth/model';
 import type { Doc, Id } from "./_generated/dataModel";
 import { affiliateState, creditState } from "./lib/affiliateTypes";
-import { requireMarketingPermission } from "./lib/marketingAccess";
 import {
   appendCreditChange,
   creditMoney,
@@ -61,10 +60,11 @@ async function creditRow(
     affiliateName: partner?.name ?? null,
   };
 }
-export const listAffiliates = query({
+export const listAffiliates = marketingQuery({
+  permission: "view",
   args: {},
   handler: async (ctx) => {
-    const access = await requireMarketingPermission(ctx, "view");
+    const access = ctx.marketing;
     const all = await ctx.db
       .query("marketingAffiliates")
       .take(AFFILIATE_LIMIT + 1);
@@ -112,7 +112,8 @@ export const listAffiliates = query({
     return { rows, partial: all.length > AFFILIATE_LIMIT };
   },
 });
-export const saveAffiliate = mutation({
+export const saveAffiliate = marketingMutation({
+  permission: "partners",
   args: {
     id: v.optional(v.id("marketingAffiliates")),
     name: v.string(),
@@ -125,7 +126,7 @@ export const saveAffiliate = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actor = await requireMarketingPermission(ctx, "partners");
+    const actor = ctx.marketing;
     const { id, ...input } = args;
     const slug = input.slug.trim().toLowerCase();
     const name = input.name.trim();
@@ -255,10 +256,11 @@ export const saveAffiliate = mutation({
     return affiliateId;
   },
 });
-export const setAffiliateStatus = mutation({
+export const setAffiliateStatus = marketingMutation({
+  permission: "partners",
   args: { affiliateId: v.id("marketingAffiliates"), status: affiliateState },
   handler: async (ctx, args) => {
-    const actor = await requireMarketingPermission(ctx, "partners");
+    const actor = ctx.marketing;
     const row = await ctx.db.get(args.affiliateId);
     if (!row) throw new ConvexError("Partner not found");
     if (row.status === "archived" && args.status !== "archived")
@@ -293,13 +295,14 @@ export const setAffiliateStatus = mutation({
     return null;
   },
 });
-export const assignCoupon = mutation({
+export const assignCoupon = marketingMutation({
+  permission: "partners",
   args: {
     affiliateId: v.id("marketingAffiliates"),
     couponId: v.union(v.id("coupons"), v.null()),
   },
   handler: async (ctx, args) => {
-    const actor = await requireMarketingPermission(ctx, "partners");
+    const actor = ctx.marketing;
     const partner = await ctx.db.get(args.affiliateId);
     if (!partner || partner.status === "archived")
       throw new ConvexError("Partner unavailable");
@@ -346,13 +349,14 @@ export const assignCoupon = mutation({
     return null;
   },
 });
-export const listCredits = query({
+export const listCredits = marketingQuery({
+  permission: "view",
   args: {
     affiliateId: v.optional(v.id("marketingAffiliates")),
     state: v.optional(creditState),
   },
   handler: async (ctx, args) => {
-    const access = await requireMarketingPermission(ctx, "view");
+    const access = ctx.marketing;
     const all = args.affiliateId
       ? await ctx.db
           .query("affiliateCredits")
@@ -378,10 +382,11 @@ export const listCredits = query({
     };
   },
 });
-export const getCredit = query({
+export const getCredit = marketingQuery({
+  permission: "view",
   args: { creditId: v.id("affiliateCredits") },
   handler: async (ctx, args) => {
-    const access = await requireMarketingPermission(ctx, "view");
+    const access = ctx.marketing;
     const row = await ctx.db.get(args.creditId);
     if (!row) return null;
     const history = await ctx.db
@@ -396,10 +401,11 @@ export const getCredit = query({
     };
   },
 });
-export const refreshCredit = mutation({
+export const refreshCredit = marketingMutation({
+  permission: "reviewCredits",
   args: { creditId: v.id("affiliateCredits") },
   handler: async (ctx, args) => {
-    const actor = await requireMarketingPermission(ctx, "reviewCredits");
+    const actor = ctx.marketing;
     const row = await ctx.db.get(args.creditId);
     if (!row) throw new ConvexError("Credit not found");
     await syncAffiliateCredit(
@@ -410,7 +416,8 @@ export const refreshCredit = mutation({
     return null;
   },
 });
-export const reviewCredit = mutation({
+export const reviewCredit = marketingMutation({
+  permission: "reviewCredits",
   args: {
     creditId: v.id("affiliateCredits"),
     decision: v.union(v.literal("approved"), v.literal("rejected")),
@@ -419,7 +426,7 @@ export const reviewCredit = mutation({
     affiliateId: v.optional(v.id("marketingAffiliates")),
   },
   handler: async (ctx, args) => {
-    const actor = await requireMarketingPermission(ctx, "reviewCredits");
+    const actor = ctx.marketing;
     const row = await ctx.db.get(args.creditId);
     if (!row) throw new ConvexError("Credit not found");
     if (row.revision !== args.expectedRevision)

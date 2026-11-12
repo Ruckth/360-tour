@@ -2,10 +2,9 @@ import { appendRecordHistory } from './lib/recordHistory';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalMutation, mutation, query, type MutationCtx } from './auth/model';
+import { internalMutation, type MutationCtx, staffQuery, adminQuery, staffMutation, adminMutation } from './auth/model';
 import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './lib/adminAuth';
-import { requireStaff } from './lib/staffAccess';
 import { orderTitle, roundMoney } from './lib/orderMath';
 import { orderRefundTotal } from './lib/orderRefunds';
 import { orderState } from './lib/orderLinks';
@@ -89,10 +88,11 @@ function customerValues(customer: { name: string; phone?: string; email?: string
 }
 
 /** Exact contact search or name search, with a cursor even when a page contains only hidden rows. */
-export const browseCustomers = query({
+export const browseCustomers = staffQuery({
+  capability: 'checkout',
 	args: { query: v.string(), archived: v.boolean(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		const access = await requireStaff(ctx, 'checkout');
+		const access = ctx.staff;
 		if (access.role === 'cashier' && (args.archived || args.query.trim().length < 2)) return { page: [], isDone: true, continueCursor: '' };
 		pageSize(args.paginationOpts.numItems);
 		const raw = args.query.trim();
@@ -113,10 +113,10 @@ export const browseCustomers = query({
 });
 
 /** By exact phone (digits) or email, and by name words. Same-name results are listed separately. */
-export const searchCustomers = query({
+export const searchCustomers = staffQuery({
+  capability: 'checkout',
 	args: { query: v.string() },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		const raw = args.query.trim();
 		if (raw.length < 2) return [];
 		const digits = raw.replace(/\D/g, '');
@@ -134,10 +134,9 @@ export const searchCustomers = query({
 });
 
 /** A profile with its most recent orders. */
-export const getCustomer = query({
+export const getCustomer = adminQuery({
 	args: { customerId: v.id('customers') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const customer = await ctx.db.get(args.customerId);
 		if (!customer) return null;
 		const orders = await ctx.db
@@ -169,10 +168,9 @@ export const getCustomer = query({
 	}
 });
 
-export const listCustomerOrders = query({
+export const listCustomerOrders = adminQuery({
 	args: { customerId: v.id('customers'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		pageSize(args.paginationOpts.numItems);
 		const result = await ctx.db.query('orders').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', args.customerId)).order('desc').paginate(args.paginationOpts);
 		const page = [];
@@ -186,19 +184,19 @@ export const listCustomerOrders = query({
 });
 
 /** Dedicated reader avoids depending on regenerated shared api types. Only customer business history. */
-export const customerHistory = query({
+export const customerHistory = adminQuery({
 	args: { customerId: v.id('customers'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		pageSize(args.paginationOpts.numItems);
 		return await ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'customer').eq('entityId', args.customerId)).order('desc').paginate(args.paginationOpts);
 	}
 });
 
-export const createCustomer = mutation({
+export const createCustomer = staffMutation({
+  capability: 'checkout',
 	args: customerInput,
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		if (admin.role === 'cashier' && args.notes?.trim()) throw new Error('Not authorized');
 		const now = Date.now();
 		const profile = cleanCustomer(args);
@@ -218,10 +216,10 @@ function expectRevision(customer: Doc<'customers'>, expectedRevision: number | u
  * The customer revision changes without traversing orders. Settlement checks the exact revision
  * reviewed by the cashier, so unseen profile edits require renewed review.
  */
-export const updateCustomer = mutation({
+export const updateCustomer = adminMutation({
 	args: { customerId: v.id('customers'), expectedRevision: v.optional(v.number()), ...customerInput },
 	handler: async (ctx, { customerId, expectedRevision, ...input }) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const customer = await ctx.db.get(customerId);
 		if (!customer) throw new ConvexError('Customer not found');
 		if (customer.mergedInto) throw new ConvexError('This profile was merged. Open the kept customer to edit it.');
@@ -234,10 +232,10 @@ export const updateCustomer = mutation({
 	}
 });
 
-export const setCustomerArchived = mutation({
+export const setCustomerArchived = adminMutation({
 	args: { customerId: v.id('customers'), archived: v.boolean(), expectedRevision: v.number() },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const customer = await ctx.db.get(args.customerId);
 		if (!customer) throw new ConvexError('Customer not found');
 		if (customer.mergedInto) throw new ConvexError('Merged profiles cannot be restored. Open the kept customer.');
@@ -281,10 +279,9 @@ export const continueMerge = internalMutation({
 });
 
 /** Admin recovery also advances one bounded batch, safely racing an already scheduled invocation. */
-export const resumeCustomerMerge = mutation({
+export const resumeCustomerMerge = adminMutation({
     args: { sourceId: v.id('customers') },
     handler: async (ctx, { sourceId }) => {
-        await requireAdmin(ctx);
         const job = await ctx.db.query('customerMergeJobs').withIndex('by_sourceId', q => q.eq('sourceId', sourceId)).unique();
         if (!job) throw new ConvexError('No merge to resume');
         await moveMergeBatch(ctx, job._id);
@@ -326,11 +323,11 @@ export async function mergeCustomerRecords(ctx: MutationCtx, args: {
     return { replayed: false, destinationId: destination._id };
 }
 
-export const mergeCustomers = mutation({ args: mergeInput, handler: mergeCustomerRecords });
+export const mergeCustomers = adminMutation({ args: mergeInput, handler: mergeCustomerRecords });
 
 /** Minimal identity card for the checkout picker; no notes, histories or unrelated orders. */
-export const checkoutCustomer = query({ args: { customerId: v.id('customers') }, handler: async (ctx, args) => {
- await requireStaff(ctx, 'checkout');
+export const checkoutCustomer = staffQuery({
+  capability: 'checkout', args: { customerId: v.id('customers') }, handler: async (ctx, args) => {
  const customer = await ctx.db.get(args.customerId);
  return customer ? customerCard(customer) : null;
 } });

@@ -1,6 +1,6 @@
 import { createGuestToken, hashGuestToken, requireGuestToken } from './lib/guestToken';
 import { cleanCapture, marketingCaptureValidator } from './lib/marketingAttribution';
-import { internalMutation, internalQuery, mutation, query, guestMutation, type MutationCtx } from './auth/model';
+import { internalMutation, internalQuery, type MutationCtx, publicMutation, guestMutation, guestQuery } from './auth/model';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { recordGuest } from './messaging/model';
@@ -54,7 +54,8 @@ function publicSession(session: Doc<'conversations'>) {
 	};
 }
 
-export const createSession = mutation({
+export const createSession = publicMutation({
+  reason: "Anonymous web chat bootstrap; creation is rate limited and returns a new guest credential.",
 	args: {
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
@@ -125,7 +126,7 @@ export const createSession = mutation({
 	}
 });
 
-export const touchSession = mutation({
+export const touchSession = guestMutation({
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
@@ -141,7 +142,7 @@ export const touchSession = mutation({
 		isOpen: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
+		const session = ctx.guestSession;
 
 		// Runs every 30s per open chat, so only fields that changed are written and the villa
 		// lookup happens only when the page's villa changes. lastSeenAt is always written: it is
@@ -204,11 +205,9 @@ export const touchSession = mutation({
 	}
 });
 
-export const closeSession = mutation({
+export const closeSession = guestMutation({
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
-
 		const now = Date.now();
 		await ctx.db.patch(args.sessionId, {
 			lastClosedAt: now,
@@ -217,11 +216,9 @@ export const closeSession = mutation({
 	}
 });
 
-export const createBrowserHandoff = mutation({
+export const createBrowserHandoff = guestMutation({
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
-
 		const now = Date.now();
 		const token = createBrowserHandoffToken();
 		await ctx.db.insert('chatBrowserHandoffs', {
@@ -235,7 +232,8 @@ export const createBrowserHandoff = mutation({
 	}
 });
 
-export const claimBrowserHandoff = mutation({
+export const claimBrowserHandoff = publicMutation({
+  reason: "One-use expiring handoff capability rotates the guest credential.",
 	args: { token: v.string() },
 	handler: async (ctx, args) => {
 		const token = args.token.trim();
@@ -265,7 +263,7 @@ export const claimBrowserHandoff = mutation({
 	}
 });
 
-export const identifyVisitor = mutation({
+export const identifyVisitor = guestMutation({
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
@@ -283,7 +281,7 @@ export const identifyVisitor = mutation({
 		contactHandle: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
+		const session = ctx.guestSession;
 
 		const name = args.name?.trim() || undefined;
 		const phone = args.phone?.trim() || undefined;
@@ -395,10 +393,10 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 });
 
 /** Public view of a chat session: no admin-only or visitor-contact fields. */
-export const getSession = query({
+export const getSession = guestQuery({
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
-	handler: async (ctx, args) => {
-		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
+	handler: async (ctx) => {
+		const session = ctx.guestSession;
 		return publicSession(session);
 	}
 });
@@ -409,22 +407,21 @@ export const getSessionInternal = internalQuery({
 });
 
 /** Guest view of whether staff took over this chat. */
-export const isAiPaused = query({
+export const isAiPaused = guestQuery({
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
-	handler: async (ctx, args) => {
-		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
+	handler: async (ctx) => {
+		const session = ctx.guestSession;
 		return Boolean(session?.aiPaused);
 	}
 });
 
-export const getMessages = query({
+export const getMessages = guestQuery({
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		const recent = await ctx.db
 			.query('messages')
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))

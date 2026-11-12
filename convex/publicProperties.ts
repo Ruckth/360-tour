@@ -1,4 +1,4 @@
-import { query, type QueryCtx } from './auth/model';
+import { type QueryCtx, publicQuery } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 
@@ -60,7 +60,8 @@ function publicReview(review: Doc<'reviews'>, propertySlug: string) {
  * Active villas with a review summary. `hasProperties` is false only for an empty
  * database, which is when the site falls back to its bundled demo content.
  */
-export const list = query({
+export const list = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {},
 	handler: async (ctx) => {
 		const hasProperties = (await ctx.db.query('properties').first()) !== null;
@@ -76,7 +77,8 @@ export const list = query({
 });
 
 /** One active villa with its newest reviews, or null for unknown, draft and archived villas. */
-export const getBySlug = query({
+export const getBySlug = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
 		const property = await ctx.db
@@ -96,7 +98,8 @@ export const getBySlug = query({
 });
 
 /** Highest-rated reviews across active villas, for the home page. */
-export const featuredReviews = query({
+export const featuredReviews = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const limit = Math.min(Math.max(Math.floor(args.limit ?? 6), 1), 20);

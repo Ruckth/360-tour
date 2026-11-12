@@ -1,10 +1,9 @@
 import { durableTurnValidator, currentClaim } from './messaging/claims';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './auth/model';
+import { internalMutation, type MutationCtx, type QueryCtx, adminQuery, adminMutation } from './auth/model';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
 import { normalizeSuggestedQuestion } from './lib/chatSuggestions';
 import { staffNeeded } from './lib/inboxLifecycle';
 import { groupUnknownQuestions } from './lib/knowledgeGrouping';
@@ -201,14 +200,13 @@ export const recordUnknownQuestion = internalMutation({
 });
 
 
-export const adminListUnknownQuestions = query({
+export const adminListUnknownQuestions = adminQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
 		status: v.optional(unknownQuestionStatusValidator),
 		search: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 
 		const status = args.status ?? 'new';
 		const search = args.search?.trim();
@@ -255,10 +253,9 @@ export const adminListUnknownQuestions = query({
 });
 
 
-export const adminIgnoreUnknown = mutation({
+export const adminIgnoreUnknown = adminMutation({
 	args: { unknownQuestionId: v.id('chatUnknownQuestions') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const unknown = await ctx.db.get(args.unknownQuestionId);
 		if (!unknown) throw new Error('Unknown question not found');
 		const now = Date.now();
@@ -272,10 +269,9 @@ export const adminIgnoreUnknown = mutation({
 });
 
 
-export const adminReopenUnknown = mutation({
+export const adminReopenUnknown = adminMutation({
 	args: { unknownQuestionId: v.id('chatUnknownQuestions') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const unknown = await ctx.db.get(args.unknownQuestionId);
 		if (!unknown) throw new Error('Unknown question not found');
 		if (unknown.status === 'new') return { reopened: false };
@@ -351,13 +347,12 @@ async function remainingInGroups(ctx: QueryCtx, keys: string[], statuses: Unknow
  * Unknown questions grouped by identical (normalized) text, most-asked first. Scans the newest
  * rows for the filter; `truncated` says older rows were left out.
  */
-export const adminListUnknownGroups = query({
+export const adminListUnknownGroups = adminQuery({
 	args: {
 		status: v.optional(unknownQuestionStatusValidator),
 		search: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const status = args.status ?? 'new';
 		const search = args.search?.trim();
 		const rows = search
@@ -421,10 +416,9 @@ export const adminListUnknownGroups = query({
 
 
 /** Ignores at most 100 "new" reports across the groups. Returns bounded IDs for Undo. */
-export const adminIgnoreUnknownGroups = mutation({
+export const adminIgnoreUnknownGroups = adminMutation({
 	args: { normalizedQuestions: v.array(v.string()) },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const now = Date.now();
 		const unknownQuestionIds: Id<'chatUnknownQuestions'>[] = [];
 		const keys = groupKeys(args.normalizedQuestions);
@@ -442,13 +436,12 @@ export const adminIgnoreUnknownGroups = mutation({
 
 
 /** Reopens at most 100 resolved/ignored reports across groups and explicit Undo IDs. */
-export const adminReopenUnknownGroups = mutation({
+export const adminReopenUnknownGroups = adminMutation({
 	args: {
 		normalizedQuestions: v.optional(v.array(v.string())),
 		unknownQuestionIds: v.optional(v.array(v.id('chatUnknownQuestions')))
 	},
 		handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const keys = groupKeys(args.normalizedQuestions ?? []);
 		if ((args.unknownQuestionIds?.length ?? 0) > BULK_GROUP_ROW_LIMIT) {
 			throw new Error(`Reopen ${BULK_GROUP_ROW_LIMIT} or fewer report IDs at a time`);

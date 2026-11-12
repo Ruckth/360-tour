@@ -1,9 +1,8 @@
-import { query, type QueryCtx } from './auth/model';
+import { type QueryCtx, publicQuery, adminQuery } from './auth/model';
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { assertValidIsoDate } from './lib/validation';
 import { nightsBetween, stayDates } from './lib/dates';
-import { requireAdmin } from './lib/adminAuth';
 import { readBudget, ReadBudgetExceeded } from './lib/readBudget';
 import {
 	blocksNewBookings,
@@ -73,7 +72,8 @@ async function blockedDates(
 }
 
 /** Public: date, status and source only. Booking, feed and block ids stay private. */
-export const getForProperty = query({
+export const getForProperty = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		propertyId: v.id('properties'),
 		startDate: v.string(),
@@ -90,7 +90,8 @@ export const getForProperty = query({
 });
 
 /** Unavailable dates of one villa in [startDate, endDate]; the booking date picker loads a month at a time. */
-export const getBlockedDates = query({
+export const getBlockedDates = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		propertyId: v.id('properties'),
 		startDate: v.string(),
@@ -103,7 +104,7 @@ export const getBlockedDates = query({
 });
 
 
-export const getAdminBlockedDates = query({
+export const getAdminBlockedDates = adminQuery({
 	args: {
 		propertyId: v.id('properties'),
 		startDate: v.string(),
@@ -111,7 +112,6 @@ export const getAdminBlockedDates = query({
 		excludeBookingId: v.optional(v.id('bookings'))
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const days = rangeDays(args.startDate, args.endDate);
 		const dates = new Set<string>();
 		for await (const row of availabilityRows(ctx, args.propertyId, args.startDate, args.endDate, days)) {
@@ -141,7 +141,8 @@ export const getAdminBlockedDates = query({
  * every active villa, which clients from before the per-month loading still call: that path is
  * served only while the whole answer fits the shared read budget and is refused otherwise.
  */
-export const getBlockedDatesByProperty = query({
+export const getBlockedDatesByProperty = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		startDate: v.string(),
 		endDate: v.string(),
@@ -186,7 +187,8 @@ export const getBlockedDatesByProperty = query({
 });
 
 /** Whether [checkIn, checkOut) is free: no blocked night and no overlapping confirmed booking. */
-export const isAvailable = query({
+export const isAvailable = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		propertyId: v.id('properties'),
 		checkIn: v.string(),

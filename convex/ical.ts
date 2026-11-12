@@ -1,10 +1,9 @@
-import { maintenancePaused } from './auth/model';
+import { maintenancePaused, adminMutation, adminQuery, adminAction } from './auth/model';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from './auth/model';
+import { internalAction, internalMutation, internalQuery } from './auth/model';
 import type { ActionCtx, MutationCtx } from './_generated/server';
 import { internal } from './_generated/api';
-import { requireAdmin } from './lib/adminAuth';
 import { assertSafeIcalUrl, blockedDatesFromIcal } from './lib/ical';
 import { resortTodayIso } from './lib/dates';
 import type { Doc, Id } from './_generated/dataModel';
@@ -16,19 +15,17 @@ const DAY_MS = 86_400_000;
 const MAX_FEED_BYTES = 1_000_000;
 const platformValidator = v.union(v.literal('airbnb'), v.literal('booking_com'), v.literal('agoda'));
 
-export const addSource = mutation({
+export const addSource = adminMutation({
   args: { propertyId: v.id('properties'), platform: platformValidator, icalUrl: v.string() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     if (!await ctx.db.get(args.propertyId)) throw new Error('Property not found');
     return await ctx.db.insert('icalSources', { ...args, icalUrl: assertSafeIcalUrl(args.icalUrl) });
   },
 });
 
-export const listSources = query({
+export const listSources = adminQuery({
   args: { propertyId: v.id('properties') },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     const sources = await ctx.db.query('icalSources').withIndex('by_property', q => q.eq('propertyId', args.propertyId)).take(50);
     return sources.filter(source => !source.deletingAt);
   },
@@ -62,10 +59,9 @@ export const continueRelabelSource = internalMutation({
   },
 });
 
-export const updateSource = mutation({
+export const updateSource = adminMutation({
   args: { sourceId: v.id('icalSources'), platform: platformValidator, icalUrl: v.string() },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     const source = await liveSource(ctx, args.sourceId);
     if (!source) throw new Error('Calendar not found');
     const icalUrl = assertSafeIcalUrl(args.icalUrl);
@@ -104,10 +100,9 @@ export const continueRemoveSource = internalMutation({
 });
 
 /** Hides the feed at once (syncs skip it), then removes its nights in batches and finally the feed. */
-export const removeSource = mutation({
+export const removeSource = adminMutation({
   args: { sourceId: v.id('icalSources') },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     const source = await ctx.db.get(args.sourceId);
     if (!source) return;
     if (!source.deletingAt) await ctx.db.patch(args.sourceId, { deletingAt: Date.now(), syncTicket: (source.syncTicket ?? 0) + 1 });
@@ -115,10 +110,9 @@ export const removeSource = mutation({
   },
 });
 
-export const rotateExportToken = mutation({
+export const rotateExportToken = adminMutation({
   args: { propertyId: v.id('properties') },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     if (!await ctx.db.get(args.propertyId)) throw new Error('Property not found');
     const token = crypto.randomUUID();
     await ctx.db.patch(args.propertyId, { icalExportToken: token });
@@ -126,10 +120,9 @@ export const rotateExportToken = mutation({
   },
 });
 
-export const getExportToken = query({
+export const getExportToken = adminQuery({
   args: { propertyId: v.id('properties') },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
     return (await ctx.db.get(args.propertyId))?.icalExportToken ?? null;
   },
 });
@@ -278,10 +271,9 @@ async function syncSourceFeed(ctx: ActionCtx, sourceId: Id<'icalSources'>): Prom
 }
 
 /** Admin "Sync now" for one feed. */
-export const syncSource = action({
+export const syncSource = adminAction({
   args: { sourceId: v.id('icalSources') },
   handler: async (ctx, args): Promise<SyncResult> => {
-    await requireAdmin(ctx);
     const result = await syncSourceFeed(ctx, args.sourceId);
     if (!result.ok && result.error === 'Calendar not found') throw new Error('Calendar not found');
     return result;

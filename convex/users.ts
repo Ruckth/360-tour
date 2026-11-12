@@ -1,9 +1,9 @@
-import { mutation, query } from "./auth/model";
+import { authenticatedMutation, publicQuery } from './auth/model';
 
-export const store = mutation({
+export const store = authenticatedMutation({
 	args: {},
 	handler: async (ctx) => {
-		const identity = await ctx.auth.getUserIdentity();
+		const identity = ctx.identity;
 		if (!identity) {
 			throw new Error("Not authenticated");
 		}
@@ -41,7 +41,8 @@ export const store = mutation({
 	},
 });
 
-export const current = query({
+export const current = publicQuery({
+  reason: "Self lookup by authenticated tokenIdentifier, or null when signed out.",
 	args: {},
 	handler: async (ctx) => {
 		const identity = await ctx.auth.getUserIdentity();

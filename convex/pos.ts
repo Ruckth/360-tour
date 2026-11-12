@@ -2,13 +2,12 @@ import { assertNoPosRefunds, assertLineHasNoPosRefunds, orderRefundView, execute
 import { captureAffiliateSnapshot, syncAffiliateCredit } from './lib/affiliateCredits';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
-import { mutation, query } from './auth/model';
+import { staffQuery, adminQuery, staffMutation, adminMutation } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { isDocumentedLiveRefund, markBookingPaid, recordStayPayment } from './bookings';
 import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerCanLink, assertCustomerReviewed, customerCard } from './customers';
-import { requireAdmin } from './lib/adminAuth';
-import { requireStaff, requireCashierAction, assertCashierDiscount, canReadCheckoutOrder, manualReduction, type StaffActor } from './lib/staffAccess';
+import { requireCashierAction, assertCashierDiscount, canReadCheckoutOrder, manualReduction, type StaffActor } from './lib/staffAccess';
 import { assertNoPendingApprovals } from './lib/staffApprovalState';
 import { orderRefundFields, lineDiscountValidator, type ApprovalPayload } from './lib/staffTypes';
 import type { Infer } from 'convex/values';
@@ -550,38 +549,39 @@ async function catalogRanking(ctx: QueryCtx) {
 	return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, FREQUENT_COUNT).map(([key]) => key);
 }
 
-export const stableCatalog = query({
+export const stableCatalog = staffQuery({
+  capability: 'checkout',
 	args: {},
 	handler: async (ctx) => {
-		await requireStaff(ctx, 'checkout');
 		return catalogItems(ctx);
 	}
 });
 
-export const recentCatalogRanking = query({
+export const recentCatalogRanking = staffQuery({
+  capability: 'checkout',
 	args: {},
 	handler: async (ctx) => {
-		await requireStaff(ctx, 'checkout');
 		return catalogRanking(ctx);
 	}
 });
 
 /** Compatibility endpoint; both subscription paths share the same extraction and ranking. */
-export const catalog = query({
+export const catalog = staffQuery({
+  capability: 'checkout',
 	args: {},
 	handler: async (ctx) => {
-		await requireStaff(ctx, 'checkout');
 		const [items, frequent] = await Promise.all([catalogItems(ctx), catalogRanking(ctx)]);
 		return { ...items, frequent };
 	}
 });
 
-export const getOrder = query({
+export const getOrder = staffQuery({
+  capability: 'checkout',
 	// Deep links are untrusted strings. Normalize after auth so a bad link is recoverable,
 	// rather than failing argument validation before checkout can render its recovery controls.
 	args: { orderId: v.string() },
 	handler: async (ctx, args) => {
-		const actor = await requireStaff(ctx, 'checkout');
+		const actor = ctx.staff;
 		const orderId = ctx.db.normalizeId('orders', args.orderId);
 		if (!orderId) return null;
 		const order = await ctx.db.get(orderId);
@@ -724,10 +724,9 @@ function discardedField(order: Order): { discarded?: DiscardedInfo | null } {
  * Orders with items, newest change first, for the Orders list: unpaid, paid, voided or discarded.
  * Unpaid never includes discarded orders; `discarded` lists them newest discard first.
  */
-export const listOrders = query({
+export const listOrders = adminQuery({
 	args: { filter: v.union(v.literal('unpaid'), v.literal('paid'), v.literal('void'), v.literal('discarded')), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const numItems = Math.min(Math.max(args.paginationOpts.numItems, 1), ORDERS_PAGE_MAX);
 		const page = await ctx.db
 			.query('orders')
@@ -768,10 +767,11 @@ export const listOrders = query({
 });
 
 /** The order with this number, for "go to order #". */
-export const findOrderByNumber = query({
+export const findOrderByNumber = staffQuery({
+  capability: 'checkout',
 	args: { orderNumber: v.number() },
 	handler: async (ctx, args) => {
-		const actor = await requireStaff(ctx, 'checkout');
+		const actor = ctx.staff;
 		if (!Number.isSafeInteger(args.orderNumber) || args.orderNumber < 1) return null;
 		const order = await ctx.db.query('orders').withIndex('by_orderNumber', (q) => q.eq('orderNumber', args.orderNumber)).first();
 		return order && canReadCheckoutOrder(actor, order) ? order._id : null;
@@ -782,10 +782,9 @@ export const findOrderByNumber = query({
  * A booking's or appointment's orders for its detail screen: where checkout continues (the open
  * order, if any), recent orders and what is owed on the source itself.
  */
-export const ordersForBooking = query({
+export const ordersForBooking = adminQuery({
 	args: sourceArgs,
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const source = oneSource(args);
 		let active = await activeOrderFor(ctx, source);
 		let owed = 0;
@@ -906,10 +905,10 @@ async function contactBookings(ctx: ReadCtx, contacts: Awaited<ReturnType<typeof
 }
 
 /** Whether this contact lookup reached its result limit/exhausted its bounded scans. */
-export const attachLookupStatus = query({
+export const attachLookupStatus = staffQuery({
+  capability: 'checkout',
 	args: { orderId: v.optional(v.id('orders')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		const bookings = await contactBookings(ctx, await attachContacts(ctx, args));
 		return { complete: bookings.complete, ...(!bookings.complete ? { bookingsIncomplete: true } : {}) };
 	}
@@ -921,10 +920,10 @@ export const attachLookupStatus = query({
  * and anything matching `query` (booking or appointment reference, phone digits in any
  * formatting, email in any case, or guest name). Nothing is added automatically.
  */
-export const listAttachable = query({
+export const listAttachable = staffQuery({
+  capability: 'checkout',
 	args: { orderId: v.optional(v.id('orders')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		const { bookings, appointments } = await findSources(ctx, args);
 		const onOrder = async (source: OrderSource) => {
 			const other = await openOrderCharging(ctx, source);
@@ -1070,19 +1069,21 @@ async function openSourceOrder(ctx: MutationCtx, source: OrderSource, actor: Sta
 	return { orderId: order._id };
 }
 
-export const openOrderFor = mutation({
+export const openOrderFor = staffMutation({
+  capability: 'checkout',
 	args: sourceArgs,
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		return await openSourceOrder(ctx, oneSource(args), admin);
 	}
 });
 
 /** URL source IDs are untrusted; preserve the typed action above for internal UI callers. */
-export const openOrderForLink = mutation({
+export const openOrderForLink = staffMutation({
+  capability: 'checkout',
 	args: { bookingId: v.optional(v.string()), appointmentId: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		if (Boolean(args.bookingId) === Boolean(args.appointmentId)) throw new ConvexError('Choose one booking or appointment');
 		const bookingId = args.bookingId ? ctx.db.normalizeId('bookings', args.bookingId) : null;
 		const appointmentId = args.appointmentId ? ctx.db.normalizeId('appointments', args.appointmentId) : null;
@@ -1094,9 +1095,10 @@ export const openOrderForLink = mutation({
 });
 
 const addItemArgs = v.object({ orderId: v.optional(v.id('orders')), item: itemValidator });
-export const addItem = mutation({
+export const addItem = staffMutation({
+  capability: 'checkout',
  args: addItemArgs.fields,
- handler: async (ctx, args) => executeAddItem(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeAddItem(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addItemArgs>, admin: StaffActor) {
@@ -1145,7 +1147,8 @@ export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addIte
 
 /** Adds a stay or appointment to the order (a new order if none is given). */
 const attachArgs = v.object({ orderId: v.optional(v.id('orders')), ...sourceArgs });
-export const attach = mutation({ args: attachArgs.fields, handler: async (ctx, args) => executeAttach(ctx, args, await requireStaff(ctx, 'checkout')) });
+export const attach = staffMutation({
+  capability: 'checkout', args: attachArgs.fields, handler: async (ctx, args) => executeAttach(ctx, args, ctx.staff) });
 export async function executeAttach(ctx: MutationCtx, args: Infer<typeof attachArgs>, admin: StaffActor) {
  const source = oneSource(args);
  const order = await editableOrder(ctx, args.orderId, admin.email);
@@ -1163,9 +1166,10 @@ const updateLineArgs = v.object({
 		qtyChange: v.optional(v.number()),
 		discount: v.optional(v.union(discountValidator, v.null()))
 	});
-export const updateLine = mutation({
+export const updateLine = staffMutation({
+  capability: 'checkout',
  args: updateLineArgs.fields,
- handler: async (ctx, args) => executeUpdateLine(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeUpdateLine(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof updateLineArgs>, admin: StaffActor) {
@@ -1212,9 +1216,10 @@ export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof upd
 
 /** One-off price for a row. Setting a price needs a note; every change is kept in orderAudit. */
 const overrideLinePriceArgs = v.object({ lineId: v.id('orderLines'), price: v.union(v.number(), v.null()), note: v.string() });
-export const overrideLinePrice = mutation({
+export const overrideLinePrice = staffMutation({
+  capability: 'checkout',
  args: overrideLinePriceArgs.fields,
- handler: async (ctx, args) => executeOverrideLinePrice(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeOverrideLinePrice(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typeof overrideLinePriceArgs>, admin: StaffActor) {
@@ -1241,10 +1246,11 @@ export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typ
 }
 
 
-export const removeLine = mutation({
+export const removeLine = staffMutation({
+  capability: 'checkout',
 	args: { lineId: v.id('orderLines') },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
 		await ctx.db.delete(line._id);
 		await refreshOrder(ctx, order._id);
@@ -1267,10 +1273,11 @@ export const removeLine = mutation({
  * When it can't apply, throws ConvexError { code: 'coupon_unavailable', message, problem:
  * PosCouponProblem } and writes nothing. Applying the code already on the order re-checks it.
  */
-export const applyOrderCoupon = mutation({
+export const applyOrderCoupon = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.id('orders'), code: v.optional(v.string()), slug: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ code: string; discount: number; revision: number }> => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if ((args.code !== undefined) === (args.slug !== undefined)) throw new ConvexError('Choose one coupon code or link');
 		let coupon: Doc<'coupons'> | null;
@@ -1299,10 +1306,11 @@ export const applyOrderCoupon = mutation({
 });
 
 /** Removes the order's coupon and every row's share of it. A no-op when the order has none. */
-export const removeOrderCoupon = mutation({
+export const removeOrderCoupon = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args): Promise<{ revision: number }> => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.promotion) return { revision: order.revision };
 		await ctx.db.patch(order._id, { promotion: undefined });
@@ -1318,10 +1326,11 @@ export const removeOrderCoupon = mutation({
  * problem may be gone (a paused coupon resumed, a limit raised). The split and the revision follow,
  * so staff review any new total before paying. Use applyOrderCoupon to adopt the current version.
  */
-export const recheckOrderCoupon = mutation({
+export const recheckOrderCoupon = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args): Promise<{ revision: number; discount: number; problem: PosCouponProblem | null }> => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.promotion) throw new ConvexError('This order has no coupon');
 		await refreshOrder(ctx, order._id);
@@ -1337,9 +1346,10 @@ export const recheckOrderCoupon = mutation({
  * row has to be reviewed again.
  */
 const updateSourceLineArgs = v.object({ lineId: v.id('orderLines') });
-export const updateSourceLine = mutation({
+export const updateSourceLine = staffMutation({
+  capability: 'checkout',
  args: updateSourceLineArgs.fields,
- handler: async (ctx, args) => executeUpdateSourceLine(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeUpdateSourceLine(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<typeof updateSourceLineArgs>, admin: StaffActor) {
@@ -1382,10 +1392,11 @@ export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<type
  * it is: the payer and the guest can be different people. Bumps the revision, so a payment
  * reviewed before the change must be reviewed again.
  */
-export const linkCustomer = mutation({
+export const linkCustomer = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.optional(v.id('orders')), customerId: v.id('customers') },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		// Refuses missing, archived and merged-away profiles (customers.ts contract); never redirects a merged id.
 		const customer = assertCustomerCanLink(await ctx.db.get(args.customerId));
 		const order = await editableOrder(ctx, args.orderId, admin.email);
@@ -1397,10 +1408,11 @@ export const linkCustomer = mutation({
 	}
 });
 
-export const unlinkCustomer = mutation({
+export const unlinkCustomer = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.customerId) return { orderId: order._id };
 		const now = Date.now();
@@ -1415,10 +1427,11 @@ export const unlinkCustomer = mutation({
  * Unpaid orders. Nothing about the order changes (not its revision), so a payment open on
  * another device is not disturbed.
  */
-export const saveOrder = mutation({
+export const saveOrder = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		if (!order.hasItems) throw new ConvexError('Add an item before saving the order');
 		await ctx.db.patch(order._id, { updatedAt: Date.now() });
@@ -1426,10 +1439,11 @@ export const saveOrder = mutation({
 });
 
 /** Removes every row. The number, explicit source ownership, customer and audit trail stay. */
-export const clearOrder = mutation({
+export const clearOrder = staffMutation({
+  capability: 'checkout',
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const order = await editableOrder(ctx, args.orderId, admin.email);
 		const lines = await orderLines(ctx, order._id);
 		for (const line of lines) await ctx.db.delete(line._id);
@@ -1455,7 +1469,8 @@ export const clearOrder = mutation({
  * (customers.ts assertCustomerReviewed); it refuses a payment reviewed before a profile correction
  * or merge, and becomes required when customers.ts turns on CUSTOMER_POS_INTEGRATION_ENABLED.
  */
-export const settleOrder = mutation({
+export const settleOrder = staffMutation({
+  capability: 'checkout',
 	args: {
 		orderId: v.id('orders'), idempotencyKey: v.string(), expectedDue: v.number(), expectedRevision: v.number(), tenders: v.array(tenderValidator),
 		effectiveAt: v.optional(v.number()),
@@ -1463,7 +1478,7 @@ export const settleOrder = mutation({
 		expectedCustomerRevision: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const key = args.idempotencyKey.trim();
 		if (key.length < 8 || key.length > 100) throw new ConvexError('Invalid payment attempt');
 		const order = await ctx.db.get(args.orderId);
@@ -1551,9 +1566,10 @@ export const settleOrder = mutation({
 });
 
 /** Record a walk-in line return in satang; money is handed back outside the app. */
-export const refundLine = mutation({
+export const refundLine = staffMutation({
+  capability: 'checkout',
  args: { orderId: v.id('orders'), reason: v.string(), ...orderRefundFields },
- handler: async (ctx, args) => executeOrderRefund(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeOrderRefund(ctx, args, ctx.staff),
 });
 
 /**
@@ -1563,9 +1579,10 @@ export const refundLine = mutation({
  * hands, use voidUnreceivedOrder instead.
  */
 const voidOrderArgs = v.object({ orderId: v.id('orders'), reason: v.string() });
-export const voidOrder = mutation({
+export const voidOrder = staffMutation({
+  capability: 'checkout',
  args: voidOrderArgs.fields,
- handler: async (ctx, args) => executeVoidOrder(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeVoidOrder(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof voidOrderArgs>, admin: StaffActor) {
@@ -1625,9 +1642,10 @@ const amendOrderPaymentArgs = v.object({
 		/** The corrected payer, with the profile revision staff reviewed; null = no named customer. */
 		customer: v.optional(v.object({ customerId: v.union(v.null(), v.id('customers')), expectedCustomerRevision: v.optional(v.number()) }))
 	});
-export const amendOrderPayment = mutation({
+export const amendOrderPayment = staffMutation({
+  capability: 'checkout',
  args: amendOrderPaymentArgs.fields,
- handler: async (ctx, args) => executeAmendOrderPayment(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeAmendOrderPayment(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typeof amendOrderPaymentArgs>, admin: StaffActor) {
@@ -1741,9 +1759,10 @@ const MISSING_PAYMENT_EVIDENCE = (name: string) =>
  * since. The receipt number is never reused.
  */
 const voidUnreceivedOrderArgs = v.object(correctionArgs);
-export const voidUnreceivedOrder = mutation({
+export const voidUnreceivedOrder = staffMutation({
+  capability: 'checkout',
  args: voidUnreceivedOrderArgs.fields,
- handler: async (ctx, args) => executeVoidUnreceivedOrder(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeVoidUnreceivedOrder(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<typeof voidUnreceivedOrderArgs>, admin: StaffActor) {
@@ -1824,10 +1843,11 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 
 
 /** An order's history of ordinary edits (rows added, changed, removed, cleared), newest first. */
-export const orderHistory = query({
+export const orderHistory = staffQuery({
+  capability: 'checkout',
 	args: { orderId: v.id('orders'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		const actor = await requireStaff(ctx, 'checkout');
+		const actor = ctx.staff;
 		if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, await ctx.db.get(args.orderId))) throw new ConvexError('Order not found');
 		const { numItems } = args.paginationOpts;
 		if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new ConvexError('Page size must be 1–50');
@@ -1923,10 +1943,11 @@ const discardedInfo = (order: Order) => ({ at: order.discardedAt ?? order.update
  * response return `replayed: true`. Paid and void orders refuse (void a paid order instead). An
  * empty order refuses: it is not listed, so there is nothing to discard.
  */
-export const discardOrder = mutation({
+export const discardOrder = staffMutation({
+  capability: 'checkout',
 	args: { ...lifecycleArgs, reason: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new ConvexError('Order not found');
@@ -1961,10 +1982,10 @@ export const discardOrder = mutation({
 });
 
 /** What restoring a discarded order would meet (see restoreConflicts). Read-only. */
-export const restoreCheck = query({
+export const restoreCheck = staffQuery({
+  capability: 'checkout',
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
-		await requireStaff(ctx, 'checkout');
 		const order = await ctx.db.get(args.orderId);
 		if (!order) return null;
 		if (order.status !== 'discarded') return { discarded: null, revision: order.revision, conflicts: [], blocking: 0, rowsLeft: 0 };
@@ -1990,10 +2011,11 @@ export const restoreCheck = query({
  * `removeConflictingRows` is true, which restores without those rows (each removal is logged with
  * the row). It refuses when no row would be left. Returns the rows taken off and the warnings.
  */
-export const restoreOrder = mutation({
+export const restoreOrder = staffMutation({
+  capability: 'checkout',
 	args: { ...lifecycleArgs, removeConflictingRows: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		const admin = await requireStaff(ctx, 'checkout');
+		const admin = ctx.staff;
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
 		if (!order) throw new ConvexError('Order not found');
@@ -2048,7 +2070,7 @@ export const restoreOrder = mutation({
  * appointment's status was corrected, it was paid, or another fee was charged meanwhile.
  * Repeating the same fee on the same order returns that row (`replayed: true`).
  */
-export const addAppointmentFee = mutation({
+export const addAppointmentFee = adminMutation({
 	args: {
 		expectedRevision: v.optional(v.number()),
 		idempotencyKey: v.optional(v.string()),
@@ -2059,7 +2081,7 @@ export const addAppointmentFee = mutation({
 		reason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		if ((args.expectedRevision === undefined) !== (args.idempotencyKey === undefined)) throw new ConvexError('Review the appointment and retry with its revision and attempt key.');
 		const key = args.idempotencyKey === undefined ? undefined : attemptKey(args.idempotencyKey);
 		const fingerprint = JSON.stringify([args.orderId, args.appointmentId, args.kind, args.amount, args.reason]);
@@ -2116,10 +2138,9 @@ export const addAppointmentFee = mutation({
 });
 
 /** Fee rows for an appointment (any order state), newest first, for its detail sheet. */
-export const appointmentFees = query({
+export const appointmentFees = adminQuery({
 	args: { appointmentId: v.id('appointments') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const rows = await ctx.db.query('orderLines').withIndex('by_feeAppointmentId', (q) => q.eq('feeAppointmentId', args.appointmentId)).order('desc').take(20);
 		const fees = [];
 		for (const line of rows) {
@@ -2186,10 +2207,11 @@ async function bookingLinkProblem(ctx: ReadCtx, order: Order, line: Line, bookin
  * Add booking finds them (the order's customer, its own booking, `query`), each with the reason it
  * can't take this row, or null. Read-only; linkPaidLine checks everything again.
  */
-export const linkCandidates = query({
+export const linkCandidates = staffQuery({
+  capability: 'checkout',
 	args: { orderId: v.id('orders'), lineId: v.id('orderLines'), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const actor = await requireStaff(ctx, 'checkout');
+		const actor = ctx.staff;
 		await requireCashierAction(ctx, actor, 'paymentFix');
 		const order = await ctx.db.get(args.orderId);
 		if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
@@ -2251,9 +2273,10 @@ const linkPaidLineArgs = v.object({
 		expectedTargetRevision: v.number(),
 		notifyGuest: v.optional(v.boolean())
 	});
-export const linkPaidLine = mutation({
+export const linkPaidLine = staffMutation({
+  capability: 'checkout',
  args: linkPaidLineArgs.fields,
- handler: async (ctx, args) => executeLinkPaidLine(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeLinkPaidLine(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof linkPaidLineArgs>, admin: StaffActor) {
@@ -2369,9 +2392,10 @@ async function linkReversal(ctx: MutationCtx, link: Doc<'orderLineLinks'>, name:
  * row can be linked again. Refused, writing nothing, if the reversal can't be proved.
  */
 const unlinkPaidLineArgs = v.object({ ...correctionArgs, linkId: v.id('orderLineLinks') });
-export const unlinkPaidLine = mutation({
+export const unlinkPaidLine = staffMutation({
+  capability: 'checkout',
  args: unlinkPaidLineArgs.fields,
- handler: async (ctx, args) => executeUnlinkPaidLine(ctx, args, await requireStaff(ctx, 'checkout')),
+ handler: async (ctx, args) => executeUnlinkPaidLine(ctx, args, ctx.staff),
 });
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeUnlinkPaidLine(ctx: MutationCtx, args: Infer<typeof unlinkPaidLineArgs>, admin: StaffActor) {
@@ -2406,8 +2430,9 @@ export async function executeUnlinkPaidLine(ctx: MutationCtx, args: Infer<typeof
 
 
 /** Allocate an empty order when the first item needs approval. No charge is created. */
-export const createOrder = mutation({ args: {}, handler: async ctx => {
- const actor = await requireStaff(ctx, 'checkout');
+export const createOrder = staffMutation({
+  capability: 'checkout', args: {}, handler: async ctx => {
+ const actor = ctx.staff;
  const order = await insertOrder(ctx, actor.email);
  return { orderId: order._id };
 } });

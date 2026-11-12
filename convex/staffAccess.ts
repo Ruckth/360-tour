@@ -1,21 +1,22 @@
 import { ConvexError, v } from 'convex/values';
-import { internalQuery, mutation, query } from './auth/model';
-import { adminEmails, requireOwner } from './lib/adminAuth';
+import { internalQuery, publicQuery, authenticatedMutation, staffQuery, staffMutation } from './auth/model';
+import { adminEmails } from './lib/adminAuth';
 import { cashierRules, staffAccess, staffInvitationExpiry } from './lib/staffAccess';
 import { cashierRulesFields, STAFF_INVITATION_TTL_MS, staffRole } from './lib/staffTypes';
 import { appendRecordHistory } from './lib/recordHistory';
 import { marketingAccess, marketingInvitationExpiry } from './lib/marketingAccess';
 
 export const currentInternal = internalQuery({ args: {}, handler: staffAccess });
-export const myAccess = query({ args: {}, handler: async ctx => {
+export const myAccess = publicQuery({
+  reason: "Sign-in bootstrap returns caller capabilities or anonymous access.", args: {}, handler: async ctx => {
   const [access, rules, marketing] = await Promise.all([staffAccess(ctx), cashierRules(ctx), marketingAccess(ctx)]);
   const { email, role, pendingInvitation } = access;
   const publicAccess = { email, role, pendingInvitation };
   return { ...publicAccess, capabilities: { ...access.capabilities, marketing: marketing.capabilities.view }, cashierRules: rules, marketingRole: marketing.role };
 } });
 
-export const claimInvite = mutation({ args: {}, handler: async ctx => {
-  const identity = await ctx.auth.getUserIdentity();
+export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx => {
+  const identity = ctx.identity;
   const email = identity?.email?.trim().toLowerCase();
   if (!identity || !email) throw new Error('Not authenticated');
   if (adminEmails().has(email)) return null;
@@ -30,8 +31,8 @@ export const claimInvite = mutation({ args: {}, handler: async ctx => {
 } });
 
 /** Combined by email, with independent staff and marketing grants (never copied/merged). */
-export const listPeople = query({ args: {}, handler: async ctx => {
-  await requireOwner(ctx);
+export const listPeople = staffQuery({
+  capability: 'manageTeam', args: {}, handler: async ctx => {
   const staff = await ctx.db.query('staffGrants').take(501);
   const marketing = await ctx.db.query('marketingGrants').take(501);
   if (staff.length > 500 || marketing.length > 500) throw new ConvexError('Team is too large for this view. Contact support.');
@@ -53,8 +54,9 @@ export const listPeople = query({ args: {}, handler: async ctx => {
 } });
 
 /** Invite, change a claimed role, or revoke. Updating an unclaimed invite never renews its deadline. */
-export const setGrant = mutation({ args: { email: v.string(), role: v.union(staffRole, v.null()) }, handler: async (ctx, args) => {
-  const actor = await requireOwner(ctx);
+export const setGrant = staffMutation({
+  capability: 'manageTeam', args: { email: v.string(), role: v.union(staffRole, v.null()) }, handler: async (ctx, args) => {
+  const actor = ctx.staff;
   const email = args.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new ConvexError('Enter a valid email');
   if (adminEmails().has(email)) throw new ConvexError('Owners are managed through ADMIN_EMAILS and cannot be downgraded.');
@@ -75,8 +77,9 @@ export const setGrant = mutation({ args: { email: v.string(), role: v.union(staf
 } });
 
 /** Resending renews the existing invitation; expiring prevents claim. Neither sends an email. */
-export const updateInvitation = mutation({ args: { grantId: v.id('staffGrants'), action: v.union(v.literal('resend'), v.literal('expire')) }, handler: async (ctx, args) => {
-  const actor = await requireOwner(ctx);
+export const updateInvitation = staffMutation({
+  capability: 'manageTeam', args: { grantId: v.id('staffGrants'), action: v.union(v.literal('resend'), v.literal('expire')) }, handler: async (ctx, args) => {
+  const actor = ctx.staff;
   const grant = await ctx.db.get(args.grantId);
   if (!grant || grant.tokenIdentifier) throw new ConvexError('No unclaimed invitation');
   const expiresAt = Date.now() + (args.action === 'resend' ? STAFF_INVITATION_TTL_MS : 0);
@@ -85,9 +88,11 @@ export const updateInvitation = mutation({ args: { grantId: v.id('staffGrants'),
   return { expiresAt };
 } });
 
-export const getCashierRules = query({ args: {}, handler: async ctx => { await requireOwner(ctx); return await cashierRules(ctx); } });
-export const updateCashierRules = mutation({ args: { expectedRevision: v.number(), ...cashierRulesFields }, handler: async (ctx, args) => {
-  const actor = await requireOwner(ctx);
+export const getCashierRules = staffQuery({
+  capability: 'manageTeam', args: {}, handler: async ctx => {  return await cashierRules(ctx); } });
+export const updateCashierRules = staffMutation({
+  capability: 'manageTeam', args: { expectedRevision: v.number(), ...cashierRulesFields }, handler: async (ctx, args) => {
+  const actor = ctx.staff;
   const before = await cashierRules(ctx);
   if (args.expectedRevision !== before.revision) throw new ConvexError({ code: 'STALE_RULES', message: 'Cashier rules changed. Reload and try again.' });
   const limit = args.discountLimitPercent;

@@ -7,7 +7,7 @@ import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from '
 import { bookingsByPhone } from './lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from './lib/chatWriteGuard';
 import { paginationOptsValidator } from 'convex/server';
-import { internalMutation, internalQuery, mutation, query } from './auth/model';
+import { internalMutation, internalQuery, publicQuery, publicMutation, adminQuery } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { v } from 'convex/values';
@@ -64,7 +64,8 @@ function toPublicBooking(booking: Doc<'bookings'>) {
 	};
 }
 
-export const quoteStay = query({
+export const quoteStay = publicQuery({
+  reason: "Anonymous booking quote from the public property catalogue.",
 	args: {
 		propertySlug: v.string(),
 		checkIn: v.string(),
@@ -99,7 +100,8 @@ function assertNotCancelled(booking: Doc<'bookings'>): void {
 	}
 }
 
-export const create = mutation({
+export const create = publicMutation({
+  reason: "Anonymous booking form; validated contact details and booking rate limits.",
 	args: {
 		propertySlug: v.string(),
 		guestName: v.string(),
@@ -311,7 +313,8 @@ export const markPaidFromTrustedWebhook = internalMutation({
 		await markBookingPaid(ctx, args.bookingId, args.paymentMethod ?? 'trusted_webhook')
 });
 
-export const getById = query({
+export const getById = publicQuery({
+  reason: "Booking capability token or operations identity; handler checks the specific booking.",
 	args: { id: v.id('bookings'), accessToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const booking = await ctx.db.get(args.id);
@@ -325,13 +328,12 @@ export const getById = query({
 	}
 });
 
-export const listByProperty = query({
+export const listByProperty = adminQuery({
 	args: {
 		propertyId: v.id('properties'),
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		return await ctx.db
 			.query('bookings')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
@@ -605,7 +607,8 @@ async function loadConfirmProposal(ctx: QueryCtx | MutationCtx, token: string) {
 	return { session, pending, booking };
 }
 
-export const getConfirmProposal = query({
+export const getConfirmProposal = publicQuery({
+  reason: "Signed, expiring proposal link; handler verifies signature and live proposal.",
 	args: { token: v.string() },
 	handler: async (ctx, args) => {
 		const result = await loadConfirmProposal(ctx, args.token);
@@ -634,7 +637,8 @@ export const getConfirmProposal = query({
 	}
 });
 
-export const confirmProposal = mutation({
+export const confirmProposal = publicMutation({
+  reason: "Signed, expiring proposal link; handler revalidates quote and proposal before confirmation.",
 	args: {
 		token: v.string(),
 		/** Release 3a: this page's tab and consent; `{}` means none. Overrides the chat's last capture. */

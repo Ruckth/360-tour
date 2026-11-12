@@ -1,7 +1,6 @@
-import { mutation, query } from './auth/model';
+import { publicQuery, adminQuery, adminMutation } from './auth/model';
 import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
-import { requireAdmin } from './lib/adminAuth';
 import { configurationWriter } from './lib/configurationHistory';
 import { appendRecordHistory } from './lib/recordHistory';
 import { allowedImageUrl, IMAGE_HOSTS } from './lib/imageUrls';
@@ -37,7 +36,8 @@ function toPublic(property: Doc<'properties'> | null) {
 	};
 }
 
-export const list = query({
+export const list = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {},
 	handler: async (ctx): Promise<PublicProperty[]> => {
 		const properties = await ctx.db
@@ -48,7 +48,8 @@ export const list = query({
 	}
 });
 
-export const getBySlug = query({
+export const getBySlug = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
 		return toPublic(
@@ -60,12 +61,14 @@ export const getBySlug = query({
 	}
 });
 
-export const getById = query({
+export const getById = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { id: v.id('properties') },
 	handler: async (ctx, args) => toPublic(await ctx.db.get(args.id))
 });
 
-export const getRooms = query({
+export const getRooms = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
@@ -77,7 +80,8 @@ export const getRooms = query({
 });
 
 /** Public 360 rooms of an active villa, in tour order (`tourRoomIds`, then any others by creation). */
-export const getTourRooms = query({
+export const getTourRooms = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
 		const property = await ctx.db.query('properties')
@@ -97,7 +101,8 @@ export const getTourRooms = query({
 });
 
 /** Public: live direct pricing plus owner-entered OTA rates for an active villa. */
-export const getOtaComparison = query({
+export const getOtaComparison = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
 		const property = await ctx.db
@@ -118,10 +123,9 @@ export const getOtaComparison = query({
 	}
 });
 
-export const listOtaRates = query({
+export const listOtaRates = adminQuery({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		return await ctx.db
 			.query('otaRates')
 			.withIndex('by_property_platform', (q) => q.eq('propertyId', args.propertyId))
@@ -129,10 +133,10 @@ export const listOtaRates = query({
 	}
 });
 
-export const upsertOtaRate = mutation({
+export const upsertOtaRate = adminMutation({
 	args: { propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
 		if (!Number.isSafeInteger(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
 			throw new Error('Nightly rate must be a positive amount');
@@ -157,10 +161,10 @@ export const upsertOtaRate = mutation({
 	}
 });
 
-export const removeOtaRate = mutation({
+export const removeOtaRate = adminMutation({
 	args: { rateId: v.id('otaRates') },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const rate = await ctx.db.get(args.rateId);
 		if (rate) {
 		 await appendRecordHistory(ctx, { entityType: 'property', entityId: rate.propertyId, actor: admin.email, kind: 'ota_rate_removed', before: { platform: rate.platform, nightlyRate: rate.nightlyRate, url: rate.url ?? null }, after: null });
@@ -182,7 +186,8 @@ function publicHttpsUrl(value: string): string {
 	return url.toString();
 }
 
-export const getSocialProof = query({
+export const getSocialProof = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return null;
@@ -193,7 +198,8 @@ export const getSocialProof = query({
 	}
 });
 
-export const getReviews = query({
+export const getReviews = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
@@ -204,7 +210,8 @@ export const getReviews = query({
 	}
 });
 
-export const getTourSnippets = query({
+export const getTourSnippets = publicQuery({
+  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
@@ -252,18 +259,16 @@ function contentChanged(existing: Doc<'properties'>, changes: Partial<Doc<'prope
 	return textChanged || (changes.amenities !== undefined && changes.amenities.join('\n') !== existing.amenities.join('\n'));
 }
 
-export const adminList = query({
+export const adminList = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
 		return await ctx.db.query('properties').take(100);
 	}
 });
 
-export const adminGet = query({
+export const adminGet = adminQuery({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const property = await ctx.db.get(args.propertyId);
 		if (!property) return null;
 		const rooms = await ctx.db.query('tourScenes').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).take(50);
@@ -271,7 +276,7 @@ export const adminGet = query({
 	}
 });
 
-export const update = mutation({
+export const update = adminMutation({
 	args: {
 		propertyId: v.id('properties'),
 		name: v.optional(v.string()),
@@ -289,7 +294,7 @@ export const update = mutation({
 		status: v.optional(propertyStatus)
 	},
 	handler: async (ctx, { propertyId, ...args }) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const existing = await ctx.db.get(propertyId);
 		if (!existing) throw new Error('Property not found');
@@ -317,10 +322,10 @@ export const update = mutation({
 	}
 });
 
-export const updateRoom = mutation({
+export const updateRoom = adminMutation({
 	args: { roomId: v.id('tourScenes'), name: v.optional(v.string()), imagePath: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		if (!(await ctx.db.get(args.roomId))) throw new Error('Room not found');
 		await history.patchRoom(args.roomId, {

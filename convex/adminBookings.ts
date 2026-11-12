@@ -1,4 +1,4 @@
-import { mutation, query } from './auth/model';
+import { adminQuery, adminMutation } from './auth/model';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { paginationOptsValidator } from 'convex/server';
@@ -6,7 +6,6 @@ import { v } from 'convex/values';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 import { internal } from './_generated/api';
 import { markBookingPaid, queueBookingEmails, recordStayPayment } from './bookings';
-import { requireAdmin } from './lib/adminAuth';
 import {
 	blockBookingDates,
 	releaseBookingDates,
@@ -105,10 +104,9 @@ const MAX_CALENDAR_VILLAS = 100;
  * than shown, a villa had more rows than one read can check, or the budget ran out; the calendar
  * then says so instead of passing a partial view off as the whole picture.
  */
-export const listForAdmin = query({
+export const listForAdmin = adminQuery({
 	args: { from: v.string(), to: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		assertValidIsoDate(args.from, 'From date');
 		assertValidIsoDate(args.to, 'To date');
 		if (args.to <= args.from) throw new Error('To date must be after from date');
@@ -177,10 +175,9 @@ export const listForAdmin = query({
 });
 
 /** Full booking detail for the admin sheet, including the private pay-link token while unpaid. */
-export const getForAdmin = query({
+export const getForAdmin = adminQuery({
 	args: { bookingId: v.id('bookings') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const booking = await ctx.db.get(args.bookingId);
 		if (!booking) return null;
 		const property = await ctx.db.get(booking.propertyId);
@@ -223,10 +220,9 @@ export const getForAdmin = query({
  * matches come from indexes, so old bookings are found too; names also use a word-prefix search
  * index. Substring matches (part of a name, phone or email) cover only the newest bookings.
  */
-export const searchBookings = query({
+export const searchBookings = adminQuery({
 	args: { query: v.string() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const raw = args.query.trim();
 		const text = raw.toLowerCase();
 		if (text.length < 2) return [];
@@ -267,10 +263,9 @@ type GuestSuggestion = { guestName: string; guestPhone: string; guestEmail?: str
  * Previous guests whose phone or email matches what the host is typing in the new-booking form.
  * Exact phone and email matches come from indexes (any age); partial ones from the most recent bookings.
  */
-export const findGuests = query({
+export const findGuests = adminQuery({
 	args: { phone: v.optional(v.string()), email: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<GuestSuggestion[]> => {
-		await requireAdmin(ctx);
 		const phone = (args.phone ?? '').trim();
 		const digits = phone.replace(/\D/g, '');
 		const email = (args.email ?? '').trim().toLowerCase();
@@ -360,7 +355,7 @@ async function confirmStay(ctx: MutationCtx, booking: Doc<'bookings'>, actor: st
 }
 
 
-export const updateBooking = mutation({
+export const updateBooking = adminMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		action: v.union(v.literal('confirm'), v.literal('cancel'), v.literal('markPaid')),
@@ -369,7 +364,7 @@ export const updateBooking = mutation({
 		reason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision, false);
 
@@ -398,7 +393,7 @@ export const updateBooking = mutation({
  * date it was received (any past date) and an optional note. Nothing is charged. Retrying with the
  * same `idempotencyKey` returns the first result.
  */
-export const recordPayment = mutation({
+export const recordPayment = adminMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		expectedRevision: v.number(),
@@ -411,7 +406,7 @@ export const recordPayment = mutation({
 		notifyGuest: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const key = attemptKey(args.idempotencyKey);
 		const replay = await ctx.db.query('bookingPayments').withIndex('by_idempotencyKey', (q) => q.eq('idempotencyKey', key)).first();
 		if (replay) {
@@ -435,7 +430,7 @@ export const recordPayment = mutation({
  * Corrects how or when a hand-entered payment was received (wrong method, wrong date, note). The
  * amount is not changed here: cancel a mistaken entry instead. Order and online payments refuse.
  */
-export const amendPayment = mutation({
+export const amendPayment = adminMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		paymentId: v.id('bookingPayments'),
@@ -446,7 +441,7 @@ export const amendPayment = mutation({
 		reason: v.string()
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision);
 		const payment = await ctx.db.get(args.paymentId);
@@ -469,7 +464,7 @@ export const amendPayment = mutation({
 });
 
 
-export const cancelPayment = mutation({
+export const cancelPayment = adminMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		expectedRevision: v.number(),
@@ -477,7 +472,7 @@ export const cancelPayment = mutation({
 		reason: v.string()
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision);
 		assertNoLiveCheckout(booking);
@@ -508,10 +503,10 @@ export const cancelPayment = mutation({
  * a cancelled stay can refund any part of what it kept. Duplicates (same key), overrefunds, other
  * currencies and payments of other bookings are refused.
  */
-export const recordRefund = mutation({
+export const recordRefund = adminMutation({
 	args: { bookingId: v.id('bookings'), expectedRevision: v.number(), ...refundInput },
 	handler: async (ctx, { bookingId, expectedRevision, ...input }) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const replay = await refundReplay(ctx, bookingId, input, admin.email);
 		if (replay) return { refundId: replay._id, replayed: true };
 		const booking = await loadBooking(ctx, bookingId);
@@ -527,7 +522,7 @@ export const recordRefund = mutation({
  * same transaction; cancelling never implies a refund. `notifyGuest` defaults to no for stays that
  * started before today.
  */
-export const cancelStay = mutation({
+export const cancelStay = adminMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		expectedRevision: v.number(),
@@ -537,7 +532,7 @@ export const cancelStay = mutation({
 		refund: v.optional(v.object(refundInput))
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const refund = args.refund ? { ...args.refund, replayContext: JSON.stringify(['cancel', args.reason?.trim() ?? null, args.effectiveAt ?? null, args.notifyGuest ?? null]) } : undefined;
 		if (refund) {
 			const replay = await refundReplay(ctx, args.bookingId, refund, admin.email);
@@ -559,7 +554,7 @@ export const cancelStay = mutation({
  * confirmed), and a live online checkout or a conflicting stay refuses. An archived villa needs a
  * reason and a stay that started in the past.
  */
-export const reopenBooking = mutation({
+export const reopenBooking = adminMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		expectedRevision: v.number(),
@@ -569,7 +564,7 @@ export const reopenBooking = mutation({
 		archivedVillaReason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision);
 		if (booking.status !== 'cancelled') throw new Error('Only cancelled, expired or refunded bookings can be reopened.');
@@ -607,10 +602,9 @@ export const reopenBooking = mutation({
 	}
 });
 
-export const resendBookingEmails = mutation({
+export const resendBookingEmails = adminMutation({
 	args: { bookingId: v.id('bookings') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const booking = await ctx.db.get(args.bookingId);
 		if (!booking || booking.status !== 'confirmed') throw new Error('Only confirmed bookings can be emailed');
 		await queueBookingEmails(ctx, booking, true);
@@ -641,7 +635,7 @@ function cleanPriceOverride(input: { total: number; reason: string }) {
  * `notifyGuest` defaults to yes for stays from today on and no for past stays; a booking entered
  * without notification also gets no automatic pre-arrival or review emails.
  */
-export const createBooking = mutation({
+export const createBooking = adminMutation({
 	args: {
 		idempotencyKey: v.optional(v.string()),
 		propertySlug: v.string(),
@@ -661,7 +655,7 @@ export const createBooking = mutation({
 		couponCode: v.optional(v.string())
 	},
 	handler: async (ctx, { idempotencyKey, confirmed, notifyGuest, archivedVillaReason, priceOverride, ...args }) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const key = idempotencyKey === undefined ? undefined : attemptKey(idempotencyKey);
 		const couponCode = normalizeCouponCode(args.couponCode ?? '');
 		const fingerprint = JSON.stringify([args.propertySlug, args.guestName, args.guestPhone, args.guestEmail, args.checkIn, args.checkOut, args.guests, confirmed, notifyGuest, archivedVillaReason, priceOverride?.total, priceOverride?.reason, ...(couponCode ? [couponCode] : [])]);
@@ -759,13 +753,13 @@ async function planBookingEditPricing(
 }
 
 /** Preview the same pricing editBooking applies, without reserving capacity or changing the ledger. */
-export const quoteBookingEdit = query({
+export const quoteBookingEdit = adminQuery({
 	args: {
 		bookingId: v.id('bookings'), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.number(),
 		clearPriceOverride: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingEditable(booking);
 		const property = await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', args.propertySlug)).first();
@@ -802,7 +796,7 @@ function assertReviewedPrice(expected: { total: number; currency: string }, save
  * so any difference shows as a balance due or a credit. The guest is emailed about stay, guest
  * count or price changes when `notifyGuest` resolves true (default: not for past stays).
  */
-export const editBooking = mutation({
+export const editBooking = adminMutation({
 	args: {
 		bookingId: v.id('bookings'),
 		propertyId: v.id('properties'),
@@ -820,7 +814,7 @@ export const editBooking = mutation({
 		archivedVillaReason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		// A price correction always names the revision it was reviewed against.
 		assertBookingRevision(booking, args.expectedRevision, args.priceOverride !== undefined);
@@ -942,10 +936,10 @@ async function deleteBookingRecord(ctx: MutationCtx, booking: Doc<'bookings'>, a
 }
 
 /** Removes a test or mistaken booking. Anything that involved money must be cancelled instead. */
-export const deleteBooking = mutation({
+export const deleteBooking = adminMutation({
 	args: { bookingId: v.id('bookings'), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision, false);
 		const blocker = deleteBlocker(booking, Date.now());
@@ -964,10 +958,9 @@ const MAX_BATCH_DELETE = 100;
  * Bookings the "Clean up" dialog offers to delete: deletable (unpaid pending or cancelled) and either
  * entered by hand in admin or created more than `olderThanDays` ago. Newest first.
  */
-export const listCleanupCandidates = query({
+export const listCleanupCandidates = adminQuery({
 	args: { olderThanDays: v.number() },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		if (!Number.isFinite(args.olderThanDays) || args.olderThanDays < 0) throw new Error('Enter a number of days.');
 		const now = Date.now();
 		const cutoff = now - args.olderThanDays * DAY_MS;
@@ -986,10 +979,10 @@ export const listCleanupCandidates = query({
 });
 
 /** Batch delete with the same rules as `deleteBooking`; bookings that can't go are skipped with a reason. */
-export const deleteBookings = mutation({
+export const deleteBookings = adminMutation({
 	args: { bookingIds: v.array(v.id('bookings')) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		if (args.bookingIds.length > MAX_BATCH_DELETE) {
 			throw new Error(`Delete at most ${MAX_BATCH_DELETE} bookings at a time.`);
 		}
@@ -1010,10 +1003,10 @@ export const deleteBookings = mutation({
 	}
 });
 
-export const updateNotes = mutation({
+export const updateNotes = adminMutation({
 	args: { bookingId: v.id('bookings'), notes: v.string(), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
 		assertBookingRevision(booking, args.expectedRevision, false);
 		const notes = args.notes.trim();
@@ -1024,10 +1017,9 @@ export const updateNotes = mutation({
 });
 
 /** The booking's payments, refunds and amounts, for the booking sheet and later receipt/refund screens. */
-export const bookingFinancials = query({
+export const bookingFinancials = adminQuery({
 	args: { bookingId: v.id('bookings') },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const booking = await ctx.db.get(args.bookingId);
 		return booking ? await stayFinancials(ctx, booking) : null;
 	}
@@ -1037,10 +1029,9 @@ export const bookingFinancials = query({
  * The booking's history, newest first (recordChanges, entity type `booking`). Starts when booking
  * history shipped; a deleted booking's history stays readable by id.
  */
-export const bookingHistory = query({
+export const bookingHistory = adminQuery({
 	args: { bookingId: v.id('bookings'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx);
 		const { numItems } = args.paginationOpts;
 		if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new Error('Page size must be 1–50');
 		return await ctx.db
@@ -1093,10 +1084,10 @@ async function validateDateBlock(
 }
 
 /** One block per villa over the same nights. Villas with a conflict are reported and skipped; the rest are blocked. */
-export const addDateBlocks = mutation({
+export const addDateBlocks = adminMutation({
 	args: { propertyIds: v.array(v.id('properties')), start: v.string(), end: v.string(), reason: v.string() },
 	handler: async (ctx, { propertyIds, start, end, ...args }) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		if (propertyIds.length === 0) throw new Error('Pick at least one villa.');
 		if (propertyIds.length > 100) throw new Error('Pick at most 100 villas.');
 		// Date and reason problems apply to every villa, so they fail the whole request.
@@ -1124,10 +1115,10 @@ export const addDateBlocks = mutation({
 	}
 });
 
-export const addDateBlock = mutation({
+export const addDateBlock = adminMutation({
 	args: dateBlockArgs,
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const reason = await validateDateBlock(ctx, args);
 		const blockId = await ctx.db.insert('dateBlocks', { ...args, reason, createdAt: Date.now() });
 		await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!);
@@ -1136,10 +1127,10 @@ export const addDateBlock = mutation({
 	}
 });
 
-export const updateDateBlock = mutation({
+export const updateDateBlock = adminMutation({
 	args: { blockId: v.id('dateBlocks'), ...dateBlockArgs, expected: v.optional(v.object(dateBlockArgs)) },
 	handler: async (ctx, { blockId, expected, ...args }) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const before = await ctx.db.get(blockId);
 		if (!before) throw new Error('Block not found');
 		assertDateBlockUnchanged(before, expected);
@@ -1152,10 +1143,10 @@ export const updateDateBlock = mutation({
 	}
 });
 
-export const removeDateBlock = mutation({
+export const removeDateBlock = adminMutation({
 	args: { blockId: v.id('dateBlocks'), expected: v.optional(v.object(dateBlockArgs)) },
 	handler: async (ctx, args) => {
-		const admin = await requireAdmin(ctx);
+		const admin = ctx.admin;
 		const before = await ctx.db.get(args.blockId);
 		if (!before) return;
 		assertDateBlockUnchanged(before, args.expected);

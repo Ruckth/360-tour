@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalQuery, mutation, query, type QueryCtx } from './auth/model';
+import { internalQuery, type QueryCtx, adminQuery, publicQuery, staffMutation } from './auth/model';
 import { appendRecordHistory } from './lib/recordHistory';
 import { settingsSnapshot } from './lib/configurationHistory';
 import {
@@ -11,7 +11,7 @@ import {
 	type BookingRules,
 	type SettingsInput
 } from './lib/siteSettings';
-import { adminEmails, requireAdmin, requireOwner } from './lib/adminAuth';
+import { adminEmails } from './lib/adminAuth';
 import {
 	getEffectiveSettings,
 	getSiteSettingsRow,
@@ -21,10 +21,9 @@ import {
 
 const text = v.optional(v.string());
 
-export const get = query({
+export const get = adminQuery({
 	args: {},
 	handler: async (ctx): Promise<EffectiveSettings & { revision: number }> => {
-		await requireAdmin(ctx);
 		const row = await getSiteSettingsRow(ctx);
 		return { ...mergeSiteSettings(row), revision: row?.revision ?? 0 };
 	}
@@ -37,7 +36,8 @@ export const effective = internalQuery({
 });
 
 /** Non-sensitive profile fields; safe for any visitor. */
-export const publicProfile = query({
+export const publicProfile = publicQuery({
+  reason: "Anonymous site profile with explicitly listed public settings.",
 	args: {},
 	handler: async (ctx) => {
 		const s = await getEffectiveSettings(ctx);
@@ -59,7 +59,8 @@ export const publicProfile = query({
 	}
 });
 
-export const update = mutation({
+export const update = staffMutation({
+  capability: 'manageTeam',
 	args: {
 		expectedRevision: v.optional(v.number()),
 		bookingRules: v.optional(bookingRulesValidator),
@@ -84,7 +85,7 @@ export const update = mutation({
 		email: v.optional(v.object({ fromName: text, ownerNotificationEmail: text, footer: text }))
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireOwner(ctx);
+		const admin = ctx.staff;
 		const { business, ai, email, bookingRules, errors } = validateSettingsInput(args);
 		const firstError = Object.values(errors)[0];
 		if (firstError) throw new Error(firstError);
@@ -110,14 +111,15 @@ export const update = mutation({
 });
 
 /** Restore a selected safe snapshot as a new validated revision. Never touches AI instructions/provider configuration. */
-export const restore = mutation({
+export const restore = staffMutation({
+  capability: 'manageTeam',
 	args: {
 		historyId: v.id('recordChanges'),
 		expectedRevision: v.number(),
 		side: v.union(v.literal('before'), v.literal('after'))
 	},
 	handler: async (ctx, args) => {
-		const admin = await requireOwner(ctx);
+		const admin = ctx.staff;
 		const row = await getSiteSettingsRow(ctx);
 		if (args.expectedRevision !== (row?.revision ?? 0))
 			throw new Error('Settings changed. Review the latest configuration and try again.');
@@ -228,10 +230,9 @@ async function channelStats(ctx: QueryCtx, channel: ChannelKey, now: number) {
 }
 
 /** Webhook activity per messaging channel plus iCal sync state. Env presence for the Vercel side comes from /api/admin/config-status. */
-export const channelHealth = query({
+export const channelHealth = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
 		const now = Date.now();
 		const channels = await Promise.all(
 			(Object.keys(CHANNEL_TABLES) as ChannelKey[]).map(async (channel) => ({
@@ -254,10 +255,9 @@ export const channelHealth = query({
 });
 
 /** Which Convex environment variables are set. Values never leave the server. */
-export const serverConfig = query({
+export const serverConfig = adminQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireAdmin(ctx);
+	handler: async () => {
 		const set = (name: string) => Boolean(process.env[name]?.trim());
 		return {
 			AI_API_KEY: set('AI_API_KEY'),
@@ -275,10 +275,9 @@ export const serverConfig = query({
  * Convex-side facts for the setup checklist. Channel env vars live on Convex, so the UI combines
  * `channelsReplied` with /api/admin/config-status.
  */
-export const setupChecklist = query({
+export const setupChecklist = adminQuery({
 	args: {},
 	handler: async (ctx) => {
-		await requireAdmin(ctx);
 		const set = (name: string) => Boolean(process.env[name]?.trim());
 		const active = await ctx.db
 			.query('properties')
@@ -313,10 +312,9 @@ export const setupChecklist = query({
 	}
 });
 
-export const admins = query({
+export const admins = adminQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireAdmin(ctx);
+	handler: async () => {
 		return [...adminEmails()].sort();
 	}
 });

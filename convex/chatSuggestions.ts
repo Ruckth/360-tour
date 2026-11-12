@@ -1,6 +1,5 @@
 import { ConvexError, v } from 'convex/values';
-import { requireGuestToken } from './lib/guestToken';
-import { mutation, query } from './auth/model';
+import { guestQuery, guestMutation } from './auth/model';
 import { STATIC_SUGGESTION_KEYS } from './lib/chatSuggestions';
 
 
@@ -15,7 +14,7 @@ const staticSuggestionRefValidator = v.object({
 });
 
 
-export const nextForSession = query({
+export const nextForSession = guestQuery({
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
@@ -23,7 +22,6 @@ export const nextForSession = query({
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
-		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		if (args.candidateSuggestionIds.length > 5) throw new ConvexError('At most 5 suggestions may be selected per call');
 		const limit = Math.min(Math.max(args.limit ?? DEFAULT_LIMIT, 1), 5);
 
@@ -51,10 +49,9 @@ export const nextForSession = query({
 		return selected;
 	}
 });
-export const markShown = mutation({
+export const markShown = guestMutation({
  args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()), suggestions: v.array(staticSuggestionRefValidator) },
  handler: async (ctx, args) => {
-  await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
   if (args.suggestions.length > 5) throw new ConvexError('At most 5 suggestions may be tracked per call');
   const now = Date.now(); let updated = 0;
   for (const ref of args.suggestions) {
@@ -67,10 +64,9 @@ export const markShown = mutation({
   return { updated };
  }
 });
-export const markClicked = mutation({
+export const markClicked = guestMutation({
  args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()), suggestion: staticSuggestionRefValidator },
  handler: async (ctx, args) => {
-  await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
   const now = Date.now();
   const existing = await ctx.db.query('chatStaticSuggestionInteractions').withIndex('by_session_and_suggestionKey', q => q.eq('sessionId', args.sessionId).eq('suggestionKey', args.suggestion.suggestionId)).unique();
   if (existing) await ctx.db.patch(existing._id, { shownAt: existing.shownAt ?? now, clickedAt: now, updatedAt: now });
