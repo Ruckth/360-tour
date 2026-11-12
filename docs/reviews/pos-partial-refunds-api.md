@@ -63,7 +63,7 @@ These fields are optional in TypeScript for compatibility with existing offline 
 
 Every refund adds a `billAudit` row with `kind:'refund'`, amount/method/reason in the note and before/after line refundable values in major units. Thus the current FinancialHistory receipt-activity stream already exposes it. A `recordChanges` order history entry contains `{refundId,lineId,amount,currency,method,businessDate}`; its amount is satang. The UI can add the dedicated POS refund stream without changing existing source ledgers.
 
-Cash reports emit a refund event on `businessDate`, even if the sale was paid outside the selected range. Cohort reports include all returns on the original sale. Report amounts and `creditMoney` remain major units, converting POS satang once. Affiliate credits sync in the refund transaction. Attached stay collections remain on the stay; their money is never deducted twice.
+Cash reports emit a refund event on `businessDate`, even if the sale was paid outside the selected range. Cohort reports include all returns on the original sale. Report amounts and `creditMoney` remain major units, converting POS satang once. Report reads batch POS refunds by `businessDate` from the range start onward, including later returns for cohort totals; only orders outside that window or with a legacy forward date correction need a per-order refund read. Affiliate credits sync in the refund transaction. Attached stay collections remain on the stay; their money is never deducted twice.
 
 ## Cap and lifecycle decisions
 
