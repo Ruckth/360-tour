@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
-import { testServerSecret } from "./testing/fixtures";
+import { testServerSecret } from "./testing/fixtures.test-support";
 import { makeFunctionReference } from 'convex/server';
 import { expect, it } from 'vitest';
 import { api, internal } from './_generated/api';

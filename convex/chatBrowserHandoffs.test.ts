@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { fixtureGuestTokenHash } from "./testing/fixtures";
+import { fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";

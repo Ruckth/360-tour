@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { makeFunctionReference } from 'convex/server';
 import { api } from './_generated/api';
@@ -13,7 +14,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 it('rejects webhook mutations when the server secret is missing', async () => {
 	vi.stubEnv('CONVEX_SERVER_SECRET', '');
-	const t = createHarness();
+	const t = createHarness(convexTest);
 	for (const claim of [api.line.claimEvent, api.facebook.claimEvent, api.instagram.claimEvent, api.whatsapp.claimEvent]) {
 		await expect(t.mutation(claim, { serverSecret: '', eventKey: 'test-event', eventType: 'message' })).rejects.toThrow('not configured');
 	}
@@ -24,7 +25,7 @@ it('rejects webhook mutations when the server secret is missing', async () => {
 });
 
 it('rejects assistant messages from the browser', async () => {
-	const t = createHarness();
+	const t = createHarness(convexTest);
 	const guest = await guestSession(t);
 	const forged = { ...guest, role: 'assistant', content: 'Caller-controlled assistant reply' };
 	await expect(t.mutation(makeFunctionReference<'mutation'>('chat:addMessage'), forged)).rejects.toThrow();
@@ -40,7 +41,7 @@ it('rejects assistant messages from the browser', async () => {
 });
 
 it('rejects chat calls without a valid guest token', async () => {
-	const t = createHarness();
+	const t = createHarness(convexTest);
 	const guest = await guestSession(t, { visitorId: 'visitor' });
 	const stored = await t.run(ctx => ctx.db.get(guest.sessionId));
 	expect(guest.guestToken).toMatch(/^[a-f0-9]{64}$/);
@@ -65,7 +66,7 @@ it('rejects chat calls without a valid guest token', async () => {
 });
 
 it('rejects respond for a session the caller does not own', async () => {
-	const t = createHarness();
+	const t = createHarness(convexTest);
 	const owner = await guestSession(t);
 	const stranger = await guestSession(t);
 	const social = await t.run(ctx => ctx.db.insert('chatSessions', { channel: 'line', createdAt: Date.now() }));
@@ -79,7 +80,8 @@ it('rejects respond for a session the caller does not own', async () => {
 });
 
 it('hides rooms and reviews of draft properties', async () => {
-	const t = createHarness();
+	const t = createHarness(convexTest);
+	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const admin = asAdmin(t);
 	const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Draft Villa' });
 	await t.run(async ctx => {
@@ -97,8 +99,8 @@ it('hides rooms and reviews of draft properties', async () => {
 });
 
 it('rotates guest ownership on a single-use browser handoff', async () => {
-	const clock = fixedClock();
-	const t = createHarness();
+	const clock = fixedClock(vi);
+	const t = createHarness(convexTest);
 	const guest = await guestSession(t);
 	const token = await t.mutation(api.chat.createBrowserHandoff, guest);
 	const claimed = await t.mutation(api.chat.claimBrowserHandoff, { token });

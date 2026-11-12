@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
-import { testServerSecret } from "./testing/fixtures";
-import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures";
+import { testServerSecret } from "./testing/fixtures.test-support";
+import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { expect, it, vi, afterEach } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
