@@ -259,7 +259,7 @@ type Draft = { limit: string } & Record<RuleKey, Permission>;
 const draftOf = (rules: CashierRules): Draft => ({ limit: String(basisPointsToPercent(rules.discountLimitPercent)), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
 
 function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }) {
-  const rules = useQuery(api.staffAccess.getCashierRules, {});
+  const rules = useQuery(api.settings.cashierRules.getCashierRules, {});
   return (
     <Section
       title="Cashier rules"
@@ -274,7 +274,7 @@ function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }
 
 function RulesForm({ rules }: { rules: CashierRules }) {
   const id = useId();
-  const update = useMutation(api.staffAccess.updateCashierRules);
+  const update = useMutation(api.settings.cashierRules.updateCashierRules);
   const [revision, setRevision] = useState(rules.revision);
   const [draft, setDraft] = useState<Draft>(() => draftOf(rules));
   const [state, setState] = useState<{ saving: boolean; saved: boolean; error: string; notice: string }>({ saving: false, saved: false, error: "", notice: "" });

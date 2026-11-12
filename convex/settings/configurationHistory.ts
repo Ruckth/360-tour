@@ -1,7 +1,6 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { adminQuery } from './auth/model';
-
+import { adminQuery } from '../auth/model';
 
 /** Discover deleted villas, or rooms (including removed ones) from their retained villa id. */
 export const records = adminQuery({

@@ -5,7 +5,7 @@ import { adminMutation, adminQuery, internalMutation, staffMutation, staffQuery 
 import { orderState } from '../lib/orderLinks';
 import { orderTitle, roundMoney } from '../lib/orderMath';
 import { orderRefundTotal } from '../lib/orderRefunds';
-import { appendRecordHistory } from '../lib/recordHistory';
+import { appendRecordHistory } from '../settings/model';
 import { cleanCustomer, CUSTOMER_POS_INTEGRATION_ENABLED, customerCard, customerInput, customerValues, expectRevision, mergeCustomerRecords, mergeInput, moveMergeBatch, pageSize, SEARCH_LIMIT } from './private/customerModel';
 
 /** Exact contact search or name search, with a cursor even when a page contains only hidden rows. */

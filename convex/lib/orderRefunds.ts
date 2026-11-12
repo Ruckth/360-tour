@@ -5,7 +5,7 @@ import { MAX_ORDER_REFUNDS, lineNet } from './orderMath';
 import { activeLineLink } from './lineLinks';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from './staffAccess';
 import { resortTodayIso } from './dates';
-import { appendRecordHistory } from './recordHistory';
+import { appendRecordHistory } from '../settings/model';
 import { syncAffiliateCredit } from './affiliateCredits';
 import { readBudget } from './readBudget';
 

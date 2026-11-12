@@ -3,7 +3,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { attachPhotoUpload } from '../lib/adminPhotos';
 import { turnaroundProblem } from '../lib/appointmentWindow';
-import { appendRecordHistory } from '../lib/recordHistory';
+import { appendRecordHistory } from '../settings/model';
 import { initializeWeeklyPattern } from '../lib/rosterHistory';
 import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertValidTime, blocksTime, boundedIntegrityRows, localDayRange, openStarts, staffBusyRanges, type DayPlan, type RosterBreak } from '../lib/serviceSlots';
 

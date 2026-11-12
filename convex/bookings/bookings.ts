@@ -17,7 +17,8 @@ import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from '
 import { normalizeCouponCode } from '../lib/offers';
 import { calculateDirectQuote } from '../lib/pricing';
 import { enforceRateLimit } from '../lib/rateLimit';
-import { bookingHoldExpiresAt, getEffectiveSettings } from '../lib/siteSettings';
+import { bookingHoldExpiresAt } from '../lib/siteSettings';
+import { getEffectiveSettings } from '../settings/model';
 import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from '../lib/validation';
 import { currentClaim, durableToolValidator, durableTurnValidator, startDurablePreparation, withDurableTool } from '../messaging/model';
 import { markBookingPaid, queueCancellationEmail } from './model';

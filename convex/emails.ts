@@ -1,36 +1,10 @@
 // HTML emails use Resend's fetch API and can run in the default Convex runtime.
-import { internalAction, type ActionCtx, adminAction } from './auth/model';
-import { internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { Resend } from 'resend';
-import type { EffectiveSettings } from './lib/siteSettings';
-
-
-function escapeHtml(value: string) {
-	return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
-}
-
-async function loadSettings(ctx: ActionCtx): Promise<EffectiveSettings> {
-	return await ctx.runQuery(internal.settings.effective, {});
-}
-
-/** Display name from Settings; the address itself always comes from the EMAIL_FROM env var. */
-function fromHeader(emailFrom: string, settings: EffectiveSettings) {
-	const address = emailFrom.match(/<([^>]+)>/)?.[1]?.trim() ?? emailFrom.trim();
-	const name = (settings.email.fromName || settings.businessName).replace(/[<>"\r\n]/g, '').trim();
-	return name ? `"${name}" <${address}>` : address;
-}
-
-function ownerNotificationEmail(settings: EffectiveSettings) {
-	return settings.email.ownerNotificationEmail || process.env.OWNER_NOTIFICATION_EMAIL;
-}
-
-function footerHtml(settings: EffectiveSettings) {
-	return settings.email.footer
-		? `<p style="color: #999; font-size: 12px; margin-top: 32px;">${escapeHtml(settings.email.footer)}</p>`
-		: '';
-}
+import { internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
+import { internalAction, type ActionCtx } from './auth/model';
+import { escapeHtml, footerHtml, fromHeader, loadSettings, ownerNotificationEmail } from './settings/model';
 
 function escapedFields<T extends { guestName: string; propertyName: string; checkIn: string; checkOut: string; currency: string }>(args: T) {
 	return { ...args, guestName: escapeHtml(args.guestName), propertyName: escapeHtml(args.propertyName), checkIn: escapeHtml(args.checkIn), checkOut: escapeHtml(args.checkOut), currency: escapeHtml(args.currency), ...('guestEmail' in args ? { guestEmail: escapeHtml(String(args.guestEmail)) } : {}), ...('guestPhone' in args ? { guestPhone: escapeHtml(String(args.guestPhone)) } : {}) };
@@ -326,31 +300,6 @@ export const sendStaffAlert = internalAction({
 			}
 		} else if (lineUserId) {
 			console.warn('LINE_CHANNEL_ACCESS_TOKEN not configured, skipping staff LINE alert');
-		}
-	}
-});
-
-/** Setup checklist: sends a short test email to the owner notification address (or the signed-in admin). */
-export const sendTestEmail = adminAction({
-	args: {},
-	handler: async (ctx): Promise<{ ok: boolean; to: string; message: string }> => {
-		const admin = ctx.admin;
-		const settings = await loadSettings(ctx);
-		const to = ownerNotificationEmail(settings) || admin.email;
-		const apiKey = process.env.RESEND_API_KEY;
-		const from = process.env.EMAIL_FROM;
-		if (!apiKey || !from) return { ok: false, to, message: 'Set RESEND_API_KEY and EMAIL_FROM in Convex first.' };
-		try {
-			const { error } = await new Resend(apiKey).emails.send({
-				from: fromHeader(from, settings),
-				to,
-				subject: `Test email from ${settings.businessName}`,
-				html: `<p>Email is working. Booking confirmations and staff alerts will be sent from this address.</p>${footerHtml(settings)}`
-			});
-			if (error) return { ok: false, to, message: error.message };
-			return { ok: true, to, message: `Sent to ${to}. Check the inbox (and spam folder).` };
-		} catch (error) {
-			return { ok: false, to, message: error instanceof Error ? error.message : 'Could not send the email.' };
 		}
 	}
 });

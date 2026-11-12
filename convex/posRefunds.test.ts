@@ -47,8 +47,8 @@ async function setup() {
   const args = (orderId: Id<'orders'>, lineId: Id<'orderLines'>, amount = 25000, idempotencyKey = 'refund-attempt-1') =>
     ({ orderId, lineId, amount, idempotencyKey, currency: 'THB', method: 'cash' as const, reason: '  Shorter service  ' });
   const rules = async (patch: Partial<Omit<CashierRules, 'revision'>>) => {
-    const { revision, ...fields } = await owner.query(api.staffAccess.getCashierRules, {});
-    return owner.mutation(api.staffAccess.updateCashierRules, { expectedRevision: revision, ...fields, ...patch });
+    const { revision, ...fields } = await owner.query(api.settings.cashierRules.getCashierRules, {});
+    return owner.mutation(api.settings.cashierRules.updateCashierRules, { expectedRevision: revision, ...fields, ...patch });
   };
   const request = (input: ReturnType<typeof args>) => {
     const { orderId, amount, ...payload } = input;

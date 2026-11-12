@@ -53,7 +53,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   // Resolved on the whole section, not the filtered results, so searching can't move the highlight.
   const activeSub = section ? activeAdminSubLink(section, pathname, tab) : undefined;
   const { isMobile, setOpen, setOpenMobile, state } = useSidebar();
-  const profile = useQuery(api.settings.publicProfile, {});
+  const profile = useQuery(api.settings.settings.publicProfile, {});
   const [query, setQuery] = useState("");
   // Sections opened or closed by hand; otherwise only the current section shows its sub-pages.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});

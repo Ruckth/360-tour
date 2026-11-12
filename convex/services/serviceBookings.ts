@@ -8,7 +8,7 @@ import { bookingsByPhone } from '../lib/bookingPhone';
 import { assertChatWriteAllowed, assertSameProposal } from '../lib/chatWriteGuard';
 import { enforceRateLimit } from '../lib/rateLimit';
 import { SLOT_CONFLICT, assertAppointmentStart, createAppointmentRecord, findOpenSlots, localDateTimeUtc, resortLocalParts, serviceRostered } from '../lib/serviceSlots';
-import { getEffectiveSettings } from '../lib/siteSettings';
+import { getEffectiveSettings } from '../settings/model';
 import { durableToolValidator, withDurableTool } from '../messaging/model';
 import { NOT_SCHEDULED } from './model';
 

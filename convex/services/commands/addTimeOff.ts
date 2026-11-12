@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { assertTimeOffRange, required, timeOffConflicts } from '../model';
 
 /**

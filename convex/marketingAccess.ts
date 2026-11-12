@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { publicQuery, authenticatedMutation, marketingQuery, marketingMutation } from './auth/model';
 import { marketingRole } from "./lib/affiliateTypes";
 import { marketingAccess, marketingInvitationExpiry, marketingInvitationExpired } from "./lib/marketingAccess";
-import { appendRecordHistory } from "./lib/recordHistory";
+import { appendRecordHistory } from './settings/model';
 import { MARKETING_INVITATION_TTL_MS } from "./lib/marketingPolicy";
 import { adminEmails } from "./lib/adminAuth";
 export const current = publicQuery({

@@ -196,11 +196,11 @@ const team = {
 registerFixtureFunctions({
   queries: {
     "staffAccess:listPeople": () => team.people,
-    "staffAccess:getCashierRules": () => team.rules,
-    "settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
-    "settings:setupChecklist": () => undefined,
-    "settings:channelHealth": () => undefined,
-    "settings:serverConfig": () => undefined,
+    "settings/cashierRules:getCashierRules": () => team.rules,
+    "settings/settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
+    "settings/settings:setupChecklist": () => undefined,
+    "settings/settings:channelHealth": () => undefined,
+    "settings/settings:serverConfig": () => undefined,
   },
   mutations: {
     "staffAccess:setGrant": ({ email, role: next }: { email: string; role: "manager" | "cashier" | null }) => {
@@ -220,7 +220,7 @@ registerFixtureFunctions({
       team.people = team.people.map((person) => (person.staffGrant?.id === grantId ? { ...person, staffGrant: { ...person.staffGrant, expiresAt, expired: action === "expire" } } : person));
       return { expiresAt };
     },
-    "staffAccess:updateCashierRules": ({ expectedRevision, ...next }: CashierRules & { expectedRevision: number }) => {
+    "settings/cashierRules:updateCashierRules": ({ expectedRevision, ...next }: CashierRules & { expectedRevision: number }) => {
       if (team.staleOnce) {
         // Another owner saved a moment earlier.
         team.staleOnce = false;

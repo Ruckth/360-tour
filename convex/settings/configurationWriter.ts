@@ -1,7 +1,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { appendRecordHistory } from './recordHistory';
-import { BUSINESS_FIELDS, type EffectiveSettings } from './siteSettings';
+import { BUSINESS_FIELDS, type EffectiveSettings } from '../lib/siteSettings';
+import { appendRecordHistory } from './recordWriter';
 
 /** Allow lists, never a spread of a database row: tokens and future provider fields stay out. */
 export function settingsSnapshot(settings: EffectiveSettings) {
@@ -17,6 +17,7 @@ export function settingsSnapshot(settings: EffectiveSettings) {
 		}
 	};
 }
+
 export function propertySnapshot(p: Doc<'properties'>) {
 	return {
 		slug: p.slug,
@@ -37,6 +38,7 @@ export function propertySnapshot(p: Doc<'properties'>) {
 		...(p.translations ? { translations: p.translations } : {})
 	};
 }
+
 export function roomSnapshot(r: Doc<'tourScenes'>) {
 	return { propertyId: r.propertyId, slug: r.slug, name: r.name, imagePath: r.imagePath, hotspots: r.hotspots };
 }

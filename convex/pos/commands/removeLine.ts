@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { editableLine, lineSnapshot, logOrder, refreshOrder } from '../private/orderModel';
 
 export const removeLine = staffMutation({

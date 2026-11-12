@@ -32,7 +32,7 @@ const CONVEX_SITE =
 
 /** Setup items computed from existing data: Convex env and records, plus the website's channel env vars. */
 export function useSetupChecklist(): { items: Item[]; loading: boolean } {
-  const facts = useQuery(api.settings.setupChecklist, {});
+  const facts = useQuery(api.settings.settings.setupChecklist, {});
   const config = useChannelConfig();
   if (!facts) return { items: [], loading: true };
 
@@ -156,7 +156,7 @@ function CopyButton({ label, value }: { label: string; value: string }) {
 }
 
 function TestEmailButton() {
-  const sendTestEmail = useAction(api.emails.sendTestEmail);
+  const sendTestEmail = useAction(api.settings.emails.sendTestEmail);
   const [state, setState] = useState<{ busy: boolean; result?: { ok: boolean; message: string } }>({ busy: false });
   return (
     <span className="flex flex-wrap items-center gap-2">

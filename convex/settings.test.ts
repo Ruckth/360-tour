@@ -12,6 +12,7 @@ const modules = import.meta.glob('./**/*.ts');
 const DAY = 86_400_000;
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
 });
@@ -25,20 +26,20 @@ function setup() {
 describe('settings get/update', () => {
 	it('returns defaults until saved, then merges saved values', async () => {
 		const { t, admin } = setup();
-		const initial = await admin.query(api.settings.get, {});
+		const initial = await admin.query(api.settings.settings.get, {});
 		expect(initial.businessName).toBe(SITE_DEFAULTS.businessName);
 		expect(initial.checkInTime).toBe('14:00');
 		expect(initial.timezone).toBe('Asia/Bangkok');
 		expect(initial.ai.maxWords).toBe(150);
 		expect(initial.updatedAt).toBeNull();
 
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: '  Sea Breeze  ', currency: 'usd', checkInTime: '15:00', contactPhone: '' }
 		});
-		await admin.mutation(api.settings.update, { ai: { maxWords: 80 } });
-		await admin.mutation(api.settings.update, { ai: { tone: 'playful' }, email: { fromName: 'Sea Breeze Team' } });
+		await admin.mutation(api.settings.settings.update, { ai: { maxWords: 80 } });
+		await admin.mutation(api.settings.settings.update, { ai: { tone: 'playful' }, email: { fromName: 'Sea Breeze Team' } });
 
-		const saved = await admin.query(api.settings.get, {});
+		const saved = await admin.query(api.settings.settings.get, {});
 		expect(saved).toMatchObject({
 			businessName: 'Sea Breeze',
 			currency: 'USD',
@@ -50,18 +51,18 @@ describe('settings get/update', () => {
 			email: { fromName: 'Sea Breeze Team', footer: SITE_DEFAULTS.email.footer },
 			updatedByEmail: 'admin@example.com'
 		});
-		expect(await t.query(internal.settings.effective, {})).toMatchObject({ businessName: 'Sea Breeze' });
+		expect(await t.query(internal.settings.settings.effective, {})).toMatchObject({ businessName: 'Sea Breeze' });
 		expect(await t.run(async (ctx) => (await ctx.db.query('siteSettings').collect()).length)).toBe(1);
 	});
 
 	it('exposes only non-sensitive fields publicly', async () => {
 		const { t, admin } = setup();
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Sea Breeze' },
 			ai: { extraInstructions: 'secret prompt' },
 			email: { ownerNotificationEmail: 'owner@example.com' }
 		});
-		const profile = await t.query(api.settings.publicProfile, {});
+		const profile = await t.query(api.settings.settings.publicProfile, {});
 		expect(profile.businessName).toBe('Sea Breeze');
 		expect(profile).not.toHaveProperty('ai');
 		expect(profile).not.toHaveProperty('email');
@@ -85,26 +86,26 @@ describe('settings get/update', () => {
 		[{ email: { fromName: 'Evil <x@y.z>' } }, 'Remove < > "']
 	])('rejects invalid input %j', async (input, message) => {
 		const { admin } = setup();
-		await expect(admin.mutation(api.settings.update, input)).rejects.toThrow(message);
+		await expect(admin.mutation(api.settings.settings.update, input)).rejects.toThrow(message);
 	});
 
 	it('requires an admin for get, update, channelHealth, serverConfig and admins', async () => {
 		const { t } = setup();
 		const other = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
-		await expect(t.query(api.settings.get, {})).rejects.toThrow('Not authenticated');
-		await expect(other.query(api.settings.get, {})).rejects.toThrow('Not authorized');
-		await expect(other.mutation(api.settings.update, { business: { businessName: 'X' } })).rejects.toThrow('Not authorized');
-		await expect(other.query(api.settings.channelHealth, {})).rejects.toThrow('Not authorized');
-		await expect(other.query(api.settings.serverConfig, {})).rejects.toThrow('Not authorized');
-		await expect(other.query(api.settings.admins, {})).rejects.toThrow('Not authorized');
+		await expect(t.query(api.settings.settings.get, {})).rejects.toThrow('Not authenticated');
+		await expect(other.query(api.settings.settings.get, {})).rejects.toThrow('Not authorized');
+		await expect(other.mutation(api.settings.settings.update, { business: { businessName: 'X' } })).rejects.toThrow('Not authorized');
+		await expect(other.query(api.settings.settings.channelHealth, {})).rejects.toThrow('Not authorized');
+		await expect(other.query(api.settings.settings.serverConfig, {})).rejects.toThrow('Not authorized');
+		await expect(other.query(api.settings.settings.admins, {})).rejects.toThrow('Not authorized');
 	});
 
 	it('lists admins and reports env presence as booleans', async () => {
 		const { admin } = setup();
 		vi.stubEnv('RESEND_API_KEY', 're_secret');
 		vi.stubEnv('STRIPE_SECRET_KEY', '');
-		expect(await admin.query(api.settings.admins, {})).toEqual(['admin@example.com', 'second@example.com']);
-		const config = await admin.query(api.settings.serverConfig, {});
+		expect(await admin.query(api.settings.settings.admins, {})).toEqual(['admin@example.com', 'second@example.com']);
+		const config = await admin.query(api.settings.settings.serverConfig, {});
 		expect(config.RESEND_API_KEY).toBe(true);
 		expect(config.STRIPE_SECRET_KEY).toBe(false);
 		expect(Object.values(config).every((value) => typeof value === 'boolean')).toBe(true);
@@ -134,7 +135,7 @@ describe('settings.channelHealth', () => {
 			});
 		});
 
-		const health = await admin.query(api.settings.channelHealth, {});
+		const health = await admin.query(api.settings.settings.channelHealth, {});
 		const line = health.channels.find((channel) => channel.channel === 'line');
 		expect(line).toMatchObject({
 			lastEventAt: now - 60_000,
@@ -157,7 +158,7 @@ describe('settings.channelHealth', () => {
 describe('setup checklist', () => {
 	it('reports env keys, villa readiness, iCal sync, saved profile and replied channels', async () => {
 		const { t, admin } = setup();
-		expect(await admin.query(api.settings.setupChecklist, {})).toMatchObject({
+		expect(await admin.query(api.settings.settings.setupChecklist, {})).toMatchObject({
 			aiKey: false, email: false, stripe: false, messagingImageSecret: false, villaReady: false, icalSynced: false, profileSaved: false,
 			channelsReplied: { line: false, facebook: false, instagram: false, whatsapp: false }
 		});
@@ -177,17 +178,17 @@ describe('setup checklist', () => {
 				eventKey: 'e1', eventType: 'message', status: 'replied', createdAt: now, updatedAt: now, processingStartedAt: now
 			});
 		});
-		await admin.mutation(api.settings.update, { business: { businessName: 'Sea Breeze' } });
-		expect(await admin.query(api.settings.setupChecklist, {})).toMatchObject({
+		await admin.mutation(api.settings.settings.update, { business: { businessName: 'Sea Breeze' } });
+		expect(await admin.query(api.settings.settings.setupChecklist, {})).toMatchObject({
 			aiKey: true, email: false, stripe: false, villaReady: true, icalSynced: true, profileSaved: true,
 			channelsReplied: { line: true, facebook: false }
 		});
-		await expect(t.query(api.settings.setupChecklist, {})).rejects.toThrow();
+		await expect(t.query(api.settings.settings.setupChecklist, {})).rejects.toThrow();
 	});
 
 	it('sends a test email to the owner address, or explains what is missing', async () => {
 		const { t, admin } = setup();
-		expect(await admin.action(api.emails.sendTestEmail, {})).toMatchObject({ ok: false, to: 'admin@example.com' });
+		expect(await admin.action(api.settings.emails.sendTestEmail, {})).toMatchObject({ ok: false, to: 'admin@example.com' });
 
 		vi.stubEnv('RESEND_API_KEY', 're_test');
 		vi.stubEnv('EMAIL_FROM', 'bookings@example.com');
@@ -197,18 +198,19 @@ describe('setup checklist', () => {
 			sent.push(JSON.parse(String(init?.body ?? '{}')));
 			return new Response(JSON.stringify({ id: 'email_1' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 		}));
-		expect(await admin.action(api.emails.sendTestEmail, {})).toMatchObject({ ok: true, to: 'owner@example.com' });
+		expect(await admin.action(api.settings.emails.sendTestEmail, {})).toMatchObject({ ok: true, to: 'owner@example.com' });
 		expect(sent).toEqual([expect.objectContaining({ to: 'owner@example.com' })]);
-		await expect(t.action(api.emails.sendTestEmail, {})).rejects.toThrow();
+		await expect(t.action(api.settings.emails.sendTestEmail, {})).rejects.toThrow();
 	});
 });
 
 describe('settings in the AI prompt', () => {
 	it('uses saved business name, policy, times, tone and word limit, and per-villa discounts', async () => {
+		vi.useFakeTimers();
 		const { t, admin } = setup();
 		vi.stubEnv('AI_API_KEY', 'test-key');
 		vi.stubEnv('AI_API_BASE_URL', 'https://ai.example.test/v1');
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Sea Breeze', cancellationPolicy: 'Free cancellation up to 7 days before arrival.', checkInTime: '15:00' },
 			ai: { tone: 'cheerful and brief', maxWords: 90, extraInstructions: 'Always mention the sunset bar.' }
 		});
@@ -246,6 +248,8 @@ describe('settings in the AI prompt', () => {
 		expect(prompt).toContain('Tone: cheerful and brief');
 		expect(prompt).toContain('under 90 words');
 		expect(prompt).toContain('Always mention the sunset bar.');
+		// Finish the worker/alert jobs before the next test replaces the email fetch mock.
+		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 	});
 });
 
@@ -255,7 +259,7 @@ describe('settings in emails', () => {
 		vi.stubEnv('RESEND_API_KEY', 're_test');
 		vi.stubEnv('EMAIL_FROM', 'Old Name <bookings@example.com>');
 		vi.stubEnv('OWNER_NOTIFICATION_EMAIL', 'env-owner@example.com');
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			email: { fromName: 'Sea Breeze Team', ownerNotificationEmail: 'owner@example.com', footer: 'See you soon' }
 		});
 		const sent: Array<{ from: string; to: string | string[]; html: string }> = [];

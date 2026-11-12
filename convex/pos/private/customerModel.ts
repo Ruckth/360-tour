@@ -4,7 +4,7 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { type MutationCtx } from '../../auth/model';
 import { requireAdmin } from '../../lib/adminAuth';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { assertValidEmail } from '../../lib/validation';
 
 /**

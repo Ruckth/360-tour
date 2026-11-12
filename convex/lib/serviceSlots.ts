@@ -6,7 +6,7 @@ import { ensureLinkedOrder } from './orderLinks';
 import { assertValidIsoDate, assertValidEmail } from './validation';
 import { requireAdmin } from './adminAuth';
 import { patternForDate, patternsForRange } from './rosterHistory';
-import { appendRecordHistory } from './recordHistory';
+import { appendRecordHistory } from '../settings/model';
 
 const MINUTE = 60_000;
 // Fixed UTC+7 arithmetic; see RESORT_OFFSET_MS.

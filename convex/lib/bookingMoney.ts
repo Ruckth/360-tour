@@ -5,7 +5,7 @@ import type { MutationCtx } from '../_generated/server';
 import { MAX_ORDER, bookingBalance, roundMoney } from './orderMath';
 import { resortTodayIso } from './dates';
 import { syncCouponRedemption } from './couponRedemptions';
-import { appendRecordHistory } from './recordHistory';
+import { appendRecordHistory } from '../settings/model';
 
 /**
  * Shared rules for booking corrections and money: revisions, reasons, amounts, effective dates,

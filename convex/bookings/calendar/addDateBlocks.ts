@@ -3,7 +3,7 @@ import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
 import { writeDateBlockRows } from '../../lib/availabilityWrites';
 import { assertStayDates, assertStayFree } from '../../lib/bookingWrites';
-import { appendRecordHistory } from '../../lib/recordHistory';
+import { appendRecordHistory } from '../../settings/model';
 import { blockReason, MAX_BLOCKED_NIGHTS_PER_CALL } from '../model';
 
 /** One block per villa over the same nights. Villas with a conflict are reported and skipped; the rest are blocked. */

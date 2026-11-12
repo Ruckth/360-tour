@@ -30,7 +30,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protect
       let cursor: string | null = null;
       let seen = 0;
       for (;;) {
-        const result: FunctionReturnType<typeof api.recordHistory.list> = await reader.query(api.recordHistory.list, { entityType, ...(entityId ? { entityId } : {}), paginationOpts: { numItems: 2, cursor } });
+        const result: FunctionReturnType<typeof api.settings.recordHistory.list> = await reader.query(api.settings.recordHistory.list, { entityType, ...(entityId ? { entityId } : {}), paginationOpts: { numItems: 2, cursor } });
         seen += result.page.length;
         for (const row of result.page) {
           expect(row.before).toMatchObject({ status: 'active', amount: 50000, nested: [{ campaign: 'November' }] });
@@ -42,8 +42,8 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protect
       }
       expect(seen).toBe(3);
     }
-    expect((await admin.query(api.recordHistory.list, { entityType, paginationOpts: { numItems: 100, cursor: null } })).page).toEqual([...stored].reverse());
+    expect((await admin.query(api.settings.recordHistory.list, { entityType, paginationOpts: { numItems: 100, cursor: null } })).page).toEqual([...stored].reverse());
   }
   // Grants include invited emails. They remain operational-admin-only, even for finance/managers.
-  if (role !== 'admin') await expect(reader.query(api.recordHistory.list, { entityType: 'marketingGrant', paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow('Not authorized');
+  if (role !== 'admin') await expect(reader.query(api.settings.recordHistory.list, { entityType: 'marketingGrant', paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow('Not authorized');
 });

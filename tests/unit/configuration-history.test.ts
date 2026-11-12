@@ -20,11 +20,11 @@ const state = vi.hoisted(() => ({
   pageCalls: vi.fn(),
 }));
 vi.mock("convex/react", () => ({
-  useQuery: (ref: FunctionReference<"query">) => (getFunctionName(ref) === "settings:get" ? state.settings : undefined),
-  useMutation: (ref: FunctionReference<"mutation">) => (getFunctionName(ref) === "settings:restore" ? state.restore : state.update),
+  useQuery: (ref: FunctionReference<"query">) => (getFunctionName(ref) === "settings/settings:get" ? state.settings : undefined),
+  useMutation: (ref: FunctionReference<"mutation">) => (getFunctionName(ref) === "settings/settings:restore" ? state.restore : state.update),
   usePaginatedQuery: (ref: FunctionReference<"query">, args: unknown) => {
     state.pageCalls(getFunctionName(ref), args);
-    return { results: getFunctionName(ref) === "configurationHistory:records" ? state.records : state.history, status: state.status, loadMore: state.loadMore };
+    return { results: getFunctionName(ref) === "settings/configurationHistory:records" ? state.records : state.history, status: state.status, loadMore: state.loadMore };
   },
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : "") }));
@@ -104,7 +104,7 @@ it("renders deleted time off as readable dates and allows discovering its histor
   state.history = [{ ...event, entityType: "timeOff", entityId: "removed-off", kind: "removed",
     before: { staffId: "staff1", label: "Sick leave", start, end: start + 3600000 }, after: null }];
   await render(createElement(RecordHistoryPanel, { entityType: "timeOff", title: "All staff time off history" }));
-  expect(state.pageCalls).toHaveBeenCalledWith("recordHistory:list", { entityType: "timeOff", entityId: undefined });
+  expect(state.pageCalls).toHaveBeenCalledWith("settings/recordHistory:list", { entityType: "timeOff", entityId: undefined });
   expect(document.body.textContent).toContain("Removed");
   expect(document.body.textContent).toContain("Sick leave");
   expect(document.body.textContent).toContain("31/10/2026, 09:00:00 (Bangkok)");
@@ -162,13 +162,13 @@ it("discovers a deleted room and only subscribes to its history when the disclos
   state.history = [{ ...event, entityType: "room", entityId: "room1", kind: "deleted", before: { name: "Removed pool", imagePath: "/pool.jpg" }, after: null }];
   await render(createElement(ConfigurationHistoryRecords, { propertyId: "property1" as Id<"properties"> }));
   expect(document.body.textContent).toContain("Removed pool · Room · Deleted");
-  expect(state.pageCalls.mock.calls.some(([name]) => name === "recordHistory:list")).toBe(false);
+  expect(state.pageCalls.mock.calls.some(([name]) => name === "settings/recordHistory:list")).toBe(false);
   const disclosure = document.querySelector("details")!;
   await act(async () => {
     disclosure.open = true;
     disclosure.dispatchEvent(new Event("toggle"));
   });
-  expect(state.pageCalls).toHaveBeenCalledWith("recordHistory:list", { entityType: "room", entityId: "room1" });
+  expect(state.pageCalls).toHaveBeenCalledWith("settings/recordHistory:list", { entityType: "room", entityId: "room1" });
   expect(document.body.textContent).toContain("pool.jpg");
 });
 

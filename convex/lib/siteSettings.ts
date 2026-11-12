@@ -1,6 +1,5 @@
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import type { QueryCtx } from '../_generated/server';
 
 export const bookingRulesValidator = v.object({
 	unpaidHoldMinutes: v.optional(v.number()),
@@ -11,6 +10,7 @@ export const bookingRulesValidator = v.object({
 	maxAdvanceDays: v.optional(v.number()),
 	sameDayCutoff: v.optional(v.string())
 });
+
 export const BOOKING_RULE_DEFAULTS = {
 	unpaidHoldMinutes: 30,
 	chatQuoteValidityMinutes: 15,
@@ -20,7 +20,9 @@ export const BOOKING_RULE_DEFAULTS = {
 	maxAdvanceDays: 365,
 	sameDayCutoff: ''
 };
+
 export type BookingRules = typeof BOOKING_RULE_DEFAULTS;
+
 export const BOOKING_RULE_RANGES = {
 	unpaidHoldMinutes: [10, 1440],
 	chatQuoteValidityMinutes: [1, 1440],
@@ -78,9 +80,13 @@ export const BUSINESS_FIELDS = [
 ] as const;
 
 export type BusinessField = (typeof BUSINESS_FIELDS)[number];
+
 export type BusinessSettings = Record<BusinessField, string>;
+
 export type AiSettings = { tone: string; extraInstructions: string; maxWords: number };
+
 export type EmailSettings = { fromName: string; ownerNotificationEmail: string; footer: string };
+
 export type EffectiveSettings = BusinessSettings & {
 	bookingRules: BookingRules;
 	ai: AiSettings;
@@ -113,25 +119,16 @@ export function mergeSiteSettings(row: Doc<'siteSettings'> | null): EffectiveSet
 	};
 }
 
-export async function getSiteSettingsRow(ctx: QueryCtx) {
-	return await ctx.db
-		.query('siteSettings')
-		.withIndex('by_key', (q) => q.eq('key', 'default'))
-		.unique();
-}
-
-export async function getEffectiveSettings(ctx: QueryCtx): Promise<EffectiveSettings> {
-	return mergeSiteSettings(await getSiteSettingsRow(ctx));
-}
-
 // Validation is shared with the admin form so errors show inline before saving.
 
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 type Rule = { label: string; max: number; required?: boolean; check?: (value: string) => string | null };
 
 const email = (value: string) => (EMAIL.test(value) ? null : 'Enter a valid email address.');
+
 const time = (value: string) => (TIME.test(value) ? null : 'Use 24-hour HH:mm, e.g. 14:00.');
 
 function timezone(value: string) {

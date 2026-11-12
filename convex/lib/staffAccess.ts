@@ -1,16 +1,18 @@
-import { percentageOf, roundRatio } from '../shared/money';
-import { ConvexError } from 'convex/values';
 import type { UserIdentity } from 'convex/server';
-import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
+import { ConvexError } from 'convex/values';
 import { internal } from '../_generated/api';
+import type { Doc } from '../_generated/dataModel';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+import { cashierRules } from '../settings/model';
+import { percentageOf, roundRatio } from '../shared/money';
 import { adminEmails } from './adminAuth';
-import { DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS, type CashierAction, type CashierRules } from './staffTypes';
 import { resortTodayIso } from './dates';
 import { isOpenOrder, isSettledOrder } from './orderLinks';
 import { lineCouponBase, roundMoney, type PricedLine } from './orderMath';
+import { STAFF_INVITATION_TTL_MS, type CashierAction } from './staffTypes';
 
 export type StaffRole = 'owner' | 'manager' | 'cashier' | null;
+
 export function staffCapabilities(role: StaffRole) {
   const operations = role === 'owner' || role === 'manager';
   return {
@@ -21,16 +23,21 @@ export function staffCapabilities(role: StaffRole) {
     // Marketing is resolved separately, through the existing marketing grants.
   };
 }
+
 export type StaffCapability = keyof ReturnType<typeof staffCapabilities>;
+
 export type StaffAccess = {
   email: string | null; tokenIdentifier: string | null; role: StaffRole;
   capabilities: ReturnType<typeof staffCapabilities>;
   pendingInvitation: { role: 'manager' | 'cashier'; expiresAt: number } | null;
 };
+
 export type StaffActor = StaffAccess & { email: string; tokenIdentifier: string };
+
 export function staffInvitationExpiry(grant: Doc<'staffGrants'>) {
   return grant.tokenIdentifier ? null : grant.inviteExpiresAt ?? grant.createdAt + STAFF_INVITATION_TTL_MS;
 }
+
 export async function accessForIdentity(ctx: QueryCtx | MutationCtx, identity: Pick<UserIdentity, 'email' | 'tokenIdentifier'> | null): Promise<StaffAccess> {
   const email = identity?.email?.trim().toLowerCase() ?? null;
   let role: StaffRole = null;
@@ -47,22 +54,19 @@ export async function accessForIdentity(ctx: QueryCtx | MutationCtx, identity: P
   }
   return { email, tokenIdentifier: identity?.tokenIdentifier ?? null, role, capabilities: staffCapabilities(role), pendingInvitation };
 }
+
 export async function staffAccess(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<StaffAccess> {
   if (!('db' in ctx)) return await ctx.runQuery(internal.staffAccess.currentInternal, {});
   return await accessForIdentity(ctx, await ctx.auth.getUserIdentity());
 }
+
 export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capability: StaffCapability): Promise<StaffActor> {
   const access = await staffAccess(ctx);
   if (!access.email || !access.tokenIdentifier) throw new Error('Not authenticated');
   if (!access.capabilities[capability]) throw new Error('Not authorized');
   return { ...access, email: access.email, tokenIdentifier: access.tokenIdentifier };
 }
-export async function cashierRules(ctx: QueryCtx | MutationCtx): Promise<CashierRules> {
-  const row = await ctx.db.query('cashierRules').withIndex('by_key', q => q.eq('key', 'default')).unique();
-  if (!row) return { ...DEFAULT_CASHIER_RULES };
-  const { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund } = row;
-  return { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund: refund ?? 'manager' };
-}
+
 export async function requireCashierAction(ctx: QueryCtx | MutationCtx, actor: StaffActor, action: CashierAction) {
   if (actor.role === 'cashier' && (await cashierRules(ctx))[action] !== 'cashier')
     throw new ConvexError({ code: 'NEEDS_APPROVAL', kind: action, message: 'Ask a manager to approve this action.' });
@@ -74,6 +78,7 @@ export function manualReduction(line: PricedLine & { catalogUnitPrice?: number }
   const reductionSatang = Math.max(0, subtotalSatang - lineCouponBase(line));
   return { subtotalSatang, reductionSatang, percent: subtotalSatang ? roundRatio(BigInt(reductionSatang) * 10000n, subtotalSatang) : 0 };
 }
+
 export async function assertCashierDiscount(ctx: QueryCtx | MutationCtx, actor: StaffActor, line: PricedLine & { catalogUnitPrice?: number }) {
   if (actor.role !== 'cashier') return;
   const rules = await cashierRules(ctx);

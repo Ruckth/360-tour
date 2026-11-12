@@ -1,12 +1,13 @@
 import { ConvexError, v } from 'convex/values';
-import { internalQuery, publicQuery, authenticatedMutation, staffQuery, staffMutation } from './auth/model';
+import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from './auth/model';
 import { adminEmails } from './lib/adminAuth';
-import { cashierRules, staffAccess, staffInvitationExpiry } from './lib/staffAccess';
-import { cashierRulesFields, STAFF_INVITATION_TTL_MS, staffRole } from './lib/staffTypes';
-import { appendRecordHistory } from './lib/recordHistory';
 import { marketingAccess, marketingInvitationExpiry } from './lib/marketingAccess';
+import { staffAccess, staffInvitationExpiry } from './lib/staffAccess';
+import { STAFF_INVITATION_TTL_MS, staffRole } from './lib/staffTypes';
+import { appendRecordHistory, cashierRules } from './settings/model';
 
 export const currentInternal = internalQuery({ args: {}, handler: staffAccess });
+
 export const myAccess = publicQuery({
   reason: "Sign-in bootstrap returns caller capabilities or anonymous access.", args: {}, handler: async ctx => {
   const [access, rules, marketing] = await Promise.all([staffAccess(ctx), cashierRules(ctx), marketingAccess(ctx)]);
@@ -86,23 +87,4 @@ export const updateInvitation = staffMutation({
   await ctx.db.patch(grant._id, { inviteExpiresAt: expiresAt, revision: (grant.revision ?? 0) + 1, updatedAt: Date.now(), updatedByEmail: actor.email });
   await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: grant._id, actor: actor.email, kind: args.action, after: { expiresAt } });
   return { expiresAt };
-} });
-
-export const getCashierRules = staffQuery({
-  capability: 'manageTeam', args: {}, handler: async ctx => {  return await cashierRules(ctx); } });
-export const updateCashierRules = staffMutation({
-  capability: 'manageTeam', args: { expectedRevision: v.number(), ...cashierRulesFields }, handler: async (ctx, args) => {
-  const actor = ctx.staff;
-  const before = await cashierRules(ctx);
-  if (args.expectedRevision !== before.revision) throw new ConvexError({ code: 'STALE_RULES', message: 'Cashier rules changed. Reload and try again.' });
-  const limit = args.discountLimitPercent;
-  if (!Number.isSafeInteger(limit) || limit < 0 || limit > 10000) throw new ConvexError('Use 0–100%, up to two decimals.');
-  const { discountLimitPercent, voidPaidSale, customPrice, paymentFix } = args;
-  const rules = { discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund: args.refund ?? before.refund };
-  const fields = { ...rules, revision: before.revision + 1, updatedAt: Date.now(), updatedByEmail: actor.email };
-  const row = await ctx.db.query('cashierRules').withIndex('by_key', q => q.eq('key', 'default')).unique();
-  const id = row ? row._id : await ctx.db.insert('cashierRules', { key: 'default', ...fields });
-  if (row) await ctx.db.patch(id, fields);
-  await appendRecordHistory(ctx, { entityType: 'cashierRules', entityId: id, actor: actor.email, kind: 'updated', before, after: fields });
-  return { ...rules, revision: fields.revision };
 } });

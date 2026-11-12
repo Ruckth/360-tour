@@ -11,12 +11,12 @@ const list = makeFunctionReference<
 	'query',
 	{ entityType: string; entityId?: string; paginationOpts: PaginationOptions },
 	PaginationResult<Doc<'recordChanges'>>
->('recordHistory:list');
+>('settings/recordHistory:list');
 const records = makeFunctionReference<
 	'query',
 	{ propertyId?: Id<'properties'>; paginationOpts: PaginationOptions },
 	PaginationResult<Doc<'configurationHistoryIndex'>>
->('configurationHistory:records');
+>('settings/configurationHistory:records');
 const page = { numItems: 100, cursor: null };
 function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
@@ -59,7 +59,7 @@ describe('configuration history and safe restoration', () => {
 		const { admin } = setup();
 		vi.stubEnv('AI_API_KEY', 'provider-ai-secret');
 		vi.stubEnv('STRIPE_SECRET_KEY', 'stripe-secret');
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'New name' },
 			ai: { extraInstructions: 'private prompt or embedded credential', tone: 'Calm', maxWords: 80 },
 			email: { fromName: 'Reception' }
@@ -79,17 +79,17 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('restores a safe snapshot as a new validated revision and retains excluded instructions', async () => {
 		const { admin } = setup();
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Earlier' },
 			ai: { tone: 'Earlier tone', extraInstructions: 'First private instruction' }
 		});
 		const [earlier] = (await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page }))
 			.page;
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Current' },
 			ai: { tone: 'Current tone', extraInstructions: 'Retain this private instruction' }
 		});
-		const restored = await admin.mutation(api.settings.restore, {
+		const restored = await admin.mutation(api.settings.settings.restore, {
 			historyId: earlier._id,
 			expectedRevision: 2,
 			side: 'after'
@@ -108,12 +108,12 @@ describe('configuration history and safe restoration', () => {
 			after: { businessName: 'Earlier' }
 		});
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: earlier._id, expectedRevision: 2, side: 'before' })
+			admin.mutation(api.settings.settings.restore, { historyId: earlier._id, expectedRevision: 2, side: 'before' })
 		).rejects.toThrow('Settings changed');
 		await expect(
-			admin.mutation(api.settings.update, { expectedRevision: 2, business: { businessName: 'Stale draft' } })
+			admin.mutation(api.settings.settings.update, { expectedRevision: 2, business: { businessName: 'Stale draft' } })
 		).rejects.toThrow('Settings changed');
-		expect((await admin.query(api.settings.get, {})).revision).toBe(3);
+		expect((await admin.query(api.settings.settings.get, {})).revision).toBe(3);
 	});
 	it('supports a legacy settings row without revision and rejects malformed or unrelated restore entries atomically', async () => {
 		const { t, admin } = setup();
@@ -125,7 +125,7 @@ describe('configuration history and safe restoration', () => {
 				updatedByEmail: 'old@example.com'
 			})
 		);
-		await admin.mutation(api.settings.update, { expectedRevision: 0, business: { businessName: 'Current' } });
+		await admin.mutation(api.settings.settings.update, { expectedRevision: 0, business: { businessName: 'Current' } });
 		const original = (await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page }))
 			.page[0];
 		const bad = await t.run((ctx) =>
@@ -140,7 +140,7 @@ describe('configuration history and safe restoration', () => {
 			})
 		);
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: bad, expectedRevision: 1, side: 'after' })
+			admin.mutation(api.settings.settings.restore, { historyId: bad, expectedRevision: 1, side: 'after' })
 		).rejects.toThrow('3-letter');
 		const unrelated = await t.run((ctx) =>
 			ctx.db.insert('recordChanges', {
@@ -154,7 +154,7 @@ describe('configuration history and safe restoration', () => {
 			})
 		);
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: unrelated, expectedRevision: 1, side: 'after' })
+			admin.mutation(api.settings.settings.restore, { historyId: unrelated, expectedRevision: 1, side: 'after' })
 		).rejects.toThrow('history not found');
 		const incomplete = await t.run((ctx) =>
 			ctx.db.insert('recordChanges', {
@@ -168,9 +168,9 @@ describe('configuration history and safe restoration', () => {
 			})
 		);
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: incomplete, expectedRevision: 1, side: 'before' })
+			admin.mutation(api.settings.settings.restore, { historyId: incomplete, expectedRevision: 1, side: 'before' })
 		).rejects.toThrow('Incomplete');
-		expect(await admin.query(api.settings.get, {})).toMatchObject({ businessName: 'Current', revision: 1 });
+		expect(await admin.query(api.settings.settings.get, {})).toMatchObject({ businessName: 'Current', revision: 1 });
 		expect(
 			(await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page })).page.filter(
 				(event) => event.kind === 'restored'
@@ -179,7 +179,7 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('protects history, discovery and restoration with server-side authorization', async () => {
 		const { t, admin, stranger } = setup();
-		await admin.mutation(api.settings.update, { business: { businessName: 'Saved' } });
+		await admin.mutation(api.settings.settings.update, { business: { businessName: 'Saved' } });
 		const event = (await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page }))
 			.page[0];
 		await expect(t.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page })).rejects.toThrow(
@@ -189,7 +189,7 @@ describe('configuration history and safe restoration', () => {
 			'Not authorized'
 		);
 		await expect(
-			stranger.mutation(api.settings.restore, { historyId: event._id, expectedRevision: 1, side: 'before' })
+			stranger.mutation(api.settings.settings.restore, { historyId: event._id, expectedRevision: 1, side: 'before' })
 		).rejects.toThrow('Not authorized');
 		await expect(
 			admin.query(list, {

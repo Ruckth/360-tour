@@ -3,7 +3,7 @@ import { resolveMarketingAttribution, type MarketingCapture } from './marketingA
 import { ConvexError } from 'convex/values';
 import { evaluateOffer, normalizeCouponCode } from './offers';
 import { couponUnavailable, couponVersion, holdCouponRedemption } from './couponRedemptions';
-import { getEffectiveSettings } from './siteSettings';
+import { getEffectiveSettings } from '../settings/model';
 import { resortLocalParts } from './serviceSlots';
 import { blockBookingDates } from './availabilityWrites';
 import { internal } from '../_generated/api';
