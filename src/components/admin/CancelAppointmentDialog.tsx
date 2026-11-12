@@ -35,7 +35,7 @@ export function CancelAppointmentDialog({
   staffName: string;
   onClose: () => void;
 }) {
-  const cancel = useMutation(api.adminServices.cancelAppointment);
+  const cancel = useMutation(api.services.commands.cancelAppointment.cancelAppointment);
   const [original] = useState(appointment);
   const [reason, setReason] = useState("");
   const same = (label: string, value: string) => ({ label, before: value, after: value });

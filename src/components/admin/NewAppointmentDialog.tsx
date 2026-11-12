@@ -91,10 +91,10 @@ export function NewAppointmentDialog({
   onClose: () => void;
   onCreated: (id: Id<"appointments">, start: number) => void;
 }) {
-  const createAppointment = useMutation(api.adminServices.createAppointment);
+  const createAppointment = useMutation(api.services.commands.createAppointment.createAppointment);
   const { rebook } = draft;
-  const allServices = useQuery(api.adminServices.listServices, { includeArchived: true });
-  const allStaff = useQuery(api.adminServices.listStaff, { includeArchived: true });
+  const allServices = useQuery(api.services.admin.listServices, { includeArchived: true });
+  const allStaff = useQuery(api.services.admin.listStaff, { includeArchived: true });
   const services = allServices ?? initialServices;
   const staff = allStaff ?? initialStaff;
   const [serviceId, setServiceId] = useState<Id<"services"> | undefined>(() => {
@@ -124,13 +124,13 @@ export function NewAppointmentDialog({
   const [historicalReason, setHistoricalReason] = useState("");
 
   const slots = useQuery(
-    api.adminServices.findOpenSlots,
+    api.services.admin.findOpenSlots,
     serviceId ? { serviceId, date, staffId } : "skip",
   );
   // Fall back to the next open time (or the first), so the form is always one click from booking.
   const selectedSlot = appointmentEntrySlot(slots, start, staffId, now);
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
-  const review = useQuery(api.adminServices.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, staffId: assignedId, start: selectedSlot.start } : "skip");
+  const review = useQuery(api.services.admin.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, staffId: assignedId, start: selectedSlot.start } : "skip");
   const assigned = staff.find((person) => person._id === assignedId);
   const parts = DAY_PARTS.map((part, i) => ({
     label: part.label,

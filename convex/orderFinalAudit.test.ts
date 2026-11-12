@@ -27,7 +27,7 @@ describe('Independent final audit: appointment discovery and rollout/history', (
   it('rejects direct appointment payment while checkout charges it, using the real accepted arguments', async () => {
     const { admin, appointmentId } = await setup();
     await admin.mutation(api.pos.attach, { appointmentId });
-    await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId })).rejects.toThrow(/still open|order/i);
+    await expect(admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId })).rejects.toThrow(/still open|order/i);
   });
 
   it('finds a standalone appointment by the email promised in Add booking', async () => {

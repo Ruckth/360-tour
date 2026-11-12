@@ -9,7 +9,7 @@ import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 type ServiceInput = Omit<Doc<'services'>, '_id' | '_creationTime'>;
-type ServicePage = FunctionReturnType<typeof api.publicServices.list>;
+type ServicePage = FunctionReturnType<typeof api.services.publicServices.list>;
 
 function service(index: number, overrides: Partial<ServiceInput> = {}): ServiceInput {
   return {
@@ -32,14 +32,14 @@ describe('public service catalog', () => {
         staffIds: [staffId], description: 'x'.repeat(1500), imageUrl: 'https://example.convex.cloud/api/storage/photo',
       }));
     });
-    const detail = await t.query(api.publicServices.getBySlug, { slug: 'service-1' });
+    const detail = await t.query(api.services.publicServices.getBySlug, { slug: 'service-1' });
     expect(detail).toEqual({
       slug: 'service-1', name: 'Service 1', description: 'x'.repeat(1000), category: 'Wellness',
       durationMin: 60, price: 100100, currency: 'THB', imageUrl: 'https://example.convex.cloud/api/storage/photo',
     });
-    const list = await t.query(api.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
+    const list = await t.query(api.services.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
     expect(list.page).toEqual([detail]);
-    const chat = await t.query(internal.publicServices.browseForChat, { category: 'Wellness' });
+    const chat = await t.query(internal.services.publicServices.browseForChat, { category: 'Wellness' });
     expect(chat.services).toEqual([detail]);
     for (const value of [detail, list.page, chat.services]) {
       const serialized = JSON.stringify(value);
@@ -57,14 +57,14 @@ describe('public service catalog', () => {
       await ctx.db.insert('services', service(1, { name: 'Thai Massage' }));
       await ctx.db.insert('services', service(2, { name: 'Hidden Massage', category: 'Archived only', status: 'archived' }));
     });
-    expect(await t.query(api.publicServices.getBySlug, { slug: 'service-2' })).toBeNull();
-    expect(await t.query(api.publicServices.getBySlug, { slug: 'missing' })).toBeNull();
-    expect(await t.query(api.publicServices.getBySlug, { slug: 'x'.repeat(501) })).toBeNull();
-    const all = await t.query(api.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
-    const search = await t.query(api.publicServices.list, { query: 'Massage', paginationOpts: { numItems: 20, cursor: null } });
+    expect(await t.query(api.services.publicServices.getBySlug, { slug: 'service-2' })).toBeNull();
+    expect(await t.query(api.services.publicServices.getBySlug, { slug: 'missing' })).toBeNull();
+    expect(await t.query(api.services.publicServices.getBySlug, { slug: 'x'.repeat(501) })).toBeNull();
+    const all = await t.query(api.services.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
+    const search = await t.query(api.services.publicServices.list, { query: 'Massage', paginationOpts: { numItems: 20, cursor: null } });
     expect(all.page.map(row => row.slug)).toEqual(['service-1']);
     expect(search.page.map(row => row.slug)).toEqual(['service-1']);
-    expect(await t.query(api.publicServices.categories, {})).toEqual({ categories: [{ name: 'Wellness' }], nextCategory: null });
+    expect(await t.query(api.services.publicServices.categories, {})).toEqual({ categories: [{ name: 'Wellness' }], nextCategory: null });
   });
 
   it('paginates past 100 active services without omissions or duplicate rows', async () => {
@@ -80,7 +80,7 @@ describe('public service catalog', () => {
     let done = false;
     const cursors = new Set<string>();
     for (let pageIndex = 0; pageIndex < 10 && !done; pageIndex++) {
-      const page: ServicePage = await t.query(api.publicServices.list, { paginationOpts: { numItems: 500, cursor } });
+      const page: ServicePage = await t.query(api.services.publicServices.list, { paginationOpts: { numItems: 500, cursor } });
       expect(page.page.length).toBeLessThanOrEqual(20);
       slugs.push(...page.page.map(row => row.slug));
       done = page.isDone;
@@ -106,7 +106,7 @@ describe('public service catalog', () => {
     let cursor: string | null = null;
     let done = false;
     for (let index = 0; index < 5 && !done; index++) {
-      const page: ServicePage = await t.query(api.publicServices.list, { category: 'Wellness', query: 'Massage', paginationOpts: { numItems: 20, cursor } });
+      const page: ServicePage = await t.query(api.services.publicServices.list, { category: 'Wellness', query: 'Massage', paginationOpts: { numItems: 20, cursor } });
       expect(page.page.every(row => row.category === 'Wellness')).toBe(true);
       slugs.push(...page.page.map(row => row.slug));
       done = page.isDone;
@@ -132,7 +132,7 @@ describe('public service catalog', () => {
     const names: string[] = [];
     let after: string | undefined;
     for (let index = 0; index < 4; index++) {
-      const result = await t.query(api.publicServices.categories, after ? { after } : {});
+      const result = await t.query(api.services.publicServices.categories, after ? { after } : {});
       expect(result.categories.length).toBeLessThanOrEqual(20);
       names.push(...result.categories.map(category => category.name));
       if (result.nextCategory === null) break;
@@ -151,10 +151,10 @@ describe('public service catalog', () => {
       await ctx.db.insert('services', service(4, { name: 'นวดไทย', category: 'สุขภาพ' }));
     });
     const query = { paginationOpts: { numItems: 20, cursor: null } };
-    expect((await t.query(api.publicServices.list, { ...query, category: ' Wellness ', query: ' Massage ' })).page.map(row => row.slug)).toEqual(['service-1']);
-    expect((await t.query(api.publicServices.list, { ...query, category: 'wellness' })).page).toEqual([]);
-    expect((await t.query(api.publicServices.list, { ...query, category: 'สุขภาพ' })).page.map(row => row.slug)).toEqual(['service-4']);
-    expect((await t.query(api.publicServices.list, { ...query, query: 'missingservice' })).page).toEqual([]);
+    expect((await t.query(api.services.publicServices.list, { ...query, category: ' Wellness ', query: ' Massage ' })).page.map(row => row.slug)).toEqual(['service-1']);
+    expect((await t.query(api.services.publicServices.list, { ...query, category: 'wellness' })).page).toEqual([]);
+    expect((await t.query(api.services.publicServices.list, { ...query, category: 'สุขภาพ' })).page.map(row => row.slug)).toEqual(['service-4']);
+    expect((await t.query(api.services.publicServices.list, { ...query, query: 'missingservice' })).page).toEqual([]);
   });
 
   it('keeps a stored 150-character category selectable and usable as a directory cursor', async () => {
@@ -166,31 +166,31 @@ describe('public service catalog', () => {
       await ctx.db.insert('services', service(20, { category: longCategory }));
       await ctx.db.insert('services', service(21, { category: laterCategory }));
     });
-    const first = await t.query(api.publicServices.categories, {});
+    const first = await t.query(api.services.publicServices.categories, {});
     expect(first.categories[first.categories.length - 1]?.name).toBe(longCategory);
     expect(first.nextCategory).toBe(longCategory);
-    const next = await t.query(api.publicServices.categories, { after: longCategory });
+    const next = await t.query(api.services.publicServices.categories, { after: longCategory });
     expect(next).toEqual({ categories: [{ name: laterCategory }], nextCategory: null });
-    const selected = await t.query(api.publicServices.list, { category: longCategory, paginationOpts: { numItems: 20, cursor: null } });
+    const selected = await t.query(api.services.publicServices.list, { category: longCategory, paginationOpts: { numItems: 20, cursor: null } });
     expect(selected.page.map(row => row.slug)).toEqual(['service-20']);
-    const chat = await t.query(internal.publicServices.browseForChat, { category: longCategory });
+    const chat = await t.query(internal.services.publicServices.browseForChat, { category: longCategory });
     expect(chat.services.map(row => row.slug)).toEqual(['service-20']);
   });
 
   it('returns empty states without inventing categories or services', async () => {
     const t = convexTest(schema, modules);
-    expect(await t.query(api.publicServices.categories, {})).toEqual({ categories: [], nextCategory: null });
-    expect(await t.query(internal.publicServices.browseForChat, {})).toEqual({ mode: 'categories', categories: [], nextCategory: null, services: [] });
-    const result = await t.query(api.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
+    expect(await t.query(api.services.publicServices.categories, {})).toEqual({ categories: [], nextCategory: null });
+    expect(await t.query(internal.services.publicServices.browseForChat, {})).toEqual({ mode: 'categories', categories: [], nextCategory: null, services: [] });
+    const result = await t.query(api.services.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
     expect(result.page).toEqual([]);
     expect(result.isDone).toBe(true);
-    expect(await t.query(internal.publicServices.browseForChat, { category: 'Missing' })).toMatchObject({ mode: 'services', services: [], hasMore: false });
+    expect(await t.query(internal.services.publicServices.browseForChat, { category: 'Missing' })).toMatchObject({ mode: 'services', services: [], hasMore: false });
   });
 
   it('rejects an oversized name search before searching', async () => {
     const t = convexTest(schema, modules);
-    await expect(t.query(api.publicServices.list, { query: 'x'.repeat(101), paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('too long');
-    await expect(t.query(internal.publicServices.browseForChat, { query: 'x'.repeat(101) })).rejects.toThrow('too long');
+    await expect(t.query(api.services.publicServices.list, { query: 'x'.repeat(101), paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('too long');
+    await expect(t.query(internal.services.publicServices.browseForChat, { query: 'x'.repeat(101) })).rejects.toThrow('too long');
   });
 });
 
@@ -200,7 +200,7 @@ describe('chat service browsing', () => {
     await t.run(async ctx => {
       for (let index = 0; index < 12; index++) await ctx.db.insert('services', service(index, { category: `Category ${String(index).padStart(2, '0')}` }));
     });
-    const result = await t.query(internal.publicServices.browseForChat, {});
+    const result = await t.query(internal.services.publicServices.browseForChat, {});
     expect(result.mode).toBe('categories');
     expect(result.services).toEqual([]);
     if (result.mode !== 'categories') throw new Error('Expected category directory');
@@ -214,19 +214,19 @@ describe('chat service browsing', () => {
       for (let index = 0; index < 7; index++) await ctx.db.insert('services', service(index));
       for (let index = 7; index < 12; index++) await ctx.db.insert('services', service(index, { category: 'Dining' }));
     });
-    const wellness = await t.query(internal.publicServices.browseForChat, { category: 'Wellness' });
+    const wellness = await t.query(internal.services.publicServices.browseForChat, { category: 'Wellness' });
     expect(wellness).toMatchObject({ mode: 'services', category: 'Wellness', hasMore: true });
     expect(wellness.services).toHaveLength(5);
-    const dining = await t.query(internal.publicServices.browseForChat, { category: 'Dining' });
+    const dining = await t.query(internal.services.publicServices.browseForChat, { category: 'Dining' });
     expect(dining.services).toHaveLength(5);
     expect(dining).toMatchObject({ hasMore: false });
-    const short = await t.query(internal.publicServices.browseForChat, { category: 'Wellness', limit: 3 });
+    const short = await t.query(internal.services.publicServices.browseForChat, { category: 'Wellness', limit: 3 });
     expect(short.services).toHaveLength(3);
     expect(short).toMatchObject({ hasMore: true });
   });
 
   it.each([0, -1, 6, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid chat result limit %s', async limit => {
     const t = convexTest(schema, modules);
-    await expect(t.query(internal.publicServices.browseForChat, { category: 'Wellness', limit })).rejects.toThrow('limit');
+    await expect(t.query(internal.services.publicServices.browseForChat, { category: 'Wellness', limit })).rejects.toThrow('limit');
   });
 });

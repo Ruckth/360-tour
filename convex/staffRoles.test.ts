@@ -89,7 +89,7 @@ describe('staff permissions and invitations', () => {
     const s = await setup();
     expect(await s.manager.query(api.staffAccess.myAccess, {})).toMatchObject({ role: 'manager', capabilities: { checkout: true, approve: true, manageTeam: false, settings: false, bookings: true, marketing: false } });
     await expect(s.manager.query(api.settings.get, {})).resolves.toBeTruthy();
-    await expect(s.manager.query(api.adminServices.listServices, {})).resolves.toHaveLength(1);
+    await expect(s.manager.query(api.services.admin.listServices, {})).resolves.toHaveLength(1);
     await expect(s.manager.mutation(api.settings.update, { business: { businessName: 'Denied' } })).rejects.toThrow('Not authorized');
     await expect(s.manager.mutation(api.settings.restore, { expectedRevision: 0, side: 'after', historyId: await s.t.run(ctx => ctx.db.insert('recordChanges', { entityType: 'settings', entityId: 'default', actor: 'owner@example.com', kind: 'updated', recordedAt: now, effectiveAt: now })) })).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
@@ -104,7 +104,7 @@ describe('staff permissions and invitations', () => {
     const s = await setup();
     const customerId = await s.owner.mutation(api.customers.createCustomer, { name: 'Alice', notes: 'Private guest details', email: 'alice@example.com' });
     await expect(s.cashier.query(api.settings.get, {})).rejects.toThrow('Not authorized');
-    await expect(s.cashier.query(api.adminServices.listServices, {})).rejects.toThrow('Not authorized');
+    await expect(s.cashier.query(api.services.admin.listServices, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.pos.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.customers.getCustomer, { customerId })).rejects.toThrow('Not authorized');

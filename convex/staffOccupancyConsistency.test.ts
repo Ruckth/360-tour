@@ -17,7 +17,7 @@ async function setup() {
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });
-  const maliId = await admin.mutation(api.adminServices.createStaff, {
+  const maliId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: "Mali",
     role: "Therapist",
     color: "#abc",
@@ -28,7 +28,7 @@ async function setup() {
     })),
     breaks: [],
   });
-  const serviceId = await admin.mutation(api.adminServices.createService, {
+  const serviceId = await admin.mutation(api.services.commands.createService.createService, {
     slug: "thai-massage",
     name: "Thai massage",
     description: "",
@@ -44,7 +44,7 @@ async function setup() {
     extra: Record<string, unknown> = {},
     day = date,
   ) =>
-    await admin.mutation(api.adminServices.createAppointment, {
+    await admin.mutation(api.services.commands.createAppointment.createAppointment, {
       serviceId,
       staffId: maliId,
       start: at(time, day),
@@ -70,21 +70,21 @@ describe("staff occupancy and finance consistency", () => {
   it("protects completed turnaround across hours, time off, archive and roster, then releases at its exact end", async () => {
     const { admin, maliId, book } = await setup();
     const { appointmentId } = await book("10:45");
-    await admin.mutation(api.adminServices.updateAppointmentStatus, {
+    await admin.mutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus, {
       appointmentId,
       status: "completed",
       expectedRevision: 0,
     });
     vi.setSystemTime(at("11:50"));
-    const off = await admin.mutation(api.adminServices.addTimeOff, {
+    const off = await admin.mutation(api.services.commands.addTimeOff.addTimeOff, {
       staffId: maliId,
       start: at("13:00"),
       end: at("14:00"),
       label: "Leave",
     });
-    const before = await admin.query(api.adminServices.listStaff, {});
+    const before = await admin.query(api.services.admin.listStaff, {});
     await expect(
-      admin.mutation(api.adminServices.updateStaff, {
+      admin.mutation(api.services.commands.updateStaff.updateStaff, {
         staffId: maliId,
         workingHours: weekdays.map((weekday) => ({
           weekday,
@@ -93,8 +93,8 @@ describe("staff occupancy and finance consistency", () => {
         })),
       }),
     ).rejects.toThrow("outside the new hours");
-    expect(await admin.query(api.adminServices.listStaff, {})).toEqual(before);
-    const conflict = await admin.mutation(api.adminServices.addTimeOff, {
+    expect(await admin.query(api.services.admin.listStaff, {})).toEqual(before);
+    const conflict = await admin.mutation(api.services.commands.addTimeOff.addTimeOff, {
       staffId: maliId,
       start: at("11:50"),
       end: at("13:00"),
@@ -103,7 +103,7 @@ describe("staff occupancy and finance consistency", () => {
     expect(conflict[0].timeOffId).toBeUndefined();
     expect(conflict[0].conflicts).toMatchObject([{ appointmentId }]);
     await expect(
-      admin.mutation(api.adminServices.updateTimeOff, {
+      admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, {
         timeOffId: off[0].timeOffId!,
         start: at("11:50"),
         end: at("14:00"),
@@ -111,16 +111,16 @@ describe("staff occupancy and finance consistency", () => {
       }),
     ).rejects.toThrow("appointments during this time off");
     expect(
-      await admin.query(api.adminServices.countUpcomingAppointments, {
+      await admin.query(api.services.admin.countUpcomingAppointments, {
         staffId: maliId,
       }),
     ).toBe(1);
     await expect(
-      admin.mutation(api.adminServices.archiveStaff, { staffId: maliId }),
+      admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId: maliId }),
     ).rejects.toThrow("Reassign or cancel");
     expect(
       (
-        await admin.mutation(api.roster.applyCells, {
+        await admin.mutation(api.services.roster.applyCells, {
           cells: [{ staffId: maliId, date }],
           shifts: [{ start: "09:00", end: "11:45" }],
           breaks: [],
@@ -129,11 +129,11 @@ describe("staff occupancy and finance consistency", () => {
     ).toBe(false);
     vi.setSystemTime(at("12:00"));
     expect(
-      await admin.query(api.adminServices.countUpcomingAppointments, {
+      await admin.query(api.services.admin.countUpcomingAppointments, {
         staffId: maliId,
       }),
     ).toBe(0);
-    await admin.mutation(api.adminServices.updateStaff, {
+    await admin.mutation(api.services.commands.updateStaff.updateStaff, {
       staffId: maliId,
       workingHours: weekdays.map((weekday) => ({
         weekday,
@@ -143,7 +143,7 @@ describe("staff occupancy and finance consistency", () => {
     });
     expect(
       (
-        await admin.mutation(api.adminServices.addTimeOff, {
+        await admin.mutation(api.services.commands.addTimeOff.addTimeOff, {
           staffId: maliId,
           start: at("12:00"),
           end: at("13:00"),
@@ -151,24 +151,24 @@ describe("staff occupancy and finance consistency", () => {
         })
       )[0].timeOffId,
     ).toBeDefined();
-    await admin.mutation(api.adminServices.archiveStaff, { staffId: maliId });
+    await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId: maliId });
   });
   it("retains future completed occupancy and permits adjacent time off before turnaround ends", async () => {
     const { admin, maliId, serviceId, book } = await setup();
     const { appointmentId } = await book("10:45");
-    await admin.mutation(api.adminServices.updateAppointmentStatus, {
+    await admin.mutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus, {
       appointmentId,
       status: "completed",
       expectedRevision: 0,
     });
     expect(
-      await admin.query(api.adminServices.countUpcomingAppointments, {
+      await admin.query(api.services.admin.countUpcomingAppointments, {
         serviceId,
       }),
     ).toBe(1);
     expect(
       (
-        await admin.mutation(api.adminServices.addTimeOff, {
+        await admin.mutation(api.services.commands.addTimeOff.addTimeOff, {
           staffId: maliId,
           start: at("10:00"),
           end: at("12:00"),
@@ -177,12 +177,12 @@ describe("staff occupancy and finance consistency", () => {
       )[0].conflicts,
     ).toMatchObject([{ appointmentId }]);
     await expect(
-      admin.mutation(api.adminServices.archiveStaff, { staffId: maliId }),
+      admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId: maliId }),
     ).rejects.toThrow("Reassign or cancel");
     vi.setSystemTime(at("11:50"));
     expect(
       (
-        await admin.mutation(api.adminServices.addTimeOff, {
+        await admin.mutation(api.services.commands.addTimeOff.addTimeOff, {
           staffId: maliId,
           start: at("12:00"),
           end: at("13:00"),
@@ -195,13 +195,13 @@ describe("staff occupancy and finance consistency", () => {
     const { admin, book } = await setup();
     const { appointmentId } = await book("10:00");
     vi.setSystemTime(at("10:05"));
-    await admin.mutation(api.adminServices.updateAppointmentStatus, {
+    await admin.mutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus, {
       appointmentId,
       status: "no_show",
       expectedRevision: 0,
     });
     const { paymentId } = await admin.mutation(
-      api.adminServices.markAppointmentPaid,
+      api.services.commands.markAppointmentPaid.markAppointmentPaid,
       {
         appointmentId,
         expectedRevision: 1,
@@ -211,19 +211,19 @@ describe("staff occupancy and finance consistency", () => {
     );
     expect(
       (
-        await admin.query(api.adminServices.getAppointmentFinancials, {
+        await admin.query(api.services.admin.getAppointmentFinancials, {
           appointmentId,
         })
       ).money,
     ).toMatchObject({ owed: 0, gross: 200000, net: 200000 });
-    await admin.mutation(api.adminServices.correctAppointmentStatus, {
+    await admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, {
       appointmentId,
       expectedRevision: 2,
       status: "cancelled",
       reason: "Mistaken status",
       effectiveAt: Date.now(),
     });
-    await admin.mutation(api.adminServices.correctAppointmentPaymentEntry, {
+    await admin.mutation(api.services.commands.correctAppointmentPaymentEntry.correctAppointmentPaymentEntry, {
       appointmentId,
       expectedRevision: 3,
       paymentId,
@@ -233,7 +233,7 @@ describe("staff occupancy and finance consistency", () => {
     });
     expect(
       (
-        await admin.query(api.adminServices.getAppointmentFinancials, {
+        await admin.query(api.services.admin.getAppointmentFinancials, {
           appointmentId,
         })
       ).money,
@@ -246,20 +246,20 @@ describe("staff occupancy and finance consistency", () => {
       const { appointmentId } = await book("10:00");
       expect(
         (
-          await admin.query(api.adminServices.getAppointmentFinancials, {
+          await admin.query(api.services.admin.getAppointmentFinancials, {
             appointmentId,
           })
         ).money.owed,
       ).toBe(200000);
       vi.setSystemTime(at("10:05"));
-      await admin.mutation(api.adminServices.correctAppointmentStatus, {
+      await admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, {
         appointmentId,
         expectedRevision: 0,
         status,
         effectiveAt: Date.now(),
       });
       const financials = await admin.query(
-        api.adminServices.getAppointmentFinancials,
+        api.services.admin.getAppointmentFinancials,
         { appointmentId },
       );
       const order = await admin.query(api.pos.ordersForBooking, {
@@ -273,24 +273,24 @@ describe("staff occupancy and finance consistency", () => {
         refunded: 0,
       });
       const paid = await book("13:00");
-      await admin.mutation(api.adminServices.markAppointmentPaid, {
+      await admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, {
         appointmentId: paid.appointmentId,
         expectedRevision: 0,
         method: "cash",
         idempotencyKey: "preserve-paid",
       });
-      await admin.mutation(api.adminServices.cancelAppointment, {
+      await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, {
         appointmentId: paid.appointmentId,
         expectedRevision: 1,
       });
       expect(
         (
-          await admin.query(api.adminServices.getAppointmentFinancials, {
+          await admin.query(api.services.admin.getAppointmentFinancials, {
             appointmentId: paid.appointmentId,
           })
         ).money,
       ).toMatchObject({ owed: 0, gross: 200000, net: 200000, refunded: 0 });
-      await admin.mutation(api.adminServices.correctAppointmentStatus, {
+      await admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, {
         appointmentId,
         expectedRevision: 1,
         status: "booked",
@@ -299,7 +299,7 @@ describe("staff occupancy and finance consistency", () => {
       });
       expect(
         (
-          await admin.query(api.adminServices.getAppointmentFinancials, {
+          await admin.query(api.services.admin.getAppointmentFinancials, {
             appointmentId,
           })
         ).money.owed,

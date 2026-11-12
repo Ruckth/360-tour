@@ -1,26 +1,13 @@
 import { v } from 'convex/values';
-import { internalMutation, adminQuery, adminMutation } from './auth/model';
-import type { MutationCtx, QueryCtx } from './_generated/server';
-import type { Doc, Id } from './_generated/dataModel';
-import { internal } from './_generated/api';
-import {
-	APPOINTMENT_LOOKBACK,
-	TIME_OFF_LOOKBACK,
-	addDays,
-	assertValidTime,
-	blocksTime,
-	effectivePlan,
-	localDayRange,
-	patternDay,
-	planUncovers,
-	resortLocalParts,
-	weekdayOf,
-	type DayPlan,
-	type RosterBreak
-} from './lib/serviceSlots';
-import { appendRecordHistory } from './lib/recordHistory';
-import { patternForDate, patternsForRange, rosterDate, writeWeeklyPattern } from './lib/rosterHistory';
-import { assertValidIsoDate } from './lib/validation';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { adminMutation, adminQuery, internalMutation } from '../auth/model';
+import { appendRecordHistory } from '../lib/recordHistory';
+import { patternForDate, patternsForRange, rosterDate, writeWeeklyPattern } from '../lib/rosterHistory';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, addDays, assertValidTime, blocksTime, effectivePlan, localDayRange, patternDay, planUncovers, resortLocalParts, weekdayOf, type DayPlan, type RosterBreak } from '../lib/serviceSlots';
+import { assertValidIsoDate } from '../lib/validation';
+import { RosterConflict, STALE_ROSTER } from './model';
 
 /**
  * Staff roster: the weekly pattern on `staff` plus per-date overrides in `staffDays`.
@@ -30,32 +17,29 @@ import { assertValidIsoDate } from './lib/validation';
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
+
 type Staff = Doc<'staff'>;
+
 type Appointment = Doc<'appointments'>;
+
 type Pattern = Pick<Staff, 'workingHours' | 'breaks'>;
 
 const shiftValidator = v.object({ start: v.string(), end: v.string() });
+
 const breakValidator = v.object({ start: v.string(), end: v.string(), label: v.string() });
+
 const cellValidator = v.object({ staffId: v.id('staff'), date: v.string() });
+
 const planValidator = v.object({ shifts: v.array(shiftValidator), breaks: v.array(breakValidator), note: v.optional(v.string()) });
 
 const MAX_CELLS = 1000;
+
 const MAX_WEEKS = 52;
+
 /** Cells written per transaction by copyWeek; bigger copies continue in scheduled chunks. */
 const CELLS_PER_TX = 2000;
-const MAX_SKIPPED_LISTED = 200;
 
-export type RosterConflict = {
-	staffId: Id<'staff'>;
-	staffName: string;
-	date: string;
-	appointmentId: Id<'appointments'>;
-	start: number;
-	end: number;
-	guestName: string;
-	confirmationCode: string;
-	serviceName: string;
-};
+const MAX_SKIPPED_LISTED = 200;
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -183,7 +167,7 @@ async function describeConflicts(ctx: ReadCtx, items: Array<{ staff: Staff; date
 
 async function newBatch(ctx: MutationCtx, email: string, label: string, extra: Pick<Partial<Doc<'rosterBatches'>>, 'status' | 'patterns'> = {}) {
 	const batchId = await ctx.db.insert('rosterBatches', { label, status: 'done', createdByAdminEmail: email, createdAt: Date.now(), ...extra });
-	await ctx.scheduler.runAfter(0, internal.roster.pruneBatches, { keep: batchId });
+	await ctx.scheduler.runAfter(0, internal.services.roster.pruneBatches, { keep: batchId });
 	return batchId;
 }
 
@@ -344,6 +328,7 @@ export const resetCells = adminMutation({
 });
 
 type CopyAction = { staffId: Id<'staff'>; date: string; existing?: Doc<'staffDays'>; next: DayPlan | null };
+
 type SkippedCell = { staffId: Id<'staff'>; staffName: string; date: string; reason: 'override' | 'appointments'; appointments: number };
 
 /**
@@ -430,7 +415,7 @@ export const copyWeek = adminMutation({
 			await writeCell(ctx, batchId, action.staffId, action.date, action.existing, action.next, admin.email);
 		}
 		if (running) {
-			await ctx.scheduler.runAfter(0, internal.roster.continueCopy, {
+			await ctx.scheduler.runAfter(0, internal.services.roster.continueCopy, {
 				batchId, sourceWeekStart: args.sourceWeekStart, fromWeek: weeksPerTx + 1, toWeek: args.weeks, weeksPerTx, conflict: args.conflict
 			});
 		}
@@ -455,7 +440,7 @@ export const continueCopy = internalMutation({
 		const plan = await planCopy(ctx, args.sourceWeekStart, args.fromWeek, chunkEnd, args.conflict);
 		for (const action of plan.actions) await writeCell(ctx, args.batchId, action.staffId, action.date, action.existing, action.next, batch.createdByAdminEmail);
 		if (chunkEnd < args.toWeek) {
-			await ctx.scheduler.runAfter(0, internal.roster.continueCopy, { ...args, fromWeek: chunkEnd + 1 });
+			await ctx.scheduler.runAfter(0, internal.services.roster.continueCopy, { ...args, fromWeek: chunkEnd + 1 });
 		} else {
 			await ctx.db.patch(args.batchId, { status: 'done' });
 		}
@@ -596,7 +581,7 @@ export const undo = adminMutation({
 		const more = await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', batch._id)).first();
 		if (more) {
 			await ctx.db.patch(batch._id, { status: 'undoing' });
-			await ctx.scheduler.runAfter(0, internal.roster.continueUndo, { batchId: batch._id });
+			await ctx.scheduler.runAfter(0, internal.services.roster.continueUndo, { batchId: batch._id });
 		} else await ctx.db.patch(batch._id, { status: 'undone' });
 		return { ok: true as const, restored: items.length, running: Boolean(more) };
 	}
@@ -647,7 +632,7 @@ export const continueUndo = internalMutation({
 		}
 		await restoreBatchItems(ctx, restorable, batch.undoByAdminEmail ?? batch.createdByAdminEmail);
 		if (await ctx.db.query('rosterBatchItems').withIndex('by_batch', (q) => q.eq('batchId', args.batchId)).first()) {
-			await ctx.scheduler.runAfter(0, internal.roster.continueUndo, args);
+			await ctx.scheduler.runAfter(0, internal.services.roster.continueUndo, args);
 		} else await ctx.db.patch(args.batchId, { status: 'undone' });
 	}
 });
@@ -666,15 +651,13 @@ export const pruneBatches = internalMutation({
 			for (const item of items) await ctx.db.delete(item._id);
 			budget -= items.length;
 			if (budget <= 0) {
-				await ctx.scheduler.runAfter(0, internal.roster.pruneBatches, args);
+				await ctx.scheduler.runAfter(0, internal.services.roster.pruneBatches, args);
 				return;
 			}
 			await ctx.db.delete(batch._id);
 		}
 	}
 });
-
-export const STALE_ROSTER = 'This roster day changed since you opened it. Review the latest schedule and try again.';
 
 const breakChangeArgs = {
 	staffId: v.id('staff'),

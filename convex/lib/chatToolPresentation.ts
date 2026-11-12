@@ -7,9 +7,9 @@ import { resortLocalParts } from './serviceSlots';
 type MutationResults = {
   prepare_booking: FunctionReturnType<typeof internal.bookings.bookings.prepareChatBooking>;
   confirm_booking: FunctionReturnType<typeof internal.bookings.bookings.confirmChatBooking>;
-  prepare_service_booking: FunctionReturnType<typeof internal.serviceBookings.prepareChatServiceBooking>;
-  confirm_service_booking: FunctionReturnType<typeof internal.serviceBookings.confirmChatServiceBooking>;
-  cancel_booking: FunctionReturnType<typeof internal.bookings.bookings.cancelChatBooking> | FunctionReturnType<typeof internal.serviceBookings.cancelChatServiceBooking>;
+  prepare_service_booking: FunctionReturnType<typeof internal.services.serviceBookings.prepareChatServiceBooking>;
+  confirm_service_booking: FunctionReturnType<typeof internal.services.serviceBookings.confirmChatServiceBooking>;
+  cancel_booking: FunctionReturnType<typeof internal.bookings.bookings.cancelChatBooking> | FunctionReturnType<typeof internal.services.serviceBookings.cancelChatServiceBooking>;
 };
 export type MutationToolResult = { [Name in keyof MutationResults]: { name: Name; result: MutationResults[Name] } }[keyof MutationResults];
 

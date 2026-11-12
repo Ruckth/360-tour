@@ -17,13 +17,13 @@ async function setup() {
 	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const staffIds = [];
 	for (const name of ['Mali', 'Nok']) {
-		staffIds.push(await admin.mutation(api.adminServices.createStaff, {
+		staffIds.push(await admin.mutation(api.services.commands.createStaff.createStaff, {
 			name, role: 'Therapist', color: '#abc',
 			workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '17:00' })),
 			breaks: weekdays.map((weekday) => ({ weekday, start: '12:00', end: '13:00', label: 'Lunch' }))
 		}));
 	}
-	const serviceId = await admin.mutation(api.adminServices.createService, {
+	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: 'Massage', category: 'Wellness',
 		durationMin: 60, bufferMin: 30, price: 200000, currency: 'THB', staffIds
 	});
@@ -48,7 +48,7 @@ describe('service slots', () => {
 		expect(resortLocalParts(Date.parse('2026-12-31T17:30:00.000Z'))).toEqual({ date: '2027-01-01', time: '00:30', weekday: 5 });
 		expect(() => at('25:00')).toThrow('HH:mm');
 		const { admin, serviceId, staffIds } = await setup();
-		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		const slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
 		expect(slots.find((slot) => slot.start === at('09:00'))?.staffIds).toEqual([staffIds[0]]);
 		expect(slots.some((slot) => slot.start === at('08:45'))).toBe(false);
 		expect(slots.some((slot) => slot.start === at('11:00'))).toBe(false);
@@ -58,56 +58,56 @@ describe('service slots', () => {
 
 	it('applies time off, appointment buffers, and cancellation immediately', async () => {
 		const { admin, serviceId, staffIds, booking } = await setup();
-		await admin.mutation(api.adminServices.addTimeOff, { staffId: staffIds[0], start: at('13:00'), end: at('14:00'), label: 'Training' });
-		let slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		await admin.mutation(api.services.commands.addTimeOff.addTimeOff, { staffId: staffIds[0], start: at('13:00'), end: at('14:00'), label: 'Training' });
+		let slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
 		expect(slots.some((slot) => slot.start === at('13:00'))).toBe(false);
-		const created = await admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:00') });
+		const created = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:00') });
 		expect(created).toMatchObject({ staffId: staffIds[0] });
 		expect(created.confirmationCode).toMatch(/^SVC-/);
-		slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
 		expect(slots.some((slot) => slot.start === at('09:00'))).toBe(false);
 		expect(slots.some((slot) => slot.start === at('10:15'))).toBe(false);
-		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:15') }))
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:15') }))
 			.rejects.toThrow('That time was just taken');
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: created.appointmentId, expectedRevision: 0 });
-		slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: created.appointmentId, expectedRevision: 0 });
+		slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
 		expect(slots.some((slot) => slot.start === at('09:00'))).toBe(true);
 	});
 
 	it('auto assigns a free qualified person with the fewest appointments', async () => {
 		const { admin, staffIds, booking } = await setup();
-		const first = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
+		const first = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') });
 		expect(first.staffId).toBe(staffIds[0]); // stable name order
-		const second = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') });
+		const second = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') });
 		expect(second.staffId).toBe(staffIds[1]); // Mali is busy
-		const third = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('14:00') });
+		const third = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('14:00') });
 		expect(third.staffId).toBe(staffIds[0]); // tied counts, stable name order
-		await admin.mutation(api.adminServices.cancelAppointment, { appointmentId: second.appointmentId, expectedRevision: 0 });
-		const fourth = await admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('15:00') });
+		await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: second.appointmentId, expectedRevision: 0 });
+		const fourth = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('15:00') });
 		expect(fourth.staffId).toBe(staffIds[1]); // fewer non-cancelled appointments
 	});
 
 	it('does not offer archived staff or services', async () => {
 		const { admin, staffIds, serviceId, booking } = await setup();
-		await admin.mutation(api.adminServices.archiveStaff, { staffId: staffIds[0] });
-		await admin.mutation(api.adminServices.archiveStaff, { staffId: staffIds[1] });
-		expect(await admin.query(api.adminServices.findOpenSlots, { serviceId, date })).toEqual([]);
-		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') })).rejects.toThrow('That time was just taken');
-		await admin.mutation(api.adminServices.updateStaff, { staffId: staffIds[0], status: 'active' });
-		await admin.mutation(api.adminServices.archiveService, { serviceId });
-		expect(await admin.query(api.adminServices.findOpenSlots, { serviceId, date })).toEqual([]);
-		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, start: at('09:00') })).rejects.toThrow('Service unavailable');
+		await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId: staffIds[0] });
+		await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId: staffIds[1] });
+		expect(await admin.query(api.services.admin.findOpenSlots, { serviceId, date })).toEqual([]);
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') })).rejects.toThrow('That time was just taken');
+		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId: staffIds[0], status: 'active' });
+		await admin.mutation(api.services.commands.archiveService.archiveService, { serviceId });
+		expect(await admin.query(api.services.admin.findOpenSlots, { serviceId, date })).toEqual([]);
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') })).rejects.toThrow('Service unavailable');
 	});
 
 	it('frees no-show time and rejects an unqualified requested staff member', async () => {
 		const { admin, staffIds, serviceId, booking } = await setup();
-		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:00') });
+		const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: staffIds[0], start: at('09:00') });
 		vi.setSystemTime(at('09:05'));
-		await admin.mutation(api.adminServices.updateAppointmentStatus, { appointmentId, status: 'no_show' });
-		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		await admin.mutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus, { appointmentId, status: 'no_show' });
+		const slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
 		expect(slots.some((slot) => slot.start === at('09:15'))).toBe(true);
-		const other = await admin.mutation(api.adminServices.createStaff, { name: 'Chef', role: 'Chef', color: '#abc', workingHours: [], breaks: [] });
-		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: other, start: at('10:00') }))
+		const other = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Chef', role: 'Chef', color: '#abc', workingHours: [], breaks: [] });
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: other, start: at('10:00') }))
 			.rejects.toThrow('not available for this service');
 	});
 
@@ -119,7 +119,7 @@ describe('service slots', () => {
 				breaks: [{ start: '18:00', end: '19:00', label: 'Dinner' }], updatedAt: Date.now()
 			});
 		});
-		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
+		const slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date, staffId: staffIds[0] });
 		const has = (time: string) => slots.some((slot) => slot.start === at(time));
 		expect(has('09:00')).toBe(false); // pattern hours no longer apply
 		expect(has('13:00')).toBe(false); // pattern lunch is gone but it's before the shift
@@ -129,9 +129,9 @@ describe('service slots', () => {
 		expect(has('19:00')).toBe(true);
 		expect(has('20:45')).toBe(false); // would end after the shift
 		// Other dates keep the pattern.
-		const nextDay = await admin.query(api.adminServices.findOpenSlots, { serviceId, date: '2026-09-26', staffId: staffIds[0] });
+		const nextDay = await admin.query(api.services.admin.findOpenSlots, { serviceId, date: '2026-09-26', staffId: staffIds[0] });
 		expect(nextDay.some((slot) => slot.start === localDateTimeUtc('2026-09-26', '09:00'))).toBe(true);
-		const schedule = await admin.query(api.adminServices.listSchedule, { from: at('00:00'), to: at('00:00') + 86_400_000, staffIds: [staffIds[0]] });
+		const schedule = await admin.query(api.services.admin.listSchedule, { from: at('00:00'), to: at('00:00') + 86_400_000, staffIds: [staffIds[0]] });
 		expect(schedule.shifts).toEqual([{ staffId: staffIds[0], start: at('14:00'), end: at('22:00') }]);
 		expect(schedule.blocks).toEqual([expect.objectContaining({ staffId: staffIds[0], start: at('18:00'), end: at('19:00'), label: 'Dinner', kind: 'break', date, override: true })]);
 	});
@@ -141,38 +141,38 @@ describe('service slots', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert('staffDays', { staffId: staffIds[0], date, shifts: [], breaks: [], updatedAt: Date.now() });
 		});
-		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date });
+		const slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date });
 		expect(slots.length).toBeGreaterThan(0);
 		expect(slots.every((slot) => !slot.staffIds.includes(staffIds[0]))).toBe(true);
-		await expect(admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[0], start: at('10:00') }))
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: staffIds[0], start: at('10:00') }))
 			.rejects.toThrow('That time was just taken');
 		// The pattern guard in updateStaff ignores dates that have an override.
-		const created = await admin.mutation(api.adminServices.createAppointment, { ...booking, staffId: staffIds[1], start: at('10:00') });
+		const created = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: staffIds[1], start: at('10:00') });
 		await t.run(async (ctx) => {
 			await ctx.db.insert('staffDays', { staffId: staffIds[1], date, shifts: [{ start: '09:00', end: '17:00' }], breaks: [], updatedAt: Date.now() });
 		});
-		await admin.mutation(api.adminServices.updateStaff, { staffId: staffIds[1], workingHours: [], breaks: [] });
+		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId: staffIds[1], workingHours: [], breaks: [] });
 		await t.run(async (ctx) => {
 			const row = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', staffIds[1]).eq('date', date)).unique();
 			await ctx.db.delete(row!._id);
 		});
-		await expect(admin.mutation(api.adminServices.updateStaff, { staffId: staffIds[1], workingHours: weekdays.map((weekday) => ({ weekday, start: '12:00', end: '17:00' })) }))
+		await expect(admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId: staffIds[1], workingHours: weekdays.map((weekday) => ({ weekday, start: '12:00', end: '17:00' })) }))
 			.rejects.toThrow('outside the new hours');
 		expect(created.staffId).toBe(staffIds[1]);
 	});
 
 	it('blocks next-day slots with an appointment that runs past midnight', async () => {
 		const { admin } = await setup();
-		const staffId = await admin.mutation(api.adminServices.createStaff, {
+		const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
 			name: 'Kai', role: 'Driver', color: '#abc',
 			workingHours: weekdays.map((weekday) => ({ weekday, start: '00:00', end: '24:00' })), breaks: []
 		});
-		const serviceId = await admin.mutation(api.adminServices.createService, {
+		const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 			slug: 'transfer', name: 'Transfer', description: '', category: 'Arrival',
 			durationMin: 60, bufferMin: 30, price: 150000, currency: 'THB', staffIds: [staffId]
 		});
-		await admin.mutation(api.adminServices.createAppointment, { serviceId, guestName: 'Guest', guestPhone: '+66000000000', start: at('23:00') });
-		const slots = await admin.query(api.adminServices.findOpenSlots, { serviceId, date: '2026-09-26' });
+		await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, guestName: 'Guest', guestPhone: '+66000000000', start: at('23:00') });
+		const slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date: '2026-09-26' });
 		expect(slots[0].start).toBe(localDateTimeUtc('2026-09-26', '00:30'));
 	});
 });

@@ -39,13 +39,13 @@ afterEach(() => {
 describe('configuration history and safe restoration', () => {
 	it('discovers removed time off without its deleted id and pages all retained changes with admin authorization', async () => {
 		const { admin, stranger } = setup();
-		const staffId = await admin.mutation(api.adminServices.createStaff, {
+		const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
 			name: 'Mali', role: 'Therapist', color: '#abc',
 			workingHours: [{ weekday: 1, start: '09:00', end: '18:00' }], breaks: []
 		});
 		const start = Date.parse('2026-10-30T02:00:00Z');
-		const [created] = await admin.mutation(api.adminServices.addTimeOff, { staffId, start, end: start + 3600000, label: 'Sick leave' });
-		await admin.mutation(api.adminServices.removeTimeOff, { timeOffId: created.timeOffId! });
+		const [created] = await admin.mutation(api.services.commands.addTimeOff.addTimeOff, { staffId, start, end: start + 3600000, label: 'Sick leave' });
+		await admin.mutation(api.services.commands.removeTimeOff.removeTimeOff, { timeOffId: created.timeOffId! });
 		const args = { entityType: 'timeOff', paginationOpts: { numItems: 1, cursor: null } };
 		const first = await admin.query(list, args);
 		expect(first.page).toMatchObject([{ kind: 'removed', before: { staffId, label: 'Sick leave' } }]);

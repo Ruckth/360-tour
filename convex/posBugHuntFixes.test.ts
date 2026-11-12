@@ -44,29 +44,29 @@ async function setup() {
 describe('verified POS bug hunt regressions', () => {
 	it('H1-01 refuses a stale fee above a corrected appointment price', async () => {
 		const { t, admin, view, settle } = await setup();
-		const staffId = await admin.mutation(api.adminServices.createStaff, {
+		const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
 			name: 'Nok', role: 'Therapist', color: '#abc', breaks: [],
 			workingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, start: '09:00', end: '18:00' })),
 		});
-		const service = (price: number) => admin.mutation(api.adminServices.createService, {
+		const service = (price: number) => admin.mutation(api.services.commands.createService.createService, {
 			slug: `massage-${price}`, name: `Massage ${price}`, description: '', category: 'Massage',
 			durationMin: 60, bufferMin: 0, price, currency: 'THB', staffIds: [staffId],
 		});
 		const serviceId = await service(120000);
 		const cheaperServiceId = await service(50000);
-		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, {
+		const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, {
 			serviceId, staffId, start: Date.parse('2026-10-31T03:00:00Z'),
 			guestName: 'Anna', guestPhone: '0812345678', historicalReason: 'Record yesterday’s appointment',
 		});
 		const appointment = () => t.run((ctx) => ctx.db.get(appointmentId)).then((row) => row!);
-		const correct = async (status: 'booked' | 'no_show') => admin.mutation(api.adminServices.correctAppointmentStatus, {
+		const correct = async (status: 'booked' | 'no_show') => admin.mutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus, {
 			appointmentId, expectedRevision: (await appointment()).revision ?? 0, status,
 			reason: 'Correct recorded status', effectiveAt: Date.now(),
 		});
 		await correct('no_show');
 		const { orderId } = await admin.mutation(api.pos.addAppointmentFee, { appointmentId, kind: 'no_show', amount: 80000 });
 		await correct('booked');
-		await admin.mutation(api.adminServices.updateAppointmentDetails, {
+		await admin.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, {
 			appointmentId, expectedRevision: (await appointment()).revision ?? 0,
 			serviceId: cheaperServiceId, guestName: 'Anna', guestPhone: '0812345678',
 		});
@@ -130,15 +130,15 @@ describe('verified POS bug hunt regressions', () => {
 	it.each([false, true])('H1-02 releases the last attached appointment link (part of stay: %s)', async (partOfStay) => {
 		const { admin, view, booking, extra, discard } = await setup();
 		const bookingId = partOfStay ? await booking() : undefined;
-		const staffId = await admin.mutation(api.adminServices.createStaff, {
+		const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
 			name: 'Ploy', role: 'Therapist', color: '#def', breaks: [],
 			workingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, start: '09:00', end: '18:00' })),
 		});
-		const serviceId = await admin.mutation(api.adminServices.createService, {
+		const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 			slug: 'attachment-massage', name: 'Massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0,
 			price: 50000, currency: 'THB', staffIds: [staffId],
 		});
-		const { appointmentId } = await admin.mutation(api.adminServices.createAppointment, {
+		const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, {
 			serviceId, staffId, bookingId, start: Date.parse('2026-12-01T03:00:00Z'), guestName: 'Anna', guestPhone: '0812345678',
 		});
 		const original = await admin.mutation(api.pos.openOrderForLink, { appointmentId });

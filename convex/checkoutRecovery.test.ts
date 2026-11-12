@@ -71,10 +71,10 @@ describe("checkout source boundaries", () => {
 
   it("opens valid booking and appointment links, reuses their orders, and reports deleted sources", async () => {
     const { t, admin } = setup();
-    const staffId = await admin.mutation(api.adminServices.createStaff, {
+    const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
       name: "Therapist", role: "Therapist", color: "#abc", workingHours: [], breaks: [],
     });
-    const serviceId = await admin.mutation(api.adminServices.createService, {
+    const serviceId = await admin.mutation(api.services.commands.createService.createService, {
       slug: "massage", name: "Massage", description: "", category: "Massage", durationMin: 60,
       bufferMin: 0, price: 10000, currency: "THB", staffIds: [staffId],
     });

@@ -23,8 +23,8 @@ async function setup() {
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email: 'desk@example.com', tokenIdentifier: 'desk' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
-	const nok = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
-	const service = (slug: string, name: string, price: number) => admin.mutation(api.adminServices.createService, {
+	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
+	const service = (slug: string, name: string, price: number) => admin.mutation(api.services.commands.createService.createService, {
 		slug, name, description: '', category: 'Massage', durationMin: 60, bufferMin: 15, price, currency: 'THB', staffIds: [nok]
 	});
 	const massage = await service('thai-massage', 'Thai massage', 120000);
@@ -148,9 +148,9 @@ describe('linking a paid service row to an appointment', () => {
 		expect(sheet?.orders.map((row) => row._id)).toContain(orderId);
 		expect(sheet?.balance.owed).toBe(0);
 		// The receipt owns the money: it is refundable from that receipt, and not payable again.
-		const financials = await admin.query(api.adminServices.getAppointmentFinancials, { appointmentId });
+		const financials = await admin.query(api.services.admin.getAppointmentFinancials, { appointmentId });
 		expect(financials.orders).toEqual([expect.objectContaining({ orderId: orderId, charged: 120000, refundable: 120000 })]);
-		await expect(admin.mutation(api.adminServices.markAppointmentPaid, { appointmentId })).rejects.toThrow(/unpaid/);
+		await expect(admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId })).rejects.toThrow(/unpaid/);
 		await expect(admin.mutation(api.pos.attach, { appointmentId })).rejects.toThrow(/nothing left to pay/);
 	});
 
@@ -215,11 +215,11 @@ describe('linking a paid service row to an appointment', () => {
 		expect(view.links[0]).toMatchObject({ status: 'unlinked', unlinkReason: 'Linked the wrong one' });
 		expect(view.corrections.map((row) => row.kind)).toEqual(['unlinked', 'linked']);
 		expect(await receipt(orderId)).toEqual(before);
-		expect((await admin.query(api.adminServices.getAppointmentFinancials, { appointmentId })).orders).toEqual([]);
+		expect((await admin.query(api.services.admin.getAppointmentFinancials, { appointmentId })).orders).toEqual([]);
 
 		const relinked = await link(orderId, lineId, { appointmentId });
 		const appt = await getAppointment(appointmentId);
-		await admin.mutation(api.adminServices.refundAppointment, {
+		await admin.mutation(api.services.commands.refundAppointment.refundAppointment, {
 			appointmentId, expectedRevision: appt.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Shorter session', idempotencyKey: 'refund-0001', orderId: orderId
 		});
 		await expect(unlink(orderId, relinked.linkId)).rejects.toThrow(/refunded/);

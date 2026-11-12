@@ -320,7 +320,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const filters = { ...(typeof fnArgs.category === 'string' ? { category: fnArgs.category } : {}),
 				...(typeof fnArgs.query === 'string' ? { query: fnArgs.query } : {}),
 				...(typeof fnArgs.limit === 'number' ? { limit: fnArgs.limit } : {}) };
-			const result = await ctx.runQuery(internal.publicServices.browseForChat, filters);
+			const result = await ctx.runQuery(internal.services.publicServices.browseForChat, filters);
 			const search = new URLSearchParams();
 			if (filters.category) search.set('category', filters.category);
 			if (filters.query) search.set('q', filters.query);
@@ -328,13 +328,13 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		}
 
 		case 'check_service_availability':
-			return humanToolResult(await ctx.runQuery(internal.serviceBookings.checkServiceAvailability, {
+			return humanToolResult(await ctx.runQuery(internal.services.serviceBookings.checkServiceAvailability, {
 				serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
 				...(typeof fnArgs.time === 'string' ? { time: fnArgs.time } : {})
 			}));
 
 		case 'prepare_service_booking': {
-			const summary = await ctx.runMutation(internal.serviceBookings.prepareChatServiceBooking, {
+			const summary = await ctx.runMutation(internal.services.serviceBookings.prepareChatServiceBooking, {
 				sessionId: toolContext.sessionId,
 				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
@@ -347,7 +347,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		}
 
 		case 'confirm_service_booking': {
-			const result = await ctx.runMutation(internal.serviceBookings.confirmChatServiceBooking, {
+			const result = await ctx.runMutation(internal.services.serviceBookings.confirmChatServiceBooking, {
 				sessionId: toolContext.sessionId,
 				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				expectedProposal: toolContext.serviceProposal ?? '',
@@ -494,7 +494,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 			const bookings = await ctx.runQuery(internal.bookings.bookings.listChatGuestBookings, {
 				sessionId: toolContext.sessionId
 			});
-			const services = await ctx.runQuery(internal.serviceBookings.listChatGuestServiceBookings, {
+			const services = await ctx.runQuery(internal.services.serviceBookings.listChatGuestServiceBookings, {
 				sessionId: toolContext.sessionId
 			});
 			return humanToolResult({
@@ -509,7 +509,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
 		case 'cancel_booking': {
 			const reference = String(fnArgs.reference ?? '');
 			const result = await ctx.runMutation(reference.trim().toUpperCase().startsWith('SVC-')
-				? internal.serviceBookings.cancelChatServiceBooking : internal.bookings.bookings.cancelChatBooking, {
+				? internal.services.serviceBookings.cancelChatServiceBooking : internal.bookings.bookings.cancelChatBooking, {
 				sessionId: toolContext.sessionId,
 				...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
 				reference,

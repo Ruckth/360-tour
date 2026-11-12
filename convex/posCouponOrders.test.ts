@@ -19,8 +19,8 @@ async function setup(limits: { usageLimit?: number; discountBudget?: number; amo
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
-	const nok = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
-	const serviceId = await admin.mutation(api.adminServices.createService, {
+	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
+	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: '', category: 'Massage',
 		durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [nok]
 	});
@@ -349,11 +349,11 @@ describe('POS order coupons', () => {
 		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
 		expect(appointment).toMatchObject({ price: 70000, amountPaid: 70000 });
 		const refund = { appointmentId, orderId: orderId, expectedRevision: appointment.revision ?? 0, currency: 'THB', method: 'cash' as const, reason: 'Guest refund', idempotencyKey: 'refund-coupon-001' };
-		await expect(s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 70100 })).rejects.toThrow('At most 700');
+		await expect(s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { ...refund, amount: 70100 })).rejects.toThrow('At most 700');
 		// Even if other money was received for the appointment, this receipt only took 700.
 		await s.t.run(ctx => ctx.db.patch(appointmentId, { amountPaid: 120000 }));
-		await expect(s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 70100 })).rejects.toThrow('Refund exceeds the actual money remaining on this receipt');
-		await s.admin.mutation(api.adminServices.refundAppointment, { ...refund, amount: 70000 });
+		await expect(s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { ...refund, amount: 70100 })).rejects.toThrow('Refund exceeds the actual money remaining on this receipt');
+		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { ...refund, amount: 70000 });
 		expect((await s.order(orderId)).lines[0].net).toBe(70000);
 		expect(await s.coupon()).toMatchObject({ used: 1, discountGranted: 50000 });
 	});

@@ -19,8 +19,8 @@ async function setup() {
 	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const desk = t.withIdentity({ email: 'desk@example.com', tokenIdentifier: 'desk' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
-	const nok = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
-	const serviceId = await admin.mutation(api.adminServices.createService, {
+	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
+	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: '', category: 'Massage',
 		durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [nok]
 	});

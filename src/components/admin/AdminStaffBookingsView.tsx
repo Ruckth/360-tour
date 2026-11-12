@@ -186,7 +186,7 @@ function StaffCalendar() {
   const [error, setError] = useState("");
   const now = useNow();
 
-  const data = useQuery(api.adminServices.listSchedule, range);
+  const data = useQuery(api.services.admin.listSchedule, range);
 
   const staffById = useMemo(() => new Map((data?.staff ?? []).map((s) => [s._id as string, s])), [data?.staff]);
   const serviceById = useMemo(() => new Map((data?.services ?? []).map((s) => [s._id as string, s])), [data?.services]);

@@ -18,8 +18,8 @@ async function setup() {
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
-	const nok = await admin.mutation(api.adminServices.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
-	const serviceId = await admin.mutation(api.adminServices.createService, {
+	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
+	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 		slug: 'thai-massage', name: 'Thai massage', description: '', category: 'Massage',
 		durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [nok]
 	});
@@ -27,7 +27,7 @@ async function setup() {
 	/** An appointment made in the admin calendar (the real creation path). */
 	const book = async (guest: { guestName: string; guestPhone: string; guestEmail?: string }) => {
 		const start = localDateTimeUtc('2026-10-03', `${String(hour++).padStart(2, '0')}:00`);
-		return (await admin.mutation(api.adminServices.createAppointment, { serviceId, start, staffId: nok, ...guest })).appointmentId;
+		return (await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start, staffId: nok, ...guest })).appointmentId;
 	};
 	/** An appointment as rows were stored before the lookup fields existed. */
 	const legacy = (fields: Partial<Doc<'appointments'>> = {}) => t.run((ctx) => insertFixture(ctx, 'appointments', {
@@ -61,12 +61,12 @@ describe('Add booking finds standalone appointments by contact', () => {
 		const { admin, book, found, row } = await setup();
 		const id = await book({ guestName: 'Mia', guestPhone: '0811111111', guestEmail: 'old@example.com' });
 		const revision = (await row(id))?.revision ?? 0;
-		await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId: id, expectedRevision: revision, guestName: 'Mia', guestPhone: '+66 82 999 0000', guestEmail: 'New@Example.com' });
+		await admin.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, { appointmentId: id, expectedRevision: revision, guestName: 'Mia', guestPhone: '+66 82 999 0000', guestEmail: 'New@Example.com' });
 		expect(await found({ query: 'new@example.com' })).toContain(id);
 		expect(await found({ query: '66829990000' })).toContain(id);
 		expect(await found({ query: 'old@example.com' })).not.toContain(id);
 		expect(await found({ query: '0811111111' })).not.toContain(id);
-		await admin.mutation(api.adminServices.updateAppointmentDetails, { appointmentId: id, expectedRevision: revision + 1, guestName: 'Mia', guestPhone: '+66 82 999 0000' });
+		await admin.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, { appointmentId: id, expectedRevision: revision + 1, guestName: 'Mia', guestPhone: '+66 82 999 0000' });
 		expect((await row(id))?.guestEmailNormalized).toBeUndefined();
 		expect(await found({ query: 'new@example.com' })).not.toContain(id);
 	});

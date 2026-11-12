@@ -209,8 +209,8 @@ it('does not render a stored legacy proposal after its live quote was independen
 it('never recovers an earlier success after a failed service replacement', async () => {
   const { t, args, event } = await setup();
   const input = { serviceSlug: 'thai-massage', date: '2026-11-14', guestName: 'Test Guest', time: '14:00' };
-  await t.mutation(internal.serviceBookings.prepareChatServiceBooking, { ...input, sessionId: event.sessionId!, durableTool: { ...args, key: 'first', name: 'prepare_service_booking' } });
-  const failure = await t.mutation(internal.serviceBookings.prepareChatServiceBooking, { ...input, time: '03:00', sessionId: event.sessionId!, durableTool: { ...args, key: 'replacement', name: 'prepare_service_booking' } });
+  await t.mutation(internal.services.serviceBookings.prepareChatServiceBooking, { ...input, sessionId: event.sessionId!, durableTool: { ...args, key: 'first', name: 'prepare_service_booking' } });
+  const failure = await t.mutation(internal.services.serviceBookings.prepareChatServiceBooking, { ...input, time: '03:00', sessionId: event.sessionId!, durableTool: { ...args, key: 'replacement', name: 'prepare_service_booking' } });
   expect(failure).toHaveProperty('error');
   expect((await t.run(ctx => ctx.db.get(event.sessionId!)))?.pendingServiceQuote).toBeUndefined();
   const recovered = await recover(t, args);

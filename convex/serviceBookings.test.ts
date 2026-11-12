@@ -46,7 +46,7 @@ async function setup(channel: 'whatsapp' | 'facebook' = 'whatsapp', secondStaff 
 const request = { serviceSlug: 'thai-massage', date, time: '14:00', guestName: 'Rugby' };
 type Fixture = Awaited<ReturnType<typeof setup>>;
 const prepare = (fixture: Fixture, extra = {}) =>
-	fixture.t.mutation(internal.serviceBookings.prepareChatServiceBooking, { sessionId: fixture.sessionId, ...request, ...extra });
+	fixture.t.mutation(internal.services.serviceBookings.prepareChatServiceBooking, { sessionId: fixture.sessionId, ...request, ...extra });
 const appointments = (t: Awaited<ReturnType<typeof setup>>['t']) =>
 	t.run(async (ctx) => await ctx.db.query('appointments').take(20));
 
@@ -74,16 +74,16 @@ describe('AI service booking', () => {
 	it('never matches an anonymous admin appointment through an empty guest phone', async () => {
 		const s = await setup();
 		await s.t.run((ctx) => createAppointmentRecord(ctx, { serviceId: s.serviceId, staffId: s.staffId, start: at('09:00'), source: 'admin', guestName: '', guestPhone: '' }));
-		expect(await s.t.query(internal.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
+		expect(await s.t.query(internal.services.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
 		await s.t.run((ctx) => ctx.db.patch(s.sessionId, { visitorPhone: ' ' }));
-		expect(await s.t.query(internal.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
+		expect(await s.t.query(internal.services.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
 	});
 	it('lists active services and open local times, then prepares without creating an appointment', async () => {
 		const s = await setup();
-		expect(await s.t.query(internal.serviceBookings.listActiveServices, {})).toMatchObject([
+		expect(await s.t.query(internal.services.serviceBookings.listActiveServices, {})).toMatchObject([
 			{ slug: 'thai-massage', durationMin: 60, price: 200000, staff: ['Mali'] }
 		]);
-		const open = await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
+		const open = await s.t.query(internal.services.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
 		expect(open).toMatchObject({ available: true });
 		const summary = await prepare(s);
 		expect(summary).toMatchObject({ service: 'Thai massage', date, time: '14:00', price: 200000, staff: 'any available therapist/staff' });
@@ -96,7 +96,7 @@ describe('AI service booking', () => {
 		await s.t.run(async (ctx) => {
 			await ctx.db.insert('staffDays', { staffId: s.staffId, date, shifts: [], breaks: [], updatedAt: Date.now() });
 		});
-		const unscheduled = await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
+		const unscheduled = await s.t.query(internal.services.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
 		expect(unscheduled).toMatchObject({ available: false, openTimes: [], scheduled: false, note: expect.stringContaining('not set yet') });
 		expect(await prepare(s)).toMatchObject({ error: expect.stringContaining('not fully booked') });
 		// Rostered but every slot taken is still "fully booked": no scheduled flag.
@@ -111,24 +111,24 @@ describe('AI service booking', () => {
 				confirmationCode: 'SVC-1', accessToken: 'x', createdAt: Date.now()
 			});
 		});
-		const full = await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date });
+		const full = await s.t.query(internal.services.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date });
 		expect(full).toEqual({ service: 'Thai massage', date, openTimes: [] });
 		expect(await prepare(s)).toMatchObject({ error: expect.stringContaining('just taken') });
 	});
 
 	it('requires a fresh quote and confirms idempotently', async () => {
 		const s = await setup();
-		await expect(s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow('No prepared service booking');
+		await expect(s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow('No prepared service booking');
 		await prepare(s);
 		await s.t.run(async (ctx) => {
 			const session = await ctx.db.get(s.sessionId);
 			await ctx.db.patch(s.sessionId, { pendingServiceQuote: { ...session!.pendingServiceQuote!, createdAt: Date.now() - 16 * 60_000 } });
 		});
-		await expect(s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow('expired');
+		await expect(s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow('expired');
 		expect(await appointments(s.t)).toHaveLength(0);
 		await prepare(s);
-		const first = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
-		const second = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		const first = await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		const second = await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		if (!('appointmentId' in first) || !('appointmentId' in second)) throw new Error('Expected confirmation');
 		expect(second).toMatchObject({ appointmentId: first.appointmentId, alreadyConfirmed: true });
 		expect(first.confirmationCode).toMatch(/^SVC-/);
@@ -145,7 +145,7 @@ describe('AI service booking', () => {
 				price: 200000, currency: 'THB', confirmationCode: 'SVC-OTHER', accessToken: 'token', createdAt: Date.now()
 			});
 		});
-		const result = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		const result = await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		expect(result).toMatchObject({ error: expect.stringContaining('just taken'), alternatives: expect.any(Array) });
 		expect(result.alternatives).toHaveLength(3);
 		expect(await appointments(s.t)).toHaveLength(1);
@@ -154,11 +154,11 @@ describe('AI service booking', () => {
 	it('blocks the staff member on a second booking', async () => {
 		const s = await setup();
 		await prepare(s);
-		await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		const secondSession = await s.t.run(async (ctx) => ctx.db.insert('conversations', { guestTokenHash: fixtureGuestTokenHash,
 			channel: 'whatsapp', visitorPhone: '66999999999', visitorId: 'second', createdAt: Date.now()
 		}));
-		const result = await s.t.mutation(internal.serviceBookings.prepareChatServiceBooking, { sessionId: secondSession, ...request });
+		const result = await s.t.mutation(internal.services.serviceBookings.prepareChatServiceBooking, { sessionId: secondSession, ...request });
 		expect(result).toMatchObject({ error: expect.stringContaining('just taken') });
 		expect(await appointments(s.t)).toHaveLength(1);
 	});
@@ -178,22 +178,22 @@ describe('AI service booking', () => {
 		});
 		const summary = await prepare(s, { guestPhone: 'FAKE' });
 		expect(summary).toMatchObject({ guestPhone: '66956823432' });
-		await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		expect(await appointments(s.t)).toMatchObject([{ guestPhone: '66956823432', bookingId }]);
 	});
 
 	it('lists upcoming service appointments and cancels only after a later turn, freeing the slot', async () => {
 		const s = await setup();
 		await prepare(s);
-		const booked = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		const booked = await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		if (!('confirmationCode' in booked)) throw new Error('Expected confirmation');
-		const listed = await s.t.query(internal.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId });
+		const listed = await s.t.query(internal.services.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId });
 		expect(listed).toMatchObject([{ reference: booked.confirmationCode, service: 'Thai massage', date, time: '14:00', status: 'booked' }]);
 		const args = { sessionId: s.sessionId, reference: booked.confirmationCode!, turnStartedAt: Date.now() };
-		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation' });
-		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation' });
+		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation' });
+		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation' });
 		vi.advanceTimersByTime(1000);
-		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'cancelled' });
+		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'cancelled' });
 		const [cancelled] = await appointments(s.t);
 		expect(cancelled).toMatchObject({ status: 'cancelled', cancelledBy: 'guest', cancelledAt: Date.now(), paymentStatus: 'unpaid', revision: 1 });
 		const history = await s.t.run(async (ctx) => await ctx.db.query('appointmentChanges').take(10));
@@ -206,32 +206,32 @@ describe('AI service booking', () => {
 			{ field: 'cancelledBy', from: null, to: 'guest' },
 			{ field: 'cancelledAt', from: null, to: Date.now() }
 		]) });
-		expect(await s.t.query(internal.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' })).toMatchObject({ available: true });
+		expect(await s.t.query(internal.services.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' })).toMatchObject({ available: true });
 	});
 
 	it('asks the guest to reconfirm cancellation after an admin reschedules the appointment', async () => {
 		const s = await setup();
 		await prepare(s);
-		const booked = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		const booked = await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		if (!('confirmationCode' in booked)) throw new Error('Expected confirmation');
 		const args = { sessionId: s.sessionId, reference: booked.confirmationCode!, turnStartedAt: Date.now() };
-		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation', time: '14:00' });
+		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation', time: '14:00' });
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const admin = s.t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const [appointment] = await appointments(s.t);
-		await admin.mutation(api.adminServices.rescheduleAppointment, { appointmentId: appointment._id, expectedRevision: 0, staffId: s.staffId, start: at('16:00') });
+		await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: appointment._id, expectedRevision: 0, staffId: s.staffId, start: at('16:00') });
 		vi.advanceTimersByTime(1000);
-		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'needs_confirmation', time: '16:00' });
+		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'needs_confirmation', time: '16:00' });
 		expect((await appointments(s.t))[0]).toMatchObject({ status: 'booked', start: at('16:00') });
 		vi.advanceTimersByTime(1000);
-		expect(await s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'cancelled', time: '16:00' });
+		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'cancelled', time: '16:00' });
 	});
 
 	it('honours an active first-name preference and reports an unknown one', async () => {
 		const s = await setup('facebook', true);
 		const preferred = await prepare(s, { guestPhone: '0812345678', staffPreference: 'nOk' });
 		expect(preferred).toMatchObject({ staff: 'Nok' });
-		const confirmed = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		const confirmed = await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		expect(confirmed).toMatchObject({ staff: 'Nok' });
 		expect((await appointments(s.t))[0].source).toBe('messenger');
 		const ignored = await prepare(s, { guestPhone: '0812345678', time: '16:00', staffPreference: 'Unknown' });
@@ -246,7 +246,7 @@ describe('AI service booking', () => {
 		expect(proposal.response).toContain('not confirmed yet');
 		expect(proposal.response).toContain('Reply yes');
 		expect(await appointments(s.t)).toHaveLength(0);
-		await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		vi.unstubAllGlobals();
 		const listing: string[] = [];
 		mockAi([{ name: 'get_my_bookings' }], listing);
@@ -274,7 +274,7 @@ describe('AI service booking', () => {
 		await prepare(s);
 		expect(await prepare(s, { time: '12:00' })).toMatchObject({ error: expect.any(String) });
 		expect((await s.t.run(async (ctx) => ctx.db.get(s.sessionId)))?.pendingServiceQuote).toBeUndefined();
-		await expect(s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow(/No prepared/);
+		await expect(s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow(/No prepared/);
 	});
 
 	it('only links a villa stay that covers the service date', async () => {
@@ -290,18 +290,18 @@ describe('AI service booking', () => {
 			});
 		});
 		await prepare(s);
-		await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		expect((await appointments(s.t))[0].bookingId).toBeUndefined();
 	});
 
 	it('refuses to cancel a paid service in chat', async () => {
 		const s = await setup();
 		await prepare(s);
-		const confirmed = await s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
+		const confirmed = await s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId });
 		if (!('confirmationCode' in confirmed) || !confirmed.appointmentId) throw new Error('Expected a confirmed appointment');
 		const { confirmationCode, appointmentId } = confirmed;
 		await s.t.run(async (ctx) => ctx.db.patch(appointmentId, { paymentStatus: 'paid' }));
-		await expect(s.t.mutation(internal.serviceBookings.cancelChatServiceBooking, {
+		await expect(s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, {
 			sessionId: s.sessionId, reference: confirmationCode, turnStartedAt: Date.now()
 		})).rejects.toThrow(/Paid services/);
 	});
@@ -318,6 +318,6 @@ it('cannot confirm a service proposal that was replaced while the yes turn was r
 	const s = await setup(); await prepare(s);
 	const expectedProposal = proposalIdentity((await s.t.run(ctx => ctx.db.get(s.sessionId)))?.pendingServiceQuote);
 	await prepare(s, { time: '15:00' });
-	await expect(s.t.mutation(internal.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId, expectedProposal })).rejects.toThrow('proposal changed');
+	await expect(s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId, expectedProposal })).rejects.toThrow('proposal changed');
 	expect(await appointments(s.t)).toHaveLength(0);
 });

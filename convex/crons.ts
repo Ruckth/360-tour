@@ -105,22 +105,6 @@ export const cleanRateLimits = internalMutation({
   },
 });
 
-export const STAFF_AVATAR_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
-
-/** Staff and service photo uploads that were never attached (failed or abandoned saves). Attached photos have no row here. */
-export const cleanStaffAvatarUploads = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    if (maintenancePaused()) return 0;
-    const rows = await ctx.db.query('staffAvatarUploads').withIndex('by_createdAt', q => q.lt('createdAt', Date.now() - STAFF_AVATAR_UPLOAD_TTL_MS)).take(100);
-    for (const row of rows) {
-      if (await ctx.db.system.get(row.storageId)) await ctx.storage.delete(row.storageId);
-      await ctx.db.delete(row._id);
-    }
-    if (rows.length === 100) await ctx.scheduler.runAfter(0, internal.crons.cleanStaffAvatarUploads, {});
-  },
-});
-
 export const queueLifecycleEmails = internalMutation({
   args: {
     kind: v.union(v.literal('preArrival'), v.literal('review')),
@@ -164,7 +148,7 @@ crons.cron('clean raw marketing after 90 days', '0 3 * * *', internal.crons.clea
 crons.interval('expire unpaid bookings', { hours: 1 }, internal.crons.expirePending, {});
 crons.interval('sync OTA calendars', { minutes: 30 }, internal.bookings.calendar.ical.syncAll, {});
 crons.interval('clean rate limits', { hours: 1 }, internal.crons.cleanRateLimits, {});
-crons.interval('clean unattached staff and service photos', { hours: 6 }, internal.crons.cleanStaffAvatarUploads, {});
+crons.interval('clean unattached staff and service photos', { hours: 6 }, internal.services.maintenance.cleanStaffAvatarUploads, {});
 crons.interval('clean pending customer displays', { minutes: 10 }, internal.displays.cleanPending, {});
 // 09:00 Asia/Bangkok, so guests get these in the resort's morning rather than at a deploy-relative time.
 crons.cron('queue pre-arrival emails', '0 2 * * *', internal.crons.queueLifecycleEmails, { kind: 'preArrival' });
