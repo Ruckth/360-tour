@@ -59,8 +59,8 @@ export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capa
 export async function cashierRules(ctx: QueryCtx | MutationCtx): Promise<CashierRules> {
   const row = await ctx.db.query('cashierRules').withIndex('by_key', q => q.eq('key', 'default')).unique();
   if (!row) return { ...DEFAULT_CASHIER_RULES };
-  const { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix } = row;
-  return { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix };
+  const { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund } = row;
+  return { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund: refund ?? 'manager' };
 }
 export async function requireCashierAction(ctx: QueryCtx | MutationCtx, actor: StaffActor, action: CashierAction) {
   if (actor.role === 'cashier' && (await cashierRules(ctx))[action] !== 'cashier')

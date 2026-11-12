@@ -22,12 +22,11 @@ export default defineSchema({
   email: v.string(), role: staffRole, tokenIdentifier: v.optional(v.string()), revision: v.optional(v.number()),
   inviteExpiresAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(), updatedByEmail: v.string()
  }).index('by_email', ['email']).index('by_tokenIdentifier', ['tokenIdentifier']),
- // Refund permissions arrive with POS partial refunds; this unreleased table only has implemented action rules.
  cashierRules: defineTable({ key: v.literal('default'), ...cashierRulesFields, revision: v.number(), updatedAt: v.number(), updatedByEmail: v.string() }).index('by_key', ['key']),
  staffApprovalRequests: defineTable({
-  orderId: v.id('bills'), lineId: v.optional(v.id('billLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix')),
+  orderId: v.id('bills'), lineId: v.optional(v.id('billLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund')),
   payload: approvalPayload, reason: v.string(), requesterEmail: v.string(), requesterTokenIdentifier: v.string(),
-  requesterAccessFingerprint: v.string(), orderFingerprint: v.string(), orderRevision: v.number(), rulesRevision: v.number(),
+  requesterAccessFingerprint: v.string(), orderFingerprint: v.string(), orderRevision: v.number(), rulesRevision: v.number(), rulesFingerprint: v.optional(v.string()),
   status: approvalStatus, createdAt: v.number(), expiresAt: v.number(), resolvedAt: v.optional(v.number()),
   approverEmail: v.optional(v.string()), approverTokenIdentifier: v.optional(v.string()), resolutionReason: v.optional(v.string()),
   totalBefore: v.number(), totalAfter: v.number(), amount: v.number(), percent: v.optional(v.number())
@@ -764,6 +763,14 @@ export default defineSchema({
 		.index('by_bookingId', ['bookingId'])
 		.index('by_appointmentId', ['appointmentId']),
 
+	/** Append-only POS returns, in integer satang. Recording moves no money. */
+	billRefunds: defineTable({
+		orderId: v.id('bills'), lineId: v.id('billLines'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
+		reason: v.string(), idempotencyKey: v.string(), createdBy: v.string(), createdByEmail: v.string(),
+		createdAt: v.number(), businessDate: v.string()
+	}).index('by_orderId', ['orderId']).index('by_lineId', ['lineId'])
+		.index('by_idempotencyKey', ['idempotencyKey']).index('by_businessDate', ['businessDate']),
+
 	billPayments: defineTable({
 		billId: v.id('bills'),
 		method: v.union(v.literal('cash'), v.literal('promptpay'), v.literal('card'), v.literal('transfer')),
@@ -861,6 +868,7 @@ export default defineSchema({
 		actor: v.string(),
 		kind: v.union(
 			v.literal('price_override'),
+			v.literal('refund'),
 			v.literal('cleared'),
 			v.literal('paid'),
 			v.literal('void'),

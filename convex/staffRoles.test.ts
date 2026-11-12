@@ -550,18 +550,19 @@ describe('staff-role audit regressions', () => {
     expect((await s.view(orderId)).links.filter(row => row.status === 'active')).toHaveLength(1);
   });
 
-  it('omits the deferred refund rule from defaults, stored rules and access responses', async () => {
+  it('defaults the additive refund rule to manager and preserves it for older callers', async () => {
     const s = await setup();
-    expect(DEFAULT_CASHIER_RULES).not.toHaveProperty('refund');
-    expect(await s.owner.query(api.staffAccess.getCashierRules, {})).not.toHaveProperty('refund');
-    const updated = await s.rules({ paymentFix: 'cashier' });
-    expect(updated).not.toHaveProperty('refund');
-    expect(await s.owner.query(api.staffAccess.getCashierRules, {})).toEqual(updated);
+    expect(DEFAULT_CASHIER_RULES.refund).toBe('manager');
+    const updated = await s.rules({ refund: 'cashier' });
     for (const client of [s.owner, s.manager, s.cashier]) expect((await client.query(api.staffAccess.myAccess, {})).cashierRules).toEqual(updated);
-    expect(await s.t.run(ctx => ctx.db.query('cashierRules').unique())).not.toHaveProperty('refund');
-    const { revision, ...rules } = updated;
-    const obsoleteArgs = { ...rules, expectedRevision: revision, refund: 'cashier' };
-    await expect(s.owner.mutation(api.staffAccess.updateCashierRules, obsoleteArgs)).rejects.toThrow();
+    const { revision, refund, ...rules } = updated;
+    expect(refund).toBe('cashier');
+    expect((await s.owner.mutation(api.staffAccess.updateCashierRules, { ...rules, expectedRevision: revision })).refund).toBe('cashier');
+    await s.t.run(async ctx => {
+      const row = (await ctx.db.query('cashierRules').unique())!;
+      await ctx.db.patch(row._id, { refund: undefined });
+    });
+    expect((await s.owner.query(api.staffAccess.getCashierRules, {})).refund).toBe('manager');
   });
 
   it('restores manager settings reads while keeping writes and Team history owner-only', async () => {
