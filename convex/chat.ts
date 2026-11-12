@@ -445,8 +445,13 @@ export const getRecentMessages = internalQuery({
     ctx.db.query('messages').withIndex('by_sessionId_and_role', q => q.eq('sessionId', args.sessionId).eq('role', 'assistant')).order('desc').take(limit),
   ]);
   const unlinked = answers.filter(row => !row.replyToMessageId && row._creationTime <= through._creationTime);
-  const ordered = users.reverse().flatMap(user => [user, ...answers.filter(answer => answer.replyToMessageId === user._id).reverse()]);
-  return [...unlinked.reverse(), ...ordered].slice(-limit);
+  // Unlinked greetings/staff replies keep their chronological position. Linked AI
+  // answers stay with their guest turn even when a newer question arrived first.
+  const anchors = [...users, ...unlinked].sort((a, b) => a._creationTime - b._creationTime);
+  const ordered = anchors.flatMap(row => row.role === 'user'
+    ? [row, ...answers.filter(answer => answer.replyToMessageId === row._id).reverse()]
+    : [row]);
+  return ordered.slice(-limit);
  }
 });
 

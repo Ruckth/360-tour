@@ -34,6 +34,16 @@ it('retires pre-Phase 2 events with no conversation instead of repeatedly recove
   expect((await t.run(ctx => ctx.db.get(old._id)))?.status).toBe('failed');
 });
 
+it('keeps a recent unlinked staff reply in chronological context when the transcript is bounded', async () => {
+  const t = createHarness(convexTest), first = await queue(t, 'first');
+  vi.setSystemTime(Date.now() + 1);
+  await t.run(ctx => ctx.db.insert('messages', { sessionId: first.sessionId!, role: 'assistant', content: 'Staff clarified the arrival time.', timestamp: Date.now() }));
+  vi.setSystemTime(Date.now() + 1);
+  const current = await queue(t, 'current');
+  const history = await t.query(internal.chat.getRecentMessages, { sessionId: first.sessionId!, throughMessageId: current.userMessageId, limit: 2 });
+  expect(history.map(row => row.content)).toEqual(['Staff clarified the arrival time.', 'Hello']);
+});
+
 it.each(['session', 'global'] as const)('ends %s admission refusal without sticky AI pause and resumes after the limit window', async budget => {
   const t = createHarness(convexTest), event = await queue(t, 'limited');
   if (budget === 'session') {
