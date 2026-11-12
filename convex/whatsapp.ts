@@ -12,15 +12,8 @@ import {
 
 const eventTypeValidator = v.union(v.literal('message'), v.literal('unsupported'));
 
-// replyMode is stored on event rows. The exact/approved_exact/question_bank_* literals are
-// RETIRED (no longer produced) but kept here so historical rows still validate on read.
-// Guardrail/policy replies from the shared messaging seam are stored as 'ai' (adapter maps
-// 'guardrail' -> 'ai'), so no new stored literal is needed for them.
+// Current reply modes; all amounts and IDs use the reset schema.
 const replyModeValidator = v.union(
-	v.literal('exact'),
-	v.literal('approved_exact'),
-	v.literal('question_bank_exact'),
-	v.literal('question_bank_semantic'),
 	v.literal('ai'),
 	v.literal('unknown_fallback'),
 	v.literal('ignored'),

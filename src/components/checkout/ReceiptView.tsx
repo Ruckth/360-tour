@@ -122,7 +122,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   // POS line refunds, in satang. Past the history limit the totals are lower bounds, so none are shown.
   const truncated = Boolean(view.refundHistoryTruncated);
   const refunded = truncated ? 0 : refundedSatang(view);
-  const net = (totals.total - refunded) / 100;
+  const net = totals.total - refunded;
   const paid = order.status === "paid";
   const waiting = approvals?.some((r) => r.status === "pending") ?? false;
   // A cashier who must ask can't send a second request while one waits.

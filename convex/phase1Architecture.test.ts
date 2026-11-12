@@ -72,3 +72,23 @@ it('uses exact signed half rounding and rejects fractional persisted money', () 
   expect(() => percentageOf(1.5, 1000)).toThrow('integer satang');
   expect(() => percentageOf(10000, 10001)).toThrow('basis points');
 });
+
+it('deduplicates channel event keys within their channel only', async () => {
+  const t = createHarness(convexTest);
+  vi.stubEnv('CONVEX_SERVER_SECRET', 'test-only');
+  const args = { serverSecret: 'test-only', eventKey: 'same-provider-key', eventType: 'unsupported' as const };
+  const claims = [api.line.claimEvent, api.facebook.claimEvent, api.instagram.claimEvent, api.whatsapp.claimEvent];
+  const ids = [];
+  for (const claim of claims) {
+    const first = await t.mutation(claim, args);
+    expect(first.duplicate).toBe(false);
+    expect(await t.mutation(claim, args)).toMatchObject({ eventId: first.eventId });
+    // Meta claims start in received; once processing, every adapter suppresses a duplicate.
+    await t.run(ctx => ctx.db.patch(first.eventId, { status: 'processing' }));
+    expect(await t.mutation(claim, args)).toMatchObject({ eventId: first.eventId, duplicate: true });
+    ids.push(first.eventId);
+  }
+  expect(new Set(ids).size).toBe(4);
+  const events = await t.run(ctx => ctx.db.query('channelEvents').collect());
+  expect(events.map(event => event.channel).sort()).toEqual(['facebook', 'instagram', 'line', 'whatsapp']);
+});

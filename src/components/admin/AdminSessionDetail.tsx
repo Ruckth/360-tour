@@ -66,10 +66,6 @@ const DELIVERY_STATUS: Record<LineWebhookStatus, { label: string; tone: Tone }> 
 
 /** How the automatic reply was chosen, in words (raw enum values stay out of the UI). */
 const REPLY_MODE_LABELS: Partial<Record<LineReplyMode, string>> = {
-  exact: "exact match",
-  approved_exact: "approved answer",
-  question_bank_exact: "question bank",
-  question_bank_semantic: "similar question",
   ai: "AI",
   unknown_fallback: "fallback reply",
   postback: "button tap",

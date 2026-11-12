@@ -49,7 +49,7 @@ const scenario = params.get("scenario") ?? "";
 const EMAILS = { owner: "narin@auraliscove.co", manager: "ploy@auraliscove.co", cashier: "mint@auraliscove.co" } as const;
 const rules: CashierRules = {
   ...DEFAULT_CASHIER_RULES,
-  discountLimitPercent: Number(params.get("limit") ?? DEFAULT_CASHIER_RULES.discountLimitPercent),
+  discountLimitPercent: params.has("limit") ? Number(params.get("limit")) * 100 : DEFAULT_CASHIER_RULES.discountLimitPercent,
   refund: params.get("refund") === "cashier" ? "cashier" : "manager",
 };
 
@@ -71,7 +71,7 @@ const useAccess = () => useSyncExternalStore((fn) => { accessListeners.add(fn); 
 
 // ---------- Checkout ----------
 
-const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent: Number(params.get("serverLimit")) } : rules;
+const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent: Number(params.get("serverLimit")) * 100 } : rules;
 // Refund receipts are rung up by the owner, then handed to whoever the page is for.
 const refundScenario = scenario.startsWith("refund");
 const backend = createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
@@ -90,10 +90,10 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
   if (refundScenario) {
     const massage = await actions.addItem({ item: service(1) });
     await actions.addItem({ orderId: massage.orderId, item: service(7) });
-    let due = 1800;
+    let due = 180000;
     if (params.get("attached") === "1") {
       await actions.attach({ orderId: massage.orderId, appointmentId: "fxappt000002" as Id<"appointments"> });
-      due += 1600;
+      due += 160000;
     }
     await actions.settleOrder({ orderId: massage.orderId, expectedRevision: params.get("attached") === "1" ? 3 : 2, expectedDue: due, idempotencyKey: "browser-refund-paid", tenders: [{ method: "card", amount: due }] });
     if (scenario === "refund-pending") {
@@ -109,15 +109,15 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
   if (scenario === "discounted") {
     // Set as a manager-approved discount would leave it (use serverLimit=100 so the fixture accepts it).
     const { orderId, lineId } = await actions.addItem({ item: service(1) });
-    await actions.updateLine({ lineId, discount: { type: "percent", value: 15 } });
+    await actions.updateLine({ lineId, discount: { type: "percent", value: 1500 } });
     return { orderId, receipt: false };
   }
   if (scenario === "pending") {
     // Two cashier requests on two orders: a 15% discount on a ฿1,200 massage, ฿100 off a foot spa.
     const first = await actions.addItem({ item: service(1) });
-    await backend.seedApproval({ orderId: first.orderId, payload: { kind: "discount", lineId: first.lineId, discount: { type: "percent", value: 15 } }, reason: "Guest waited 40 minutes", requesterEmail: EMAILS.cashier });
+    await backend.seedApproval({ orderId: first.orderId, payload: { kind: "discount", lineId: first.lineId, discount: { type: "percent", value: 1500 } }, reason: "Guest waited 40 minutes", requesterEmail: EMAILS.cashier });
     const second = await actions.addItem({ item: service(7) });
-    await backend.seedApproval({ orderId: second.orderId, payload: { kind: "discount", lineId: second.lineId, discount: { type: "amount", value: 100 } }, reason: "Regular guest", requesterEmail: EMAILS.cashier });
+    await backend.seedApproval({ orderId: second.orderId, payload: { kind: "discount", lineId: second.lineId, discount: { type: "amount", value: 10000 } }, reason: "Regular guest", requesterEmail: EMAILS.cashier });
     return { orderId: first.orderId, receipt: false };
   }
   return { orderId: null, receipt: false };

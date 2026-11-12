@@ -57,7 +57,7 @@ describe("WhatsApp webhook events", () => {
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
-      replyMode: "exact",
+      replyMode: "ai",
       whatsappReplyStatus: 200,
     });
 
@@ -84,7 +84,7 @@ describe("WhatsApp webhook events", () => {
     ]);
     expect(event).toMatchObject({
       status: "replied",
-      replyMode: "exact",
+      replyMode: "ai",
       whatsappReplyStatus: 200,
     });
   });

@@ -662,7 +662,6 @@ export const getOrder = query({
 			customer: customer ? customerCard(customer) : order.customerId ? { _id: order.customerId, name: 'Deleted customer', phone: undefined, email: undefined } : null,
 			/** Who the receipt names: frozen at payment, never the live profile. */
 			receiptCustomer: order.customerSnapshot ?? null,
-			/** A name copied onto an order before customers existed. Shown, never turned into a customer. */
 			/** The order's booking as shown in its header: its own, else the first it charges (see orderSourceRefs). */
 			source: sources[0] ?? null,
 			/** Every booking the order is for, its own first. */

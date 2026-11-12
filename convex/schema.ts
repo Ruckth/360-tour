@@ -1231,10 +1231,6 @@ export default defineSchema({
 		),
 		replyMode: v.optional(
 			v.union(
-				v.literal('exact'),
-				v.literal('approved_exact'),
-				v.literal('question_bank_exact'),
-				v.literal('question_bank_semantic'),
 				v.literal('ai'),
 				v.literal('unknown_fallback'),
 				v.literal('postback'),

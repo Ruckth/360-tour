@@ -1,3 +1,4 @@
+import { parseMoneyInput } from "@/lib/money-input";
 import type { api } from "convex/_generated/api";
 import type { FunctionArgs } from "convex/server";
 import { formatMoney } from "@/components/admin/labels";
@@ -6,7 +7,7 @@ import type { OrderLine, OrderView } from "./backend";
 
 /**
  * POS line refunds as checkout shows them (convex/lib/orderRefunds.ts). Refund amounts are integer
- * satang on the wire; everything else on the receipt is in baht.
+ * satang throughout the backend and receipt model; form text and display use baht.
  */
 
 export type RefundMethod = FunctionArgs<typeof api.pos.refundLine>["method"];
@@ -32,7 +33,7 @@ export const satangInput = (satang: number) => (satang / 100).toFixed(satang % 1
 export function refundAmountSatang(text: string) {
   const clean = text.trim();
   if (!/^(\d+(\.\d{0,2})?|\.\d{1,2})$/.test(clean)) return null;
-  const satang = Math.round(Number(clean) * 100);
+  const satang = parseMoneyInput(clean);
   return Number.isSafeInteger(satang) && satang > 0 ? satang : null;
 }
 

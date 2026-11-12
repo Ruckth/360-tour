@@ -75,7 +75,7 @@ export function AppointmentMoneyDialog({ appointment, revision, dialog, onClose 
   const isRefund = dialog.kind === "refund";
   const isCancel = dialog.kind === "cancel";
   const title = isRefund ? "Record refund" : dialog.kind === "pay" ? "Record payment" : isCancel ? "Cancel mistaken payment entry" : "Correct payment method or date";
-  const validAmount = !isRefund || (Number.isFinite(parseMoneyInput(amount)) && parseMoneyInput(amount) > 0 && parseMoneyInput(amount) <= dialog.max && Math.round(parseMoneyInput(amount) * 100) / 100 === parseMoneyInput(amount));
+  const validAmount = !isRefund || (Number.isFinite(parseMoneyInput(amount)) && parseMoneyInput(amount) > 0 && parseMoneyInput(amount) <= dialog.max && Number.isSafeInteger(parseMoneyInput(amount)));
   async function save() {
     if (retry.current) { await retry.current(); return; }
     const common = { appointmentId: original.appointment._id, expectedRevision: original.revision };

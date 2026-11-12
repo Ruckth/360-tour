@@ -3,5 +3,6 @@ import { bahtToSatang } from 'convex/shared/money';
 export function parseMoneyInput(text: string): number {
   if (!/^\d*(?:\.\d{0,2})?$/.test(text) || !text || text === '.') return NaN;
   const value = Number(text);
-  return Number.isFinite(value) ? bahtToSatang(value) : NaN;
+  if (!Number.isFinite(value)) return NaN;
+  try { return bahtToSatang(value); } catch { return NaN; }
 }

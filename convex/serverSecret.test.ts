@@ -49,7 +49,7 @@ describe("channel server secret", () => {
       const calls = [
         () => t.mutation(mutations.claimEvent, { serverSecret: provided, eventKey: "forged", eventType: "message", ...sender } as never),
         () => t.mutation(mutations.recordInboundEvent, { ...ids, sessionId: seed.sessionId, userContent: "forged" } as never),
-        () => t.mutation(mutations.completeEvent, { ...ids, sessionId: seed.sessionId, assistantContent: "forged", replyMode: "exact" } as never),
+        () => t.mutation(mutations.completeEvent, { ...ids, sessionId: seed.sessionId, assistantContent: "forged", replyMode: "ai" } as never),
         () => t.mutation(mutations.markEventIgnored, { ...ids, reason: "forged" } as never),
         () => t.mutation(mutations.markEventFailed, { ...ids, error: "forged" } as never),
       ];

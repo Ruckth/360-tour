@@ -1,5 +1,6 @@
 "use client";
 
+import { roundRatio } from "convex/shared/money";
 import type { Doc, Id, TableNames } from "convex/_generated/dataModel";
 import {
   MAX_QTY,
@@ -1066,7 +1067,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
         : { ...line, priceOverride: payload.price === null ? undefined : { price: roundMoney(payload.price), note: payload.note, by: "", at: 0 } };
       const { subtotalSatang, reductionSatang } = manualReductionSatang(next);
       const after = orderTotals(lines.map((row) => (row._id === line._id ? next : row))).total;
-      return { totalBefore, totalAfter: after, amount: reductionSatang, percent: subtotalSatang ? Math.round((reductionSatang * 10000) / subtotalSatang) : 0 };
+      return { totalBefore, totalAfter: after, amount: reductionSatang, percent: subtotalSatang ? roundRatio(BigInt(reductionSatang) * 10000n, subtotalSatang) : 0 };
     }
     if (payload.kind === "customPrice" && payload.action === "addCustomItem") {
       if (!isOpen(order)) throw new ConvexError("Only an unpaid order can be changed");

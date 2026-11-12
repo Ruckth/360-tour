@@ -31,7 +31,7 @@ describe("LINE webhook events", () => {
     const claimed = await t.mutation(api.line.claimEvent, { serverSecret: "trusted-secret", eventKey: "secure", eventType: "message", lineUserId: "U123" });
     for (const call of [
       () => t.mutation(api.line.recordInboundEvent, { serverSecret: "wrong", eventId: claimed.eventId, sessionId: claimed.sessionId! }),
-      () => t.mutation(api.line.completeEvent, { serverSecret: "wrong", eventId: claimed.eventId, sessionId: claimed.sessionId!, assistantContent: "Hi", replyMode: "exact" }),
+      () => t.mutation(api.line.completeEvent, { serverSecret: "wrong", eventId: claimed.eventId, sessionId: claimed.sessionId!, assistantContent: "Hi", replyMode: "ai" }),
       () => t.mutation(api.line.markEventIgnored, { serverSecret: "wrong", eventId: claimed.eventId }),
       () => t.mutation(api.line.markEventFailed, { serverSecret: "wrong", eventId: claimed.eventId, error: "error" }),
     ]) await expect(call()).rejects.toThrow("Invalid server secret");
@@ -75,7 +75,7 @@ describe("LINE webhook events", () => {
       eventId: firstClaim.eventId,
       sessionId: firstClaim.sessionId!,
       assistantContent: "Current direct booking prices start from ฿4,500/night.",
-      replyMode: "exact",
+      replyMode: "ai",
       lineReplyStatus: 200,
     });
 
@@ -145,12 +145,12 @@ describe("LINE webhook events", () => {
     expect(duplicateClaim.status).toBe("processing");
   });
 
-  it("stores question-bank LINE reply modes in the transcript event", async () => {
+  it("stores the current LINE reply mode in the transcript event", async () => {
     const t = convexTest(schema, modules);
 
     const claim = await t.mutation(api.line.claimEvent, {
       serverSecret: TEST_SERVER_SECRET,
-      eventKey: "line-event-question-bank",
+      eventKey: "line-event-ai",
       lineUserId: "UQB",
       sourceType: "user",
       eventType: "message",
@@ -168,7 +168,7 @@ describe("LINE webhook events", () => {
       eventId: claim.eventId,
       sessionId: claim.sessionId!,
       assistantContent: "Yes. Direct booking includes airport pickup.",
-      replyMode: "question_bank_exact",
+      replyMode: "ai",
       lineReplyStatus: 200,
     });
 
@@ -183,7 +183,7 @@ describe("LINE webhook events", () => {
     ]);
     expect(event).toMatchObject({
       status: "replied",
-      replyMode: "question_bank_exact",
+      replyMode: "ai",
       lineReplyStatus: 200,
     });
   });

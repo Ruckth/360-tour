@@ -475,7 +475,9 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
 
   const when = serviceScheduleValue(line);
   // A cashier's limit, worked out as the server will (owners and managers have none).
-  const typed = isAmount(discountValue) ? { type: discountType, value: parseMoneyInput(discountValue) } : null;
+  const discountAmount = parseMoneyInput(discountValue);
+  const typed = Number.isSafeInteger(discountAmount) && discountAmount >= 0 && (discountType !== "percent" || discountAmount <= 10000)
+    ? { type: discountType, value: discountAmount } : null;
   // The discount already on the line (e.g. a manager approved it) is not a new request.
   const applied = typed !== null && line.discount?.type === typed.type && line.discount.value === typed.value;
   const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;

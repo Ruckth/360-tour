@@ -15,10 +15,6 @@ export type AdminMessage = {
 
 export type LineWebhookStatus = "received" | "processing" | "replied" | "ignored" | "failed";
 export type LineReplyMode =
-  | "exact"
-  | "approved_exact"
-  | "question_bank_exact"
-  | "question_bank_semantic"
   | "ai"
   | "unknown_fallback"
   | "postback"

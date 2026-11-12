@@ -43,7 +43,7 @@ export function AppointmentFeeControls({ appointment, onPendingChange }: { appoi
   const changed = appointmentRevision(appointment) !== appointmentRevision(reviewed) || appointment.status !== reviewed.status || appointment.price !== reviewed.price || appointment.paymentStatus !== reviewed.paymentStatus || appointment.currency !== reviewed.currency;
   const eligible = (reviewed.status === "no_show" || reviewed.status === "cancelled") && reviewed.paymentStatus === "unpaid" && reviewed.currency === "THB";
   const value = parseMoneyInput(amount);
-  const valid = amount.trim() !== "" && Number.isFinite(value) && value > 0 && Math.round(value * 100) / 100 === value && (reviewed.price <= 0 || value <= reviewed.price) && reason.trim().length > 0;
+  const valid = amount.trim() !== "" && Number.isFinite(value) && value > 0 && Number.isSafeInteger(value) && (reviewed.price <= 0 || value <= reviewed.price) && reason.trim().length > 0;
   async function add() {
     if (sending.current || (!attempt && (!valid || changed || !eligible || active))) return;
     // Preserve the reviewed revision and attempt key after a lost response.

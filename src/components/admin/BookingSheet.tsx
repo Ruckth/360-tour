@@ -1,6 +1,6 @@
 "use client";
 
-import { satangToBaht } from 'convex/shared/money';
+import { roundRatio, satangToBaht } from 'convex/shared/money';
 
 import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { api } from "convex/_generated/api";
@@ -144,7 +144,7 @@ function BookingDetails({
     !booking.paidAt &&
     !booking.hasStripePayment &&
     booking.money.gross === 0;
-  const nightly = booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0;
+  const nightly = booking.nights > 0 ? roundRatio(booking.subtotal, booking.nights) : 0;
   const balance = booking.amountPaid !== undefined ? balanceText(booking.total, booking.amountPaid, booking.currency) : null;
   const notesChanged = notes.trim() !== (booking.adminNotes ?? "");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Another villa";
