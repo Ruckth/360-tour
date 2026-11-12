@@ -48,3 +48,7 @@ MOBILE_UX_PLAN.md
 
 # Admin UI harness artifacts
 output/ui-loop/
+
+/output/
+/tmp/
+/graphify-out/

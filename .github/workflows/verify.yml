@@ -16,6 +16,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm arch:score --phase "$(cat .arch-phase)"
       - run: pnpm verify
         env:
           NEXT_PUBLIC_CONVEX_URL: https://example.convex.cloud
