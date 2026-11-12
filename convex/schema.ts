@@ -1082,6 +1082,7 @@ export default defineSchema({
 
 	// Phase 3: AI Chat
 	chatSessions: defineTable({
+		guestTokenHash: v.optional(v.string()),
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
 		channel: v.union(

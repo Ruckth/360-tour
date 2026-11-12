@@ -35,7 +35,7 @@ vi.mock('convex/browser', () => ({
         return { started: true };
       }
       if (name === 'whatsapp:recordInboundEvent') return { userMessageId: 'message_1' };
-      if (name === 'chat:isAiPaused') return backend.pausedChecks.shift() ?? false;
+      if (name === 'chat:isAiPausedForServer') return backend.pausedChecks.shift() ?? false;
       if (name === 'bookings:isChatBookingFlowActive') return false;
       if (name === 'chatAi:generateReply') {
         backend.generationHook?.();

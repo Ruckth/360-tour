@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
+import { testServerSecret } from "./testing/fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
@@ -38,7 +39,7 @@ async function setup() {
     );
   const pool = await property("pool-villa");
   const garden = await property("garden-villa");
-  const sessionId = await t.mutation(api.chat.createSession, {
+  const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.chat.createSession, {
     channel: "web",
     propertySlug: "pool-villa",
   });
@@ -56,7 +57,7 @@ async function setup() {
       status: "approved",
       ...overrides,
     });
-  return { t, admin, pool, garden, sessionId, fact };
+  return { t, admin, pool, garden, sessionId, sessionIdGuestToken, fact };
 }
 
 describe("business fact evidence", () => {
@@ -207,7 +208,7 @@ describe("business fact evidence", () => {
   ])(
     "fetches English search evidence before answering in the guest language: %s",
     async (message, expected) => {
-      const { t, sessionId, fact } = await setup();
+      const { t, sessionId, sessionIdGuestToken, fact } = await setup();
       await fact("Breakfast is included.");
       vi.stubEnv("AI_API_KEY", "test-key");
       vi.stubEnv("AI_API_BASE_URL", "https://ai.test/v1");
@@ -253,7 +254,7 @@ describe("business fact evidence", () => {
       );
       expect(
         (
-          await t.action(api.chatAi.respond, {
+          await t.action(api.chatAi.respond, { guestToken: sessionIdGuestToken,
             sessionId,
             userMessage: message,
           })
@@ -267,7 +268,7 @@ describe("business fact evidence", () => {
     },
   );
   it("records missing context after an empty fact lookup without publishing model output", async () => {
-    const { t, sessionId } = await setup();
+    const { t, sessionId, sessionIdGuestToken } = await setup();
     vi.stubEnv("AI_API_KEY", "test-key");
     vi.stubGlobal(
       "fetch",
@@ -304,7 +305,7 @@ describe("business fact evidence", () => {
         );
       }),
     );
-    const reply = await t.action(api.chatAi.respond, {
+    const reply = await t.action(api.chatAi.respond, { guestToken: sessionIdGuestToken,
       sessionId,
       userMessage: "Is airport pickup included?",
     });
@@ -319,7 +320,7 @@ describe("business fact evidence", () => {
 });
 
 it("attributes a missing policy to the explicitly looked-up villa rather than the viewed page", async () => {
-  const { t, sessionId, garden } = await setup();
+  const { t, sessionId, sessionIdGuestToken, garden } = await setup();
   vi.stubEnv("AI_API_KEY", "test-key");
   vi.stubGlobal(
     "fetch",
@@ -352,7 +353,7 @@ it("attributes a missing policy to the explicitly looked-up villa rather than th
       );
     }),
   );
-  const result = await t.action(api.chatAi.respond, {
+  const result = await t.action(api.chatAi.respond, { guestToken: sessionIdGuestToken,
     sessionId,
     userMessage: "가든 빌라에 조식이 포함되나요?",
     locale: "ko",
@@ -365,7 +366,7 @@ it("attributes a missing policy to the explicitly looked-up villa rather than th
 });
 
 it("labels partial unsaved settings as demo defaults and respects localized policy menus", async () => {
-  const { t, sessionId } = await setup();
+  const { t, sessionId, sessionIdGuestToken } = await setup();
   await t.run((ctx) =>
     ctx.db.insert("siteSettings", {
       key: "default",
@@ -374,12 +375,12 @@ it("labels partial unsaved settings as demo defaults and respects localized poli
       updatedByEmail: "admin@example.com",
     }),
   );
-  const demo = await t.action(api.chatAi.respond, {
+  const demo = await t.action(api.chatAi.respond, { guestToken: sessionIdGuestToken,
     sessionId,
     userMessage: "What is your cancellation policy?",
   });
   expect(demo.response).toContain("Demo default, not a host-confirmed policy");
-  const check = await t.action(api.chatAi.respond, {
+  const check = await t.action(api.chatAi.respond, { guestToken: sessionIdGuestToken,
     sessionId,
     userMessage: "Check-in time?",
     locale: "ko",
@@ -405,7 +406,7 @@ it("labels partial unsaved settings as demo defaults and respects localized poli
     );
   });
   vi.stubGlobal("fetch", fetchMock);
-  const translated = await t.action(api.chatAi.generateReply, {
+  const translated = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(),
     sessionId,
     userMessage: "What is the cancellation policy?",
     locale: "th",

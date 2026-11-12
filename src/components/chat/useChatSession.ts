@@ -1,5 +1,7 @@
 "use client";
 
+import { getStoredGuestToken } from "./session/message-cache";
+
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -1305,7 +1307,7 @@ export function useChatSession({
     if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
     const watch = convex.watchQuery(
       api.chat.getMessages,
-      { sessionId: sessionId as Id<"chatSessions">, limit: 100 },
+      { sessionId: sessionId as Id<"chatSessions">, guestToken: getStoredGuestToken(sessionId), limit: 100 },
     );
     const unsubscribe = watch.onUpdate(() => {
       const transcript = watch.localQueryResult();
@@ -1318,7 +1320,7 @@ export function useChatSession({
   useEffect(() => {
     if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
     const watch = convex.watchQuery(api.chat.getSession, {
-      sessionId: sessionId as Id<"chatSessions">,
+      sessionId: sessionId as Id<"chatSessions">, guestToken: getStoredGuestToken(sessionId),
     });
     return watch.onUpdate(() => {
       const session = watch.localQueryResult();

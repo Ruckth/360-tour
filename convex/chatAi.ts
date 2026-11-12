@@ -1,3 +1,5 @@
+import { requireServerSecret } from './lib/serverSecret';
+import { requireGuestToken } from './lib/guestToken';
 import { mentionsCoupon, unverifiedCouponReply } from './lib/chatCouponCopy';
 import { isCardTool, replyCardFromTool, type ReplyCard } from './lib/replyCards';
 import { unknownReply, detectReplyLocale } from "./lib/unknownReply";
@@ -331,7 +333,7 @@ async function recordUnknownFallback(
   >,
   session: Doc<"chatSessions">,
 ) {
-  await ctx.runMutation(api.chatKnowledge.recordUnknownQuestion, {
+  await ctx.runMutation(internal.chatKnowledge.recordUnknownQuestion, {
     sessionId: args.sessionId,
     userQuestion: args.userMessage,
     replyToMessageId: args.replyToMessageId,
@@ -346,7 +348,7 @@ async function recordUnknownFallback(
 }
 
 async function policyReply(
-  ctx: ActionCtx,
+  ctx: Pick<ActionCtx, 'runQuery'>,
   userMessage: string,
   siteUrl?: string,
   locale?: string,
@@ -625,6 +627,7 @@ ${isMessaging ? '' : `- If the guest seems ready to book or asks about availabil
 
 export const generateReply = action({
 	args: {
+		serverSecret: v.string(),
 		sessionId: v.id('chatSessions'),
 		userMessage: v.string(),
 		replyToMessageId: v.optional(v.id('chatMessages')),
@@ -637,6 +640,7 @@ export const generateReply = action({
 		turnId: v.optional(v.string())
 	},
 	handler: async (ctx, args): Promise<ConciergeReply> => {
+		await requireServerSecret(args.serverSecret);
 		if (args.userMessage.length > 2000) throw new Error('Message is too long');
 		await ctx.runMutation(internal.chatAi.consumeChatLimit, { sessionId: args.sessionId });
 		const session: Doc<'chatSessions'> | null = await ctx.runQuery(internal.chat.getSessionInternal, {
@@ -650,19 +654,13 @@ export const generateReply = action({
 	}
 });
 
-export const getGuardrailReply = action({
-	args: {
-		userMessage: v.string(),
-		siteUrl: v.optional(v.string()),
-		locale: v.optional(v.string())
-	},
-	handler: async (ctx, args): Promise<string | null> => {
-		return await policyReply(ctx, args.userMessage, args.siteUrl, args.locale);
-	}
-});
+export async function getGuardrailReply(ctx: Pick<ActionCtx, 'runQuery'>, args: { userMessage: string; siteUrl?: string; locale?: string }): Promise<string | null> {
+	return await policyReply(ctx, args.userMessage, args.siteUrl, args.locale);
+}
 
 export const respond = action({
 	args: {
+		guestToken: v.optional(v.string()),
 		sessionId: v.id('chatSessions'),
 		userMessage: v.string(),
 		propertySlug: v.optional(v.string()),
@@ -672,14 +670,14 @@ export const respond = action({
 		marketing: v.optional(marketingCaptureValidator)
 	},
 	handler: async (ctx, args) => {
-		const session = await ctx.runQuery(internal.chat.getSessionInternal, {
+		const session = await requireGuestToken(await ctx.runQuery(internal.chat.getSessionInternal, {
 			sessionId: args.sessionId
-		});
-		if (!session) throw new Error('Session not found');
+		}), args.guestToken);
 
 		const userMessageId: Id<'chatMessages'> = await ctx.runMutation(internal.chat.acceptGuestMessage, {
 			sessionId: args.sessionId,
 			content: args.userMessage,
+			guestToken: args.guestToken,
 			...(args.marketing ? { marketing: args.marketing } : {})
 		});
 		// Staff took over: keep the guest message for them, but the AI stays quiet.

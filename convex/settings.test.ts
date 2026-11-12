@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
+import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures";
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
@@ -227,10 +228,10 @@ describe('settings in the AI prompt', () => {
 			});
 		}));
 		const sessionId = await t.run(async (ctx) =>
-			await ctx.db.insert('chatSessions', { channel: 'web', visitorId: 'v1', lastSeenAt: Date.now(), createdAt: Date.now() })
+			await ctx.db.insert('chatSessions', { guestTokenHash: fixtureGuestTokenHash, channel: 'web', visitorId: 'v1', lastSeenAt: Date.now(), createdAt: Date.now() })
 		);
 
-		await t.action(api.chatAi.respond, { sessionId, userMessage: 'Can I check live availability?' });
+		await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Can I check live availability?' });
 		const prompt = prompts.find((content) => content.includes('BUSINESS PROFILE')) ?? '';
 		expect(prompt).toContain('Sea Breeze');
 		expect(prompt).not.toContain('Auralis Cove Retreat');

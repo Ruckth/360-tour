@@ -258,6 +258,7 @@ export async function resolveMessagingReply(
     }
     if (timedOut || Date.now() >= deadlineAt) return TIMEOUT;
     generation = client.action(api.chatAi.generateReply, {
+      serverSecret: process.env.CONVEX_SERVER_SECRET ?? "",
       sessionId: incoming.sessionId,
       userMessage: message,
       ...(incoming.replyToMessageId ? { replyToMessageId: incoming.replyToMessageId } : {}),

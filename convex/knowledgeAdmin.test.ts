@@ -172,7 +172,7 @@ describe("the admin authoring workflow is retired", () => {
   it("refuses creating or resolving answers from an unknown question", async () => {
     const { t, admin } = setup();
     const sessionId = await createSession(t);
-    const unknownId = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Do you have a sauna?" });
+    const unknownId = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Do you have a sauna?" });
     const answerId = await seedHistoricalAnswer(t, { title: "Sauna" });
 
     await expect(
@@ -218,8 +218,8 @@ describe("unknown-question review stays available", () => {
     const { t, admin } = setup();
     const sessionId = await createSession(t);
     const answerId = await seedHistoricalAnswer(t, { title: "Pets" });
-    const ignoredId = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Can I bring a parrot?" });
-    const resolvedId = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Can I bring my dog?" });
+    const ignoredId = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Can I bring a parrot?" });
+    const resolvedId = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Can I bring my dog?" });
     await admin.mutation(api.chatKnowledge.adminIgnoreUnknown, { unknownQuestionId: ignoredId });
     // A historical resolution to a saved answer, written directly.
     await t.run((ctx) =>
@@ -245,7 +245,7 @@ describe("unknown-question review stays available", () => {
     const { t, admin } = setup();
     const sessionId = await createSession(t);
     for (const question of ["Is there parking?", "Can I park a bus?", "Do you have a gym?"]) {
-      await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: question });
+      await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: question });
     }
 
     const page = await admin.query(api.chatKnowledge.adminListUnknownQuestions, { status: "new", paginationOpts: firstPage(2) });
@@ -279,9 +279,9 @@ describe("unknown-question review stays available", () => {
         createdByAdminEmail: adminEmail, updatedByAdminEmail: adminEmail,
       }),
     );
-    const byAnswer = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Pets?" });
-    const byFact = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Breakfast time?" });
-    const bySource = await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Check-in time?" });
+    const byAnswer = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Pets?" });
+    const byFact = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Breakfast time?" });
+    const bySource = await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: "Check-in time?" });
     await t.run(async (ctx) => {
       await ctx.db.patch(byAnswer, { status: "resolved", resolvedAnswerId: answerId, resolvedAt: Date.now(), updatedAt: Date.now() });
       await ctx.db.patch(byFact, { status: "resolved", resolvedFactId: factId, resolvedAt: Date.now(), updatedAt: Date.now() });
@@ -299,7 +299,7 @@ describe("unknown-question review stays available", () => {
 describe("grouped unknown questions", () => {
   async function askUnknown(t: ReturnType<typeof convexTest>, channel: "web" | "line", userQuestion: string) {
     const sessionId = await createSession(t, channel);
-    return await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion });
+    return await t.mutation(internal.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion });
   }
 
   it("groups identical questions with count and channels, and the retired answer-suggester returns nothing", async () => {

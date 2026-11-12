@@ -861,7 +861,7 @@ export const getApprovedContext = internalQuery({
 	}
 });
 
-export const recordUnknownQuestion = mutation({
+export const recordUnknownQuestion = internalMutation({
 	args: {
 		sessionId: v.optional(v.id('chatSessions')),
 		replyToMessageId: v.optional(v.id('chatMessages')),

@@ -409,7 +409,7 @@ describe("static suggestion chips remain live", () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules);
-      const sessionId = await t.mutation(api.chat.createSession, {
+      const { sessionId } = await t.mutation(api.chat.createSession, {
         channel: "web",
         visitorId: "visitor-public-assistant",
       });
@@ -444,7 +444,7 @@ describe("static suggestion chips remain live", () => {
     vi.stubEnv("AI_API_KEY", "");
     try {
       const t = convexTest(schema, modules);
-      const sessionId = await t.mutation(api.chat.createSession, {
+      const { sessionId } = await t.mutation(api.chat.createSession, {
         channel: "web",
         visitorId: "visitor-internal-assistant",
       });

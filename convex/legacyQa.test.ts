@@ -17,7 +17,7 @@ it("never revives saved answers via matching, restoration, authoring, seeding or
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });
-  const sessionId = await t.mutation(api.chat.createSession, {
+  const { sessionId } = await t.mutation(api.chat.createSession, {
     channel: "web",
   });
   const { answerId, questionId, curatedId, unknownId } = await t.run(

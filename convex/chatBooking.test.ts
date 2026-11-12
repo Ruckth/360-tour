@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
+import { testServerSecret } from "./testing/fixtures";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -247,7 +248,7 @@ describe("AI chat booking through generateReply", () => {
   it("won't confirm in the same turn as prepare, then books after the guest says yes", async () => {
     const { t, sessionId } = await setup("line");
     const reply = (userMessage: string) =>
-      t.action(api.chatAi.generateReply, {
+      t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(),
         sessionId: sessionId as Id<"chatSessions">,
         userMessage,
         channel: "line",
@@ -291,7 +292,7 @@ describe("AI chat booking through generateReply", () => {
   it("tells the model the guest name and the proposal waiting for yes", async () => {
     const { t, sessionId } = await setup("whatsapp");
     const reply = (userMessage: string) =>
-      t.action(api.chatAi.generateReply, { sessionId, userMessage, channel: "whatsapp", bookingFlow: true });
+      t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage, channel: "whatsapp", bookingFlow: true });
     const systemPrompts: string[] = [];
     const captureSystemPrompt = () => {
       const fetchMock = vi.mocked(fetch);
@@ -324,7 +325,7 @@ describe("AI chat booking through generateReply", () => {
     const toolCall = () => aiResponse(null, [{ name: "list_properties" }]);
     let finalRequestTools: unknown;
     await runWithAi([toolCall(), toolCall(), toolCall(), toolCall(), aiResponse("Here are our villas.")], async () => {
-      const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "villas?", channel: "whatsapp" });
+      const result = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: "villas?", channel: "whatsapp" });
       const calls = vi.mocked(fetch).mock.calls;
       finalRequestTools = JSON.parse(String(calls[calls.length - 1][1]?.body)).tools;
       expect(result.response).toBe("Here are our villas.");
@@ -337,7 +338,7 @@ describe("AI chat booking through generateReply", () => {
     await runWithAi(
       [aiResponse(null, [{ name: "prepare_booking", args: { ...stay, guestPhone: "0812345678" } }])],
       async (toolResults) => {
-        await t.action(api.chatAi.generateReply, { sessionId, userMessage: "book it", channel: "web" });
+        await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: "book it", channel: "web" });
         expect(toolResults[0]).toContain("Unknown function: prepare_booking");
       },
     );
@@ -456,7 +457,7 @@ describe("get_my_bookings / cancel_booking", () => {
     const { t, sessionId } = await setup("whatsapp");
     const { confirmationCode } = await bookViaChat(t, sessionId);
     const reply = (userMessage: string) =>
-      t.action(api.chatAi.generateReply, { sessionId, userMessage, channel: "whatsapp", bookingFlow: true });
+      t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage, channel: "whatsapp", bookingFlow: true });
 
     await runWithAi(
       [aiResponse(null, [{ name: "get_my_bookings" }, { name: "cancel_booking", args: { reference: confirmationCode } }]),

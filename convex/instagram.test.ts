@@ -59,7 +59,7 @@ describe("Instagram webhook events", () => {
       instagramReplyStatus: 200,
     });
 
-    const messages = await t.query(api.chat.getMessages, {
+    const messages = await t.query(internal.chat.getRecentMessages, { limit: 100,
       sessionId: firstClaim.sessionId!,
     });
     const session = await t.query(internal.chat.getSessionInternal, {
@@ -111,7 +111,7 @@ describe("Instagram webhook events", () => {
       instagramReplyStatus: 401,
     });
 
-    const messages = await t.query(api.chat.getMessages, {
+    const messages = await t.query(internal.chat.getRecentMessages, { limit: 100,
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.instagram.claimEvent, {

@@ -22,7 +22,7 @@ vi.mock("convex/browser", () => ({
         backend.claimed.add(eventKey);
         return { eventId: "evt_1", sessionId: "sess_1", duplicate, status: duplicate ? "completed" : "processing" };
       }
-      if (name === "chat:isAiPaused") return backend.paused;
+      if (name === "chat:isAiPausedForServer") return backend.paused;
       if (name === "bookings:isChatBookingFlowActive") return false;
       if (name === "line:recordInboundEvent") return { recorded: true, duplicate: false, userMessageId: "msg_1" };
       if (name === "line:beginDelivery") return { started: true };

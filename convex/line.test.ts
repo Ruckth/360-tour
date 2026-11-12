@@ -79,7 +79,7 @@ describe("LINE webhook events", () => {
       lineReplyStatus: 200,
     });
 
-    const messages = await t.query(api.chat.getMessages, {
+    const messages = await t.query(internal.chat.getRecentMessages, { limit: 100,
       sessionId: firstClaim.sessionId!,
     });
     const session = await t.query(internal.chat.getSessionInternal, {
@@ -125,7 +125,7 @@ describe("LINE webhook events", () => {
       lineReplyStatus: 401,
     });
 
-    const messages = await t.query(api.chat.getMessages, {
+    const messages = await t.query(internal.chat.getRecentMessages, { limit: 100,
       sessionId: claim.sessionId!,
     });
     const duplicateClaim = await t.mutation(api.line.claimEvent, {
@@ -172,7 +172,7 @@ describe("LINE webhook events", () => {
       lineReplyStatus: 200,
     });
 
-    const messages = await t.query(api.chat.getMessages, {
+    const messages = await t.query(internal.chat.getRecentMessages, { limit: 100,
       sessionId: claim.sessionId!,
     });
     const event = await t.run(async (ctx) => await ctx.db.get(claim.eventId));

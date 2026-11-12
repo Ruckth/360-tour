@@ -171,6 +171,17 @@ export function getStoredSessionId() {
   return window.localStorage.getItem(SESSION_ID_STORAGE_KEY);
 }
 
+/** Credentials are scoped to the session, so a stale request cannot use a newer token. */
+export function getStoredGuestToken(sessionId: string) {
+  if (typeof window === "undefined") return undefined;
+  return window.localStorage.getItem(`${SESSION_ID_STORAGE_KEY}:token:${sessionId}`) ?? undefined;
+}
+
+export function storeGuestToken(sessionId: string, guestToken: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(`${SESSION_ID_STORAGE_KEY}:token:${sessionId}`, guestToken);
+}
+
 export function setStoredSessionId(sessionId: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(SESSION_ID_STORAGE_KEY, sessionId);

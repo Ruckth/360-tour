@@ -1,8 +1,11 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
+import { testServerSecret } from "./testing/fixtures";
+import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures";
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
+import { getGuardrailReply } from './chatAi';
 import { proposalIdentity } from './lib/chatWriteGuard';
 
 declare global {
@@ -38,7 +41,7 @@ async function setup(channel: 'web' | 'line' | 'whatsapp' = 'line') {
 			pricePerNight: 8500, directDiscountPercent: 15, currency: 'THB', maxGuests: 4,
 			bedrooms: 2, bathrooms: 2, area: 180, amenities: [], images: [], tourRoomIds: [], status: 'active'
 		});
-		const sessionId = await ctx.db.insert('chatSessions', { channel, visitorId: 'eval:accuracy', visitorPhone: '660099000001', visitorName: 'Test Guest', createdAt: Date.now() });
+		const sessionId = await ctx.db.insert('chatSessions', { guestTokenHash: fixtureGuestTokenHash, channel, visitorId: 'eval:accuracy', visitorPhone: '660099000001', visitorName: 'Test Guest', createdAt: Date.now() });
 		return { sessionId, propertyId };
 	});
 	const checkIn = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -63,11 +66,11 @@ describe('authoritative facts and capability routing', () => {
 		await seedHistoricalAnswer(t, { title: 'Check-in', answer: 'Check-in is at 15:00.', question: message });
 		await t.run(async ctx => { await ctx.db.insert('siteSettings', { key: 'default', checkInTime: '16:00', checkOutTime: '10:00', updatedAt: Date.now(), updatedByEmail: 'admin@example.com' }); });
 		const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
-		const result = await t.action(api.chatAi.respond, { sessionId, userMessage: message });
+		const result = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: message });
 		expect(result).toMatchObject({ model: 'guardrail' });
 		expect(result.response).toContain('16:00'); expect(result.response).toContain('10:00');
 		expect(result.response).not.toContain('15:00'); expect(fetchMock).not.toHaveBeenCalled();
-		expect(await t.action(api.chatAi.getGuardrailReply, { userMessage: message })).toBe(result.response);
+		expect(await t.run(ctx => getGuardrailReply(ctx, { userMessage: message }))).toBe(result.response);
 	});
 
 	it('does not let a historical approved exact price bypass live data', async () => {
@@ -79,7 +82,7 @@ describe('authoritative facts and capability routing', () => {
 
 	it.each(['Reschedule my massage booking to tomorrow.', 'เลื่อนนัดนวดเป็นพรุ่งนี้ครับ', '마사지 예약 시간을 변경해 주세요.'])('does not turn a reschedule into a new preparation: %s', async message => {
 		const { t, sessionId } = await setup(); const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
-		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: message });
+		const reply = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: message });
 		expect(reply.model).toBe('guardrail'); expect(fetchMock).not.toHaveBeenCalled();
 		const session = await t.run(ctx => ctx.db.get(sessionId));
 		expect(session?.pendingServiceQuote).toBeUndefined(); expect(session?.pendingBookingQuote).toBeUndefined();
@@ -87,7 +90,7 @@ describe('authoritative facts and capability routing', () => {
 
 	it('redirects off-topic code requests without invoking the provider', async () => {
 		const { t, sessionId } = await setup('web'); const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
-		const reply = await t.action(api.chatAi.respond, { sessionId, userMessage: 'Write a Python script to sort a list.' });
+		const reply = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Write a Python script to sort a list.' });
 		expect(reply.response).toContain('villas'); expect(reply.response).not.toContain('sorted('); expect(fetchMock).not.toHaveBeenCalled();
 	});
 });
@@ -109,7 +112,7 @@ describe('tool inputs and honest outcomes', () => {
 	])('rejects %s arguments %s without claiming success', async (name, args) => {
 		const { t, sessionId } = await setup();
 		modelSequence([modelReply(null, name, args, 'tool_calls'), modelReply('Your booking is confirmed!')]);
-		const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes' });
+		const result = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes' });
 		expect(result.model).toBe('tool_fallback'); expect(result.response).not.toContain('Your booking is confirmed');
 		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
@@ -118,7 +121,7 @@ describe('tool inputs and honest outcomes', () => {
 		const { t, sessionId, stay } = await setup();
 		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'confirm_booking', '{}', 'tool_calls'), modelReply('Booked!')]);
-		const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'How many bedrooms does it have?' });
+		const result = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'How many bedrooms does it have?' });
 		expect(result.model).toBe('tool_fallback');
 		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
@@ -127,7 +130,7 @@ describe('tool inputs and honest outcomes', () => {
 		const { t, sessionId, stay } = await setup();
 		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'prepare_booking', '{broken', 'tool_calls'), modelReply('Please clarify the new dates.')]);
-		await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'Change the dates of my draft.' });
+		await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'Change the dates of my draft.' });
 		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
 		await expect(t.mutation(internal.bookings.confirmChatBooking, { sessionId })).rejects.toThrow('No prepared booking');
 	});
@@ -151,7 +154,7 @@ describe('tool inputs and honest outcomes', () => {
 			: { choices: [{ finish_reason: truncated ? 'length' : 'tool_calls', message: { content: null, tool_calls: calls } }] };
 		const fetchMock = vi.fn(async () => new Response(JSON.stringify(envelope)));
 		vi.stubGlobal('fetch', fetchMock);
-		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes' });
+		const reply = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes' });
 		expect(reply.model).toBe('tool_fallback');
 		expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 		expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
@@ -165,7 +168,7 @@ describe('tool inputs and honest outcomes', () => {
 		if (booked.needsReview) throw new Error("Expected a confirmed booking");
 		await t.mutation(internal.bookings.cancelChatBooking, { sessionId, reference: booked.confirmationCode, turnStartedAt: Date.now() });
 		modelSequence([modelReply(null, 'cancel_booking', JSON.stringify({ reference: booked.confirmationCode }), 'tool_calls'), modelReply('Booking cancelled.')]);
-		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "Don't cancel my booking." });
+		const reply = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: "Don't cancel my booking." });
 		expect(reply.model).toBe('tool_fallback'); expect((await t.run(ctx => ctx.db.get(booked.bookingId)))?.status).toBe('pending');
 	});
 
@@ -173,7 +176,7 @@ describe('tool inputs and honest outcomes', () => {
 		const { t, sessionId, stay } = await setup();
 		await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'confirm_booking', '{}', 'tool_calls'), modelReply('Booked for THB 1.')]);
-		const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes' });
+		const result = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes' });
 		const rows = await t.run(ctx => ctx.db.query('bookings').take(10));
 		expect(rows).toHaveLength(1); expect(rows[0].total).toBe(21675);
 		expect(result.response).toContain('THB 21,675'); expect(result.response).toContain(rows[0].confirmationCode);
@@ -182,7 +185,7 @@ describe('tool inputs and honest outcomes', () => {
 
 	it('does not return incomplete final text', async () => {
 		const { t, sessionId } = await setup(); modelSequence([modelReply('Your booking has been conf', undefined, '{}', 'length')]);
-		const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'Tell me about the villa.' });
+		const result = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'Tell me about the villa.' });
 		expect(result.model).toBe('tool_fallback'); expect(result.response).not.toContain('been conf');
 	});
 
@@ -193,7 +196,7 @@ describe('tool inputs and honest outcomes', () => {
 			if (++calls === 1) { await t.run(ctx => ctx.db.patch(sessionId, { aiPaused: true })); return modelReply(null, 'confirm_booking', '{}', 'tool_calls'); }
 			return modelReply('Your booking is confirmed!');
 		}));
-		const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes' });
+		const result = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes' });
 		expect(result.model).toBe('tool_fallback'); expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
 
@@ -227,7 +230,7 @@ describe('review accuracy regressions', () => {
 		const { t, sessionId } = await setup('web');
 		await seedHistoricalAnswer(t, { title: 'Cancellation policy', answer: 'Free cancellation anytime.', question: 'What is your cancellation policy?' });
 		await t.run(ctx => ctx.db.insert('siteSettings', { key: 'default', cancellationPolicy: 'Cancellation requires 72 hours notice.', updatedAt: Date.now(), updatedByEmail: 'admin@example.com' }));
-		const reply = await t.action(api.chatAi.respond, { sessionId, userMessage: 'What is your cancellation policy?' });
+		const reply = await t.action(api.chatAi.respond, { guestToken: fixtureGuestToken, sessionId, userMessage: 'What is your cancellation policy?' });
 		expect(reply.model).toBe('guardrail'); expect(reply.response).toBe('Cancellation requires 72 hours notice.');
 	});
 
@@ -242,14 +245,14 @@ describe('review accuracy regressions', () => {
 			}
 			return modelReply('Your booking is confirmed.');
 		}));
-		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'yes' });
+		const reply = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'yes' });
 		expect(reply.model).toBe('tool_fallback'); expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
 
 	it('an amended yes does not confirm the previous guest count', async () => {
 		const { t, sessionId, stay } = await setup(); await t.mutation(internal.bookings.prepareChatBooking, { sessionId, ...stay });
 		modelSequence([modelReply(null, 'confirm_booking', '{}', 'tool_calls'), modelReply('Your booking is confirmed.')]);
-		const reply = await t.action(api.chatAi.generateReply, { sessionId, userMessage: 'Yes, for 3 guests.' });
+		const reply = await t.action(api.chatAi.generateReply, { serverSecret: testServerSecret(), sessionId, userMessage: 'Yes, for 3 guests.' });
 		expect(reply.model).toBe('tool_fallback'); expect(await t.run(ctx => ctx.db.query('bookings').take(10))).toHaveLength(0);
 	});
 });
