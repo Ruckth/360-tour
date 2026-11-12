@@ -3,8 +3,8 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { ConvexReactClient } from 'convex/react';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from 'convex/_generated/api';
-import { askConcierge, claimChatBrowserHandoff, closeChatSession, createChatBrowserHandoff, createChatSession, getChatMessages, getReusableChatSession, identifyChatVisitor, touchChatSession } from '@/lib/react/convex-api';
-import { getStoredGuestToken, getStoredSessionId, setStoredSessionId } from '@/components/chat/session/message-cache';
+import { askConcierge, claimChatBrowserHandoff, closeChatSession, createChatBrowserHandoff, createChatSession, getChatMessages, getNextChatSuggestions, markChatSuggestionsShown, markChatSuggestionClicked, identifyChatVisitor, touchChatSession } from '@/lib/react/convex-api';
+import { clearStoredSessionId, getStoredGuestToken, getStoredSessionId, setStoredSessionId, storeGuestToken } from '@/components/chat/session/message-cache';
 
 beforeEach(() => localStorage.clear());
 
@@ -25,7 +25,9 @@ it('persists guest credentials through creation, reload, and handoff and sends t
 	await touchChatSession(client, { sessionId });
 	await identifyChatVisitor(client, { sessionId, email: 'guest@example.com' });
 	await getChatMessages(client, { sessionId });
-	await getReusableChatSession(client, { visitorId: 'visitor' });
+	await getNextChatSuggestions(client, { sessionId, candidateSuggestionIds: ['availability'] });
+	await markChatSuggestionsShown(client, { sessionId, suggestions: [{ source: 'static', suggestionId: 'availability' }] });
+	await markChatSuggestionClicked(client, { sessionId, suggestion: { source: 'static', suggestionId: 'availability' } });
 	await createChatBrowserHandoff(client, { sessionId });
 	await askConcierge(client, { sessionId, userMessage: 'hello' });
 	await closeChatSession(client, { sessionId });
@@ -37,10 +39,29 @@ it('persists guest credentials through creation, reload, and handoff and sends t
 	expect(query).toHaveBeenLastCalledWith(api.chat.getMessages, { sessionId, guestToken: 'rotated-token' });
 });
 
-it('does not look up another visitor session when the stored credential is missing', async () => {
-	const query = vi.fn();
+it('removes the session token when clearing the stored session id', () => {
+	setStoredSessionId('old-session');
+	storeGuestToken('old-session', 'old-token');
+	clearStoredSessionId();
+	expect(getStoredSessionId()).toBeNull();
+	expect(getStoredGuestToken('old-session')).toBeUndefined();
+	clearStoredSessionId();
+});
+
+it('bounds suggestion lookup batches while preserving the remaining candidate order', async () => {
+	storeGuestToken('session', 'token');
+	const query = vi.fn()
+		.mockResolvedValueOnce([])
+		.mockResolvedValueOnce([{ source: 'static', suggestionId: 'contact' }]);
 	const client = { query } as unknown as ConvexReactClient;
-	setStoredSessionId('old-session-without-token');
-	expect(await getReusableChatSession(client, { visitorId: 'known-visitor-id' })).toBeNull();
-	expect(query).not.toHaveBeenCalled();
+	const selected = await getNextChatSuggestions(client, {
+		sessionId: 'session',
+		candidateSuggestionIds: ['availability', 'totalPrice', 'direct', 'tour', 'guests', 'contact'],
+		limit: 2,
+	});
+	expect(query.mock.calls.map(([, args]) => args.candidateSuggestionIds)).toEqual([
+		['availability', 'totalPrice', 'direct', 'tour', 'guests'], ['contact'],
+	]);
+	for (const [, args] of query.mock.calls) expect(args).toMatchObject({ guestToken: 'token', limit: 2 });
+	expect(selected).toEqual([{ source: 'static', suggestionId: 'contact' }]);
 });

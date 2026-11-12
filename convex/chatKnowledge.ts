@@ -14,7 +14,6 @@ import {
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { callAI, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL, type ChatMessage } from './lib/chatLlm';
-import { requiresLiveFacts, capabilityReply } from './lib/conciergePolicy';
 import { requireAdmin } from './lib/adminAuth';
 import { readBudget, ReadBudgetExceeded, readRangeWithinBudget } from './lib/readBudget';
 import { normalizeSuggestedQuestion } from './lib/chatSuggestions';
@@ -734,40 +733,6 @@ export async function getExactCandidates(
 		return right.question.updatedAt - left.question.updatedAt;
 	});
 }
-
-export const resolveExact = query({
-	args: {
-		sessionId: v.id('chatSessions'),
-		messageText: v.string()
-	},
-	handler: async (ctx, args) => {
-		if (legacyQaRetired()) return null;
-		if (requiresLiveFacts(args.messageText) || capabilityReply(args.messageText)) return null;
-		const normalizedQuestion = normalizeQuestion(args.messageText);
-		if (!normalizedQuestion) return null;
-
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) return null;
-		const { propertyId, propertySlug } = await resolveSessionProperty(ctx, session);
-		const candidates = await getExactCandidates(ctx, normalizedQuestion, propertyId, propertySlug);
-
-		for (const candidate of candidates) {
-			return {
-				source: 'approved_exact' as const,
-				answerId: candidate.answer._id,
-				questionId: candidate.question._id,
-				title: candidate.answer.title,
-				answer: candidate.answer.answer,
-				questionText: candidate.question.questionText,
-				normalizedQuestion,
-				propertyId: candidate.answer.propertyId,
-				propertySlug
-			};
-		}
-
-		return null;
-	}
-});
 
 const APPROVED_CONTEXT_LIMIT = 30;
 const APPROVED_CONTEXT_BUDGET_ERROR = 'Too much approved knowledge to build the AI context safely.';

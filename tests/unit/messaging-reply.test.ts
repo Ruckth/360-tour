@@ -270,3 +270,15 @@ describe("resolveMessagingReply — cross-channel parity", () => {
     expect(text).not.toContain("private guest text");
   });
 });
+
+
+it('sends the server secret when looking up booking flow state', async () => {
+  vi.stubEnv('CONVEX_SERVER_SECRET', 'server-only');
+  try {
+    const { client, query } = makeClient({});
+    await resolveMessagingReply(client, incoming('line'));
+    expect(query).toHaveBeenCalledWith(expect.anything(), { sessionId: 'sess_1', serverSecret: 'server-only' });
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

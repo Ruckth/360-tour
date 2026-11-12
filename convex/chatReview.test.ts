@@ -52,8 +52,7 @@ it('keeps staff-only fields private when the guest resumes their own session', a
 		adminSearchText: 'private search', inboxSendError: 'private provider diagnostic',
 		visitorEmail: 'guest@example.com', aiPaused: true,
 	}));
-	const resumed = await t.query(api.chat.getReusableSession, { guestToken: sessionIdGuestToken, sessionId: sessionId, visitorId });
-	expect(resumed).toEqual(await t.query(api.chat.getSession, { guestToken: sessionIdGuestToken, sessionId }));
+	const resumed = await t.query(api.chat.getSession, { guestToken: sessionIdGuestToken, sessionId });
 	expect(resumed).toMatchObject({ _id: sessionId, channel: 'web', aiPaused: true });
 	for (const field of ['assignedAdminEmail', 'staffTask', 'adminSearchText', 'inboxSendError', 'visitorEmail']) {
 		expect(resumed).not.toHaveProperty(field);

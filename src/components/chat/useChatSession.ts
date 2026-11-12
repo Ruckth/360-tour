@@ -1,5 +1,6 @@
 "use client";
 
+import { ConvexError } from "convex/values";
 import { getStoredGuestToken } from "./session/message-cache";
 
 import { useLocale, useTranslations } from "next-intl";
@@ -29,7 +30,6 @@ import {
   closeChatSession,
   createChatBrowserHandoff,
   createChatSession,
-  getReusableChatSession,
   getChatMessages,
   getNextChatSuggestions,
   identifyChatVisitor,
@@ -714,6 +714,41 @@ export function useChatSession({
     [activePropertySlug, chatLifecycle, convex],
   );
 
+  const recoverInvalidGuestSession = useCallback(
+    async (error: unknown, failedSessionId: string | null, generation: number, pendingDraft?: string) => {
+      const invalidToken = error instanceof ConvexError &&
+        typeof error.data === "object" && error.data !== null &&
+        "code" in error.data && error.data.code === "INVALID_GUEST_TOKEN";
+      if (!invalidToken || chatLifecycle.isStale(generation)) return false;
+      const recoveryGeneration = chatLifecycle.next();
+      clearStoredSessionId(failedSessionId);
+      clearKnownChatMessageCaches(failedSessionId);
+      restoredMessageCacheRef.current = false;
+      setSessionId(null);
+      setSessionReady(false);
+      setIsHydratingSession(true);
+      setMessages([]);
+      setLatestExchange(null);
+      setTrackedSuggestionIds(null);
+      setPausedSessionId(null);
+      staffReplyNoticeShownRef.current = false;
+      setIsTyping(false);
+      if (pendingDraft !== undefined) setInput(pendingDraft);
+      try {
+        await createFreshSession(recoveryGeneration);
+      } catch {
+        // A later open/send can retry creation after a temporary network failure.
+      } finally {
+        if (chatLifecycle.isCurrent(recoveryGeneration)) {
+          setSessionReady(true);
+          setIsHydratingSession(false);
+        }
+      }
+      return true;
+    },
+    [chatLifecycle, createFreshSession],
+  );
+
   const hydrateExistingSession = useCallback(
     async (
       id: string,
@@ -804,7 +839,7 @@ export function useChatSession({
             return sessionId;
           } catch {
             if (chatLifecycle.isStale(generation)) return null;
-            clearStoredSessionId();
+            clearStoredSessionId(sessionId);
             clearCachedChatMessages(sessionId);
             setSessionId(null);
             if (hydrateMessages && !restoredMessageCacheRef.current) {
@@ -841,30 +876,8 @@ export function useChatSession({
           return storedId;
         } catch {
           if (chatLifecycle.isStale(generation)) return null;
-          clearStoredSessionId();
+          clearStoredSessionId(storedId);
           clearCachedChatMessages(storedId);
-        }
-      }
-
-      const visitorId = getOrCreateVisitorId();
-      if (visitorId) {
-        try {
-          const reusableSession = await getReusableChatSession(convex, {
-            visitorId,
-            messageLimit: REUSABLE_CHAT_MESSAGE_LIMIT,
-          });
-          if (chatLifecycle.isStale(generation)) return null;
-          if (reusableSession?._id) {
-            return await hydrateExistingSession(
-              reusableSession._id,
-              markOpen,
-              hydrateMessages,
-              true,
-              generation,
-            );
-          }
-        } catch {
-          // If lookup fails, create a clean session so chat stays available.
         }
       }
 
@@ -1037,9 +1050,12 @@ export function useChatSession({
   const restartChat = useCallback(async () => {
     const previousSessionId = sessionId ?? getStoredSessionId();
     const generation = chatLifecycle.next();
+    const closing = convex && previousSessionId
+      ? closeChatSession(convex, { sessionId: previousSessionId }).catch(() => undefined)
+      : null;
     isRestartingChatRef.current = true;
     clearKnownChatMessageCaches(previousSessionId);
-    clearStoredSessionId();
+    clearStoredSessionId(previousSessionId);
     restoredMessageCacheRef.current = false;
     setSessionReady(false);
     setIsHydratingSession(false);
@@ -1059,11 +1075,7 @@ export function useChatSession({
     }
 
     try {
-      if (previousSessionId) {
-        await closeChatSession(convex, { sessionId: previousSessionId }).catch(
-          () => undefined,
-        );
-      }
+      await closing;
       if (chatLifecycle.isStale(generation)) return;
       const id = await createFreshSession(generation);
       if (chatLifecycle.isStale(generation)) return;
@@ -1298,10 +1310,13 @@ export function useChatSession({
     return startSessionHeartbeat({
       intervalMs: HEARTBEAT_MS,
       touch: () => {
-        void ensureSession({ markOpen: true }).catch(() => null);
+        const generation = chatLifecycle.value;
+        void ensureSession({ markOpen: true }).catch(error =>
+          recoverInvalidGuestSession(error, sessionId, generation),
+        );
       },
     });
-  }, [browserGateVisible, convex, ensureSession, open]);
+  }, [browserGateVisible, chatLifecycle, convex, ensureSession, open, recoverInvalidGuestSession, sessionId]);
 
   useEffect(() => {
     if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
@@ -1309,27 +1324,39 @@ export function useChatSession({
       api.chat.getMessages,
       { sessionId: sessionId as Id<"chatSessions">, guestToken: getStoredGuestToken(sessionId), limit: 100 },
     );
+    const generation = chatLifecycle.value;
     const unsubscribe = watch.onUpdate(() => {
-      const transcript = watch.localQueryResult();
-      if (!transcript) return;
-      setMessages((items) => mergeAdminMessages(items, transcript));
+      if (chatLifecycle.isStale(generation)) return;
+      try {
+        const transcript = watch.localQueryResult();
+        if (!transcript) return;
+        setMessages((items) => mergeAdminMessages(items, transcript));
+      } catch (error) {
+        void recoverInvalidGuestSession(error, sessionId, generation);
+      }
     });
     return unsubscribe;
-  }, [browserGateVisible, convex, open, sessionId, sessionReady]);
+  }, [browserGateVisible, chatLifecycle, convex, open, recoverInvalidGuestSession, sessionId, sessionReady]);
 
   useEffect(() => {
     if (!open || !convex || !sessionId || !sessionReady || browserGateVisible) return;
     const watch = convex.watchQuery(api.chat.getSession, {
       sessionId: sessionId as Id<"chatSessions">, guestToken: getStoredGuestToken(sessionId),
     });
+    const generation = chatLifecycle.value;
     return watch.onUpdate(() => {
-      const session = watch.localQueryResult();
-      if (session === undefined) return;
-      const paused = Boolean(session?.aiPaused);
-      if (!paused) staffReplyNoticeShownRef.current = false;
-      setPausedSessionId(paused ? sessionId : null);
+      if (chatLifecycle.isStale(generation)) return;
+      try {
+        const session = watch.localQueryResult();
+        if (session === undefined) return;
+        const paused = Boolean(session?.aiPaused);
+        if (!paused) staffReplyNoticeShownRef.current = false;
+        setPausedSessionId(paused ? sessionId : null);
+      } catch (error) {
+        void recoverInvalidGuestSession(error, sessionId, generation);
+      }
     });
-  }, [browserGateVisible, convex, open, sessionId, sessionReady]);
+  }, [browserGateVisible, chatLifecycle, convex, open, recoverInvalidGuestSession, sessionId, sessionReady]);
 
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     const generation = chatLifecycle.value;
@@ -1529,8 +1556,9 @@ export function useChatSession({
         assistantMessage: response,
         ...(preset ? { clickedSuggestionId: preset.id } : {}),
       });
-    } catch {
+    } catch (error) {
       if (chatLifecycle.isStale(generation)) return;
+      if (await recoverInvalidGuestSession(error, id ?? sessionId, generation, clean)) return;
       const recoveredMessage = id
         ? await recoverPersistedAssistantMessage(id, clean, generation)
         : null;

@@ -1,3 +1,11 @@
+/** The finite set of question chips shared by browser selection and tracking. */
+export const STATIC_SUGGESTION_KEYS = [
+	'availability', 'totalPrice', 'direct', 'tour', 'guests', 'contact',
+	'couple', 'family', 'cancellation', 'airport', 'amenitiesIncluded', 'location'
+] as const;
+
+export type StaticSuggestionKey = (typeof STATIC_SUGGESTION_KEYS)[number];
+
 export type SuggestedQuestionStatus = "active" | "clicked" | "archived";
 
 export const supportedSuggestionLocales = [

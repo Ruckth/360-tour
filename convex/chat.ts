@@ -6,10 +6,6 @@ import { v } from 'convex/values';
 import type { Doc } from './_generated/dataModel';
 import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
 import {
-	DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
-	isReusableChatMessageCount
-} from './lib/chatReuse';
-import {
 	buildAdminChatMetadataPatch,
 	buildAdminSearchText,
 	getAdminChatSortAt,
@@ -204,34 +200,6 @@ export const touchSession = mutation({
 			...(adminSortAt !== session.adminSortAt ? { adminSortAt } : {}),
 			...(adminSearchText !== session.adminSearchText ? { adminSearchText } : {})
 		});
-	}
-});
-
-export const getReusableSession = query({
-	args: {
-		visitorId: v.string(),
-		sessionId: v.id('chatSessions'),
-		guestToken: v.optional(v.string()),
-		messageLimit: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		const visitorId = args.visitorId.trim();
-		const messageLimit = Math.max(
-			0,
-			Math.floor(args.messageLimit ?? DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT)
-		);
-
-		const session = await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
-		if (!visitorId || messageLimit <= 0 || session.visitorId !== visitorId) return null;
-		if (session.lastClosedAt && (!session.lastOpenedAt || session.lastClosedAt >= session.lastOpenedAt)) return null;
-
-		const legacyMessageCount = session.messages?.length ?? 0;
-		if (!isReusableChatMessageCount(legacyMessageCount, messageLimit)) return null;
-		const messages = await ctx.db.query('chatMessages')
-			.withIndex('by_session', q => q.eq('sessionId', session._id))
-			.take(messageLimit - legacyMessageCount);
-		return isReusableChatMessageCount(legacyMessageCount + messages.length, messageLimit)
-			? publicSession(session) : null;
 	}
 });
 

@@ -272,7 +272,7 @@ describe("AI chat booking through generateReply", () => {
       },
     );
     expect(await listBookings(t)).toHaveLength(0);
-    expect(await t.query(api.bookings.isChatBookingFlowActive, { sessionId })).toBe(true);
+    expect(await t.query(api.bookings.isChatBookingFlowActive, { sessionId, serverSecret: testServerSecret() })).toBe(true);
 
     await runWithAi(
       [aiResponse(null, [{ name: "confirm_booking" }]), aiResponse("Booked!")],

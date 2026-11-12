@@ -1,14 +1,14 @@
 import { assertLegacyQaWritable, legacyQaRetired } from './lib/legacyQa';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
+import { requireGuestToken } from './lib/guestToken';
 import { internal } from './_generated/api';
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 import { callAI, DEFAULT_AI_API_BASE_URL, DEFAULT_AI_MODEL, type ChatMessage } from './lib/chatLlm';
-import { requiresLiveFacts, capabilityReply } from './lib/conciergePolicy';
 import { requireAdmin } from './lib/adminAuth';
 import {
+	STATIC_SUGGESTION_KEYS,
 	clampSuggestionScore,
-	getSuggestedQuestionForLocale,
 	normalizeSuggestedQuestion,
 	normalizeSuggestionLocale,
 	supportedSuggestionLocales,
@@ -19,8 +19,6 @@ import { readBudget, ReadBudgetExceeded, readRangeWithinBudget } from './lib/rea
 
 const DEFAULT_LIMIT = 2;
 const SCORE_ORDERED_CANDIDATE_SCAN_LIMIT = 100;
-const SEMANTIC_MATCH_CONFIDENCE_THRESHOLD = 0.82;
-const SEMANTIC_MATCH_CANDIDATE_LIMIT = 25;
 
 type SuggestionTopic =
 	| 'villa_fit'
@@ -37,19 +35,6 @@ type DynamicIntent = 'availability' | 'pricing' | 'property_details' | 'booking_
 
 type CuratedResolutionCandidate = Doc<'curatedChatQuestions'> & {
 	scopeRank: number;
-};
-
-type CuratedQuestionMatch = {
-	source: 'exact' | 'semantic';
-	suggestionId: Id<'curatedChatQuestions'>;
-	question: string;
-	answer?: string;
-	answerMode: CuratedAnswerMode;
-	dynamicIntent?: DynamicIntent;
-	topic: string;
-	score: number;
-	propertySlug?: string;
-	confidence?: number;
 };
 
 const suggestionTopics = [
@@ -72,7 +57,7 @@ const dynamicIntents = [
 
 const staticSuggestionRefValidator = v.object({
 	source: v.literal('static'),
-	suggestionId: v.string()
+	suggestionId: v.union(...STATIC_SUGGESTION_KEYS.map(key => v.literal(key)))
 });
 
 const curatedSuggestionRefValidator = v.object({
@@ -168,24 +153,8 @@ function normalizeDynamicIntent(intent?: string, topic?: string): DynamicIntent 
 	}
 }
 
-function getSuggestedAnswerForLocale(
-	candidate: Pick<Doc<'curatedChatQuestions'>, 'answer' | 'answerTranslations'>,
-	locale?: string
-) {
-	const answer = candidate.answer?.trim();
-	if (!answer) return undefined;
-	const normalizedLocale = normalizeSuggestionLocale(locale);
-	if (normalizedLocale === 'en') return answer;
-	return candidate.answerTranslations?.[normalizedLocale]?.trim() || answer;
-}
-
 function normalizeOptionalScore(score?: number) {
 	return clampSuggestionScore(score ?? 50);
-}
-
-function detectMessageLocale(message: string, locale?: string) {
-	if (locale) return normalizeSuggestionLocale(locale);
-	return /[\u0E00-\u0E7F]/u.test(message) ? normalizeSuggestionLocale('th') : normalizeSuggestionLocale('en');
 }
 
 function curatedQuestionAnswerMode(question: Pick<Doc<'curatedChatQuestions'>, 'answerMode' | 'answer'>): CuratedAnswerMode {
@@ -198,27 +167,6 @@ function sortCuratedResolutionCandidates(candidates: CuratedResolutionCandidate[
 		if (right.score !== left.score) return right.score - left.score;
 		return right.updatedAt - left.updatedAt;
 	});
-}
-
-function serializeCuratedMatch(
-	question: Doc<'curatedChatQuestions'>,
-	source: CuratedQuestionMatch['source'],
-	locale: string,
-	confidence?: number
-): CuratedQuestionMatch {
-	const answerMode = curatedQuestionAnswerMode(question);
-	return {
-		source,
-		suggestionId: question._id,
-		question: getSuggestedQuestionForLocale(question, locale),
-		...(answerMode === 'static' ? { answer: getSuggestedAnswerForLocale(question, locale) } : {}),
-		answerMode,
-		...(answerMode === 'dynamic' ? { dynamicIntent: question.dynamicIntent } : {}),
-		topic: question.topic,
-		score: question.score,
-		...(question.propertySlug ? { propertySlug: question.propertySlug } : {}),
-		...(typeof confidence === 'number' ? { confidence } : {})
-	};
 }
 
 async function getCuratedResolutionCandidates(
@@ -251,43 +199,6 @@ async function getCuratedResolutionCandidates(
 		...globalQuestions.map((question) => ({ ...question, scopeRank: 0 })),
 		...propertyQuestions.map((question) => ({ ...question, scopeRank: 1 }))
 	]);
-}
-
-function resolveExactCuratedMatch({
-	candidates,
-	locale,
-	messageText
-}: {
-	candidates: CuratedResolutionCandidate[];
-	locale: string;
-	messageText: string;
-}) {
-	const normalizedMessage = normalizeSuggestedQuestion(messageText);
-	if (!normalizedMessage) return null;
-
-	const match = sortCuratedResolutionCandidates(candidates).find((question) =>
-		curatedQuestionVariants(question).includes(normalizedMessage)
-	);
-	return match ? serializeCuratedMatch(match, 'exact', locale) : null;
-}
-
-function parseSemanticQuestionMatch(content: string | null) {
-	if (!content) return null;
-	const json = extractJsonObject(content);
-	if (!json) return null;
-
-	try {
-		const parsed = JSON.parse(json) as unknown;
-		if (!parsed || typeof parsed !== 'object') return null;
-		const row = parsed as Record<string, unknown>;
-		const matched = row.matched === true;
-		const questionId = typeof row.questionId === 'string' ? row.questionId.trim() : '';
-		const confidenceValue = typeof row.confidence === 'number' ? row.confidence : Number(row.confidence);
-		const confidence = Number.isFinite(confidenceValue) ? confidenceValue : 0;
-		return { matched, questionId, confidence };
-	} catch {
-		return null;
-	}
 }
 
 function extractJsonObject(value: string) {
@@ -398,122 +309,6 @@ export async function exactCuratedCandidates(
 	}
 	return [...found.values()];
 }
-
-export const resolveCuratedExact = query({
-	args: {
-		sessionId: v.id('chatSessions'),
-		messageText: v.string(),
-		locale: v.optional(v.string())
-	},
-	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
-		if (legacyQaRetired()) return null;
-		const messageText = args.messageText.trim();
-		if (!messageText) return null;
-		if (capabilityReply(messageText)) return null;
-		const locale = detectMessageLocale(messageText, args.locale);
-		const normalizedMessage = normalizeSuggestedQuestion(messageText);
-		const session = await ctx.db.get(args.sessionId);
-		if (!normalizedMessage || !session) return null;
-
-		// Until migrations:backfillCuratedQuestionVariants has run and been verified, older items'
-		// translations have no variant rows. The previous score-ordered scan is merged in every
-		// time (not only when the index finds nothing), so an indexed global match can't outrank a
-		// villa-scoped legacy one; the ranking stays the one the scan alone used.
-		const [indexed, legacy] = await Promise.all([
-			exactCuratedCandidates(ctx, session, normalizedMessage),
-			getCuratedResolutionCandidates(ctx, args.sessionId)
-		]);
-		const candidates = new Map([...legacy, ...indexed].map((candidate) => [candidate._id, candidate]));
-		return resolveExactCuratedMatch({ candidates: [...candidates.values()].filter(candidate => !requiresLiveFacts(messageText) || candidate.answerMode === 'dynamic'), locale, messageText });
-	}
-});
-
-export const resolveCuratedSemantic = action({
-	args: {
-		sessionId: v.id('chatSessions'),
-		messageText: v.string(),
-		locale: v.optional(v.string())
-	},
-	handler: async (ctx, args): Promise<CuratedQuestionMatch | null> => {
-		if (legacyQaRetired()) return null;
-		const messageText = args.messageText.trim();
-		if (!messageText) return null;
-		if (capabilityReply(messageText)) return null;
-
-		const apiKey = process.env.AI_API_KEY;
-		if (!apiKey) return null;
-
-		const locale = detectMessageLocale(messageText, args.locale);
-		const candidates: CuratedResolutionCandidate[] = await ctx.runQuery(
-			internal.chatSuggestions.getCuratedResolutionContext,
-			{ sessionId: args.sessionId }
-		);
-		const boundedCandidates = sortCuratedResolutionCandidates(candidates.filter(candidate => !requiresLiveFacts(messageText) || candidate.answerMode === 'dynamic')).slice(
-			0,
-			SEMANTIC_MATCH_CANDIDATE_LIMIT
-		);
-		if (boundedCandidates.length === 0) return null;
-
-		const candidateLines = boundedCandidates
-			.map((candidate, index) => {
-				const translations = Object.entries(candidate.translations ?? {})
-					.filter(([translationLocale]) => translationLocale !== 'en')
-					.map(([translationLocale, value]) => `${translationLocale}: ${value}`)
-					.join('; ');
-				return `${index + 1}. id=${candidate._id}
-question=${candidate.question}
-translations=${translations || 'none'}
-topic=${candidate.topic}
-answerMode=${curatedQuestionAnswerMode(candidate)}
-propertySlug=${candidate.propertySlug ?? 'global'}`;
-			})
-			.join('\n\n');
-
-		const messages: ChatMessage[] = [
-			{
-				role: 'system',
-				content:
-					'You match a LINE guest message to one existing concierge question-bank item. Return compact JSON only.'
-			},
-			{
-				role: 'user',
-				content: `Guest message:
-${messageText}
-
-Candidate question-bank items:
-${candidateLines}
-
-Return exactly:
-{
-  "matched": boolean,
-  "questionId": "id from candidates or empty string",
-  "confidence": number
-}
-
-Rules:
-- Match only when the guest is asking the same thing as a candidate question, including translated variants.
-- Do not match just because topics are loosely related.
-- Use confidence from 0 to 1.
-- If no candidate clearly matches, return matched false and confidence 0.`
-			}
-		];
-
-		const apiBase = process.env.AI_API_BASE_URL || DEFAULT_AI_API_BASE_URL;
-		const model = process.env.AI_SIMPLE_MODEL || DEFAULT_AI_MODEL;
-		const response = await callAI(apiBase, apiKey, model, messages, []);
-		const parsed = parseSemanticQuestionMatch(response.content);
-		if (
-			!parsed?.matched ||
-			parsed.confidence < SEMANTIC_MATCH_CONFIDENCE_THRESHOLD ||
-			!parsed.questionId
-		) {
-			return null;
-		}
-
-		const match = boundedCandidates.find((candidate) => candidate._id === parsed.questionId);
-		return match ? serializeCuratedMatch(match, 'semantic', locale, parsed.confidence) : null;
-	}
-});
 
 export const adminListCurated = query({
 	args: {
@@ -931,13 +726,14 @@ export const deleteCuratedInteractions = internalMutation({
 export const nextForSession = query({
 	args: {
 		sessionId: v.id('chatSessions'),
-		candidateSuggestionIds: v.array(v.string()),
+		guestToken: v.optional(v.string()),
+		candidateSuggestionIds: v.array(v.union(...STATIC_SUGGESTION_KEYS.map(key => v.literal(key)))),
 		limit: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
+		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
+		if (args.candidateSuggestionIds.length > 5) throw new ConvexError('At most 5 suggestions may be selected per call');
 		const limit = Math.min(Math.max(args.limit ?? DEFAULT_LIMIT, 1), 5);
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) return [];
 
 		const interactions = await ctx.db
 			.query('chatStaticSuggestionInteractions')
@@ -951,7 +747,7 @@ export const nextForSession = query({
 		const seenCandidateKeys = new Set<string>();
 		const selected = [];
 		for (const suggestionId of args.candidateSuggestionIds) {
-			const trimmed = suggestionId.trim();
+			const trimmed = suggestionId;
 			if (!trimmed || seenCandidateKeys.has(trimmed) || hiddenSuggestionKeys.has(trimmed)) {
 				continue;
 			}
@@ -967,12 +763,15 @@ export const nextForSession = query({
 export const markShown = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
+		guestToken: v.optional(v.string()),
 		suggestions: v.array(suggestionRefValidator)
 	},
 	handler: async (ctx, args) => {
+		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		const now = Date.now();
 		let updated = 0;
-		for (const suggestionRef of args.suggestions.slice(0, 5)) {
+		if (args.suggestions.length > 5) throw new ConvexError('At most 5 suggestions may be tracked per call');
+		for (const suggestionRef of args.suggestions) {
 			if (suggestionRef.source === 'static') {
 				const suggestionKey = suggestionRef.suggestionId.trim();
 				if (!suggestionKey) continue;
@@ -1030,9 +829,11 @@ export const markShown = mutation({
 export const markClicked = mutation({
 	args: {
 		sessionId: v.id('chatSessions'),
+		guestToken: v.optional(v.string()),
 		suggestion: suggestionRefValidator
 	},
 	handler: async (ctx, args) => {
+		await requireGuestToken(await ctx.db.get(args.sessionId), args.guestToken);
 		const now = Date.now();
 		if (args.suggestion.source === 'static') {
 			const suggestionKey = args.suggestion.suggestionId.trim();

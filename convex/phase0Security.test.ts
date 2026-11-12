@@ -57,11 +57,9 @@ it('rejects chat calls without a valid guest token', async () => {
 			() => t.query(api.chat.getSession, args),
 			() => t.query(api.chat.isAiPaused, args),
 			() => t.query(api.chat.getMessages, args),
-			() => t.query(api.chat.getReusableSession, { ...args, visitorId: 'visitor' }),
 		];
 		for (const call of calls) await expect(call()).rejects.toThrow('INVALID_GUEST_TOKEN');
 	}
-	expect(await t.query(api.chat.getReusableSession, { ...guest, visitorId: 'visitor' })).toMatchObject({ _id: guest.sessionId });
 	expect(await t.query(api.chat.getSession, guest)).not.toHaveProperty('guestTokenHash');
 });
 
@@ -112,4 +110,58 @@ it('rotates guest ownership on a single-use browser handoff', async () => {
 	const expired = await t.mutation(api.chat.createBrowserHandoff, claimed!);
 	clock.advance(5 * 60 * 1000);
 	expect(await t.mutation(api.chat.claimBrowserHandoff, { token: expired })).toBeNull();
+});
+
+
+it('rejects suggestion tracking without a valid guest token', async () => {
+	const t = createHarness(convexTest);
+	const guest = await guestSession(t);
+	const stranger = await guestSession(t);
+	const socialId = await t.run(ctx => ctx.db.insert('chatSessions', { channel: 'line', guestTokenHash: 'unused', createdAt: Date.now() }));
+	const deleted = await guestSession(t);
+	await t.run(ctx => ctx.db.delete(deleted.sessionId));
+	for (const args of [
+		{ sessionId: guest.sessionId },
+		{ ...guest, guestToken: 'wrong' },
+		{ ...guest, guestToken: stranger.guestToken },
+		{ ...guest, sessionId: socialId },
+		deleted,
+	]) {
+		await expect(t.query(api.chatSuggestions.nextForSession, { ...args, candidateSuggestionIds: ['availability'] })).rejects.toThrow('INVALID_GUEST_TOKEN');
+		await expect(t.mutation(api.chatSuggestions.markShown, { ...args, suggestions: [{ source: 'static', suggestionId: 'availability' }] })).rejects.toThrow('INVALID_GUEST_TOKEN');
+		await expect(t.mutation(api.chatSuggestions.markClicked, { ...args, suggestion: { source: 'static', suggestionId: 'availability' } })).rejects.toThrow('INVALID_GUEST_TOKEN');
+	}
+	expect(await t.run(ctx => ctx.db.query('chatStaticSuggestionInteractions').collect())).toEqual([]);
+	await expect(t.mutation(api.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId: 'availability' } })).resolves.toEqual({ clicked: true });
+});
+
+it('requires the server secret to read booking flow state', async () => {
+	const t = createHarness(convexTest);
+	const guest = await guestSession(t);
+	vi.stubEnv('CONVEX_SERVER_SECRET', 'server-only');
+	for (const serverSecret of ['', 'wrong']) {
+		await expect(t.query(api.bookings.isChatBookingFlowActive, { sessionId: guest.sessionId, serverSecret })).rejects.toThrow();
+	}
+	await t.run(ctx => ctx.db.patch(guest.sessionId, { bookingFlowAt: Date.now() }));
+	expect(await t.query(api.bookings.isChatBookingFlowActive, { sessionId: guest.sessionId, serverSecret: 'server-only' })).toBe(true);
+	vi.stubEnv('CONVEX_SERVER_SECRET', '');
+	await expect(t.query(api.bookings.isChatBookingFlowActive, { sessionId: guest.sessionId, serverSecret: '' })).rejects.toThrow('not configured');
+});
+
+
+it('bounds suggestion tracking to known keys and five items per call', async () => {
+	const t = createHarness(convexTest);
+	const guest = await guestSession(t);
+	for (const suggestionId of ['invented-key', 'x'.repeat(10000)]) {
+		await expect(t.query(api.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [suggestionId] } as never)).rejects.toThrow();
+		await expect(t.mutation(api.chatSuggestions.markShown, { ...guest, suggestions: [{ source: 'static', suggestionId }] } as never)).rejects.toThrow();
+		await expect(t.mutation(api.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId } } as never)).rejects.toThrow();
+	}
+	const keys = ['availability', 'totalPrice', 'direct', 'tour', 'guests', 'contact'] as const;
+	await expect(t.query(api.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [...keys] })).rejects.toThrow('At most 5');
+	await expect(t.mutation(api.chatSuggestions.markShown, { ...guest, suggestions: keys.map(suggestionId => ({ source: 'static' as const, suggestionId })) })).rejects.toThrow('At most 5');
+	expect(await t.run(ctx => ctx.db.query('chatStaticSuggestionInteractions').collect())).toEqual([]);
+	const suggestions = await t.query(api.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: keys.slice(0, 5), limit: 100 });
+	expect(suggestions).toHaveLength(5);
+	expect(await t.mutation(api.chatSuggestions.markShown, { ...guest, suggestions })).toEqual({ updated: 5 });
 });

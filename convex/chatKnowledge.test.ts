@@ -117,37 +117,6 @@ async function seedHistoricalAnswer(
 }
 
 describe("legacy saved-answer readers are retired", () => {
-  it("resolveExact never answers from historical approved rows", async () => {
-    const t = convexTest(schema, modules);
-    const propertyId = await createProperty(t, "pool-villa");
-    await seedHistoricalAnswer(t, {
-      title: "Pool villa smoking policy",
-      answer: "At Pool Villa, smoking is only allowed beside the garden gate.",
-      question: "Can I smoke on the balcony?",
-      propertyId,
-      propertySlug: "pool-villa",
-    });
-    await seedHistoricalAnswer(t, {
-      title: "Global smoking policy",
-      answer: "Smoking is allowed only in the designated outdoor area.",
-      question: "Can I smoke on the balcony?",
-    });
-    const propertySession = await createWebSession(t, { propertyId, propertySlug: "pool-villa" });
-    const globalSession = await createWebSession(t);
-
-    expect(
-      await t.query(api.chatKnowledge.resolveExact, {
-        sessionId: propertySession,
-        messageText: " CAN I smoke on the balcony?! ",
-      }),
-    ).toBeNull();
-    expect(
-      await t.query(api.chatKnowledge.resolveExact, {
-        sessionId: globalSession,
-        messageText: "can i smoke on the balcony",
-      }),
-    ).toBeNull();
-  });
 
   it("getApprovedContext returns no approved prose for the concierge prompt", async () => {
     const t = convexTest(schema, modules);
@@ -161,19 +130,6 @@ describe("legacy saved-answer readers are retired", () => {
     expect(context).toEqual([]);
   });
 
-  it("ignores draft and archived historical rows too", async () => {
-    const t = convexTest(schema, modules);
-    await seedHistoricalAnswer(t, {
-      title: "Archived pets policy",
-      answer: "Pets are approved in this archived answer.",
-      question: "Can I bring my dog?",
-      status: "archived",
-    });
-    const sessionId = await createWebSession(t);
-    expect(
-      await t.query(api.chatKnowledge.resolveExact, { sessionId, messageText: "Can I bring my dog?" }),
-    ).toBeNull();
-  });
 });
 
 describe("legacy saved-answer writers refuse", () => {

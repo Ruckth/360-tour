@@ -1,16 +1,6 @@
-export type ChatSuggestionId =
-  | "availability"
-  | "totalPrice"
-  | "direct"
-  | "tour"
-  | "guests"
-  | "contact"
-  | "couple"
-  | "family"
-  | "cancellation"
-  | "airport"
-  | "amenitiesIncluded"
-  | "location";
+import type { StaticSuggestionKey } from "convex/lib/chatSuggestions";
+
+export type ChatSuggestionId = StaticSuggestionKey;
 
 export interface ChatSuggestionCandidate {
   id: ChatSuggestionId;

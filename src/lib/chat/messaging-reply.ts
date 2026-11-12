@@ -254,7 +254,7 @@ export async function resolveMessagingReply(
   // must never launch a new action (particularly one with booking tools) after a fallback.
   const resolveGeneration = async (): Promise<GeneratedReply | typeof TIMEOUT> => {
     if (!bookingFlow) {
-      bookingFlow = Boolean(await client.query(api.bookings.isChatBookingFlowActive, { sessionId: incoming.sessionId }));
+      bookingFlow = Boolean(await client.query(api.bookings.isChatBookingFlowActive, { sessionId: incoming.sessionId, serverSecret: process.env.CONVEX_SERVER_SECRET ?? "" }));
     }
     if (timedOut || Date.now() >= deadlineAt) return TIMEOUT;
     generation = client.action(api.chatAi.generateReply, {

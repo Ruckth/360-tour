@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
+import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -26,22 +27,11 @@ function adminTest(t: ReturnType<typeof convexTest>) {
   return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
 }
 
-async function createLineSession(t: ReturnType<typeof convexTest>, propertySlug?: string) {
-  return await t.run(async (ctx) => {
-    return await ctx.db.insert("chatSessions", {
-      channel: "line",
-      visitorId: `line-test-${Date.now()}-${Math.random()}`,
-      ...(propertySlug ? { propertySlug } : {}),
-      lastSeenAt: 1_700_000_000_000,
-      createdAt: 1_700_000_000_000,
-    });
-  });
-}
-
 async function createWebSession(t: ReturnType<typeof convexTest>, visitorId: string) {
   return await t.run(async (ctx) => {
     return await ctx.db.insert("chatSessions", {
       channel: "web",
+      guestTokenHash: fixtureGuestTokenHash,
       visitorId,
       lastSeenAt: 1_700_000_000_000,
       createdAt: 1_700_000_000_000,
@@ -182,121 +172,11 @@ describe("curated question-bank writers refuse", () => {
   });
 });
 
-describe("curated question-bank readers are retired", () => {
-  it("resolveCuratedExact never resolves a historical static or dynamic item", async () => {
-    const t = convexTest(schema, modules);
-    await seedHistoricalCurated(t, {
-      question: "Is this place real?",
-      translations: { th: "ที่พักนี้มีอยู่จริงไหม?" },
-      answer: "Yes. This is a real villa managed by our concierge team.",
-      answerTranslations: { th: "ใช่ ที่พักนี้มีอยู่จริงและดูแลโดยทีมคอนเซียร์จของเรา" },
-      answerMode: "static",
-      topic: "villa_fit",
-      score: 99,
-    });
-    await seedHistoricalCurated(t, {
-      question: "What is the direct booking price?",
-      answerMode: "dynamic",
-      dynamicIntent: "pricing",
-      topic: "direct_booking",
-      score: 98,
-    });
-    const sessionId = await createWebSession(t, "visitor-retired-exact");
-
-    expect(
-      await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: "Is this place real?", locale: "th" }),
-    ).toBeNull();
-    expect(
-      await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: "What is the direct booking price?", locale: "en" }),
-    ).toBeNull();
-  });
-
-  it("resolveCuratedExact on LINE never resolves canonical, translated or property-scoped items", async () => {
-    const t = convexTest(schema, modules);
-    await seedHistoricalCurated(t, {
-      question: "Do you include airport pickup?",
-      translations: { th: "มีรถรับจากสนามบินไหม?" },
-      answer: "Yes. Direct booking includes airport pickup.",
-      answerTranslations: { th: "มีครับ การจองตรงรวมรถรับจากสนามบิน" },
-      answerMode: "static",
-      topic: "direct_booking",
-      score: 88,
-    });
-    await seedHistoricalCurated(t, {
-      question: "Does this villa have a private pool?",
-      answer: "The Pool Villa has a private infinity pool.",
-      answerMode: "static",
-      topic: "amenities",
-      propertySlug: "pool-villa",
-      score: 10,
-    });
-    const sessionId = await createLineSession(t, "pool-villa");
-
-    expect(
-      await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: "Do you include airport pickup?", locale: "en" }),
-    ).toBeNull();
-    expect(
-      await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: "มีรถรับจากสนามบินไหม?", locale: "th" }),
-    ).toBeNull();
-    expect(
-      await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: "Does this villa have a private pool?" }),
-    ).toBeNull();
-  });
-
-  it("ignores archived historical items too", async () => {
-    const t = convexTest(schema, modules);
-    await seedHistoricalCurated(t, {
-      question: "Do you have breakfast?",
-      answer: "Breakfast can be arranged with the host.",
-      answerMode: "static",
-      topic: "amenities",
-      score: 90,
-      status: "archived",
-    });
-    const sessionId = await createLineSession(t);
-    expect(
-      await t.query(api.chatSuggestions.resolveCuratedExact, { sessionId, messageText: "Do you have breakfast?" }),
-    ).toBeNull();
-  });
-
-  it("resolveCuratedSemantic never makes a matching request and returns null", async () => {
-    vi.stubEnv("AI_API_KEY", "test-key");
-    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ choices: [{ message: { content: '{"matched":true,"confidence":0.99}' } }] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      const t = convexTest(schema, modules);
-      await seedHistoricalCurated(t, {
-        question: "Can children stay at the villa?",
-        answer: "Children are welcome, as long as the villa guest limit is respected.",
-        answerMode: "static",
-        topic: "villa_fit",
-        score: 91,
-      });
-      const sessionId = await createLineSession(t);
-
-      expect(
-        await t.action(api.chatSuggestions.resolveCuratedSemantic, { sessionId, messageText: "Is it okay to bring a toddler?" }),
-      ).toBeNull();
-      // The retired reader never calls the matcher model.
-      expect(fetchMock).not.toHaveBeenCalled();
-    } finally {
-      vi.unstubAllGlobals();
-      vi.unstubAllEnvs();
-    }
-  });
-});
-
 describe("static suggestion chips remain live", () => {
   it("returns ordered static suggestion keys for a session", async () => {
     const t = convexTest(schema, modules);
     const sessionId = await createWebSession(t, "visitor-static-suggestions");
-    const selected = await t.query(api.chatSuggestions.nextForSession, {
+    const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice", "direct"],
       limit: 2,
@@ -312,7 +192,7 @@ describe("static suggestion chips remain live", () => {
     await seedHistoricalCurated(t, { question: "Historic chip", answer: "x", answerMode: "static", score: 100 });
     const sessionId = await createWebSession(t, "visitor-static-answer");
 
-    const chips = await t.query(api.chatSuggestions.nextForSession, {
+    const chips = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice"],
       limit: 5,
@@ -326,13 +206,13 @@ describe("static suggestion chips remain live", () => {
   it("does not return static suggestion keys that were already shown", async () => {
     const t = convexTest(schema, modules);
     const sessionId = await createWebSession(t, "visitor-static-repeat");
-    const firstSelected = await t.query(api.chatSuggestions.nextForSession, {
+    const firstSelected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice", "direct"],
       limit: 2,
     });
-    await t.mutation(api.chatSuggestions.markShown, { sessionId, suggestions: firstSelected });
-    const secondSelected = await t.query(api.chatSuggestions.nextForSession, {
+    await t.mutation(api.chatSuggestions.markShown, { guestToken: fixtureGuestToken, sessionId, suggestions: firstSelected });
+    const secondSelected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice", "direct"],
       limit: 2,
@@ -346,11 +226,11 @@ describe("static suggestion chips remain live", () => {
     const t = convexTest(schema, modules);
     const sessionId = await createWebSession(t, "visitor-static-click");
 
-    await t.mutation(api.chatSuggestions.markClicked, {
+    await t.mutation(api.chatSuggestions.markClicked, { guestToken: fixtureGuestToken,
       sessionId,
       suggestion: { source: "static", suggestionId: "availability" },
     });
-    const selected = await t.query(api.chatSuggestions.nextForSession, {
+    const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice"],
       limit: 2,
@@ -370,13 +250,13 @@ describe("static suggestion chips remain live", () => {
   it("returns no static suggestions after every candidate has been shown", async () => {
     const t = convexTest(schema, modules);
     const sessionId = await createWebSession(t, "visitor-static-exhausted");
-    const candidates = ["availability", "totalPrice"];
+    const candidates: Array<"availability" | "totalPrice"> = ["availability", "totalPrice"];
 
-    await t.mutation(api.chatSuggestions.markShown, {
+    await t.mutation(api.chatSuggestions.markShown, { guestToken: fixtureGuestToken,
       sessionId,
       suggestions: candidates.map((suggestionId) => ({ source: "static" as const, suggestionId })),
     });
-    const selected = await t.query(api.chatSuggestions.nextForSession, {
+    const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: candidates,
       limit: 2,
@@ -390,7 +270,7 @@ describe("static suggestion chips remain live", () => {
     const questionId = await seedHistoricalCurated(t, { question: "Can I check availability for my dates?", topic: "availability", score: 99 });
     const sessionId = await createWebSession(t, "visitor-one");
 
-    await t.mutation(api.chatSuggestions.markClicked, {
+    await t.mutation(api.chatSuggestions.markClicked, { guestToken: fixtureGuestToken,
       sessionId,
       suggestion: { source: "curated", suggestionId: questionId },
     });
@@ -409,7 +289,7 @@ describe("static suggestion chips remain live", () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules);
-      const { sessionId } = await t.mutation(api.chat.createSession, {
+      const { sessionId, guestToken } = await t.mutation(api.chat.createSession, {
         channel: "web",
         visitorId: "visitor-public-assistant",
       });
@@ -425,7 +305,7 @@ describe("static suggestion chips remain live", () => {
       });
       await finishScheduledWork(t);
 
-      const selected = await t.query(api.chatSuggestions.nextForSession, {
+      const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken,
         sessionId,
         candidateSuggestionIds: ["availability", "totalPrice"],
         limit: 5,
@@ -444,7 +324,7 @@ describe("static suggestion chips remain live", () => {
     vi.stubEnv("AI_API_KEY", "");
     try {
       const t = convexTest(schema, modules);
-      const { sessionId } = await t.mutation(api.chat.createSession, {
+      const { sessionId, guestToken } = await t.mutation(api.chat.createSession, {
         channel: "web",
         visitorId: "visitor-internal-assistant",
       });
@@ -461,7 +341,7 @@ describe("static suggestion chips remain live", () => {
       });
       await finishScheduledWork(t);
 
-      const selected = await t.query(api.chatSuggestions.nextForSession, {
+      const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken,
         sessionId,
         candidateSuggestionIds: ["availability", "totalPrice"],
         limit: 2,
@@ -492,7 +372,7 @@ describe("retired queued curated deletion", () => {
       const t = convexTest(schema, modules);
       const questionId = await seedHistoricalCurated(t, { question: "Historical booking policy", answer: "Archived answer" });
       const sessionId = await createWebSession(t, "queued-delete-visitor");
-      await t.mutation(api.chatSuggestions.markClicked, { sessionId, suggestion: { source: "curated", suggestionId: questionId } });
+      await t.mutation(api.chatSuggestions.markClicked, { guestToken: fixtureGuestToken, sessionId, suggestion: { source: "curated", suggestionId: questionId } });
       const before = await t.run((ctx) => ctx.db.query("chatQuestionInteractions").withIndex("by_questionId", (q) => q.eq("questionId", questionId)).collect());
       await t.run((ctx) => ctx.scheduler.runAfter(0, internal.chatSuggestions.deleteCuratedInteractions, { questionId }));
       await finishScheduledWork(t);

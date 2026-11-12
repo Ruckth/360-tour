@@ -187,8 +187,12 @@ export function setStoredSessionId(sessionId: string) {
   window.localStorage.setItem(SESSION_ID_STORAGE_KEY, sessionId);
 }
 
-export function clearStoredSessionId() {
+export function clearStoredSessionId(sessionId = getStoredSessionId()) {
   if (typeof window === "undefined") return;
+  const storedId = getStoredSessionId();
+  for (const id of new Set([sessionId, storedId])) {
+    if (id) window.localStorage.removeItem(`${SESSION_ID_STORAGE_KEY}:token:${id}`);
+  }
   window.localStorage.removeItem(SESSION_ID_STORAGE_KEY);
 }
 

@@ -73,12 +73,6 @@ describe('authoritative facts and capability routing', () => {
 		expect(await t.run(ctx => getGuardrailReply(ctx, { userMessage: message }))).toBe(result.response);
 	});
 
-	it('does not let a historical approved exact price bypass live data', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-		const { t, sessionId } = await setup('web');
-		await seedHistoricalAnswer(t, { title: 'Old villa price', answer: 'Pool Villa is ฿1 per night.', question: 'What is the Pool Villa price?' });
-		expect(await t.query(api.chatKnowledge.resolveExact, { sessionId, messageText: 'What is the Pool Villa price?' })).toBeNull();
-	});
 
 	it.each(['Reschedule my massage booking to tomorrow.', 'เลื่อนนัดนวดเป็นพรุ่งนี้ครับ', '마사지 예약 시간을 변경해 주세요.'])('does not turn a reschedule into a new preparation: %s', async message => {
 		const { t, sessionId } = await setup(); const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
