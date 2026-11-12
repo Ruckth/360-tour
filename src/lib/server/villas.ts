@@ -30,17 +30,17 @@ function convexUrl() {
 }
 
 const cachedList = unstable_cache(
-  (url: string) => new ConvexHttpClient(url).query(api.publicProperties.list, {}),
+  (url: string) => new ConvexHttpClient(url).query(api.catalog.publicProperties.list, {}),
   ["public-villas"],
   cacheOptions,
 );
 const cachedDetail = unstable_cache(
-  (url: string, slug: string) => new ConvexHttpClient(url).query(api.publicProperties.getBySlug, { slug }),
+  (url: string, slug: string) => new ConvexHttpClient(url).query(api.catalog.publicProperties.getBySlug, { slug }),
   ["public-villa"],
   cacheOptions,
 );
 const cachedFeaturedReviews = unstable_cache(
-  (url: string) => new ConvexHttpClient(url).query(api.publicProperties.featuredReviews, { limit: 6 }),
+  (url: string) => new ConvexHttpClient(url).query(api.catalog.publicProperties.featuredReviews, { limit: 6 }),
   ["public-featured-reviews"],
   cacheOptions,
 );

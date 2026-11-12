@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
     qualities: [72, 75, 82],
-    // Keep these hosts in sync with convex/lib/imageUrls.ts.
+    // Keep these hosts in sync with convex/shared/imageUrls.ts.
     remotePatterns: [
       {
         protocol: "https",

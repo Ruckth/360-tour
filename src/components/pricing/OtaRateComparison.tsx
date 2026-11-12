@@ -11,11 +11,11 @@ import { useConvexQuery } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 import { currencyPrefix } from "@/lib/villas";
 
-export type OtaComparison = FunctionReturnType<typeof api.properties.getOtaComparison>;
+export type OtaComparison = FunctionReturnType<typeof api.catalog.properties.getOtaComparison>;
 type OtaRate = NonNullable<OtaComparison>["rates"][number];
 
 // Hoisted: useConvexQuery refetches whenever the function reference changes.
-const otaComparisonQuery = api.properties.getOtaComparison;
+const otaComparisonQuery = api.catalog.properties.getOtaComparison;
 
 const PLATFORM_NAMES: Record<OtaRate["platform"], string> = {
   booking_com: "Booking.com",

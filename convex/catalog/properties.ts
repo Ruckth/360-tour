@@ -1,40 +1,13 @@
-import { publicQuery, adminQuery, adminMutation } from './auth/model';
+import { publicQuery, adminQuery, adminMutation } from '../auth/model';
 import { v } from 'convex/values';
-import type { Doc } from './_generated/dataModel';
-import { configurationWriter } from './lib/configurationHistory';
-import { appendRecordHistory } from './lib/recordHistory';
-import { allowedImageUrl, IMAGE_HOSTS } from './lib/imageUrls';
+import type { Doc } from '../_generated/dataModel';
+import { configurationWriter } from '../lib/configurationHistory';
+import { appendRecordHistory } from '../lib/recordHistory';
+import { amount, imageUrl, required } from '../shared/validation';
+import { toPublicProperty, type PublicProperty } from './model';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
 const MAX_NIGHTLY_RATE = 1_000_000_000;
-
-export type PublicProperty = NonNullable<ReturnType<typeof toPublic>>;
-
-/** Public queries never expose the private iCal export token or tenant link. */
-function toPublic(property: Doc<'properties'> | null) {
-	if (!property || property.status !== 'active') return null;
-	return {
-		_id: property._id,
-		_creationTime: property._creationTime,
-		slug: property.slug,
-		name: property.name,
-		tagline: property.tagline,
-		description: property.description,
-		pricePerNight: property.pricePerNight,
-		currency: property.currency,
-		maxGuests: property.maxGuests,
-		bedrooms: property.bedrooms,
-		bathrooms: property.bathrooms,
-		area: property.area,
-		images: property.images,
-		amenities: property.amenities,
-		tourRoomIds: property.tourRoomIds,
-		directDiscountPercent: property.directDiscountPercent,
-		translations: property.translations,
-		contentEditedAt: property.contentEditedAt,
-		status: property.status,
-	};
-}
 
 export const list = publicQuery({
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
@@ -44,7 +17,7 @@ export const list = publicQuery({
 			.query('properties')
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
 			.take(100);
-		return properties.flatMap((property) => toPublic(property) ?? []);
+		return properties.flatMap((property) => toPublicProperty(property) ?? []);
 	}
 });
 
@@ -52,7 +25,7 @@ export const getBySlug = publicQuery({
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
-		return toPublic(
+		return toPublicProperty(
 			await ctx.db
 				.query('properties')
 				.withIndex('by_slug', (q) => q.eq('slug', args.slug))
@@ -64,7 +37,7 @@ export const getBySlug = publicQuery({
 export const getById = publicQuery({
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { id: v.id('properties') },
-	handler: async (ctx, args) => toPublic(await ctx.db.get(args.id))
+	handler: async (ctx, args) => toPublicProperty(await ctx.db.get(args.id))
 });
 
 export const getRooms = publicQuery({
@@ -226,29 +199,10 @@ export const getTourSnippets = publicQuery({
 // them. Draft and archived villas are excluded from live booking and chat queries.
 
 const propertyStatus = v.union(v.literal('active'), v.literal('draft'), v.literal('archived'));
-export function required(value: string, label: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) throw new Error(`${label} is required`);
-	return trimmed;
-}
-
-export function amount(value: number, label: string, { integer = false, min = 0, max = Infinity } = {}): number {
-	if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isSafeInteger(value))) {
-		const range = max === Infinity ? `at least ${min}` : `between ${min} and ${max}`;
-		throw new Error(`${label} must be ${integer ? 'a whole number ' : ''}${range}`);
-	}
-	return value;
-}
-
 function textList(values: string[], label: string, maxItems: number): string[] {
 	const trimmed = values.map((value) => value.trim()).filter(Boolean);
 	if (trimmed.length > maxItems) throw new Error(`${label}: at most ${maxItems} items`);
 	return trimmed;
-}
-
-export function imageUrl(value: string): string {
-	if (!allowedImageUrl(value)) throw new Error(`Images must be /public paths or https URLs. Use an uploaded photo or an image from ${IMAGE_HOSTS.join(' or ')}.`);
-	return value;
 }
 
 /** True when guest-facing English copy changed, so the public site stops showing bundled i18n text. */

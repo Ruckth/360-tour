@@ -157,7 +157,7 @@ it('runs maintenance before every public trust policy and handler, while interna
 it('preserves public booking record capabilities without granting nonstaff fallback access', async () => {
   vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2099-01-01T03:00:00Z'));
   const { t, signed } = setup();
-  const propertyId = await signed('owner').mutation(api.adminProperties.create, { name: 'Access villa', slug: 'access-villa' });
+  const propertyId = await signed('owner').mutation(api.catalog.adminProperties.create, { name: 'Access villa', slug: 'access-villa' });
   await t.run(ctx => ctx.db.patch(propertyId, { status: 'active', pricePerNight: 100000 }));
   const stay = { propertySlug: 'access-villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '0812345678', checkIn: '2099-01-10', checkOut: '2099-01-12', guests: 2 };
   const first = await t.mutation(api.bookings.create, stay);

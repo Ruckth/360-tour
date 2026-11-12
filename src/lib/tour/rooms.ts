@@ -4,7 +4,7 @@ import { rooms as staticRooms, type Hotspot, type Room } from "@/lib/data/rooms"
 import { localizeRooms, type PublicMessages } from "@/lib/i18n/public-content";
 
 /** `null`/`undefined`: Convex is unavailable or the villa is not active in the DB. */
-export type DbTourRooms = FunctionReturnType<typeof api.properties.getTourRooms>;
+export type DbTourRooms = FunctionReturnType<typeof api.catalog.properties.getTourRooms>;
 
 /**
  * The rooms of a villa's public tour, first room first. Uses the admin-managed DB rooms

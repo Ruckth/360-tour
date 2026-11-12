@@ -25,8 +25,8 @@ export type PublicVilla = LocalizableProperty & {
 
 export type VillaCatalog = { source: "db" | "static"; villas: PublicVilla[] };
 
-export type DbVillaList = FunctionReturnType<typeof api.publicProperties.list>;
-export type DbVillaDetail = NonNullable<FunctionReturnType<typeof api.publicProperties.getBySlug>>;
+export type DbVillaList = FunctionReturnType<typeof api.catalog.publicProperties.list>;
+export type DbVillaDetail = NonNullable<FunctionReturnType<typeof api.catalog.publicProperties.getBySlug>>;
 type DbVilla = DbVillaList["villas"][number];
 type DbReview = DbVillaDetail["reviews"][number];
 

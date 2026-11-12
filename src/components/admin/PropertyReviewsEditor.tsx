@@ -22,8 +22,8 @@ type Review = Doc<"reviews">;
 
 /** Real guest reviews for one villa. The rating and count guests see are computed from these. */
 export function PropertyReviewsEditor({ propertyId }: { propertyId: Id<"properties"> }) {
-  const data = useQuery(api.adminReviews.list, { propertyId });
-  const remove = useMutation(api.adminReviews.remove);
+  const data = useQuery(api.catalog.adminReviews.list, { propertyId });
+  const remove = useMutation(api.catalog.adminReviews.remove);
   const confirm = useConfirm();
   const [editing, setEditing] = useState<Review | "new" | null>(null);
   // Photos still uploading would be left out of the review (and orphaned), so the dialog stays open.
@@ -139,8 +139,8 @@ function ReviewForm({
   onUploadingChange: (uploading: boolean) => void;
   onDone: () => void;
 }) {
-  const create = useMutation(api.adminReviews.create);
-  const update = useMutation(api.adminReviews.update);
+  const create = useMutation(api.catalog.adminReviews.create);
+  const update = useMutation(api.catalog.adminReviews.update);
   const upload = useImageUpload();
   const save = useSaver();
   const fileInput = useRef<HTMLInputElement>(null);

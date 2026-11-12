@@ -240,7 +240,7 @@ export function ChatsView() {
   }
   // Saved answers are retired: a guest question can seed a draft business fact instead.
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
-  const factProperties = useQuery(api.properties.adminList, factTarget ? {} : "skip") as
+  const factProperties = useQuery(api.catalog.properties.adminList, factTarget ? {} : "skip") as
     | AdminFactProperty[]
     | undefined;
   const settleGuestMessageMutation = useMutation(api.adminChat.settleGuestMessage);

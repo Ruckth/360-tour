@@ -85,7 +85,7 @@ it('hides rooms and reviews of draft properties', async () => {
 	const t = createHarness(convexTest);
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const admin = asAdmin(t);
-	const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Draft Villa' });
+	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Draft Villa' });
 	await t.run(async ctx => {
 		await ctx.db.insert('tourScenes', { propertyId, slug: 'room', name: 'Room', imagePath: '/room.webp', hotspots: [] });
 		await ctx.db.insert('reviews', { propertyId, authorName: 'Guest', authorCity: '', authorCountry: '', authorAvatarUrl: '', rating: 5, title: 'Review', body: 'Draft review', date: '2026-11-12', verified: true });
@@ -93,10 +93,10 @@ it('hides rooms and reviews of draft properties', async () => {
 	});
 	for (const status of ['draft', 'archived', 'active'] as const) {
 		await t.run(ctx => ctx.db.patch(propertyId, { status }));
-		expect(await t.query(api.properties.getRooms, { propertyId })).toHaveLength(status === 'active' ? 1 : 0);
-		expect(await t.query(api.properties.getReviews, { propertyId })).toHaveLength(status === 'active' ? 1 : 0);
-		expect(Boolean(await t.query(api.properties.getSocialProof, { propertyId }))).toBe(status === 'active');
-		expect(await t.query(api.publicProperties.featuredReviews, {})).toHaveLength(status === 'active' ? 1 : 0);
+		expect(await t.query(api.catalog.properties.getRooms, { propertyId })).toHaveLength(status === 'active' ? 1 : 0);
+		expect(await t.query(api.catalog.properties.getReviews, { propertyId })).toHaveLength(status === 'active' ? 1 : 0);
+		expect(Boolean(await t.query(api.catalog.properties.getSocialProof, { propertyId }))).toBe(status === 'active');
+		expect(await t.query(api.catalog.publicProperties.featuredReviews, {})).toHaveLength(status === 'active' ? 1 : 0);
 	}
 });
 

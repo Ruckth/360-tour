@@ -282,7 +282,7 @@ function findProperty(properties: Doc<'properties'>[], slug: unknown): Doc<'prop
 
 /** Owner-entered OTA rates only (same source as the villa-page widget); empty when none are entered. */
 async function ownerOtaQuotes(ctx: ActionCtx, slug: string, nights: number) {
-	const comparison = await ctx.runQuery(api.properties.getOtaComparison, { slug });
+	const comparison = await ctx.runQuery(api.catalog.properties.getOtaComparison, { slug });
 	return (comparison?.rates ?? []).map(({ platform, nightlyRate }) => ({
 		platform,
 		nightlyRate,

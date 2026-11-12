@@ -1,7 +1,7 @@
-import { adminQuery, adminMutation } from './auth/model';
+import { adminQuery, adminMutation } from '../auth/model';
 import { v, type Infer } from 'convex/values';
-import { recomputeSocialProof } from './lib/reviewStats';
-import { amount, imageUrl, required } from './properties';
+import { recomputeSocialProof } from './model';
+import { amount, imageUrl, required } from '../shared/validation';
 
 // Real guest reviews, entered by the admin. Every change rebuilds the villa's reviewStats row.
 

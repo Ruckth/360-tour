@@ -59,9 +59,9 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   const [error, setError] = useState('');
   const confirm = useConfirm();
   const [now] = useState(() => Date.now());
-  const rates = useQuery(api.properties.listOtaRates, { propertyId });
-  const upsertRate = useMutation(api.properties.upsertOtaRate);
-  const removeRate = useMutation(api.properties.removeOtaRate);
+  const rates = useQuery(api.catalog.properties.listOtaRates, { propertyId });
+  const upsertRate = useMutation(api.catalog.properties.upsertOtaRate);
+  const removeRate = useMutation(api.catalog.properties.removeOtaRate);
   const hasRate = rates?.some(rate => rate.platform === platform) ?? false;
 
   async function save(event: FormEvent) {

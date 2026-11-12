@@ -49,7 +49,7 @@ export function AdminLeadsView() {
     { initialNumItems: PAGE_SIZE },
   );
   const removeLead = useMutation(api.leads.remove);
-  const properties = useQuery(api.properties.adminList, {});
+  const properties = useQuery(api.catalog.properties.adminList, {});
   const propertyNames = new Map(properties?.map((property) => [property._id as string, property.name]));
 
   async function exportCsv() {

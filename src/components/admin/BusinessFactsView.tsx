@@ -27,7 +27,7 @@ export function BusinessFactsView() {
 
   // Active properties scope a fact and gate which facts can resolve a report. properties.adminList
   // returns every property; the panels filter to active ones where it matters.
-  const properties = (useQuery(api.properties.adminList, {}) ?? []) as AdminFactProperty[];
+  const properties = (useQuery(api.catalog.properties.adminList, {}) ?? []) as AdminFactProperty[];
 
   function setMode(next: ViewMode) {
     const params = new URLSearchParams(searchParams.toString());

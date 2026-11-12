@@ -32,7 +32,7 @@ it.each(["manager", "marketer", "finance", "viewer"] as const)("keeps operationa
   await render(role);
   await act(async () => mocked.view!.onOpenStay("booking"));
   expect(mocked.bookingSheet).not.toHaveBeenCalled();
-  expect(mocked.query.mock.calls.filter(call => call[0] === "properties:adminList").every(call => call[1] === "skip")).toBe(true);
+  expect(mocked.query.mock.calls.filter(call => call[0] === "catalog/properties:adminList").every(call => call[1] === "skip")).toBe(true);
   if (role === "marketer" || role === "viewer") {
     await expect(mocked.view!.onSaveSpend({ campaignId: "campaign" as Parameters<DashboardViewProps["onSaveSpend"]>[0]["campaignId"], amount: 10000, from: "2026-11-09", to: "2026-11-09" })).rejects.toThrow("cannot manage spend");
     expect(mocked.mutate).not.toHaveBeenCalled();
@@ -42,5 +42,5 @@ it("retains operational booking details for system administrators", async () => 
   await render("admin");
   await act(async () => mocked.view!.onOpenStay("booking"));
   expect(mocked.bookingSheet).toHaveBeenCalledWith(expect.objectContaining({ bookingId: "booking" }));
-  expect(mocked.query).toHaveBeenCalledWith("properties:adminList", {});
+  expect(mocked.query).toHaveBeenCalledWith("catalog/properties:adminList", {});
 });

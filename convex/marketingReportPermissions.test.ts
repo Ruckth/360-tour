@@ -22,7 +22,7 @@ it.each(['manager', 'marketer', 'finance', 'viewer'] as const)('allows %s report
   await member.mutation(claimInvite, {});
   expect((await member.query(api.marketingReport.getReport, range)).sales).toEqual([]);
   expect(await member.query(api.marketingReport.listSpend, { campaignId })).toEqual([]);
-  await expect(member.query(api.properties.adminList, {})).rejects.toThrow('Not authorized');
+  await expect(member.query(api.catalog.properties.adminList, {})).rejects.toThrow('Not authorized');
   const spend = { campaignId, amount: 50000, from: range.from, to: range.to };
   if (role === 'manager' || role === 'finance') {
     const id = await member.mutation(api.marketingReport.saveSpend, spend);
