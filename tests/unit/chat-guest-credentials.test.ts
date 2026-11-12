@@ -14,8 +14,8 @@ it('persists guest credentials through creation, reload, and handoff and sends t
 		if (getFunctionName(ref) === 'chat:claimBrowserHandoff') return { sessionId: 'session-one', guestToken: 'rotated-token' };
 		return args;
 	});
-	const query = vi.fn(async (_ref: unknown, _args: unknown) => []);
-	const action = vi.fn(async (_ref: unknown, _args: unknown) => ({ response: 'hello' }));
+	const query = vi.fn<(ref: unknown, args: unknown) => Promise<unknown[]>>().mockResolvedValue([]);
+	const action = vi.fn<(ref: unknown, args: unknown) => Promise<{ response: string }>>().mockResolvedValue({ response: 'hello' });
 	const client = { mutation, query, action } as unknown as ConvexReactClient;
 	const sessionId = await createChatSession(client, { channel: 'web', visitorId: 'visitor' });
 	setStoredSessionId(sessionId);
