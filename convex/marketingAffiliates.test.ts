@@ -550,7 +550,7 @@ it("restricts marketer to draft edits, protects budgets/status/active data and o
       currency: "THB",
     },
   ]);
-  await expect(writer.query(api.properties.adminList, {})).rejects.toThrow();
+  await expect(writer.query(api.catalog.properties.adminList, {})).rejects.toThrow();
   await expect(
     writer.mutation(api.marketingAffiliates.saveAffiliate, {
       name: "No",

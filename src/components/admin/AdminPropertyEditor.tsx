@@ -38,7 +38,7 @@ const TABS = [
 type Tab = (typeof TABS)[number][0];
 
 export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
-  const data = useQuery(api.adminProperties.get, { propertyId });
+  const data = useQuery(api.catalog.adminProperties.get, { propertyId });
   const [tab, setTab] = useState<Tab>("details");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -128,9 +128,9 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
 }
 
 function PropertyHeader({ property, deleteBlocker }: { property: Property; deleteBlocker: string | null }) {
-  const setStatus = useMutation(api.adminProperties.setStatus);
-  const deleteDraft = useMutation(api.adminProperties.deleteDraft);
-  const duplicate = useMutation(api.adminProperties.duplicate);
+  const setStatus = useMutation(api.catalog.adminProperties.setStatus);
+  const deleteDraft = useMutation(api.catalog.adminProperties.deleteDraft);
+  const duplicate = useMutation(api.catalog.adminProperties.duplicate);
   const confirm = useConfirm();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -250,7 +250,7 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
 }
 
 function DetailsForm({ property }: { property: Property }) {
-  const update = useMutation(api.properties.update);
+  const update = useMutation(api.catalog.properties.update);
   const save = useSaver();
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -321,7 +321,7 @@ function DetailsForm({ property }: { property: Property }) {
 }
 
 function SlugForm({ property, locked }: { property: Property; locked: boolean }) {
-  const setSlug = useMutation(api.adminProperties.setSlug);
+  const setSlug = useMutation(api.catalog.adminProperties.setSlug);
   const [slug, setSlugValue] = useState(property.slug);
   const save = useSaver();
 

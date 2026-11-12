@@ -101,7 +101,7 @@ export type ChatSuggestionRef =
 
 export async function listLiveProperties(client: ConvexReactClient) {
   return (await withConvexTimeout(
-    client.query(api.properties.list, {} as never),
+    client.query(api.catalog.properties.list, {} as never),
     "Loading live villas",
   )) as LivePropertyRow[];
 }

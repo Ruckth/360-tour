@@ -23,7 +23,7 @@ export function propertyPath(propertyId: string) {
 }
 
 export function AdminPropertiesView() {
-  const properties = useQuery(api.properties.adminList, {});
+  const properties = useQuery(api.catalog.properties.adminList, {});
   const [status, setStatus] = useState<PropertyStatus | "all">("all");
   const [creating, setCreating] = useState(false);
   const shown = properties?.filter((property) => status === "all" || property.status === status);
@@ -113,7 +113,7 @@ export function AdminPropertiesView() {
 }
 
 function NewVillaDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const create = useMutation(api.adminProperties.create);
+  const create = useMutation(api.catalog.adminProperties.create);
   const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");

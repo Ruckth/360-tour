@@ -1,6 +1,6 @@
-import { type QueryCtx, publicQuery } from './auth/model';
+import { type QueryCtx, publicQuery } from '../auth/model';
 import { v } from 'convex/values';
-import type { Doc } from './_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 
 // Guest-facing villa content for the public site. Only active villas are returned, and
 // internal fields (tenant, iCal export token, status) are never exposed.

@@ -15,7 +15,7 @@ async function run(name, args) {
 	const { stdout } = await exec('npx', ['convex', 'run', name, JSON.stringify(args)], { timeout: 60000, maxBuffer: 2e6 });
 	return JSON.parse(stdout);
 }
-const [properties, settings] = await Promise.all([run('properties:list', {}), run('settings:effective', {})]);
+const [properties, settings] = await Promise.all([run('catalog/properties:list', {}), run('settings:effective', {})]);
 const pool = properties.find(property => property.slug === 'pool-villa');
 if (!pool) throw new Error('Pool Villa must be active for this dataset');
 const subtotal = pool.pricePerNight * 3;

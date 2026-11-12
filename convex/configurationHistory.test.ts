@@ -201,28 +201,28 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('keeps archive/restore, photos, slug, room images, hotspots and reorder history with no export token', async () => {
 		const { t, admin } = setup();
-		const id = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
+		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		await t.run((ctx) => ctx.db.patch(id, { icalExportToken: 'private-export-token' }));
-		await admin.mutation(api.properties.update, { propertyId: id, images: ['/photos/one.jpg'], pricePerNight: 500000 });
-		await admin.mutation(api.adminProperties.setSlug, { propertyId: id, slug: 'new-villa' });
+		await admin.mutation(api.catalog.properties.update, { propertyId: id, images: ['/photos/one.jpg'], pricePerNight: 500000 });
+		await admin.mutation(api.catalog.adminProperties.setSlug, { propertyId: id, slug: 'new-villa' });
 		for (const status of ['active', 'archived', 'active'] as const)
-			await admin.mutation(api.adminProperties.setStatus, { propertyId: id, status });
-		const room = await admin.mutation(api.adminProperties.createRoom, {
+			await admin.mutation(api.catalog.adminProperties.setStatus, { propertyId: id, status });
+		const room = await admin.mutation(api.catalog.adminProperties.createRoom, {
 			propertyId: id,
 			name: 'Living',
 			imagePath: '/living.jpg'
 		});
-		const room2 = await admin.mutation(api.adminProperties.createRoom, {
+		const room2 = await admin.mutation(api.catalog.adminProperties.createRoom, {
 			propertyId: id,
 			name: 'Pool',
 			imagePath: '/pool.jpg'
 		});
-		await admin.mutation(api.properties.updateRoom, { roomId: room, name: 'Lounge', imagePath: '/lounge.jpg' });
-		await admin.mutation(api.adminProperties.setHotspots, {
+		await admin.mutation(api.catalog.properties.updateRoom, { roomId: room, name: 'Lounge', imagePath: '/lounge.jpg' });
+		await admin.mutation(api.catalog.adminProperties.setHotspots, {
 			roomId: room,
 			hotspots: [{ label: 'Pool', targetRoomSlug: 'pool', position: [1, 2, 3] }]
 		});
-		await admin.mutation(api.adminProperties.reorderRooms, { propertyId: id, roomSlugs: ['pool', 'living'] });
+		await admin.mutation(api.catalog.adminProperties.reorderRooms, { propertyId: id, roomSlugs: ['pool', 'living'] });
 		const history = (await admin.query(list, { entityType: 'property', entityId: id, paginationOpts: page })).page;
 		expect(history.some((event) => event.after?.status === 'archived' && event.before?.status === 'active')).toBe(true);
 		expect(history.some((event) => event.before?.status === 'archived' && event.after?.status === 'active')).toBe(true);
@@ -235,7 +235,7 @@ describe('configuration history and safe restoration', () => {
 		expect(
 			roomHistory.some((event) => event.before?.imagePath === '/living.jpg' && event.after?.imagePath === '/lounge.jpg')
 		).toBe(true);
-		await admin.mutation(api.adminProperties.deleteRoom, { roomId: room2 });
+		await admin.mutation(api.catalog.adminProperties.deleteRoom, { roomId: room2 });
 		expect(
 			(await admin.query(list, { entityType: 'room', entityId: room, paginationOpts: page })).page[0].after.hotspots
 		).toEqual([]);
@@ -246,14 +246,14 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('retains deleted villa and room snapshots and discovers them without the primary records', async () => {
 		const { t, admin } = setup();
-		const id = await admin.mutation(api.adminProperties.create, { name: 'Deleted draft' });
-		const room = await admin.mutation(api.adminProperties.createRoom, {
+		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Deleted draft' });
+		const room = await admin.mutation(api.catalog.adminProperties.createRoom, {
 			propertyId: id,
 			name: 'Living',
 			imagePath: '/living.jpg'
 		});
-		await admin.mutation(api.adminProperties.deleteDraft, { propertyId: id });
-		expect(await admin.query(api.adminProperties.get, { propertyId: id })).toBeNull();
+		await admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId: id });
+		expect(await admin.query(api.catalog.adminProperties.get, { propertyId: id })).toBeNull();
 		expect(await t.run((ctx) => ctx.db.get(room))).toBeNull();
 		const index = await admin.query(records, { paginationOpts: { numItems: 10, cursor: null } });
 		expect(index.page).toMatchObject([{ entityId: id, deleted: true, name: 'Deleted draft' }]);
@@ -270,9 +270,9 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('paginates beyond the first history page and logs OTA edits and removals', async () => {
 		const { admin } = setup();
-		const id = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
+		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		for (let index = 0; index < 12; index++)
-			await admin.mutation(api.properties.update, { propertyId: id, tagline: `Tagline ${index}` });
+			await admin.mutation(api.catalog.properties.update, { propertyId: id, tagline: `Tagline ${index}` });
 		const first = await admin.query(list, {
 			entityType: 'property',
 			entityId: id,
@@ -286,12 +286,12 @@ describe('configuration history and safe restoration', () => {
 		expect(first.isDone).toBe(false);
 		expect(second.isDone).toBe(true);
 		expect(new Set([...first.page, ...second.page].map((event) => event._id)).size).toBe(13);
-		const rateId = await admin.mutation(api.properties.upsertOtaRate, {
+		const rateId = await admin.mutation(api.catalog.properties.upsertOtaRate, {
 			propertyId: id,
 			platform: 'agoda',
 			nightlyRate: 120000
 		});
-		await admin.mutation(api.properties.removeOtaRate, { rateId });
+		await admin.mutation(api.catalog.properties.removeOtaRate, { rateId });
 		expect(
 			(await admin.query(list, { entityType: 'property', entityId: id, paginationOpts: page })).page[0]
 		).toMatchObject({ kind: 'ota_rate_removed', before: { platform: 'agoda', nightlyRate: 120000 }, after: null });

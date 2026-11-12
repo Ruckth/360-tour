@@ -23,7 +23,7 @@ type Room = Doc<"tourScenes">;
 
 /** 360° tour rooms in tour order: add, rename, replace panorama, reorder, delete, edit hotspots. */
 export function PropertyRoomsEditor({ propertyId, rooms }: { propertyId: Id<"properties">; rooms: Room[] }) {
-  const reorderRooms = useMutation(api.adminProperties.reorderRooms);
+  const reorderRooms = useMutation(api.catalog.adminProperties.reorderRooms);
   const reorder = useSaver();
 
   function move(index: number, by: -1 | 1) {
@@ -78,8 +78,8 @@ function RoomCard({
   onMoveDown?: () => void;
   reordering: boolean;
 }) {
-  const updateRoom = useMutation(api.properties.updateRoom);
-  const deleteRoom = useMutation(api.adminProperties.deleteRoom);
+  const updateRoom = useMutation(api.catalog.properties.updateRoom);
+  const deleteRoom = useMutation(api.catalog.adminProperties.deleteRoom);
   const upload = useImageUpload();
   const confirm = useConfirm();
   const save = useSaver();
@@ -181,7 +181,7 @@ function RoomCard({
 }
 
 function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
-  const createRoom = useMutation(api.adminProperties.createRoom);
+  const createRoom = useMutation(api.catalog.adminProperties.createRoom);
   const upload = useImageUpload();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");

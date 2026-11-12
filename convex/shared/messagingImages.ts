@@ -1,4 +1,4 @@
-import { allowedImageUrl } from '../lib/imageUrls';
+import { allowedImageUrl } from './imageUrls';
 export function allowedMessagingImageSource(source: string, siteUrl: string): boolean {
   if (allowedImageUrl(source) && source.startsWith('https://')) return true;
   try {

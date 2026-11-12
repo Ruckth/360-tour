@@ -37,7 +37,7 @@ const isEmpty = (draft: Draft) => !draft.id && !draft.label.trim() && !draft.tar
  * Mount it only while open so each opening starts from the saved hotspots.
  */
 export function HotspotEditorDialog({ room, rooms, onClose }: { room: Room; rooms: Room[]; onClose: () => void }) {
-  const setHotspots = useMutation(api.adminProperties.setHotspots);
+  const setHotspots = useMutation(api.catalog.adminProperties.setHotspots);
   const confirm = useConfirm();
   const save = useSaver();
   const targets = rooms.filter((other) => other._id !== room._id);

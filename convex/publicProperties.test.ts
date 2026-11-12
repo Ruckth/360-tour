@@ -45,7 +45,7 @@ afterEach(() => vi.unstubAllEnvs());
 describe('public villa queries', () => {
 	it('lists only active villas with a review summary and no internal fields', async () => {
 		const { t } = await setup();
-		const result = await t.query(api.publicProperties.list, {});
+		const result = await t.query(api.catalog.publicProperties.list, {});
 		expect(result.hasProperties).toBe(true);
 		expect(result.villas.map((item) => item.slug)).toEqual(['active-villa']);
 		expect(result.villas[0]).toMatchObject({ reviewCount: 2, averageRating: 4.5, translations: [], contentEditedAt: null });
@@ -55,22 +55,22 @@ describe('public villa queries', () => {
 
 	it('reports an empty database so the site can fall back to bundled content', async () => {
 		const t = convexTest(schema, modules);
-		expect(await t.query(api.publicProperties.list, {})).toEqual({ hasProperties: false, villas: [] });
+		expect(await t.query(api.catalog.publicProperties.list, {})).toEqual({ hasProperties: false, villas: [] });
 	});
 
 	it('returns null for draft, archived and unknown slugs', async () => {
 		const { t } = await setup();
 		for (const slug of ['draft-villa', 'archived-villa', 'missing']) {
-			expect(await t.query(api.publicProperties.getBySlug, { slug })).toBeNull();
+			expect(await t.query(api.catalog.publicProperties.getBySlug, { slug })).toBeNull();
 		}
-		const detail = await t.query(api.publicProperties.getBySlug, { slug: 'active-villa' });
+		const detail = await t.query(api.catalog.publicProperties.getBySlug, { slug: 'active-villa' });
 		expect(detail?.villa.slug).toBe('active-villa');
 		expect(detail?.reviews.map((item) => item.date)).toEqual(['2026-03-01', '2026-01-01']);
 	});
 
 	it('features top reviews from active villas only', async () => {
 		const { t } = await setup();
-		const reviews = await t.query(api.publicProperties.featuredReviews, { limit: 6 });
+		const reviews = await t.query(api.catalog.publicProperties.featuredReviews, { limit: 6 });
 		expect(reviews.map((item) => [item.propertySlug, item.rating])).toEqual([
 			['active-villa', 5],
 			['active-villa', 4]
@@ -86,11 +86,11 @@ describe('public villa queries', () => {
 			const proof = await ctx.db.query('reviewStats').withIndex('by_property', q => q.eq('propertyId', active)).first();
 			await ctx.db.patch(proof!._id, { totalReviews: 207, overallRating: 3.01 });
 		});
-		const detail = await t.query(api.publicProperties.getBySlug, { slug: 'active-villa' });
+		const detail = await t.query(api.catalog.publicProperties.getBySlug, { slug: 'active-villa' });
 		expect(detail?.villa).toMatchObject({ reviewCount: 207, averageRating: 3.01 });
 		expect(detail?.reviews).toHaveLength(20);
 		expect(detail?.reviews[0].date).toBe('2027-08-09');
-		const listed = await t.query(api.publicProperties.list, {});
+		const listed = await t.query(api.catalog.publicProperties.list, {});
 		expect(listed.villas[0].reviewCount).toBe(207);
 	});
 
@@ -99,7 +99,7 @@ describe('public villa queries', () => {
 		await t.run(async ctx => {
 			for (let i = 0; i < 201; i++) await ctx.db.insert('reviews', review(draft, 5, `2028-01-${String(i % 28 + 1).padStart(2, '0')}`));
 		});
-		expect(await t.query(api.publicProperties.featuredReviews, { limit: 6 })).toEqual([]);
+		expect(await t.query(api.catalog.publicProperties.featuredReviews, { limit: 6 })).toEqual([]);
 	});
 
 	it('marks content as edited only when guest-facing copy changes', async () => {
@@ -108,10 +108,10 @@ describe('public villa queries', () => {
 		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const editedAt = async () => (await t.run((ctx) => ctx.db.get(active)))?.contentEditedAt;
 
-		await admin.mutation(api.properties.update, { propertyId: active, pricePerNight: 600000, tagline: 'Tagline', amenities: ['WiFi'] });
+		await admin.mutation(api.catalog.properties.update, { propertyId: active, pricePerNight: 600000, tagline: 'Tagline', amenities: ['WiFi'] });
 		expect(await editedAt()).toBeUndefined();
 
-		await admin.mutation(api.properties.update, { propertyId: active, description: 'New description' });
+		await admin.mutation(api.catalog.properties.update, { propertyId: active, description: 'New description' });
 		expect(await editedAt()).toEqual(expect.any(Number));
 	});
 });

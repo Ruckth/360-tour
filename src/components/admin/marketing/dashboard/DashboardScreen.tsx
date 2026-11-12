@@ -28,7 +28,7 @@ export function DashboardScreen() {
   const [state, setState] = useState<ReportState>({ status: "loading" });
   const [stay, setStay] = useState<Id<"bookings"> | null>(null);
   const saveSpend = useMutation(api.marketingReport.saveSpend);
-  const properties = useQuery(api.properties.adminList, access.role === "admin" && stay ? {} : "skip");
+  const properties = useQuery(api.catalog.properties.adminList, access.role === "admin" && stay ? {} : "skip");
 
   // A preset follows the calendar: when the Bangkok day changes, its dates move on and the report is read again.
   const preset = request.range.preset;

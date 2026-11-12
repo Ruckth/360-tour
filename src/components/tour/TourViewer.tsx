@@ -18,7 +18,7 @@ import { resolveTourRooms, type DbTourRooms } from "@/lib/tour/rooms";
 import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
-const tourRoomsQuery = api.properties.getTourRooms;
+const tourRoomsQuery = api.catalog.properties.getTourRooms;
 const ROOMS_TIMEOUT_MS = 3_000;
 
 export function TourViewer({

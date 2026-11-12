@@ -17,7 +17,7 @@ const AXES = ["x", "y", "z"] as const;
 
 /** Hotspots as an editable list with exact positions; the visual editor is `HotspotEditorDialog`. */
 export function RoomHotspotList({ room, rooms }: { room: Room; rooms: Room[] }) {
-  const setHotspots = useMutation(api.adminProperties.setHotspots);
+  const setHotspots = useMutation(api.catalog.adminProperties.setHotspots);
   const save = useSaver();
   const targets = rooms.filter((other) => other._id !== room._id);
   const [drafts, setDrafts] = useState<Draft[]>(() =>

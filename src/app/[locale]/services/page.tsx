@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { getLocale } from "next-intl/server";
-import { allowedImageUrl } from "convex/lib/imageUrls";
+import { allowedImageUrl } from "convex/shared/imageUrls";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import { getPublicMessages } from "@/lib/i18n/server-content";

@@ -39,70 +39,70 @@ describe('slugify', () => {
 describe('villa create, slug and delete', () => {
 	it('requires an admin', async () => {
 		const { t, stranger } = setup();
-		await expect(t.mutation(api.adminProperties.create, { name: 'Villa' })).rejects.toThrow('Not authenticated');
-		await expect(stranger.mutation(api.adminProperties.create, { name: 'Villa' })).rejects.toThrow('Not authorized');
+		await expect(t.mutation(api.catalog.adminProperties.create, { name: 'Villa' })).rejects.toThrow('Not authenticated');
+		await expect(stranger.mutation(api.catalog.adminProperties.create, { name: 'Villa' })).rejects.toThrow('Not authorized');
 	});
 
 	it('creates drafts with unique auto slugs and validates manual slugs', async () => {
 		const { t, admin } = setup();
-		const first = await admin.mutation(api.adminProperties.create, { name: 'Sea Breeze Villa' });
-		const second = await admin.mutation(api.adminProperties.create, { name: 'Sea breeze villa' });
-		const thai = await admin.mutation(api.adminProperties.create, { name: 'บ้านริมทะเล' });
+		const first = await admin.mutation(api.catalog.adminProperties.create, { name: 'Sea Breeze Villa' });
+		const second = await admin.mutation(api.catalog.adminProperties.create, { name: 'Sea breeze villa' });
+		const thai = await admin.mutation(api.catalog.adminProperties.create, { name: 'บ้านริมทะเล' });
 		const docs = await t.run(async (ctx) => Promise.all([first, second, thai].map((id) => ctx.db.get(id))));
 		expect(docs.map((doc) => doc?.slug)).toEqual(['sea-breeze-villa', 'sea-breeze-villa-2', 'villa']);
 		expect(docs[0]).toMatchObject({ status: 'draft', pricePerNight: 0, currency: 'THB', images: [], tourRoomIds: [] });
-		expect(await t.query(api.properties.list, {})).toHaveLength(0);
+		expect(await t.query(api.catalog.properties.list, {})).toHaveLength(0);
 
-		await expect(admin.mutation(api.adminProperties.create, { name: 'X', slug: 'sea-breeze-villa' })).rejects.toThrow('already used');
-		await expect(admin.mutation(api.adminProperties.create, { name: 'X', slug: 'Bad Slug!' })).rejects.toThrow('lowercase');
-		await expect(admin.mutation(api.adminProperties.create, { name: ' ' })).rejects.toThrow('Name is required');
-		const manual = await admin.mutation(api.adminProperties.create, { name: 'X', slug: 'my-villa' });
+		await expect(admin.mutation(api.catalog.adminProperties.create, { name: 'X', slug: 'sea-breeze-villa' })).rejects.toThrow('already used');
+		await expect(admin.mutation(api.catalog.adminProperties.create, { name: 'X', slug: 'Bad Slug!' })).rejects.toThrow('lowercase');
+		await expect(admin.mutation(api.catalog.adminProperties.create, { name: ' ' })).rejects.toThrow('Name is required');
+		const manual = await admin.mutation(api.catalog.adminProperties.create, { name: 'X', slug: 'my-villa' });
 		expect((await t.run((ctx) => ctx.db.get(manual)))?.slug).toBe('my-villa');
-		expect(await admin.query(api.adminProperties.get, { propertyId: 'not-an-id' })).toBeNull();
+		expect(await admin.query(api.catalog.adminProperties.get, { propertyId: 'not-an-id' })).toBeNull();
 	});
 
 	it('changes the slug until the villa has bookings', async () => {
 		const { t, admin } = setup();
-		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Villa One' });
-		const other = await admin.mutation(api.adminProperties.create, { name: 'Villa Two' });
-		expect(await admin.mutation(api.adminProperties.setSlug, { propertyId, slug: 'first-villa' })).toBe('first-villa');
-		await expect(admin.mutation(api.adminProperties.setSlug, { propertyId: other, slug: 'first-villa' })).rejects.toThrow('already used');
-		expect((await admin.query(api.adminProperties.get, { propertyId }))?.slugLocked).toBe(false);
+		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa One' });
+		const other = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa Two' });
+		expect(await admin.mutation(api.catalog.adminProperties.setSlug, { propertyId, slug: 'first-villa' })).toBe('first-villa');
+		await expect(admin.mutation(api.catalog.adminProperties.setSlug, { propertyId: other, slug: 'first-villa' })).rejects.toThrow('already used');
+		expect((await admin.query(api.catalog.adminProperties.get, { propertyId }))?.slugLocked).toBe(false);
 
 		await insertBooking(t, propertyId);
-		expect((await admin.query(api.adminProperties.get, { propertyId }))?.slugLocked).toBe(true);
-		await expect(admin.mutation(api.adminProperties.setSlug, { propertyId, slug: 'renamed' })).rejects.toThrow('locked');
+		expect((await admin.query(api.catalog.adminProperties.get, { propertyId }))?.slugLocked).toBe(true);
+		await expect(admin.mutation(api.catalog.adminProperties.setSlug, { propertyId, slug: 'renamed' })).rejects.toThrow('locked');
 		expect((await t.run((ctx) => ctx.db.get(propertyId)))?.slug).toBe('first-villa');
 	});
 
 	it('publishes only priced villas and archives or restores them', async () => {
 		const { t, admin } = setup();
-		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
-		await expect(admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'active' })).rejects.toThrow('price');
-		await admin.mutation(api.properties.update, { propertyId, pricePerNight: 500000 });
-		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'active' });
-		expect(await t.query(api.properties.list, {})).toHaveLength(1);
-		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'archived' });
-		expect(await t.query(api.properties.list, {})).toHaveLength(0);
+		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
+		await expect(admin.mutation(api.catalog.adminProperties.setStatus, { propertyId, status: 'active' })).rejects.toThrow('price');
+		await admin.mutation(api.catalog.properties.update, { propertyId, pricePerNight: 500000 });
+		await admin.mutation(api.catalog.adminProperties.setStatus, { propertyId, status: 'active' });
+		expect(await t.query(api.catalog.properties.list, {})).toHaveLength(1);
+		await admin.mutation(api.catalog.adminProperties.setStatus, { propertyId, status: 'archived' });
+		expect(await t.query(api.catalog.properties.list, {})).toHaveLength(0);
 	});
 
 	it('deletes only unused drafts and cascades their content', async () => {
 		const { t, admin } = setup();
-		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
-		await admin.mutation(api.adminProperties.createRoom, { propertyId, name: 'Living', imagePath: '/living.webp' });
-		await admin.mutation(api.adminReviews.create, {
+		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
+		await admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'Living', imagePath: '/living.webp' });
+		await admin.mutation(api.catalog.adminReviews.create, {
 			propertyId, authorName: 'Ann', authorCity: 'Paris', authorCountry: 'France', rating: 5, title: '', body: 'Lovely',
 			date: '2026-09-01', verified: true
 		});
-		await admin.mutation(api.properties.upsertOtaRate, { propertyId, platform: 'agoda', nightlyRate: 900000 });
+		await admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'agoda', nightlyRate: 900000 });
 
-		await admin.mutation(api.properties.update, { propertyId, pricePerNight: 10000 });
-		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'active' });
-		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId })).rejects.toThrow('Only draft');
-		await admin.mutation(api.adminProperties.setStatus, { propertyId, status: 'draft' });
-		expect((await admin.query(api.adminProperties.get, { propertyId }))?.deleteBlocker).toBeNull();
+		await admin.mutation(api.catalog.properties.update, { propertyId, pricePerNight: 10000 });
+		await admin.mutation(api.catalog.adminProperties.setStatus, { propertyId, status: 'active' });
+		await expect(admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId })).rejects.toThrow('Only draft');
+		await admin.mutation(api.catalog.adminProperties.setStatus, { propertyId, status: 'draft' });
+		expect((await admin.query(api.catalog.adminProperties.get, { propertyId }))?.deleteBlocker).toBeNull();
 
-		await admin.mutation(api.adminProperties.deleteDraft, { propertyId });
+		await admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId });
 		const leftovers = await t.run(async (ctx) => ({
 			property: await ctx.db.get(propertyId),
 			rooms: await ctx.db.query('tourScenes').collect(),
@@ -115,31 +115,31 @@ describe('villa create, slug and delete', () => {
 
 	it('refuses to delete drafts with bookings, calendar entries or chats', async () => {
 		const { t, admin } = setup();
-		const booked = await admin.mutation(api.adminProperties.create, { name: 'Booked' });
+		const booked = await admin.mutation(api.catalog.adminProperties.create, { name: 'Booked' });
 		await insertBooking(t, booked);
-		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId: booked })).rejects.toThrow('bookings');
+		await expect(admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId: booked })).rejects.toThrow('bookings');
 
-		const blocked = await admin.mutation(api.adminProperties.create, { name: 'Blocked' });
+		const blocked = await admin.mutation(api.catalog.adminProperties.create, { name: 'Blocked' });
 		await t.run(async (ctx) => {
 			await ctx.db.insert('availability', { propertyId: blocked, date: '2026-10-01', status: 'blocked', source: 'manual' });
 		});
-		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId: blocked })).rejects.toThrow('calendar');
+		await expect(admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId: blocked })).rejects.toThrow('calendar');
 
-		const chatted = await admin.mutation(api.adminProperties.create, { name: 'Chatted' });
+		const chatted = await admin.mutation(api.catalog.adminProperties.create, { name: 'Chatted' });
 		await t.run(async (ctx) => {
 			await ctx.db.insert('conversations', { propertyId: chatted, channel: 'web', createdAt: 0 });
 		});
-		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId: chatted })).rejects.toThrow('chatted');
+		await expect(admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId: chatted })).rejects.toThrow('chatted');
 		expect(await t.run((ctx) => ctx.db.get(chatted))).not.toBeNull();
 	});
 
 	it('refuses draft deletion when a child table exceeds its deletion batch', async () => {
 		const { t, admin } = setup();
-		const propertyId = await admin.mutation(api.adminProperties.create, { name: 'Many Reviews' });
+		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Many Reviews' });
 		await t.run(async ctx => {
 			for (let i = 0; i < 501; i++) await ctx.db.insert('reviews', { propertyId, authorName: 'Guest', authorCity: '', authorCountry: '', authorAvatarUrl: '', rating: 5, title: '', body: 'Good', date: '2026-01-01', verified: true });
 		});
-		await expect(admin.mutation(api.adminProperties.deleteDraft, { propertyId })).rejects.toThrow('more than 500 child records');
+		await expect(admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId })).rejects.toThrow('more than 500 child records');
 		expect(await t.run(ctx => ctx.db.get(propertyId))).not.toBeNull();
 		expect((await t.run(ctx => ctx.db.query('reviews').withIndex('by_property', q => q.eq('propertyId', propertyId)).collect())).length).toBe(501);
 	});
@@ -157,31 +157,31 @@ describe('image uploads', () => {
 
 	it('requires an admin for upload URLs and saving uploads', async () => {
 		const { t, admin, stranger } = setup();
-		await expect(t.mutation(api.adminProperties.generateUploadUrl, {})).rejects.toThrow('Not authenticated');
-		await expect(stranger.mutation(api.adminProperties.generateUploadUrl, {})).rejects.toThrow('Not authorized');
-		expect(await admin.mutation(api.adminProperties.generateUploadUrl, {})).toMatch(/^https:\/\//);
+		await expect(t.mutation(api.catalog.adminProperties.generateUploadUrl, {})).rejects.toThrow('Not authenticated');
+		await expect(stranger.mutation(api.catalog.adminProperties.generateUploadUrl, {})).rejects.toThrow('Not authorized');
+		expect(await admin.mutation(api.catalog.adminProperties.generateUploadUrl, {})).toMatch(/^https:\/\//);
 		const storageId = await storeFile(t, 'image/webp', 1000);
-		await expect(stranger.mutation(api.adminProperties.saveUploadedImage, { storageId, kind: 'photo' })).rejects.toThrow('Not authorized');
+		await expect(stranger.mutation(api.catalog.adminProperties.saveUploadedImage, { storageId, kind: 'photo' })).rejects.toThrow('Not authorized');
 	});
 
 	it('returns a URL for valid images and deletes rejected ones', async () => {
 		const { t, admin } = setup();
 		const good = await storeFile(t, 'image/jpeg', 7 * 1024 * 1024);
-		const result = await admin.mutation(api.adminProperties.saveUploadedImage, { storageId: good, kind: 'photo' });
+		const result = await admin.mutation(api.catalog.adminProperties.saveUploadedImage, { storageId: good, kind: 'photo' });
 		expect(result).toEqual({ url: expect.stringMatching(/^https:\/\/.+\.convex\.cloud\//) });
 
 		const pdf = await storeFile(t, 'application/pdf', 1000);
-		expect(await admin.mutation(api.adminProperties.saveUploadedImage, { storageId: pdf, kind: 'photo' })).toEqual({
+		expect(await admin.mutation(api.catalog.adminProperties.saveUploadedImage, { storageId: pdf, kind: 'photo' })).toEqual({
 			error: 'Images must be JPEG, PNG or WebP'
 		});
 		const bigPhoto = await storeFile(t, 'image/png', 9 * 1024 * 1024);
-		expect(await admin.mutation(api.adminProperties.saveUploadedImage, { storageId: bigPhoto, kind: 'photo' })).toEqual({
+		expect(await admin.mutation(api.catalog.adminProperties.saveUploadedImage, { storageId: bigPhoto, kind: 'photo' })).toEqual({
 			error: 'Photos must be 8 MB or smaller'
 		});
 		const panorama = await storeFile(t, 'image/webp', 11 * 1024 * 1024);
-		expect(await admin.mutation(api.adminProperties.saveUploadedImage, { storageId: panorama, kind: 'panorama' })).toHaveProperty('url');
+		expect(await admin.mutation(api.catalog.adminProperties.saveUploadedImage, { storageId: panorama, kind: 'panorama' })).toHaveProperty('url');
 		const bigPanorama = await storeFile(t, 'image/webp', 13 * 1024 * 1024);
-		expect(await admin.mutation(api.adminProperties.saveUploadedImage, { storageId: bigPanorama, kind: 'panorama' })).toEqual({
+		expect(await admin.mutation(api.catalog.adminProperties.saveUploadedImage, { storageId: bigPanorama, kind: 'panorama' })).toEqual({
 			error: 'Panoramas must be 12 MB or smaller'
 		});
 		const remaining = await t.run(async (ctx) =>
@@ -194,9 +194,9 @@ describe('image uploads', () => {
 describe('360 rooms', () => {
 	async function villaWithRooms() {
 		const env = setup();
-		const propertyId = await env.admin.mutation(api.adminProperties.create, { name: 'Villa' });
+		const propertyId = await env.admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		const add = (name: string, slug?: string) =>
-			env.admin.mutation(api.adminProperties.createRoom, { propertyId, name, slug, imagePath: 'https://images.unsplash.com/pano.webp' });
+			env.admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name, slug, imagePath: 'https://images.unsplash.com/pano.webp' });
 		const living = await add('Living Room');
 		const pool = await add('Pool');
 		const bedroom = await add('Bedroom');
@@ -206,37 +206,37 @@ describe('360 rooms', () => {
 	it('adds rooms with unique slugs and appends them to the tour', async () => {
 		const { t, admin, propertyId } = await villaWithRooms();
 		await expect(
-			admin.mutation(api.adminProperties.createRoom, { propertyId, name: 'X', slug: 'pool', imagePath: '/x.webp' })
+			admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'X', slug: 'pool', imagePath: '/x.webp' })
 		).rejects.toThrow('already used');
-		await admin.mutation(api.adminProperties.createRoom, { propertyId, name: 'Pool', imagePath: '/x.webp' });
+		await admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'Pool', imagePath: '/x.webp' });
 		await expect(
-			admin.mutation(api.adminProperties.createRoom, { propertyId, name: 'X', imagePath: 'javascript:alert(1)' })
+			admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'X', imagePath: 'javascript:alert(1)' })
 		).rejects.toThrow('Images must be');
 		await expect(
-			admin.mutation(api.adminProperties.createRoom, { propertyId, name: 'X', imagePath: 'https://example.com/pano.webp' })
+			admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'X', imagePath: 'https://example.com/pano.webp' })
 		).rejects.toThrow('uploaded photo');
 		expect((await t.run((ctx) => ctx.db.get(propertyId)))?.tourRoomIds).toEqual(['living-room', 'pool', 'bedroom', 'pool-2']);
 
 		// Room slugs only need to be unique within a villa.
-		const other = await admin.mutation(api.adminProperties.create, { name: 'Other' });
-		await admin.mutation(api.adminProperties.createRoom, { propertyId: other, name: 'Pool', imagePath: '/x.webp' });
-		expect((await admin.query(api.adminProperties.get, { propertyId: other }))?.rooms.map((room) => room.slug)).toEqual(['pool']);
+		const other = await admin.mutation(api.catalog.adminProperties.create, { name: 'Other' });
+		await admin.mutation(api.catalog.adminProperties.createRoom, { propertyId: other, name: 'Pool', imagePath: '/x.webp' });
+		expect((await admin.query(api.catalog.adminProperties.get, { propertyId: other }))?.rooms.map((room) => room.slug)).toEqual(['pool']);
 	});
 
 	it('reorders rooms and rejects stale orders', async () => {
 		const { admin, propertyId } = await villaWithRooms();
-		await admin.mutation(api.adminProperties.reorderRooms, { propertyId, roomSlugs: ['pool', 'bedroom', 'living-room'] });
-		const data = await admin.query(api.adminProperties.get, { propertyId });
+		await admin.mutation(api.catalog.adminProperties.reorderRooms, { propertyId, roomSlugs: ['pool', 'bedroom', 'living-room'] });
+		const data = await admin.query(api.catalog.adminProperties.get, { propertyId });
 		expect(data?.rooms.map((room) => room.slug)).toEqual(['pool', 'bedroom', 'living-room']);
-		await expect(admin.mutation(api.adminProperties.reorderRooms, { propertyId, roomSlugs: ['pool', 'bedroom'] })).rejects.toThrow('out of date');
+		await expect(admin.mutation(api.catalog.adminProperties.reorderRooms, { propertyId, roomSlugs: ['pool', 'bedroom'] })).rejects.toThrow('out of date');
 		await expect(
-			admin.mutation(api.adminProperties.reorderRooms, { propertyId, roomSlugs: ['pool', 'pool', 'bedroom'] })
+			admin.mutation(api.catalog.adminProperties.reorderRooms, { propertyId, roomSlugs: ['pool', 'pool', 'bedroom'] })
 		).rejects.toThrow('out of date');
 	});
 
 	it('saves validated hotspots', async () => {
 		const { t, admin, living } = await villaWithRooms();
-		await admin.mutation(api.adminProperties.setHotspots, {
+		await admin.mutation(api.catalog.adminProperties.setHotspots, {
 			roomId: living,
 			hotspots: [
 				{ label: ' Pool ', targetRoomSlug: 'pool', position: [300, -30, -200] },
@@ -248,7 +248,7 @@ describe('360 rooms', () => {
 			{ id: 'living-room-to-pool-2', label: 'Pool again', targetRoomSlug: 'pool', position: [1, 2, 3] }
 		]);
 		const save = (hotspot: { label: string; targetRoomSlug: string; position: number[] }) =>
-			admin.mutation(api.adminProperties.setHotspots, { roomId: living, hotspots: [hotspot] });
+			admin.mutation(api.catalog.adminProperties.setHotspots, { roomId: living, hotspots: [hotspot] });
 		await expect(save({ label: 'Self', targetRoomSlug: 'living-room', position: [0, 0, 0] })).rejects.toThrow('another room');
 		await expect(save({ label: 'Gone', targetRoomSlug: 'garage', position: [0, 0, 0] })).rejects.toThrow('another room');
 		await expect(save({ label: 'Flat', targetRoomSlug: 'pool', position: [0, 0] })).rejects.toThrow('x, y and z');
@@ -258,18 +258,18 @@ describe('360 rooms', () => {
 
 	it('deletes a room and cleans hotspots and the tour order', async () => {
 		const { t, admin, propertyId, living, pool, bedroom } = await villaWithRooms();
-		await admin.mutation(api.adminProperties.setHotspots, {
+		await admin.mutation(api.catalog.adminProperties.setHotspots, {
 			roomId: living,
 			hotspots: [
 				{ label: 'Pool', targetRoomSlug: 'pool', position: [1, 0, 0] },
 				{ label: 'Bedroom', targetRoomSlug: 'bedroom', position: [0, 0, 1] }
 			]
 		});
-		await admin.mutation(api.adminProperties.setHotspots, {
+		await admin.mutation(api.catalog.adminProperties.setHotspots, {
 			roomId: bedroom,
 			hotspots: [{ label: 'Pool', targetRoomSlug: 'pool', position: [1, 0, 0] }]
 		});
-		await admin.mutation(api.adminProperties.deleteRoom, { roomId: pool });
+		await admin.mutation(api.catalog.adminProperties.deleteRoom, { roomId: pool });
 
 		const state = await t.run(async (ctx) => ({
 			pool: await ctx.db.get(pool),
@@ -285,7 +285,7 @@ describe('360 rooms', () => {
 
 	it('duplicates a villa as a draft with photos, rooms, hotspots and OTA rates', async () => {
 		const { t, admin, stranger, propertyId, living } = await villaWithRooms();
-		await admin.mutation(api.adminProperties.setHotspots, {
+		await admin.mutation(api.catalog.adminProperties.setHotspots, {
 			roomId: living,
 			hotspots: [{ label: 'Pool', targetRoomSlug: 'pool', position: [1, 2, 3] }]
 		});
@@ -304,8 +304,8 @@ describe('360 rooms', () => {
 		});
 		await insertBooking(t, propertyId);
 
-		const copyId = await admin.mutation(api.adminProperties.duplicate, { propertyId });
-		const copy = await admin.query(api.adminProperties.get, { propertyId: copyId });
+		const copyId = await admin.mutation(api.catalog.adminProperties.duplicate, { propertyId });
+		const copy = await admin.query(api.catalog.adminProperties.get, { propertyId: copyId });
 		expect(copy?.property).toMatchObject({
 			name: 'Villa (copy)',
 			slug: 'villa-copy',
@@ -327,17 +327,17 @@ describe('360 rooms', () => {
 		expect(children.rates).toEqual([expect.objectContaining({ platform: 'agoda', nightlyRate: 990000 })]);
 		expect(children.reviews).toEqual([]);
 
-		expect((await admin.query(api.adminProperties.get, { propertyId: await admin.mutation(api.adminProperties.duplicate, { propertyId }) }))?.property.slug).toBe('villa-copy-2');
-		await expect(stranger.mutation(api.adminProperties.duplicate, { propertyId })).rejects.toThrow('Not authorized');
+		expect((await admin.query(api.catalog.adminProperties.get, { propertyId: await admin.mutation(api.catalog.adminProperties.duplicate, { propertyId }) }))?.property.slug).toBe('villa-copy-2');
+		await expect(stranger.mutation(api.catalog.adminProperties.duplicate, { propertyId })).rejects.toThrow('Not authorized');
 	});
 
 	it('requires an admin for room changes', async () => {
 		const { stranger, propertyId, living } = await villaWithRooms();
-		await expect(stranger.mutation(api.adminProperties.deleteRoom, { roomId: living })).rejects.toThrow('Not authorized');
+		await expect(stranger.mutation(api.catalog.adminProperties.deleteRoom, { roomId: living })).rejects.toThrow('Not authorized');
 		await expect(
-			stranger.mutation(api.adminProperties.createRoom, { propertyId, name: 'X', imagePath: '/x.webp' })
+			stranger.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'X', imagePath: '/x.webp' })
 		).rejects.toThrow('Not authorized');
-		await expect(stranger.mutation(api.adminProperties.reorderRooms, { propertyId, roomSlugs: [] })).rejects.toThrow('Not authorized');
-		await expect(stranger.mutation(api.adminProperties.setHotspots, { roomId: living, hotspots: [] })).rejects.toThrow('Not authorized');
+		await expect(stranger.mutation(api.catalog.adminProperties.reorderRooms, { propertyId, roomSlugs: [] })).rejects.toThrow('Not authorized');
+		await expect(stranger.mutation(api.catalog.adminProperties.setHotspots, { roomId: living, hotspots: [] })).rejects.toThrow('Not authorized');
 	});
 });

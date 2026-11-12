@@ -6,7 +6,7 @@ import { seedRooms } from '../seeds/rooms';
 import { seedReviews } from '../seeds/reviews';
 import { seedTourSnippets } from '../seeds/tourSnippets';
 import { seedStaffServicesData } from '../seeds/staffServices';
-import { recomputeSocialProof } from '../lib/reviewStats';
+import { recomputeSocialProof } from '../catalog/model';
 import { createBookingRecord } from '../lib/bookingWrites';
 import { recordStayPayment } from '../bookings';
 import { blockBookingDates } from '../lib/availabilityWrites';
