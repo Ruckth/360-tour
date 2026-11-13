@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import type { ReportBasis, ReportData, SpendDraft } from "convex/lib/marketingReport";
-import { BarChart3, BookOpen, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw } from "lucide-react";
+import { BarChart3, BookOpen, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -20,6 +20,7 @@ import { DashboardBreakdown } from "./DashboardBreakdown";
 import { DashboardChart } from "./DashboardChart";
 import { DefinitionsSheet, ExportDialog, SalesSheet, type SalesSheetTarget } from "./DashboardSheets";
 import { DashboardTiles } from "./DashboardTiles";
+import { rememberRange, rememberedRange } from "./remembered-range";
 import {
   CHART_COLOR_VARS,
   PRESETS,
@@ -65,6 +66,12 @@ export type DashboardViewProps = {
 };
 
 export const DEFAULT_REQUEST = (today: string): ReportRequest => ({ range: { preset: "last30", ...presetRange("last30", today) }, basis: "cohort" });
+
+/** The first request on this device: the range it last chose, else the default. */
+export const initialRequest = (today: string): ReportRequest => {
+  const range = rememberedRange(today);
+  return range ? { ...DEFAULT_REQUEST(today), range } : DEFAULT_REQUEST(today);
+};
 
 const ATTRIBUTION_RULE = "last_touch_30d@1";
 
@@ -151,6 +158,41 @@ function RangePicker({ range, today, onChange }: { range: RangeChoice; today: st
             Apply range
           </Button>
         </form>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Rarely changed choices about how sales are credited, with what each one means. */
+function ViewOptions({ touch, onTouch }: { touch: Touch; onTouch: (touch: Touch) => void }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 sm:h-9 sm:flex-none" aria-label={`View options: ${touch === "first" ? "First touch" : "Last touch"}`}>
+          <SlidersHorizontal aria-hidden className="size-4" />
+          View options
+          {touch === "first" ? <span className="rounded-full bg-muted px-1.5 text-xs">First touch</span> : null}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="grid w-[min(22rem,calc(100vw-2rem))] gap-3 p-3">
+        <div className="grid gap-2">
+          <span id="touch-label" className="text-sm font-medium text-foreground">
+            Attribution
+          </span>
+          <ToggleGroup value={touch} onValueChange={onTouch} aria-labelledby="touch-label" className="w-full">
+            <ToggleGroupItem value="last" className="flex-1 py-1.5">
+              Last touch
+            </ToggleGroupItem>
+            <ToggleGroupItem value="first" className="flex-1 py-1.5">
+              First touch
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          {touch === "first"
+            ? "Each sale goes to the first tracked link the guest opened. These are the same sales as last touch, credited differently, so never add the two together."
+            : "Each sale goes to the last tracked link the guest opened within 30 days before booking. First touch credits the same sales to the first link, so never add the two together."}
+        </p>
       </PopoverContent>
     </Popover>
   );
@@ -248,10 +290,15 @@ export function DashboardView({
   }
 
   const busy = state.status === "loading" || (state.status === "ready" && !!state.refreshing);
+  // Every range change is remembered on this device, so the dashboard opens on it next time.
+  const changeRange = (range: RangeChoice) => {
+    rememberRange(range);
+    onRequestChange({ ...request, range });
+  };
   const toolbar = (
     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
       <div className="min-w-0">
-        <RangePicker range={request.range} today={today} onChange={(range) => onRequestChange({ ...request, range })} />
+        <RangePicker range={request.range} today={today} onChange={changeRange} />
       </div>
       <div className="min-w-0">
         <Select value={propertyFilter} onValueChange={setProperty} disabled={!report}>
@@ -269,19 +316,6 @@ export function DashboardView({
         </Select>
       </div>
       <div className="col-span-2 flex items-center rounded-lg border border-border bg-background p-[3px] sm:col-span-1">
-        <span id="touch-label" className="px-2 text-xs font-medium text-muted-foreground">
-          Attribution
-        </span>
-        <ToggleGroup value={touch} onValueChange={setTouch} aria-labelledby="touch-label" className="flex-1 border-0 p-0">
-          <ToggleGroupItem value="last" className="flex-1 py-1.5 sm:flex-none">
-            Last touch
-          </ToggleGroupItem>
-          <ToggleGroupItem value="first" className="flex-1 py-1.5 sm:flex-none">
-            First touch
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-      <div className="col-span-2 flex items-center rounded-lg border border-border bg-background p-[3px] sm:col-span-1">
         <span id="basis-label" className="px-2 text-xs font-medium text-muted-foreground">
           View
         </span>
@@ -294,7 +328,8 @@ export function DashboardView({
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-      <div className="col-span-2 flex gap-2 sm:ml-auto">
+      <div className="col-span-2 flex flex-wrap gap-2 sm:ml-auto">
+        <ViewOptions touch={touch} onTouch={setTouch} />
         <Button type="button" variant="outline" size="sm" className="h-10 flex-1 sm:h-9 sm:flex-none" onClick={() => setDefinitions(true)}>
           <BookOpen aria-hidden className="size-4" />
           Definitions
@@ -325,16 +360,14 @@ export function DashboardView({
             <span>{propertyName}</span>
           </>
         ) : null}
+        <span aria-hidden>·</span>
+        <span>
+          {touch === "first" ? "First touch" : "Last touch"} ({ATTRIBUTION_RULE})
+        </span>
         <button type="button" onClick={onRetry} disabled={busy} className="inline-flex items-center gap-1 rounded font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 pointer-coarse:min-h-11">
           <RotateCw aria-hidden className={cn("size-3.5", busy && "animate-spin")} />
           {busy ? "Updating" : "Refresh"}
         </button>
-      </p>
-      <p>
-        <span className="font-semibold text-foreground">{touch === "first" ? "First touch" : "Last touch"} ({ATTRIBUTION_RULE}):</span>{" "}
-        {touch === "first"
-          ? "each sale is credited to the first tracked link the guest opened. These are the same sales as last touch, credited differently, so never add the two together."
-          : "each sale is credited to the last tracked link the guest opened within 30 days before booking. First touch credits the same sales to the first link instead, so never add the two together."}
       </p>
       {report.basis === "cash" ? (
         <p>
@@ -398,7 +431,7 @@ export function DashboardView({
         <EmptyState
           action={
             request.range.preset !== "last90" ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => onRequestChange({ ...request, range: { preset: "last90", ...presetRange("last90", today) } })}>
+              <Button type="button" variant="outline" size="sm" onClick={() => changeRange({ preset: "last90", ...presetRange("last90", today) })}>
                 Show the last 90 days
               </Button>
             ) : undefined

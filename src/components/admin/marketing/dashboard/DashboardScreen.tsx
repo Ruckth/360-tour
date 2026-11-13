@@ -11,19 +11,19 @@ import { adminMarketingPath } from "../../admin-routes";
 import { BookingSheet } from "../../BookingSheet";
 import { useMarketingAccess } from "../MarketingAccess";
 import { bangkokToday, marketingErrorText } from "../marketing-format";
-import { DEFAULT_REQUEST, DashboardView, type ReportRequest, type ReportState } from "./DashboardView";
+import { DashboardView, initialRequest, type ReportRequest, type ReportState } from "./DashboardView";
 import { presetRange } from "./report-model";
 
 /**
  * The dashboard wired to Convex. The report is a one-off read (not a subscription): it's the
  * largest read in the admin, so it runs when the dates or basis change, after a spend change, or on
- * Refresh, and the page shows its as-of time.
+ * Refresh, and the page shows its as-of time. The range starts where this device left it.
  */
 export function DashboardScreen() {
   const access = useMarketingAccess();
   const convex = useConvex();
   const today = bangkokToday(useNow());
-  const [request, setRequest] = useState<ReportRequest>(() => DEFAULT_REQUEST(today));
+  const [request, setRequest] = useState<ReportRequest>(() => initialRequest(today));
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<ReportState>({ status: "loading" });
   const [stay, setStay] = useState<Id<"bookings"> | null>(null);

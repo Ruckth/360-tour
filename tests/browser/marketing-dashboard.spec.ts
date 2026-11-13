@@ -138,3 +138,22 @@ test("drill-down, chart table and range presets work from the keyboard", async (
   await expect(page.getByRole("button", { name: /^Dates: Last 7 days/ })).toBeVisible();
   expect(JSON.parse((await page.locator("body").getAttribute("data-requests")) ?? "[]").at(-1).range).toEqual({ preset: "last7", from: "2026-10-31", to: "2026-11-06" });
 });
+
+test("the range is remembered on this device, Last week included, and attribution sits in View options", async ({ page }) => {
+  await open(page, 1180, "normal", "light");
+  await expect(page.getByRole("button", { name: /^Dates: Last 30 days/ })).toBeVisible();
+  // Attribution is one tap away, not in the toolbar.
+  await expect(page.getByRole("radio", { name: "First touch" })).toHaveCount(0);
+  await page.getByRole("button", { name: /^View options/ }).click();
+  await page.getByRole("radio", { name: "First touch" }).click();
+  await expect(page.getByText(/Each sale goes to the first tracked link/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "View options: First touch" })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Dates:/ }).click();
+  await page.getByRole("button", { name: /^Last week/ }).click();
+  expect(JSON.parse((await page.locator("body").getAttribute("data-requests")) ?? "[]").at(-1).range).toEqual({ preset: "lastweek", from: "2026-10-26", to: "2026-11-01" });
+  await page.reload();
+  await expect(page.getByRole("button", { name: /^Dates: Last week/ })).toBeVisible();
+  await shot(page, "remembered-last-week-1180-light", false);
+});
