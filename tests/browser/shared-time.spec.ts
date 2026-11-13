@@ -9,7 +9,7 @@ for (const timezoneId of ['America/Los_Angeles', 'Pacific/Auckland']) {
       const context = await browser.newContext({ timezoneId, baseURL: test.info().project.use.baseURL });
       try {
         const page = await context.newPage();
-        await page.clock.install({ time: new Date(utcTime) });
+        await page.clock.setFixedTime(new Date(utcTime));
         await page.goto('/tests/browser/index.html?checkIn=2030-01-10&checkOut=2030-01-12');
         await expect(page.getByRole('dialog', { name: 'New booking' })).toBeVisible();
         await page.getByLabel('Email (optional)').fill('guest@example.test');
@@ -40,3 +40,26 @@ for (const timezoneId of ['America/Los_Angeles', 'Pacific/Auckland']) {
     });
   }
 }
+
+
+test('hotel calendar refuses a browser-local day that is already past at the resort', async ({ browser }) => {
+  const context = await browser.newContext({ timezoneId: 'America/Los_Angeles', baseURL: test.info().project.use.baseURL });
+  try {
+    const page = await context.newPage();
+    await page.clock.setFixedTime(new Date('2030-01-10T17:00:00Z'));
+    await page.addInitScript(() => localStorage.setItem('admin.hotel.view', 'resource'));
+    await page.goto('/tests/browser/index.html?mode=hotel-calendar');
+    const cell = page.locator('[data-slot="event-calendar-all-day-cell"][data-ec-resource="pool-id"]');
+    // Los Angeles is still Jan 10; the resort has crossed midnight into Jan 11.
+    await expect(cell).toHaveAttribute('data-ec-day', String(Date.parse('2030-01-10T08:00:00Z')));
+    await cell.click();
+    await expect(page.getByRole('dialog', { name: 'New booking' })).not.toBeVisible();
+    // The same real calendar accepts the resort's current day after navigation.
+    await page.locator('[data-slot="event-calendar-nav-next"]').click();
+    await expect(cell).toHaveAttribute('data-ec-day', String(Date.parse('2030-01-11T08:00:00Z')));
+    await cell.click();
+    await expect(page.getByRole('dialog', { name: 'New booking' })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
