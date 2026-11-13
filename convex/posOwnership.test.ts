@@ -4,7 +4,8 @@ import { makeFunctionReference } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import { requireStaff } from './auth/model';
-import { ensureLinkedOrder, orderLines } from './pos/model';
+import { ensureLinkedOrder } from './pos/model';
+import { orderLines } from './pos/private/orderLines';
 import { executeOrderRefund, orderRefunds } from './pos/private/orderRefunds';
 import schema from './schema';
 

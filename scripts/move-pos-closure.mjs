@@ -47,6 +47,7 @@ function resolve(from, spec) {
 }
 function destination(from, name, consumer) {
   if (from === 'convex/pos/model.ts' && ['assertCustomerCanLink', 'assertCustomerReviewed', 'mergeCustomerRecords'].includes(name)) return 'convex/pos/private/customerModel.ts';
+  if (from === 'convex/pos/model.ts' && name === 'PAIRING_TTL_MS') return 'convex/pos/private/displayModel.ts';
   if (from === 'convex/pos/model.ts' && ['DisplayState', 'DisplayDriver'].includes(name)) return 'convex/shared/displayTypes.ts';
   if (consumer === 'convex/schema.ts' && from === 'convex/pos/tables.ts') return from;
   if (from === 'convex/pos/model.ts' && !consumer.startsWith('convex/pos/')) return from;
@@ -112,7 +113,7 @@ function mergeModelImports(source, file) {
 }
 function correctComments(source) {
   return source.replace(/(?:convex\/)?lib\/(orderLinks|lineLinks|displayView|orderRefunds)\.ts/g, 'convex/pos/private/$1.ts')
-    .replace('pos.ts refuses more', 'convex/pos/private/lineCommands.ts refuses more')
+    .replace('pos.ts refuses more', 'convex/pos/private/orderModel.ts refuses more')
     .replace('pos.linkPaidLine, schema', 'convex/pos/commands/linkPaidLine.ts, schema')
     .replace('normalized like pos.getOrder:', 'normalized like convex/pos/orders.ts:getOrder:')
     .replace('and customers.ts for the optional customer link.', 'and convex/pos/customers.ts for the optional customer link.');
@@ -125,13 +126,15 @@ function organize(file, source) {
   for (const node of [...ast(file, source).statements].filter(ts.isImportDeclaration).reverse()) source = source.slice(0, node.getStart()) + node.getText().replace(/\s+/g, ' ') + source.slice(node.end);
   return source.trimEnd() + '\n';
 }
-const helperExports = [...groups].filter(([to]) => ['orderLines', 'lineLinks', 'orderLinks', 'orderLifecycle'].some(name => to === `convex/pos/private/${name}.ts`)).map(([to, entries]) => {
-  const names = entries.filter(({node, exported}) => (exported || node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) && (to !== 'convex/pos/private/orderLifecycle.ts' || nameOf(node) === 'orderPaymentRecord')).map(({node}) => `${ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node) ? 'type ' : ''}${nameOf(node)}`);
-  return `export { ${names.join(', ')} } from '${relative('convex/pos/model.ts', to)}';`;
+// Expose only helpers actually consumed outside POS. Tests use private declarations directly.
+// nextCounter remains needed by the existing cross-domain fixture factory for order numbers.
+const modelHelpers = new Set(['orderLineLinks', 'sourceLineLinks', 'activeSourceLink', 'isOpenOrder', 'isSettledOrder', 'nextCounter', 'insertOrder', 'ensureLinkedOrder', 'orderDeleteBlocker', 'deletePlaceholderOrders', 'assertNotOnOpenOrder', 'orderPaymentRecord']);
+const helperExports = [...groups].flatMap(([to, entries]) => {
+  const names = entries.filter(({node}) => modelHelpers.has(nameOf(node))).map(({node}) => nameOf(node));
+  return names.length ? [`export { ${names.join(', ')} } from '${relative('convex/pos/model.ts', to)}';`] : [];
 }).join('\n');
-// These unused internal command/approval re-exports pull bookings/services back into POS.
-// Every real command consumer already imports private implementations. Retire only this unused surface.
-const modelPrefix = old('convex/pos/model.ts').split('\n').filter(line => !/from '\.\/private\/(?:lineCommands|paymentCorrections|paidLinks|approvalModel|customerModel)'/.test(line)).join('\n').replace("export { type SourceIssue }", "export type { SourceIssue }").replace("export { PAIRING_TTL_MS, type DisplayState, type DisplayDriver } from './private/displayModel';", "export { PAIRING_TTL_MS } from './private/displayModel';\nexport type { DisplayState, DisplayDriver } from '../shared/displayTypes';");
+// Retire all prior unused command/customer/display/type exports; implementations remain private.
+const modelPrefix = '// POS model interface. Implementations stay private; endpoints are never re-exported.\n';
 if (process.argv.includes('--apply')) {
   assert.ok(!process.argv.includes('--check'), 'Choose --apply or read-only --check');
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim(), base, 'Apply only on the exact base');

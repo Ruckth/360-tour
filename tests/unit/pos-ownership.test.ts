@@ -27,7 +27,7 @@ it('owns actual implementations behind named model exports, with no endpoint or 
       declarations.set(entry.name.text, target);
     }
   }
-  for (const [name, module] of Object.entries({ orderLines: 'orderLines', activeSourceLink: 'lineLinks', ensureLinkedOrder: 'orderLinks' })) expect(declarations.get(name)).toBe(`convex/pos/private/${module}.ts`);
+  for (const [name, module] of Object.entries({ orderLineLinks: 'lineLinks', activeSourceLink: 'lineLinks', ensureLinkedOrder: 'orderLinks' })) expect(declarations.get(name)).toBe(`convex/pos/private/${module}.ts`);
   for (const name of ['executeAttach', 'executeVoidOrder', 'executeLinkPaidLine', 'executeAmendOrderPayment', 'executeStaffApproval']) expect(declarations.has(name)).toBe(false);
 
 
