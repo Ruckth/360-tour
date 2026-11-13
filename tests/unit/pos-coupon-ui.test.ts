@@ -215,7 +215,7 @@ describe("a coupon that no longer fits", () => {
     expect(warning.textContent).toContain("DCNT-SPA-500 not applied");
     expect(warning.textContent).toContain("Eligible items come to ฿600. This coupon needs at least ฿1,500.");
     expect(panel().textContent).toContain("Fix or remove the coupon before taking payment.");
-    for (const tender of ["Cash", "PromptPay", "Card", "Transfer", "Split payment"]) expect(button(tender)?.disabled, tender).toBe(true);
+    for (const tender of ["Cash", "PromptPay QR", "Card", "Transfer", "Split payment"]) expect(button(tender)?.disabled, tender).toBe(true);
     expect(panel().querySelector('[data-testid="order-coupon-total"]')).toBeNull();
     expect(due()).toBe("฿1,050");
 

@@ -9,7 +9,7 @@ import type { OrderView } from "./backend";
 
 export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
   cash: { short: "Cash", long: "Cash", hint: "" },
-  promptpay: { short: "PromptPay", long: "PromptPay QR", hint: "Show the shop's PromptPay QR. Confirm only once the transfer shows in the bank app." },
+  promptpay: { short: "PromptPay QR", long: "PromptPay QR", hint: "Show the shop's PromptPay QR. Confirm only once the transfer shows in the bank app." },
   card: { short: "Card", long: "Card", hint: "Charge the amount on the card terminal, then confirm here." },
   transfer: { short: "Transfer", long: "Bank transfer", hint: "Confirm once the transfer has arrived in the account." },
 };

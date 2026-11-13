@@ -8,7 +8,7 @@ import { PDFDocument } from "pdf-lib";
  */
 
 const ENLARGED = "32px";
-const TENDERS = ["Cash", "PromptPay", "Card", "Transfer", "Split payment"];
+const TENDERS = ["Cash", "PromptPay QR", "Card", "Transfer", "Split payment"];
 const PX_PER_MM = 96 / 25.4;
 const PT_PER_MM = 72 / 25.4;
 const EVIDENCE = process.env.CHECKOUT_LAYOUT_EVIDENCE;

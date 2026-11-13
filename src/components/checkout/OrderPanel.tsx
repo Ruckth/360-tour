@@ -257,7 +257,7 @@ export function OrderPanel({
                 {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
                   <Button
                     key={method}
-                    className={cn("h-12 rounded-xl px-1 text-xs sm:text-sm [@media(max-height:32rem)]:h-11", method !== "cash" && "border-border bg-muted/50 hover:bg-muted")}
+                    className={cn("h-auto min-h-12 rounded-xl px-1 text-xs leading-tight whitespace-normal sm:text-sm [@media(max-height:32rem)]:h-11 [@media(max-height:32rem)]:min-h-11", method !== "cash" && "border-border bg-muted/50 hover:bg-muted")}
                     variant={method === "cash" ? "default" : "outline"}
                     disabled={cannotPay}
                     onClick={() => setPaying(method)}
