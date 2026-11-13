@@ -17,7 +17,7 @@ for (const { width, font } of [
     await expect(page.getByRole("alert")).toContainText("Message could not be delivered");
     await expect(page.getByText(/reply window.*(ends|closes)/i)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    for (const name of ["Edit follow-up", "Complete follow-up", "More conversation actions"]) {
+    for (const name of ["Edit follow-up", "Complete follow-up", "No reply needed", "More conversation actions"]) {
       const control = page.getByRole("button", { name, exact: true });
       await control.scrollIntoViewIfNeeded();
       const box = await control.boundingBox();
@@ -29,12 +29,12 @@ for (const { width, font } of [
       await control.click({ trial: true });
     }
     await page.getByRole("button", { name: "More conversation actions" }).click();
-    const menu = page.getByRole("dialog", { name: "Conversation actions" });
+    const menu = page.getByRole("menu", { name: "More conversation actions" });
     await expect(menu).toBeVisible();
     const menuBox = await menu.boundingBox();
     expect(menuBox!.x).toBeGreaterThanOrEqual(0);
     expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(width + 0.5);
-    for (const control of await menu.getByRole("button").all()) {
+    for (const control of await menu.getByRole("menuitem").all()) {
       await control.scrollIntoViewIfNeeded();
       await control.click({ trial: true });
       expect(await control.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
@@ -60,7 +60,7 @@ test("direct task edit can be cancelled; Complete then Add starts empty without 
   await expect(page.getByRole("button", { name: "Edit follow-up", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "More conversation actions" })).toBeFocused();
   await page.getByRole("button", { name: "More conversation actions" }).click();
-  await page.getByRole("button", { name: "Add follow-up", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add follow-up", exact: true }).click();
   await expect(input).toHaveValue("");
   await expect(page.getByRole("button", { name: "Save follow-up" })).toBeDisabled();
   await input.press("Escape");

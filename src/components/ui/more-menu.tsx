@@ -61,7 +61,7 @@ export function MoreMenu({ items, label = "More actions", disabled = false, alig
         <Menu.Positioner className="z-50 outline-none" align={align} sideOffset={6}>
           <Menu.Popup
             aria-label={label}
-            className="max-h-(--available-height) min-w-48 overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl outline-none"
+            className="max-h-(--available-height) min-w-[min(12rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl outline-none"
           >
             {regular.map(renderItem)}
             {regular.length > 0 && destructive.length > 0 ? (

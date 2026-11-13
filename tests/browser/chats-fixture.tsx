@@ -116,7 +116,11 @@ const byId = (id: string) => {
   if (!session) throw new Error("Session not found");
   return session;
 };
-const view = ({ messages: _messages, ...session }: Row): AdminSession => session;
+function view(row: Row): AdminSession {
+  const session: Partial<Row> = { ...row };
+  delete session.messages;
+  return session as AdminSession;
+}
 
 function finishWithoutReply(session: Row) {
   Object.assign(session, {

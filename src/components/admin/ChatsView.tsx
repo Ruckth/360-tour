@@ -248,6 +248,13 @@ export function ChatsView() {
   const settlingRef = useRef(new Set<Id<"chatMessages">>());
   const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"chatMessages">>>(() => new Set());
   const [settleError, setSettleError] = useState<string | null>(null);
+  // Who was just marked No reply needed, confirmed briefly in the list once the next chat opens.
+  const [cleared, setCleared] = useState<string | null>(null);
+  useEffect(() => {
+    if (!cleared) return;
+    const timeout = window.setTimeout(() => setCleared(null), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [cleared]);
   const trimmedSearchQuery = searchQuery.trim();
   const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt, "start");
   const parsedMessageEndAt = dateTimeInputToMillis(messageEndAt, "end");
@@ -435,14 +442,17 @@ export function ChatsView() {
         onStatusChanged={(nextStatus) => {
           // A completed mutation must not replace navigation requested while it was pending.
           if (navigationQueryRef.current !== searchParams.toString()) return;
-          if (nextStatus === "open") updateParams({ ...queueParams("open"), session: selectedSession._id });
-          else if (nextStatus === "resolved") {
-            // Keep the transcript and its completion feedback visible.
-          } else {
-            const index = sessions.findIndex((session) => session._id === selectedSession._id);
-            const next = sessions[index + 1] ?? sessions[index - 1];
-            selectSession(isLargeViewport ? (next?._id ?? null) : null);
+          if (nextStatus === "open") {
+            updateParams({ ...queueParams("open"), session: selectedSession._id });
+            return;
           }
+          const index = sessions.findIndex((session) => session._id === selectedSession._id);
+          const next = sessions[index + 1] ?? sessions[index - 1];
+          if (nextStatus === "resolved") {
+            // No reply needed: the chat is handled, so open the next one at every size.
+            setCleared(visitorLabel(selectedSession));
+            selectSession(next?._id ?? null);
+          } else selectSession(isLargeViewport ? (next?._id ?? null) : null);
         }}
       >
         {({ actions, followUp }) => detail(actions, followUp)}
@@ -590,7 +600,7 @@ export function ChatsView() {
         CHAT_SHORTCUT_KEYS,
       );
       // Open dialogs and popovers own the keyboard.
-      if (!key || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      if (!key || document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
       event.preventDefault();
       onShortcut(key);
     }
@@ -797,6 +807,11 @@ export function ChatsView() {
             </div>
 
             <div id="admin-chat-list" aria-busy={loadingSessions} className="min-h-0 overflow-y-auto px-2 pb-2">
+              {cleared ? (
+                <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
+                  No reply needed · {cleared}
+                </p>
+              ) : null}
               {settleError ? (
                 <p role="alert" className="border-b border-border px-4 py-3 text-sm font-medium text-destructive">
                   {settleError}

@@ -2,18 +2,21 @@
 
 import { api } from "convex/_generated/api";
 import { useMutation } from "convex/react";
-import { Archive, Bot, CheckCircle2, Hand, MoreHorizontal, RotateCcw, Trash2, ListTodo } from "lucide-react";
+import { CheckCheck, CheckCircle2, RotateCcw } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import type { AdminSession, AdminSessionStatus } from "@/components/admin/admin-chat-types";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
 type ActionSlots = { actions: ReactNode; followUp: ReactNode };
 
-/** One controller for the header menu and the existing follow-up's direct actions. */
+/**
+ * One controller for the header actions and the existing follow-up's direct actions. The header
+ * shows the one common action (No reply needed, or Reopen once done); the rest sit in ⋯.
+ */
 export function AdminSessionActions({
   session,
   onDeleted,
@@ -34,10 +37,11 @@ export function AdminSessionActions({
   const [taskOpen, setTaskOpen] = useState(false);
   const [task, setTask] = useState("");
   const [pending, setPending] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
-  const menuTrigger = useRef<HTMLButtonElement>(null);
+  // MoreMenu owns its trigger; this wrapper finds it so focus can return after a follow-up edit.
+  const menuWrapper = useRef<HTMLSpanElement>(null);
+  const menuTrigger = () => menuWrapper.current?.querySelector("button") ?? null;
   const taskTrigger = useRef<HTMLButtonElement | null>(null);
   const status = session.adminStatus ?? "open";
   const sessionId = session._id;
@@ -45,7 +49,6 @@ export function AdminSessionActions({
   async function run(action: () => Promise<unknown>) {
     if (busy.current) return;
     busy.current = true;
-    setMenuOpen(false);
     setPending(true);
     setError(null);
     try {
@@ -58,9 +61,8 @@ export function AdminSessionActions({
     }
   }
 
-  function openTask(trigger: HTMLButtonElement) {
+  function openTask(trigger: HTMLButtonElement | null) {
     taskTrigger.current = trigger;
-    setMenuOpen(false);
     setError(null);
     setTask(session.staffTask ?? "");
     setTaskOpen(true);
@@ -77,7 +79,7 @@ export function AdminSessionActions({
     void run(async () => {
       await setStaffTask({ sessionId, task: null });
       setTask("");
-      requestAnimationFrame(() => menuTrigger.current?.focus());
+      requestAnimationFrame(() => menuTrigger()?.focus());
     });
   }
 
@@ -88,7 +90,6 @@ export function AdminSessionActions({
   }
 
   async function deleteChat() {
-    setMenuOpen(false);
     const confirmed = await confirm({
       title: "Delete this chat?",
       description: "The transcript and its suggestion history are deleted for good. Webhook delivery logs are kept.",
@@ -116,95 +117,45 @@ export function AdminSessionActions({
 
   const actions = (
     <div className="flex flex-wrap items-center justify-end gap-1.5">
-      {status !== "open" ? <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={pending}
-        onClick={() => void run(() => changeStatus("open"))}
-      >
-        <RotateCcw aria-hidden="true" className="size-4" />
-        {session.resolutionSource && session.resolutionSource !== 'manual' ? "Undo" : "Reopen"}
-      </Button> : null}
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            ref={menuTrigger}
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-9 text-muted-foreground"
-            aria-label="More conversation actions"
-            disabled={pending}
-          >
-            <MoreHorizontal aria-hidden="true" className="size-4" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="max-h-[var(--radix-popover-content-available-height)] w-64 max-w-[calc(100vw-2rem)] space-y-1 overflow-y-auto p-1.5" aria-label="Conversation actions">
-          <div role="group" aria-labelledby={`follow-up-actions-${sessionId}`}>
-            <p id={`follow-up-actions-${sessionId}`} className="px-3 py-1.5 text-xs font-medium text-muted-foreground">Follow-up</p>
-            <Button type="button" variant="ghost" className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left" disabled={pending}
-              onClick={event => openTask(event.currentTarget)}>
-              <ListTodo className="size-4" aria-hidden="true" />{session.staffTask ? 'Edit follow-up' : 'Add follow-up'}
-            </Button>
-            {session.staffTask ? <Button type="button" variant="ghost" className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left" disabled={pending}
-              onClick={completeTask}>
-              <CheckCircle2 className="size-4" aria-hidden="true" />Complete follow-up
-            </Button> : null}
-          </div>
-          <div role="group" aria-labelledby={`conversation-actions-${sessionId}`} className="border-t border-border pt-1">
-            <p id={`conversation-actions-${sessionId}`} className="px-3 py-1.5 text-xs font-medium text-muted-foreground">This conversation</p>
-          {status === 'open' ? <Button type="button" variant="ghost" className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left" disabled={pending}
-            onClick={() => void run(() => changeStatus('resolved'))}>
-            <CheckCircle2 className="size-4" aria-hidden="true" />No reply needed
-          </Button> : null}
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left text-sm"
-            disabled={pending}
-            onClick={() => void run(() => setAiPaused({ sessionId, paused: !session.aiPaused }))}
-          >
-            {session.aiPaused ? (
-              <Bot className="size-4" aria-hidden="true" />
-            ) : (
-              <Hand className="size-4" aria-hidden="true" />
-            )}
-            {session.aiPaused ? "Resume AI" : "Take over from AI"}
-          </Button>
-          {status === "archived" ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left text-destructive"
-              disabled={pending}
-              onClick={() => void deleteChat()}
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
-              Delete conversation
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left"
-              disabled={pending}
-              onClick={() => void run(() => changeStatus("archived"))}
-            >
-              <Archive className="size-4" aria-hidden="true" />
-              Archive conversation
-            </Button>
-          )}
-          </div>
-          <div role="group" aria-labelledby={`next-issue-actions-${sessionId}`} className="border-t border-border pt-1">
-            <p id={`next-issue-actions-${sessionId}`} className="px-3 py-1.5 text-xs font-medium text-muted-foreground">Next issue</p>
-            <Button type="button" variant="ghost" className="h-auto min-h-9 w-full justify-start whitespace-normal py-2 text-left" disabled={pending}
-              onClick={() => void run(() => setKeepWithStaff({ sessionId, keep: !session.keepWithStaff }))}>
-              <Hand className="size-4" aria-hidden="true" />{session.keepWithStaff ? 'Let AI handle the next issue' : 'Keep with staff'}
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
+      {status === "open" ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          title="No reply needed (e)"
+          onClick={() => void run(() => changeStatus("resolved"))}
+        >
+          <CheckCheck aria-hidden="true" className="size-4" />
+          No reply needed
+        </Button>
+      ) : (
+        <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run(() => changeStatus("open"))}>
+          <RotateCcw aria-hidden="true" className="size-4" />
+          {session.resolutionSource && session.resolutionSource !== "manual" ? "Undo" : "Reopen"}
+        </Button>
+      )}
+      <span ref={menuWrapper} className="contents">
+        <MoreMenu
+          label="More conversation actions"
+          disabled={pending}
+          className="size-9 text-muted-foreground"
+          items={[
+            { label: session.staffTask ? "Edit follow-up" : "Add follow-up", onSelect: () => openTask(null) },
+            { label: "Complete follow-up", hidden: !session.staffTask, onSelect: completeTask },
+            {
+              label: session.aiPaused ? "Resume AI" : "Take over from AI",
+              onSelect: () => void run(() => setAiPaused({ sessionId, paused: !session.aiPaused })),
+            },
+            {
+              label: session.keepWithStaff ? "Let AI handle the next issue" : "Keep the next issue with staff",
+              onSelect: () => void run(() => setKeepWithStaff({ sessionId, keep: !session.keepWithStaff })),
+            },
+            { label: "Archive conversation", hidden: status === "archived", onSelect: () => void run(() => changeStatus("archived")) },
+            { label: "Delete conversation", hidden: status !== "archived", destructive: true, onSelect: () => void deleteChat() },
+          ]}
+        />
+      </span>
       {error && !taskOpen ? (
         <p role="alert" className="basis-full text-right text-xs text-destructive">
           {error}
@@ -217,10 +168,10 @@ export function AdminSessionActions({
       {children ? children({ actions, followUp }) : actions}
       <Dialog open={taskOpen} onOpenChange={open => !open && closeTask()}>
         <DialogContent className="sm:max-w-md" showCloseButton={!pending} onCloseAutoFocus={event => {
-          const trigger = taskTrigger.current?.isConnected ? taskTrigger.current : menuTrigger.current;
+          const trigger = taskTrigger.current?.isConnected ? taskTrigger.current : menuTrigger();
           if (trigger?.isConnected) { event.preventDefault(); trigger.focus(); }
         }}>
-          <DialogHeader><DialogTitle>Staff follow-up</DialogTitle><DialogDescription>The chat stays In progress until this task is completed and the guest has an answer.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Staff follow-up</DialogTitle><DialogDescription>The chat stays In progress until this is done and the guest has an answer.</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={(event) => {
             event.preventDefault();
             const value = task.trim();

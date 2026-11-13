@@ -38,8 +38,18 @@ const button = (text: string) => {
 };
 const byLabel = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 const click = (el: HTMLElement) => act(async () => el.click());
+// The ⋯ menu (base-ui) opens on a full pointer sequence, not a bare click().
+const press = (el: Element) => act(async () => {
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) el.dispatchEvent(new MouseEvent(type, { bubbles: true }));
+});
+const menuItems = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 const settleFocus = () => act(async () => new Promise(resolve => setTimeout(resolve, 20)));
-async function menu(label: string) { await click(byLabel("More conversation actions")); await click(button(label)); }
+async function menu(label: string) {
+  await press(byLabel("More conversation actions"));
+  const item = menuItems().find(el => el.textContent?.trim() === label);
+  expect(item, label).toBeDefined();
+  await press(item!);
+}
 const input = () => document.getElementById("follow-up-session-a") as HTMLInputElement;
 async function type(value: string) {
   await act(async () => {
@@ -126,10 +136,12 @@ it("retains a failed edit for retry, blocks closing and double submission while 
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
-it("groups independent actions and retains the exact latest guest-message guard", async () => {
-  await render(); await click(byLabel("More conversation actions"));
-  const groups = [...document.querySelectorAll('[aria-label="Conversation actions"] [role=group]')];
-  expect(groups.map(el => document.getElementById(el.getAttribute("aria-labelledby")!)?.textContent)).toEqual(["Follow-up", "This conversation", "Next issue"]);
+it("shows No reply needed in the header, rare actions in ⋯, and retains the exact latest guest-message guard", async () => {
+  await render(); await press(byLabel("More conversation actions"));
+  expect(menuItems().map(el => el.textContent)).toEqual([
+    "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Archive conversation",
+  ]);
+  await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await click(button("No reply needed"));
   expect(mocks.mutation).toHaveBeenLastCalledWith("adminChat:setSessionStatus", { sessionId: "session-a", status: "resolved", expectedGuestMessageId: "message-a" });
   expect(statusChanged).toHaveBeenCalledWith("resolved");
