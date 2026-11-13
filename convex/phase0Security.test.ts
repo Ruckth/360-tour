@@ -146,6 +146,18 @@ it('retires the public booking-flow and AI-pause server bridges', async () => {
  }
 });
 
+it('retires the former root messaging endpoints', async () => {
+	const t = createHarness(convexTest);
+	for (const path of ['chat:getMessages', 'adminChat:getSessionDetail', 'chatSuggestions:nextForSession', 'leads:list']) {
+		await expect(t.query(makeFunctionReference<'query'>(path), {})).rejects.toThrow('Could not find module for:');
+	}
+	for (const path of ['adminReply:claim', 'inboxLifecycle:expireAnswer', 'chatAi:consumeChatLimit', 'chatKnowledge:alertStaffForHandoff']) {
+		await expect(t.mutation(makeFunctionReference<'mutation'>(path), {})).rejects.toThrow('Could not find module for:');
+	}
+	await expect(t.action(makeFunctionReference<'action'>('emails:sendStaffAlert'), {})).rejects.toThrow('there is no such export');
+	await expect(t.mutation(makeFunctionReference<'mutation'>('crons:cleanRateLimits'), {})).rejects.toThrow('there is no such export');
+});
+
 
 it('bounds suggestion tracking to known keys and five items per call', async () => {
 	const t = createHarness(convexTest);
