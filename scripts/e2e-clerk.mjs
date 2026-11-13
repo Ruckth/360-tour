@@ -21,15 +21,28 @@ export async function testUsers(env) {
     .replace(/\$$/, "");
   if (new URL(env.CLERK_JWT_ISSUER_DOMAIN).host !== host)
     throw new Error("Clerk test issuer and publishable key must match");
-  const discovery = await fetch(new URL('/.well-known/openid-configuration', env.CLERK_JWT_ISSUER_DOMAIN));
-  if (!discovery.ok || (await discovery.json()).issuer.replace(/\/$/, '') !== env.CLERK_JWT_ISSUER_DOMAIN.replace(/\/$/, ''))
-    throw new Error('Clerk test issuer must be active and match OIDC discovery');
+  const discovery = await fetch(
+    new URL("/.well-known/openid-configuration", env.CLERK_JWT_ISSUER_DOMAIN),
+  );
+  if (
+    !discovery.ok ||
+    (await discovery.json()).issuer.replace(/\/$/, "") !==
+      env.CLERK_JWT_ISSUER_DOMAIN.replace(/\/$/, "")
+  )
+    throw new Error(
+      "Clerk test issuer must be active and match OIDC discovery",
+    );
   const clerk = createClerkClient({
     secretKey: env.CLERK_SECRET_KEY,
     publishableKey: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   });
   const templates = await clerk.jwtTemplates.list();
-  if (!templates.data.some((template) => template.name === "convex" && template.claims.aud === "convex"))
+  if (
+    !templates.data.some(
+      (template) =>
+        template.name === "convex" && template.claims.aud === "convex",
+    )
+  )
     throw new Error(
       "Test tenant requires its convex JWT template (audience convex)",
     );
@@ -53,13 +66,26 @@ export async function testUsers(env) {
   }
   const existingSessions = new Set();
   for (const user of Object.values(users)) {
-    const sessions = await clerk.sessions.getSessionList({ userId: user.id, status: 'active', limit: 100 });
+    const sessions = await clerk.sessions.getSessionList({
+      userId: user.id,
+      status: "active",
+      limit: 100,
+    });
     for (const session of sessions.data) existingSessions.add(session.id);
   }
-  return { users, async cleanupSessions() {
-    for (const user of Object.values(users)) {
-      const sessions = await clerk.sessions.getSessionList({ userId: user.id, status: 'active', limit: 100 });
-      for (const session of sessions.data) if (!existingSessions.has(session.id)) await clerk.sessions.revokeSession(session.id);
-    }
-  } };
+  return {
+    users,
+    async cleanupSessions() {
+      for (const user of Object.values(users)) {
+        const sessions = await clerk.sessions.getSessionList({
+          userId: user.id,
+          status: "active",
+          limit: 100,
+        });
+        for (const session of sessions.data)
+          if (!existingSessions.has(session.id))
+            await clerk.sessions.revokeSession(session.id);
+      }
+    },
+  };
 }

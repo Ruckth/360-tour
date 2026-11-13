@@ -120,7 +120,7 @@ function LiveBookingFunnel({
 
   const [step, setStep] = useState<BookingStep>("select");
   const propertyList = useMemo(() => rows.map(row => localizePropertyLike({ ...row, id: row.slug, source: "live" as const }, messages, locale)), [rows, messages, locale]);
-  const [selectedId, setSelectedId] = useState(initialProperty);
+  const [selectedId, setSelectedId] = useState(() => rows.some(row => row.slug === initialProperty) ? initialProperty : rows[0].slug);
   const [checkIn, setCheckIn] = useState(initialCheckIn);
   const [checkOut, setCheckOut] = useState(derivedInitialCheckOut);
   const [adults, setAdults] = useState(startingAdults);
@@ -419,7 +419,7 @@ function LiveBookingFunnel({
             <div className="space-y-5">
               <VillaSelector
                 properties={propertyList}
-                selectedId={selectedId}
+                selectedId={property.slug}
                 availablePropertyIds={availablePropertyIds}
                 onSelect={selectProperty}
               />

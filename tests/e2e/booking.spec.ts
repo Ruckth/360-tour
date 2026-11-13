@@ -1,4 +1,6 @@
 import { expect, test } from "./fixtures";
+import { localBackend } from "./backend";
+import { api } from "../../convex/_generated/api";
 
 
 function isoDaysFromNow(days: number) {
@@ -55,6 +57,14 @@ test("booking dates open as a unified start/end range picker", async ({ page }) 
   await expect(page.getByTestId("booking-range-checkIn")).toBeVisible();
   await expect(page.getByTestId("booking-range-checkOut")).toBeVisible();
   await expect(page.getByTestId("booking-range-checkOut")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a retired villa URL selects actual backend inventory", async ({ page }) => {
+  // A retired URL slug selects actual available inventory, with no bundled/default villa.
+  const inventory = await localBackend().query(api.catalog.properties.list, {});
+  expect(inventory.length).toBeGreaterThan(0);
+  await page.goto('/booking?unit=retired-villa');
+  await expect(page.getByRole('button', { pressed: true }).filter({ hasText: inventory[0].name })).toBeVisible();
 });
 
 test("thai booking calendar localizes the month header", async ({ page }) => {

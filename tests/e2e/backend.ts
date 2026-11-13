@@ -75,11 +75,18 @@ export async function seedTranscript(
   } finally {
     try {
       if (clerkSessionId) {
-        if (!process.env.CLERK_SECRET_KEY?.startsWith('sk_test_')) throw new Error('Only test-tenant session cleanup is permitted');
-        const { createClerkClient } = createRequire(import.meta.url)('@clerk/nextjs/server') as typeof import('@clerk/nextjs/server');
-        await createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY }).sessions.revokeSession(clerkSessionId);
+        if (!process.env.CLERK_SECRET_KEY?.startsWith("sk_test_"))
+          throw new Error("Only test-tenant session cleanup is permitted");
+        const { createClerkClient } = createRequire(import.meta.url)(
+          "@clerk/nextjs/server",
+        ) as typeof import("@clerk/nextjs/server");
+        await createClerkClient({
+          secretKey: process.env.CLERK_SECRET_KEY,
+        }).sessions.revokeSession(clerkSessionId);
       }
-    } finally { await ownerContext.close(); }
+    } finally {
+      await ownerContext.close();
+    }
   }
 }
 export async function serverTranscript(page: Page) {

@@ -47,3 +47,64 @@ export function requireLocalBackend(value) {
     );
   return value;
 }
+
+/**
+ * Buffer complete lines so credentials split between process chunks cannot escape redaction.
+ * @param {(text: string) => void} write
+ * @param {(string | undefined)[]} privateValues
+ */
+export function createPrivateOutput(write, privateValues = []) {
+  let pending = "";
+  /** @param {string} value */
+  function redact(value) {
+    for (const secret of privateValues)
+      if (secret)
+        value = value
+          .replaceAll(secret, "[redacted]")
+          .replaceAll(encodeURIComponent(secret), "[redacted]");
+    return value
+      .replace(
+        /([?&](?:__clerk_db_jwt|__clerk_ticket|__clerk_testing_token|token|guestToken|accessToken)=)[^&\s)]*/gi,
+        "$1[redacted]",
+      )
+      .replace(
+        /\b(?:sk|pk)_(?:test|live)_[A-Za-z0-9_+/=-]+/g,
+        "[redacted Clerk key]",
+      )
+      .replace(
+        /\b(?:sess|user|client|dvb)_[A-Za-z0-9]+/g,
+        "[redacted Clerk identifier]",
+      )
+      .replace(
+        /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
+        "[redacted JWT]",
+      )
+      .replace(/((?:--instance-secret|--admin-key)(?:\s+|=))\S+/g, "$1[redacted]")
+      .replace(/(CONVEX_(?:SELF_HOSTED_ADMIN_KEY|DEPLOY_KEY|SERVER_SECRET)\s*=\s*)\S+/g, "$1[redacted]")
+      .replace(
+        /(\b(?:cookie|authorization|set-cookie|guestToken|accessToken|adminKey|instanceSecret)["']?\s*[:=]\s*["'])[^"']+/gi,
+        "$1[redacted]",
+      )
+      .replace(
+        /(^|\n)(\s*(?:cookie|authorization|set-cookie)\s*:)[^\n]*/gi,
+        "$1$2 [redacted]",
+      )
+      .replace(
+        /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+        "[redacted email]",
+      );
+  }
+  return {
+    /** @param {string} chunk */
+    write(chunk) {
+      pending += chunk;
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) write(redact(line) + "\n");
+    },
+    end() {
+      if (pending) write(redact(pending));
+      pending = "";
+    },
+  };
+}

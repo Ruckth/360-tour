@@ -31,6 +31,7 @@ export function VillaSelector({
       <button
         key={item.slug}
         type="button"
+        aria-pressed={selected}
         onClick={() => onSelect(item)}
         disabled={unavailable}
         className={cn(

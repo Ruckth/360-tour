@@ -12,6 +12,7 @@ import { testUsers } from "./e2e-clerk.mjs";
 import {
   disabledServices,
   requireLocalBackend,
+  createPrivateOutput,
 } from "./local-integration-config.mjs";
 
 process.umask(0o077); // Local deployment credentials and authenticated test artifacts stay private.
@@ -31,7 +32,28 @@ try {
 } catch (error) {
   if (error.code !== "ENOENT") throw error;
 }
-const { users, cleanupSessions } = await testUsers(supplied);
+const privateValues = () => [
+  supplied.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  supplied.CLERK_SECRET_KEY,
+  supplied.CLERK_JWT_ISSUER_DOMAIN,
+  ...["owner", "cashier", "nonstaff"].map(
+    (role) => `architecture-e2e-${role}+clerk_test@example.com`,
+  ),
+];
+function privateError(error) {
+  let message = "";
+  const output = createPrivateOutput((line) => {
+    message += line;
+  }, privateValues());
+  output.write(
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
+  );
+  output.end();
+  return new Error(message);
+}
+const { users, cleanupSessions } = await testUsers(supplied).catch((error) => {
+  throw privateError(error);
+});
 await fs.mkdir(path.join(root, "output"), { recursive: true, mode: 0o700 });
 const work = await fs.mkdtemp(path.join(root, "output", "local-e2e-"));
 await fs.chmod(work, 0o700);
@@ -71,7 +93,18 @@ const env = {
   PATH: supplied.PATH,
   HOME: home,
   LANG: "en_US.UTF-8",
-  PLAYWRIGHT_BROWSERS_PATH: supplied.PLAYWRIGHT_BROWSERS_PATH ?? path.join(supplied.XDG_CACHE_HOME ?? path.join(homedir(), ...(process.platform === 'darwin' ? ['Library', 'Caches'] : ['.cache'])), 'ms-playwright'),
+  PLAYWRIGHT_BROWSERS_PATH:
+    supplied.PLAYWRIGHT_BROWSERS_PATH ??
+    path.join(
+      supplied.XDG_CACHE_HOME ??
+        path.join(
+          homedir(),
+          ...(process.platform === "darwin"
+            ? ["Library", "Caches"]
+            : [".cache"]),
+        ),
+      "ms-playwright",
+    ),
   CI: supplied.CI ?? "",
   CONVEX_AGENT_MODE: "anonymous",
   CONVEX_TELEMETRY_DISABLED: "1",
@@ -97,13 +130,27 @@ async function launch(command, args, cwd = root, childEnv = env, log) {
   const child = spawn(command, args, {
     cwd,
     env: childEnv,
-    stdio: fd ? ["ignore", fd.fd, fd.fd] : "inherit",
+    stdio: fd ? ["ignore", fd.fd, fd.fd] : ["ignore", "pipe", "pipe"],
     detached: process.platform !== "win32",
   });
   child.done = new Promise((resolve, reject) => {
     child.on("error", reject);
-    child.on("exit", (code) => resolve(code));
+    child.on("close", (code) => resolve(code));
   });
+  if (!fd) {
+    for (const [stream, destination] of [
+      [child.stdout, process.stdout],
+      [child.stderr, process.stderr],
+    ]) {
+      const output = createPrivateOutput(
+        (line) => destination.write(line),
+        privateValues(),
+      );
+      stream.setEncoding("utf8");
+      stream.on("data", output.write);
+      stream.on("end", output.end);
+    }
+  }
   if (fd) await fd.close();
   children.push(child);
   return child;
@@ -122,7 +169,7 @@ async function until(fn, label, ms = 180000) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 async function stop() {
-  for (const child of children.reverse()) {
+  for (const child of [...children].reverse()) {
     if (child.exitCode !== null || child.signalCode !== null) continue;
     try {
       process.kill(-child.pid, "SIGTERM");
@@ -137,9 +184,18 @@ async function stop() {
     }
   }
 }
+let cleanup;
+function finalize() {
+  return (cleanup ??= (async () => {
+    await stop();
+    await cleanupSessions().catch((error) => {
+      throw privateError(error);
+    });
+  })());
+}
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
-    void stop().finally(() => process.exit(1));
+    void finalize().finally(() => process.exit(1));
   });
 try {
   await launch(
@@ -273,6 +329,5 @@ try {
       : process.argv.slice(separator + 1);
   await run(command[0], command.slice(1));
 } finally {
-  await stop();
-  await cleanupSessions();
+  await finalize();
 }
