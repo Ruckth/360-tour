@@ -14,12 +14,14 @@ const queries = vi.hoisted(() => ({ getForAdmin: vi.fn(), findGuests: vi.fn(), q
 const client = vi.hoisted(() => ({ watchQuery: () => ({ localQueryResult: () => [], onUpdate: () => () => undefined }) }));
 vi.mock("convex/react", () => ({
   useMutation: (ref: FunctionReference<"mutation">) => {
+    if (getFunctionName(ref) === "marketing/report:noteCouponRefusal") return async () => null;
     const name = getFunctionName(ref).split(":").pop() as keyof typeof mutations;
     if (!mutations[name]) throw new Error(`Unexpected mutation ${name}`);
     return mutations[name];
   },
   useQuery: (ref: FunctionReference<"query">, args: unknown) => {
     if (args === "skip") return undefined;
+    if (getFunctionName(ref) === "marketing/report:noteCouponRefusal") return async () => null;
     const name = getFunctionName(ref).split(":").pop() as keyof typeof queries;
     return queries[name]?.(args);
   },
@@ -39,8 +41,8 @@ vi.mock("@/components/reui/phone-input", () => ({
 }));
 
 const NOW = Date.parse("2026-10-28T03:00:00Z");
-const villa = { _id: "p1", slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 1000000, directDiscountPercent: 0, currency: "THB" };
-const oldVilla = { ...villa, _id: "p2", slug: "old-villa", name: "Old Villa", status: "archived" };
+const villa: import("@/components/admin/admin-bookings-shared").AdminProperty = { _id: "p1" as import("convex/_generated/dataModel").Id<"properties">, slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 1000000, directDiscountPercent: 0, currency: "THB" };
+const oldVilla: import("@/components/admin/admin-bookings-shared").AdminProperty = { ...villa, _id: "p2" as import("convex/_generated/dataModel").Id<"properties">, slug: "old-villa", name: "Old Villa", status: "archived" };
 
 const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
 let root: Root;
@@ -84,7 +86,7 @@ async function fillGuest() {
 
 describe("new booking", () => {
   const props = (prefill: { propertyId?: string; checkIn: string; checkOut: string }, onCreated = vi.fn()) => ({
-    properties: [villa, oldVilla] as never, prefill, onClose: vi.fn(), onCreated, onBlockInstead: vi.fn(),
+    properties: [villa, oldVilla], prefill, onClose: vi.fn(), onCreated, onBlockInstead: vi.fn(),
   });
 
   it("does not email the guest about a past stay unless staff tick it, and sends the choice explicitly", async () => {
@@ -179,7 +181,7 @@ describe("moving a booking on the calendar", () => {
   const move = { booking, propertyId: "p1", checkIn: "2026-11-21", checkOut: "2026-11-24" } as unknown as Move;
   const detail = (overrides: Record<string, unknown> = {}) => ({ ...booking, revision: 4, priceOverride: null, guestEmailsOff: false, ...overrides });
   const props = (overrides: Partial<ComponentProps<typeof MoveBookingDialog>> = {}) => ({
-    move, properties: [villa] as never, onClose: vi.fn(), onMoved: vi.fn(), onOpenBooking: vi.fn(), ...overrides,
+    move, properties: [villa], onClose: vi.fn(), onMoved: vi.fn(), onOpenBooking: vi.fn(), ...overrides,
   });
 
   it("sends the revision captured at the drop and an explicit email choice, with pending and retry", async () => {

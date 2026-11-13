@@ -1,9 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import { expect, test, type Page } from "./fixtures";
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
 
 async function pickFirstAvailableRange(page: Page) {
   const form = page.getByTestId("home-quick-booking-form");

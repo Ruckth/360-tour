@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
+import { act } from '../support/checkout-act';
 // Checks customer recovery and writes across order switches.
-import { act, createElement, useState, type ComponentProps } from 'react';
+import { createElement, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId, type OrderId } from '@/components/checkout/backend';
 import { CheckoutView } from '@/components/checkout/CheckoutView';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 
 let root: Root;
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === text)!;
@@ -26,7 +27,7 @@ function NavigableCheckout({ backend, initialOrder }: { backend: CheckoutBackend
   return createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { orderId, onOrderChange: (id) => { changes(id); setOrderId(id); }, onPaid: () => {} }));
 }
 async function setup() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const one = actions.addItem({ item: { kind: 'extra', name: 'First sale', price: 10000 } });
   await settle();

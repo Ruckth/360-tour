@@ -14,7 +14,7 @@ import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "./checkout-transport";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import en from "../../messages/en.json";
@@ -74,7 +74,7 @@ const useAccess = () => useSyncExternalStore((fn) => { accessListeners.add(fn); 
 const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent: Number(params.get("serverLimit")) * 100 } : rules;
 // Refund receipts are rung up by the owner, then handed to whoever the page is for.
 const refundScenario = scenario.startsWith("refund");
-const backend = createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
+const backend = await createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
 
 async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boolean }> {
@@ -97,13 +97,13 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
     }
     await actions.settleOrder({ orderId: massage.orderId, expectedRevision: params.get("attached") === "1" ? 3 : 2, expectedDue: due, idempotencyKey: "browser-refund-paid", tenders: [{ method: "card", amount: due }] });
     if (scenario === "refund-pending") {
-      backend.setStaff({ role: "cashier", email: EMAILS.cashier, rules: serverRules });
+      await backend.setStaff({ role: "cashier", email: EMAILS.cashier, rules: serverRules });
       await backend.seedApproval({
         orderId: massage.orderId, requesterEmail: EMAILS.cashier, reason: "Shortened treatment",
         payload: { kind: "refund", lineId: massage.lineId, amountSatang: 30000, currency: "THB", method: "card", idempotencyKey: "browser-refund-request", reason: "Shortened treatment" },
       });
     }
-    backend.setStaff({ role, email: EMAILS[role], rules: serverRules });
+    await backend.setStaff({ role, email: EMAILS[role], rules: serverRules });
     return { orderId: massage.orderId, receipt: true };
   }
   if (scenario === "discounted") {
@@ -157,6 +157,7 @@ declare global {
     fixture: {
       setRole: (next: typeof role) => void;
       refundAttempts: () => ReturnType<typeof backend.refundAttempts>;
+      recordedRefunds: () => ReturnType<typeof backend.recordedRefunds>;
       loseNextRefundResponse: () => void;
       lineId: (name: string) => string | undefined;
       refundFromAnotherTill: (lineName: string, satang: number) => void;
@@ -164,12 +165,13 @@ declare global {
   }
 }
 window.fixture = {
-  setRole: (next) => {
-    backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
+  setRole: async (next) => {
+    await backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
     access = accessFor(next);
     accessListeners.forEach((fn) => fn());
   },
   refundAttempts: () => backend.refundAttempts(),
+  recordedRefunds: () => backend.recordedRefunds(),
   loseNextRefundResponse: () => backend.loseNextRefundResponse(),
   lineId: (name) => document.querySelector<HTMLElement>(`[data-refund-trigger][aria-label="Refund ${name}"]`)?.dataset.refundTrigger,
   refundFromAnotherTill: (lineName, satang) => backend.refundFromAnotherTill(lineName, satang),

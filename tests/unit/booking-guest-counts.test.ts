@@ -11,7 +11,11 @@ const fixture = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
 vi.mock("next-intl", () => ({ useLocale: () => "en", useTranslations: () => (key: string) => key }));
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => null }));
+vi.mock('convex/react', () => ({
+  useConvex: () => ({ query: async () => [], mutation: async () => null }),
+  useMutation: () => async () => null,
+  useQuery: () => [{ _id: 'p1', slug: 'garden-suite', name: 'Garden suite', tagline: '', description: '', pricePerNight: 500000, maxGuests: 8, bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: [], tourRoomIds: [], currency: 'THB', directDiscountPercent: 1500 }],
+}));
 vi.mock("@/lib/i18n/use-public-messages", async () => {
   const { getPublicMessages } = await import("@/lib/i18n/messages-loader");
   const messages = getPublicMessages("en");

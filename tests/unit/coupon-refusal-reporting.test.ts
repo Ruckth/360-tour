@@ -8,6 +8,8 @@ import { createCouponRefusalReporter, couponRefusalDetails } from "@/lib/booking
 import { useCouponPreview } from "@/components/booking/useCouponPreview";
 import type { OfferResult } from "convex/shared/offers";
 
+const transport = vi.hoisted(() => { const mutation = vi.fn(); return { mutation, send: (args: unknown) => mutation('marketing/report:noteCouponRefusal', args) }; });
+vi.mock('convex/react', () => ({ useMutation: () => transport.send }));
 let root: Root;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.useFakeTimers(); root = createRoot(document.createElement("div")); });
 afterEach(async () => { await act(async () => root.unmount()); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -36,7 +38,7 @@ it("extracts known engine and settlement refusals without reporting unrelated fa
 
 it.each(["invalid", "coupon_worse"] as const)("reports the guest's %s preview once while retries stay usable", async couponStatus => {
   const result: OfferResult = { applied: "direct", couponStatus, ...(couponStatus === "invalid" ? { problem: { code: "sold_out" as const } } : {}), subtotal: 100000, discount: 10000, directDiscount: 10000, couponDiscount: 5000, capped: false, total: 90000, allocation: [] };
-  const mutation = vi.fn().mockRejectedValue(new Error("diagnostics offline"));
+  const mutation = transport.mutation.mockReset().mockRejectedValue(new Error("diagnostics offline"));
   const client = { query: vi.fn().mockResolvedValue(result), mutation } as unknown as ConvexReactClient;
   let latest: ReturnType<typeof useCouponPreview>;
   function Preview() { latest = useCouponPreview(client, "SPA100", { propertySlug: "villa", checkIn: "2026-11-15", checkOut: "2026-11-16" }); return null; }

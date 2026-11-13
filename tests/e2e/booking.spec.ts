@@ -1,9 +1,5 @@
-import { expect, test } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import { expect, test } from "./fixtures";
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
 
 function isoDaysFromNow(days: number) {
   const date = new Date();
@@ -15,12 +11,11 @@ function isoDaysFromNow(days: number) {
   ].join("-");
 }
 
-test("@smoke booking flow validates steps and reaches demo payment", async ({ page }) => {
+test("@smoke booking flow validates steps and persists the booking and reaches payment", async ({ page }) => {
   const checkIn = isoDaysFromNow(45);
   await page.goto(`/booking?checkin=${checkIn}&nights=2&adults=2&children=0&unit=garden-suite`);
 
   await expect(page.getByRole("heading", { name: "Reserve your villa" })).toBeVisible();
-  await expect(page.getByText(/Demo booking mode/i)).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "Guests" })).toBeVisible();
@@ -39,8 +34,8 @@ test("@smoke booking flow validates steps and reaches demo payment", async ({ pa
   await expect(page.getByText(/Mossbell Garden Suite, 2 guests, 2 nights/i)).toHaveCount(0);
   await page.getByRole("button", { name: "Continue to Pay" }).click();
 
-  await expect(page).toHaveURL(/\/booking\/pay\?bookingId=demo/);
-  await expect(page.getByRole("heading", { name: "Confirm demo payment" })).toBeVisible();
+  await expect(page).toHaveURL(/\/booking\/pay\?bookingId=[a-z0-9]+&token=/);
+  await expect(page.getByRole("heading", { name: "Confirm payment" })).toBeVisible();
 });
 
 test("booking dates open as a unified start/end range picker", async ({ page }) => {
@@ -71,17 +66,10 @@ test("thai booking calendar localizes the month header", async ({ page }) => {
   await expect(page.getByText("May 2026")).toHaveCount(0);
 });
 
-test("payment and success pages guard live links and allow demo confirmation", async ({ page }) => {
-  await page.goto("/booking/pay?bookingId=live-without-token");
-  await expect(page.getByText(/Live booking verification is unavailable/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pay" })).toBeDisabled();
-
-  await page.goto("/booking/pay?bookingId=demo");
-  await page.getByRole("button", { name: "Confirm Demo Payment" }).click();
-  await expect(page).toHaveURL(/\/booking\/success\?bookingId=demo/);
-  await expect(page.getByRole("heading", { name: "Booking confirmed" })).toBeVisible();
-
-  await page.goto("/booking/success?bookingId=live-without-token");
-  await expect(page.getByText(/Live booking verification is unavailable/i)).toBeVisible();
+test("payment and success pages refuse missing access credentials", async ({ page }) => {
+  await page.goto("/booking/pay?bookingId=invalid-without-token");
+  await expect(page.getByRole("button", { name: "Pay", exact: true })).toBeDisabled();
+  await expect(page.getByText(/access token|secure link/i)).toBeVisible();
+  await page.goto("/booking/success?bookingId=invalid-without-token");
   await expect(page.getByRole("heading", { name: "Booking not confirmed" })).toBeVisible();
 });

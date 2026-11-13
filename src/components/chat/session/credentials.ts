@@ -1,8 +1,9 @@
+import type { Id } from 'convex/_generated/dataModel';
 export const VISITOR_ID_STORAGE_KEY = "sv_chat_visitor_id";
 export const SESSION_ID_STORAGE_KEY = "sv_chat_session_id";
 export function getStoredSessionId() {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(SESSION_ID_STORAGE_KEY);
+  return window.localStorage.getItem(SESSION_ID_STORAGE_KEY) as Id<"conversations"> | null;
 }
 
 /** Credentials are scoped to the session, so a stale request cannot use a newer token. */

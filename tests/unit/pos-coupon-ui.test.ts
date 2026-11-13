@@ -1,20 +1,21 @@
 // @vitest-environment happy-dom
+import { act, gateResponse } from '../support/checkout-act';
 import type { Id } from "convex/_generated/dataModel";
 import type { DisplayOrderState } from 'convex/shared/displayTypes';
 import { NextIntlClientProvider } from "next-intl";
-import { act, createElement, useState, type ComponentProps, type ReactNode } from "react";
+import { createElement, useState, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "../../messages/display/en.json";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { receiptText } from "@/components/checkout/checkout-ui";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { HistoryValues } from "@/components/checkout/OrderHistory";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { Screen } from "@/components/display/DisplayScreens";
 
-type Fixture = ReturnType<typeof createFixtureBackend>;
+type Fixture = Awaited<ReturnType<typeof createFixtureBackend>>;
 let root: Root;
 
 function Page({ start }: { start: OrderId | null }) {
@@ -85,7 +86,7 @@ afterEach(async () => {
 
 describe("adding a coupon at checkout", () => {
   it("puts focus back on Add coupon after cancelling", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     await click(button(/^Add coupon/));
@@ -97,7 +98,7 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("applies a typed code, splits it over the spa rows and shows it apart from staff discounts", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     expect(due()).toBe("฿2,250");
@@ -133,7 +134,7 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("takes a pasted or scanned offer link and refuses other sites' links before any lookup", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     const apply = vi.spyOn(backend.useActions(), "applyOrderCoupon");
@@ -157,7 +158,7 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("explains a code that can't be used on this order", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const report = vi.spyOn(backend.useActions(), "noteCouponRefusal");
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
@@ -181,21 +182,24 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("waits for order edits still saving before the field can be used", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     await click(button(/^Add coupon/));
     await act(async () => type(field(), "DCNT-SPA-500"));
     // Another tap on the catalog: its write is in flight.
+    const pending = gateResponse(backend.useActions().addItem);
+    vi.spyOn(backend.useActions(), 'addItem').mockImplementationOnce(pending.write);
     await click([...document.querySelectorAll("button")].find((el) => /^Hot stone 60/.test(el.getAttribute("aria-label") ?? el.textContent ?? "")));
     expect(field().disabled).toBe(true);
     expect(button("Apply")?.disabled).toBe(true);
+    pending.release();
     await settle();
     expect(field().disabled).toBe(false);
   });
 
   it("shows only on open orders with items", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     await show(backend, null);
     expect(button(/^Add coupon/)).toBeUndefined();
   });
@@ -203,7 +207,7 @@ describe("adding a coupon at checkout", () => {
 
 describe("a coupon that no longer fits", () => {
   it("warns, blocks payment with the reason, and can be removed", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await write(backend.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(backend, orderId);
@@ -226,16 +230,16 @@ describe("a coupon that no longer fits", () => {
   });
 
   it("checks again once a paused coupon is live, restoring the saving and payment", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await write(backend.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
-    backend.setCouponSnapshot("DCNT-SPA-500", { status: "paused" });
+    await backend.setCouponSnapshot("DCNT-SPA-500", { status: "paused" });
     await write(backend.useActions().addItem({ orderId, item: { kind: "extra", name: "Water", price: 5000 } }));
     await show(backend, orderId);
     const warning = panel().querySelector('[data-testid="order-coupon-problem"]')!;
     expect(warning.textContent).toContain("This coupon is paused or not published yet.");
 
-    backend.setCouponSnapshot("DCNT-SPA-500", { status: "active" });
+    await backend.setCouponSnapshot("DCNT-SPA-500", { status: "active" });
     await click(button("Check again", warning));
     await settle();
     expect(panel().querySelector('[data-testid="order-coupon-problem"]')).toBeNull();
@@ -244,7 +248,7 @@ describe("a coupon that no longer fits", () => {
   });
 
   it("never offers the coupon to a stay priced with its own booking coupon", async () => {
-    const backend = createFixtureBackend({ bookings: [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 300000 } }] });
+    const backend = await createFixtureBackend({ bookings: [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 300000 } }] });
     const { orderId } = await write(backend.useActions().openOrderFor({ bookingId: "fxbkg000001" as Id<"bookings"> }));
     await write(backend.useActions().addItem({ orderId, item: svc(1) }));
     await write(backend.useActions().applyOrderCoupon({ orderId, code: "DCNT-L-10" }));
@@ -266,7 +270,7 @@ describe("paying with a coupon", () => {
   }
 
   it("refuses a coupon sold out at payment, records no payment, and offers a re-check or removal", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal").mockRejectedValue(new Error("diagnostics offline"));
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L2-300" }));
@@ -295,7 +299,7 @@ describe("paying with a coupon", () => {
   });
 
   it("refuses a coupon whose saving changed and re-checks it at the new saving", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal");
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L-10" }));
@@ -312,7 +316,7 @@ describe("paying with a coupon", () => {
   });
 
   it("shows the coupon in the amount due and consumes it when paid", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(fixture, orderId);
@@ -328,7 +332,7 @@ describe("paying with a coupon", () => {
 
 describe("receipts with a coupon", () => {
   async function paidOrder() {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const { orderId } = await spaOrder(fixture);
     const applied = await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await write(fixture.useActions().settleOrder({ orderId, expectedRevision: applied.revision, expectedDue: 175000, idempotencyKey: "coupon-receipt", tenders: [{ method: "cash", amount: 175000, received: 200000 }] }));
@@ -361,7 +365,7 @@ describe("receipts with a coupon", () => {
 
 describe("order history", () => {
   it("names coupon events and their fields", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(fixture, orderId);

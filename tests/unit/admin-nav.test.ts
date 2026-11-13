@@ -13,11 +13,7 @@ vi.mock('@clerk/nextjs', () => ({
   UserButton: () => null,
   SignInButton: () => null,
 }));
-vi.mock('@/lib/react/convex', () => ({
-  useOptionalConvex: () => ({}),
-  useOptionalConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }),
-}));
-vi.mock('convex/react', async () => (await import('./admin-shell-convex')).shellConvex({ role: 'owner' }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => ({}), useConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }), ...await (async () => (await import('./admin-shell-convex')).shellConvex({ role: 'owner' }))() }));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),

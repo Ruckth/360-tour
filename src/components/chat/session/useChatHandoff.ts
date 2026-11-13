@@ -1,8 +1,10 @@
 "use client";
+import { getStoredGuestToken } from '@/components/chat/session/credentials';
+import { api } from 'convex/_generated/api';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useOptionalConvex } from '@/lib/react/convex';
-import { createChatBrowserHandoff } from '@/lib/react/convex-api';
+import { useConvex } from 'convex/react';
+
 import type { GuestCredentials } from './useGuestSession';
 import {
   appendChatExternalParams,
@@ -15,7 +17,9 @@ import {
 } from "@/lib/chat/external-browser";
 export function useChatHandoff(mode: 'page' | 'overlay', hydrated: boolean, ensureSession: () => Promise<GuestCredentials | null>) {
  const router = useRouter();
- const convex = useOptionalConvex();
+ const convex = useConvex();
+ const ensureSessionRef = useRef(ensureSession);
+ useEffect(() => { ensureSessionRef.current = ensureSession; }, [ensureSession]);
  const searchParams = useSearchParams();
  const browserHandoffToken = searchParams.get(CHAT_HANDOFF_PARAM);
  const browserGateBypassed = shouldBypassChatBrowserGate(searchParams);
@@ -68,13 +72,11 @@ export function useChatHandoff(mode: 'page' | 'overlay', hydrated: boolean, ensu
     async function openExternalBrowser() {
       let handoffToken: string | undefined;
       try {
-        const credentials = await ensureSession();
+        const credentials = await ensureSessionRef.current();
         const id = credentials?.sessionId;
         if (cancelled) return;
-        if (id && convex) {
-          handoffToken = await createChatBrowserHandoff(convex, {
-            sessionId: id,
-          });
+        if (id) {
+          handoffToken = await convex.mutation(api.messaging.chat.createBrowserHandoff, { sessionId: id, guestToken: getStoredGuestToken(id)! });
         }
       } catch {
         // The browser link still works without a restorable Convex session.
@@ -105,7 +107,7 @@ export function useChatHandoff(mode: 'page' | 'overlay', hydrated: boolean, ensu
       cancelled = true;
       if (fallbackTimeout) window.clearTimeout(fallbackTimeout);
     };
-  }, [browserGateVisible, convex, ensureSession, hydrated, mode]);
+  }, [browserGateVisible, convex, hydrated, mode]);
 
   const continueInAppBrowser = useCallback(() => {
     const url = new URL(window.location.href);

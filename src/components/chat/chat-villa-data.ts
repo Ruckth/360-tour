@@ -1,11 +1,9 @@
-import { DEMO_DIRECT_DISCOUNT_PERCENT, type BookingProperty } from "@/lib/booking/booking";
-import { resort } from "@/lib/data/resort-config";
+import { type BookingProperty } from "@/lib/booking/booking";
 import {
-  getLocalizedProperties,
   localizePropertyLike,
   type PublicMessages,
 } from "@/lib/i18n/public-content";
-import type { LivePropertyRow } from "@/lib/react/convex-api";
+import type { LivePropertyRow } from "@/lib/booking/backend-types";
 
 export const chatVillaBackgrounds: Record<string, string> = {
   "pool-villa": "/pool-villa-veranda-view.webp",
@@ -15,17 +13,6 @@ export const chatVillaBackgrounds: Record<string, string> = {
 
 export function getChatVillaBackground(property: Pick<BookingProperty, "id" | "slug">) {
   return chatVillaBackgrounds[property.slug] ?? chatVillaBackgrounds[property.id];
-}
-
-export function getDemoChatProperties(messages: PublicMessages, localeTag: string): BookingProperty[] {
-  return getLocalizedProperties(messages, localeTag).map((property) => ({
-    ...property,
-    _id: `demo-${property.id}`,
-    slug: property.id,
-    currency: resort.currency,
-    directDiscountPercent: DEMO_DIRECT_DISCOUNT_PERCENT,
-    source: "demo",
-  }));
 }
 
 export function getLiveChatProperties(

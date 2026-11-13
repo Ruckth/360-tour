@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { act, createElement, useSyncExternalStore, type ReactNode } from "react";
+import { act } from '../support/checkout-act';
+import { createElement, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OrderId } from "@/components/checkout/backend";
@@ -37,8 +38,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(browser.url().split("?")[1] ?? ""),
 }));
 vi.mock("@/components/checkout/convex-backend", async () => {
-  const { createFixtureBackend } = await import("@/components/checkout/fixture-backend");
-  return { convexCheckoutBackend: createFixtureBackend() };
+  const { createFixtureBackend } = await import("../support/checkout-backend");
+  return { convexCheckoutBackend: await createFixtureBackend() };
 });
 vi.mock("@/components/admin/useShowOrderOnDisplay", () => ({ useShowOrderOnDisplay: () => ({ error: null, retry: () => undefined }) }));
 vi.mock("@/components/admin/CustomerDisplayDialog", () => ({ CustomerDisplayControl: () => null }));

@@ -48,7 +48,7 @@ vi.mock("@/components/admin/useDisplayDriver", () => ({
 let root: Root;
 let t: ReturnType<typeof convexTest>;
 let token: string;
-let orderId: string;
+let orderId: import("convex/_generated/dataModel").Id<"orders">;
 
 function Publisher({ order }: { order: string | null }) {
   useShowOrderOnDisplay(order);
@@ -88,7 +88,7 @@ beforeEach(async () => {
   vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin" });
-  backend.call = (ref, args) => admin.mutation(ref, args as never);
+  backend.call = (ref, args) => admin.mutation(ref, args as Record<string, unknown>);
   backend.calls = [];
   backend.mutations.clear();
   const { secret } = await admin.mutation(api.pos.displays.createPairLink, { clientId: HERE });
@@ -97,7 +97,7 @@ beforeEach(async () => {
   token = claim.token;
   const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: "Anna Lee" });
   ({ orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: "extra", name: "Massage", price: 120000 } }));
-  await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId: orderId as never, customerId });
+  await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => {

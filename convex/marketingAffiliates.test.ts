@@ -427,7 +427,7 @@ it("reopens an approved order credit for review when an unlink returns money aft
       serviceId: service._id, staffId: service.staffIds[0], start: now, end: now + 3_600_000,
       blockedUntil: now + 3_600_000, guestName: "Walk-in", guestPhone: "", source: "admin",
       status: "completed", paymentStatus: "paid", price: 100000, currency: "THB", confirmationCode: "APPT-1", accessToken: "appt-token", createdAt: now,
-    } as never);
+    });
     await ctx.db.insert("appointmentRefunds", {
       appointmentId, amount: 90000, currency: "THB", method: "cash",
       reason: "Service refunded", effectiveAt: now, recordedAt: now, recordedBy: "admin@example.com",
@@ -498,7 +498,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
   await expect(
     user.mutation(api.marketing.access.claimInvite, {
       userId: "admin",
-    } as never),
+    } as unknown as import('convex/server').FunctionArgs<typeof api.marketing.access.claimInvite>),
   ).rejects.toThrow();
   await s.admin.mutation(api.marketing.access.setGrant, {
     email: "manager@example.com",

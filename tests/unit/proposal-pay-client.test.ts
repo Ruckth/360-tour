@@ -13,7 +13,7 @@ const client = vi.hoisted(() => ({
   mutation: vi.fn(),
   action: vi.fn(),
 }));
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => client }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => client }));
 let root: Root;
 const summary = {
   property: "Pool Villa",

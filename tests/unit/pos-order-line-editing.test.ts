@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState, type ComponentProps } from "react";
+import { act } from '../support/checkout-act';
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 
 let root: Root;
 function Page({ start }: { start: OrderId | null }) {
@@ -46,7 +47,7 @@ afterEach(async () => {
 
 describe("editing a changed price", () => {
   it("corrects an existing price change and its reason in place, without restoring it first", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const orderId = await orderWithGift(backend);
     await show(backend, orderId);
     await click(row("Gift basket").querySelector("button"));
@@ -85,7 +86,7 @@ describe("editing a changed price", () => {
   });
 
   it("doesn't offer to apply a price or discount that is only a decimal point", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     await show(backend, await orderWithGift(backend));
     await click(row("Gift basket").querySelector("button"));
 
@@ -107,7 +108,7 @@ describe("editing a changed price", () => {
 
 describe("write errors and order switches", () => {
   it("drops a failed write's banner when the cashier moves on to a new order", async () => {
-    const base = createFixtureBackend();
+    const base = await createFixtureBackend();
     const actions = { ...base.useActions(), saveOrder: () => Promise.reject(new Error("Network down")) };
     const backend: CheckoutBackend = { ...base, useActions: () => actions };
     await show(backend, await orderWithGift(base));

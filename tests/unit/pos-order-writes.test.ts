@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, createElement, useEffect, useState, type ComponentProps } from "react";
+import { act } from '../support/checkout-act';
+import { createElement, useEffect, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { useOrderWrites } from "@/components/checkout/useOrderWrites";
 
 const A = "order-a" as OrderId;
@@ -72,7 +73,7 @@ afterEach(async () => {
 describe("checkout order screen", () => {
   it("names a new order, then its permanent number once it exists, with no walk-in label", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     await showPage(backend);
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
     expect(document.body.textContent).toContain("No booking");
@@ -85,7 +86,7 @@ describe("checkout order screen", () => {
 
   it("saves and closes an order, then reopens it from Orders with its items", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     await showPage(backend);
     await act(async () => buttonStarting("Foot spa 45").click());
     await settle();
@@ -114,9 +115,9 @@ describe("checkout order screen", () => {
 
   it("links a reusable customer separately from the booking's guest, and unlinks them", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     // Anna's stay already has Order #1041; opening it charges the stay.
-    const opened = backend.useActions().openOrderFor({ bookingId: "fxbkg000001" as never });
+    const opened = backend.useActions().openOrderFor({ bookingId: "fxbkg000001" as import("convex/_generated/dataModel").Id<"bookings"> });
     await vi.advanceTimersByTimeAsync(200);
     const { orderId } = await opened;
     await showOrder(backend, orderId);
@@ -139,7 +140,7 @@ describe("checkout order screen", () => {
 
   it("lists namesakes separately and offers an existing customer before adding a duplicate", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await create(backend);
     await showOrder(backend, orderId);
     await act(async () => byLabel("Add customer").click());
@@ -161,7 +162,7 @@ describe("checkout order screen", () => {
 
   it("shows a stay added to a standalone order even though the stay has its own order, through payment and later extras", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const actions = backend.useActions();
     const header = () => document.querySelector('[data-testid="order-title"]')!.parentElement!.textContent!;
     await showPage(backend);
@@ -212,7 +213,7 @@ describe("checkout order screen", () => {
     expect(shown.orderId).toBe(sale);
     expect(header()).toContain("Stay · Lagoon Pool Villa · CONF-2026-A1B2C3");
     // Opening Anna's stay finds the order charging it.
-    const reopened = actions.openOrderFor({ bookingId: "fxbkg000001" as never });
+    const reopened = actions.openOrderFor({ bookingId: "fxbkg000001" as import("convex/_generated/dataModel").Id<"bookings"> });
     await settle();
     expect(await reopened).toEqual({ orderId: sale });
 
@@ -222,7 +223,7 @@ describe("checkout order screen", () => {
     await settle();
 
     // Extras after payment go on the stay's own Order #1041, which shows the stay.
-    const later = actions.openOrderFor({ bookingId: "fxbkg000001" as never });
+    const later = actions.openOrderFor({ bookingId: "fxbkg000001" as import("convex/_generated/dataModel").Id<"bookings"> });
     await settle();
     const { orderId: own } = await later;
     expect(own).not.toBe(sale);
@@ -243,7 +244,7 @@ describe("checkout order screen", () => {
 
   it("explains and disables adding a stay while the guest is paying online", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await create(backend);
     await showOrder(backend, orderId);
     await act(async () => button("Add booking").click());
@@ -259,7 +260,7 @@ describe("checkout order screen", () => {
     ["split", "total"],
   ] as const)("requires a fresh review when an open %s payment changes (%s)", async (mode, change) => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const actions = backend.useActions();
     const { orderId } = await create(backend);
     const settleOrder = vi.spyOn(actions, "settleOrder");
@@ -288,7 +289,7 @@ describe("checkout order screen", () => {
 
   it("doesn't re-arm an open payment when the order is only saved elsewhere", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const actions = backend.useActions();
     const { orderId } = await create(backend);
     const settleOrder = vi.spyOn(actions, "settleOrder");
@@ -306,7 +307,7 @@ describe("checkout order screen", () => {
 
   it("starts a fresh payment when another order with the same total is opened (C5-01)", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const a = (await create(backend, "Water", 10000)).orderId;
     const b = (await create(backend, "Tea", 10000)).orderId;
     await showOrder(backend, a);
@@ -320,7 +321,7 @@ describe("checkout order screen", () => {
 
   it("keeps the cash shortcuts within what the till takes (R6-01)", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const actions = backend.useActions();
     const { orderId, lineId } = await create(backend, "Wedding", 100_000_000);
     const step = actions.updateLine({ lineId, qtyChange: 9 });
@@ -336,7 +337,7 @@ describe("checkout order screen", () => {
 
   it("shows no struck-out list price on an undiscounted row with satang (K6-02)", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const actions = backend.useActions();
     const { orderId, lineId } = await create(backend, "Tea", 1010);
     const step = actions.updateLine({ lineId, qtyChange: 2 });
@@ -349,7 +350,7 @@ describe("checkout order screen", () => {
 
   it("adds up quick quantity taps (C4-07)", async () => {
     vi.useFakeTimers();
-    const actions = createFixtureBackend().useActions();
+    const actions = (await createFixtureBackend()).useActions();
     const added = actions.addItem({ item: { kind: "extra", name: "Coconut water", price: 9000 } });
     await vi.runAllTimersAsync();
     const { orderId, lineId } = await added;

@@ -26,7 +26,8 @@ async function setup() {
 		t.run(async (ctx) => {
 			const storageId = await ctx.storage.store(new Blob(['image-bytes']));
 			// convex-test doesn't record these; patch them to stand in for a real upload.
-			await ctx.db.patch(storageId as never, { contentType, size } as never);
+			const patchStorage = ctx.db.patch as unknown as (id: typeof storageId, fields: { contentType: string; size: number }) => Promise<void>;
+			await patchStorage(storageId, { contentType, size });
 			return storageId;
 		});
 	/** Uploaded and checked, but not yet saved on anyone. */
@@ -178,8 +179,8 @@ describe('staff photo uploads', () => {
 		const png = await storeFile('image/png');
 		const webp = await storeFile('image/webp', 5000);
 		// A caller cannot hand an existing ID to the upload action: it accepts only new bytes.
-		await expect(admin.action(api.services.commands.uploadStaffAvatar.uploadStaffAvatar, { storageId: png } as never)).rejects.toThrow();
-		await expect(admin.action(api.services.commands.uploadStaffAvatar.uploadStaffAvatar, { storageId: webp } as never)).rejects.toThrow();
+		await expect(admin.action(api.services.commands.uploadStaffAvatar.uploadStaffAvatar, { storageId: png } as unknown as import('convex/server').FunctionArgs<typeof api.services.commands.uploadStaffAvatar.uploadStaffAvatar>)).rejects.toThrow();
+		await expect(admin.action(api.services.commands.uploadStaffAvatar.uploadStaffAvatar, { storageId: webp } as unknown as import('convex/server').FunctionArgs<typeof api.services.commands.uploadStaffAvatar.uploadStaffAvatar>)).rejects.toThrow();
 		await admin.mutation(api.services.commands.discardStaffAvatarUpload.discardStaffAvatarUpload, { storageId: png });
 		await admin.mutation(api.services.commands.discardStaffAvatarUpload.discardStaffAvatarUpload, { storageId: webp });
 		await t.mutation(internal.services.maintenance.cleanStaffAvatarUploads, {});

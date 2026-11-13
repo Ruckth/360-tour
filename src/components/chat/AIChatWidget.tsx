@@ -1,10 +1,8 @@
 "use client";
 
-import { Component, useState, type ReactNode } from 'react';
+import { Component, type ReactNode } from 'react';
 import { invalidGuest } from './session/useGuestSession';
 import { clearStoredSessionId } from './session/credentials';
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
-import { useOptionalConvex } from '@/lib/react/convex';
 import { CheckCircle2, Copy, ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -294,14 +292,8 @@ class ChatCredentialBoundary extends Component<{ children: ReactNode }, { error:
   }
 }
 
-/** The disconnected branch only issues skipped queries. It never connects to a backend. */
-function DisconnectedChat(props: ChatExperienceProps) {
-  const [client] = useState(() => new ConvexReactClient('https://disconnected-demo.convex.cloud'));
-  return <ConvexProvider client={client}><ChatExperienceBody {...props} /></ConvexProvider>;
-}
 function ChatExperience(props: ChatExperienceProps) {
-  const client = useOptionalConvex();
-  return <ChatCredentialBoundary>{client ? <ChatExperienceBody {...props} /> : <DisconnectedChat {...props} />}</ChatCredentialBoundary>;
+  return <ChatCredentialBoundary><ChatExperienceBody {...props} /></ChatCredentialBoundary>;
 }
 
 export function AIChatWidget(props: {

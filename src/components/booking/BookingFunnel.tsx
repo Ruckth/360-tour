@@ -1,4 +1,5 @@
 "use client";
+import { api } from 'convex/_generated/api';
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -17,16 +18,14 @@ import {
 } from "@/components/booking/BookingPanels";
 import { BookingStepNav } from "@/components/booking/BookingStepNav";
 import { VillaSelector } from "@/components/booking/VillaSelector";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   bookingSteps,
-  DEMO_DIRECT_DISCOUNT_PERCENT,
   getHighestAllowedStepIndex,
   initialGuestCounts,
   isValidGuestInfo,
-  type BookingMode,
   type BookingProperty,
   type BookingStep,
 } from "@/lib/booking/booking";
@@ -44,25 +43,15 @@ import {
   summaryNote,
 } from "@/lib/booking/coupon";
 import { normalizeCouponCode } from "convex/shared/offers";
-import {
-  readBookingInventoryCache,
-  writeBookingInventoryCache,
-} from "@/lib/booking/inventory-cache";
 import { useStayBlockedDates, useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
 import { calculateDirectQuote } from "convex/shared/pricing";
-import { resort } from "@/lib/data/resort-config";
 import {
-  getLocalizedProperties,
   localizePropertyLike,
-  type PublicMessages,
 } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
-import {
-  createBooking,
-  isPropertyAvailable,
-  listLiveProperties,
-} from "@/lib/react/convex-api";
-import { useOptionalConvex } from "@/lib/react/convex";
+
+import { useConvex, useQuery } from 'convex/react';
+import type { FunctionReturnType } from 'convex/server';
 import { localizeHref } from "@/i18n/routing";
 import { arrivalCoupon, captureForBooking } from "@/lib/marketing/capture";
 
@@ -86,18 +75,19 @@ function BookingDatePickerSkeleton() {
   );
 }
 
-function getDemoInventory(messages: PublicMessages, localeTag: string): BookingProperty[] {
-  return getLocalizedProperties(messages, localeTag).map((property) => ({
-    ...property,
-    _id: `demo-${property.id}`,
-    slug: property.id,
-    currency: resort.currency,
-    directDiscountPercent: DEMO_DIRECT_DISCOUNT_PERCENT,
-    source: "demo",
-  }));
+type FunnelProps = {
+  initialCheckIn?: string; initialCheckOut?: string; initialNights?: string;
+  initialGuests?: string; initialAdults?: string; initialChildren?: string;
+  initialProperty?: string; initialCoupon?: string;
+};
+export function BookingFunnel(props: FunnelProps) {
+  const rows = useQuery(api.catalog.properties.list, {});
+  const t = useTranslations("Booking");
+  if (rows === undefined) return <div role="status" className="p-24">{t("loadingInventory")}</div>;
+  if (rows.length === 0) return <div role="alert" className="p-24">{t("liveBookingUnavailable")}</div>;
+  return <LiveBookingFunnel {...props} rows={rows} />;
 }
-
-export function BookingFunnel({
+function LiveBookingFunnel({
   initialCheckIn = "",
   initialCheckOut = "",
   initialNights = "",
@@ -106,27 +96,16 @@ export function BookingFunnel({
   initialChildren = "",
   initialProperty = "garden-suite",
   initialCoupon = "",
-}: {
-  initialCheckIn?: string;
-  initialCheckOut?: string;
-  initialNights?: string;
-  initialGuests?: string;
-  initialAdults?: string;
-  initialChildren?: string;
-  initialProperty?: string;
-  /** `?coupon=` from a short link or shared URL; applied once villa and dates are chosen. */
-  initialCoupon?: string;
-}) {
+  rows,
+}: FunnelProps & { rows: FunctionReturnType<typeof api.catalog.properties.list> }) {
   const router = useRouter();
   const locale = useLocale();
   const messages = usePublicMessages();
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
   const villaT = useTranslations("Villa");
-  const demoInventory = useMemo(() => getDemoInventory(messages, locale), [messages, locale]);
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const todayIso = todayIsoResort();
-  const demoPayHref = localizeHref("/booking/pay?bookingId=demo", locale);
   const parsedInitialNights = Number(initialNights);
   const derivedInitialCheckOut =
     initialCheckOut ||
@@ -140,8 +119,7 @@ export function BookingFunnel({
   });
 
   const [step, setStep] = useState<BookingStep>("select");
-  const [bookingMode, setBookingMode] = useState<BookingMode>(convex ? "live" : "demo");
-  const [propertyList, setPropertyList] = useState<BookingProperty[]>(() => demoInventory);
+  const propertyList = useMemo(() => rows.map(row => localizePropertyLike({ ...row, id: row.slug, source: "live" as const }, messages, locale)), [rows, messages, locale]);
   const [selectedId, setSelectedId] = useState(initialProperty);
   const [checkIn, setCheckIn] = useState(initialCheckIn);
   const [checkOut, setCheckOut] = useState(derivedInitialCheckOut);
@@ -150,13 +128,9 @@ export function BookingFunnel({
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
-  const [notice, setNotice] = useState(
-    convex ? t("liveInventoryNotice") : t("demoReadyNotice"),
-  );
   const [visibleMonth, setVisibleMonth] = useState(() =>
     monthOf(derivedInitialCheckOut || initialCheckIn || todayIso),
   );
-  const [loadingInventory, setLoadingInventory] = useState(Boolean(convex));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [dateWarning, setDateWarning] = useState("");
@@ -178,102 +152,8 @@ export function BookingFunnel({
     setCouponDraft(carried);
   }, [initialCoupon]);
 
-  useEffect(() => {
-    router.prefetch(demoPayHref);
-  }, [demoPayHref, router]);
-
-  useEffect(() => {
-    if (!convex) {
-      setBookingMode("demo");
-      setLoadingInventory(false);
-      return;
-    }
-    const client = convex;
-    let active = true;
-    const cachedInventory = readBookingInventoryCache(locale, todayIso);
-
-    if (cachedInventory) {
-      setPropertyList(cachedInventory.propertyList);
-      setSelectedId((current) =>
-        cachedInventory.propertyList.some((item) => item.slug === current)
-          ? current
-          : cachedInventory.propertyList[0].slug,
-      );
-      setBookingMode("live");
-      setNotice("");
-      setLoadingInventory(false);
-    }
-
-    async function load() {
-      if (!cachedInventory) {
-        setLoadingInventory(true);
-      }
-      try {
-        // Blocked nights load per villa and month below, not for every villa for a year up front.
-        const rows = await listLiveProperties(client);
-        if (!active) return;
-
-        const liveRows = rows;
-        if (liveRows.length > 0) {
-          const liveInventory = liveRows.map((row) =>
-            localizePropertyLike(
-              {
-                id: row.slug,
-                slug: row.slug,
-                _id: row._id,
-                name: row.name,
-                tagline: row.tagline,
-                description: row.description,
-                pricePerNight: row.pricePerNight,
-                maxGuests: row.maxGuests,
-                bedrooms: row.bedrooms,
-                bathrooms: row.bathrooms,
-                area: row.area,
-                images: row.images,
-                amenities: row.amenities,
-                tourRoomIds: row.tourRoomIds,
-                currency: row.currency,
-                directDiscountPercent: row.directDiscountPercent,
-                translations: row.translations,
-                contentEditedAt: row.contentEditedAt,
-                source: "live" as const,
-              },
-              messages,
-              locale,
-            ),
-          );
-          setPropertyList(liveInventory);
-          setSelectedId((current) => liveInventory.some((item) => item.slug === current) ? current : liveInventory[0].slug);
-          setBookingMode("live");
-          setNotice("");
-          writeBookingInventoryCache(locale, todayIso, liveInventory);
-        } else {
-          setPropertyList(demoInventory);
-          setBookingMode("demo");
-          setNotice(t("demoSeedNotice"));
-        }
-      } catch {
-        if (!active) return;
-        if (cachedInventory) {
-          setLoadingInventory(false);
-          return;
-        }
-        setPropertyList(demoInventory);
-        setBookingMode("demo");
-        setNotice(t("demoUnavailableNotice"));
-      } finally {
-        if (active) setLoadingInventory(false);
-      }
-    }
-
-    load();
-    return () => {
-      active = false;
-    };
-  }, [convex, demoInventory, locale, messages, t, todayIso]);
-
   const property = propertyList.find((item) => item.slug === selectedId) ?? propertyList[0];
-  const liveClient = bookingMode === "live" ? convex : null;
+  const liveClient = convex;
   const livePropertyIds = useMemo(
     () => propertyList.flatMap((item) => (item.source === "live" && item._id ? [item._id] : [])),
     [propertyList],
@@ -298,10 +178,9 @@ export function BookingFunnel({
   const guests = adults + children;
   const quote = calculateDirectQuote({ pricePerNight: property.pricePerNight, directDiscountPercent: property.directDiscountPercent, currency: property.currency }, nights);
   const conflicts = rangeIntersectsDates(propertyBlockedDates, checkIn, checkOut);
-  // Coupons are checked against live inventory only; the demo has nothing to redeem against.
-  const activeCouponCode = bookingMode === "live" ? couponCode : null;
+  const activeCouponCode = couponCode;
   const couponStay =
-    liveClient && property.source === "live" && nights > 0
+    property.source === "live" && nights > 0
       ? { propertySlug: property.slug, checkIn, checkOut }
       : null;
   const { preview: couponPreview, retry: retryCoupon, reportRefusal } = useCouponPreview(liveClient, activeCouponCode, couponStay);
@@ -320,7 +199,7 @@ export function BookingFunnel({
   const invalidRange = Boolean(checkIn && checkOut && nights <= 0);
   const selectedStepIndex = bookingSteps.findIndex((item) => item.key === step);
   const selectValid = Boolean(
-    property && checkIn && checkOut && nights > 0 && !invalidRange && !conflicts && !loadingInventory && !stayDatesUnknown,
+    property && checkIn && checkOut && nights > 0 && !invalidRange && !conflicts && !stayDatesUnknown,
   );
   const guestsValid = adults >= 1 && children >= 0 && guests >= 1 && guests <= property.maxGuests;
   const highestAllowedStepIndex = getHighestAllowedStepIndex({
@@ -460,16 +339,11 @@ export function BookingFunnel({
     setSubmitting(true);
     let couponSent: string | undefined;
     try {
-      if (bookingMode !== "live" || !convex) {
-        router.push(demoPayHref);
-        return;
-      }
-
       if (!property._id || property.source !== "live") {
         throw new Error(t("liveBookingUnavailable"));
       }
 
-      const available = await isPropertyAvailable(convex, {
+      const available = await convex.query(api.bookings.calendar.availability.isAvailable, {
         propertyId: property._id,
         checkIn,
         checkOut,
@@ -479,7 +353,7 @@ export function BookingFunnel({
       }
 
       couponSent = couponCodeToSend(activeCouponCode, phase);
-      const result = await createBooking(convex, {
+      const result = await convex.mutation(api.bookings.bookings.create, {
         propertySlug: property.slug,
         guestName: guestName.trim(),
         guestEmail: guestEmail.trim(),
@@ -530,9 +404,7 @@ export function BookingFunnel({
         <h1 className="mt-3 font-serif text-4xl font-semibold text-foreground">
           {t("reserveTitle")}
         </h1>
-        {notice ? (
-          <p className="mt-3 max-w-2xl text-sm text-muted-foreground">{notice}</p>
-        ) : null}
+
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
@@ -545,13 +417,6 @@ export function BookingFunnel({
 
           {step === "select" ? (
             <div className="space-y-5">
-              {loadingInventory ? (
-                <Alert>
-                  <AlertTitle>{t("checkingAvailability")}</AlertTitle>
-                  <AlertDescription>{t("loadingInventory")}</AlertDescription>
-                </Alert>
-              ) : null}
-
               <VillaSelector
                 properties={propertyList}
                 selectedId={selectedId}
@@ -615,7 +480,6 @@ export function BookingFunnel({
               nights={nights}
               checkIn={checkIn}
               checkOut={checkOut}
-              bookingMode={bookingMode}
               price={
                 <PriceLines
                   currency={property.currency}
@@ -626,7 +490,7 @@ export function BookingFunnel({
                 />
               }
               coupon={
-                bookingMode === "live" ? (
+                (
                   <CouponField
                     code={activeCouponCode}
                     source={couponSource}
@@ -653,7 +517,7 @@ export function BookingFunnel({
                     }
                     onChangeStay={() => setStep("select")}
                   />
-                ) : null
+                )
               }
             />
           ) : null}

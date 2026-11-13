@@ -1,4 +1,6 @@
 "use client";
+import type { Id } from 'convex/_generated/dataModel';
+import { api } from 'convex/_generated/api';
 
 import Link from "next/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
@@ -8,8 +10,9 @@ import { BookedPrice } from "@/components/booking/BookedPrice";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import { getPublicBooking, type PublicBooking } from "@/lib/react/convex-api";
-import { useOptionalConvex } from "@/lib/react/convex";
+import { type PublicBooking } from '@/lib/booking/backend-types';
+
+import { useConvex } from 'convex/react';
 
 export function BookingSuccessClient({
   bookingId,
@@ -20,24 +23,14 @@ export function BookingSuccessClient({
 }) {
   const locale = useLocale();
   const t = useTranslations("Booking");
-  const convex = useOptionalConvex();
-  const isDemo = bookingId === "demo";
+  const convex = useConvex();
   const [booking, setBooking] = useState<PublicBooking | null>(null);
-  const [loading, setLoading] = useState(Boolean(convex && !isDemo));
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
     async function verifyBooking() {
-      if (isDemo) {
-        setLoading(false);
-        return;
-      }
-      if (!convex) {
-        setError(t("successVerificationUnavailable"));
-        setLoading(false);
-        return;
-      }
       if (!accessToken) {
         setError(t("missingConfirmationToken"));
         setLoading(false);
@@ -48,7 +41,7 @@ export function BookingSuccessClient({
       try {
         // Stripe can redirect before its webhook reaches Convex.
         for (let attempt = 0; attempt < 10 && active; attempt++) {
-          const result = await getPublicBooking(convex, { id: bookingId, accessToken });
+          const result = await convex.query(api.bookings.bookings.getById, { id: bookingId as Id<"bookings">, accessToken });
           if (!active) return;
           if (!result) { setError(t("bookingNotFound")); break; }
           setBooking(result);
@@ -67,9 +60,9 @@ export function BookingSuccessClient({
     return () => {
       active = false;
     };
-  }, [accessToken, bookingId, convex, isDemo, t]);
+  }, [accessToken, bookingId, convex, t]);
 
-  const confirmed = isDemo || (booking?.paymentStatus === "paid" && booking.status === "confirmed");
+  const confirmed = (booking?.paymentStatus === "paid" && booking.status === "confirmed");
 
   return (
     <div className="mx-auto flex min-h-screen max-w-lg items-center px-5 py-24">

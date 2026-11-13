@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
+import { act } from '../support/checkout-act';
 import type { Id } from "convex/_generated/dataModel";
-import { act, createElement, type ComponentProps } from "react";
+import { createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId, type OrderId, type OrderView } from "@/components/checkout/backend";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { PayPanel } from "@/components/checkout/PayPanel";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { OrderHistory } from "@/components/checkout/OrderHistory";
@@ -34,7 +35,8 @@ function Probe({ backend, orderId, paying = false, onPaid = () => {} }: { backen
 }
 const show = (backend: CheckoutBackend, orderId: OrderId, paying = false, onPaid?: () => void) => act(async () => root.render(provide(backend, createElement(Probe, { backend, orderId, paying, onPaid }))));
 const receipt = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
-async function sale(link = false, backend = createFixtureBackend()) {
+async function sale(link = false, backend?: Awaited<ReturnType<typeof createFixtureBackend>>) {
+  backend ??= await createFixtureBackend();
   const actions = backend.useActions();
   const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Tea", price: 10000 } }));
   if (link) await run(actions.linkCustomer({ orderId, customerId }));
@@ -155,7 +157,7 @@ it("requires the explicit no-money assertion and reason before voiding a mistake
 
 it("shows imported booking refunds with amount, actor and effective/recorded dates without presenting a send action", async () => {
   const orderId = "fxbill000002" as OrderId;
-  const backend = createFixtureBackend({ recordedRefunds: [{ sourceType: "booking", orderId: orderId, _id: "refund-1" as Id<"bookingRefunds">, bookingId: "fxbkg000001" as Id<"bookings">, amount: 5000, currency: "THB", method: "transfer", reason: "Returned overpayment", effectiveAt: Date.parse("2026-10-30T00:00:00Z"), recordedAt: Date.now(), recordedBy: "cashier@example.com" }] });
+  const backend = await createFixtureBackend({ recordedRefunds: [{ sourceType: "booking", orderId: orderId, _id: "refund-1" as Id<"bookingRefunds">, bookingId: "fxbkg000001" as Id<"bookings">, amount: 5000, currency: "THB", method: "transfer", reason: "Returned overpayment", effectiveAt: Date.parse("2026-10-30T00:00:00Z"), recordedAt: Date.now(), recordedBy: "cashier@example.com" }] });
   await run(backend.useActions().settleOrder({ orderId, idempotencyKey: "refund-view-01", expectedDue: 78000, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 78000 }] }));
   await receipt(backend, orderId);
   const text = document.querySelector('[aria-label="Recorded refunds"]')!.textContent;
@@ -225,7 +227,7 @@ it("locks correction controls during a pending write and prevents duplicate subm
 });
 
 it("reopens only the fixture order’s proven linked payment on a mistaken entry and preserves the online deposit", async () => {
-  const backend = createFixtureBackend(); const actions = backend.useActions();
+  const backend = await createFixtureBackend(); const actions = backend.useActions();
   const { orderId } = await run(actions.openOrderFor({ bookingId: "fxbkg000001" as NonNullable<Parameters<typeof actions.openOrderFor>[0]["bookingId"]> }));
   await show(backend, orderId);
   expect(current.totals.due).toBe(2600000);

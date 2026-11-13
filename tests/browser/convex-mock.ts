@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
  * store; its mutations then re-render every query. Functions it doesn't register keep the
  * defaults below.
  */
-type Handler = (args: never) => unknown;
+type Handler = { invoke(args: unknown): unknown }["invoke"];
 const queryHandlers = new Map<string, Handler>();
 const mutationHandlers = new Map<string, Handler>();
 let storeVersion = 0;
@@ -119,7 +119,7 @@ export function useConvexAuth() { return { isLoading: false, isAuthenticated: tr
 export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   useSyncExternalStore(subscribeStore, readStoreVersion, readStoreVersion);
   const handler = args === "skip" ? undefined : queryHandlers.get(getFunctionName(query));
-  return handler ? handler(args as never) : fixtureQuery(query, args);
+  return handler ? handler(args) : fixtureQuery(query, args);
 }
 export function useQueries(requests: Record<string, { query: Parameters<typeof getFunctionName>[0]; args: unknown }>) {
   return Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => [key, fixtureQuery(query, args)]));
@@ -129,7 +129,7 @@ export function useMutation(mutation?: Parameters<typeof getFunctionName>[0]) {
   if (handler) return async (args: unknown) => {
     document.body.dataset.submission = JSON.stringify(args);
     try {
-      return await handler(args as never);
+      return await handler(args);
     } finally {
       notifyFixtureStore();
     }

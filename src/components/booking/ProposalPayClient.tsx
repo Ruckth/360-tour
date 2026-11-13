@@ -14,14 +14,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import { formatPickerDate } from "@/lib/dates/format";
-import { useOptionalConvex } from "@/lib/react/convex";
+import { useConvex } from 'convex/react';
 
 type Summary = NonNullable<
   FunctionReturnType<typeof api.bookings.bookings.getConfirmProposal>
 >;
 
 export function ProposalPayClient({ token }: { token: string }) {
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const locale = useLocale();
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
@@ -43,7 +43,6 @@ export function ProposalPayClient({ token }: { token: string }) {
     setError("");
     async function load() {
       try {
-        if (!convex) throw new Error("unavailable");
         // Read only: unfurlers, reloads and opening the page never create a booking.
         const result = await convex.query(api.bookings.bookings.getConfirmProposal, {
           token,
@@ -64,7 +63,7 @@ export function ProposalPayClient({ token }: { token: string }) {
   }, [convex, token, t]);
 
   async function confirmAndPay() {
-    if (!convex || submitting.current) return;
+    if (submitting.current) return;
     submitting.current = true;
     setLoading(true);
     setError("");

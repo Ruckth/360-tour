@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import { act, createElement, useEffect, useState, type ComponentProps } from 'react';
+import { act } from '../support/checkout-act';
+import { createElement, useEffect, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from '@/components/checkout/backend';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 import { OrderHistory } from '@/components/checkout/OrderHistory';
 import { FinancialHistory } from '@/components/checkout/FinancialHistory';
 import type { Doc, Id } from 'convex/_generated/dataModel';
@@ -30,7 +31,7 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
   const corrections: Doc<'orderCorrections'>[] = [first, second].flatMap(orderId => Array.from({ length: 61 }, (_, i) => ({
     _id: `${orderId}-${i}` as Id<'orderCorrections'>, _creationTime: i, orderId, sequence: i + 1, kind: 'amended', reason: `${orderId} reason ${i}`, actor: 'cashier', recordedAt: i, idempotencyKey: `${orderId}-${i}`,
   })));
-  const base = createFixtureBackend({ financialHistory: { corrections } });
+  const base = await createFixtureBackend({ financialHistory: { corrections } });
   const calls = Object.fromEntries(hooks.map(h => [h, vi.fn()]));
   const mounts = vi.fn(), unmounts = vi.fn();
   function instrument<T>(hook: typeof hooks[number], usePage: (id: OrderId) => T) {
@@ -51,7 +52,7 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
   await show(backend);
   for (const hook of hooks) expect(calls[hook]).not.toHaveBeenCalled();
   await toggle('Order history', true);
-  expect(calls.useOrderHistory).toHaveBeenCalledOnce();
+  expect(calls.useOrderHistory).toHaveBeenCalledWith(first);
   for (const hook of hooks.slice(1)) expect(calls[hook]).not.toHaveBeenCalled();
   await toggle('Browse all financial history', true);
   expect(mounts).toHaveBeenCalledTimes(6);
@@ -79,7 +80,7 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
 });
 
 it('keeps a failed continuation and its retry boundary through collapse/reopen, then clears it for a new order', async () => {
-  const base = createFixtureBackend();
+  const base = await createFixtureBackend();
   let fail = false;
   const loadMore = vi.fn();
   const backend: CheckoutBackend = { ...base, useOrderHistory: id => {

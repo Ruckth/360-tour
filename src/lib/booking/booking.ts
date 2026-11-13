@@ -5,13 +5,8 @@ export type BookingProperty = Property & {
   slug: string;
   currency: string;
   directDiscountPercent: number;
-  source: "live" | "demo";
+  source: "live";
 };
-
-/** Direct-booking discount used by the static/demo inventory (matches the Convex seed). */
-export const DEMO_DIRECT_DISCOUNT_PERCENT = 1500;
-
-export type BookingMode = "demo" | "live";
 
 export type BookingStep = "select" | "guests" | "info" | "review";
 

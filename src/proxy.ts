@@ -3,7 +3,7 @@ import createMiddleware from "next-intl/middleware";
 import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server";
 import { adminRedirectPath } from "@/components/admin/admin-routes";
 import { routing } from "@/i18n/routing";
-import { isClerkConfigured } from "@/lib/clerk-config";
+import { requireClerkConfiguration } from "@/lib/clerk-config";
 import { bypassesI18n } from "@/lib/i18n-exempt";
 
 import { ConvexHttpClient } from "convex/browser";
@@ -12,14 +12,14 @@ import { isMarketingBot } from "@/lib/marketing/bot";
 import { isInternalMarketingPath, marketingSlugForPath } from "@/lib/marketing/proxy";
 
 const handleI18nRouting = createMiddleware(routing);
-const clerkEnabled = isClerkConfigured();
+requireClerkConfiguration();
 
 async function handleRequest(request: NextRequest, event: NextFetchEvent) {
   const { pathname } = request.nextUrl;
 
   const slug = marketingSlugForPath(pathname);
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
-  if (slug && convexUrl && convexUrl !== "placeholder") {
+  if (slug && convexUrl) {
     try {
       const client = new ConvexHttpClient(convexUrl);
       const resolved = await client.query(api.marketing.public.resolveLink, { slug });
@@ -49,9 +49,7 @@ async function handleRequest(request: NextRequest, event: NextFetchEvent) {
   return handleI18nRouting(request);
 }
 
-const proxy = clerkEnabled
-  ? clerkMiddleware((_auth, request, event) => handleRequest(request, event))
-  : (request: NextRequest, event: NextFetchEvent) => handleRequest(request, event);
+const proxy = clerkMiddleware((_auth, request, event) => handleRequest(request, event));
 
 export default proxy;
 

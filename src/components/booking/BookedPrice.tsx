@@ -6,7 +6,7 @@ import { Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { PriceLines } from "@/components/booking/BookingPriceSummary";
 import { bookedPriceView } from "@/lib/booking/coupon";
-import type { PublicBooking } from "@/lib/react/convex-api";
+import type { PublicBooking } from "@/lib/booking/backend-types";
 import { cn } from "@/lib/utils";
 import { currencyPrefix } from "@/lib/villas";
 

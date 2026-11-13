@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
+import { act } from '../support/checkout-act';
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Id } from "convex/_generated/dataModel";
-import { act, createElement, useState, type ComponentProps } from "react";
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { sectionCount } from "@/components/checkout/CatalogPane";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 
 let root: Root;
 const shown: { orderId: OrderId | null } = { orderId: null };
@@ -47,7 +48,7 @@ afterEach(async () => {
 
 describe("checkout catalog photos", () => {
   it("shows a service's own photo and a villa's first image, and a kind icon for items without one", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     await click(tab("Spa"));
     expect(tile("Sunrise yoga by the pool 60").querySelector("img")?.getAttribute("src")).toBe("/experiences/wellness-yoga.png");
     expect(tile("Thai massage 60").querySelector("img")).toBeNull();
@@ -60,7 +61,7 @@ describe("checkout catalog photos", () => {
   });
 
   it("falls back to the icon tile when a photo fails to load, without losing the tile", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     await click(tab("Spa"));
     const img = tile("Coconut body scrub 45").querySelector("img")!;
     expect(img.getAttribute("src")).toBe("/experiences/coconut-scrub-missing.jpg");
@@ -71,7 +72,7 @@ describe("checkout catalog photos", () => {
   });
 
   it("shows loading tiles until the catalog arrives", async () => {
-    await show({ ...createFixtureBackend(), useCatalog: () => undefined });
+    await show({ ...await createFixtureBackend(), useCatalog: () => undefined });
     expect(document.querySelector('[role="status"][aria-label="Loading items"]')).toBeTruthy();
   });
 });
@@ -85,7 +86,7 @@ describe("checkout category groups", () => {
   });
 
   it("folds a group from its header button, which says whether it is open and what it controls", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     await click(tab("Spa"));
     const massage = header("Massage");
     expect(massage.textContent).toContain("4 services");
@@ -113,7 +114,7 @@ describe("checkout category groups", () => {
   });
 
   it("keeps each tab's folds separate", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     await click(tab("Spa"));
     await click(header("Body"));
     await click(tab("Rooms"));
@@ -125,7 +126,7 @@ describe("checkout category groups", () => {
 
 describe("checkout order rows", () => {
   it("steps quantities only on rooms and extras; services stay one scheduled row each", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     await click(tab("Spa"));
     await click(tile("Thai massage 60"));
     await settle();
@@ -161,7 +162,7 @@ describe("checkout order rows", () => {
   });
 
   it("shows each row's catalog photo, including the booked villa's on a stay, and keeps stays at one", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const opening = backend.useActions().openOrderFor({ bookingId: "fxbkg000001" as Id<"bookings"> });
     await vi.advanceTimersByTimeAsync(200);
     const { orderId } = await opening;
@@ -209,7 +210,7 @@ describe("checkout theme", () => {
     for (const [name, open] of Object.entries(LAYERS)) {
       it(`${theme}: the ${name} layer and its backdrop take the app theme, with touch sizes`, async () => {
         document.documentElement.classList.toggle("dark", theme === "dark");
-        await show(createFixtureBackend());
+        await show(await createFixtureBackend());
         await open();
         const content = [...document.querySelectorAll('[role="dialog"]')].at(-1)!;
         expect(content, name).toBeTruthy();
@@ -239,7 +240,7 @@ describe("checkout theme", () => {
   });
 
   it("lays the villa photo under a wash of the theme's own background", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     const backdrop = document.querySelector("[data-checkout-backdrop]")!;
     expect(backdrop.getAttribute("aria-hidden")).toBe("true");
     expect(backdrop.querySelector("img")?.getAttribute("src")).toBe("/pool-villa-veranda-view.webp");
@@ -271,7 +272,7 @@ const shownText = (text: string, width: "phone" | "desktop", scope: ParentNode =
 
 describe("checkout order title", () => {
   it("names the order once on desktop, in the order panel, keeping the strip's context and actions", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     await click(tab("Spa"));
     await click(tile("Thai massage 60"));
     await settle();
@@ -293,7 +294,7 @@ describe("checkout order title", () => {
   });
 
   it("keeps the strip's title on phones, where the order panel lives in the sheet", async () => {
-    await show(createFixtureBackend());
+    await show(await createFixtureBackend());
     await click(tab("Spa"));
     await click(tile("Thai massage 60"));
     await settle();

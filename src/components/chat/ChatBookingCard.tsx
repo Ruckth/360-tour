@@ -1,4 +1,5 @@
 "use client";
+import { api } from 'convex/_generated/api';
 
 import { useCouponPreview } from "@/components/booking/useCouponPreview";
 import { useCouponCopy } from "@/components/booking/coupon-copy";
@@ -22,13 +23,12 @@ import { calculateDirectQuote } from "convex/shared/pricing";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
 import {
   getChatVillaBackground,
-  getDemoChatProperties,
   getLiveChatProperties,
 } from "@/components/chat/chat-villa-data";
 import { resort } from "@/lib/data/resort-config";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
-import { useOptionalConvex } from "@/lib/react/convex";
-import { listLiveProperties } from "@/lib/react/convex-api";
+import { useConvex } from 'convex/react';
+
 import { cn } from "@/lib/utils";
 
 export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
@@ -41,10 +41,9 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const messages = usePublicMessages();
-  const fallbackProperties = useMemo(() => getDemoChatProperties(messages, locale), [messages, locale]);
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const today = todayIsoResort();
-  const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
+  const [properties, setProperties] = useState<BookingProperty[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [selectedPropertySlug, setSelectedPropertySlug] = useState(context.propertySlug ?? "");
   const [checkIn, setCheckIn] = useState(context.checkIn);
@@ -53,12 +52,6 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!convex) {
-      setProperties(fallbackProperties);
-      setPropertiesLoading(false);
-      return;
-    }
-
     const client = convex;
     let active = true;
 
@@ -66,14 +59,14 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     async function loadProperties() {
       setPropertiesLoading(true);
       try {
-        const rows = await listLiveProperties(client);
+        const rows = await client.query(api.catalog.properties.list, {});
         if (!active) return;
 
         const liveProperties = getLiveChatProperties(rows, messages, locale);
-        setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
+        setProperties(liveProperties);
       } catch {
         if (!active) return;
-        setProperties(fallbackProperties);
+        setProperties([]);
       } finally {
         if (active) setPropertiesLoading(false);
       }
@@ -83,7 +76,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     return () => {
       active = false;
     };
-  }, [convex, fallbackProperties, locale, messages]);
+  }, [convex, locale, messages]);
 
   useEffect(() => {
     setSelectedPropertySlug(context.propertySlug ?? "");

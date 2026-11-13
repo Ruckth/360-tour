@@ -7,21 +7,18 @@ import { localizeRooms, type PublicMessages } from "@/lib/i18n/public-content";
 export type DbTourRooms = FunctionReturnType<typeof api.catalog.properties.getTourRooms>;
 
 /**
- * The rooms of a villa's public tour, first room first. Uses the admin-managed DB rooms
- * (already in tour order) when the villa has any, else the bundled rooms in `tourRoomIds`.
- * Hotspots pointing at rooms outside the tour are dropped.
+ * The admin-managed rooms of a villa's public tour, already in tour order. Empty or unavailable
+ * backend data produces no rooms. Hotspots pointing outside the tour are dropped.
  *
  * `messages` is the ACTIVE locale's dictionary (client: `useMessages()`); this module stays
  * free of all-locale JSON imports so it never bloats the tour client chunk.
  */
 export function resolveTourRooms(
-  tourRoomIds: string[],
+  _tourRoomIds: string[],
   dbRooms: DbTourRooms | undefined,
   messages: PublicMessages,
 ): Room[] {
-  const rooms = dbRooms?.length
-    ? dbRooms.map((room) => localizeUnedited(roomFromDb(room), messages))
-    : localizeRooms(tourRoomIds.flatMap((id) => staticRooms.find((room) => room.id === id) ?? []), messages);
+  const rooms = (dbRooms ?? []).map((room) => localizeUnedited(roomFromDb(room), messages));
   const ids = new Set(rooms.map((room) => room.id));
   return rooms.map((room) => ({
     ...room,

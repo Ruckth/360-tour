@@ -10,25 +10,12 @@ import { stripLocalePrefix } from "@/i18n/routing";
 import { buildChatHref } from "@/lib/chat/navigation";
 import { loadAIChatWidget, preloadAIChatWidget } from "@/lib/chat/preload";
 import { resort } from "@/lib/data/resort-config";
-import { useDeferredReady } from "@/lib/react/use-deferred-ready";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 const LazyAIChatWidget = dynamic(loadAIChatWidget, { ssr: false });
 
-const LazyDemoDisclaimerDialog = dynamic(
-  () =>
-    import("@/components/global/DemoDisclaimerDialog").then(
-      (mod) => mod.DemoDisclaimerDialog,
-    ),
-  { ssr: false },
-);
-
-function DeferredDemoDisclaimer() {
-  const ready = useDeferredReady(700);
-  return ready ? <LazyDemoDisclaimerDialog /> : null;
-}
 
 /**
  * Public chat entry point. The heavy chat widget loads ONLY on launcher intent:
@@ -147,7 +134,6 @@ export function PublicSiteShell({ children, hasReviews }: { children: ReactNode;
   if (normalizedPath === "/chat") {
     return (
       <div className="min-h-[100dvh] overflow-hidden bg-background text-foreground">
-        <DeferredDemoDisclaimer />
         <main className="min-h-[100dvh]">{children}</main>
       </div>
     );
@@ -155,7 +141,6 @@ export function PublicSiteShell({ children, hasReviews }: { children: ReactNode;
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <DeferredDemoDisclaimer />
       <SiteHeader hasReviews={hasReviews} />
       <ChatContextProvider>
         <main className="flex-1">{children}</main>

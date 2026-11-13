@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
     onDayClick: (date: Date) => void;
   },
 }));
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => state }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => state }));
 vi.mock("@/components/ui/calendar", () => ({
   Calendar: (props: typeof state.calendar) => {
     state.calendar = props;

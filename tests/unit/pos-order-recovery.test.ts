@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
+import { act } from '../support/checkout-act';
 // Failed customer and booking lookups and writes stay recoverable inside their dialog.
-import { act, createElement, type ComponentProps } from "react";
+import { createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 
 let root: Root;
 const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
@@ -28,7 +29,7 @@ async function render(backend: CheckoutBackend, orderId: OrderId) {
   );
 }
 async function setup() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const adding = backend.useActions().addItem({ item: { kind: "extra", name: "Recovery item", price: 10000 } });
   await vi.advanceTimersByTimeAsync(200);
   return { backend, actions: backend.useActions(), orderId: (await adding).orderId };
@@ -103,8 +104,11 @@ describe("new customer writes", () => {
     const create = vi.spyOn(actions, "createCustomer");
     await render(backend, orderId);
     await openNewCustomerForm("Double tap");
-    await submit();
-    await submit();
+    await act(async () => {
+      const form = document.querySelector("form")!;
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
     await settle();
     await settle();
     expect(create).toHaveBeenCalledTimes(1);
@@ -133,7 +137,7 @@ describe("lookup failures stay in their dialog", () => {
     const { backend, orderId } = await setup();
     vi.spyOn(console, "error").mockImplementation(() => {});
     let down = true;
-    const flaky: CheckoutBackend = { ...backend, useCustomerSearch: (query) => { if (down && query.trim().length >= 2) throw new Error("Search unavailable"); return backend.useCustomerSearch(query); } };
+    const flaky: CheckoutBackend = { ...backend, useCustomerPage: (query, archived) => { if (down && query.trim().length >= 2) throw new Error("Search unavailable"); return backend.useCustomerPage(query, archived); } };
     await render(flaky, orderId);
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Add customer"]')!.click());
     await typeInto('[aria-label="Search customers"]', "Somchai");
@@ -151,7 +155,7 @@ describe("lookup failures stay in their dialog", () => {
     const create = vi.spyOn(actions, "createCustomer");
     const link = vi.spyOn(actions, "linkCustomer");
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const flaky: CheckoutBackend = { ...backend, useCustomerSearch: (query) => { if (/\d{4}/.test(query)) throw new Error("Search unavailable"); return backend.useCustomerSearch(query); } };
+    const flaky: CheckoutBackend = { ...backend, useCustomerPage: (query, archived) => { if (/\d{4}/.test(query)) throw new Error("Search unavailable"); return backend.useCustomerPage(query, archived); } };
     await render(flaky, orderId);
     await openNewCustomerForm("Check down", "0899998888");
     expect(alertText()).toContain("Couldn't check for an existing customer");

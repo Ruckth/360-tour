@@ -1,5 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import { expect, test, type Page } from "./fixtures";
 
 /**
  * The concierge chat widget must load only on launcher intent, not eagerly on idle. These tests
@@ -8,9 +7,6 @@ import { bypassDemoDisclaimer } from "./demo-disclaimer";
  * context is carried to the chat.
  */
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
 
 /** Script requests the browser made, recorded so we can prove nothing chat-related loaded early. */
 function trackScriptRequests(page: Page) {
