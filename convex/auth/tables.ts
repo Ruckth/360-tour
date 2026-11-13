@@ -1,3 +1,4 @@
+import { usersFields } from './validators';
 import { staffRole } from '../shared/staffTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
@@ -9,13 +10,7 @@ export const authTables = {
   inviteExpiresAt: v.optional(v.number()), createdAt: v.number(), updatedAt: v.number(), updatedByEmail: v.string()
  }).index('by_email', ['email']).index('by_tokenIdentifier', ['tokenIdentifier']),
 
-	users: defineTable({
-		clerkId: v.string(),
-		tokenIdentifier: v.string(),
-		email: v.string(),
-		name: v.optional(v.string()),
-		imageUrl: v.optional(v.string())
-	})
+	users: defineTable(usersFields)
 		.index('by_token', ['tokenIdentifier'])
 		.index('by_clerk_id', ['clerkId'])
 };

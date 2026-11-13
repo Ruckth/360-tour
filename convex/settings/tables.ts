@@ -1,3 +1,5 @@
+import { settingsPublicProfileResult } from './validators';
+import { appointmentAudit } from '../shared/appointmentAudit';
 import { cashierRulesFields } from '../shared/staffTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
@@ -10,8 +12,10 @@ export const settingsTables = {
  recordChanges: defineTable({
   entityType: v.string(), entityId: v.string(), recordedAt: v.number(),
   effectiveAt: v.number(), actor: v.string(), kind: v.string(),
+  appointmentId: v.optional(v.id('appointments')), at: v.optional(v.number()),
+  appointmentAudit: v.optional(appointmentAudit),
   reason: v.optional(v.string()), before: v.optional(v.any()), after: v.optional(v.any())
- }).index('by_entityType_and_entityId_and_recordedAt', ['entityType', 'entityId', 'recordedAt'])
+ }).index('by_appointmentId_and_at', ['appointmentId', 'at']).index('by_entityType_and_entityId_and_recordedAt', ['entityType', 'entityId', 'recordedAt'])
    .index('by_entityType_and_recordedAt', ['entityType', 'recordedAt']),
 
 	configurationHistoryIndex: defineTable({
@@ -33,18 +37,18 @@ export const settingsTables = {
 		key: v.literal('default'),
 		bookingRules: v.optional(bookingRulesValidator),
 		revision: v.optional(v.number()),
-		businessName: v.optional(v.string()),
-		tagline: v.optional(v.string()),
-		contactEmail: v.optional(v.string()),
-		contactPhone: v.optional(v.string()),
-		whatsapp: v.optional(v.string()),
-		lineId: v.optional(v.string()),
-		lineUrl: v.optional(v.string()),
-		address: v.optional(v.string()),
-		currency: v.optional(v.string()),
-		timezone: v.optional(v.string()),
-		checkInTime: v.optional(v.string()),
-		checkOutTime: v.optional(v.string()),
+		businessName: v.optional(settingsPublicProfileResult.fields.businessName),
+		tagline: v.optional(settingsPublicProfileResult.fields.tagline),
+		contactEmail: v.optional(settingsPublicProfileResult.fields.contactEmail),
+		contactPhone: v.optional(settingsPublicProfileResult.fields.contactPhone),
+		whatsapp: v.optional(settingsPublicProfileResult.fields.whatsapp),
+		lineId: v.optional(settingsPublicProfileResult.fields.lineId),
+		lineUrl: v.optional(settingsPublicProfileResult.fields.lineUrl),
+		address: v.optional(settingsPublicProfileResult.fields.address),
+		currency: v.optional(settingsPublicProfileResult.fields.currency),
+		timezone: v.optional(settingsPublicProfileResult.fields.timezone),
+		checkInTime: v.optional(settingsPublicProfileResult.fields.checkInTime),
+		checkOutTime: v.optional(settingsPublicProfileResult.fields.checkOutTime),
 		cancellationPolicy: v.optional(v.string()),
 		ai: v.optional(
 			v.object({

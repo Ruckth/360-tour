@@ -1,3 +1,4 @@
+import { listSessions } from './messaging/adminChat';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Regressions for reads that used to stop at a fixed row count (see docs/plans/convex-query-optimization-audit.md).
@@ -431,4 +432,67 @@ describe('shared read budget', () => {
 		expect(ranges).toBe(2 + 3);
 		expect(await t.run((ctx) => ctx.db.get(pending.bookingId))).toMatchObject({ status: 'confirmed', paymentStatus: 'paid' });
 	});
+});
+
+describe('inbox read amplification', () => {
+  it('lists the inbox within the read budget', async () => {
+    const { t, admin } = await setup();
+    await t.run(async ctx => {
+      for (let i = 0; i < 10; i++) {
+        const propertyId = await ctx.db.insert('properties', { ...villa, slug: `inbox-${i}`, name: `Villa ${i}` });
+        const sessionId = await ctx.db.insert('conversations', { channel: 'line', propertyId, createdAt: i, messageCount: 1, latestMessageAt: i, adminSortAt: i, inboxState: 'needs_staff' });
+        await ctx.db.insert('messages', { sessionId, role: 'user', content: `Question ${i}`, timestamp: i });
+        await ctx.db.insert('channelEvents', { channel: 'line', sessionId, eventKey: `inbox-${i}`, eventType: 'message', status: 'received', processingStartedAt: i, createdAt: i, updatedAt: i });
+      }
+    });
+    const measure = () => admin.run(async ctx => {
+      const start = await ctx.meta.getTransactionMetrics();
+      {
+        const result = await Reflect.get(listSessions, '_handler')(ctx, { status: 'needs_reply', empty: 'non_empty' });
+        return { reads: (await ctx.meta.getTransactionMetrics()).documentsRead.used - start.documentsRead.used, rows: result.sessions.length, sessions: result.sessions };
+      }
+    });
+    const before = await measure();
+    expect(before.reads).toBe(41);
+    expect(await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: true })).toEqual({ checked: 10, changed: 10, complete: false });
+    expect((await measure()).reads).toBe(before.reads);
+    await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: false });
+    expect(await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: true })).toEqual({ checked: 10, changed: 0, complete: true });
+    const after = await measure();
+    expect(after.rows).toBe(10);
+    expect(after.reads).toBe(20);
+    expect(after.sessions.map((row: Doc<'conversations'>) => row._id)).toEqual(before.sessions.map((row: Doc<'conversations'>) => row._id));
+    expect(after.reads).toBeLessThanOrEqual(after.rows * 2);
+    // The sparse index skips unrelated processing rows and preserves the same ten results.
+    await t.run(async ctx => {
+      for (let i = 0; i < 60; i++) await ctx.db.insert('conversations', { channel: 'web', createdAt: i + 100, messageCount: 0, adminSortAt: i + 100, lastActivityAt: i + 100, inboxProjectionVersion: 1, inboxState: 'processing', lastMessagePreview: null, lastDeliveryStatus: null });
+    });
+    expect((await measure()).reads).toBe(20);
+  });
+});
+
+
+it('keeps a filtered inbox cursor on its original index across initialization', async () => {
+  const { t, admin } = await setup();
+  await t.run(async ctx => {
+    for (let i = 0; i < 25; i++) {
+      // Missing inboxState must still use the actual last guest message before cutover.
+      const sessionId = await ctx.db.insert('conversations', { channel: 'web', createdAt: i, messageCount: 1, latestMessageAt: i, adminSortAt: i });
+      await ctx.db.insert('messages', { sessionId, role: 'user', content: `Question ${i}`, timestamp: i });
+    }
+  });
+  const first = await admin.query(api.messaging.adminChat.listSessions, { status: 'needs_reply', empty: 'non_empty' });
+  expect(first.sessions).toHaveLength(10);
+  await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: false });
+  const ids = first.sessions.map(row => row._id);
+  let cursor = first.continueCursor;
+  while (cursor) {
+    const next = await admin.query(api.messaging.adminChat.listSessions, { status: 'needs_reply', empty: 'non_empty', paginationOpts: { numItems: 10, cursor } });
+    ids.push(...next.sessions.map(row => row._id));
+    cursor = next.continueCursor;
+  }
+  expect(ids).toHaveLength(25);
+  expect(new Set(ids).size).toBe(25);
+  const fresh = await admin.query(api.messaging.adminChat.listSessions, { status: 'needs_reply', empty: 'non_empty' });
+  expect(fresh.sessions.map(row => row._id)).toEqual(ids.slice(0, 10));
 });

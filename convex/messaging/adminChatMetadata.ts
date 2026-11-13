@@ -31,6 +31,7 @@ export type AdminChatMetadataPatch = {
 	messageCount?: number;
 	latestMessageAt?: number;
 	adminSortAt: number;
+    lastActivityAt: number;
 	adminSearchText: string;
 };
 
@@ -94,6 +95,7 @@ export function buildAdminChatMetadataPatch(
 			? { latestMessageAt: nextSession.latestMessageAt }
 			: {}),
 		adminSortAt: getAdminChatSortAt(nextSession),
+        lastActivityAt: getAdminChatSortAt(nextSession),
 		adminSearchText: buildAdminSearchText(nextSession),
 	};
 }
@@ -119,7 +121,9 @@ export async function patchSessionAfterMessages(
 	const nextMessageCount = getAdminChatMessageCount(session) + options.addedMessages;
 	const nextLastSeenAt = options.lastSeenAt ?? session.lastSeenAt;
 
-	await ctx.db.patch(sessionId, {
+	const lastMessagePreview = await ctx.db.query('messages').withIndex('by_session', q => q.eq('sessionId', sessionId)).order('desc').first();
+    await ctx.db.patch(sessionId, {
+        lastMessagePreview,
 		...buildAdminChatMetadataPatch(session, {
 			messageCount: nextMessageCount,
 			latestMessageAt: nextLatestMessageAt,

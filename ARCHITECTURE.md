@@ -1,6 +1,6 @@
 # Architecture and feature recipe
 
-Read this before changing application code. The [plan](docs/plans/scalable-architecture-plan.html) records the migration decisions; [implementation records](docs/architecture/phase3f-implementation.md) record evidence, not permanent source snapshots. `.arch-phase` is **3**: domain boundaries, local development and live seeded Preview/auth/rebuild acceptance are proven. Phase 4 contracts and measured hot spots remain.
+Read this before changing application code. The [plan](docs/plans/scalable-architecture-plan.html) records the migration decisions; [implementation records](docs/architecture/phase3f-implementation.md) record evidence, not permanent source snapshots. `.arch-phase` is **4**: domain ownership, local development, seeded Preview/auth/rebuild acceptance, no-login return contracts and measured hot spots are implemented and verified. The Phase 4 production initialization preserves source data and existing public responses.
 
 ## Ownership and useful interfaces
 
@@ -133,11 +133,11 @@ pnpm test:pure               # pure/Node/tooling and pure backend leaves
 pnpm test:dom <file-filter>   # DOM views, same real Convex harness
 pnpm test:convex <filter>     # edge-runtime backend suites
 pnpm verify:integration      # types, zero-warning lint, unit/backend, build, component UI, real Clerk E2E
-pnpm arch:score --phase 3    # run on a clean committed tree
-pnpm arch:score --phase3     # equivalent spelling, 30 completed-phase checks
+pnpm arch:score --phase 4    # run on a clean committed tree
+pnpm arch:score --phase4     # equivalent spelling, 32 completed-phase checks
 ```
 
-A scorecard phase flag measures/reports only metrics due through that phase; omit the flag for the complete report. CI uses `.arch-phase` (currently 3), so all 30 completed-phase gates remain enforced.
+A scorecard phase flag measures/reports only metrics due through that phase; omit the flag for the complete report. CI uses `.arch-phase` (currently 4), so all 32 completed-phase gates remain enforced.
 
 `pnpm verify` runs typechecks, zero-warning lint, unit/backend tests and a production build with real configured app variables. With no configuration it must fail clearly. `pnpm verify:integration` provisions its own anonymous local Convex, seeds only that fresh backend and uses three dedicated Clerk test fields from CI or ignored mode-600 `.env.e2e.local`. Run-owned test users are removed afterward. It refuses production Clerk keys and disables outbound business providers. `pnpm test:booking-ui` covers component/browser behavior; `pnpm test:e2e` owns a complete local backend/auth/build lifecycle. Never run two Next builds concurrently.
 
@@ -152,4 +152,7 @@ node scripts/check-function-contracts.mjs --base <reviewed-parent> --local-spec 
 
 The first compares actual schema exports offline; the second checks registration initializers/builder bindings and full HTTP/scheduler source for that refactor. These are equivalence tools, not restrictions against adding features. For an intentional contract change, review the actual schema/data rollout and update coverage/inventory deliberately. Active reset/maintenance artifact generation, rollback safety and historical schema restoration tests remain supported; follow the [reset runbook](docs/architecture/phase1-reset-runbook.md) for authorized operations. One-shot Phase 3b/3c move generators and fixed-base source proofs are historical, retired in 3e and recoverable from git. Their old commands are not current validation.
 
-`pnpm dev` now owns one private persistent checkout-local anonymous Convex and Next lifetime; it requires mode-600 `.env.dev.local`, explicit Clerk test owners and no inherited deployment target, and seeds only an empty database. `pnpm test:dev` exercises restart/auth/SIGINT/failure behavior with unique run-owned users. See the [Phase 3f operations runbook](docs/architecture/phase3f-operations.md) for command interfaces, focused Vitest projects, guarded deploy→seed→Next Preview ordering and conservative offline retention. Root owns actual key/environment settings, live Preview acceptance and all retention deletion. Phase 4 still owns the public return-validator sweep, read budgets/performance changes and audit-writer changes. A passing static Phase 3 report does not prove those exits, live deployment acceptance or provider delivery.
+`pnpm dev` now owns one private persistent checkout-local anonymous Convex and Next lifetime; it requires mode-600 `.env.dev.local`, explicit Clerk test owners and no inherited deployment target, and seeds only an empty database. `pnpm test:dev` exercises restart/auth/SIGINT/failure behavior with unique run-owned users. See the [Phase 3f operations runbook](docs/architecture/phase3f-operations.md) for command interfaces, focused Vitest projects, guarded deploy→seed→Next Preview ordering and conservative offline retention. Root owns actual key/environment settings, live Preview acceptance and all retention deletion. The [Phase 4 implementation record](docs/architecture/phase4-implementation.md) documents return contracts, measured read budgets, additive initialization and the canonical appointment audit. A passing static report does not prove live initialization, deployment acceptance or provider delivery.
+
+
+No-login return validators live in the owning domain's `validators.ts`; reuse appropriate stored shapes while explicitly selecting public fields. Projection-only fields stay off admin browser responses; Web delivery/tool evidence remains on the event. Message writes update the conversation head through `patchSessionAfterMessages`; channel-event inserts/patches use the messaging projection writers. The existing `inboxState` is the canonical staff-work state. Missing projection versions retain live reads until bounded initialization completes; preserve cursor source indexes through cutover. Cross-domain callers use `messaging/model.ts`, including the guarded eval writer's initialized projection refresh. Review writers adjust exact sum/count in the owning transaction before changing the review. New appointment history writes one typed `recordChanges.appointmentAudit` payload; retain the merged historical reader and widened schema during rollback. Follow the Phase 4 runbook before any populated deployment cutover.

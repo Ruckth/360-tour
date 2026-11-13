@@ -1,3 +1,4 @@
+import { availabilityGetForPropertyResult, availabilityGetBlockedDatesResult, availabilityGetBlockedDatesByPropertyResult, availabilityIsAvailableResult } from '../validators';
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { type QueryCtx, adminQuery, publicQuery } from '../../auth/model';
@@ -72,6 +73,7 @@ async function blockedDates(
 
 /** Public: date, status and source only. Booking, feed and block ids stay private. */
 export const getForProperty = publicQuery({
+  returns: availabilityGetForPropertyResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		propertyId: v.id('properties'),
@@ -90,6 +92,7 @@ export const getForProperty = publicQuery({
 
 /** Unavailable dates of one villa in [startDate, endDate]; the booking date picker loads a month at a time. */
 export const getBlockedDates = publicQuery({
+  returns: availabilityGetBlockedDatesResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		propertyId: v.id('properties'),
@@ -140,6 +143,7 @@ export const getAdminBlockedDates = adminQuery({
  * served only while the whole answer fits the shared read budget and is refused otherwise.
  */
 export const getBlockedDatesByProperty = publicQuery({
+  returns: availabilityGetBlockedDatesByPropertyResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		startDate: v.string(),
@@ -186,6 +190,7 @@ export const getBlockedDatesByProperty = publicQuery({
 
 /** Whether [checkIn, checkOut) is free: no blocked night and no overlapping confirmed booking. */
 export const isAvailable = publicQuery({
+  returns: availabilityIsAvailableResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {
 		propertyId: v.id('properties'),

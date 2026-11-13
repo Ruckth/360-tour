@@ -1,3 +1,4 @@
+import { accessCurrentResult } from './validators';
 import { ConvexError, v } from 'convex/values';
 import { authenticatedMutation, marketingMutation, marketingQuery, publicQuery } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
@@ -7,6 +8,7 @@ import { appendRecordHistory } from '../settings/model';
 import { marketingAccess, marketingInvitationExpired, marketingInvitationExpiry } from './accessPolicy';
 
 export const current = publicQuery({
+  returns: accessCurrentResult,
   reason: "Sign-in bootstrap returns caller access or anonymous capabilities.",
   args: {},
   handler: (ctx) => marketingAccess(ctx),

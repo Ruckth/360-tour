@@ -1,3 +1,4 @@
+import { patchChannelEvent } from './inboxProjection';
 import { ConvexError, v, type Infer } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -31,7 +32,7 @@ export async function startDurablePreparation(ctx: MutationCtx, sessionId: Id<'c
   if (event.sessionId !== sessionId) throw new Error('Tool conversation mismatch');
   if (invocationIndex(event, tool) >= 0) return false;
   if ((event.toolResults?.length ?? 0) >= 16) throw new Error('Tool write budget exceeded');
-  await ctx.db.patch(event._id, { toolResults: [...(event.toolResults ?? []), {
+  await patchChannelEvent(ctx, event._id, { toolResults: [...(event.toolResults ?? []), {
     key: tool.key, name: tool.name, pending: true,
     resultJson: JSON.stringify({ ok: false, error: 'The replacement preparation did not complete.' }),
   }] });
@@ -53,6 +54,6 @@ export async function withDurableTool<T>(ctx: MutationCtx, sessionId: Id<'conver
   const completed = { key: tool.key, name: tool.name, resultJson: JSON.stringify(result ?? null) };
   if (index >= 0) results[index] = completed;
   else results.push(completed);
-  await ctx.db.patch(event._id, { toolResults: results });
+  await patchChannelEvent(ctx, event._id, { toolResults: results });
   return result;
 }

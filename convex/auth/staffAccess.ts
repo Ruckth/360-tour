@@ -1,3 +1,4 @@
+import { staffAccessMyAccessResult } from './validators';
 import { ConvexError, v } from 'convex/values';
 import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
@@ -9,6 +10,7 @@ import { staffAccess, staffInvitationExpiry } from './private/staffAccess';
 export const currentInternal = internalQuery({ args: {}, handler: staffAccess });
 
 export const myAccess = publicQuery({
+  returns: staffAccessMyAccessResult,
   reason: "Sign-in bootstrap returns caller capabilities or anonymous access.", args: {}, handler: async ctx => {
   const [access, rules, marketing] = await Promise.all([staffAccess(ctx), cashierRules(ctx), marketingAccess(ctx)]);
   const { email, role, pendingInvitation } = access;

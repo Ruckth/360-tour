@@ -1,3 +1,4 @@
+import { settingsPublicProfileResult } from './validators';
 import { v } from 'convex/values';
 import { adminQuery, internalQuery, publicQuery, staffMutation, type QueryCtx } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
@@ -24,6 +25,7 @@ export const effective = internalQuery({
 
 /** Non-sensitive profile fields; safe for any visitor. */
 export const publicProfile = publicQuery({
+  returns: settingsPublicProfileResult,
   reason: "Anonymous site profile with explicitly listed public settings.",
 	args: {},
 	handler: async (ctx) => {

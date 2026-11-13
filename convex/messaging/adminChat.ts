@@ -1,3 +1,4 @@
+import { inboxProjectionReady } from './inboxProjection';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
@@ -24,6 +25,7 @@ type FilterCursor = {
 	sourceCursor: string | null;
 	sourceDone: boolean;
 	overflowIds: Id<'conversations'>[];
+    sourceIndex?: 'inbox' | 'activity';
 };
 
 const sessionStatusValidator = v.union(
@@ -88,6 +90,7 @@ function parseFilterCursor(cursor: string | null): FilterCursor {
 			sourceCursor?: unknown;
 			sourceDone?: unknown;
 			overflowIds?: unknown;
+            sourceIndex?: unknown;
 		};
 		if (parsed.type !== 'filtered') {
 			return { sourceCursor: cursor, sourceDone: false, overflowIds: [] };
@@ -95,6 +98,7 @@ function parseFilterCursor(cursor: string | null): FilterCursor {
 		return {
 			sourceCursor: typeof parsed.sourceCursor === 'string' ? parsed.sourceCursor : null,
 			sourceDone: typeof parsed.sourceDone === 'boolean' ? parsed.sourceDone : false,
+            sourceIndex: parsed.sourceIndex === 'inbox' ? 'inbox' : 'activity',
 			overflowIds: Array.isArray(parsed.overflowIds)
 				? parsed.overflowIds.filter((id): id is Id<'conversations'> => typeof id === 'string')
 				: []
@@ -109,7 +113,8 @@ function filterCursor(cursor: FilterCursor) {
 		type: 'filtered',
 		sourceCursor: cursor.sourceCursor,
 		sourceDone: cursor.sourceDone,
-		overflowIds: cursor.overflowIds
+		overflowIds: cursor.overflowIds,
+        sourceIndex: cursor.sourceIndex
 	});
 }
 
@@ -206,12 +211,18 @@ function createSessionLookups(ctx: QueryCtx): SessionLookups {
 	};
 }
 
+function latestSessionMessage(lookups: SessionLookups, session: Doc<'conversations'>) {
+  return session.inboxProjectionVersion === 1 && session.lastMessagePreview !== undefined
+    ? Promise.resolve(session.lastMessagePreview)
+    : lookups.latestMessage(session._id);
+}
+
 async function sessionHasStoredMessages(lookups: SessionLookups, session: Doc<'conversations'>) {
-	return Boolean(await lookups.latestMessage(session._id));
+	return Boolean(await latestSessionMessage(lookups, session));
 }
 
 async function getSessionLatestMessageAt(lookups: SessionLookups, session: Doc<'conversations'>) {
-	const latestStoredMessage = await lookups.latestMessage(session._id);
+	const latestStoredMessage = await latestSessionMessage(lookups, session);
  return latestStoredMessage?.timestamp ?? session.latestMessageAt;
 }
 
@@ -242,13 +253,13 @@ async function sessionMatchesFilters(
 	if (options.channel !== 'all' && session.channel !== options.channel) return false;
 	const adminStatus = session.adminStatus ?? 'open';
 	if (options.status === 'in_progress' && (session.inboxState ? session.inboxState !== 'processing' :
-		sessionNeedsReply(session, await lookups.latestMessage(session._id)))) return false;
+		sessionNeedsReply(session, await latestSessionMessage(lookups, session)))) return false;
 	if (options.adminStatus === 'done' ? adminStatus === 'open' : options.adminStatus !== 'all' && adminStatus !== options.adminStatus) {
 		return false;
 	}
 	if (
 		options.status === 'needs_reply' &&
-		!sessionNeedsReply(session, await lookups.latestMessage(session._id))
+		!sessionNeedsReply(session, await latestSessionMessage(lookups, session))
 	) {
 		return false;
 	}
@@ -302,6 +313,22 @@ async function filterMatchingSessions(
 	return sessions.filter((_, index) => matches[index]);
 }
 
+/** Cached heads are internal storage, never additional browser response fields. */
+function adminSessionMetadata(session: Doc<'conversations'>): Omit<Doc<'conversations'>, 'lastMessagePreview' | 'lastDeliveryStatus' | 'inboxProjectionVersion' | 'lastActivityAt'> {
+  const metadata = { ...session };
+  delete metadata.lastMessagePreview;
+  delete metadata.lastDeliveryStatus;
+  delete metadata.inboxProjectionVersion;
+  delete metadata.lastActivityAt;
+  return metadata;
+}
+
+function latestSessionDelivery(ctx: QueryCtx, session: Doc<'conversations'>, channel: Doc<'channelEvents'>['channel']) {
+  if (session.channel !== channel || channel === 'web') return null;
+  if (session.inboxProjectionVersion === 1 && session.lastDeliveryStatus !== undefined) return session.lastDeliveryStatus;
+  return ctx.db.query('channelEvents').withIndex('by_channel_and_sessionId', q => q.eq('channel', channel).eq('sessionId', session._id)).order('desc').first();
+}
+
 async function decorateSession(
 	ctx: QueryCtx,
 	lookups: SessionLookups,
@@ -316,40 +343,16 @@ async function decorateSession(
 		latestInstagramEvent,
 		property
 	] = await Promise.all([
-		lookups.latestMessage(session._id),
-		session.channel === 'line'
-			? ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'line').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
-		session.channel === 'facebook'
-			? ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'facebook').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
-		session.channel === 'whatsapp'
-			? ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'whatsapp').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
-		session.channel === 'instagram'
-			? ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'instagram').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
+		latestSessionMessage(lookups, session),
+        latestSessionDelivery(ctx, session, 'line'),
+        latestSessionDelivery(ctx, session, 'facebook'),
+        latestSessionDelivery(ctx, session, 'whatsapp'),
+        latestSessionDelivery(ctx, session, 'instagram'),
 		session.propertyId ? lookups.property(session.propertyId) : null
 	]);
 
 	return {
-		...session,
+		...adminSessionMetadata(session),
 		messageCount: Math.max(getAdminChatMessageCount(session), latestMessage ? 1 : 0),
 		latestMessageAt: latestMessage?.timestamp ?? session.latestMessageAt,
 		adminSortAt: getAdminChatSortAt(session),
@@ -481,6 +484,7 @@ async function listFilteredSessions(
 	const parsedCursor = parseFilterCursor(options.cursor);
 	let cursor = parsedCursor.sourceCursor;
 	let sourceDone = parsedCursor.sourceDone;
+    const sourceIndex = parsedCursor.sourceIndex ?? (options.cursor ? 'activity' : options.status === 'needs_reply' && await inboxProjectionReady(ctx) ? 'inbox' : 'activity');
 	const matched: Doc<'conversations'>[] = [];
 	const seen = new Set<Id<'conversations'>>();
 
@@ -502,7 +506,8 @@ async function listFilteredSessions(
 	);
 
 	if (matched.length < PAGE_SIZE && !sourceDone) {
-		const paginationOpts = { numItems: FILTER_SOURCE_PAGE_SIZE, cursor };
+		const ready = sourceIndex === 'inbox';
+        const paginationOpts = { numItems: ready ? PAGE_SIZE : FILTER_SOURCE_PAGE_SIZE, cursor };
 		const startAt = options.messageStartAt ?? 0;
 		const endAt = options.messageEndAt ?? Number.MAX_SAFE_INTEGER;
 		// Convex only allows one paginated query per function invocation. Chats with messages
@@ -510,8 +515,9 @@ async function listFilteredSessions(
 		// channel filter skips other channels' chats. The remaining filters are checked per row.
 		const sparseAdminStatus =
 			options.adminStatus === 'resolved' || options.adminStatus === 'archived' ? options.adminStatus : null;
-		const page =
-			options.empty !== 'non_empty'
+		const page = ready
+            ? await ctx.db.query('conversations').withIndex('by_inboxState_and_lastActivityAt', q => q.eq('inboxState', 'needs_staff')).order('desc').paginate(paginationOpts)
+            : options.empty !== 'non_empty'
 				? await ctx.db
 						.query('conversations')
 						.withIndex('by_adminSortAt')
@@ -554,7 +560,7 @@ async function listFilteredSessions(
 	const overflowIds = matched.slice(PAGE_SIZE).map((session) => session._id);
 	const hasMore = overflowIds.length > 0 || !sourceDone;
 	const continueCursor = hasMore
-		? filterCursor({ sourceCursor: cursor, sourceDone, overflowIds })
+		? filterCursor({ sourceCursor: cursor, sourceDone, overflowIds, sourceIndex })
 		: null;
 	return {
 		sessions: await decorateSessions(ctx, lookups, pageSessions, options.now),
@@ -672,7 +678,7 @@ export const getSessionDetail = adminQuery({
 
 		return {
 			session: {
-				...session,
+				...adminSessionMetadata(session),
 				propertyName: property?.name,
 				latestMessage,
 				latestGuestMessageId: session.latestGuestMessageId ??
@@ -770,7 +776,7 @@ export const getTranscript = adminQuery({
 
 		return {
 			session: {
-				...session,
+				...adminSessionMetadata(session),
 				propertyName: property?.name,
 				isActive: isChatSessionActive(session, now)
 			},

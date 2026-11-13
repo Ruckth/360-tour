@@ -1,3 +1,5 @@
+import { initialInboxProjection, insertChannelEvent } from './inboxProjection';
+import { chatCreateSessionResult, chatTouchSessionResult, chatCloseSessionResult, chatCreateBrowserHandoffResult, chatClaimBrowserHandoffResult, chatIdentifyVisitorResult, chatGetSessionResult, chatIsAiPausedResult, chatGetMessagesResult } from './validators';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
@@ -51,6 +53,7 @@ function publicSession(session: Doc<'conversations'>) {
 }
 
 export const createSession = publicMutation({
+  returns: chatCreateSessionResult,
   reason: "Anonymous web chat bootstrap; creation is rate limited and returns a new guest credential.",
 	args: {
 		propertyId: v.optional(v.id('properties')),
@@ -85,6 +88,7 @@ export const createSession = publicMutation({
 		const now = Date.now();
 		const guestToken = createGuestToken();
 		const sessionId = await ctx.db.insert('conversations', {
+            ...initialInboxProjection(now),
 			guestTokenHash: await hashGuestToken(guestToken),
 			...(marketingCapture ? { marketingCapture } : {}),
 			propertyId,
@@ -123,6 +127,7 @@ export const createSession = publicMutation({
 });
 
 export const touchSession = guestMutation({
+  returns: chatTouchSessionResult,
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
@@ -184,6 +189,7 @@ export const touchSession = guestMutation({
 			propertyId === session.propertyId &&
 			adminSearchText === session.adminSearchText &&
 			adminSortAt === session.adminSortAt &&
+            adminSortAt === session.lastActivityAt &&
 			typeof session.latestMessageAt === 'number' &&
 			typeof session.lastSeenAt === 'number' &&
 			now - session.lastSeenAt < PRESENCE_WRITE_THROTTLE_MS &&
@@ -195,24 +201,27 @@ export const touchSession = guestMutation({
 			...(propertyId !== session.propertyId ? { propertyId } : {}),
 			lastSeenAt: now,
 			...(args.isOpen ? { lastOpenedAt: now } : {}),
-			...(adminSortAt !== session.adminSortAt ? { adminSortAt } : {}),
+			...(adminSortAt !== session.adminSortAt || adminSortAt !== session.lastActivityAt ? { adminSortAt, lastActivityAt: adminSortAt } : {}),
 			...(adminSearchText !== session.adminSearchText ? { adminSearchText } : {})
 		});
 	}
 });
 
 export const closeSession = guestMutation({
+  returns: chatCloseSessionResult,
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		await ctx.db.patch(args.sessionId, {
 			lastClosedAt: now,
-			lastSeenAt: now
+			lastSeenAt: now,
+            ...buildAdminChatMetadataPatch(ctx.guestSession, { lastSeenAt: now })
 		});
 	}
 });
 
 export const createBrowserHandoff = guestMutation({
+  returns: chatCreateBrowserHandoffResult,
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const now = Date.now();
@@ -229,6 +238,7 @@ export const createBrowserHandoff = guestMutation({
 });
 
 export const claimBrowserHandoff = publicMutation({
+  returns: chatClaimBrowserHandoffResult,
   reason: "One-use expiring handoff capability rotates the guest credential.",
 	args: { token: v.string() },
 	handler: async (ctx, args) => {
@@ -252,7 +262,8 @@ export const claimBrowserHandoff = publicMutation({
 		await ctx.db.patch(handoff.sessionId, {
 			guestTokenHash: await hashGuestToken(guestToken),
 			lastSeenAt: now,
-			lastOpenedAt: now
+			lastOpenedAt: now,
+            ...buildAdminChatMetadataPatch(session, { lastSeenAt: now })
 		});
 
 		return { sessionId: handoff.sessionId, guestToken };
@@ -260,6 +271,7 @@ export const claimBrowserHandoff = publicMutation({
 });
 
 export const identifyVisitor = guestMutation({
+  returns: chatIdentifyVisitorResult,
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
@@ -390,6 +402,7 @@ export const addAssistantMessageWithSuggestions = internalMutation({
 
 /** Public view of a chat session: no admin-only or visitor-contact fields. */
 export const getSession = guestQuery({
+  returns: chatGetSessionResult,
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx) => {
 		const session = ctx.guestSession;
@@ -404,6 +417,7 @@ export const getSessionInternal = internalQuery({
 
 /** Guest view of whether staff took over this chat. */
 export const isAiPaused = guestQuery({
+  returns: chatIsAiPausedResult,
 	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
 	handler: async (ctx) => {
 		const session = ctx.guestSession;
@@ -412,6 +426,7 @@ export const isAiPaused = guestQuery({
 });
 
 export const getMessages = guestQuery({
+  returns: chatGetMessagesResult,
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
@@ -423,7 +438,7 @@ export const getMessages = guestQuery({
 			.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
 			.order('desc')
 			.take(args.limit ?? 100);
-		return recent.reverse();
+		return recent.reverse().map(({ _id, _creationTime, sessionId, role, source, replyToMessageId, content, action, timestamp }) => ({ _id, _creationTime, sessionId, role, source, replyToMessageId, content, action, timestamp }));
 	}
 });
 
@@ -469,7 +484,7 @@ export const sendMessage = guestMutation({
     if (args.marketing !== undefined) await ctx.db.patch(args.sessionId, { marketingCapture: cleanCapture(args.marketing) });
     const now = Date.now();
     const userMessageId = await recordGuest(ctx, args.sessionId, content);
-    const eventId = await ctx.db.insert('channelEvents', {
+    const eventId = await insertChannelEvent(ctx, {
       channel: 'web', eventKey, sessionId: args.sessionId, eventType: 'message', messageText: content, userMessageId,
       locale: args.locale, propertySlug: args.propertySlug, actionHint: args.actionHint,
       status: ctx.guestSession.aiPaused ? 'ignored' : 'received', attempts: 0, admittedAt: now, arrivedAt: now,

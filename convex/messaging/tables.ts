@@ -1,3 +1,4 @@
+import { messagesFields, channelEventsFields, messageDocument, channelEventDocument } from './validators';
 import { chatCouponValidator } from '../bookings/model';
 import { defineTable } from 'convex/server';
 import { inboxReasonValidator } from '../shared/inboxTypes';
@@ -34,6 +35,10 @@ export const messagingTables = {
 
 	// Phase 3: AI Chat
 	conversations: defineTable({
+        inboxProjectionVersion: v.optional(v.literal(1)),
+        lastActivityAt: v.optional(v.number()),
+        lastMessagePreview: v.optional(v.union(v.null(), messageDocument)),
+        lastDeliveryStatus: v.optional(v.union(v.null(), channelEventDocument)),
 		guestTokenHash: v.optional(v.string()),
 		propertyId: v.optional(v.id('properties')),
 		propertySlug: v.optional(v.string()),
@@ -154,6 +159,8 @@ export const messagingTables = {
 		.index('by_property_last_seen', ['propertyId', 'lastSeenAt'])
 		.index('by_visitor', ['visitorId'])
 		.index('by_adminSortAt', ['adminSortAt'])
+        .index('by_inboxState_and_lastActivityAt', ['inboxState', 'lastActivityAt'])
+        .index('by_inboxProjectionVersion', ['inboxProjectionVersion'])
 		.index('by_latestMessageAt', ['latestMessageAt'])
 		.index('by_messageCount_and_adminSortAt', ['messageCount', 'adminSortAt'])
 		.index('by_propertyId_and_adminSortAt', ['propertyId', 'adminSortAt'])
@@ -166,15 +173,7 @@ export const messagingTables = {
 		}),
 
 
-	messages: defineTable({
-		sessionId: v.id('conversations'),
-		role: v.union(v.literal('user'), v.literal('assistant')),
-		source: v.optional(v.literal('admin')),
-		replyToMessageId: v.optional(v.id('messages')),
-		content: v.string(),
-		action: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
-		timestamp: v.number()
-	})
+	messages: defineTable(messagesFields)
 		.index('by_sessionId_and_role', ['sessionId', 'role'])
     .index('by_session', ['sessionId', 'timestamp'])
 		.searchIndex('search_content', {
@@ -210,62 +209,7 @@ export const messagingTables = {
 		.index('by_sessionId', ['sessionId']),
 
 
-	channelEvents: defineTable({
-		channel: v.union(v.literal('web'), v.literal('line'), v.literal('facebook'), v.literal('instagram'), v.literal('whatsapp')),
-		eventKey: v.string(),
-    recipient: v.optional(v.string()), accountId: v.optional(v.string()), profileName: v.optional(v.string()),
-    admittedAt: v.optional(v.number()), replyToken: v.optional(v.string()), arrivedAt: v.optional(v.number()),
-    claimToken: v.optional(v.string()), leaseExpiresAt: v.optional(v.number()), attempts: v.optional(v.number()), nextAttemptAt: v.optional(v.number()),
-    dispatchState: v.optional(v.union(v.literal('prepared'), v.literal('sending'), v.literal('sent'), v.literal('rejected'), v.literal('uncertain'))),
-    responseText: v.optional(v.string()), responseModel: v.optional(v.string()), responseCardJson: v.optional(v.string()),
-    responseOutcome: v.optional(v.union(v.literal('answered'), v.literal('awaiting_guest'), v.literal('needs_staff'))),
-    locale: v.optional(v.string()), propertySlug: v.optional(v.string()), actionHint: v.optional(v.union(v.literal('booking'), v.literal('tour'), v.literal('none'))),
-    toolResults: v.optional(v.array(v.object({ key: v.string(), name: v.string(), resultJson: v.string(), pending: v.optional(v.boolean()) }))),
-		sessionId: v.optional(v.id('conversations')),
-		lineUserId: v.optional(v.string()),
-  facebookUserId: v.optional(v.string()), pageId: v.optional(v.string()),
-  instagramUserId: v.optional(v.string()), instagramAccountId: v.optional(v.string()),
-  whatsappUserId: v.optional(v.string()), phoneNumberId: v.optional(v.string()),
-  facebookReplyStatus: v.optional(v.number()), instagramReplyStatus: v.optional(v.number()), whatsappReplyStatus: v.optional(v.number()),
-		sourceType: v.optional(v.string()),
-		eventType: v.union(
-			v.literal('message'),
-			v.literal('follow'),
-			v.literal('postback'),
-			v.literal('unsupported')
-		),
-		messageText: v.optional(v.string()),
-		postbackData: v.optional(v.string()),
-		status: v.union(
-			v.literal('received'),
-			v.literal('processing'),
-			v.literal('replied'),
-			v.literal('ignored'),
-			v.literal('failed'),
-      v.literal('reconciliation')
-		),
-		replyMode: v.optional(
-			v.union(
-				v.literal('ai'),
-				v.literal('unknown_fallback'),
-				v.literal('postback'),
-				v.literal('follow'),
-				v.literal('ignored'),
-				v.literal('failed')
-			)
-		),
-		lineReplyStatus: v.optional(v.number()),
-		userMessageId: v.optional(v.id('messages')),
-		assistantMessageId: v.optional(v.id('messages')),
-		error: v.optional(v.string()),
-		eventTimestamp: v.optional(v.number()),
-		processingStartedAt: v.number(),
-        /** A provider send may have succeeded; automatic webhook replay is unsafe. */
-        deliveryStartedAt: v.optional(v.number()),
-		processedAt: v.optional(v.number()),
-		createdAt: v.number(),
-		updatedAt: v.number()
-	})
+	channelEvents: defineTable(channelEventsFields)
 		.index('by_sessionId_and_status_and_createdAt', ['sessionId', 'status', 'createdAt'])
     .index('by_status_and_leaseExpiresAt', ['status', 'leaseExpiresAt'])
     .index('by_status_and_nextAttemptAt', ['status', 'nextAttemptAt'])

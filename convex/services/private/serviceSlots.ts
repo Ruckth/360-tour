@@ -283,8 +283,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const confirmationCode = demoCode('SVC', appointmentId);
 	await ctx.db.patch(appointmentId, { confirmationCode });
 	const snapshot = { staffId: chosen._id, staffName: chosen.name, serviceId: service._id, serviceName: service.name, start: input.start, end: input.start + service.durationMin * MINUTE, blockedUntil, status, paymentStatus: 'unpaid', price: service.price, currency: service.currency, guestName, guestPhone, guestEmail: guestEmail ?? null, warnings: review.warnings };
-	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: appointmentId, actor, kind: 'created', effectiveAt: input.start, ...(reason ? { reason } : {}), after: snapshot });
-	await ctx.db.insert('appointmentChanges', { appointmentId, at: Date.now(), actor, kind: 'details', currencyBefore: service.currency, currencyAfter: service.currency,
+	const audit = { appointmentId, at: Date.now(), actor, kind: 'details' as const, currencyBefore: service.currency, currencyAfter: service.currency,
 		...(reason ? { reason } : {}), changes: [
 			{ field: 'created', from: null, to: confirmationCode }, { field: 'staffName', from: null, to: chosen.name }, { field: 'serviceName', from: null, to: service.name },
 			{ field: 'start', from: null, to: input.start }, { field: 'effectiveAt', from: null, to: input.start },
@@ -293,7 +292,9 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 			{ field: 'price', from: null, to: service.price }, { field: 'currency', from: null, to: service.currency },
 			{ field: 'guestName', from: null, to: guestName }, { field: 'guestPhone', from: null, to: guestPhone }, { field: 'guestEmail', from: null, to: guestEmail ?? null },
 			...review.warnings.map(warning => ({ field: 'warning', from: null, to: warning }))
-		] });
+		] };
+	await appendRecordHistory(ctx, { appointmentAudit: audit, entityType: 'appointment', entityId: appointmentId, actor, kind: 'created', effectiveAt: input.start, ...(reason ? { reason } : {}), after: snapshot });
+
 	// Its order from the start (the stay's order for an appointment that is part of a stay), empty until opened at checkout.
 	await ensureLinkedOrder(ctx, input.bookingId ? { bookingId: input.bookingId } : { appointmentId }, actor);
 	return { appointmentId, staffId: chosen._id, confirmationCode, accessToken };

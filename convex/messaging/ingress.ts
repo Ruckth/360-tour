@@ -1,3 +1,4 @@
+import { initialInboxProjection, patchChannelEvent, insertChannelEvent } from './inboxProjection';
 import { internalMutation, httpAction, type ActionCtx } from '../auth/model';
 import { maintenancePaused } from '../lib/maintenance';
 import { internal } from '../_generated/api';
@@ -25,6 +26,7 @@ export const accept = internalMutation({
         const visitorId = `${channel}:${event.recipient}`;
         const session = (await ctx.db.query('conversations').withIndex('by_visitor', q => q.eq('visitorId', visitorId)).order('desc').take(10)).find(row => row.channel === channel);
         sessionId = session?._id ?? await ctx.db.insert('conversations', {
+          ...initialInboxProjection(now),
           channel, visitorId, visitorContactApp: channel, visitorContactHandle: event.recipient,
           ...(channel === 'whatsapp' ? { visitorPhone: event.recipient } : {}), ...(event.profileName ? { visitorName: event.profileName?.trim() } : {}),
           lastSeenAt: now, createdAt: now, messageCount: 0, adminSortAt: now, adminSearchText: buildAdminSearchText({ channel, visitorId, visitorName: event.profileName?.trim() }),
@@ -32,7 +34,7 @@ export const accept = internalMutation({
       }
       let userMessageId;
       if (sessionId && event.messageText) userMessageId = await recordGuest(ctx, sessionId, event.messageText.slice(0, 2000), event.eventTimestamp ?? now);
-      const eventId = await ctx.db.insert('channelEvents', { channel, ...event, ...(sessionId ? { sessionId } : {}), ...(userMessageId ? { userMessageId } : {}),
+      const eventId = await insertChannelEvent(ctx, { channel, ...event, ...(sessionId ? { sessionId } : {}), ...(userMessageId ? { userMessageId } : {}),
         arrivedAt: now, status: usable ? 'received' : 'ignored', processingStartedAt: now, createdAt: now, updatedAt: now, attempts: 0, nextAttemptAt: now,
       });
       if (usable) {
@@ -80,7 +82,7 @@ export const admit = internalMutation({
     const event = await currentClaim(ctx, args.eventId, args.claimToken);
     if (event.sessionId && !event.admittedAt) {
       await consumeChatAdmission(ctx, event.sessionId);
-      await ctx.db.patch(event._id, { admittedAt: Date.now() });
+      await patchChannelEvent(ctx, event._id, { admittedAt: Date.now() });
     }
   },
 });
@@ -91,7 +93,7 @@ export const rejectAdmission = internalMutation({
   handler: async (ctx, args) => {
     const event = await currentClaim(ctx, args.eventId, args.claimToken);
     const error = 'Chat admission rate limit reached. This message was not processed; later messages can resume when capacity returns.';
-    await ctx.db.patch(event._id, { status: 'failed', error, processedAt: Date.now(), updatedAt: Date.now(), claimToken: undefined, leaseExpiresAt: undefined });
+    await patchChannelEvent(ctx, event._id, { status: 'failed', error, processedAt: Date.now(), updatedAt: Date.now(), claimToken: undefined, leaseExpiresAt: undefined });
     const session = event.sessionId ? await ctx.db.get(event.sessionId) : null;
     if (session && session.latestGuestMessageId === event.userMessageId && session.inboxReason === 'answering') {
       // Surface the unanswered message and retire its answer timeout without setting

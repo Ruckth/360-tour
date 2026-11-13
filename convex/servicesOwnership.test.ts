@@ -9,7 +9,7 @@ import { appointmentHistory, cancelAppointmentRecord, createAppointmentRecord, l
 const modules = import.meta.glob('./**/*.ts');
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
-it('keeps model creation, linked order and both audits atomic in the caller transaction', async () => {
+it('keeps model creation, linked order and the canonical audit atomic in the caller transaction', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
   vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
@@ -35,7 +35,8 @@ it('keeps model creation, linked order and both audits atomic in the caller tran
   expect(after.orders).toHaveLength(1);
   expect(after.orders[0].appointmentId).toBe(appointmentId);
   expect(after.appointments[0]).toMatchObject({ revision: 2, notes: 'Model edit', status: 'cancelled', price: 120000 });
-  expect(after.changes).toHaveLength(3);
+  expect(after.changes).toEqual([]);
+  expect(after.history.filter(row => row.appointmentAudit?.appointmentId === appointmentId)).toHaveLength(3);
   expect(after.history.filter(row => row.entityType === 'appointment' && row.entityId === appointmentId)).toHaveLength(3);
   expect(await t.run(ctx => appointmentHistory(ctx, appointmentId))).toHaveLength(3);
 });

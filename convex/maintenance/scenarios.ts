@@ -6,13 +6,12 @@ import { seedRooms } from './seeds/rooms';
 import { seedReviews } from './seeds/reviews';
 import { seedTourSnippets } from './seeds/tourSnippets';
 import { seedStaffServicesData } from './seeds/staffServices';
-import { recomputeSocialProof } from '../catalog/model';
 import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking } from '../bookings/model';
 
 
 
 import { insertOrder } from '../pos/model';
-import { createGuestToken, hashGuestToken } from '../messaging/model';
+import { createGuestToken, hashGuestToken, initialInboxProjection, inboxProjection } from '../messaging/model';
 import { DEFAULT_CASHIER_RULES } from '../shared/staffTypes';
 
 export type ScenarioName = 'empty' | 'demo-resort' | 'busy-weekend';
@@ -35,7 +34,6 @@ export async function seedScenario(ctx: MutationCtx, name: ScenarioName) {
   await seedRooms(ctx, properties);
   await seedReviews(ctx, properties);
   await seedTourSnippets(ctx, properties);
-  for (const propertyId of Object.values(properties)) await recomputeSocialProof(ctx, propertyId);
   await seedStaffServicesData(ctx);
   const { revision, ...rules } = DEFAULT_CASHIER_RULES;
   await ctx.db.insert('cashierRules', { key: 'default', ...rules, revision, updatedAt: now, updatedByEmail: 'system:seed' });
@@ -58,8 +56,8 @@ export async function seedScenario(ctx: MutationCtx, name: ScenarioName) {
   await ctx.db.insert('orderLines', { orderId: order._id, kind: 'extra', name: 'Welcome refreshments', unitPrice: 15000, catalogUnitPrice: 15000, currency: 'THB', qty: 1, createdAt: now });
   await ctx.db.patch(order._id, { total: 15000, due: 15000, itemCount: 1, hasItems: true });
   const guestToken = createGuestToken();
-  const sessionId = await ctx.db.insert('conversations', { channel: 'web', visitorId: 'scenario:inbox', visitorName: 'Scenario guest', guestTokenHash: await hashGuestToken(guestToken), currentPath: '/chat', lastSeenAt: now, lastOpenedAt: now, messageCount: 1, latestMessageAt: now, adminSortAt: now, adminSearchText: 'scenario guest airport arrival', aiPaused: true, adminStatus: 'open', inboxState: 'needs_staff', inboxReason: 'handoff', inboxHandoff: true, createdAt: now });
+  const sessionId = await ctx.db.insert('conversations', { ...initialInboxProjection(now), channel: 'web', visitorId: 'scenario:inbox', visitorName: 'Scenario guest', guestTokenHash: await hashGuestToken(guestToken), currentPath: '/chat', lastSeenAt: now, lastOpenedAt: now, messageCount: 1, latestMessageAt: now, adminSortAt: now, adminSearchText: 'scenario guest airport arrival', aiPaused: true, adminStatus: 'open', inboxState: 'needs_staff', inboxReason: 'handoff', inboxHandoff: true, createdAt: now });
   const messageId = await ctx.db.insert('messages', { sessionId, role: 'user', content: 'Could staff help arrange our airport arrival?', timestamp: now });
-  await ctx.db.patch(sessionId, { latestGuestMessageId: messageId });
+  await ctx.db.patch(sessionId, { ...await inboxProjection(ctx, (await ctx.db.get(sessionId))!), latestGuestMessageId: messageId });
   return { scenario: name, counts: await scenarioCounts(ctx), bookings, openOrderId: order._id, conversation: { sessionId, guestToken } };
 }

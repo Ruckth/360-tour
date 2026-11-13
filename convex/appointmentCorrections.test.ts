@@ -1,10 +1,11 @@
+import type { AppointmentHistoryEntry } from './services/private/appointmentChanges';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import type { PaginationResult } from 'convex/server';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
+import type { Id } from './_generated/dataModel';
 import { STALE_APPOINTMENT, boundedIntegrityRows, createAppointmentRecord, localDateTimeUtc } from './services/model';
 import { canCorrectAppointmentTime, canReschedule } from './shared/appointmentWindow';
 import schema from './schema';
@@ -222,10 +223,10 @@ describe('admin appointment corrections', () => {
     const { t, admin, book, get } = await setup();
     const id = await book();
     for (let revision = 0; revision < 57; revision++) await admin.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, { appointmentId: id, expectedRevision: revision, guestName: `Guest ${revision}`, guestPhone: '' });
-    const found: Doc<'appointmentChanges'>[] = [];
+    const found: AppointmentHistoryEntry[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < 10; page++) {
-      const result: PaginationResult<Doc<'appointmentChanges'>> = await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 11, cursor } });
+      const result: PaginationResult<AppointmentHistoryEntry> = await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 11, cursor } });
       found.push(...result.page);
       if (result.isDone) break;
       cursor = result.continueCursor;
@@ -264,4 +265,22 @@ describe('admin appointment corrections', () => {
     const read = async () => { const found = []; for await (const row of boundedIntegrityRows(rows(), 2)) found.push(row); return found; };
     await expect(read()).rejects.toThrow('Too many records');
   });
+});
+
+
+it('writes one canonical appointment audit and merges historical-only entries without duplicate history', async () => {
+  const { t, admin, book, history, get } = await setup();
+  const id = await book();
+  await admin.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, { appointmentId: id, expectedRevision: 0, guestName: 'Updated guest', guestPhone: '' });
+  expect(await t.run(ctx => ctx.db.query('appointmentChanges').collect())).toEqual([]);
+  const canonical = await history(id);
+  expect(canonical).toHaveLength(2);
+  expect(canonical.every(row => row.appointmentAudit?.appointmentId === id)).toBe(true);
+  const historical = await t.run(ctx => ctx.db.insert('appointmentChanges', { appointmentId: id, at: now - 1, actor: 'historical-staff', kind: 'payment', currencyBefore: 'THB', currencyAfter: 'THB', changes: [{ field: 'amountPaid', from: 0, to: 10050 }] }));
+  // An old duplicate recordChanges row has no canonical payload and is not shown twice.
+  await t.run(ctx => ctx.db.insert('recordChanges', { entityType: 'appointment', entityId: id, actor: 'historical-staff', kind: 'payment', recordedAt: now - 1, effectiveAt: now - 1, before: { amountPaid: 0 }, after: { amountPaid: 10050 } }));
+  const result = await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 10, cursor: null } });
+  expect(result.page).toHaveLength(3);
+  expect(result.page.find(row => row._id === historical)).toMatchObject({ currencyBefore: 'THB', changes: [{ field: 'amountPaid', from: 0, to: 10050 }] });
+  expect(await get(id)).toMatchObject({ revision: 1, guestName: 'Updated guest', amountPaid: 0 });
 });

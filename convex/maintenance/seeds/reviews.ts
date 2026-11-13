@@ -1,3 +1,4 @@
+import { adjustReviewStats } from '../../catalog/model';
 import type { MutationCtx } from '../../_generated/server';
 import type { PropertyMap } from './properties';
 
@@ -111,7 +112,8 @@ const REVIEWS_DATA = [
 
 export async function seedReviews(ctx: MutationCtx, properties: PropertyMap): Promise<void> {
 	for (const { propertyKey, ...rest } of REVIEWS_DATA) {
-		await ctx.db.insert('reviews', {
+		await adjustReviewStats(ctx, properties[propertyKey], 1, rest.rating);
+        await ctx.db.insert('reviews', {
 			propertyId: properties[propertyKey],
 			...rest
 		});

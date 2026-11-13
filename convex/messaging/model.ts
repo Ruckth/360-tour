@@ -7,3 +7,5 @@ export { recordLead } from './leadWriter';
 export { enforceRateLimit, rateLimitReached } from './rateLimit';
 export { assertChatWriteAllowed } from './writeGuard';
 export { type ReplyOutcome } from './inboxState';
+export { inboxProjection, initialInboxProjection } from './inboxProjection';
+export { buildAdminChatMetadataPatch } from './adminChatMetadata';

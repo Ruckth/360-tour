@@ -1,3 +1,5 @@
+import { publicServiceFields } from './validators';
+import { appointmentAudit } from '../shared/appointmentAudit';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { storedPaymentMethod, storedRefundMethod } from '../shared/financeValidators';
@@ -57,17 +59,17 @@ export const servicesTables = {
 
 
 	services: defineTable({
-		slug: v.string(),
-		name: v.string(),
-		description: v.string(),
-		category: v.string(),
-		durationMin: v.number(),
+		slug: publicServiceFields.slug,
+		name: publicServiceFields.name,
+		description: publicServiceFields.description,
+		category: publicServiceFields.category,
+		durationMin: publicServiceFields.durationMin,
 		bufferMin: v.number(),
-		price: v.number(),
-		currency: v.string(),
+		price: publicServiceFields.price,
+		currency: publicServiceFields.currency,
 		staffIds: v.array(v.id('staff')),
 		/** Optional photo shown in the admin service picker; `imageStorageId` is set when it was uploaded here. */
-		imageUrl: v.optional(v.string()),
+		imageUrl: publicServiceFields.imageUrl,
 		imageStorageId: v.optional(v.id('_storage')),
 		status: v.union(v.literal('active'), v.literal('archived')),
 		createdAt: v.number(),
@@ -219,29 +221,6 @@ export const servicesTables = {
 
 
 	/** Who changed an appointment, when, and the old and new value of each changed field. */
-	appointmentChanges: defineTable({
-		appointmentId: v.id('appointments'),
-		at: v.number(),
-		/** Admin email, or "guest" for chat. */
-		actor: v.string(),
-		kind: v.union(
-			v.literal('rescheduled'),
-			v.literal('turnaround'),
-			v.literal('details'),
-			v.literal('service'),
-			v.literal('status'),
-			v.literal('cancelled'),
-			v.literal('payment'),
-			v.literal('rebooked')
-		),
-		reason: v.optional(v.string()),
-		currencyBefore: v.string(),
-		currencyAfter: v.string(),
-		changes: v.array(v.object({
-			field: v.string(),
-			from: v.union(v.string(), v.number(), v.null()),
-			to: v.union(v.string(), v.number(), v.null())
-		}))
-	}).index('by_appointmentId_and_at', ['appointmentId', 'at'])
+	appointmentChanges: defineTable(appointmentAudit.fields).index('by_appointmentId_and_at', ['appointmentId', 'at'])
 		.index('by_kind_and_at', ['kind', 'at'])
 };

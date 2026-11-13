@@ -1,3 +1,4 @@
+import { propertiesListResult, propertiesGetBySlugResult, propertiesGetByIdResult, propertiesGetRoomsResult, propertiesGetTourRoomsResult, propertiesGetOtaComparisonResult, propertiesGetSocialProofResult, propertiesGetReviewsResult, propertiesGetTourSnippetsResult } from './validators';
 import { publicQuery, adminQuery, adminMutation } from '../auth/model';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
@@ -10,6 +11,7 @@ const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.lite
 const MAX_NIGHTLY_RATE = 1_000_000_000;
 
 export const list = publicQuery({
+  returns: propertiesListResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {},
 	handler: async (ctx): Promise<PublicProperty[]> => {
@@ -22,6 +24,7 @@ export const list = publicQuery({
 });
 
 export const getBySlug = publicQuery({
+  returns: propertiesGetBySlugResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
@@ -35,25 +38,29 @@ export const getBySlug = publicQuery({
 });
 
 export const getById = publicQuery({
+  returns: propertiesGetByIdResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { id: v.id('properties') },
 	handler: async (ctx, args) => toPublicProperty(await ctx.db.get(args.id))
 });
 
 export const getRooms = publicQuery({
+  returns: propertiesGetRoomsResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
-		return await ctx.db
+		const rows = await ctx.db
 			.query('tourScenes')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.take(50);
+        return rows.map(({ _id, _creationTime, propertyId, slug, name, imagePath, hotspots }) => ({ _id, _creationTime, propertyId, slug, name, imagePath, hotspots }));
 	}
 });
 
 /** Public 360 rooms of an active villa, in tour order (`tourRoomIds`, then any others by creation). */
 export const getTourRooms = publicQuery({
+  returns: propertiesGetTourRoomsResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
@@ -75,6 +82,7 @@ export const getTourRooms = publicQuery({
 
 /** Public: live direct pricing plus owner-entered OTA rates for an active villa. */
 export const getOtaComparison = publicQuery({
+  returns: propertiesGetOtaComparisonResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
@@ -160,38 +168,45 @@ function publicHttpsUrl(value: string): string {
 }
 
 export const getSocialProof = publicQuery({
+  returns: propertiesGetSocialProofResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return null;
-		return await ctx.db
+		const proof = await ctx.db
 			.query('reviewStats')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.first();
+        if (!proof) return null;
+        return { _id: proof._id, _creationTime: proof._creationTime, propertyId: proof.propertyId, overallRating: proof.overallRating, totalReviews: proof.totalReviews };
 	}
 });
 
 export const getReviews = publicQuery({
+  returns: propertiesGetReviewsResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
-		return await ctx.db
+		const rows = await ctx.db
 			.query('reviews')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.take(100);
+        return rows.map(({ _id, _creationTime, propertyId, authorName, authorCity, authorCountry, authorAvatarUrl, rating, title, body, date, verified, photos }) => ({ _id, _creationTime, propertyId, authorName, authorCity, authorCountry, authorAvatarUrl, rating, title, body, date, verified, photos }));
 	}
 });
 
 export const getTourSnippets = publicQuery({
+  returns: propertiesGetTourSnippetsResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
 		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
-		return await ctx.db
+		const rows = await ctx.db
 			.query('tourSnippets')
 			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
 			.take(100);
+        return rows.map(({ _id, _creationTime, propertyId, roomSlug, position, quote, authorName, authorCity, rating }) => ({ _id, _creationTime, propertyId, roomSlug, position, quote, authorName, authorCity, rating }));
 	}
 });
 

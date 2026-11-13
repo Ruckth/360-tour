@@ -1,3 +1,4 @@
+import { publicResolveLinkResult, publicRecordOpenResult, publicStartSessionResult, publicPreviewCouponResult } from './validators';
 import { v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { publicMutation, publicQuery } from '../auth/model';
@@ -13,6 +14,7 @@ import { quote, quoteArgs } from './catalogModel';
 
 /** Short-link resolver used by the `/<slug>` route. Returns null for unknown slugs. */
 export const resolveLink = publicQuery({
+  returns: publicResolveLinkResult,
   reason: "Anonymous campaign landing link with live-status and privacy projection checks.",
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<ResolvedLink | null> => {
@@ -46,6 +48,7 @@ export const resolveLink = publicQuery({
 
 /** Stores a raw open and counts active human opens. One per-link rate budget bounds both; excess requests are dropped. */
 export const recordOpen = publicMutation({
+  returns: publicRecordOpenResult,
   reason: "Anonymous campaign opening telemetry; validated link and rate limits.",
 	args: { slug: v.string(), bot: v.boolean() },
 	handler: async (ctx, args): Promise<null> => {
@@ -73,6 +76,7 @@ export const recordOpen = publicMutation({
  * (never throws for that).
  */
 export const startSession = publicMutation({
+  returns: publicStartSessionResult,
   reason: "Anonymous consent-based attribution session; validated capture and rate limits.",
 	args: { visitorKey: v.optional(v.string()), slug: v.optional(v.string()), landingPath: v.string(), referrerHost: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ visitorKey: string; sessionId: Id<'marketingSessions'> | null }> => {
@@ -111,6 +115,7 @@ export const startSession = publicMutation({
 
 /** Guest quote preview. Reserves nothing. */
 export const previewCoupon = publicQuery({
+  returns: publicPreviewCouponResult,
   reason: "Anonymous booking coupon quote; live offer rules and safe projection.",
 	args: quoteArgs,
 	handler: async (ctx, args): Promise<OfferResult> => {
