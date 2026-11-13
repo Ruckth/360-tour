@@ -19,6 +19,7 @@ const config = [
       "src/components/reui/**", // vendored ReUI registry code
       "build/**",
       "output/**", // local evaluation logs, recordings, and generated reports
+      ".local-dev/**", // private checkout-local backend/home; source stays in convex/
     ],
   },
   {

@@ -9,6 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { testUsers } from "./e2e-clerk.mjs";
+import { localConvexCache } from './local-convex-cache.mjs';
 import {
   disabledServices,
   requireLocalBackend,
@@ -54,6 +55,7 @@ await fs.chmod(work, 0o700);
 const home = path.join(work, "home"),
   project = path.join(work, "backend");
 await fs.mkdir(home, { mode: 0o700 });
+await localConvexCache(root, home);
 await fs.mkdir(project, { mode: 0o700 });
 await fs.cp(path.join(root, "convex"), path.join(project, "convex"), {
   recursive: true,
@@ -206,7 +208,6 @@ try {
     [
       path.join(root, "node_modules/convex/bin/main.js"),
       "dev",
-      "--local",
       "--local-cloud-port",
       String(cloud),
       "--local-site-port",

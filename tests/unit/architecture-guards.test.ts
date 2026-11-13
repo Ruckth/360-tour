@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import ts from 'typescript';
 import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from '../../scripts/lib/architecture.mjs';
 import { inspectRuntimeGraph } from '../../scripts/lib/architecture-graph.mjs';
 import { inspectConvexAccess } from '../../scripts/lib/convex-access.mjs';
@@ -9,6 +10,22 @@ const issues = (path: string, source: string) => [
   ...inspectArchitecture(path, source).map(issue => issue.message),
   ...(path.startsWith('convex/') ? inspectConvexAccess(path, source).violations : []),
 ];
+
+it.each([
+  ['convex/pos/leak.ts', "import { query } from '../_generated/server'; export const leak = query({args:{},handler:()=>null});"],
+  ['convex/pos/model.ts', "import { adminQuery } from '../auth/model'; export const leak = adminQuery({args:{},handler:()=>null});"],
+  ['convex/shared/leak.ts', 'export const leak = process.env.SECRET;'],
+  ['convex/catalog/leak.ts', "import { helper } from '../pos/private/orderLinks';"],
+])('preserves independent guard findings with a shared parse and refuses stale source: %s', (path, source) => {
+  const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  expect(inspectArchitecture(path, source, parsed)).toEqual(inspectArchitecture(path, source));
+  expect(inspectConvexAccess(path, source, parsed)).toEqual(inspectConvexAccess(path, source));
+  expect(issues(path, source)).not.toEqual([]);
+  for (const inspect of [inspectArchitecture, inspectConvexAccess]) {
+    expect(() => inspect(path, source + ' ', parsed)).toThrow('does not match');
+    expect(() => inspect(path.replace('.ts', '-other.ts'), source, parsed)).toThrow('does not match');
+  }
+});
 
 it.each(['ts', 'tsx', 'js', 'mjs'])('inspects deployed .%s sources including aliased and namespace raw builders', ext => {
   for (const source of [

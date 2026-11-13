@@ -6,8 +6,10 @@
 //   node scripts/arch-scorecard.mjs --phase 2    # exit 1 unless every metric due by phase 2 meets its target
 //   node scripts/arch-scorecard.mjs --json       # machine-readable output
 //
+// --phase N measures/reports only metrics due through N; omit it for the complete report.
 // Test-name gates match the exact titles below, so name the tests exactly this way.
 import { execSync } from 'node:child_process';
+import ts from 'typescript';
 import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from './lib/architecture.mjs';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
 import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
@@ -24,6 +26,7 @@ if (phaseArg !== null && (!Number.isInteger(phaseArg) || phaseArg < 0 || phaseAr
   process.exit(2);
 }
 const asJson = args.includes('--json');
+const measuresPhase3 = phaseArg === null || phaseArg >= 3;
 
 // ---------- file helpers ----------
 const SKIP = new Set(['node_modules', '_generated', '.next', '.git', 'reui']);
@@ -38,7 +41,13 @@ function walk(dir, out = []) {
 	return out;
 }
 const rel = (p) => relative(ROOT, p).split(sep).join('/');
-const read = (p) => readFileSync(p, 'utf8');
+// One invocation measures a single source snapshot. Metrics share file contents
+// instead of repeatedly reading every file for each independent rule.
+const contents = new Map();
+const read = (p) => {
+	if (!contents.has(p)) contents.set(p, readFileSync(p, 'utf8'));
+	return contents.get(p);
+};
 const isTest = (p) => /\.test\.tsx?$|\/tests\//.test(rel(p));
 const convexFiles = walk(join(ROOT, 'convex'));
 const convexProd = convexFiles.filter((p) => isConvexEntryFile(rel(p)));
@@ -55,7 +64,7 @@ const RETIRED_TABLES = ['tenants', 'chatAnswers', 'chatQuestions', 'chatSuggeste
 const OLD_NAMES = ['bills', 'billLines', 'billPayments', 'billCorrections', 'billAudit', 'billCounters', 'billLineLinks', 'billRefunds', 'serviceAppointments', 'rooms', 'chatSessions', 'chatMessages', 'socialProof', 'lineWebhookEvents', 'facebookWebhookEvents', 'instagramWebhookEvents', 'whatsappWebhookEvents'];
 
 // Public functions registered with a raw builder outside convex/auth/.
-const rawPublicViolations = convexProd.flatMap(p => inspectConvexAccess(rel(p), read(p)).violations);
+const rawPublicViolations = [];
 
 // No-login builders must declare `returns:` before `handler`.
 function missingReturns() {
@@ -72,7 +81,14 @@ function missingReturns() {
 }
 
 // The same AST rules used by lint; all supported deployed source extensions count.
-const ownership = [...convexFiles, ...srcFiles].flatMap(p => inspectArchitecture(rel(p), read(p)).map(issue => ({ ...issue, path: rel(p) })));
+const deployed = new Set(convexProd);
+const ownership = measuresPhase3 ? [...convexFiles, ...srcFiles].flatMap(p => {
+	const path = rel(p), source = read(p);
+	// Both guards inspect the same immutable source; parse deployed files once.
+	const parsed = deployed.has(p) ? ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true) : undefined;
+	if (parsed) rawPublicViolations.push(...inspectConvexAccess(path, source, parsed).violations);
+	return inspectArchitecture(path, source, parsed).map(issue => ({ ...issue, path }));
+}) : [];
 const ownershipDetails = rule => ownership.filter(issue => issue.rule === rule).map(issue => `${issue.path}:${issue.line} ${issue.message}`);
 const DOMAINS = SCHEMA_DOMAINS;
 
@@ -157,12 +173,13 @@ vacuous('no-login-without-returns', count(convexProd, /=\s*(publicQuery|publicMu
 const due = phaseArg === null ? m : m.filter((x) => x.phase <= phaseArg);
 const failing = due.filter((x) => !x.ok);
 if (asJson) {
-	console.log(JSON.stringify({ phase: phaseArg, pass: failing.length === 0, metrics: m }, null, 2));
+	// Unmeasured later phases must not appear as misleading zero-valued results.
+	console.log(JSON.stringify({ phase: phaseArg, pass: failing.length === 0, metrics: due }, null, 2));
 } else {
 	const pad = (s, n) => String(s).padEnd(n);
 	console.log(`Architecture scorecard${phaseArg === null ? '' : ` · gate for phase ${phaseArg}`}\n`);
 	console.log(`${pad('', 3)}${pad('phase', 6)}${pad('value', 7)}${pad('target', 8)}metric`);
-	for (const x of m) {
+	for (const x of due) {
 		const inGate = phaseArg === null || x.phase <= phaseArg;
 		const mark = x.ok ? '✓' : inGate ? '✗' : '·';
 		const target = typeof x.target === 'number' ? x.target : 'info';

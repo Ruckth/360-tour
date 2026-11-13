@@ -18,10 +18,11 @@ it('owns actual implementations behind named model exports, with no endpoint or 
     if (!ts.isExportDeclaration(node) || !node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) throw new Error('Expected named helper exports');
     if (!node.exportClause || !ts.isNamedExports(node.exportClause)) throw new Error('No star or namespace exports');
     const target = resolve(model.fileName, node.moduleSpecifier.text);
+    const statements = tree(target).statements;
     for (const entry of node.exportClause.elements) {
       const name = entry.propertyName?.text ?? entry.name.text;
       expect(declarations.has(entry.name.text)).toBe(false);
-      const implementation = tree(target).statements.find(statement =>
+      const implementation = statements.find(statement =>
         ts.isVariableStatement(statement) ? statement.declarationList.declarations.some(d => d.name.getText() === name)
           : 'name' in statement && (statement.name as ts.Identifier | undefined)?.text === name);
       expect(implementation, `${target}:${name} must be an actual declaration`).toBeDefined();
