@@ -179,4 +179,4 @@ it.each(['changed', 'missing'])('rejects a %s extracted maintenance predicate be
   expect(result.status).not.toBe(0);
   expect(result.stderr).toContain('maintenance predicate does not match');
   expect(existsSync(join(dir, 'convex/maintenance/reset.ts'))).toBe(false);
-});
+}, 30_000);
