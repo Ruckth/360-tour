@@ -1,5 +1,8 @@
 # Phase 3d: direct Convex data flow and authenticated local acceptance
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required parent: `f0f52d1d8b4b761a0ee3fe8514c044c7dadd50f0` (PR80, `t3/phase3c-shared-rules`). Branch `t3/phase3d-direct-convex` starts directly at that commit in `/Users/macbook/.t3/worktrees/360-tour/t3-0ce11e3f-71e85bc023a0f754`; its history is retained. No subagents were used. Neither protected Development checkout was modified, stashed or reset. The original checkout supplied only the explicitly requested auth skill/reference and the three permitted Clerk test fields, read privately.
 
 Scope is the plan's five rules, domain map, D2 and Phase 3d. Codebase-design's useful-interface principle removes the forwarding API layer; generated references now carry actual backend argument/result types to each caller. The existing Clerk integration, staff capabilities, domain ownership and shared policies remain authoritative. `.arch-phase` stays **2**. The broad guards/architecture recipe in 3e, development-loop redesign/Vitest projects/per-PR seeding in 3f, and Phase 4 remain deferred.

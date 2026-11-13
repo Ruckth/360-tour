@@ -15,11 +15,14 @@ Production: https://tour.helpgueststay.com
 ## Commands
 
 ```sh
-pnpm install
-pnpm dev
-pnpm verify
-pnpm seed
+pnpm install --frozen-lockfile
+pnpm dev                 # requires a deliberately selected configured development backend
+pnpm lint                # zero warnings
+pnpm knip
+pnpm verify:integration  # isolated local backend + real Clerk test tenant
 ```
+
+Read [ARCHITECTURE.md](./ARCHITECTURE.md) for ownership, the feature recipe and current validation. Node 22 is required; use `VITEST_MAX_WORKERS=4` and serialize Next builds. Seed commands are for a deliberately selected empty disposable backend, never an existing shared database.
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for environment variables, release flow, and production verification details.
 

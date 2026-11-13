@@ -1,5 +1,8 @@
 # Phase 3b: bookings backend domain
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `ee796bf2089fb2d13e29b3ece6e4bbc44d8c6d27`, the open catalog PR #66 (`t3/catalog-backend-domain`) plus its gated-cutover documentation. The clean prepared `t3/phase3b-bookings-domain-move` worktree was fast-forwarded from its initial ancestor to exactly that commit. No unpublished commits were discarded; no reset to origin/main occurred. The dirty original `/Users/macbook/Development/360-tour` checkout was not touched. This PR targets `t3/catalog-backend-domain`. Root owns independent review, shared/production acceptance, cutover and merge. `.arch-phase` remains **2**.
 
 ## Scope and contracts

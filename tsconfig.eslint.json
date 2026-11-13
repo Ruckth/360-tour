@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.tests.json",
+  "compilerOptions": { "checkJs": false },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.mjs", "**/*.cjs", "**/*.mts", "**/*.cts", "**/*.jsx"],
+  "exclude": ["node_modules", ".next", "opensrc", "archive", "output", "build", ".vercel", ".claude", ".cursor"]
+}

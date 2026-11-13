@@ -1,5 +1,8 @@
 # Phase 3b: messaging ownership completion
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `8be1dd4e73af8e2dcaa2666c80497aaf94da8b7a`, Settings PR [#71](https://github.com/Ruckth/360-tour/pull/71), atop concierge #70 and the required dependency history. This prepared isolated `t3/complete-messaging-ownership` worktree was clean at `3ca332d` and fast-forwarded to the exact required base. No rebase, reset, origin/main substitution or unpublished-history rewrite occurred. The original dirty `/Users/macbook/Development/360-tour` and root review checkout were untouched. This PR targets **t3/phase3b-settings-move**. `.arch-phase` stays **2**. Root owns independent reviews, new Preview isolation checks, gated backend acceptance, live reconciliation/cutover and merge.
 
 ## Ownership and limits

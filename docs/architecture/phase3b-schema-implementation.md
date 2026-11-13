@@ -1,5 +1,8 @@
 # Phase 3b: isolated schema split
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Base: merged main `f2482a0237e28a82c71b0557ea9422f61233845a` (Phase 3a PR #64). The prepared `t3/split-convex-schema` checkout was clean and fast-forwarded to that exact base. No other checkout was modified. This PR implements only the first schema step of Phase 3b. `.arch-phase` remains **2**; catalog function moves are next, followed by the remaining domain moves and Phases 3c–f/4. Root owns review, merge and deployment.
 
 ## Ownership and unchanged contracts

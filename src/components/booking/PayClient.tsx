@@ -70,7 +70,8 @@ export function PayClient({
         if (active) setChecking(false);
       }
     }
-    loadBooking();
+    // The effect owns cancellation; failures are handled inside the operation.
+    void loadBooking();
     return () => {
       active = false;
     };

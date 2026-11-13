@@ -1,5 +1,8 @@
 # Phase 3b: services backend domain
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `a3be68d6a23b4ce933766d37ff53d329063a8713`, the open bookings PR [#67](https://github.com/Ruckth/360-tour/pull/67), atop merged catalog PR #66. The clean prepared `t3/services-domain-move` worktree was fast-forwarded to exactly this commit before implementation. Its unpublished history is preserved; no reset, rebase or substitution of origin/main occurred. The unrelated dirty `/Users/macbook/Development/360-tour` checkout was not touched. This PR targets `t3/phase3b-bookings-domain-move`. `.arch-phase` remains **2**. Root owns reviews, shared/live acceptance, cutover, merge and any later retargeting.
 
 ## Scope and contracts

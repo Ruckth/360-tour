@@ -274,7 +274,7 @@ describe("paying with a coupon", () => {
     const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal").mockRejectedValue(new Error("diagnostics offline"));
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L2-300" }));
-    fixture.setCouponSnapshot("DCNT-L2-300", { used: 50 });
+    await fixture.setCouponSnapshot("DCNT-L2-300", { used: 50 });
     await payByCard(fixture, orderId);
 
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
@@ -304,7 +304,7 @@ describe("paying with a coupon", () => {
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L-10" }));
     // The discount budget is read live at payment (the benefit and its cap are frozen with the applied version): ฿100 is left.
-    fixture.setCouponSnapshot("DCNT-L-10", { discountBudget: 990000 });
+    await fixture.setCouponSnapshot("DCNT-L-10", { discountBudget: 990000 });
     await payByCard(fixture, orderId);
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
     expect(alert.textContent).toContain("The coupon now saves ฿100.");

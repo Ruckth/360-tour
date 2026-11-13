@@ -1,5 +1,8 @@
 # Phase 3b: generic maintenance ownership closure
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Exact parent: `2f438327b881132503d1231fb65b6c83e3584ceb`, Services photos [PR #78](https://github.com/Ruckth/360-tour/pull/78), branch `t3/complete-services-photo-ownership`. Branch `t3/complete-maintenance-ownership` starts directly at that commit in the prepared isolated checkout `/Users/macbook/.t3/worktrees/360-tour/t3-52b220e0-92ed465ee3babfd8`. Exact parent history is preserved. No subagents or changes to the original dirty development checkout or root architecture checkout.
 
 The plan's five rules, nine-domain map and Phase 3 assign scenarios and evals to maintenance. This closes generic maintenance ownership after the [Services photo closure](phase3b-services-photos-implementation.md) and preserves the [twelve-helper POS model](phase3b-pos-closure-implementation.md) and Services private photos. It does not complete Phase 3.

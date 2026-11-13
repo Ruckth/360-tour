@@ -1,5 +1,8 @@
 # Phase 3b: POS ctx-helper ownership closure
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required exact parent: `a34eb197cc23ac53522440d48784a162256970ab` (Services closure PR [#76](https://github.com/Ruckth/360-tour/pull/76), branch `t3/complete-services-ownership`). The prepared isolated checkout was clean at `3ca332d`; `t3/complete-pos-ownership` starts directly at the required parent. No reset, rebase, main substitution or parent-history rewrite. Checkout: `/Users/macbook/.t3/worktrees/360-tour/t3-453f7492-1f79c1c1b1f43da5`. Neither `/Users/macbook/Development/360-tour` nor `/Users/macbook/Development/360-tour-arch` was touched. No subagents. Root owns independent review, actual new Preview isolation/acceptance, merge and live operations.
 
 ## Ownership and unchanged contracts

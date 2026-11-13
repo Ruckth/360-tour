@@ -45,7 +45,8 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
       }
     }
 
-    loadProperties();
+    // The effect owns cancellation; failures are handled inside the operation.
+    void loadProperties();
     return () => {
       active = false;
     };

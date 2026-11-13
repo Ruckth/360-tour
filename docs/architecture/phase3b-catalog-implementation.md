@@ -1,5 +1,8 @@
 # Phase 3b: catalog backend domain
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `localarch/phase3b-schema-review` at `b2eaae524f77efffd354120cd3791d189b2ff56f` (PR #65, schema split and revision-specific maintenance fixes). The prepared `t3/catalog-backend-domain` checkout was clean and fast-forwarded to that commit. Its unpublished history is preserved. The original development checkout and other checkouts were not modified. This step moves only catalog; `.arch-phase` stays **2**. Root owns independent review, merges, shared/production deployments and cutover.
 
 ## RPC mapping

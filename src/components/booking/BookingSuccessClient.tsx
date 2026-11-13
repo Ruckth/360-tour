@@ -56,7 +56,8 @@ export function BookingSuccessClient({
         if (active) setLoading(false);
       }
     }
-    verifyBooking();
+    // The effect owns cancellation; failures are handled inside the operation.
+    void verifyBooking();
     return () => {
       active = false;
     };

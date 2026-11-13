@@ -1,5 +1,8 @@
 # Phase 3b: settings backend domain
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `6d2c4ec82f285b891891d973ebd6ff09b8e21a99`, open concierge PR [#70](https://github.com/Ruckth/360-tour/pull/70), including the root accuracy-eval report and money-unit fixes atop POS #69. The clean prepared `t3/phase3b-settings-move` worktree initially pointed at `3ca332d`; it was fast-forwarded to this exact required base. No reset, rebase, origin/main substitution or unpublished-history rewrite occurred. The unrelated dirty `/Users/macbook/Development/360-tour` and root review checkout were not modified. This PR targets **t3/concierge-phase3b-move**. `.arch-phase` remains **2**. Root owns reviews, actual Preview inspection, live acceptance, cutover, retargeting and merge.
 
 ## Ownership and unchanged behavior

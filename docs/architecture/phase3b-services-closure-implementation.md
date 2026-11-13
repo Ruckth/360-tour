@@ -1,5 +1,8 @@
 # Phase 3b: Services ctx-helper ownership closure
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `04abfe32f191c00ae6921dbe32746ef51a296624`, Bookings closure PR [#75](https://github.com/Ruckth/360-tour/pull/75), including root's corrected pause/replacement runbook, atop Auth. The prepared isolated checkout started clean at `3ca332d` and was fast-forwarded to that exact base. Unpublished history is preserved: no reset, rebase, origin/main substitution or worktree creation. Neither `/Users/macbook/Development/360-tour` nor `/Users/macbook/Development/360-tour-arch` was touched. This PR targets **t3/complete-bookings-ownership**. `.arch-phase` remains **2**. Root owns independent reviews, actual new Preview logs, shared/live acceptance, cutover and merge.
 
 ## Scope and ownership

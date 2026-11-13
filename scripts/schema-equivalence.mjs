@@ -14,8 +14,9 @@ import { inspectSchema, schemaSourceReader } from './lib/convex-schema.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const args = process.argv.slice(2);
 const value = (flag, fallback) => args.includes(flag) ? args[args.indexOf(flag) + 1] : fallback;
-const base = value('--base', 'f2482a0237e28a82c71b0557ea9422f61233845a');
-const out = resolve(root, value('--out', 'output/phase3b-schema'));
+const base = value('--base');
+if (!base || base.startsWith('--')) throw new Error('Supply --base <reviewed commit> for schema equivalence');
+const out = resolve(root, value('--out', 'output/schema-equivalence'));
 if (!out.startsWith(resolve(root, 'output') + '/')) throw new Error('Use ignored output/ for evidence');
 const ref = execFileSync('git', ['rev-parse', base], { cwd: root, encoding: 'utf8' }).trim();
 const before = inspectSchema(schemaSourceReader(root, ref));
@@ -64,4 +65,4 @@ const hash = schema => createHash('sha256').update(JSON.stringify(schema)).diges
 const evidence = { base: ref, equal, baseTables: oldExport.tables.length, currentTables: newExport.tables.length, staticTables: after.tables.length, baseSha256: hash(normalizedBefore), currentSha256: hash(normalizedAfter), normalization: 'Object keys and top-level table order only; all other array order preserved', tables: after.tables };
 writeFileSync(resolve(out, 'schema-equivalence.json'), JSON.stringify(evidence, null, 2) + '\n');
 console.log(JSON.stringify({ ...evidence, tables: undefined }, null, 2));
-if (!equal || oldExport.tables.length !== 74 || newExport.tables.length !== 74 || !isDeepStrictEqual(after.tables.map(t => t.name).sort(), newExport.tables.map(t => t.tableName).sort())) process.exitCode = 1;
+if (!equal || !isDeepStrictEqual(after.tables.map(t => t.name).sort(), newExport.tables.map(t => t.tableName).sort())) process.exitCode = 1;
