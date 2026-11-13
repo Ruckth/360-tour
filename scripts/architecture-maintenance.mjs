@@ -13,16 +13,19 @@ const target = resolve(destination);
 const root = fileURLToPath(new URL('..', import.meta.url));
 if (target === root || existsSync(join(target, '.git'))) throw new Error('Use a disposable source archive, never a working checkout');
 const reviewed = schemaSourceReader(root, value('--old-ref', '72a657f'));
+// Reject a changed trust boundary before paying for the full schema graph inspection.
+// All schema/validator checks still complete before any file is written.
+const gate = join(target, 'convex/auth/model.ts');
+const existingGate = reviewed('convex/auth/model.ts');
+if (existingGate !== undefined && (!existsSync(gate) || readFileSync(gate, 'utf8') !== existingGate)) throw new Error('The disposable auth seam does not match the reviewed revision');
+if (existingGate === undefined && existsSync(gate)) throw new Error('Unexpected auth seam in the disposable source copy');
 const expected = inspectSchema(reviewed);
 const actual = inspectSchema(schemaSourceReader(target));
 for (const path of new Set([...Object.keys(expected.sources), ...Object.keys(actual.sources)])) {
   if (actual.sources[path] !== expected.sources[path]) throw new Error(`The disposable schema does not match the reviewed old revision: ${path}`);
 }
-const gate = join(target, 'convex/auth/model.ts');
-const existingGate = reviewed('convex/auth/model.ts');
 let gateSource = existingGate;
 if (existingGate !== undefined) {
-  if (!existsSync(gate) || readFileSync(gate, 'utf8') !== existingGate) throw new Error('The disposable auth seam does not match the reviewed revision');
   {
     // Messaging closure extracts this single backend predicate to break the
     // auth -> messaging model -> auth cycle. Verify its real binding and the
@@ -47,7 +50,6 @@ if (existingGate !== undefined) {
     }
   }
 } else {
-  if (existsSync(gate)) throw new Error('Unexpected auth seam in the disposable source copy');
   // This reviewed seam predates table-specific guest and role builders. Current
   // auth code cannot be transplanted into the old 91-table application.
   gateSource = schemaSourceReader(root, value('--gate-ref', 'f2bd89a'))('convex/auth/model.ts');

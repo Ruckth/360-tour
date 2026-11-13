@@ -84,13 +84,21 @@ it('creates complete reset/rollback ZIPs and hashes the composed schema source g
   for (const [path, source] of Object.entries(current.sources)) expect(manifest.schemaSources.new[path]).toBe(createHash('sha256').update(source).digest('hex'));
 }, 30_000);
 
+// Immutable git templates are reusable; each test still receives a fresh writable archive.
+const archiveTemplates = new Map<string, Record<string, string>>();
 function archive(ref: string) {
+  const revision = execFileSync('git', ['rev-parse', `${ref}^{commit}`], { encoding: 'utf8' }).trim();
+  let files = archiveTemplates.get(revision);
+  if (!files) {
+    const read = schemaSourceReader('.', revision);
+    const { sources } = inspectSchema(read);
+    const gate = read('convex/auth/model.ts');
+    const maintenance = read('convex/lib/maintenance.ts');
+    files = { ...sources, ...(gate ? { 'convex/auth/model.ts': gate } : {}), ...(maintenance ? { 'convex/lib/maintenance.ts': maintenance } : {}), 'convex/crons.ts': read('convex/crons.ts')!, 'package.json': read('package.json')! };
+    archiveTemplates.set(revision, files);
+  }
   const dir = mkdtempSync(join(tmpdir(), 'schema-maintenance-')); scratch.push(dir);
-  const read = schemaSourceReader('.', ref);
-  const { sources } = inspectSchema(read);
-  const gate = read('convex/auth/model.ts');
-  const maintenance = read('convex/lib/maintenance.ts');
-  for (const [path, source] of Object.entries({ ...sources, ...(gate ? { 'convex/auth/model.ts': gate } : {}), ...(maintenance ? { 'convex/lib/maintenance.ts': maintenance } : {}), 'convex/crons.ts': read('convex/crons.ts')!, 'package.json': read('package.json')! })) {
+  for (const [path, source] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true }); writeFileSync(join(dir, path), source);
   }
   return dir;

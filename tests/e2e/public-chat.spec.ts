@@ -98,11 +98,25 @@ async function expectPrefilledEmail(link: Locator) {
 
 async function expectVillaTileImageVisible(tile: Locator) {
   const image = tile.locator("img").first();
+  // DOM visibility alone includes offscreen images; lazy loading starts on viewport intersection.
+  await tile.scrollIntoViewIfNeeded();
   await expect(image).toBeVisible();
+  await expect(image).toBeInViewport();
   await expect(image).toHaveCSS("opacity", "1");
-  await expect
-    .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0);
+  try {
+    await expect
+      .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+  } catch (error) {
+    const state = await image.evaluate((node) => {
+      const img = node as HTMLImageElement;
+      const rect = img.getBoundingClientRect();
+      return { src: img.getAttribute('src'), currentSrc: img.currentSrc, loading: img.loading,
+        complete: img.complete, naturalWidth: img.naturalWidth, top: rect.top,
+        bottom: rect.bottom, viewport: innerHeight };
+    });
+    throw new Error(`Public villa image did not load: ${JSON.stringify(state)}`, { cause: error });
+  }
 }
 
 async function installMockVisualViewport(page: Page, userAgent: string) {
