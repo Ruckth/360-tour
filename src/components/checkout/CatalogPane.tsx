@@ -149,7 +149,7 @@ export function CatalogPane({
       </div>
 
       <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 scroll-pb-28 overflow-y-auto px-4 pt-1 pb-28 sm:px-6 lg:scroll-pb-6 lg:pb-6">
-        {tab === "rooms" && !searching ? (
+        {(searching ? tiles.some((tile) => tile.kind === "room") : tab === "rooms") ? (
           <p className="mb-4 rounded-xl border border-border/70 bg-card/50 p-3 text-sm text-muted-foreground">
             Room items record charges only. To reserve dates, create a booking and add it to the order.
           </p>

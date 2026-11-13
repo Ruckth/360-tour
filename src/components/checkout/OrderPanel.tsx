@@ -345,6 +345,12 @@ function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView
         {pending ? <Spinner label="Closing order" className="text-current" /> : null}
         {error ? "Retry close" : "Close order · nothing due"}
       </Button>
+      {/* Staff entering an earlier sale set when it happened on the payment step. */}
+      {withStay ? null : (
+        <Button variant="link" size="sm" className="mt-1 h-auto w-full p-0 text-xs text-muted-foreground" disabled={disabled || pending} onClick={onReview}>
+          Happened earlier? Set the date
+        </Button>
+      )}
     </>
   );
 }
@@ -801,31 +807,41 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           autoComplete="off"
           enterKeyHint="done"
           placeholder="15% or 150"
-          disabled={waiting || sending}
+          aria-describedby={`${id}-echo`}
+          aria-invalid={parsed && !parsed.ok ? true : undefined}
+          disabled={sending}
           onChange={(e) => change(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void apply(); }}
         />
         {/* Shown once there is a new discount to apply; over the limit, Send takes its place. */}
         {parsed?.ok && !applied && !asking ? (
-          <Button size="sm" variant="outline" disabled={waiting} onClick={() => void apply()}>
+          <Button size="sm" variant="outline" onClick={() => void apply()}>
             Apply {parsed.what}
           </Button>
         ) : null}
         {line.discount ? (
-          <Button size="sm" variant="ghost" disabled={waiting || sending} onClick={async () => { if (await run(() => actions.updateLine({ lineId, discount: null }))) change(""); }}>
+          <Button size="sm" variant="ghost" disabled={sending} onClick={async () => { if (await run(() => actions.updateLine({ lineId, discount: null }))) change(""); }}>
             Remove
           </Button>
         ) : null}
       </div>
-      <p aria-live="polite" data-testid="discount-echo" className={cn("text-xs tabular-nums", parsed && !parsed.ok ? "text-destructive" : "text-muted-foreground")}>
+      <p id={`${id}-echo`} data-testid="discount-echo" className={cn("text-xs tabular-nums", parsed && !parsed.ok ? "text-destructive" : "text-muted-foreground")}>
         {status}
-        {over ? <span data-testid="discount-limit-hint" className="text-amber-800 dark:text-amber-300"> · Over your {formatPercent(over.limitPercent)}% limit</span> : null}
+        {over ? (
+          <span data-testid="discount-limit-hint" className="text-amber-800 dark:text-amber-300">
+            {/* A price change on the line counts too, so then name the whole reduction. */}
+            {parsed?.ok && Math.abs(over.amount - parsed.amount) >= 0.005
+              ? ` · ${formatMoney(over.amount)} off in total is over your ${formatPercent(over.limitPercent)}% limit`
+              : ` · Over your ${formatPercent(over.limitPercent)}% limit`}
+          </span>
+        ) : null}
       </p>
       {asking && parsed?.ok ? (
         <div role="group" aria-label="Ask a manager" className="grid gap-2">
           <ReasonField compact value={reason} onChange={setReason} chips={REASON_CHIPS.discount} disabled={sending} />
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <Button className="h-auto min-h-10 w-full whitespace-normal" disabled={!reason.trim() || sending} onClick={() => void sendRequest()}>
+          {/* One request at a time per order: a second waits until the first is decided. */}
+          <Button className="h-auto min-h-10 w-full whitespace-normal" disabled={!reason.trim() || sending || waiting} onClick={() => void sendRequest()}>
             {sending ? <Spinner label="Sending" className="text-current" /> : null}
             Send {parsed.what} to manager
           </Button>
