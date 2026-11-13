@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { ReplyCard } from 'convex/lib/replyCards';
+import type { ReplyCard } from 'convex/shared/replyCards';
 import { allowedMessagingImageSource } from 'convex/shared/messagingImages';
 
 

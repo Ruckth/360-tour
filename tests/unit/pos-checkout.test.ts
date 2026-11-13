@@ -15,7 +15,7 @@ import {
   lineDiscount,
   lineNet,
   roundMoney,
-} from "convex/lib/orderMath";
+} from "convex/shared/orderMath";
 import { parseCheckoutSource } from "@/components/checkout/checkout-source";
 import { amountInput, orderTime, receiptText } from "@/components/checkout/checkout-ui";
 

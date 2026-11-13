@@ -1,25 +1,26 @@
+import { MAX_TIME_OFF_DAYS } from '../../shared/timeOff';
+import type { DayPlan } from '../../shared/serviceScheduleTypes';
+import { type Range, localDayRange, mergeRanges, effectivePlan, planBusy, blocksTime } from '../../shared/schedule';
+import { addDays as nextLocalDate } from '../../shared/dates';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { requireAdmin } from '../../auth/model';
-import { demoCode } from '../../lib/codes';
+import { demoCode } from '../../shared/codes';
 import { ensureLinkedOrder } from '../../pos/model';
-import { assertValidEmail, assertValidIsoDate } from '../../lib/validation';
+import { assertValidEmail, assertValidIsoDate } from '../../shared/validation';
 import { appendRecordHistory } from '../../settings/model';
-import { RESORT_OFFSET, resortLocalParts } from '../../shared/resortLocalParts';
-import type { DayPlan } from '../../shared/serviceScheduleTypes';
+import { resortLocalParts } from '../../shared/time';
 import { patternForDate, patternsForRange } from './rosterHistory';
 
 const MINUTE = 60_000;
 
 const DAY = 24 * 60 * MINUTE;
 
-export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
+export const TIME_OFF_LOOKBACK = MAX_TIME_OFF_DAYS * DAY; // time off is capped at 60 days
 
 export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
 
 export const SLOT_CONFLICT = 'That time was just taken. Please choose another time.';
-
-export type Range = [start: number, end: number];
 
 export type Slot = { start: number; staffIds: Id<'staff'>[] };
 
@@ -32,28 +33,6 @@ export async function* boundedIntegrityRows<T>(rows: AsyncIterable<T>, limit = 2
 		if (++count > limit) throw new Error('Too many records to check safely. Narrow the range or contact support.');
 		yield row;
 	}
-}
-
-/** Local "HH:mm"; "24:00" is allowed so shifts and breaks can end at midnight. */
-export function assertValidTime(time: string): void {
-	if (!/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/.test(time)) throw new Error('Time must be HH:mm');
-}
-
-export function localDateTimeUtc(date: string, time: string): number {
-	assertValidIsoDate(date, 'Date');
-	assertValidTime(time);
-	const [year, month, day] = date.split('-').map(Number);
-	const [hour, minute] = time.split(':').map(Number);
-	return Date.UTC(year, month - 1, day, hour, minute) - RESORT_OFFSET;
-}
-
-export function nextLocalDate(date: string): string {
-	const [year, month, day] = date.split('-').map(Number);
-	return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
-}
-
-export function localDayRange(date: string): Range {
-	return [localDateTimeUtc(date, '00:00'), localDateTimeUtc(nextLocalDate(date), '00:00')];
 }
 
 export function assertAppointmentStart(start: number, policy?: AdminHistoricalPolicy): void {
@@ -82,40 +61,6 @@ export async function historicalWarnings(ctx: ReadCtx, staff: Doc<'staff'>, serv
 	return { warnings, needsReason: overlap };
 }
 
-export function mergeRanges(ranges: Range[]): Range[] {
-	const sorted = ranges.filter(([start, end]) => end > start).sort((a, b) => a[0] - b[0]);
-	const merged: Range[] = [];
-	for (const range of sorted) {
-		const last = merged[merged.length - 1];
-		if (last && range[0] <= last[1]) last[1] = Math.max(last[1], range[1]);
-		else merged.push([...range]);
-	}
-	return merged;
-}
-
-type Pattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;
-
-/** 0 = Sunday, for a "YYYY-MM-DD" date. */
-export function weekdayOf(date: string): number {
-	return new Date(`${date}T00:00:00Z`).getUTCDay();
-}
-
-export function addDays(date: string, days: number): string {
-	const [year, month, day] = date.split('-').map(Number);
-	return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
-}
-
-const byStart = (a: { start: string }, b: { start: string }) => a.start.localeCompare(b.start);
-
-/** The weekly pattern's plan for a date. */
-export function patternDay(staff: Pattern, date: string): DayPlan {
-	const weekday = weekdayOf(date);
-	return {
-		shifts: staff.workingHours.filter((h) => h.weekday === weekday).map(({ start, end }) => ({ start, end })).sort(byStart),
-		breaks: staff.breaks.filter((b) => b.weekday === weekday).map(({ start, end, label }) => ({ start, end, label })).sort(byStart)
-	};
-}
-
 /** Roster overrides for one person, keyed by date, in [firstDate, lastDate]. */
 export async function staffDayOverrides(ctx: ReadCtx, staffId: Id<'staff'>, firstDate: string, lastDate: string) {
 	const rows = new Map<string, Doc<'staffDays'>>();
@@ -125,36 +70,6 @@ export async function staffDayOverrides(ctx: ReadCtx, staffId: Id<'staff'>, firs
 		rows.set(row.date, row);
 	}
 	return rows;
-}
-
-/** The plan in force on a date: the override row if there is one, otherwise the weekly pattern. */
-export function effectivePlan(staff: Pattern, date: string, override: Doc<'staffDays'> | null | undefined): DayPlan {
-	if (!override) return patternDay(staff, date);
-	return { shifts: override.shifts, breaks: override.breaks, ...(override.note ? { note: override.note } : {}) };
-}
-
-/** Working time for a plan on a date, as absolute ranges. */
-export function planWorking(date: string, plan: DayPlan): Range[] {
-	return mergeRanges(plan.shifts.map((s): Range => [localDateTimeUtc(date, s.start), localDateTimeUtc(date, s.end)]));
-}
-
-/** Unavailable time within a date's local day: the gaps around shifts, plus breaks. */
-export function planBusy(date: string, plan: DayPlan): Range[] {
-	const [dayStart, dayEnd] = localDayRange(date);
-	const busy: Range[] = [];
-	let cursor = dayStart;
-	for (const [start, end] of planWorking(date, plan)) {
-		if (start > cursor) busy.push([cursor, start]);
-		cursor = Math.max(cursor, end);
-	}
-	if (cursor < dayEnd) busy.push([cursor, dayEnd]);
-	busy.push(...plan.breaks.map((b): Range => [localDateTimeUtc(date, b.start), localDateTimeUtc(date, b.end)]));
-	return mergeRanges(busy);
-}
-
-/** True when part of [start, end) on this date falls outside the plan's working time. */
-export function planUncovers(date: string, plan: DayPlan, start: number, end: number): boolean {
-	return planBusy(date, plan).some(([a, b]) => start < b && end > a);
 }
 
 /** Each local date touched by [from, to), with the plan in force. */
@@ -172,10 +87,6 @@ export async function scheduleDays(ctx: ReadCtx, staff: Doc<'staff'>, from: numb
 		 patternHistoryKnown: overrides.has(date) || evidence.historyKnown, patternKnownFrom: evidence.knownFrom });
 	}
 	return days;
-}
-
-export function blocksTime(appointment: Doc<'appointments'>): boolean {
-	return appointment.status !== 'cancelled' && appointment.status !== 'no_show';
 }
 
 /** All unavailable time within [from, to), including the gaps around working hours. */

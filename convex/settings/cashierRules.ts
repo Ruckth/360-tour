@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { staffMutation, staffQuery } from '../auth/model';
-import { cashierRulesFields } from '../lib/staffTypes';
+import { cashierRulesFields } from '../shared/staffTypes';
 import { cashierRules } from './cashierPolicy';
 import { appendRecordHistory } from './recordWriter';
 

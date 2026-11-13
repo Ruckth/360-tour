@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { marketingQuery } from '../auth/model';
-import { creditState } from '../lib/affiliateTypes';
-import { canReadMarketingPersonalData, withMarketingReasonPrivacy, withoutPartnerPersonalData } from '../lib/marketingPrivacy';
+import { creditState } from '../shared/affiliateTypes';
+import { canReadMarketingPersonalData, withMarketingReasonPrivacy, withoutPartnerPersonalData } from '../shared/marketingPrivacy';
 import type { AffiliateRow } from '../shared/marketingAffiliateTypes';
 import { AFFILIATE_LIMIT, LIMIT, SUMMARY_LIMIT, creditRow } from './affiliateRead';
 

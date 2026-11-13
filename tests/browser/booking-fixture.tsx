@@ -1,3 +1,5 @@
+import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
+import { registerFixtureFunctions } from "./convex-mock";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { BookingSheet } from "@/components/admin/BookingSheet";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -57,8 +59,15 @@ const services: Doc<"services">[] = Array.from({ length: 30 }, (_, index) => ({
   imageUrl: index === 0 ? photo : undefined,
 }));
 
+// Static server answers; the real hotel calendar owns selection and resort-day policy.
+const hotelData = { properties, bookings: [], dateBlocks: [], blocks: [], complete: true };
+if (params.get("mode") === "hotel-calendar") registerFixtureFunctions({
+  queries: { "bookings/admin:listForAdmin": () => hotelData },
+});
+
 function Fixture() {
   const [filter, setFilter] = useState("all");
+  if (params.get("mode") === "hotel-calendar") return <ConfirmProvider><AdminBookingsView /></ConfirmProvider>;
   if (params.get("mode") === "public-calendar") return (
     <BookingRangePicker checkIn="2025-02-14" checkOut="2025-02-17" onChange={() => {}}
       unavailableDates={["2025-02-15"]} isDateDisabled={() => true} />

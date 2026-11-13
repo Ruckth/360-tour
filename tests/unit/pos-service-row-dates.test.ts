@@ -8,7 +8,7 @@ import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { serviceScheduleValue } from "@/components/checkout/OrderPanel";
 import { receiptSchedule, scheduleLabel } from "@/components/checkout/checkout-ui";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
-import { changeSchedule } from "convex/lib/serviceSchedule";
+import { changeSchedule } from "convex/shared/serviceSchedule";
 
 /** A resort (Bangkok, UTC+7) wall-clock time, whatever zone the test machine runs in. */
 const at = (date: string, time: string) => Date.parse(`${date}T${time}:00+07:00`);

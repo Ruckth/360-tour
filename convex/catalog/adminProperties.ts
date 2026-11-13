@@ -1,8 +1,8 @@
 import { type QueryCtx, adminQuery, adminMutation } from '../auth/model';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import { uploadProblem } from '../lib/imageUploads';
-import { MAX_SLUG_LENGTH, SLUG_PATTERN, slugify } from '../lib/slug';
+import { uploadProblem } from '../shared/imageUploads';
+import { MAX_SLUG_LENGTH, SLUG_PATTERN, slugify } from '../shared/slug';
 import { configurationWriter, logOtaRate } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
 

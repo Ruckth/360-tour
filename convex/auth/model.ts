@@ -4,7 +4,7 @@ import type { HttpActionBuilder } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
 import { action as rawAction, httpAction as rawHttpAction, mutation as rawMutation, query as rawQuery } from '../_generated/server';
-import { sha256 } from '../lib/displayTokens';
+import { sha256 } from '../shared/displayTokens';
 import { maintenancePaused } from '../lib/maintenance';
 import { requireMarketingPermission } from '../marketing/model';
 import { requireGuestToken } from '../messaging/model';
@@ -102,4 +102,6 @@ export const httpAction: HttpActionBuilder = handler => rawHttpAction((ctx, requ
 );
 // Auth-owned plain ctx implementations. Registrations stay in users.ts/staffAccess.ts.
 export { requireAdmin, requireOwner } from './private/adminAuth';
-export { accessForIdentity, assertCashierDiscount, canReadCheckoutOrder, manualReduction, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
+export { accessForIdentity, assertCashierDiscount, canReadCheckoutOrder, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
+
+export { manualReduction } from '../shared/staffDiscount';

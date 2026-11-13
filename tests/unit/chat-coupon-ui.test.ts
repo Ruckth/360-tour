@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { evaluateOffer } from 'convex/lib/offers';
+import { evaluateOffer } from 'convex/shared/offers';
 import { ChatBookingCard } from '@/components/chat/ChatBookingCard';
 import { ProposalPayClient } from '@/components/booking/ProposalPayClient';
 import { extractChatBookingContext } from '@/lib/chat/booking-intent';

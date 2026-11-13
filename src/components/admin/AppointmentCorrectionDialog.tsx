@@ -3,7 +3,7 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
-import { appointmentRevision } from "convex/lib/appointmentWindow";
+import { appointmentRevision } from "convex/shared/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { STATUS_LABELS } from "@/components/admin/labels";

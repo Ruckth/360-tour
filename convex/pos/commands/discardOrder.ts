@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
-import { attemptKey, cleanReason } from '../../lib/bookingMoney';
+import { attemptKey, cleanReason } from '../../shared/bookingMoney';
 import { orderLines } from '../private/orderLines';
 import { lifecycleArgs, lineSnapshot, logOrder } from '../private/orderModel';
 

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { executeOrderRefund } from '../private/orderRefunds';
-import { orderRefundFields } from '../../lib/staffTypes';
+import { orderRefundFields } from '../../shared/staffTypes';
 
 /** Record a walk-in line return in satang; money is handed back outside the app. */
 export const refundLine = staffMutation({

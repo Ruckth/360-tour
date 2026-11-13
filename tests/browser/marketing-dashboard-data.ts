@@ -1,5 +1,5 @@
 import type { Id } from "convex/_generated/dataModel";
-import type { ReportBasis, ReportData, ReportMoneyEvent, ReportSale, ReportTouch } from "convex/lib/marketingReport";
+import type { ReportBasis, ReportData, ReportMoneyEvent, ReportSale, ReportTouch } from "convex/shared/marketingReport";
 
 /*
  * A getReport answer built from docs/previews/marketing/kit/data.md: Last 30 days = 8 Oct–6 Nov 2026,

@@ -1,3 +1,4 @@
+import { isCalendarDate } from 'convex/shared/dates';
 /** Calendar values are local date parts, never UTC timestamps. */
 export function dateToIso(date: Date | undefined): string {
   if (!date || !Number.isFinite(date.getTime())) return "";
@@ -5,10 +6,8 @@ export function dateToIso(date: Date | undefined): string {
 }
 
 export function isoToDate(value: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  if (!isCalendarDate(value)) return undefined;
   const [year, month, day] = value.split("-").map(Number);
-  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31)
-    return undefined;
   const date = new Date(0);
   date.setFullYear(year, month - 1, day);
   date.setHours(0, 0, 0, 0);
@@ -17,11 +16,6 @@ export function isoToDate(value: string): Date | undefined {
 
 export function todayIsoLocal(date = new Date()): string {
   return dateToIso(date);
-}
-
-/** The resort's date (Asia/Bangkok, UTC+7, no DST) whatever the browser's time zone. Mirrors resortTodayIso in convex/lib/dates.ts. */
-export function todayIsoResort(now = Date.now()): string {
-  return new Date(now + 7 * 3_600_000).toISOString().slice(0, 10);
 }
 
 export function isTimeValue(value: string): boolean {

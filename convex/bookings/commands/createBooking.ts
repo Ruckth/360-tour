@@ -1,12 +1,12 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { blockBookingDates } from '../private/availabilityWrites';
-import { attemptKey, cleanReason, resolveNotify } from '../../lib/bookingMoney';
+import { attemptKey, cleanReason, resolveNotify } from '../../shared/bookingMoney';
 import { writeBooking } from '../private/money';
 import { createBookingRecord } from '../private/bookingWrites';
-import { demoCode } from '../../lib/codes';
-import { resortTodayIso } from '../../lib/dates';
-import { normalizeCouponCode } from '../../lib/offers';
+import { demoCode } from '../../shared/codes';
+import { resortTodayIso } from '../../shared/time';
+import { normalizeCouponCode } from '../../shared/offers';
 import { cleanPriceOverride, priceOverrideInput, queueBookingEmails } from '../private/stays';
 
 /**

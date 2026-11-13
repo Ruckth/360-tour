@@ -2,11 +2,11 @@ import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import { adminMutation } from '../../auth/model';
 import { blockBookingDates, releaseBookingDates } from '../private/availabilityWrites';
-import { assertBookingRevision, resolveNotify } from '../../lib/bookingMoney';
+import { assertBookingRevision, resolveNotify } from '../../shared/bookingMoney';
 import { writeBooking } from '../private/money';
 import { assertCapacity, assertStayDates, assertStayFree, cleanGuestDetails, guestLookupFields } from '../private/bookingWrites';
 import { repriceCouponBooking } from '../../marketing/model';
-import { stayDates } from '../../lib/dates';
+import { stayDates } from '../../shared/dates';
 import { archivedVillaPolicy, assertBookingEditable, assertReviewedPrice, loadBooking, planBookingEditPricing, priceOverrideInput } from '../private/stays';
 
 /**

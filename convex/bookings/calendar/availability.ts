@@ -1,10 +1,11 @@
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { type QueryCtx, adminQuery, publicQuery } from '../../auth/model';
-import { nightsBetween, stayDates } from '../../lib/dates';
+import { nightsBetween, stayDates } from '../../shared/dates';
 import { readBudget, ReadBudgetExceeded } from '../../lib/readBudget';
-import { blocksNewBookings, findBlockingNight, findOverlappingBookings, MAX_ROWS_PER_NIGHT } from '../private/stayOverlap';
-import { assertValidIsoDate } from '../../lib/validation';
+import { findBlockingNight, findOverlappingBookings, MAX_ROWS_PER_NIGHT } from '../private/stayOverlap';
+import { blocksNewBookings } from '../../shared/overlap';
+import { assertValidIsoDate } from '../../shared/validation';
 
 /** Longest date window one read may cover: today plus a year (366 dates). */
 export const MAX_RANGE_DAYS = 366;
@@ -13,7 +14,8 @@ export const MAX_RANGE_DAYS = 366;
 export const MAX_PROPERTY_IDS = 100;
 
 /** Villa-dates one multi-villa read may cover, e.g. 100 villas × 31 nights. */
-export const MAX_PROPERTY_DAYS = 3100;
+import { MAX_PROPERTY_DAYS } from '../../shared/calendar';
+export { MAX_PROPERTY_DAYS } from '../../shared/calendar';
 
 /** Validates an inclusive [startDate, endDate] window and returns how many dates it covers. */
 function rangeDays(startDate: string, endDate: string): number {

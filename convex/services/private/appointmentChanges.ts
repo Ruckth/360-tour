@@ -1,6 +1,6 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { appointmentRevision } from '../../lib/appointmentWindow';
+import { appointmentRevision } from '../../shared/appointmentWindow';
 import { appendRecordHistory } from '../../settings/model';
 import { appointmentLookupFields } from './serviceSlots';
 

@@ -5,9 +5,13 @@ export default defineConfig({
   define: { "process.env": "{}" },
   optimizeDeps: {
     entries: ["tests/browser/*.html"],
-    // Checkout's resort-time formatter must be ready before parallel fixture pages load.
+    // Calendar and checkout dependencies must be ready before parallel fixture pages load.
     // Discovering it later replaces shared chunks and reloads in-flight accessibility scans.
-    include: ["@date-fns/tz"],
+    include: [
+      "@date-fns/tz",
+      "@base-ui/react/button", "@base-ui/react/menu", "@base-ui/react/merge-props",
+      "@base-ui/react/popover", "@base-ui/react/tooltip", "@base-ui/react/use-render",
+    ],
   },
   resolve: {
     alias: [

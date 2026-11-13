@@ -6,7 +6,7 @@ import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.tes
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
-import { SITE_DEFAULTS } from './lib/siteSettings';
+import { SITE_DEFAULTS } from './shared/siteSettings';
 
 const modules = import.meta.glob('./**/*.ts');
 const DAY = 86_400_000;

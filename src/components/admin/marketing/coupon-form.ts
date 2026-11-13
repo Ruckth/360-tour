@@ -1,6 +1,6 @@
 
 import { satangToBaht, basisPointsToPercent, bahtToSatang } from 'convex/shared/money';
-import { normalizeCouponCode } from "convex/lib/offers";
+import { normalizeCouponCode } from "convex/shared/offers";
 import type { CouponDetail, CouponScope, CouponVersion, SaveCouponArgs } from "./types";
 
 // The coupon builder's form state, its validation, and how it maps to saveCoupon.

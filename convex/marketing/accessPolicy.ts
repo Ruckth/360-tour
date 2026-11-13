@@ -1,7 +1,7 @@
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminEmails } from '../lib/adminEmails';
-import { MARKETING_INVITATION_TTL_MS } from '../lib/marketingPolicy';
+import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import type { MarketingPermission, MarketingRole } from '../shared/marketingAccess';
 import { marketingCapabilities } from '../shared/marketingAccess';
 

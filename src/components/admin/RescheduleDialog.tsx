@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { appointmentRevision, movedWindow } from "convex/lib/appointmentWindow";
+import { appointmentRevision, movedWindow } from "convex/shared/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { DatePicker } from "@/components/ui/date-picker";

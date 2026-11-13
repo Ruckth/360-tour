@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "convex/_generated/api";
-import { BOOKING_RULE_DEFAULTS } from "convex/lib/siteSettings";
+import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { useOptionalConvex } from "@/lib/react/convex";
 import { CalendarDays, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
@@ -12,7 +12,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { defaultLocale, isLocale } from "@/i18n/routing";
-import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso, todayIsoResort } from "@/lib/booking/dates";
+import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso } from '@/lib/booking/dates';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 import { cn } from "@/lib/utils";
 

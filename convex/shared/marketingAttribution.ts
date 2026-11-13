@@ -1,6 +1,6 @@
 import { v, type Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import { validateMarketingSlug } from '../lib/marketingSlugs';
+import { validateMarketingSlug } from './marketingSlugs';
 
 /**
  * Release 3a: which marketing link brought a booking.

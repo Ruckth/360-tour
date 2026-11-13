@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "convex/_generated/api";
-import { DRIVER_RENEW_MS } from "convex/lib/displayLease";
+import { DRIVER_RENEW_MS } from "convex/shared/displayLease";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { newAttemptKey } from "@/components/checkout/backend";

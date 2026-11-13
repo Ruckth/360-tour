@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { adminMutation, adminQuery, publicMutation } from '../auth/model';
-import { assertValidEmail, normalizeEmail } from '../lib/validation';
+import { assertValidEmail, normalizeEmail } from '../shared/validation';
 import { recordLead } from './leadWriter';
 import { enforceRateLimit } from './rateLimit';
 

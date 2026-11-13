@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
+import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ADMIN_NAV } from "./admin-routes";
 import { adminNavFor, type StaffAccessView } from "./admin-access";

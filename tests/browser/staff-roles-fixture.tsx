@@ -1,6 +1,6 @@
 import type { Id } from "convex/_generated/dataModel";
-import { mergeSiteSettings } from "convex/lib/siteSettings";
-import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/lib/staffTypes";
+import { mergeSiteSettings } from "convex/shared/siteSettings";
+import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/shared/staffTypes";
 import { ConvexError } from "convex/values";
 import { NextIntlClientProvider } from "next-intl";
 import { useState, useSyncExternalStore } from "react";

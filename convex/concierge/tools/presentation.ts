@@ -1,7 +1,7 @@
 import type { FunctionReturnType } from 'convex/server';
 import type { internal } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
-import { resortLocalParts } from '../../shared/resortLocalParts';
+import { resortLocalParts } from '../../shared/time';
 import { satangToBaht } from '../../shared/money';
 
 type MutationResults = {

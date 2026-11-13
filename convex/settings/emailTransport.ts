@@ -1,6 +1,6 @@
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import type { EffectiveSettings } from '../lib/siteSettings';
+import type { EffectiveSettings } from '../shared/siteSettings';
 
 export function escapeHtml(value: string) {
 	return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);

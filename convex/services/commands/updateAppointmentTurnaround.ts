@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { assertFresh, recordAppointmentChange } from '../private/appointmentChanges';
-import { canEditTurnaround, turnaroundMinutes, turnaroundProblem, withTurnaround } from '../../lib/appointmentWindow';
+import { canEditTurnaround, turnaroundMinutes, turnaroundProblem, withTurnaround } from '../../shared/appointmentWindow';
 import { staffBusyRanges } from '../private/serviceSlots';
 import { MINUTE, loadAppointment } from '../private/administration';
 

@@ -1,6 +1,7 @@
+import { richCardsEnabled } from './richCardsEnabled';
 import { array, eventDigest, graphVersion, object, providerRequest, string, verifyHmac, type ChannelAdapter, type InboundEvent } from './adapter';
-import { cardBrowseMessage } from '../../lib/replyCards';
-import { richCardsEnabled, richReplyFallback, whatsappReplyMessages, whatsappText } from './richMessages';
+import { cardBrowseMessage } from '../../shared/replyCards';
+import { richReplyFallback, whatsappReplyMessages, whatsappText } from '../../shared/richMessages';
 
 export const whatsapp: ChannelAdapter = {
   replyWindowMs: 24 * 60 * 60_000,

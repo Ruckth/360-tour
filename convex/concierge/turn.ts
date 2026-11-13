@@ -1,5 +1,5 @@
-import { hasUnverifiedOfferClaim, mentionsCoupon, rememberDirectOffer, unverifiedCouponReply } from '../lib/chatCouponCopy';
-import { bookingStatusReply, committedReply, hasTransactionCompletionClaim, isCancellationRequest, isGuestConfirmation, proposalReply, replyLocale, toolFailureReply } from './copy';
+import { hasUnverifiedOfferClaim, mentionsCoupon, rememberDirectOffer, unverifiedCouponReply } from '../shared/chatCouponCopy';
+import { bookingStatusReply, committedReply, hasTransactionCompletionClaim, isCancellationRequest, isGuestConfirmation, proposalReply, replyLocale, toolFailureReply } from '../shared/conciergeCopy';
 import { InvalidAiResponseError, type ChatMessage, type LlmResponse, type ToolDef } from './llm';
 import { toolError } from './tools/validation';
 

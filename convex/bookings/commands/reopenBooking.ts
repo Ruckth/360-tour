@@ -1,11 +1,11 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { blockBookingDates } from '../private/availabilityWrites';
-import { assertBookingRevision, assertNoLiveCheckout, cleanReason, resolveNotify } from '../../lib/bookingMoney';
+import { assertBookingRevision, assertNoLiveCheckout, cleanReason, resolveNotify } from '../../shared/bookingMoney';
 import { writeBooking } from '../private/money';
-import { stayMoney } from '../../lib/stayMoney';
+import { stayMoney } from '../../shared/stayMoney';
 import { assertStayFree } from '../private/bookingWrites';
-import { demoCode } from '../../lib/codes';
+import { demoCode } from '../../shared/codes';
 import { archivedVillaPolicy, loadBooking, queueBookingEmails } from '../private/stays';
 
 /**

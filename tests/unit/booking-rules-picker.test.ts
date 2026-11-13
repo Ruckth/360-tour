@@ -3,7 +3,7 @@ import { act, createElement, Fragment, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { BOOKING_RULE_DEFAULTS } from "convex/lib/siteSettings";
+import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { BookingDatePicker } from "@/components/booking/BookingDatePicker";
 import en from "../../messages/en.json";
 

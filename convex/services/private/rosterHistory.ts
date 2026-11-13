@@ -1,6 +1,8 @@
+import { resortMidnight } from '../../shared/time';
+import { resortTodayIso as rosterDate } from '../../shared/time';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { assertValidIsoDate } from '../../lib/validation';
+import { assertValidIsoDate } from '../../shared/validation';
 import { appendRecordHistory } from '../../settings/model';
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -9,10 +11,6 @@ export type WeeklyPattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;
 
 export type PatternEvidence = { pattern: WeeklyPattern; historyKnown: boolean; knownFrom: string };
 
-export function rosterDate(at = Date.now()) {
-	// Match serviceSlots' production-safe fixed Bangkok offset (no DST).
-	return new Date(at + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
 
 const pattern = (staff: WeeklyPattern): WeeklyPattern => ({ workingHours: staff.workingHours, breaks: staff.breaks });
 
@@ -127,7 +125,7 @@ export async function writeWeeklyPattern(
 		entityId: person._id,
 		actor,
 		kind,
-		effectiveAt: Date.parse(`${today}T00:00:00+07:00`),
+		effectiveAt: resortMidnight(today),
 		before: { ...pattern(person), scope: 'weekly' },
 		after: { ...pattern(next), scope: 'weekly', effectiveFrom: today }
 	});

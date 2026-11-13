@@ -1,4 +1,4 @@
-import type { CouponProblem } from "convex/lib/offers";
+import type { CouponProblem } from "convex/shared/offers";
 import { ConvexError } from "convex/values";
 import { localeLabels, type Locale } from "@/i18n/routing";
 import { errorText } from "@/lib/staff-bookings";
@@ -57,19 +57,8 @@ export function formatRange(from?: string, to?: string) {
   return "Ongoing";
 }
 
-const bangkokDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" });
-
-/** Today in Asia/Bangkok as YYYY-MM-DD, the date the offer engine compares against. */
-export function bangkokToday(ms: number) {
-  return bangkokDay.format(ms);
-}
-
-/** Nights between two YYYY-MM-DD dates (0 when the order is wrong or a date is missing). */
-export function nightsBetween(checkIn: string, checkOut: string) {
-  if (!checkIn || !checkOut) return 0;
-  const days = (Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000;
-  return Number.isFinite(days) && days > 0 ? Math.round(days) : 0;
-}
+export { resortTodayIso as bangkokToday } from 'convex/shared/time';
+export { nightsBetweenIso as nightsBetween } from 'convex/shared/dates';
 
 const stamp = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Bangkok",

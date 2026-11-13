@@ -1,12 +1,14 @@
+import { assertTimeOffRange } from '../../shared/timeOff';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { attachPhotoUpload } from './photos';
-import { turnaroundProblem } from '../../lib/appointmentWindow';
+import { turnaroundProblem } from '../../shared/appointmentWindow';
 import { appendRecordHistory } from '../../settings/model';
 import { type DayPlan, type RosterBreak } from '../../shared/serviceScheduleTypes';
 import { initializeWeeklyPattern } from './rosterHistory';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertValidTime, blocksTime, boundedIntegrityRows, localDayRange, openStarts, staffBusyRanges } from './serviceSlots';
+import { APPOINTMENT_LOOKBACK, boundedIntegrityRows, openStarts, staffBusyRanges } from './serviceSlots';
+import { assertValidTime, blocksTime, localDayRange } from '../../shared/schedule';
 
 export const DAY = 86_400_000;
 
@@ -108,10 +110,6 @@ export async function archiveStaffRecord(ctx: MutationCtx, staff: Doc<'staff'>, 
 	}
 	await ctx.db.patch(staff._id, { status: 'archived', archivedServiceIds: [...new Set([...(staff.archivedServiceIds ?? []), ...archivedServiceIds])], updatedAt: Date.now() });
 	return { servicesUpdated };
-}
-
-export function assertTimeOffRange(start: number, end: number) {
-	if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end <= start || end - start > TIME_OFF_LOOKBACK) throw new Error('Time off must be positive and at most 60 days');
 }
 
 /** Booked appointments that would fall inside the time off. */

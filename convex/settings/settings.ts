@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminQuery, internalQuery, publicQuery, staffMutation, type QueryCtx } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
-import { BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../lib/siteSettings';
+import { BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../shared/siteSettings';
 import { settingsSnapshot } from './configurationWriter';
 import { getEffectiveSettings, getSiteSettingsRow } from './model';
 import { appendRecordHistory } from './recordWriter';

@@ -6,7 +6,7 @@ import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { calculateBookingQuote } from "@/lib/booking/quote";
+import { calculateDirectQuote } from "convex/shared/pricing";
 import { useConvexQuery } from "@/lib/react/convex";
 import { cn } from "@/lib/utils";
 import { currencyPrefix } from "@/lib/villas";
@@ -56,12 +56,7 @@ export function OtaRateComparison({
 
   const money = (amount: number) => `${currencyPrefix(currency)}${satangToBaht(amount).toLocaleString()}`;
   const stayNights = nights && nights > 0 ? nights : 1;
-  const directTotal = calculateBookingQuote({
-    pricePerNight,
-    nights: stayNights,
-    discountPercent,
-    currency,
-  }).directTotal;
+  const directTotal = calculateDirectQuote({ pricePerNight: pricePerNight, directDiscountPercent: discountPercent, currency: currency }, stayNights).directTotal;
   const rows = rates
     .map((rate) => {
       const total = rate.nightlyRate * stayNights;

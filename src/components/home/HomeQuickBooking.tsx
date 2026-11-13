@@ -5,7 +5,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
-import { dateToIso, todayIsoResort } from "@/lib/booking/dates";
+import { dateToIso } from '@/lib/booking/dates';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { HomeSolidBookButton } from "@/components/home/HomeSolidBookButton";
 
 const BookingRangePicker = dynamic(

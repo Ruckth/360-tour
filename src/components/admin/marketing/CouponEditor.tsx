@@ -1,7 +1,7 @@
 "use client";
 
 import type { Id } from "convex/_generated/dataModel";
-import { normalizeCouponCode } from "convex/lib/offers";
+import { normalizeCouponCode } from "convex/shared/offers";
 import { Archive, ArrowLeft, Lock, Pause, Play, Send, Wand2 } from "lucide-react";
 import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { useRouter } from "next/navigation";

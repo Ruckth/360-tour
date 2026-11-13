@@ -1,6 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { storedPaymentMethod, storedRefundMethod } from '../lib/financeValidators';
+import { storedPaymentMethod, storedRefundMethod } from '../shared/financeValidators';
 
 // Owned by services; assembled only by convex/schema.ts.
 export const servicesTables = {

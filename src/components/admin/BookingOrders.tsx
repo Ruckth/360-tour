@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import Link from "next/link";
-import { formatReceiptNumber } from "convex/lib/orderMath";
+import { formatReceiptNumber } from "convex/shared/orderMath";
 import { ButtonLink } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { orderPath, receiptPath } from "@/components/checkout/checkout-source";

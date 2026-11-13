@@ -1,8 +1,8 @@
 import { ConvexError, v } from 'convex/values';
 import { authenticatedMutation, marketingMutation, marketingQuery, publicQuery } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
-import { marketingRole } from '../lib/affiliateTypes';
-import { MARKETING_INVITATION_TTL_MS } from '../lib/marketingPolicy';
+import { marketingRole } from '../shared/affiliateTypes';
+import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import { appendRecordHistory } from '../settings/model';
 import { marketingAccess, marketingInvitationExpired, marketingInvitationExpiry } from './accessPolicy';
 

@@ -1,13 +1,13 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, type ReportBasis, type ReportData, type ReportMoneyEvent, type ReportSale, type ReportTouch } from '../lib/marketingReport';
+import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, type ReportBasis, type ReportData, type ReportMoneyEvent, type ReportSale, type ReportTouch } from '../shared/marketingReport';
 import { orderPaymentRecord } from '../pos/model';
 import { isSettledOrder } from '../pos/model';
-import { orderTitle, roundMoney } from '../lib/orderMath';
+import { orderTitle, roundMoney } from '../shared/orderMath';
 import { ReadBudget, ReadBudgetExceeded } from '../lib/readBudget';
-import { resortLocalParts } from '../shared/resortLocalParts';
-import { stayMoney } from '../lib/stayMoney';
+import { resortLocalParts } from '../shared/time';
+import { stayMoney } from '../shared/stayMoney';
 import { ATTRIBUTION_MODEL, touchFromLink } from '../shared/marketingAttribution';
 
 export const reportSpend = (row: Doc<'marketingSpend'>) => ({ id: row._id, campaignId: row.campaignId, amount: row.amount, from: row.from, to: row.to, ...(row.note !== undefined ? { note: row.note } : {}) });

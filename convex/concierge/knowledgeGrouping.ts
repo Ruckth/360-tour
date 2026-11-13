@@ -1,4 +1,4 @@
-import { normalizeSuggestedQuestion } from '../lib/chatSuggestions';
+import { normalizeSuggestedQuestion } from '../shared/chatSuggestions';
 
 type UnknownStatus = 'new' | 'resolved' | 'ignored';
 

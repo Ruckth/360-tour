@@ -8,7 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import { calculateBookingQuote } from "@/lib/booking/quote";
+import { calculateDirectQuote } from "convex/shared/pricing";
 import { getLocalizedDirectBenefits } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { currencyPrefix, type PublicVilla } from "@/lib/villas";
@@ -32,7 +32,7 @@ export function PriceComparison({
   const pricePerNight = comparison?.pricePerNight ?? property.pricePerNight;
   const discountPercent = comparison?.directDiscountPercent ?? property.directDiscountPercent;
   const currency = comparison?.currency ?? property.currency;
-  const directRate = calculateBookingQuote({ pricePerNight, nights: 1, discountPercent, currency }).directTotal;
+  const directRate = calculateDirectQuote({ pricePerNight: pricePerNight, directDiscountPercent: discountPercent, currency: currency }, 1).directTotal;
 
   return (
     <aside className="rounded-2xl border border-border bg-card p-5 shadow-lg">

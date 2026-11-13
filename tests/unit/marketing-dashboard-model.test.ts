@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import type { ReportData, ReportSale, ReportTouch } from "convex/lib/marketingReport";
+import type { ReportData, ReportSale, ReportTouch } from "convex/shared/marketingReport";
 import {
   addDays,
   buildBreakdown,

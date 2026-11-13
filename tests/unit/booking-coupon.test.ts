@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ConvexError } from "convex/values";
 import { describe, expect, it } from "vitest";
-import { evaluateOffer, type CouponProblem, type CouponRules, type OfferResult } from "convex/lib/offers";
+import { evaluateOffer, type CouponProblem, type CouponRules, type OfferResult } from "convex/shared/offers";
 import { locales } from "@/i18n/routing";
 import {
   bookedPriceView,

@@ -20,7 +20,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { addDaysIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
+import { addDaysIso, isDateInIsoList, rangeIntersectsDates } from '@/lib/booking/dates';
+import { resortTodayIso } from 'convex/shared/time';
 import { errorText } from "@/lib/staff-bookings";
 import { displayDate, isoNights, type AdminProperty, type DateBlock } from "./admin-bookings-shared";
 import { sourceLabel } from "./labels";
@@ -108,7 +109,7 @@ function HostBlockForm({
   const propertyId = propertyIds.length === 1 ? propertyIds[0] : "";
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
 
-  const today = todayIsoLocal();
+  const today = resortTodayIso();
   // Date hints only make sense for a single villa; with several, conflicts are reported per villa on save.
   const blockedDates =
     useQuery(

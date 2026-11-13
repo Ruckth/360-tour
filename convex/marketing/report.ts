@@ -1,11 +1,11 @@
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { marketingMutation, marketingQuery, publicMutation } from '../auth/model';
-import { canReadMarketingPersonalData } from '../lib/marketingPrivacy';
-import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from '../lib/marketingReport';
-import { normalizeCouponCode } from '../lib/offers';
+import { canReadMarketingPersonalData } from '../shared/marketingPrivacy';
+import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from '../shared/marketingReport';
+import { normalizeCouponCode } from '../shared/offers';
 import { readRangeWithinBudget } from '../lib/readBudget';
-import { resortLocalParts } from '../shared/resortLocalParts';
+import { resortLocalParts } from '../shared/time';
 import { requireStaff } from '../auth/model';
 import { enforceRateLimit } from '../messaging/model';
 import { appendRecordHistory } from '../settings/model';

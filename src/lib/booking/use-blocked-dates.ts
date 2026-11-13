@@ -3,7 +3,7 @@
 import type { ConvexReactClient } from "convex/react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { BlockedMonthsStore, type BlockedMonthsView } from "@/lib/booking/blocked-months-store";
-import { monthBounds, villaBatches } from "@/lib/booking/blocked-months";
+import { monthBounds, villaBatches } from "convex/shared/calendar";
 import { addDaysIso, nightsBetweenIso } from "@/lib/booking/dates";
 import { getBlockedDates, getBlockedDatesByProperty } from "@/lib/react/convex-api";
 

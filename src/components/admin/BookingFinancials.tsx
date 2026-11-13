@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { formatReceiptNumber } from "convex/lib/orderMath";
+import { formatReceiptNumber } from "convex/shared/orderMath";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";

@@ -1,6 +1,6 @@
 "use client";
 
-import { roundMoney } from "convex/lib/orderMath";
+import { roundMoney } from "convex/shared/orderMath";
 import type { ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";

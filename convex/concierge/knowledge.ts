@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminMutation, adminQuery, internalMutation, type MutationCtx, type QueryCtx } from '../auth/model';
-import { normalizeSuggestedQuestion } from '../lib/chatSuggestions';
+import { normalizeSuggestedQuestion } from '../shared/chatSuggestions';
 import { currentClaim, durableTurnValidator } from '../messaging/model';
 import { queueStaffAlert } from '../messaging/model';
 import { groupUnknownQuestions } from './knowledgeGrouping';

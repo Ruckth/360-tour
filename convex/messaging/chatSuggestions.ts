@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { guestMutation, guestQuery } from '../auth/model';
-import { STATIC_SUGGESTION_KEYS } from '../lib/chatSuggestions';
+import { STATIC_SUGGESTION_KEYS } from '../shared/chatSuggestions';
 
 const DEFAULT_LIMIT = 2;
 

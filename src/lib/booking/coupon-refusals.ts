@@ -1,5 +1,5 @@
-import { COUPON_REFUSAL_PROBLEMS, type CouponRefusalProblem, type CouponRefusalSurface } from "convex/lib/marketingReport";
-import { normalizeCouponCode } from "convex/lib/offers";
+import { COUPON_REFUSAL_PROBLEMS, type CouponRefusalProblem, type CouponRefusalSurface } from "convex/shared/marketingReport";
+import { normalizeCouponCode } from "convex/shared/offers";
 
 export type RefusalNote = { code: string; problem: CouponRefusalProblem; surface: CouponRefusalSurface };
 const isProblem = (value: unknown): value is CouponRefusalProblem => typeof value === "string" && COUPON_REFUSAL_PROBLEMS.some(problem => problem === value);

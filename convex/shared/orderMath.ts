@@ -1,5 +1,5 @@
-import { percentageOf, roundRatio, roundMoney } from '../shared/money';
-export { roundMoney } from '../shared/money';
+import { percentageOf, roundRatio, roundMoney } from './money';
+export { roundMoney } from './money';
 import { ConvexError } from 'convex/values';
 /**
  * POS order math, shared by Convex and the checkout UI. Prices include 7% VAT (the receipt

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { recordAppointmentPayment } from '../private/appointmentFinance';
-import { manualPaymentMethod } from '../../lib/financeValidators';
+import { manualPaymentMethod } from '../../shared/financeValidators';
 import { loadAppointment } from '../private/administration';
 
 export const markAppointmentPaid = adminMutation({

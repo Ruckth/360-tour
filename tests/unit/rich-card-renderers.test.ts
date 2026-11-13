@@ -1,6 +1,7 @@
+import { richCardsEnabled } from '../../convex/messaging/channels/richCardsEnabled';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cardBrowseAction, cardBrowseMessage, cardText, replyCardFromTool, type ReplyCard, type ReplyCardItem } from 'convex/lib/replyCards';
-import { lineReplyMessages, richCardsEnabled, richReplyFallback, whatsappReplyMessages } from '@/lib/chat/rich-messages';
+import { cardBrowseAction, cardBrowseMessage, cardText, replyCardFromTool, type ReplyCard, type ReplyCardItem } from 'convex/shared/replyCards';
+import { lineReplyMessages, richReplyFallback, whatsappReplyMessages } from 'convex/shared/richMessages';
 
 function item(index = 0): ReplyCardItem {
   return {

@@ -6,7 +6,7 @@ import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 import { creditMoney } from './marketing/affiliateCredits';
-import { APPROVAL_TTL_MS, type CashierRules } from './lib/staffTypes';
+import { APPROVAL_TTL_MS, type CashierRules } from './shared/staffTypes';
 
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-12T03:00:00Z');

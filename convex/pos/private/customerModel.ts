@@ -1,10 +1,10 @@
 import { ConvexError, v } from 'convex/values';
-import { customerPhoneError } from '../../../src/lib/booking/phone';
+import { customerPhoneError } from '../../shared/phone';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { type MutationCtx, requireAdmin } from '../../auth/model';
 import { appendRecordHistory } from '../../settings/model';
-import { assertValidEmail } from '../../lib/validation';
+import { assertValidEmail } from '../../shared/validation';
 
 /**
  * Reusable customer profiles for orders (admin only). An order links to a customer by id;

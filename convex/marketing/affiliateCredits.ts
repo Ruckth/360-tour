@@ -2,10 +2,10 @@ import type { Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminEmails } from '../lib/adminEmails';
-import { affiliateSnapshot } from '../lib/affiliateTypes';
-import { resortTodayIso } from '../lib/dates';
+import { affiliateSnapshot } from '../shared/affiliateTypes';
+import { resortTodayIso } from '../shared/time';
 import { orderPaymentRecord } from '../pos/model';
-import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from '../lib/orderMath';
+import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from '../shared/orderMath';
 import { ATTRIBUTION_WINDOW_MS, MAX_SESSIONS_READ, isVisitorKey, type MarketingCapture } from '../shared/marketingAttribution';
 
 export type AffiliateSnapshot = Infer<typeof affiliateSnapshot>;

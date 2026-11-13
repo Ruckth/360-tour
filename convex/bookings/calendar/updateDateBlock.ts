@@ -1,7 +1,8 @@
+import { resortMidnight } from '../../shared/time';
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { releaseDateBlockRows, writeDateBlockRows } from '../private/availabilityWrites';
-import { stayDates } from '../../lib/dates';
+import { stayDates } from '../../shared/dates';
 import { appendRecordHistory } from '../../settings/model';
 import { assertDateBlockUnchanged, dateBlockArgs, dateBlockSnapshot, validateDateBlock } from '../private/stays';
 
@@ -17,6 +18,6 @@ export const updateDateBlock = adminMutation({
 		const reason = await validateDateBlock(ctx, args, { rowsCheckedOnWrite: true });
 		await ctx.db.patch(blockId, { ...args, reason });
 		await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!, heldNights);
-		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'updated', effectiveAt: Date.parse(`${args.start}T00:00:00+07:00`), before: dateBlockSnapshot(before), after: { ...args, reason } });
+		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'updated', effectiveAt: resortMidnight(args.start), before: dateBlockSnapshot(before), after: { ...args, reason } });
 	}
 });

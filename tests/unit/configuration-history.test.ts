@@ -3,7 +3,7 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { mergeSiteSettings } from "convex/lib/siteSettings";
+import { mergeSiteSettings } from "convex/shared/siteSettings";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ConfigurationHistoryRecords, RecordHistoryPanel } from "@/components/admin/RecordHistoryPanel";
 import { AdminSettingsView } from "@/components/admin/AdminSettingsView";

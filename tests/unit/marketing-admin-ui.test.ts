@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConvexError } from "convex/values";
 import type { Id } from "convex/_generated/dataModel";
-import { evaluateOffer, type QuoteLine } from "convex/lib/offers";
+import { evaluateOffer, type QuoteLine } from "convex/shared/offers";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { historyChanges } from "@/components/admin/RecordHistoryPanel";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";

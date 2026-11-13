@@ -1,4 +1,4 @@
-import type { InboxReason } from "convex/lib/inboxTypes";
+import type { InboxReason } from "convex/shared/inboxTypes";
 import type { Id } from "convex/_generated/dataModel";
 
 export type AdminSessionStatus = "open" | "resolved" | "archived";

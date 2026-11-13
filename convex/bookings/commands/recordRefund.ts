@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertBookingRevision, assertNoLiveCheckout } from '../../lib/bookingMoney';
+import { assertBookingRevision, assertNoLiveCheckout } from '../../shared/bookingMoney';
 import { recordStayRefund, refundReplay } from '../private/stayCorrections';
 import { loadBooking, refundInput } from '../private/stays';
 

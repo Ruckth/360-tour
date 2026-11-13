@@ -4,7 +4,7 @@ import { convexTest } from "convex-test";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import { RAW_MARKETING_RETENTION_MS } from "./lib/marketingPolicy";
+import { RAW_MARKETING_RETENTION_MS } from "./shared/marketingPolicy";
 import type { Id } from "./_generated/dataModel";
 import { creditMoney, syncAffiliateCredit } from './marketing/affiliateCredits';
 const modules = import.meta.glob("./**/*.ts");

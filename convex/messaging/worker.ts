@@ -14,7 +14,7 @@ import type { SendResult } from './channels/adapter';
 import { answerAccepted } from './inboxState';
 import { patchSessionAfterMessages } from './adminChatMetadata';
 import type { ConciergeReply } from '../concierge/model';
-import type { ReplyCard } from '../lib/replyCards';
+import type { ReplyCard } from '../shared/replyCards';
 import { isRateLimitError } from '@convex-dev/rate-limiter';
 
 export const claim = internalMutation({

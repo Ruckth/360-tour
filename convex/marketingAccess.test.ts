@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
-import { MARKETING_INVITATION_TTL_MS } from "./lib/marketingPolicy";
+import { MARKETING_INVITATION_TTL_MS } from "./shared/marketingPolicy";
 import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 const now = Date.parse("2026-11-07T10:00:00Z");

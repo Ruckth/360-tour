@@ -1,6 +1,7 @@
+import { blocksNewBookings, staysOverlap } from '../../shared/overlap';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
-import { nightsBetween } from '../../lib/dates';
+import { nightsBetween } from '../../shared/dates';
 import { readBudget, ReadBudget, ReadBudgetExceeded } from '../../lib/readBudget';
 
 /** Rows read from each side of an overlap scan before refusing to answer. */
@@ -17,15 +18,6 @@ export const OVERLAP_INCOMPLETE_ERROR =
 	'Too many bookings to check these dates safely. Please contact us to book them.';
 
 export const NIGHT_ROWS_ERROR = 'Too many availability records on these dates to check them safely.';
-
-export function blocksNewBookings(booking: Pick<Doc<'bookings'>, 'status'>): boolean {
-	return booking.status === 'confirmed' || booking.status === 'completed';
-}
-
-/** Half-open ranges: [start, end). A checkout day is free for the next check-in. */
-export function staysOverlap(stay: { start: string; end: string }, from: string, to: string): boolean {
-	return stay.start < to && stay.end > from;
-}
 
 async function lockstepOverlap<T extends { _id: string }>(
 	startsBefore: AsyncIterator<T>,

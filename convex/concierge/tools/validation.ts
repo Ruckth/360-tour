@@ -1,4 +1,4 @@
-import { isIsoDate } from '../../lib/dates';
+import { isIsoDate } from '../../shared/dates';
 import { BOOKING_TOOLS, TOOLS } from './metadata';
 import { humanToolResult } from './presentation';
 import { ToolArgs } from './types';

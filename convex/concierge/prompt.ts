@@ -1,7 +1,7 @@
 import type { Doc } from '../_generated/dataModel';
-import type { EffectiveSettings } from '../lib/siteSettings';
+import type { EffectiveSettings } from '../shared/siteSettings';
 import type { ChatMessage } from './llm';
-import { resortLocalParts } from '../shared/resortLocalParts';
+import { resortLocalParts } from '../shared/time';
 function normalizeSiteUrl(siteUrl?: string) {
 	const trimmed = siteUrl?.trim().replace(/\/+$/, '');
 	if (!trimmed) return undefined;

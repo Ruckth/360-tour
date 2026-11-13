@@ -1,6 +1,6 @@
 "use client";
 
-import { formatOrderNumber, formatReceiptNumber } from "convex/lib/orderMath";
+import { formatOrderNumber, formatReceiptNumber } from "convex/shared/orderMath";
 import type { DisplayOrderState } from 'convex/shared/displayTypes';
 import { TicketPercent } from "lucide-react";
 import { useTranslations } from "next-intl";

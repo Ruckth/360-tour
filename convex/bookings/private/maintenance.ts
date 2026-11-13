@@ -1,6 +1,6 @@
 import type { Doc } from '../../_generated/dataModel';
 import { type MutationCtx } from '../../_generated/server';
-import { bookingHoldExpiresAt } from '../../lib/siteSettings';
+import { bookingHoldExpiresAt } from '../../shared/siteSettings';
 import { releaseBookingDates } from './availabilityWrites';
 import { writeBooking } from './money';
 

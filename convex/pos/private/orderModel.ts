@@ -2,20 +2,20 @@ import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { isDocumentedLiveRefund } from '../../bookings/model';
-import { attemptKey } from '../../lib/bookingMoney';
+import { attemptKey } from '../../shared/bookingMoney';
 import { couponVersion } from '../../marketing/model';
-import { resortTodayIso } from '../../lib/dates';
-import { correctedTender } from '../../lib/financeValidators';
+import { resortTodayIso } from '../../shared/time';
+import { correctedTender } from '../../shared/financeValidators';
 import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage } from './orderLifecycle';
 import { MAX_LINES, orderLines } from './orderLines';
 import { insertOrder, linkedOpenOrder, openOrderCharging, ordersForSource, type OrderSource } from './orderLinks';
 import { isOpenOrder } from './orderLinks';
-import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../lib/orderMath';
-import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../lib/posCoupons';
+import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../shared/orderMath';
+import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../shared/posCoupons';
 import { appendRecordHistory } from '../../settings/model';
-import { resortLocalParts } from '../../shared/resortLocalParts';
+import { resortLocalParts } from '../../shared/time';
 import { assertCashierDiscount, type StaffActor } from '../../auth/model';
-import { lineDiscountValidator } from '../../lib/staffTypes';
+import { lineDiscountValidator } from '../../shared/staffTypes';
 
 /**
  * Staff POS orders. An order is the persistent commercial record: a permanent order number,

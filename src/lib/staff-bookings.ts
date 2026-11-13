@@ -1,20 +1,19 @@
+import { resortMidnight } from 'convex/shared/time';
+import { timeOffInput } from 'convex/shared/timeOff';
+export { DAY_MS, resortTodayIso as resortIsoDate, resortMidnight, resortTime24, resortDateTime } from 'convex/shared/time';
+export { timeOffRange, timeOffRangeProblem, pickSlot, timeOffInput, type TimeOffInput } from 'convex/shared/timeOff';
+/** Presentation zone; business arithmetic lives in shared/time. */
+export const RESORT_ZONE = 'Asia/Bangkok';
 import { ConvexError } from "convex/values";
 import { useEffect, useState } from "react";
 import type { Doc } from "convex/_generated/dataModel";
 import { STATUS_LABELS } from "@/components/admin/labels";
 import { CALENDAR_TONE_COLORS, STATUS_TONES, statusMeta } from "@/components/admin/status-tones";
 
-/** Staff schedules run on resort time, whatever the admin's browser zone. */
-export const RESORT_ZONE = "Asia/Bangkok";
-const RESORT_OFFSET = "+07:00"; // Thailand has no DST
-export const DAY_MS = 86_400_000;
-
 const timeFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, hour: "numeric", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, weekday: "short", month: "short", day: "numeric" });
 const fullDateFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, weekday: "short", month: "short", day: "numeric", year: "numeric" });
 const dateTimeFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-const isoFormat = new Intl.DateTimeFormat("en-CA", { timeZone: RESORT_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
-const time24Format = new Intl.DateTimeFormat("en-GB", { timeZone: RESORT_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 export const formatResortTime = (ms: number) => timeFormat.format(ms);
 export const formatResortDate = (ms: number) => dateFormat.format(ms);
@@ -24,54 +23,6 @@ export const formatResortFullDate = (ms: number) => fullDateFormat.format(ms);
 export const formatResortDateTime = (ms: number) => dateTimeFormat.format(ms);
 /** Shown under every schedule confirmation. */
 export const RESORT_ZONE_LABEL = "All times: Bangkok";
-/** YYYY-MM-DD in resort time. */
-export const resortIsoDate = (ms: number) => isoFormat.format(ms);
-export const resortMidnight = (isoDate: string) => Date.parse(`${isoDate}T00:00:00${RESORT_OFFSET}`);
-/** "HH:mm" in resort time. */
-export const resortTime24 = (ms: number) => time24Format.format(ms);
-export const resortDateTime = (isoDate: string, time: string) => Date.parse(`${isoDate}T${time}:00${RESORT_OFFSET}`);
-
-/** Time off as entered: dates plus optional times. Blank times mean whole days. */
-export type TimeOffInput = { from: string; to: string; startTime: string; endTime: string };
-
-export function timeOffRange(input: TimeOffInput) {
-  const to = input.to || input.from;
-  return {
-    start: resortDateTime(input.from, input.startTime || "00:00"),
-    end: input.endTime ? resortDateTime(to, input.endTime) : resortMidnight(to) + DAY_MS,
-  };
-}
-
-/** Longest time off the server accepts (`assertTimeOffRange`). */
-export const MAX_TIME_OFF_DAYS = 60;
-
-/** Why the server would reject this time off range, or null when it's fine. */
-export function timeOffRangeProblem(range: { start: number; end: number }) {
-  if (!Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end)) return "Enter a valid time off date and time.";
-  if (range.end <= range.start) return "Time off must end after it starts.";
-  if (range.end - range.start > MAX_TIME_OFF_DAYS * DAY_MS) return `Time off can be at most ${MAX_TIME_OFF_DAYS} days.`;
-  return null;
-}
-
-/** The wanted open time, else the next open time after it, else the first open time of the day. */
-export function pickSlot<T extends { start: number }>(slots: readonly T[] | undefined, wanted: number | null): T | undefined {
-  if (!slots?.length) return undefined;
-  const earliest = (list: readonly T[]) => list.reduce<T | undefined>((best, slot) => (!best || slot.start < best.start ? slot : best), undefined);
-  return (wanted === null ? undefined : earliest(slots.filter((slot) => slot.start >= wanted))) ?? earliest(slots);
-}
-
-/** The inverse of `timeOffRange`, for editing. */
-export function timeOffInput(range: { start: number; end: number }): TimeOffInput {
-  const startTime = resortTime24(range.start);
-  const endTime = resortTime24(range.end);
-  return {
-    from: resortIsoDate(range.start),
-    // A range ending at midnight ends on the previous day.
-    to: resortIsoDate(endTime === "00:00" ? range.end - 1 : range.end),
-    startTime: startTime === "00:00" ? "" : startTime,
-    endTime: endTime === "00:00" ? "" : endTime,
-  };
-}
 
 /** "Mon, Sep 28 (all day)", "Mon, Sep 28 – Wed, Sep 30" or "Mon, Sep 28, 9:00 AM – 12:00 PM". */
 export function formatTimeOff(range: { start: number; end: number }) {

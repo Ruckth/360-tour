@@ -1,4 +1,4 @@
-import { percentageOf } from '../shared/money';
+import { percentageOf } from './money';
 // Shared offer engine (pure, no I/O). Used by the guest quote, admin "test a quote" and, later, POS.
 // CONTRACT — implementation owned by the backend work package. Keep these exported types stable.
 

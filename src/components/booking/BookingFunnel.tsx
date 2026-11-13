@@ -30,15 +30,9 @@ import {
   type BookingProperty,
   type BookingStep,
 } from "@/lib/booking/booking";
-import {
-  addDaysIso,
-  dateToIso,
-  isDateInIsoList,
-  nightsBetweenIso,
-  rangeIntersectsDates,
-  todayIsoResort,
-} from "@/lib/booking/dates";
-import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
+import { addDaysIso, dateToIso, isDateInIsoList, nightsBetweenIso, rangeIntersectsDates } from '@/lib/booking/dates';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
+import { calendarMonths, monthOf, stayMonths } from "convex/shared/calendar";
 import {
   couponCodeToSend,
   couponFromParam,
@@ -49,13 +43,13 @@ import {
   stayPrice,
   summaryNote,
 } from "@/lib/booking/coupon";
-import { normalizeCouponCode } from "convex/lib/offers";
+import { normalizeCouponCode } from "convex/shared/offers";
 import {
   readBookingInventoryCache,
   writeBookingInventoryCache,
 } from "@/lib/booking/inventory-cache";
 import { useStayBlockedDates, useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
-import { calculateBookingQuote } from "@/lib/booking/quote";
+import { calculateDirectQuote } from "convex/shared/pricing";
 import { resort } from "@/lib/data/resort-config";
 import {
   getLocalizedProperties,
@@ -302,12 +296,7 @@ export function BookingFunnel({
   const blockedDateSet = useMemo(() => new Set(propertyBlockedDates), [propertyBlockedDates]);
   const nights = nightsBetweenIso(checkIn, checkOut);
   const guests = adults + children;
-  const quote = calculateBookingQuote({
-    pricePerNight: property.pricePerNight,
-    nights,
-    discountPercent: property.directDiscountPercent,
-    currency: property.currency,
-  });
+  const quote = calculateDirectQuote({ pricePerNight: property.pricePerNight, directDiscountPercent: property.directDiscountPercent, currency: property.currency }, nights);
   const conflicts = rangeIntersectsDates(propertyBlockedDates, checkIn, checkOut);
   // Coupons are checked against live inventory only; the demo has nothing to redeem against.
   const activeCouponCode = bookingMode === "live" ? couponCode : null;

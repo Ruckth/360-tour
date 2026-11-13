@@ -1,9 +1,9 @@
-import { storedApprovalPayload, approvalStatus } from '../lib/staffTypes';
-import { affiliateSnapshot } from '../lib/affiliateTypes';
+import { storedApprovalPayload, approvalStatus } from '../shared/staffTypes';
+import { affiliateSnapshot } from '../shared/affiliateTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { correctedTender, receiptCustomer, storedRefundMethod } from '../lib/financeValidators';
-import { posCouponProblemValidator } from '../lib/posCoupons';
+import { correctedTender, receiptCustomer, storedRefundMethod } from '../shared/financeValidators';
+import { posCouponProblemValidator } from '../shared/posCoupons';
 
 // Owned by pos; assembled only by convex/schema.ts.
 export const posTables = {

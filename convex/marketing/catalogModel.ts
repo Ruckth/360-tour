@@ -1,9 +1,10 @@
 import { ConvexError, v, type ObjectType } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from '../auth/model';
-import { isIsoDate, nightsBetween, resortTodayIso } from '../lib/dates';
-import { validateMarketingSlug } from '../lib/marketingSlugs';
-import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from '../lib/offers';
+import { isIsoDate, nightsBetween } from '../shared/dates';
+import { resortTodayIso } from '../shared/time';
+import { validateMarketingSlug } from '../shared/marketingSlugs';
+import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from '../shared/offers';
 import { appendRecordHistory } from '../settings/model';
 import type { CouponRow, LinkRow, SlugCheck } from '../shared/marketingTypes';
 

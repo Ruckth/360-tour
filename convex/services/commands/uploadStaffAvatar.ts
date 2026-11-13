@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { adminAction } from '../../auth/model';
-import { avatarUploadProblem } from '../../lib/imageUploads';
+import { avatarUploadProblem } from '../../shared/imageUploads';
 
 export const uploadStaffAvatar = adminAction({
 	args: { bytes: v.bytes(), contentType: v.string() },

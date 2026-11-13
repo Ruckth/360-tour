@@ -1,10 +1,10 @@
 import { getStoredGuestToken, storeGuestToken } from "@/components/chat/session/credentials";
 import { useCallback, useMemo } from "react";
 import { createCouponRefusalReporter } from "@/lib/booking/coupon-refusals";
-import type { CouponRefusalSurface } from "convex/lib/marketingReport";
+import type { CouponRefusalSurface } from "convex/shared/marketingReport";
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
-import type { OfferResult } from "convex/lib/offers";
+import type { OfferResult } from "convex/shared/offers";
 import type { MarketingCapture } from 'convex/shared/marketingAttribution';
 import type { BookingProperty } from "@/lib/booking/booking";
 import type { ChatActionHint } from "@/lib/chat/action-card";

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { hashGuestToken } from '../messaging/guestToken';
-import { sha256 } from '../lib/displayTokens';
+import { sha256 } from '../shared/displayTokens';
 import {
   publicQuery, publicMutation, publicAction,
   guestQuery, guestMutation, deviceQuery, deviceMutation,

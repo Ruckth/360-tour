@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { MAX_PRICE } from "convex/lib/orderMath";
+import { MAX_PRICE } from "convex/shared/orderMath";
 import type { Catalog, CatalogItem, OrderLine } from "./backend";
 import { amountInput } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";

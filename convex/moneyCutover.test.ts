@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { expect, it } from 'vitest';
-import { calculateDirectQuote } from './lib/pricing';
-import { orderTotals, lineStaffDiscount } from './lib/orderMath';
+import { calculateDirectQuote } from './shared/pricing';
+import { orderTotals, lineStaffDiscount } from './shared/orderMath';
 
 it('rounds a percentage discount identically for stays and orders', () => {
   const stay = calculateDirectQuote({ pricePerNight: 10050, directDiscountPercent: 1000, currency: 'THB' }, 1);

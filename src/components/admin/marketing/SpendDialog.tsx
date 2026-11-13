@@ -2,7 +2,7 @@
 
 import { parseMoneyInput } from "@/lib/money-input";
 import type { Id } from "convex/_generated/dataModel";
-import { validateSpend, type ReportSpend, type SpendDraft } from "convex/lib/marketingReport";
+import { validateSpend, type ReportSpend, type SpendDraft } from "convex/shared/marketingReport";
 import { Trash2 } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { bangkokToday, formatRange, marketingErrorText, thb } from "./marketing-
 
 /**
  * Release 3b contract: add or edit one spend entry. Used from the campaign sheet's Spend section and
- * from the dashboard's "Add spend". Validation is `validateSpend` from convex/lib/marketingReport.
+ * from the dashboard's "Add spend". Validation is `validateSpend` from convex/shared/marketingReport.
  * Layout follows the "Add spend" dialog in docs/previews/marketing/src/dashboard.html and the
  * "Edit · spend" state in coupons-campaigns.html.
  */

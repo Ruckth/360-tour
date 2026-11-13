@@ -1,8 +1,8 @@
-import { roundRatio } from "../shared/money";
+import { roundRatio } from "./money";
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { isIsoDate } from './dates';
-import type { ATTRIBUTION_MODEL } from '../shared/marketingAttribution';
+import type { ATTRIBUTION_MODEL } from './marketingAttribution';
 
 /**
  * Release 3b: what the marketing dashboard reads.
@@ -143,12 +143,12 @@ export function reportDayCount(from: string, to: string): number | null {
 	return days >= 1 ? days : null;
 }
 
-const RESORT_OFFSET_MS = 7 * 60 * 60 * 1000;
+import { DAY_MS, resortMidnight } from './time';
 /** [start, end) instants of a Bangkok day range. */
 export function reportRangeBounds(from: string, to: string): { start: number; end: number } {
 	return {
-		start: Date.parse(`${from}T00:00:00Z`) - RESORT_OFFSET_MS,
-		end: Date.parse(`${to}T00:00:00Z`) + 86_400_000 - RESORT_OFFSET_MS
+		start: resortMidnight(from),
+		end: resortMidnight(to) + DAY_MS
 	};
 }
 
@@ -183,7 +183,7 @@ export function spendInRange(entry: Pick<ReportSpend, 'amount' | 'from' | 'to'>,
 
 // ---------------------------------------------------------------- coupon refusals
 
-/** Engine codes (lib/offers.ts), POS codes (lib/posCoupons.ts), the settle-time change, and "direct offer was better". */
+/** Engine codes (shared/offers.ts), POS codes (shared/posCoupons.ts), the settle-time change, and "direct offer was better". */
 export const couponRefusalProblemValidator = v.union(
 	v.literal('not_found'), v.literal('not_active'), v.literal('not_started'), v.literal('expired'), v.literal('sold_out'),
 	v.literal('budget_used'), v.literal('wrong_property'), v.literal('stay_outside_dates'), v.literal('min_nights'),

@@ -1,7 +1,7 @@
-import { cashierRulesFields } from '../lib/staffTypes';
+import { cashierRulesFields } from '../shared/staffTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { bookingRulesValidator } from '../lib/siteSettings';
+import { bookingRulesValidator } from '../shared/siteSettings';
 
 // Owned by settings; assembled only by convex/schema.ts.
 export const settingsTables = {

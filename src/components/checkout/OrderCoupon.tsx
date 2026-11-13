@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
-import { couponInputMessage, parseCouponInput, posCouponMessage } from "convex/lib/posCoupons";
+import { couponInputMessage, parseCouponInput, posCouponMessage } from "convex/shared/posCoupons";
 import { useCheckoutBackend, useOrderCouponRefusal, type OrderView } from "./backend";
 import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { couponRefusal } from "./checkout-ui";

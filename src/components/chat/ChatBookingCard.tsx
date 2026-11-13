@@ -14,15 +14,11 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { BookingProperty } from "@/lib/booking/booking";
-import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
-import {
-  dateToIso,
-  isDateInIsoList,
-  rangeIntersectsDates,
-  todayIsoResort,
-} from "@/lib/booking/dates";
+import { calendarMonths, monthOf, stayMonths } from "convex/shared/calendar";
+import { dateToIso, isDateInIsoList, rangeIntersectsDates } from '@/lib/booking/dates';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
-import { calculateBookingQuote } from "@/lib/booking/quote";
+import { calculateDirectQuote } from "convex/shared/pricing";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
 import {
   getChatVillaBackground,
@@ -233,12 +229,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
         >
           {properties.map((item) => {
             const isSelected = item.slug === selectedPropertySlug || item.id === selectedPropertySlug;
-            const oneNightQuote = calculateBookingQuote({
-              pricePerNight: item.pricePerNight,
-              nights: 1,
-              discountPercent: 1500,
-              currency: resort.currency,
-            });
+            const oneNightQuote = calculateDirectQuote({ pricePerNight: item.pricePerNight, directDiscountPercent: 1500, currency: resort.currency }, 1);
 
             return (
               <button

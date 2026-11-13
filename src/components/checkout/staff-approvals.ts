@@ -1,7 +1,6 @@
-import { percentageOf, basisPointsToPercent } from 'convex/shared/money';
+import { basisPointsToPercent } from 'convex/shared/money';
 import { formatMoney } from "@/components/admin/labels";
-import { lineCouponBase, roundMoney, type LineDiscount, type PricedLine } from "convex/lib/orderMath";
-import type { ApprovalPayload, CashierRules } from "convex/lib/staffTypes";
+import type { ApprovalPayload } from "convex/shared/staffTypes";
 
 /**
  * Cashier limits and manager approvals as checkout shows them. The server decides
@@ -30,35 +29,7 @@ export type ApprovalView = {
   totalAfter: number;
 };
 
-type BaselineLine = PricedLine & { catalogUnitPrice?: number };
-
-/**
- * A line's manual reduction against its baseline, in whole satang, exactly as manualReduction in
- * convex/auth/private/staffAccess.ts: the baseline is max(catalog price, line price) × quantity, and the
- * coupon is left out.
- */
-export function manualReductionSatang(line: BaselineLine) {
-  const subtotalSatang = roundMoney(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty);
-  const reductionSatang = Math.max(0, subtotalSatang - lineCouponBase(line));
-  return { subtotalSatang, reductionSatang };
-}
-
-/** The most a cashier may take off the baseline: the limit in hundredths of a percent, halves up, as assertCashierDiscount. */
-export function discountLimitSatang(subtotalSatang: number, limitPercent: number) {
-  return percentageOf(subtotalSatang, limitPercent);
-}
-
-/**
- * What a cashier's typed discount would do to this line: null when it is within their limit (or not
- * a valid discount yet), else the reduction in baht and the limit, for "฿X is over your N% limit".
- * The new discount replaces the line's current one; a price change on the line still counts.
- */
-export function discountOverLimit(line: BaselineLine, discount: LineDiscount, rules: Pick<CashierRules, "discountLimitPercent">) {
-  if (!Number.isFinite(discount.value) || discount.value < 0) return null;
-  const { subtotalSatang, reductionSatang } = manualReductionSatang({ ...line, discount });
-  if (reductionSatang <= discountLimitSatang(subtotalSatang, rules.discountLimitPercent)) return null;
-  return { amount: reductionSatang, limitPercent: rules.discountLimitPercent };
-}
+export { discountOverLimit } from 'convex/shared/staffDiscount';
 
 /** "10", "12.5": a percent with at most two decimals. */
 export function formatPercent(value: number) {

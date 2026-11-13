@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminMutation, adminQuery, internalMutation, type MutationCtx, type QueryCtx } from '../auth/model';
-import { isChatSessionActive } from '../lib/chatPresence';
+import { isChatSessionActive } from '../shared/chatPresence';
 import { getAdminChatMessageCount, getAdminChatSortAt, normalizeAdminSearchText } from './adminChatMetadata';
 import { getChannelReplyWindow } from './channelReplyWindow';
 import { answerAccepted, assertNoPendingStaffSend, changeStaffOwnership, finishWithoutReply, inboxNeedsStaff, latestGuestId } from './inboxState';

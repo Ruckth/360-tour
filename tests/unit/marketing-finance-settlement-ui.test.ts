@@ -2,7 +2,7 @@
 import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import type { ReportData, ReportSale } from "convex/lib/marketingReport";
+import type { ReportData, ReportSale } from "convex/shared/marketingReport";
 import { MarketingAccessProvider, type MarketingAccess } from "@/components/admin/marketing/MarketingAccess";
 import { DashboardBreakdown } from "@/components/admin/marketing/dashboard/DashboardBreakdown";
 import { SalesSheet } from "@/components/admin/marketing/dashboard/DashboardSheets";

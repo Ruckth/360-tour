@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertBookingRevision, cleanReason, effectiveTime, type BookingPatch } from '../../lib/bookingMoney';
+import { assertBookingRevision, cleanReason, effectiveTime, type BookingPatch } from '../../shared/bookingMoney';
 import { writeBooking } from '../private/money';
-import { manualPaymentMethod } from '../../lib/financeValidators';
+import { manualPaymentMethod } from '../../shared/financeValidators';
 import { paymentAmendBlocker } from '../private/stayCorrections';
 import { loadBooking } from '../private/stays';
 

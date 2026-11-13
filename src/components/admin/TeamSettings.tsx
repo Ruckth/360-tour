@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import type { CashierRules } from "convex/lib/staffTypes";
+import type { CashierRules } from "convex/shared/staffTypes";
 import { Check, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";

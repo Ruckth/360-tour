@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { marketingMutation } from '../../auth/model';
-import { affiliateState } from '../../lib/affiliateTypes';
+import { affiliateState } from '../../shared/affiliateTypes';
 import { appendRecordHistory } from '../../settings/model';
 
 export const setAffiliateStatus = marketingMutation({

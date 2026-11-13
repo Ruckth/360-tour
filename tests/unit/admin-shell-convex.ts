@@ -1,7 +1,7 @@
 // convex/react for tests that render the real admin shell: staff access, the approvals queue and
 // the business profile, with inert mutations and pages. Use from a vi.mock factory.
 import { getFunctionName, type FunctionReference } from 'convex/server';
-import { DEFAULT_CASHIER_RULES } from 'convex/lib/staffTypes';
+import { DEFAULT_CASHIER_RULES } from 'convex/shared/staffTypes';
 
 export type ShellRole = 'owner' | 'manager' | 'cashier' | null;
 

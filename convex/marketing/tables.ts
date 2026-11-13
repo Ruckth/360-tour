@@ -1,7 +1,7 @@
-import { affiliateState, creditState, affiliateSnapshot, marketingRole } from '../lib/affiliateTypes';
+import { affiliateState, creditState, affiliateSnapshot, marketingRole } from '../shared/affiliateTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { couponRefusalProblemValidator, couponRefusalSurfaceValidator } from '../lib/marketingReport';
+import { couponRefusalProblemValidator, couponRefusalSurfaceValidator } from '../shared/marketingReport';
 
 // Owned by marketing; assembled only by convex/schema.ts.
 export const marketingTables = {

@@ -2,12 +2,12 @@ import { ConvexError } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { recordAppointmentChange, appointmentMoney } from '../../services/model';
-import { assertNoLiveCheckout } from '../../lib/bookingMoney';
+import { assertNoLiveCheckout } from '../../shared/bookingMoney';
 import { writeBooking, MAX_STAY_ROWS, stayPaymentReversalPatch } from '../../bookings/model';
-import { stayMoney } from '../../lib/stayMoney';
+import { stayMoney } from '../../shared/stayMoney';
 import { activeSourceLink } from './lineLinks';
 import { openOrderCharging } from './orderLinks';
-import { bookingBalance, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
+import { bookingBalance, lineNet, orderTitle, roundMoney } from '../../shared/orderMath';
 import { CURRENCY, LINK_TARGET, Line, Order, ReadCtx, appointmentAttachable, bookingCheckoutBlock, bookingClosedReason, sourceRows } from './orderModel';
 
 /** The paid row to link, or why it can't be. */

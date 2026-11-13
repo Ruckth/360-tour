@@ -1,10 +1,12 @@
+import { resolveNotify } from 'convex/shared/bookingMoney';
 
 import { bahtToSatang } from 'convex/shared/money';
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { AdminBooking } from '../../lib/admin/booking-types';
 import { format } from "date-fns";
-import { addDaysIso, isoToDate, todayIsoResort } from "@/lib/booking/dates";
+import { addDaysIso, isoToDate } from '@/lib/booking/dates';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import type { ConfirmOptions } from "./ConfirmDialog";
 import { formatMoney, paymentLabel } from "./labels";
 import { CALENDAR_TONE_COLORS, STATUS_TONES, TONES, statusMeta } from "./status-tones";
@@ -116,7 +118,7 @@ export function serverTodayIso() {
 
 /** The server's default for emailing the guest about a change to this stay. */
 export function notifyDefault(stay: { checkIn: string; guestEmailsOff?: boolean }) {
-  return !stay.guestEmailsOff && stay.checkIn >= serverTodayIso();
+  return resolveNotify(undefined, stay);
 }
 
 /** A typed amount in whole satang, or null. */
@@ -131,27 +133,4 @@ export function payLink(bookingId: string, accessToken: string) {
   return `${window.location.origin}/booking/pay?bookingId=${bookingId}&token=${accessToken}`;
 }
 
-type Occupancy = {
-  bookings: Array<Pick<AdminBooking, "_id" | "propertyId" | "status" | "checkIn" | "checkOut">>;
-  dateBlocks: Array<Pick<DateBlock, "propertyId" | "start" | "end">>;
-  blocks: Array<{ propertyId: string; date: string }>;
-};
-
-/**
- * Whether [checkIn, checkOut) on a villa overlaps a date-holding booking or a block, using the calendar's
- * loaded range. A hint for drag and drop; the server re-checks.
- */
-export function stayConflicts(data: Occupancy, propertyId: string, checkIn: string, checkOut: string, excludeBookingId?: string) {
-  return (
-    data.bookings.some(
-      (b) =>
-        b._id !== excludeBookingId &&
-        b.propertyId === propertyId &&
-        (b.status === "confirmed" || b.status === "completed") &&
-        b.checkIn < checkOut &&
-        b.checkOut > checkIn,
-    ) ||
-    data.dateBlocks.some((b) => b.propertyId === propertyId && b.start < checkOut && b.end > checkIn) ||
-    data.blocks.some((b) => b.propertyId === propertyId && b.date >= checkIn && b.date < checkOut)
-  );
-}
+export { stayConflicts } from 'convex/shared/overlap';

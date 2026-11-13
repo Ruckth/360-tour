@@ -3,7 +3,7 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { IMAGE_TYPES, uploadProblem, type UploadKind } from "convex/lib/imageUploads";
+import { IMAGE_TYPES, uploadProblem, type UploadKind } from "convex/shared/imageUploads";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

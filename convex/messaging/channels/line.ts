@@ -1,6 +1,7 @@
+import { richCardsEnabled } from './richCardsEnabled';
 import { array, eventDigest, number, object, providerRequest, string, verifyHmac, type ChannelAdapter, type InboundEvent } from './adapter';
 import { buildLineQuickReplyItems, parseLineLocaleFromPostback, questionFromLinePostback } from '../../concierge/model';
-import { lineReplyMessages, richCardsEnabled, richReplyFallback } from './richMessages';
+import { lineReplyMessages, richReplyFallback } from '../../shared/richMessages';
 
 export const line: ChannelAdapter = {
   replyWindowMs: 60_000,

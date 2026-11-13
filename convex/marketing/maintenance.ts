@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { maintenancePaused } from '../lib/maintenance';
-import { RAW_MARKETING_RETENTION_MS } from '../lib/marketingPolicy';
+import { RAW_MARKETING_RETENTION_MS } from '../shared/marketingPolicy';
 import { ATTRIBUTION_WINDOW_MS } from '../shared/marketingAttribution';
 
 if (RAW_MARKETING_RETENTION_MS <= ATTRIBUTION_WINDOW_MS) {

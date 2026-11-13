@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { marketingQuery } from '../auth/model';
-import { canReadMarketingPersonalData } from '../lib/marketingPrivacy';
-import { type OfferResult } from '../lib/offers';
-import { formatReceiptNumber, orderTitle } from '../lib/orderMath';
+import { canReadMarketingPersonalData } from '../shared/marketingPrivacy';
+import { type OfferResult } from '../shared/offers';
+import { formatReceiptNumber, orderTitle } from '../shared/orderMath';
 import type { CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck } from '../shared/marketingTypes';
 import { campaignStatus, enrichCoupon, enrichLink, publishStatus, quote, quoteArgs, slugCheck } from './catalogModel';
 

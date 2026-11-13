@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { authenticatedQuery, requireAdmin, requireOwner } from '../auth/model';
 import { requireMarketingPermission } from '../marketing/model';
-import { canReadMarketingPersonalData, redactMarketingHistoryValue } from '../lib/marketingPrivacy';
+import { canReadMarketingPersonalData, redactMarketingHistoryValue } from '../shared/marketingPrivacy';
 
 export const list = authenticatedQuery({
  args: { entityType: v.string(), entityId: v.optional(v.string()), paginationOpts: paginationOptsValidator },

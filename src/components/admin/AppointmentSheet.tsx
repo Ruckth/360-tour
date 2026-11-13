@@ -9,7 +9,7 @@ import {
   canEditTurnaround,
   canCorrectAppointmentTime,
   turnaroundMinutes,
-} from "convex/lib/appointmentWindow";
+} from "convex/shared/appointmentWindow";
 import { CalendarClock, Hourglass, Pencil, Repeat } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentCorrectionDialog } from "@/components/admin/AppointmentCorrectionDialog";

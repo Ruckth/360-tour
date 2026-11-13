@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { marketingMutation } from '../../auth/model';
-import { isIsoDate } from '../../lib/dates';
+import { isIsoDate } from '../../shared/dates';
 import { appendRecordHistory } from '../../settings/model';
 
 export const saveAffiliate = marketingMutation({

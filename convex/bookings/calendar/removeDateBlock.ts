@@ -1,3 +1,4 @@
+import { resortMidnight } from '../../shared/time';
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { releaseDateBlockRows } from '../private/availabilityWrites';
@@ -13,6 +14,6 @@ export const removeDateBlock = adminMutation({
 		assertDateBlockUnchanged(before, args.expected);
 		await releaseDateBlockRows(ctx, args.blockId);
 		await ctx.db.delete(args.blockId);
-		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: args.blockId, actor: admin.email, kind: 'removed', effectiveAt: Date.parse(`${before.start}T00:00:00+07:00`), before: dateBlockSnapshot(before) });
+		await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: args.blockId, actor: admin.email, kind: 'removed', effectiveAt: resortMidnight(before.start), before: dateBlockSnapshot(before) });
 	}
 });

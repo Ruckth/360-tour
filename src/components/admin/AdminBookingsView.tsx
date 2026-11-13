@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
+import { addDaysIso, nightsBetweenIso } from '@/lib/booking/dates';
+import { resortTodayIso } from 'convex/shared/time';
 import { errorText } from "@/lib/staff-bookings";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
@@ -118,7 +119,7 @@ export function AdminBookingsView() {
   const profile = useQuery(api.settings.settings.publicProfile, {});
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
-  const today = todayIsoLocal();
+  const today = resortTodayIso();
 
   const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : "month";
   // A remembered villa that no longer exists falls back to all villas.

@@ -6,7 +6,7 @@ import { ConvexError } from "convex/values";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCouponRefusalReporter, couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { useCouponPreview } from "@/components/booking/useCouponPreview";
-import type { OfferResult } from "convex/lib/offers";
+import type { OfferResult } from "convex/shared/offers";
 
 let root: Root;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.useFakeTimers(); root = createRoot(document.createElement("div")); });

@@ -2,9 +2,9 @@ import { tz } from "@date-fns/tz";
 import { format } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
 import { RESORT_ZONE, formatResortDate, formatResortFullDate, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
-import type { ServiceSchedule } from "convex/lib/serviceSchedule";
-import { MAX_ORDER, changeDue, formatReceiptNumber, lineCouponDiscount, roundMoney, type TenderMethod } from "convex/lib/orderMath";
-import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
+import type { ServiceSchedule } from "convex/shared/serviceSchedule";
+import { MAX_ORDER, changeDue, formatReceiptNumber, lineCouponDiscount, roundMoney, type TenderMethod } from "convex/shared/orderMath";
+import { posCouponMessage, type PosCouponProblem } from "convex/shared/posCoupons";
 import type { OrderView } from "./backend";
 
 export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {

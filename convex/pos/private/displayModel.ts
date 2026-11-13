@@ -2,8 +2,8 @@ import { ConvexError } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { DRIVER_LEASE_MS } from '../../lib/displayLease';
-import { randomSecret, sha256 } from '../../lib/displayTokens';
+import { DRIVER_LEASE_MS } from '../../shared/displayLease';
+import { randomSecret, sha256 } from '../../shared/displayTokens';
 
 /**
  * The customer display: a guest-facing screen (any browser, no camera needed) that shows the order

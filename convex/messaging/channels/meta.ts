@@ -1,5 +1,5 @@
 import { array, eventDigest, graphVersion, number, object, providerRequest, string, verifyHmac, type ChannelAdapter, type InboundEvent } from './adapter';
-import { richReplyFallback } from './richMessages';
+import { richReplyFallback } from '../../shared/richMessages';
 
 export function meta(channel: 'facebook' | 'instagram', graphHost: 'graph.facebook.com' | 'graph.instagram.com'): ChannelAdapter {
   const prefix = channel.toUpperCase();
