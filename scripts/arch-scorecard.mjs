@@ -8,6 +8,7 @@
 //
 // Test-name gates match the exact titles below, so name the tests exactly this way.
 import { execSync } from 'node:child_process';
+import ts from 'typescript';
 import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from './lib/architecture.mjs';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
 import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
@@ -38,7 +39,13 @@ function walk(dir, out = []) {
 	return out;
 }
 const rel = (p) => relative(ROOT, p).split(sep).join('/');
-const read = (p) => readFileSync(p, 'utf8');
+// One invocation measures a single source snapshot. Metrics share file contents
+// instead of repeatedly reading every file for each independent rule.
+const contents = new Map();
+const read = (p) => {
+	if (!contents.has(p)) contents.set(p, readFileSync(p, 'utf8'));
+	return contents.get(p);
+};
 const isTest = (p) => /\.test\.tsx?$|\/tests\//.test(rel(p));
 const convexFiles = walk(join(ROOT, 'convex'));
 const convexProd = convexFiles.filter((p) => isConvexEntryFile(rel(p)));
@@ -55,7 +62,7 @@ const RETIRED_TABLES = ['tenants', 'chatAnswers', 'chatQuestions', 'chatSuggeste
 const OLD_NAMES = ['bills', 'billLines', 'billPayments', 'billCorrections', 'billAudit', 'billCounters', 'billLineLinks', 'billRefunds', 'serviceAppointments', 'rooms', 'chatSessions', 'chatMessages', 'socialProof', 'lineWebhookEvents', 'facebookWebhookEvents', 'instagramWebhookEvents', 'whatsappWebhookEvents'];
 
 // Public functions registered with a raw builder outside convex/auth/.
-const rawPublicViolations = convexProd.flatMap(p => inspectConvexAccess(rel(p), read(p)).violations);
+const rawPublicViolations = [];
 
 // No-login builders must declare `returns:` before `handler`.
 function missingReturns() {
@@ -72,7 +79,14 @@ function missingReturns() {
 }
 
 // The same AST rules used by lint; all supported deployed source extensions count.
-const ownership = [...convexFiles, ...srcFiles].flatMap(p => inspectArchitecture(rel(p), read(p)).map(issue => ({ ...issue, path: rel(p) })));
+const deployed = new Set(convexProd);
+const ownership = [...convexFiles, ...srcFiles].flatMap(p => {
+	const path = rel(p), source = read(p);
+	// Both guards inspect the same immutable source; parse deployed files once.
+	const parsed = deployed.has(p) ? ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true) : undefined;
+	if (parsed) rawPublicViolations.push(...inspectConvexAccess(path, source, parsed).violations);
+	return inspectArchitecture(path, source, parsed).map(issue => ({ ...issue, path }));
+});
 const ownershipDetails = rule => ownership.filter(issue => issue.rule === rule).map(issue => `${issue.path}:${issue.line} ${issue.message}`);
 const DOMAINS = SCHEMA_DOMAINS;
 

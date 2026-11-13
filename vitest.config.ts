@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { availableParallelism } from "node:os";
 import { defineConfig } from "vitest/config";
 import { testProjects } from "./scripts/vitest-projects.mjs";
 
@@ -7,7 +8,8 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
-    maxWorkers: Number(process.env.VITEST_MAX_WORKERS || 4),
+    // Treat the requested value as a ceiling, including on smaller CI runners.
+    maxWorkers: Math.min(availableParallelism(), Number(process.env.VITEST_MAX_WORKERS || 4)),
     projects: Object.entries(testProjects(dirname)).map(([name, include]) => ({
       extends: true,
       test: {

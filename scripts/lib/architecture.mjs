@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { posix } from 'node:path';
 import { SCHEMA_DOMAINS } from './convex-schema.mjs';
 
-// Convex 1.34's complete entry-point extension list. Additional forms fail closed below.
+// Installed Convex's complete entry-point extension list. Additional forms fail closed below.
 export const SOURCE_EXTENSION = /\.(?:ts|tsx|js|mjs|cjs|mts|cts|jsx)$/;
 export const INSPECTED_SOURCE_EXTENSION = /\.(?:ts|tsx|js|mjs)$/;
 /** Match Convex's entry-point exclusions, not a directory's descriptive name.
@@ -62,11 +62,12 @@ export function sourceImports(file) {
   return imports;
 }
 
-/** @param {string} path @param {string} source */
-export function inspectArchitecture(path, source) {
+/** @param {string} path @param {string} source @param {import('typescript').SourceFile} [parsed] */
+export function inspectArchitecture(path, source, parsed) {
   path = path.replaceAll('\\', '/');
   if (isTestSource(path) && !isConvexEntryFile(path) || path.includes('/_generated/') || path.endsWith('.d.ts')) return [];
-  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const file = parsed ?? ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  if (file.fileName !== path || file.text !== source) throw new Error('Parsed architecture source does not match its path/content');
   /** @type {{rule: string, line: number, message: string}[]} */
   const issues = [];
   /** @param {string} rule @param {import('typescript').Node} node @param {string} message */

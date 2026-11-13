@@ -11,8 +11,8 @@ export const ACCESS_BUILDERS = new Set([
 const RAW = new Set(['query', 'mutation', 'action', 'httpAction', 'queryGeneric', 'mutationGeneric', 'actionGeneric', 'httpActionGeneric']);
 const INTERNAL = new Set(['internalQuery', 'internalMutation', 'internalAction', 'internalQueryGeneric', 'internalMutationGeneric', 'internalActionGeneric']);
 const builders = new Set([...RAW, ...INTERNAL, ...ACCESS_BUILDERS]);
-/** @param {string} path @param {string} source */
-export function inspectConvexAccess(path, source) {
+/** @param {string} path @param {string} source @param {import('typescript').SourceFile} [parsed] */
+export function inspectConvexAccess(path, source, parsed) {
   path = path.replaceAll('\\', '/');
   /** @type {string[]} */
   const violations = [];
@@ -22,7 +22,8 @@ export function inspectConvexAccess(path, source) {
   const endpoints = [];
   if (isTestSource(path) && !isConvexEntryFile(path) || path.includes('/_generated/') || path.endsWith('.d.ts')) return { violations, registrations, endpoints };
   if (isConvexEntryFile(path) && !INSPECTED_SOURCE_EXTENSION.test(path)) violations.push(`${path}: unsupported deployable extension; use .ts, .tsx, .js or .mjs`);
-  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const file = parsed ?? ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  if (file.fileName !== path || file.text !== source) throw new Error('Parsed access source does not match its path/content');
   /** @type {Map<string, string>} */
   const bindings = new Map();
   const unknownBuilders = new Map();

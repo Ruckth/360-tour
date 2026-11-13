@@ -121,7 +121,7 @@ This example adds a bounded admin-only note list to **catalog**. It is documenta
 
 ## Current validation commands
 
-Use Node 22 (`PATH=/opt/homebrew/opt/node@22/bin:$PATH` on this Mac) and `VITEST_MAX_WORKERS=4`. Serialize Next builds.
+Use Node 22 (`PATH=/opt/homebrew/opt/node@22/bin:$PATH` on this Mac) and `VITEST_MAX_WORKERS=4`. Vitest caps this ceiling at available CPUs. Serialize Next builds.
 
 ```sh
 pnpm install --frozen-lockfile
