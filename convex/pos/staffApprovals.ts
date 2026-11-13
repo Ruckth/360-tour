@@ -4,7 +4,7 @@ import type { Doc } from '../_generated/dataModel';
 import { authenticatedMutation, canReadCheckoutOrder, internalMutation, type MutationCtx, requireCashierAction, staffMutation, staffQuery } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
 import { cashierRules } from '../settings/model';
-import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from '../lib/staffApprovalState';
+import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../lib/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 

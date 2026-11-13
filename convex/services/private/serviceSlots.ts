@@ -2,7 +2,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { requireAdmin } from '../../auth/model';
 import { demoCode } from '../../lib/codes';
-import { ensureLinkedOrder } from '../../lib/orderLinks';
+import { ensureLinkedOrder } from '../../pos/model';
 import { assertValidEmail, assertValidIsoDate } from '../../lib/validation';
 import { appendRecordHistory } from '../../settings/model';
 import { RESORT_OFFSET, resortLocalParts } from '../../shared/resortLocalParts';

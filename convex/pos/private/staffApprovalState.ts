@@ -1,12 +1,12 @@
 import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { accessForIdentity } from '../auth/model';
-import { cashierRules } from '../settings/model';
-import { orderLines } from './orderLines';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { accessForIdentity } from '../../auth/model';
+import { resortTodayIso } from '../../lib/dates';
+import { cashierRules } from '../../settings/model';
 import { orderLineLinks } from './lineLinks';
+import { orderLines } from './orderLines';
 import { orderRefunds } from './orderRefunds';
-import { resortTodayIso } from './dates';
 
 /** Stable serialization includes optional fields, revisions, coupons and source records. */
 function canonical(value: unknown): string {
@@ -15,14 +15,17 @@ function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
 }
+
 export const rulesFingerprint = (rules: Awaited<ReturnType<typeof cashierRules>>) => canonical(rules);
 
 type ReadCtx = MutationCtx | QueryCtx;
+
 export async function requesterFingerprint(ctx: ReadCtx, email: string, tokenIdentifier: string) {
   const access = await accessForIdentity(ctx, { email, tokenIdentifier });
   const grant = await ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', tokenIdentifier)).unique();
   return { role: access.role, fingerprint: canonical({ role: access.role, grant }) };
 }
+
 /** Extra targets matter too: paid-link targets and amended customer revisions are checked before execution. */
 export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payload: Doc<'staffApprovalRequests'>['payload']) {
   const order = await ctx.db.get(orderId);
@@ -49,6 +52,7 @@ export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payl
     customer: customerId ? await ctx.db.get(customerId) : null,
   });
 }
+
 /** Queries expose the effective terminal status immediately; mutations persist it when touched. */
 export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffApprovalRequests'>): Promise<Doc<'staffApprovalRequests'>['status']> {
   if (request.status !== 'pending') return request.status;
@@ -60,6 +64,7 @@ export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffAp
   if (await orderFingerprint(ctx, request.orderId, request.payload) !== request.orderFingerprint) return 'stale';
   return 'pending';
 }
+
 export async function assertNoPendingApprovals(ctx: MutationCtx, orderId: Id<'orders'>) {
   const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', orderId).eq('status', 'pending')).take(201);
   if (requests.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');

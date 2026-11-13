@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminEmails } from '../lib/adminEmails';
 import { affiliateSnapshot } from '../lib/affiliateTypes';
 import { resortTodayIso } from '../lib/dates';
-import { orderPaymentRecord } from '../lib/orderLifecycle';
+import { orderPaymentRecord } from '../shared/orderPaymentRecord';
 import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from '../lib/orderMath';
 import { ATTRIBUTION_WINDOW_MS, MAX_SESSIONS_READ, isVisitorKey, type MarketingCapture } from '../shared/marketingAttribution';
 

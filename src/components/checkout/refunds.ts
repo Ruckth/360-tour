@@ -6,7 +6,7 @@ import { errorText } from "@/lib/staff-bookings";
 import type { OrderLine, OrderView } from "./backend";
 
 /**
- * POS line refunds as checkout shows them (convex/lib/orderRefunds.ts). Refund amounts are integer
+ * POS line refunds as checkout shows them (convex/pos/private/orderRefunds.ts). Refund amounts are integer
  * satang throughout the backend and receipt model; form text and display use baht.
  */
 

@@ -1,5 +1,5 @@
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 
 /**
  * Reads of orderLineLinks: a paid service or room row applied later to the appointment or stay it
@@ -9,6 +9,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
+
 type Source = { bookingId: Id<'bookings'> } | { appointmentId: Id<'appointments'> };
 
 /** At most 100 active links (one per order row), plus a bounded page of undone links. */

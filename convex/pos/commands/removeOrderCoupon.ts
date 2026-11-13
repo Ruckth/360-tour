@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
-import { orderLines } from '../../lib/orderLines';
+import { orderLines } from '../private/orderLines';
 import { editableOrder, logOrder, refreshOrder, writeCouponShares } from '../private/orderModel';
 
 /** Removes the order's coupon and every row's share of it. A no-op when the order has none. */

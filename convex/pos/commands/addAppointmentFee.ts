@@ -1,8 +1,8 @@
 import { ConvexError, v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { attemptKey, cleanReason } from '../../lib/bookingMoney';
-import { FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from '../../lib/orderLifecycle';
-import { isOpenOrder } from '../../lib/orderLinks';
+import { FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from '../private/orderLifecycle';
+import { isOpenOrder } from '../../shared/orderState';
 import { assertPrice } from '../../lib/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/resortLocalParts';

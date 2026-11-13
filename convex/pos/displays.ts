@@ -4,9 +4,10 @@ import type { Id } from '../_generated/dataModel';
 import { deviceMutation, deviceQuery, internalMutation, publicMutation, staffMutation, staffQuery } from '../auth/model';
 import { maintenancePaused } from '../lib/maintenance';
 import { PAIR_CODE_LENGTH, normalizePairCode, randomPairCode, randomSecret, sha256 } from '../lib/displayTokens';
-import { displayOrderState } from '../lib/displayView';
+import { displayOrderState } from './private/displayView';
 import { enforceRateLimit } from '../messaging/model';
-import { CLEAN_BATCH, CLIENT_ID_MAX, DisplayDriver, DisplayState, INVALID_CLAIM_LIMIT, PAIRING_TTL_MS, SECRET_MAX, START_PAIRING_LIMIT, activeDisplays, checkClientId, checkLeaseId, deletePending, deletePresence, deviceLabel, displayByToken, displayError, endLease, ensureDefaultTill, getDefaultTill, handOver, leaseOf, orderIdFrom, presenceOf, retireLinks, revokeActive, setLease } from './private/displayModel';
+import { CLEAN_BATCH, CLIENT_ID_MAX, INVALID_CLAIM_LIMIT, PAIRING_TTL_MS, SECRET_MAX, START_PAIRING_LIMIT, activeDisplays, checkClientId, checkLeaseId, deletePending, deletePresence, deviceLabel, displayByToken, displayError, endLease, ensureDefaultTill, getDefaultTill, handOver, leaseOf, orderIdFrom, presenceOf, retireLinks, revokeActive, setLease } from './private/displayModel';
+import { DisplayDriver, DisplayState } from '../shared/displayTypes';
 
 /**
  * Admin: a one-time link secret. Only its hash is stored, so this is the only time it can be read.

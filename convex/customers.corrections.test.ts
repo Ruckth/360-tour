@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { assertCustomerCanLink, assertCustomerReviewed, mergeCustomerRecords } from './pos/model';
+import { assertCustomerCanLink, assertCustomerReviewed, mergeCustomerRecords } from './pos/private/customerModel';
 import type { FunctionReturnType } from 'convex/server';
 import schema from './schema';
 

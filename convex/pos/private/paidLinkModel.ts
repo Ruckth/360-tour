@@ -5,8 +5,8 @@ import { recordAppointmentChange, appointmentMoney } from '../../services/model'
 import { assertNoLiveCheckout } from '../../lib/bookingMoney';
 import { writeBooking, MAX_STAY_ROWS, stayPaymentReversalPatch } from '../../bookings/model';
 import { stayMoney } from '../../lib/stayMoney';
-import { activeSourceLink } from '../../lib/lineLinks';
-import { openOrderCharging } from '../../lib/orderLinks';
+import { activeSourceLink } from './lineLinks';
+import { openOrderCharging } from './orderLinks';
 import { bookingBalance, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
 import { CURRENCY, LINK_TARGET, Line, Order, ReadCtx, appointmentAttachable, bookingCheckoutBlock, bookingClosedReason, sourceRows } from './orderModel';
 

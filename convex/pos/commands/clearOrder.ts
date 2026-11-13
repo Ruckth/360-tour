@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
-import { orderLines } from '../../lib/orderLines';
+import { orderLines } from '../private/orderLines';
 import { editableOrder, lineSnapshot, logOrder, refreshOrder } from '../private/orderModel';
 
 /** Removes every row. The number, explicit source ownership, customer and audit trail stay. */

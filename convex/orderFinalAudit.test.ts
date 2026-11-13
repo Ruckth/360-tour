@@ -5,7 +5,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
-import { ensureLinkedOrder } from './lib/orderLinks';
+import { ensureLinkedOrder } from './pos/private/orderLinks';
 
 const modules = import.meta.glob('./**/*.ts');
 beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'order-final@example.com'));

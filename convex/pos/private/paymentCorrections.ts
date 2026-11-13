@@ -9,9 +9,9 @@ import { assertNoLiveCheckout, cleanReason, effectiveTime } from '../../lib/book
 import { stayMoney } from '../../lib/stayMoney';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { resortTodayIso } from '../../lib/dates';
-import { orderLineLinks } from '../../lib/lineLinks';
+import { orderLineLinks } from './lineLinks';
 import { assertTenders, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
-import { assertNoPosRefunds } from '../../lib/orderRefunds';
+import { assertNoPosRefunds } from './orderRefunds';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { assertCustomerCanLink, assertCustomerReviewed } from './customerModel';
 import { Line, MISSING_PAYMENT_EVIDENCE, Order, amendOrderPaymentArgs, assertCorrectionRevision, cleanTender, correctionReplay, sourceRows, voidUnreceivedOrderArgs } from './orderModel';

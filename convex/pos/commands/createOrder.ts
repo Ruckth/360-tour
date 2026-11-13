@@ -1,5 +1,5 @@
 import { staffMutation } from '../../auth/model';
-import { insertOrder } from '../../lib/orderLinks';
+import { insertOrder } from '../private/orderLinks';
 
 /** Allocate an empty order when the first item needs approval. No charge is created. */
 export const createOrder = staffMutation({

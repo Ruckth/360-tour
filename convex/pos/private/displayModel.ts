@@ -4,12 +4,11 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { DRIVER_LEASE_MS } from '../../lib/displayLease';
 import { randomSecret, sha256 } from '../../lib/displayTokens';
-import { type DisplayOrderState } from '../../lib/displayView';
 
 /**
  * The customer display: a guest-facing screen (any browser, no camera needed) that shows the order
  * open at the admin checkout. Pairing is by a one-time link or a code staff type in; the display
- * then holds a device token, of which only the hash is stored. See lib/displayView.ts for what it shows.
+ * then holds a device token, of which only the hash is stored. See convex/pos/private/displayView.ts for what it shows.
  *
  * One checkout tab drives the display: the one that last paired it (by link, code or "This
  * computer", which is a link opened in a popup) or took it over (`till.driverId`, a random id per
@@ -45,10 +44,6 @@ export const SECRET_MAX = 128;
 export const CLIENT_ID_MAX = 100;
 
 export const CLEAN_BATCH = 100;
-
-export type DisplayState = { state: 'unpaired' } | { state: 'pending'; code: string } | DisplayOrderState;
-
-export type DisplayDriver = 'here' | 'elsewhere' | 'none';
 
 /** Stable codes the staff dialog can rely on. */
 export function displayError(code: string, message: string) {

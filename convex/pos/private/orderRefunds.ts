@@ -1,16 +1,18 @@
 import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { MAX_ORDER_REFUNDS, lineNet } from './orderMath';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
+import { resortTodayIso } from '../../lib/dates';
+import { MAX_ORDER_REFUNDS, lineNet } from '../../lib/orderMath';
+import { readBudget } from '../../lib/readBudget';
+import { syncAffiliateCredit } from '../../marketing/model';
+import { appendRecordHistory } from '../../settings/model';
 import { activeLineLink } from './lineLinks';
-import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../auth/model';
-import { resortTodayIso } from './dates';
-import { appendRecordHistory } from '../settings/model';
-import { syncAffiliateCredit } from '../marketing/model';
-import { readBudget } from './readBudget';
 
 type ReadCtx = QueryCtx | MutationCtx;
+
 export type OrderRefundInput = Pick<Doc<'orderRefunds'>, 'orderId' | 'lineId' | 'amount' | 'currency' | 'method' | 'reason' | 'idempotencyKey'>;
+
 function fail(code: string, message: string): never { throw new ConvexError({ code, message }); }
 
 /** Never silently truncate money. Complete older history remains available through pagination. */
@@ -19,6 +21,7 @@ export async function orderRefunds(ctx: ReadCtx, orderId: Id<'orders'>, allowTru
   if (!allowTruncated && rows.length > MAX_ORDER_REFUNDS) fail('REFUND_HISTORY_LIMIT', 'Too many refunds on this order. Contact support.');
   return rows.reverse();
 }
+
 /** Indexed, bounded per order and across all rows of a list invocation. */
 export async function orderRefundTotal(ctx: ReadCtx, orderId: Id<'orders'>) {
   const budget = readBudget(ctx);
@@ -34,6 +37,7 @@ export async function orderRefundTotal(ctx: ReadCtx, orderId: Id<'orders'>) {
   }
   return total;
 }
+
 export function orderRefundView(row: Doc<'orderRefunds'>) {
   return {
     _id: row._id, _creationTime: row._creationTime, orderId: row.orderId, lineId: row.lineId, amount: row.amount,
@@ -41,18 +45,22 @@ export function orderRefundView(row: Doc<'orderRefunds'>) {
     createdAt: row.createdAt, createdByEmail: row.createdByEmail, businessDate: row.businessDate,
   };
 }
+
 /** Attached and allocated rows use their source's finance controls. */
 export function isWalkInLine(line: Doc<'orderLines'>) {
   return !line.bookingId && !line.appointmentId && line.kind !== 'booking' && line.kind !== 'appointment';
 }
+
 export async function assertNoPosRefunds(ctx: ReadCtx, orderId: Id<'orders'>) {
   if (await ctx.db.query('orderRefunds').withIndex('by_orderId', q => q.eq('orderId', orderId)).first())
     fail('ORDER_HAS_REFUNDS', 'This order has recorded refunds and cannot be voided. Refund the remaining walk-in lines instead.');
 }
+
 export async function assertLineHasNoPosRefunds(ctx: ReadCtx, lineId: Id<'orderLines'>) {
   if (await ctx.db.query('orderRefunds').withIndex('by_lineId', q => q.eq('lineId', lineId)).first())
     fail('LINE_HAS_REFUNDS', 'A refunded line cannot be allocated to a stay or appointment.');
 }
+
 function cleanInput(input: OrderRefundInput): OrderRefundInput {
   if (!Number.isSafeInteger(input.amount) || input.amount <= 0) fail('INVALID_REFUND_AMOUNT', 'Refund must be a positive integer in satang.');
   const reason = input.reason.trim();
@@ -61,6 +69,7 @@ function cleanInput(input: OrderRefundInput): OrderRefundInput {
   if (idempotencyKey.length < 8 || idempotencyKey.length > 100) fail('INVALID_IDEMPOTENCY_KEY', 'Use an attempt key of 8–100 characters.');
   return { orderId: input.orderId, lineId: input.lineId, amount: input.amount, currency: input.currency, method: input.method, reason, idempotencyKey };
 }
+
 /** Preview and execution re-read the same cap. The mutation's index reads serialize competing returns. */
 export async function refundState(ctx: ReadCtx, input: OrderRefundInput) {
   const args = cleanInput(input);
@@ -78,6 +87,7 @@ export async function refundState(ctx: ReadCtx, input: OrderRefundInput) {
   if (refunds.length >= MAX_ORDER_REFUNDS) fail('REFUND_HISTORY_LIMIT', 'Too many refunds on this order. Contact support.');
   return { args, order, line, refunds, remaining };
 }
+
 /** Shared by direct checkout and manager approval; no payment provider is called. */
 export async function executeOrderRefund(ctx: MutationCtx, input: OrderRefundInput, actor: StaffActor) {
   const args = cleanInput(input);
