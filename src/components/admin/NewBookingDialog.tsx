@@ -6,6 +6,8 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { normalizeCouponCode, type OfferResult } from "convex/lib/offers";
+import { calculateDirectQuote } from "convex/lib/pricing";
+import { nightsBetweenIso } from "@/lib/booking/dates";
 import { UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
@@ -123,6 +125,14 @@ export function NewBookingDialog({
   const couponToSend = couponLive && (coupon.status === "error" || (coupon.status === "ready" && coupon.result.couponStatus === "applied")) ? couponTyped : undefined;
   const couponProblem = couponInvalid ? "Clear the coupon code or use one that applies to this stay." : "";
 
+  // What the guest pays, as shown before Create: the custom price, the code's quote, or the villa rate.
+  const nights = dates.checkIn && dates.checkOut > dates.checkIn ? nightsBetweenIso(dates.checkIn, dates.checkOut) : 0;
+  const total =
+    custom ? customAmount
+    : couponLive && coupon.status === "ready" && couponArgs ? coupon.result.total
+    : property && nights > 0 && !couponLive ? calculateDirectQuote(property, nights).directTotal
+    : null;
+
   const previewProblem = couponLive && coupon.status === "ready" ? coupon.result.problem?.code ?? (coupon.result.couponStatus === "coupon_worse" ? "coupon_worse" : undefined) : undefined;
   useEffect(() => { reportRefusal(couponTyped, previewProblem); }, [couponTyped, previewProblem, reportRefusal]);
 
@@ -191,10 +201,10 @@ export function NewBookingDialog({
 
   return (
     <Dialog open onOpenChange={(next) => (next || saving ? undefined : onClose())}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>{historical ? "Record past stay" : "New booking"}</DialogTitle>
-          <DialogDescription>For phone or walk-in guests. Manual bookings never expire automatically.</DialogDescription>
+          <DialogDescription>Manual bookings never expire automatically.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4">
           <div className="grid gap-2">
@@ -238,6 +248,16 @@ export function NewBookingDialog({
           <BookingAvailabilityNotice {...availability} />
           {conflicts ? (
             <p role="alert" className="text-sm text-destructive">These dates overlap an existing booking or block.</p>
+          ) : null}
+          {property && dates.checkIn && dates.checkOut ? (
+            <Button
+              type="button"
+              variant="link"
+              className="-mt-2 min-h-10 justify-self-start px-0 text-sm"
+              onClick={() => onBlockInstead({ propertyId: property._id, start: dates.checkIn, end: dates.checkOut })}
+            >
+              Block these dates instead
+            </Button>
           ) : null}
           <div className="grid gap-2">
             <Label htmlFor="nb-phone">Phone</Label>
@@ -312,12 +332,7 @@ export function NewBookingDialog({
               checked={confirmed}
               onChange={(event) => setConfirmed(event.target.checked)}
             />
-            <span>
-              Create as confirmed
-              <span className="block text-muted-foreground">
-                Holds the dates now. Unticked, it stays pending and the dates stay open until you confirm.
-              </span>
-            </span>
+            <span>Create as confirmed</span>
           </label>
           <NotifyGuestField
             id="nb-notify"
@@ -397,9 +412,7 @@ export function NewBookingDialog({
             <div id="nb-coupon-status" aria-live="polite" className="grid gap-2">
               {custom && couponTyped ? (
                 <p className="text-xs text-muted-foreground">A custom price replaces the villa rate, so the code isn’t used.</p>
-              ) : !couponLive ? (
-                <p className="text-xs text-muted-foreground">Same rules as the website: the guest gets the better of the code or the direct discount.</p>
-              ) : !property || !dates.checkIn || !dates.checkOut ? (
+              ) : !couponLive ? null : !property || !dates.checkIn || !dates.checkOut ? (
                 <p className="text-xs text-muted-foreground">Choose the villa and dates to check the code.</p>
               ) : couponWaiting ? (
                 <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -426,20 +439,16 @@ export function NewBookingDialog({
           {problem ? <p className="text-sm text-destructive">{problem}</p> : null}
           {couponProblem ? <p className="text-sm text-destructive">{couponProblem}</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter className="gap-2 sm:flex-wrap">
-            {property && dates.checkIn && dates.checkOut ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="sm:basis-full sm:justify-start"
-                onClick={() => onBlockInstead({ propertyId: property._id, start: dates.checkIn, end: dates.checkOut })}
-              >
-                Block these dates instead
-              </Button>
-            ) : null}
-            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-              Close
-            </Button>
+          {/* Sticky: Create stays on screen however far the form scrolls. */}
+          <DialogFooter className="sticky bottom-0 z-10 -mx-6 -mb-6 flex-row items-center gap-3 border-t border-border bg-card px-6 py-3 sm:justify-between">
+            <p className="min-w-0 flex-1 text-sm" aria-live="polite" data-sentence-budget="ignore">
+              {total !== null ? (
+                <>
+                  <span className="font-semibold tabular-nums">Total {formatMoney(total, property?.currency ?? "THB")}</span>
+                  <span className="text-muted-foreground"> · {nights} {nights === 1 ? "night" : "nights"}</span>
+                </>
+              ) : null}
+            </p>
             <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(problem) || Boolean(couponProblem) || couponWaiting}>
               {saving ? <Spinner className="text-current" /> : null}
               Create booking
