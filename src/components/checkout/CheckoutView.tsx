@@ -222,8 +222,8 @@ export function CheckoutView({
             <ChevronUp aria-hidden className="size-5 shrink-0" />
           </button>
         </SheetTrigger>
-        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(// The sheet is portaled outside the shell, so it repeats the header height (4rem + notch) itself.
-          keepHeader ? "h-[calc(100dvh-4rem-env(safe-area-inset-top))]" : "h-[94dvh]", "gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden")}>
+        {/* --admin-header is set on <html> by the shell, since the sheet is portaled outside it. */}
+        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "h-[calc(100dvh-var(--admin-header,6dvh))]" : "h-[94dvh]", "gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden")}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>

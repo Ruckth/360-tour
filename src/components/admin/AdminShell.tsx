@@ -186,6 +186,16 @@ export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend,
   const [open, setOpen] = useState(true);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
+  // Sheets are portaled to <body>, outside the provider below, so the header height they stop
+  // under (the phone order sheet, toasts) is set on <html> too.
+  useEffect(() => {
+    const root = document.documentElement.style;
+    root.setProperty("--admin-header", "calc(4rem + env(safe-area-inset-top))");
+    return () => {
+      root.removeProperty("--admin-header");
+    };
+  }, []);
+
   return (
     <SidebarProvider
       open={checkoutFlow ? checkoutOpen : open}
