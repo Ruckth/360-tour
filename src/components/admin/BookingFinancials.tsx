@@ -6,7 +6,7 @@ import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { formatReceiptNumber } from "convex/lib/billMath";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,8 @@ import { cn } from "@/lib/utils";
 import { BookingPromotionLine } from "./BookingPromotion";
 import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
 import { DisabledReason } from "./DisabledReason";
-import { EffectiveTimeFields, MethodPicker, NotifyGuestField, useEffectiveTime } from "./BookingMoneyFields";
+import { EffectiveTimeFields, MethodPicker, NotifyGuestField, ReceivedAtField, useEffectiveTime } from "./BookingMoneyFields";
+import { BookingHistory } from "./BookingHistory";
 import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefundSource";
 import { formatMoney } from "./labels";
 import {
@@ -31,6 +32,7 @@ import {
   REFUND_METHODS,
   newAttemptKey,
   parseAmount,
+  staffLabel,
   type DeskPaymentMethod,
   type RefundMethod,
 } from "./admin-bookings-shared";
@@ -54,14 +56,51 @@ type Dialog =
  * given back by staff, online payments stay the provider's record, and checkout payments are
  * corrected from their receipt.
  */
-export function BookingFinancials({ booking, initialAction }: { booking: BookingDetail; initialAction?: "pay" }) {
+/**
+ * The stay's money in the booking sheet: the money block on top, the sheet's own content
+ * (`children`) under it, and one closed History holding payments and refunds, past orders
+ * (`orders`), the price and every change. Recording never moves money: refunds are given back by
+ * staff, online payments stay the provider's record, and checkout payments are corrected from
+ * their receipt.
+ */
+export function BookingFinancials({
+  booking,
+  initialAction,
+  orders,
+  villaName,
+  children,
+}: {
+  booking: BookingDetail;
+  initialAction?: "pay";
+  orders?: ReactNode;
+  villaName?: (id: string) => string;
+  children?: ReactNode;
+}) {
   const data = useQuery(api.adminBookings.bookingFinancials, { bookingId: booking._id });
-  if (data === undefined) return <Skeleton className="h-20 w-full" aria-label="Loading payments" />;
-  if (data === null) return null;
-  return <LoadedBookingFinancials booking={booking} data={data} initialAction={initialAction} />;
+  const history = (records?: ReactNode) => (
+    <BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName ?? (() => "Villa")}>
+      {records}
+      {orders}
+    </BookingHistory>
+  );
+  if (data === undefined) return <><Skeleton className="h-20 w-full" aria-label="Loading payments" />{children}{history()}</>;
+  if (data === null) return <>{children}{history()}</>;
+  return <LoadedBookingFinancials booking={booking} data={data} initialAction={initialAction} history={history}>{children}</LoadedBookingFinancials>;
 }
 
-function LoadedBookingFinancials({ booking, data, initialAction }: { booking: BookingDetail; data: Financials; initialAction?: "pay" }) {
+function LoadedBookingFinancials({
+  booking,
+  data,
+  initialAction,
+  history,
+  children,
+}: {
+  booking: BookingDetail;
+  data: Financials;
+  initialAction?: "pay";
+  history: (records: ReactNode) => ReactNode;
+  children?: ReactNode;
+}) {
   const { money } = data;
   const promotion = bookingPromotion(booking);
   const cancelled = booking.status === "cancelled";
@@ -90,6 +129,7 @@ function LoadedBookingFinancials({ booking, data, initialAction }: { booking: Bo
       : money.credit > 0
         ? { label: "Credit", amount: money.credit }
         : { label: "Paid in full", amount: money.net };
+  const recordCount = data.payments.length + data.refunds.length + data.legacyOrders.length;
 
   async function takePayment() {
     if (!spa || opening) return;
@@ -104,9 +144,70 @@ function LoadedBookingFinancials({ booking, data, initialAction }: { booking: Bo
     }
   }
 
+  const records = (
+    <>
+      {recordCount ? (
+        <div className="grid gap-3">
+          <h4 className="admin-eyebrow">Payments and refunds</h4>
+          {data.payments.length ? (
+            <ul className="grid gap-2">
+              {data.payments.map((payment) => (
+                <PaymentRow key={payment._id} payment={payment} refundable={money.refundable > 0} onAction={setDialog} />
+              ))}
+            </ul>
+          ) : null}
+          {data.legacyOrders.length ? (
+            <ul className="grid gap-1 text-sm text-muted-foreground">
+              {data.legacyOrders.map((order) => (
+                <li key={order._id} className="flex flex-wrap items-center justify-between gap-2">
+                  <Link className="underline-offset-2 hover:underline" href={receiptPath(order._id)}>
+                    {order.title}{order.receiptNumber !== undefined ? ` · ${formatReceiptNumber(order.receiptNumber)}` : ""}
+                  </Link>
+                  <span>Took {formatMoney(order.charged, money.currency)} for the stay</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {data.refunds.length ? (
+            <ul className="grid gap-1 text-sm" aria-label="Refunds">
+              {data.refunds.map((refund) => (
+                <li key={refund._id} className="grid gap-0.5">
+                  <p>
+                    Refunded {formatMoney(refund.amount, refund.currency)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}
+                    <span className="text-muted-foreground"> · {formatResortDateTime(refund.effectiveAt)}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {refund.reason}
+                    {refund.order ? ` · from ${refund.order.title}` : ""} · recorded by {staffLabel(refund.recordedBy)}
+                  </p>
+                  {refund.providerRefundId ? <p className="break-all text-xs text-muted-foreground">Stripe refund {refund.providerRefundId}</p> : null}
+                  {refund.method === "stripe" && !refund.providerRefundId && !refund.providerEventId ? (
+                    <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "linkStripe", refund })}>Link Stripe refund evidence</Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="grid gap-1 text-muted-foreground">
+        <h4 className="admin-eyebrow pt-2">Price</h4>
+        <p>{formatMoney(booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0, booking.currency)} × {booking.nights} {booking.nights === 1 ? "night" : "nights"} = {formatMoney(booking.subtotal, booking.currency)}</p>
+        {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
+          line.kind === "coupon" && promotion ? (
+            <BookingPromotionLine key="coupon" promotion={promotion} currency={booking.currency} redemption={booking.redemption} />
+          ) : (
+            <p key="direct">Direct discount −{formatMoney(line.amount, booking.currency)}</p>
+          ),
+        )}
+        {booking.priceOverride ? <p>Custom price (villa rate {formatMoney(booking.priceOverride.quotedTotal, booking.currency)}): {booking.priceOverride.reason}</p> : null}
+      </div>
+    </>
+  );
+
   return (
-    <section aria-labelledby="booking-payments" className="grid gap-3">
-      <div className="grid gap-2 rounded-xl border border-border bg-muted/40 p-3">
+    <>
+      <section aria-labelledby="booking-payments" className="grid gap-2 rounded-xl border border-border bg-muted/40 p-3">
         <div data-sentence-budget="ignore">
           <h3 id="booking-payments" className="text-sm font-medium text-muted-foreground">{headline.label}</h3>
           <p className="font-serif text-3xl font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(headline.amount, money.currency)}</p>
@@ -146,82 +247,24 @@ function LoadedBookingFinancials({ booking, data, initialAction }: { booking: Bo
             {problems.map((problem) => <p key={problem}>{problem}</p>)}
           </div>
         ) : null}
-      </div>
-      <details className="text-sm">
-        <summary className="min-h-9 cursor-pointer py-2 font-medium">Price breakdown</summary>
-        <div className="grid gap-1 pb-2 text-muted-foreground">
-          <p>{formatMoney(booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0, booking.currency)} × {booking.nights} {booking.nights === 1 ? "night" : "nights"} = {formatMoney(booking.subtotal, booking.currency)}</p>
-          {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
-            line.kind === "coupon" && promotion ? (
-              <BookingPromotionLine key="coupon" promotion={promotion} currency={booking.currency} redemption={booking.redemption} />
-            ) : (
-              <p key="direct">Direct discount −{formatMoney(line.amount, booking.currency)}</p>
-            ),
-          )}
-          {booking.priceOverride ? <p>Custom price (villa rate {formatMoney(booking.priceOverride.quotedTotal, booking.currency)}): {booking.priceOverride.reason}</p> : null}
-        </div>
-      </details>
+      </section>
+      {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
       {money.legacyRefund ? (
         <p className="text-xs text-muted-foreground">Marked refunded before refund amounts were recorded: the whole payment counts as refunded.</p>
       ) : null}
-
       {data.unitemised > 0 ? (
         <div className="grid gap-1 text-sm text-muted-foreground">
           <p>{formatMoney(data.unitemised, money.currency)} was recorded before payments were itemised.</p>
           {data.legacyManual.cancellable ? (
             <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "cancelLegacy", amount: data.legacyManual.cancellable ? data.legacyManual.amount : 0 })}>
-              Not received…
+              Entered by mistake…
             </Button>
           ) : null}
         </div>
       ) : null}
-      <details className="text-sm">
-        <summary className="min-h-9 cursor-pointer py-2 font-medium">Payments and refunds ({data.payments.length + data.refunds.length + data.legacyOrders.length})</summary>
-        <div className="grid gap-3 pb-2">
-          {data.payments.length ? (
-            <ul className="grid gap-2">
-              {data.payments.map((payment) => (
-                <PaymentRow key={payment._id} payment={payment} refundable={money.refundable > 0} onAction={setDialog} />
-              ))}
-            </ul>
-          ) : null}
-          {data.legacyOrders.length ? (
-            <ul className="grid gap-1 text-sm text-muted-foreground">
-              {data.legacyOrders.map((order) => (
-                <li key={order._id} className="flex flex-wrap items-center justify-between gap-2">
-                  <Link className="underline-offset-2 hover:underline" href={receiptPath(order._id)}>
-                    {order.title}{order.receiptNumber !== undefined ? ` · ${formatReceiptNumber(order.receiptNumber)}` : ""}
-                  </Link>
-                  <span>Took {formatMoney(order.charged, money.currency)} for the stay</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
 
-          {data.refunds.length ? (
-            <ul className="grid gap-1 text-sm" aria-label="Refunds">
-              {data.refunds.map((refund) => (
-                <li key={refund._id} className="grid gap-0.5">
-                  <p>
-                    Refunded {formatMoney(refund.amount, refund.currency)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}
-                    <span className="text-muted-foreground"> · {formatResortDateTime(refund.effectiveAt)}</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {refund.reason}
-                    {refund.order ? ` · from ${refund.order.title}` : ""} · recorded by {refund.recordedBy}
-                  </p>
-                  {refund.providerRefundId ? <p className="break-all text-xs text-muted-foreground">Stripe refund {refund.providerRefundId}</p> : null}
-                  {refund.method === "stripe" && !refund.providerRefundId && !refund.providerEventId ? (
-                    <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "linkStripe", refund })}>Link Stripe refund evidence</Button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-        </div>
-      </details>
-      {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
+      {children}
+      {history(records)}
 
       {dialog?.kind === "pay" ? <RecordPaymentDialog booking={booking} owed={money.owed} onClose={close} /> : null}
       {dialog?.kind === "linkStripe" ? <LinkStripeRefundDialog booking={booking} refund={dialog.refund} onClose={close} /> : null}
@@ -236,7 +279,7 @@ function LoadedBookingFinancials({ booking, data, initialAction }: { booking: Bo
           onClose={close}
         />
       ) : null}
-    </section>
+    </>
   );
 }
 
@@ -267,19 +310,19 @@ function PaymentRow({ payment, refundable, onAction }: { payment: Payment; refun
         ) : null}
       </p>
       <p className="text-xs text-muted-foreground">
-        Received {formatResortDateTime(payment.effectiveAt)} · recorded {formatResortDateTime(payment.recordedAt)} by {payment.recordedBy}
-        {payment.amendedBy ? ` · corrected by ${payment.amendedBy}` : ""}
+        Received {formatResortDateTime(payment.effectiveAt)} · recorded {formatResortDateTime(payment.recordedAt)} by {staffLabel(payment.recordedBy)}
+        {payment.amendedBy ? ` · corrected by ${staffLabel(payment.amendedBy)}` : ""}
         {payment.note ? ` · ${payment.note}` : ""}
       </p>
       {payment.refunded > 0 ? <p className="text-xs text-muted-foreground">{formatMoney(payment.refunded, payment.currency)} of it refunded</p> : null}
-      {cancelled ? <p className="text-xs text-muted-foreground">Cancelled as recorded in error: {payment.cancelReason}</p> : null}
+      {cancelled ? <p className="text-xs text-muted-foreground">Voided, entered by mistake: {payment.cancelReason}</p> : null}
       {!cancelled ? (
         <div className="flex flex-wrap items-center gap-1.5">
           {payment.amendBlocker === null ? (
-            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "amend", payment })}>Correct method or date</Button>
+            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "amend", payment })}>Correct…</Button>
           ) : null}
           {payment.cancelBlocker === null ? (
-            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "cancelEntry", payment })}>Not received…</Button>
+            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "cancelEntry", payment })}>Entered by mistake…</Button>
           ) : null}
           {refundable && payment.refundable > 0 ? (
             <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "refund", target: `payment:${payment._id}` })}>Refund from this</Button>
@@ -304,7 +347,7 @@ function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: Booking
     description="Use the charge and refund IDs from Stripe for this recorded refund. Linking prevents the same returned money being counted twice; it does not send a refund."
     rows={[{ label: "Recorded refund", before: formatMoney(refund.amount, refund.currency), after: formatMoney(refund.amount, refund.currency) }]}
     confirmLabel={submitted ? "Retry linking" : "Link refund"}
-    keepLabel="Close"
+    keepLabel={null}
     confirmDisabled={!/^ch_[A-Za-z0-9]+$/.test(chargeId.trim()) || !/^re_[A-Za-z0-9]+$/.test(refundId.trim())}
     onConfirm={async () => {
       attempt.current ??= { bookingId: booking._id, refundId: refund._id, expectedRevision: revision, chargeId: chargeId.trim(), providerRefundId: refundId.trim() };
@@ -333,14 +376,14 @@ export function RecordPaymentDialog({ booking, owed, onClose }: { booking: Booki
 
   return (
     <ChangeConfirmDialog
-      title="Record payment"
-      description={`Record ${formatMoney(reviewed.owed, booking.currency)} the guest already paid at the desk, with the date it was received. This does not charge the guest.`}
+      title="Already paid"
+      description={`Record ${formatMoney(reviewed.owed, booking.currency)} the guest already paid.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net + reviewed.owed, booking.currency) },
-        { label: "Balance", before: formatMoney(reviewed.owed, booking.currency), after: formatMoney(0, booking.currency) },
+        { label: "Balance due", before: formatMoney(reviewed.owed, booking.currency), after: formatMoney(0, booking.currency) },
       ]}
       confirmLabel={`Record ${formatMoney(reviewed.owed, booking.currency)}`}
-      keepLabel="Close"
+      keepLabel={null}
       confirmDisabled={when.at === null}
       onConfirm={async () => {
         await recordPayment({
@@ -353,11 +396,12 @@ export function RecordPaymentDialog({ booking, owed, onClose }: { booking: Booki
       onClose={done.close}
     >
       <MethodPicker label="Paid by" methods={DESK_PAYMENT_METHODS} value={method} onChange={setMethod} />
-      <EffectiveTimeFields id="pay-when" label="Received on" value={when} />
-      <div className="grid gap-2">
-        <Label htmlFor="pay-note">Note (optional)</Label>
-        <Input id="pay-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Slip number, who took it…" />
-      </div>
+      <ReceivedAtField id="pay-when" label="Received on" value={when}>
+        <div className="grid gap-2">
+          <Label htmlFor="pay-note">Note (optional)</Label>
+          <Input id="pay-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Slip number, who took it…" />
+        </div>
+      </ReceivedAtField>
       {firstConfirmation ? (
         <NotifyGuestField id="pay-notify" guestEmail={booking.guestEmail} checked={notify} onChange={setNotify} action="the confirmed booking" />
       ) : null}
@@ -395,8 +439,8 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
         { label: "Paid", before: formatMoney(money.net, money.currency), after: formatMoney(after, money.currency) },
         { label: "Refunded", before: formatMoney(money.refunded, money.currency), after: formatMoney(money.refunded + (amount ?? 0), money.currency) },
       ]}
-      confirmLabel="Record refund"
-      keepLabel="Close"
+      confirmLabel={amount !== null && !amountProblem ? `Record refund ${formatMoney(amount, money.currency)}` : "Record refund"}
+      keepLabel={null}
       destructive
       confirmDisabled={!attempt && (Boolean(amountProblem) || !reason.trim() || when.at === null)}
       onConfirm={async () => {
@@ -448,12 +492,13 @@ function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDet
   return (
     <ChangeConfirmDialog
       title="Correct payment"
-      description="Fix how or when this payment was received. The amount stays; if no money was received, use Not received instead."
+      description="The amount stays as recorded."
       rows={[
         { label: "Method", before: MONEY_METHOD_LABELS[payment.method] ?? payment.method, after: MONEY_METHOD_LABELS[method] },
         { label: "Received", before: formatResortDateTime(payment.effectiveAt), after: when.at === null ? "—" : formatResortDateTime(when.at) },
       ]}
       confirmLabel="Save correction"
+      keepLabel={null}
       confirmDisabled={!changed || !reason.trim() || when.at === null}
       onConfirm={async () => {
         await amendPayment({
@@ -471,7 +516,7 @@ function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDet
         <Input id="amend-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="amend-reason">Reason for the correction (required)</Label>
+        <Label htmlFor="amend-reason">Reason (required)</Label>
         <Textarea id="amend-reason" required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
       </div>
     </ChangeConfirmDialog>
@@ -494,16 +539,16 @@ function CancelEntryDialog({
   const cancelPayment = useMutation(api.adminBookings.cancelPayment);
   const [revision] = useState(booking.revision);
   const [reason, setReason] = useState("");
-  const done = useDone(onClose, "Payment entry cancelled.");
+  const done = useDone(onClose, "Payment entry voided.");
   return (
     <ChangeConfirmDialog
-      title="Payment not received?"
-      description={`Use this only when ${formatMoney(amount, booking.currency)} was recorded by mistake and never received. Nothing is refunded; the entry stays in the history, marked cancelled.`}
+      title="Entered by mistake"
+      description={`Void ${formatMoney(amount, booking.currency)} that was never received; it stays in History.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net - amount, booking.currency) },
-        { label: "Balance", before: formatMoney(booking.money.owed, booking.currency), after: formatMoney(owedAfter, booking.currency) },
+        { label: "Balance due", before: formatMoney(booking.money.owed, booking.currency), after: formatMoney(owedAfter, booking.currency) },
       ]}
-      confirmLabel="Cancel this entry"
+      confirmLabel={`Void ${formatMoney(amount, booking.currency)}`}
       keepLabel="Keep payment"
       destructive
       confirmDisabled={!reason.trim()}

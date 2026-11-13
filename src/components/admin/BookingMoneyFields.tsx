@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,59 @@ export function useEffectiveTime(initial?: number) {
   const at = date && /^\d{2}:\d{2}$/.test(time) ? resortDateTime(date, time) : Number.NaN;
   // The server allows a few minutes of clock drift; anything later is a future date.
   const valid = Number.isFinite(at) && at <= Math.max(now, opened) + 5 * 60_000;
-  return { date, setDate, time, setTime, at: valid ? at : null, future: Number.isFinite(at) && !valid, today: resortIsoDate(Math.max(now, opened)) };
+  const edited = date !== resortIsoDate(opened) || time !== resortTime24(opened);
+  return { date, setDate, time, setTime, at: valid ? at : null, future: Number.isFinite(at) && !valid, today: resortIsoDate(Math.max(now, opened)), edited };
+}
+
+/**
+ * "Received now · Change", as at the till: when the money moved is usually now, so the date and
+ * time (and anything passed as children, such as a note) stay folded until Change.
+ */
+export function ReceivedAtField({
+  id,
+  verb = "Received",
+  label,
+  value,
+  children,
+}: {
+  id: string;
+  /** "Received", "Effective". */
+  verb?: string;
+  /** Label of the date field once open, e.g. "Received on". */
+  label: string;
+  value: ReturnType<typeof useEffectiveTime>;
+  children?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="grid min-w-0 gap-2">
+      <p className="flex min-h-11 flex-wrap items-center gap-x-1.5 text-sm">
+        <span className="text-muted-foreground">
+          {value.edited ? <>{verb} <span className="tabular-nums">{value.date} · {value.time}</span> Bangkok</> : `${verb} now`}
+        </span>
+        <span aria-hidden className="text-muted-foreground">·</span>
+        <Button
+          type="button"
+          variant="link"
+          aria-expanded={open}
+          aria-controls={`${id}-at`}
+          aria-label={`Change ${verb.toLowerCase()} time`}
+          className="min-h-11 px-0 text-sm"
+          onClick={() => setOpen((current) => !current)}
+        >
+          Change
+        </Button>
+      </p>
+      {open ? (
+        <div id={`${id}-at`} className="grid min-w-0 gap-3">
+          <EffectiveTimeFields id={id} label={label} value={value} />
+          {children}
+        </div>
+      ) : value.future ? (
+        <p className="text-xs text-destructive">Pick a time that has already happened.</p>
+      ) : null}
+    </div>
+  );
 }
 
 export function EffectiveTimeFields({

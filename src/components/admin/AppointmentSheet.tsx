@@ -24,18 +24,19 @@ import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { formatMoney, sourceLabel } from "@/components/admin/labels";
+import { staffLabel } from "@/components/admin/admin-bookings-shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog as Modal, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { endTime, timeRange } from "@/lib/schedule-changes";
 import {
-  PAYMENT_LABELS,
   appointmentStatus,
   displayStatus,
   errorText,
@@ -78,7 +79,7 @@ const ACTION_LABELS: Record<StatusAction, string> = {
 
 const CANCELLABLE: AppointmentStatus[] = ["booked", "arrived"];
 
-type Dialog = "reschedule" | "turnaround" | "cancel" | "correct" | null;
+type Dialog = "choose" | "reschedule" | "turnaround" | "cancel" | "correct" | null;
 
 export function AppointmentSheet({
   appointment,
@@ -103,11 +104,29 @@ export function AppointmentSheet({
   const [editing, setEditing] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const now = useNow();
+  // Same read as the money block (one subscription): while a balance is due, Take payment is the
+  // one filled button and the next step goes outline.
+  const finance = useQuery(api.adminServices.getAppointmentFinancials, appointment ? { appointmentId: appointment._id } : "skip");
+  const balanceDue = Boolean(
+    appointment && finance && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" && appointment.status !== "no_show" && finance.money.owed > 0,
+  );
   const service = appointment ? serviceById.get(appointment.serviceId) : undefined;
   const staff = appointment ? staffById.get(appointment.staffId) : undefined;
   const serviceName = appointment?.serviceNameSnapshot ?? service?.name ?? "Service";
   const staffName = (id: string) => staffById.get(id)?.name ?? "Former staff member";
+
+  async function copyReference() {
+    if (!appointment) return;
+    const code = appointment.confirmationCode;
+    try {
+      await navigator.clipboard.writeText(code);
+      setNotice(`Copied ${code}.`);
+    } catch {
+      setError("Could not copy the reference.");
+    }
+  }
 
   async function run(action: StatusAction) {
     if (!appointment || pending !== null || feePending) return;
@@ -151,7 +170,6 @@ export function AppointmentSheet({
               <SheetTitle className="pe-8">Appointment · {appointment.guestName || "Unnamed guest"}</SheetTitle>
               <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
                 <StatusBadge {...status} />
-                <span className="font-mono text-xs">{appointment.confirmationCode}</span>
               </SheetDescription>
             </div>
             {editing ? (
@@ -167,7 +185,7 @@ export function AppointmentSheet({
                 <AppointmentMoneyBlock appointment={appointment} disabled={feePending || pending !== null} />
                 <div className="flex flex-wrap items-center gap-2">
                   {next ? (
-                    <Button onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
+                    <Button variant={balanceDue ? "outline" : "default"} onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
                       {pending === next ? <Spinner className="text-current" /> : null}
                       {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
                     </Button>
@@ -177,16 +195,16 @@ export function AppointmentSheet({
                     disabled={feePending || pending !== null}
                     items={[
                       ...actions.filter((action) => action !== next).map((action) => ({ label: ACTION_LABELS[action], onSelect: () => void run(action) })),
-                      { label: "Correct date / time", onSelect: () => setDialog("reschedule"), hidden: !canCorrectAppointmentTime(appointment, now) },
-                      { label: "Turnaround", onSelect: () => setDialog("turnaround"), hidden: !canEditTurnaround(appointment) },
+                      // Date or time, turnaround, status and details: one item, then a choice.
+                      { label: "Correct…", onSelect: () => setDialog("choose") },
                       { label: "Book again", onSelect: () => onBookAgain(appointment), hidden: !canBookAgain(appointment) || next === "book_again", disabled: services.length === 0 },
-                      { label: "Edit details", onSelect: () => setEditing(true) },
-                      { label: "Correct status", onSelect: () => setDialog("correct") },
+                      { label: "Copy reference", onSelect: () => void copyReference() },
                       { label: "Cancel appointment", onSelect: () => setDialog("cancel"), destructive: true, hidden: !CANCELLABLE.includes(appointment.status) },
                     ]}
                   />
                 </div>
                 {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+                {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
                 {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
                 <dl className="divide-y divide-border border-y border-border">
                   <Detail label="Service">{appointment.serviceNameSnapshot ?? service?.name ?? "—"}</Detail>
@@ -206,14 +224,10 @@ export function AppointmentSheet({
                       {turnaround ? `Turnaround to ${endTime(appointment.start, appointment.blockedUntil)}` : "No turnaround"}
                     </span>
                   </Detail>
-                  <Detail label="Payment">
-                    {formatMoney(appointment.price, appointment.currency)} · {PAYMENT_LABELS[appointment.paymentStatus]}
-                    {appointment.paymentStatus === "refunded" && appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : appointment.paymentStatus === "paid" && appointment.paidAt ? ` · ${formatResortDateTime(appointment.paidAt)}` : ""}
-                  </Detail>
                   {appointment.cancelledAt ? (
                     <Detail label="Cancelled">
                       {formatResortDateTime(appointment.cancelledAt)}
-                      {appointment.cancelledBy ? ` · ${appointment.cancelledBy === "guest" ? "Guest, in chat" : appointment.cancelledBy}` : ""}
+                      {appointment.cancelledBy ? ` · ${appointment.cancelledBy === "guest" ? "Guest, in chat" : staffLabel(appointment.cancelledBy)}` : ""}
                       {appointment.cancellationReason ? (
                         <span className="block text-muted-foreground">{appointment.cancellationReason}</span>
                       ) : null}
@@ -249,6 +263,19 @@ export function AppointmentSheet({
             )}
           </div>
         ) : null}
+        {appointment && dialog === "choose" ? (
+          <CorrectChoiceDialog
+            canCorrectTime={canCorrectAppointmentTime(appointment, now)}
+            canEditTurnaround={canEditTurnaround(appointment)}
+            onClose={() => setDialog(null)}
+            onPick={(choice) => {
+              if (choice === "details") {
+                setDialog(null);
+                setEditing(true);
+              } else setDialog(choice);
+            }}
+          />
+        ) : null}
         {appointment && dialog === "correct" ? <AppointmentCorrectionDialog appointment={appointment} onClose={() => setDialog(null)} /> : null}
         {appointment && dialog === "reschedule" ? (
           <RescheduleDialog appointment={appointment} serviceName={serviceName} staffById={staffById} onClose={() => setDialog(null)} />
@@ -266,6 +293,45 @@ export function AppointmentSheet({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+type Correction = "reschedule" | "turnaround" | "correct" | "details";
+
+/** "Correct…": which part of the record was wrong. Each choice opens its own form. */
+function CorrectChoiceDialog({
+  canCorrectTime,
+  canEditTurnaround,
+  onPick,
+  onClose,
+}: {
+  canCorrectTime: boolean;
+  canEditTurnaround: boolean;
+  onPick: (choice: Correction) => void;
+  onClose: () => void;
+}) {
+  const choices: { value: Correction; label: string; hidden?: boolean }[] = [
+    { value: "reschedule", label: "Date or time", hidden: !canCorrectTime },
+    { value: "turnaround", label: "Turnaround", hidden: !canEditTurnaround },
+    { value: "correct", label: "Status" },
+    { value: "details", label: "Guest, service or notes" },
+  ];
+  return (
+    <Modal open onOpenChange={(open) => (open ? undefined : onClose())}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="pe-8">Correct</DialogTitle>
+          <DialogDescription className="sr-only">Choose what to correct</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          {choices.filter((choice) => !choice.hidden).map((choice) => (
+            <Button key={choice.value} variant="outline" className="min-h-11 justify-start" onClick={() => onPick(choice.value)}>
+              {choice.label}
+            </Button>
+          ))}
+        </div>
+      </DialogContent>
+    </Modal>
   );
 }
 

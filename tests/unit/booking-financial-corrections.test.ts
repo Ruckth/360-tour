@@ -105,6 +105,12 @@ const menuItem = async (label: string) => {
   if (trigger && trigger.getAttribute("aria-expanded") !== "true") await act(async () => trigger.click());
   return [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === label) as HTMLElement | undefined;
 };
+/** Opens the stay popover's ⋯ menu and returns its item with this label. */
+const stayItem = async (label: string) => {
+  const trigger = document.querySelector('[aria-label="More stay actions"]') as HTMLElement | null;
+  if (trigger && trigger.getAttribute("aria-expanded") !== "true") await act(async () => trigger.click());
+  return [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === label) as HTMLElement | undefined;
+};
 /** The money block at the top of the stay sheet: its label and amount. */
 const moneyBlock = () => {
   const heading = document.getElementById("booking-payments")!;
@@ -175,9 +181,11 @@ describe("booking payments and refunds", () => {
     expect(text).toContain("Recorded on the booking · Cash");
     expect(text).toContain("Paid online · Stripe");
     expect(text).toContain("Online payments are the provider’s record and can’t be changed here.");
-    // Correct and Not received for the desk payment only.
-    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Correct method or date")).toHaveLength(1);
-    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Not received…")).toHaveLength(1);
+    // Correct… and Entered by mistake… for the desk payment only, inside the one History section.
+    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Correct…")).toHaveLength(1);
+    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Entered by mistake…")).toHaveLength(1);
+    expect(button("Correct…")?.closest("details")?.querySelector("summary")?.textContent).toBe("History");
+    expect([...document.querySelectorAll("summary")].map((s) => s.textContent)).toEqual(["History"]);
     expect(button("Already paid…")).toBeUndefined();
   });
 
@@ -187,7 +195,7 @@ describe("booking payments and refunds", () => {
     await click(button("Record refund"));
     expect(document.body.textContent).toContain("Recording does not return money");
     expect((document.getElementById("refund-amount") as HTMLInputElement).value).toBe("8500");
-    const confirm = () => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.trim() === "Record refund") as HTMLButtonElement;
+    const confirm = () => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.trim().startsWith("Record refund")) as HTMLButtonElement;
     expect(confirm().disabled).toBe(true);
     await type("refund-amount", "9000");
     expect(document.body.textContent).toContain("At most ฿8,500.");
@@ -195,6 +203,7 @@ describe("booking payments and refunds", () => {
     await type("refund-reason", "Left a night early");
     await click(button("Card"));
     expect(confirm().disabled).toBe(false);
+    expect(confirm().textContent).toBe("Record refund ฿8,500");
     await click(confirm());
     expect(alertText()).toContain("This booking changed since you opened it");
     expect((document.getElementById("refund-reason") as HTMLTextAreaElement).value).toBe("Left a night early");
@@ -221,13 +230,24 @@ describe("booking payments and refunds", () => {
     await render(createElement(BookingFinancials, { booking: owing }));
     expect(moneyBlock()).toEqual({ label: "Balance due", amount: "฿4,000" });
     await click(button("Already paid…"));
-    expect(document.body.textContent).toContain("This does not charge the guest.");
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector("h2")?.textContent).toBe("Already paid");
+    expect(dialog.textContent).toContain("Record ฿4,000 the guest already paid.");
+    expect(dialog.textContent).not.toContain("This does not charge the guest.");
+    // The date waits behind "Received now · Change", as at the till; ✕ is the only way out.
+    expect(dialog.textContent).toContain("Received now");
+    expect(document.getElementById("pay-when-time")).toBeNull();
+    expect([...dialog.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Close")).toHaveLength(1);
     expect((document.getElementById("pay-notify") as HTMLInputElement).checked).toBe(false);
-    await click(button("Bank transfer"));
+    await click(button("Transfer"));
+    await click(button("Change"));
     await type("pay-when-time", "08:30");
+    expect(dialog.textContent).toContain("Received 2026-10-28 · 08:30 Bangkok");
     await click(button("Record ฿4,000"));
     expect(button("Record ฿4,000")?.disabled).toBe(true);
-    expect(button("Close")?.disabled).toBe(true);
+    await act(async () => (dialog.querySelector('[data-slot="dialog-close"], button.absolute') as HTMLElement | null)?.click());
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
     await act(async () => finish());
     expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({
       bookingId: "b1", expectedRevision: 7, expectedAmount: 4000, method: "transfer", effectiveAt: at("2026-10-28", "08:30"), notifyGuest: false,
@@ -236,11 +256,12 @@ describe("booking payments and refunds", () => {
 
   it("cancels a mistaken desk entry only with a reason", async () => {
     await render(createElement(BookingFinancials, { booking }));
-    await click(button("Not received…"));
-    expect(document.body.textContent).toContain("Nothing is refunded");
-    expect(button("Cancel this entry")?.disabled).toBe(true);
+    await click(button("Entered by mistake…"));
+    expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("Entered by mistake");
+    expect(button("Keep payment")).toBeDefined();
+    expect(button("Void ฿25,500")?.disabled).toBe(true);
     await type("cancel-entry-reason", "Entered on the wrong booking");
-    await click(button("Cancel this entry"));
+    await click(button("Void ฿25,500"));
     expect(mutations.cancelPayment).toHaveBeenCalledWith({ bookingId: "b1", expectedRevision: 7, reason: "Entered on the wrong booking", paymentId: "pay1" });
   });
 });
@@ -251,11 +272,12 @@ describe("cancel and reopen", () => {
   it("cancels keeping the payment by default, with the guest email choice explicit", async () => {
     const onClose = vi.fn();
     await render(createElement(CancelStayDialog, { booking: paidFuture, onClose }));
-    expect(document.body.textContent).toContain("Cancelling does not refund anything");
+    expect(document.body.textContent).toContain("Cancelling refunds nothing");
+    expect(button("Keep stay")).toBeDefined();
     expect((document.getElementById("cancel-notify") as HTMLInputElement).checked).toBe(true);
     await click(document.getElementById("cancel-notify"));
     expect((document.getElementById("cancel-notify") as HTMLInputElement).checked).toBe(false);
-    await click(button("Cancel booking"));
+    await click(button("Cancel stay"));
     expect(mutations.cancelStay).toHaveBeenCalledWith({ bookingId: "b1", expectedRevision: 7, reason: undefined, effectiveAt: NOW, notifyGuest: false });
     expect(onClose).toHaveBeenCalled();
   });
@@ -346,7 +368,10 @@ describe("booking history", () => {
     expect(text).toContain("Method: Card");
     expect(text).toContain("Reason: Left early");
     expect(text).toContain("Effective");
-    expect(text).toContain("Method: Cash → Bank transfer");
+    expect(text).toContain("Method: Cash → Transfer");
+    // Records keep the sign-in email; History shows the part before the @.
+    expect(text).toContain("· desk");
+    expect(text).not.toContain("desk@example.com");
     await click(button("Load earlier history"));
     expect(pages.loadMore).toHaveBeenCalledWith(10);
     expect(pages.read).toHaveBeenCalledWith({ bookingId: "b1" });
@@ -457,8 +482,8 @@ describe("calendar booking action intent", () => {
     queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money, payments: [] });
     await render(createElement(BookingSheet, props));
     expect(button("Record ฿17,000")).toBeDefined();
-    expect(document.body.textContent).toContain("This does not charge the guest.");
-    const paymentDialog = document.getElementById("pay-note")!.closest('[role="dialog"]')!;
+    expect(document.body.textContent).toContain("Record ฿17,000 the guest already paid.");
+    const paymentDialog = button("Record ฿17,000")!.closest('[role="dialog"]')!;
     await click([...paymentDialog.querySelectorAll("button")].find(b => b.textContent?.trim() === "Close"));
     expect(button("Record ฿17,000")).toBeUndefined();
     await render(createElement(BookingSheet, props));
@@ -500,7 +525,7 @@ describe("calendar booking action intent", () => {
     const props = { bookingId: paid._id, properties: [], initialAction: "cancel" as const, onClose: vi.fn() };
     await render(createElement(BookingSheet, props));
     expect(document.getElementById("cancel-reason")).not.toBeNull();
-    await click(button("Keep booking"));
+    await click(button("Keep stay"));
     expect(document.getElementById("cancel-reason")).toBeNull();
     expect(document.body.textContent).toContain("Mia");
     await render(createElement(BookingSheet, props));
@@ -518,18 +543,22 @@ describe("calendar booking action intent", () => {
     const props = { target: { booking: owing as unknown as ComponentProps<typeof BookingQuickActions>["target"]["booking"], rect: { left: 0, top: 0, width: 10, height: 10 } }, villaName: "Pool Villa", onClose: vi.fn(), onOpenDetails: vi.fn(), onAction, onNotice: vi.fn() };
     queries.getForAdmin.mockReturnValue(owing);
     await render(createElement(BookingQuickActions, props));
-    await click(button("Record payment"));
+    // The popover keeps Take payment · Book spa · Details; the rest sit in ⋯.
+    expect(button("Record payment")).toBeUndefined();
+    expect(button("Already paid…")).toBeUndefined();
+    expect(button("Cancel stay")).toBeUndefined();
+    await click(await stayItem("Already paid…"));
     expect(onAction).toHaveBeenLastCalledWith({ kind: "pay", booking: owing });
     const paid = { ...owing, money: { ...owing.money, net: 1000 } };
     queries.getForAdmin.mockReturnValue(paid);
     await render(createElement(BookingQuickActions, props));
-    await click(button("Cancel stay"));
+    await click(await stayItem("Cancel stay"));
     expect(onAction).toHaveBeenLastCalledWith({ kind: "cancel", booking: paid });
     expect(props.onOpenDetails).not.toHaveBeenCalled();
     queries.getForAdmin.mockReturnValue({ ...owing, checkoutLive: true });
     await render(createElement(BookingQuickActions, props));
-    expect((button("Record payment") as HTMLButtonElement).disabled).toBe(true);
-    expect((button("Cancel stay") as HTMLButtonElement).disabled).toBe(true);
+    expect((await stayItem("Already paid…"))?.hasAttribute("data-disabled")).toBe(true);
+    expect((await stayItem("Cancel stay"))?.hasAttribute("data-disabled")).toBe(true);
   });
 });
 
@@ -548,7 +577,10 @@ describe("one canonical stay-money summary", () => {
     await render(createElement(BookingSheet, { bookingId: current._id, properties: [], onClose: vi.fn() }));
     expect(document.querySelectorAll("#booking-payments")).toHaveLength(1);
     expect(moneyBlock()).toEqual({ label: outcome, amount: value });
-    const history = [...document.querySelectorAll("details")].find(d => d.querySelector("summary")?.textContent?.startsWith("Payments and refunds"))!;
+    // One closed History holds payments, price and changes.
+    const sections = [...document.querySelectorAll("summary")].map((summary) => summary.textContent);
+    expect(sections).toEqual(["History"]);
+    const history = document.querySelector("summary")!.closest("details")!;
     expect(history.open).toBe(false);
     if (amounts.refunded) {
       const refundLine = [...document.querySelectorAll("p")].find(p => p.textContent === `Refunded ฿${amounts.refunded.toLocaleString("en-US")}`)!;

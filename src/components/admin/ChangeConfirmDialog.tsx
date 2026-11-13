@@ -40,7 +40,8 @@ export function ChangeConfirmDialog({
   children?: ReactNode;
   footnote?: ReactNode;
   confirmLabel: string;
-  keepLabel?: string;
+  /** The safe button ("Keep stay"); null leaves only the corner ✕, for dialogs that aren't a destructive confirm. */
+  keepLabel?: string | null;
   destructive?: boolean;
   confirmDisabled?: boolean;
   onConfirm: () => Promise<boolean | void>;
@@ -107,9 +108,11 @@ export function ChangeConfirmDialog({
         </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
-            {keepLabel}
-          </Button>
+          {keepLabel === null ? null : (
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+              {keepLabel}
+            </Button>
+          )}
           <Button
             type="button"
             variant={destructive ? "destructive" : "default"}

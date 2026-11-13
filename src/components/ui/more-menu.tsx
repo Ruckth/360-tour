@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu } from "@base-ui/react/menu";
-import { MoreHorizontal } from "lucide-react";
+import { Check, MoreHorizontal } from "lucide-react";
 import { useCallback, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,8 @@ export type MoreMenuItem = {
   disabled?: boolean;
   /** Left out entirely, e.g. when the role can't use it. */
   hidden?: boolean;
+  /** A toggle or a choice ("Show cancelled", a filter value): shown with a check when on. */
+  checked?: boolean;
 };
 
 export type MoreMenuProps = {
@@ -39,7 +41,21 @@ export function MoreMenu({ items, label = "More actions", disabled = false, alig
   const regular = visible.filter((item) => !item.destructive);
   const destructive = visible.filter((item) => item.destructive);
 
-  const renderItem = (item: MoreMenuItem) => (
+  const renderItem = (item: MoreMenuItem) => item.checked !== undefined ? (
+    <Menu.CheckboxItem
+      key={item.label}
+      checked={item.checked}
+      disabled={item.disabled}
+      closeOnClick
+      onCheckedChange={item.onSelect}
+      className={cn(itemClass, "gap-2 ps-2")}
+    >
+      <span aria-hidden className="flex size-4 items-center justify-center">
+        <Menu.CheckboxItemIndicator><Check className="size-4" /></Menu.CheckboxItemIndicator>
+      </span>
+      {item.label}
+    </Menu.CheckboxItem>
+  ) : (
     <Menu.Item
       key={item.label}
       disabled={item.disabled}

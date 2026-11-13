@@ -1,7 +1,15 @@
 import type { Id } from 'convex/_generated/dataModel';
-import { pickSlot } from '@/lib/staff-bookings';
+import { pickSlot, resortIsoDate } from '@/lib/staff-bookings';
 
 type EntrySlot = { start: number; staffIds: Id<'staff'>[]; autoStaffId: Id<'staff'> };
+
+/**
+ * Past work (any staff, archived services, no Auto) only for an earlier day or a chosen time that
+ * starts before now. Today with no time chosen, or a later time today, is a normal booking.
+ */
+export function isPastEntry(date: string, start: number | null, now: number) {
+  return date < resortIsoDate(now) || (start !== null && start < now);
+}
 
 /** A historical selection is evidence, so absence from today's availability never substitutes another time/person. */
 export function appointmentEntrySlot(slots: EntrySlot[] | undefined, wanted: number | null, staffId: Id<'staff'> | undefined, now: number): EntrySlot | undefined {

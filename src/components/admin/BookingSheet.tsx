@@ -34,7 +34,6 @@ import { BookingFinancials } from "./BookingFinancials";
 import { BookingMarketingSource } from "./BookingMarketingSource";
 import { bookingEditPrice, reviewedPrice, type BookingEditQuote, type BookingEditQuoteState } from "./booking-edit-price";
 import { bookingPromotion } from "@/lib/booking/coupon";
-import { BookingHistory } from "./BookingHistory";
 import { CancelStayDialog, ReopenBookingDialog } from "./BookingCorrectionDialogs";
 import { NotifyGuestField } from "./BookingMoneyFields";
 import { BookingOrders } from "./BookingOrders";
@@ -51,6 +50,7 @@ import {
   parseAmount,
   payLink,
   serverTodayIso,
+  staffLabel,
   statusKey,
   type AdminProperty,
 } from "./admin-bookings-shared";
@@ -191,6 +191,7 @@ function BookingDetails({
       title: "Delete this booking?",
       description: "Use this for test or duplicate bookings. It is removed and its dates are released. Its last details stay in the booking history.",
       confirmLabel: "Delete booking",
+      cancelLabel: "Keep stay",
       destructive: true,
     });
     if (!ok) return;
@@ -205,6 +206,12 @@ function BookingDetails({
     }
   }
 
+  async function copyReference() {
+    if (!booking.confirmationCode) return;
+    const code = booking.confirmationCode;
+    await act("reference", () => navigator.clipboard.writeText(code), `Copied ${code}.`);
+  }
+
   async function copyPayLink() {
     if (!booking.accessToken) return;
     const link = payLink(booking._id, booking.accessToken);
@@ -217,12 +224,22 @@ function BookingDetails({
         <SheetTitle className="pe-8">{booking.guestName}</SheetTitle>
         <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
           <StatusBadge {...status} />
-          {booking.confirmationCode ? <span className="font-mono text-xs">{booking.confirmationCode}</span> : null}
         </SheetDescription>
       </div>
 
-      <BookingFinancials booking={booking} initialAction={paymentShortcut} />
-
+      <BookingFinancials
+        booking={booking}
+        initialAction={paymentShortcut}
+        villaName={villaName}
+        orders={
+          <BookingOrders
+            source={{ bookingId: booking._id }}
+            currency={booking.currency}
+            closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
+            history
+          />
+        }
+      >
       <div className="flex flex-wrap items-center gap-2">
         {editable && booking.status === "pending" ? (
           <Button
@@ -245,12 +262,13 @@ function BookingDetails({
             Reopen
           </Button>
         ) : null}
-        {pending === "resend" || pending === "delete" || pending === "copy" ? <Spinner label="Working" /> : null}
+        {pending === "resend" || pending === "delete" || pending === "copy" || pending === "reference" ? <Spinner label="Working" /> : null}
         <MoreMenu
           label="More booking actions"
           disabled={pending !== null}
           items={[
             { label: "Copy pay link", onSelect: () => void copyPayLink(), hidden: !booking.accessToken },
+            { label: "Copy reference", onSelect: () => void copyReference(), hidden: !booking.confirmationCode },
             {
               label: "Resend emails",
               onSelect: () => void act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued."),
@@ -293,25 +311,18 @@ function BookingDetails({
         </Detail>
         <Detail label="Created">
           {format(new Date(booking.createdAt), "d MMM yyyy, HH:mm")}
-          {booking.createdBy ? <span className="block text-muted-foreground">by {booking.createdBy}</span> : null}
+          {booking.createdBy ? <span className="block text-muted-foreground">by {staffLabel(booking.createdBy)}</span> : null}
         </Detail>
         {cancelled && booking.cancelledAt ? (
           <Detail label="Cancelled">
             {format(new Date(booking.cancelledAt), "d MMM yyyy, HH:mm")}
             <span className="block text-muted-foreground">
-              {booking.cancelledBy ? `by ${booking.cancelledBy}` : ""}
+              {booking.cancelledBy ? `by ${staffLabel(booking.cancelledBy)}` : ""}
               {booking.cancelReason ? ` · ${booking.cancelReason}` : ""}
             </span>
           </Detail>
         ) : null}
       </dl>
-
-      <BookingOrders
-        source={{ bookingId: booking._id }}
-        currency={booking.currency}
-        closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
-        history
-      />
 
       <div className="grid gap-2">
         <Label htmlFor="booking-notes">Notes (staff only)</Label>
@@ -348,8 +359,7 @@ function BookingDetails({
           </Button>
         ) : null}
       </div>
-
-      <BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName} />
+      </BookingFinancials>
 
       {dialog === "edit" ? <EditBookingDialog booking={booking} properties={properties} onClose={() => setDialog(null)} /> : null}
       {dialog === "cancel" ? <CancelStayDialog booking={booking} onClose={() => setDialog(null)} /> : null}
@@ -485,6 +495,7 @@ export function EditBookingDialog({
             unavailableDates={availability.blockedDates}
             onMonthChange={availability.onMonthChange}
             markPastUnavailable
+            clearable={false}
           />
           <BookingAvailabilityNotice {...availability} />
           {conflicts ? (
@@ -575,7 +586,7 @@ export function EditBookingDialog({
               <p className="mt-1 text-muted-foreground">
                 Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
                 {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
-                {balance && newTotal < booking.amountPaid ? " Record the refund from Payments once you give it back." : ""}
+                {balance && newTotal < booking.amountPaid ? " Record the refund once you give it back." : ""}
               </p>
             ) : null}
           </div>
@@ -587,9 +598,6 @@ export function EditBookingDialog({
           {customProblem ? <p className={cn("text-sm text-destructive")}>{customProblem}</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-              Close
-            </Button>
             <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(customProblem) || priceBlocked || (archivedVilla && !villaReason.trim())}>
               {saving ? <Spinner className="text-current" /> : null}
               Save changes
