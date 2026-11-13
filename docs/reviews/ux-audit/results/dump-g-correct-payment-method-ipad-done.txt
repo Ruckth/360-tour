@@ -1,0 +1,16 @@
+button "Checkout" @10
+button "New sale" @53
+button[radio] "58 mm" @118
+button[radio] "80 mm" @118
+button "Print" @114
+button "Share" @114
+button "Copy receipt text" @163
+summary "Print setup for 80 mm paper" @215
+button "Refund Thai massage 60" @397
+button "Link appointment" @262
+button "Correct payment recording" @507
+button "No money was received…" @507
+summary "Receipt activity" @729
+summary "Browse all financial history" @786
+summary "Order history" @851
+button "Void…" @932

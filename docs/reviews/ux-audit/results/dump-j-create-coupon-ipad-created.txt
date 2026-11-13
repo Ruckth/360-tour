@@ -1,0 +1,25 @@
+a "Coupons" @16
+button "Create coupon" @60
+input "" @240
+button[combobox] "No campaign" @240
+button[radio] "Percent" @517
+button[radio] "Fixed ฿" @517
+input "" @512
+input "" @512
+input "" @732
+input "" @732
+input "" @732
+button "Any time" @932
+button "No end" @932
+button "Any time" @932
+button "No end" @932
+input "" @1181
+input "" @1300
+input "" @1300
+button "Write from rules" @1410
+textarea "" @1479
+button[combobox] "Tideglass Pool Residence · ฿8,500" @645
+button "Nov 17, 2026" @723
+button "Nov 19, 2026" @723
+button "Add a service" @825
+button "Run quote" @877

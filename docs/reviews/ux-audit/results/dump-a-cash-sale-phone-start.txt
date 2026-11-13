@@ -1,0 +1,23 @@
+button "Add customer" @76
+button "Add booking" @124
+button "Orders" @172
+button "New order" @172
+button[tab] "Frequent" @228
+button[tab] "Spa" @228
+button[tab] "Rooms" @228
+button[tab] "Extras" @228
+input "Search items" @280
+button "Filters" @280
+button "FREQUENT 6 items" @340
+button "Thai massage 60 60 min ฿1,200 Add to order" @388
+button "About Thai massage 60" @388
+button "Foot spa 45 45 min ฿600 Add to order" @493
+button "About Foot spa 45" @493
+button "Sunrise yoga by the pool 60 60 min ฿1,400 Add to order" @599
+button "About Sunrise yoga by the pool 60" @599
+button "Breakfast basket each ฿450 Add to order" @704
+button "Garden Villa per night · up to 4 guests ฿8,500 Add to order" @809
+button "About Garden Villa" @809
+button "Hot stone 60 60 min ฿1,500 Add to order" @914
+button "About Hot stone 60" @914
+button "View order 0 items ฿0 · New order, due · open the order" @768

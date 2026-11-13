@@ -1,0 +1,54 @@
+{
+  "task": "h2-staff-appointment",
+  "viewport": "phone",
+  "taps": 2,
+  "fields": 2,
+  "keys": 0,
+  "decisions": 1,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 10,
+    "controlsOnPage": 10,
+    "wordsOnScreen": 65,
+    "wordsOnPage": 78,
+    "wordsInnerText": 79
+  },
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Service (open)",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Search services",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Yoga 03",
+      "scrolled": false,
+      "decision": true,
+      "choices": 2
+    },
+    {
+      "kind": "type",
+      "label": "Guest name",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Book appointment enabled: false (the fixture passes no staff and no open times)."
+  ],
+  "shots": [
+    "h2-staff-appointment-phone-00-start.png",
+    "h2-staff-appointment-phone-01-filled.png"
+  ]
+}

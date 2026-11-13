@@ -1,0 +1,24 @@
+button "Save & close" @138
+button "Clear order" @140
+button "Close order" @140
+summary "Order history" @192
+button "Thai massage 60 60 min · Any therapist · Not scheduled ฿1,20" @236
+button "Any" @339
+button "Nok" @339
+button "Ploy" @339
+button "Mali" @339
+button "Service date" @407
+input "Service time" @407
+button "About the discount limit" @459
+button[radio] "฿" @489
+button[radio] "%" @489
+input "Discount" @485
+button "Apply" @485
+button "Change price" @559
+button "Remove item" @611
+button "Add coupon Code, QR or link" @554
+button "Cash" @732
+button "PromptPay" @732
+button "Card" @732
+button "Transfer" @732
+button "Split payment" @788

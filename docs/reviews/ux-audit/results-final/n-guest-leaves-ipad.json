@@ -1,0 +1,72 @@
+{
+  "task": "n-guest-leaves",
+  "viewport": "ipad",
+  "taps": 5,
+  "fields": 0,
+  "keys": 0,
+  "decisions": 0,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 23,
+    "controlsOnPage": 23,
+    "wordsOnScreen": 125,
+    "wordsOnPage": 125,
+    "wordsInnerText": 125
+  },
+  "startSentences": [],
+  "checkpoints": [
+    {
+      "label": "order",
+      "controlsOnScreen": 25,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 114,
+      "wordsOnPage": 114,
+      "wordsInnerText": 132,
+      "sentences": 0,
+      "sentenceText": []
+    }
+  ],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Anna's stay",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Checkout ฿27,500",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Cash",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Confirm cash ฿27,500",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Print",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "n-guest-leaves-ipad-00-start.png",
+    "n-guest-leaves-ipad-01-order.png",
+    "n-guest-leaves-ipad-02-receipt.png"
+  ]
+}

@@ -1,0 +1,4 @@
+button "About approvals" @160
+button "Decline" @188
+button "Approve" @188
+button "Close" @8

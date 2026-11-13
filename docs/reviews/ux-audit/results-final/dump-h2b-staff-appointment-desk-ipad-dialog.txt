@@ -1,0 +1,20 @@
+button "Thursday, November 12, 2026, go to date" @98
+button "Thai massage 60 · ฿1,200" @171
+button "Aroma oil massage 90 · ฿1,800" @171
+button "Hot stone 60 · ฿1,500" @219
+button "Foot spa 45 · ฿600" @219
+button "Nov 12, 2026" @293
+input "" @431
+button "10:30 AM" @536
+button "12:00 PM" @606
+button "1:30 PM" @606
+button "3:00 PM" @606
+button "4:30 PM" @606
+button "6:00 PM" @676
+button[combobox] "Choose who did the work" @763
+input "" @837
+input "" @915
+input "" @915
+button "Cancel" @714
+button "Book appointment" @714
+button "Close" @50

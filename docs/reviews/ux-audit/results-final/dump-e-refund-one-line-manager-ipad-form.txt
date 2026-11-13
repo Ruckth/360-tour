@@ -1,0 +1,18 @@
+button "Approvals" @12
+button "Print" @96
+button "Share" @96
+button "New sale" @96
+button "More receipt actions" @94
+button "Refund Thai massage 60" @316
+button "Link appointment" @316
+button "Cancel" @411
+button "All ฿600" @455
+button "Half ฿300" @455
+input "" @455
+button[combobox] "Method" @527
+button "Shortened treatment" @579
+button "Guest complaint" @579
+button "Charged by mistake" @617
+input "" @657
+button "Record refund ฿600" @709
+summary "History" @159

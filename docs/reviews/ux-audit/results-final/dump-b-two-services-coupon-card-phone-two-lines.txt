@@ -1,0 +1,11 @@
+button "More order actions" @86
+button "Close order" @86
+button "Thai massage 60 60 min · Any therapist · Not scheduled ฿1,20" @143
+button "Foot spa 45 45 min · Any therapist · Not scheduled ฿600" @212
+summary "Order history" @281
+button "Add coupon Code, QR or link" @554
+button "Cash" @732
+button "PromptPay QR" @732
+button "Card" @732
+button "Transfer" @732
+button "Split payment" @788

@@ -1,0 +1,48 @@
+{
+  "task": "o-arrivals",
+  "viewport": "ipad",
+  "taps": 3,
+  "fields": 0,
+  "keys": 0,
+  "decisions": 0,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 23,
+    "controlsOnPage": 23,
+    "wordsOnScreen": 125,
+    "wordsOnPage": 125,
+    "wordsInnerText": 125
+  },
+  "startSentences": [],
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Arriving",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Ken Tanaka",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Maya Lin",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Escape between guests (closing the popover) is not counted, as in desk-taps.ts."
+  ],
+  "shots": [
+    "o-arrivals-ipad-00-start.png",
+    "o-arrivals-ipad-01-arriving.png"
+  ]
+}

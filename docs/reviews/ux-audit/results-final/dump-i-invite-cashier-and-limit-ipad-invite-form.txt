@@ -1,0 +1,30 @@
+button[tab] "Business" @16
+button[tab] "Team" @16
+button[tab] "Booking rules" @16
+button[tab] "AI assistant" @16
+button[tab] "Email" @16
+button[tab] "Channels" @16
+button "About people" @85
+button "Invite" @77
+input "" @175
+select "Manager Cashier No desk access" @247
+select "No Marketing access Lead Marketer Finance Viewer" @247
+button "Cancel" @247
+button "Send invite" @247
+select "Desk role for lek@auraliscove.co" @336
+select "Marketing role for lek@auraliscove.co" @336
+button "More for lek@auraliscove.co" @332
+select "Desk role for mint@auraliscove.co" @421
+select "Marketing role for mint@auraliscove.co" @421
+select "Desk role for ploy@auraliscove.co" @567
+select "Marketing role for ploy@auraliscove.co" @567
+select "Desk role for sun@auraliscove.co" @652
+select "Marketing role for sun@auraliscove.co" @652
+button "About rules for all cashiers" @740
+input "" @801
+button[switch] "Refunds needs manager" @894
+button[switch] "Void a paid sale needs manager" @943
+button[switch] "Custom price needs manager" @992
+button[switch] "Fix a payment needs manager" @1041
+button "Save rules" @804
+summary "Deleted villa history" @1171

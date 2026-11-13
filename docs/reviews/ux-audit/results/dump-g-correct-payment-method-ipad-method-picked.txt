@@ -1,0 +1,24 @@
+button "Checkout" @88
+button "New sale" @131
+button[radio] "58 mm" @196
+button[radio] "80 mm" @196
+button "Print" @192
+button "Share" @192
+button "Copy receipt text" @241
+summary "Print setup for 80 mm paper" @293
+button "Refund Thai massage 60" @475
+button "Link appointment" @340
+input "" @676
+button[combobox] "Corrected payment 1 method" @750
+input "Corrected payment 1 amount" @794
+button "Add recorded payment" @846
+input "" @944
+button "Keep current customer" @992
+button "No named customer" @992
+textarea "" @1070
+button "Close correction" @1162
+button "Save recording correction" @1162
+summary "Receipt activity" @1300
+summary "Browse all financial history" @1357
+summary "Order history" @1422
+button "Void…" @1503

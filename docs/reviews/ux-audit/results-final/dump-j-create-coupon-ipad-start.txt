@@ -1,0 +1,13 @@
+a "Coupons" @16
+button "Save & publish" @64
+button "More save options" @60
+input "" @159
+button[radio] "Percent" @164
+button[radio] "Fixed ฿" @164
+input "" @159
+input "" @262
+input "" @262
+input "" @262
+input "" @321
+input "" @321
+summary "› More rules Campaign, dates, limits, terms" @386
